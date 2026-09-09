@@ -52,6 +52,7 @@ from lib.arcgis import get_field_coded_domain
 from lib.completeness import fail_if_incomplete
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.poi_schema import poi_output_name
 from lib.spurs import (
     SPUR_TYPE_CODE,
@@ -147,7 +148,14 @@ DESTINATION_POI_TYPES = ("shelter", "water", "campsite", "resupply", "viewpoint"
 # export already filters out before a destination is looked for at all, so
 # admitting parking here would mostly name a car park at the end of a spur
 # that leads somewhere else.
-NOT_A_DESTINATION_POI_TYPES = ("crossing", "privy", "parking")
+#
+# `trailhead` is here for parking's reason, only more so (#1197). Parking is
+# excluded as "an approach"; a trailhead is the approach's own end, the point
+# the access trail exists to reach. ATC files those side trails as `Type=0`
+# Access and this export filters them before a destination is looked for, so
+# admitting trailheads would mostly name a trailhead at the end of a spur that
+# leads somewhere else - the identical failure, on the identical geometry.
+NOT_A_DESTINATION_POI_TYPES = ("crossing", "privy", "parking", "trailhead")
 
 
 def load_features(path: Path) -> list[dict]:
@@ -393,7 +401,7 @@ def main() -> dict:
     OUT_PATH.write_text(json.dumps(records, separators=(",", ":"), sort_keys=True))
 
     manifest = {
-        "path": str(OUT_PATH),
+        "path": to_manifest_path(OUT_PATH),
         "sha256": sha256_file(OUT_PATH),
         "spur_count": len(records),
         "resolved_count": resolved,

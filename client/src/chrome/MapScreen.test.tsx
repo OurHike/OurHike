@@ -12,6 +12,7 @@ import {
 } from '../map/credits'
 import { closureFeatureCollection, CLOSURE_SOURCE_ID } from '../map/closureLayers'
 import { warningFeatureCollection, WARNING_SOURCE_ID } from '../map/warningLayers'
+import { ATC_UPDATE_SOURCE_ID } from '../map/atcUpdateLayers'
 import { HEALTHY, type SourceReport } from '../map/liveSourceHealth'
 
 /** The visible safety band. No longer `role="alert"` (#315) — its text ends
@@ -47,7 +48,7 @@ const PROPS = {
   online: false,
   hasGpsFix: true,
   lastSyncedAt: new Date('2026-07-29T09:00:00'),
-  activeTab: 'trail' as const,
+  activeTab: 'map' as const,
   onSelectTab: vi.fn(),
   onOpenLegend: vi.fn(),
   onOpenSearch: vi.fn(),
@@ -84,6 +85,7 @@ const PROPS = {
     ],
     currentMile: 1405,
     source: 'ahead' as const,
+    axis: 'trail' as const,
     domain: { startMile: 1400, endMile: 1410 },
   },
   waypoints: {
@@ -176,16 +178,27 @@ describe('MapScreen', () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
     expect(PROPS.onSelectTab).toHaveBeenCalledWith('more')
   })
 
-  it('slots the elevation ribbon and waypoint lanes above the canvas', () => {
-    render(<MapScreen {...PROPS} />)
+  it('slots the ribbon and the next-up cards into the rail below the canvas', () => {
+    render(<MapScreen {...PROPS} direction="NOBO" />)
 
     expect(screen.getByRole('img', { name: /elevation profile/i })).toBeInTheDocument()
-    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    // The lanes became cards (#1054): same window, same tap-through to the
+    // waypoint card, walked as a list instead of plotted by percentage.
+    expect(screen.getByText('NEXT UP')).toBeInTheDocument()
+  })
+
+  it('will not claim NEXT UP while the direction is unsettled', () => {
+    // The ribbon's own subject honesty, one surface over: "next up" is a
+    // claim about which way somebody is walking (chrome/NextUpRail.tsx).
+    render(<MapScreen {...PROPS} />)
+
+    expect(screen.getByText('NEARBY')).toBeInTheDocument()
+    expect(screen.queryByText('NEXT UP')).not.toBeInTheDocument()
   })
 
   // #619. One preference, one prop, two consumers. The failure this guards is
@@ -503,6 +516,24 @@ describe('MapScreen dropped-waypoint count', () => {
 
     expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
   })
+
+  it('says nothing below the seam, where the floor decides and not the collision', () => {
+    // With both waypoint ranks stopping at the pin seam (#1135), every drawn
+    // count below it is 0 by construction - and "0 of 387 waypoints fit" over
+    // the opening view described that floor as crowding. The legend's
+    // below-seam sentence explains the absence; this chip stands down.
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[point('w1', 'water'), point('w2', 'water')]}
+        drawnCounts={new Map([['water', 0]])}
+        hiddenTypes={new Set()}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
+  })
 })
 
 // --- The safety alert strip (#232) ---------------------------------------
@@ -574,6 +605,60 @@ describe('MapScreen safety alerts', () => {
     )
 
     expect(alertBand(container)).not.toHaveAttribute('role', 'alert')
+  })
+
+  it('has no assertive region ANYWHERE on the screen, slots included', () => {
+    // The guard above resolves its subject with
+    // `container.querySelector('.map-screen__alerts')`, so it could only ever
+    // see one band. #1044 put a second one in the followBand slot carrying
+    // `role="alert"` and a per-fix distance, and this suite stayed green
+    // through the whole review (#1055). Scoped to the screen rather than to a
+    // class, so the next band added to a slot cannot inherit the blind spot.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead · Storm damage"
+        followBand={<div className="off-route-band">440 ft from it</div>}
+      />,
+    )
+
+    expect(container.querySelectorAll('[role="alert"]')).toHaveLength(0)
+    expect(container.querySelectorAll('[aria-live="assertive"]')).toHaveLength(0)
+  })
+
+  it('announces the followed walk on the one polite line, with no number in it', () => {
+    // The other half of #1055's fix: the band keeps the distance for the eye,
+    // and what is SAID carries no figure, so it changes when the hiker
+    // crosses the threshold rather than when the fix wobbles.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        followBand={<div className="off-route-band">440 ft from it</div>}
+        followAnnouncement="You are off your route."
+      />,
+    )
+
+    const live = container.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('You are off your route.')
+    expect(live).not.toHaveTextContent('440')
+    // One region, not two - a second would be a second thing that can
+    // interrupt, which is what the role="status" note above argues against.
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1)
+  })
+
+  it('says the ground ahead before the hiker s own route', () => {
+    // Order matters on a line read aloud: a closure is true for everyone on
+    // that trail, and being off your own route is not.
+    const { container } = render(
+      <MapScreen
+        {...PROPS}
+        closureAhead="Trail closed 5.0 mi ahead"
+        followAnnouncement="You are off your route."
+      />,
+    )
+
+    const live = container.querySelector('[aria-live="polite"].visually-hidden')
+    expect(live).toHaveTextContent('Trail closure ahead. You are off your route.')
   })
 
   it('names each lane that has something in it, and only those', () => {
@@ -711,6 +796,127 @@ describe('MapScreen safety overlays', () => {
   })
 })
 
+// --- Taking the alerts off the canvas (#1047) -------------------------------
+//
+// The first switch this app has ever offered over a safety layer, and every
+// test here is about the LINE it draws. What the switch may take is ink. What
+// it may never take is the app's word about what is in front of this hiker -
+// so the four banner assertions below are not a nicety, they are the condition
+// on which the control is allowed to exist at all.
+
+describe('the alerts switch, at the canvas (#1047)', () => {
+  const CLOSURES = [{ id: 'c1', lines: [[[-77.1, 39.3] as [number, number]]] }]
+  const ATC_BANDS = [{ id: 'atc:helene', lines: [[[-77.3, 39.1] as [number, number]]] }]
+  const ATC_POINTS = [{ id: 'atc:iron-mtn', at: [-77.4, 39.2] as [number, number] }]
+  const WARNINGS = [{ id: 'r1', lon: -77.2, lat: 39.4 }]
+
+  const ALERTED = {
+    ...PROPS,
+    closures: CLOSURES,
+    atcUpdates: ATC_BANDS,
+    atcUpdatePoints: ATC_POINTS,
+    warnings: WARNINGS,
+  }
+
+  function loadStyle(map: MockMap): void {
+    map.sourceIds = [CLOSURE_SOURCE_ID, WARNING_SOURCE_ID, ATC_UPDATE_SOURCE_ID]
+    map.emit('load')
+  }
+
+  function featureCount(map: MockMap, sourceId: string): number {
+    const data = map.sourceData.get(sourceId) as { features: unknown[] } | undefined
+    return data?.features.length ?? 0
+  }
+
+  it('draws every alert when nothing says otherwise', () => {
+    // The default a safety layer is allowed to have, asserted rather than
+    // assumed: a MapScreen handed no flag at all draws what it was given.
+    render(<MapScreen {...ALERTED} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(featureCount(map, CLOSURE_SOURCE_ID)).toBe(1)
+    expect(featureCount(map, WARNING_SOURCE_ID)).toBe(1)
+    // One source, two geometries - a band and a dot (map/atcUpdateLayers.ts).
+    expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(2)
+  })
+
+  it('takes all three kinds of mark off at once', () => {
+    // All three or none. lib/atcUpdateStyle.ts draws an ATC band in the
+    // closure's exact colour and weight on purpose, so a switch that cleared
+    // one and left the other would leave a hiker looking at a barrier the
+    // legend claims is gone.
+    render(<MapScreen {...ALERTED} alertsShown={false} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+
+    expect(featureCount(map, CLOSURE_SOURCE_ID)).toBe(0)
+    expect(featureCount(map, WARNING_SOURCE_ID)).toBe(0)
+    expect(featureCount(map, ATC_UPDATE_SOURCE_ID)).toBe(0)
+  })
+
+  it('still tells the hiker what is in front of them', () => {
+    // THE WHOLE JUSTIFICATION FOR THE SWITCH. Hiding the bands is a
+    // decluttering of the canvas; it is not permission to go quiet about a
+    // closed trail three miles ahead. If this test ever has to change, the
+    // control should be removed rather than the assertion.
+    const { container } = render(
+      <MapScreen
+        {...ALERTED}
+        alertsShown={false}
+        closureAhead="Trail closed 2.1 mi ahead · Storm damage · mi 1,409.3 – 1,412.0"
+        warningsAhead="2 serious warnings on your route"
+        advisoryAhead="Advisory along 398 mi of trail · Storm damage · mi 239.4 – 637.8"
+      />,
+    )
+
+    expect(alertBand(container)).toHaveTextContent('Trail closed 2.1 mi ahead')
+    expect(alertBand(container)).toHaveTextContent('2 serious warnings on your route')
+    expect(alertBand(container)).toHaveTextContent('Advisory along 398 mi of trail')
+  })
+
+  it('still announces them to a screen reader', () => {
+    // The hidden `aria-live` line, which is what a hiker walking with the
+    // screen off actually gets. Asserted separately from the visible band for
+    // the reason the top of this file gives: they are two surfaces and only
+    // one of them is read aloud.
+    const { container } = render(
+      <MapScreen
+        {...ALERTED}
+        alertsShown={false}
+        closureAhead="Trail closed 2.1 mi ahead"
+        warningsAhead="2 serious warnings on your route"
+      />,
+    )
+
+    const live = container.querySelector('.visually-hidden[aria-live="polite"]')
+    expect(live).toHaveTextContent('Trail closure ahead. Serious warning ahead.')
+  })
+
+  it('says on the map itself that it is withholding them', () => {
+    // A map with the bands off and a map with no closure for forty miles are
+    // the same picture. The status strip is what separates them once the
+    // legend is shut - and it is shut whenever a hiker is actually walking.
+    render(<MapScreen {...ALERTED} alertsShown={false} />)
+
+    expect(screen.getByText('Alerts hidden')).toBeInTheDocument()
+  })
+
+  it('says nothing while they are drawn', () => {
+    render(<MapScreen {...ALERTED} />)
+
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
+  })
+
+  it('puts the switch in the legend, where the hiker can reach it', () => {
+    const onToggleAlerts = vi.fn()
+    render(<MapScreen {...ALERTED} legendOpen onToggleAlerts={onToggleAlerts} />)
+
+    const legend = screen.getByRole('dialog', { name: /legend/i })
+    expect(within(legend).getByRole('checkbox', { name: /alerts/i })).toBeChecked()
+  })
+})
+
 describe('the way to every ATC notice, from the legend (#687)', () => {
   // This used to be a permanent button on this screen. It moved into the
   // legend - chrome/Legend.test.tsx covers the row itself, so what matters
@@ -719,54 +925,45 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   it('is not there when the app holds no ATC notices', () => {
     render(<MapScreen {...PROPS} legendOpen />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBe(null)
   })
 
   it('reaches the legend once open', () => {
-    render(
-      <MapScreen {...PROPS} legendOpen atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />,
-    )
+    render(<MapScreen {...PROPS} legendOpen noticeCount={6} onOpenNotices={vi.fn()} />)
 
     const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
-      within(legend).getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+      within(legend).getByRole('button', { name: 'Read all 6 trail notices' }),
     ).toBeInTheDocument()
   })
 
   it('counts one notice without pluralising it', () => {
-    render(
-      <MapScreen {...PROPS} legendOpen atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />,
-    )
+    render(<MapScreen {...PROPS} legendOpen noticeCount={1} onOpenNotices={vi.fn()} />)
 
     const legend = screen.getByRole('dialog', { name: /legend/i })
     expect(
-      within(legend).getByRole('button', { name: 'Read the 1 ATC trail update' }),
+      within(legend).getByRole('button', { name: 'Read the 1 trail notice' }),
     ).toBeInTheDocument()
   })
 
   it('reports the tap up to the shell, which owns whether the list is open', async () => {
-    const onOpenAtcNotices = vi.fn()
+    const onOpenNotices = vi.fn()
     render(
-      <MapScreen
-        {...PROPS}
-        legendOpen
-        atcNoticeCount={6}
-        onOpenAtcNotices={onOpenAtcNotices}
-      />,
+      <MapScreen {...PROPS} legendOpen noticeCount={6} onOpenNotices={onOpenNotices} />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+    await userEvent.click(screen.getByRole('button', { name: /trail notices/ }))
 
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('renders the list the shell hands it, over the canvas', () => {
     render(
       <MapScreen
         {...PROPS}
-        atcNoticeCount={6}
-        onOpenAtcNotices={vi.fn()}
-        atcNoticeList={<div data-testid="atc-notice-list" />}
+        noticeCount={6}
+        onOpenNotices={vi.fn()}
+        noticeList={<div data-testid="atc-notice-list" />}
       />,
     )
 
@@ -774,71 +971,73 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   })
 
   it('shows nothing until the shell says the list is open', () => {
-    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByTestId('atc-notice-list')).toBe(null)
   })
 })
 
 describe('the bottom banner for new ATC alerts (#687)', () => {
-  // Independent of atcNoticeCount above - a screen can hold six notices and
+  // Independent of noticeCount above - a screen can hold six notices and
   // none of them new, which is the ordinary case now that the 72-hour gate
   // lives in lib/atcAlertsBanner.ts rather than here. MapScreen only renders
   // what it is told; the gate itself is that module's own test.
 
   it('is not there when nothing is new', () => {
-    render(<MapScreen {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
   })
 
   it('appears once something is, outside any legend or notice-count prop', () => {
-    render(<MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'ATC · 2 new alerts issued' }),
+      screen.getByRole('button', { name: '2 new trail notices issued' }),
     ).toBeInTheDocument()
   })
 
   it('counts one alert without pluralising it', () => {
-    render(<MapScreen {...PROPS} newAtcAlertCount={1} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} newNoticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'ATC · New alert issued' }),
+      screen.getByRole('button', { name: 'New trail notice issued' }),
     ).toBeInTheDocument()
   })
 
   it('opens the same list a tap on the legend row would', async () => {
-    const onOpenAtcNotices = vi.fn()
-    render(
-      <MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={onOpenAtcNotices} />,
+    const onOpenNotices = vi.fn()
+    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={onOpenNotices} />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /new trail notices issued/ }),
     )
 
-    await userEvent.click(screen.getByRole('button', { name: /new alerts issued/ }))
-
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('offers a silence control that does not also open the list', async () => {
-    const onOpenAtcNotices = vi.fn()
-    const onSilenceNewAtcAlerts = vi.fn()
+    const onOpenNotices = vi.fn()
+    const onSilenceNewNotices = vi.fn()
     render(
       <MapScreen
         {...PROPS}
-        newAtcAlertCount={2}
-        onOpenAtcNotices={onOpenAtcNotices}
-        onSilenceNewAtcAlerts={onSilenceNewAtcAlerts}
+        newNoticeCount={2}
+        onOpenNotices={onOpenNotices}
+        onSilenceNewNotices={onSilenceNewNotices}
       />,
     )
 
-    await userEvent.click(screen.getByRole('button', { name: 'Silence new ATC alerts' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Silence new trail notices' }),
+    )
 
-    expect(onSilenceNewAtcAlerts).toHaveBeenCalledTimes(1)
-    expect(onOpenAtcNotices).not.toHaveBeenCalled()
+    expect(onSilenceNewNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).not.toHaveBeenCalled()
   })
 
   it('omits the silence control when the shell offers none', () => {
-    render(<MapScreen {...PROPS} newAtcAlertCount={2} onOpenAtcNotices={vi.fn()} />)
+    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
 
     expect(screen.queryByRole('button', { name: /silence/i })).toBe(null)
   })
@@ -855,8 +1054,8 @@ describe('the bottom banner for new ATC alerts (#687)', () => {
       <MapScreen
         {...PROPS}
         closureAhead="Trail closed 5.0 mi ahead · Storm damage"
-        newAtcAlertCount={2}
-        onOpenAtcNotices={vi.fn()}
+        newNoticeCount={2}
+        onOpenNotices={vi.fn()}
       />,
     )
 
@@ -921,6 +1120,54 @@ describe('the desktop chart (#135)', () => {
     }
   }
 
+  it('stands the chart and the persistent legend down for the day-hike builder', () => {
+    // #1194. BOTH of the legend's props have to be gated, and that is the
+    // half this got wrong first: Legend.tsx renders unless
+    // `!open && !persistent`, so gating `open` alone left a desktop legend
+    // exactly where it was. The preview photographed the result - the map
+    // still 380px wide between two panels of map controls, which is the
+    // complaint the rail was added to fix.
+    const restore = stubDesktop()
+    try {
+      render(
+        <MapScreen
+          {...PROPS}
+          chart={chartProps()}
+          legendOpen
+          builderPanel={<div>the rail</div>}
+        />,
+      )
+
+      expect(screen.queryByTestId('elevation-chart')).toBeNull()
+      expect(screen.queryByRole('region', { name: /legend/i })).toBeNull()
+      expect(screen.getByText('the rail')).toBeInTheDocument()
+    } finally {
+      restore()
+    }
+  })
+
+  it('gives the chart and the legend back the moment the builder closes', () => {
+    const restore = stubDesktop()
+    try {
+      const { rerender } = render(
+        <MapScreen
+          {...PROPS}
+          chart={chartProps()}
+          legendOpen
+          builderPanel={<div>the rail</div>}
+        />,
+      )
+      expect(screen.queryByTestId('elevation-chart')).toBeNull()
+
+      rerender(<MapScreen {...PROPS} chart={chartProps()} legendOpen />)
+
+      expect(screen.getByTestId('elevation-chart')).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /legend/i })).not.toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
   it('swaps the ribbon and the lanes for the chart above the breakpoint', () => {
     const restore = stubDesktop()
     try {
@@ -955,13 +1202,13 @@ describe('the desktop chart (#135)', () => {
     }
   })
 
-  it('keeps the phone exactly as it was: ribbon and lanes, no chart', () => {
-    render(<MapScreen {...PROPS} chart={chartProps()} />)
+  it('keeps the phone on the rail: ribbon and cards, no chart', () => {
+    render(<MapScreen {...PROPS} direction="NOBO" chart={chartProps()} />)
 
     expect(
       screen.getByRole('img', { name: 'Elevation profile ahead' }),
     ).toBeInTheDocument()
-    expect(screen.getByTestId('lane-water')).toBeInTheDocument()
+    expect(screen.getByText('NEXT UP')).toBeInTheDocument()
     expect(screen.queryByTestId('elevation-chart')).not.toBeInTheDocument()
   })
 
@@ -1107,5 +1354,135 @@ describe('the desktop chart (#135)', () => {
     } finally {
       restore()
     }
+  })
+})
+
+// The desktop planning station's slot (#1054): the shell docks the Today
+// journal beside the map. Which viewport gets one is App's decision and
+// App.test.tsx's assertion; what is pinned here is that the slot renders
+// what it is given, where the stylesheet expects it.
+describe('the journal slot', () => {
+  it('docks the journal it is handed', () => {
+    const { container } = render(
+      <MapScreen {...PROPS} journal={<div data-testid="journal" />} />,
+    )
+
+    expect(
+      container.querySelector('.map-screen__journal [data-testid="journal"]'),
+    ).not.toBeNull()
+  })
+
+  it('draws no journal column at all when none is handed over', () => {
+    const { container } = render(<MapScreen {...PROPS} />)
+
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
+  })
+})
+
+describe('the download note (#1103)', () => {
+  // The hour a sheet spends arriving, admitted in the float column - below
+  // the safety alerts, above the canvas whose thinness it explains.
+  it('says the map is still arriving while a sheet downloads, one tap from the window', async () => {
+    const user = userEvent.setup()
+    const onOpenDownloads = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        onOpenDownloads={onOpenDownloads}
+        downloadActivity={{
+          kind: 'downloading',
+          doneBytes: 331_000_000,
+          totalBytes: 790_000_000,
+        }}
+      />,
+    )
+
+    const note = screen.getByRole('button', { name: /map still arriving/i })
+    // The same words and figures the window's card prints: what is
+    // happening, how much of how much - and never an invented ETA.
+    expect(note).toHaveTextContent(/downloading/i)
+    expect(note).toHaveTextContent(/of 790 MB/)
+    expect(note).toHaveTextContent(/live tiles meanwhile/i)
+
+    await user.click(note)
+    expect(onOpenDownloads).toHaveBeenCalled()
+  })
+
+  it('keeps the checking read-back distinct from a transfer, as the card does', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        downloadActivity={{
+          kind: 'checking',
+          doneBytes: 100_000_000,
+          totalBytes: 790_000_000,
+        }}
+      />,
+    )
+
+    const note = screen.getByRole('button', { name: /map still arriving/i })
+    expect(note).toHaveTextContent(/checking/i)
+    expect(note).not.toHaveTextContent(/downloading/i)
+  })
+
+  it('prints no figure for the trail-data step, which honestly has none', () => {
+    // Four fetches of unannounced size (lib/downloadActivity.ts): the note
+    // says what is happening and refuses to invent a percent for it.
+    render(<MapScreen {...PROPS} downloadActivity={{ kind: 'preparing' }} />)
+
+    const note = screen.getByRole('button', { name: /map still arriving/i })
+    expect(note).toHaveTextContent(/getting trail data/i)
+    expect(note).not.toHaveTextContent(/%|MB/)
+  })
+
+  it('is absent the moment nothing is arriving, which is most of the year', () => {
+    render(<MapScreen {...PROPS} downloadActivity={null} />)
+
+    expect(screen.queryByRole('button', { name: /map still arriving/i })).toBe(null)
+  })
+})
+
+describe('while the day-hike builder owns the screen (#1194)', () => {
+  // THE MEASUREMENT BEHIND THIS. The builder's redesign added a 348px rail to
+  // buy the map room, and on a wide screen it did the opposite: at 1280x800
+  // the tab sidebar (208), the rail (348) and the persistent legend (290)
+  // left the map 434px, with the elevation chart taking 200px of height under
+  // it. Photographed on this pull request's own preview, which is what caught
+  // it. So the two surfaces that are not about the walk being built stand
+  // down while it is.
+
+  it('stands the A.T. elevation ribbon down, because it profiles a different trail', () => {
+    // The ribbon draws the corridor a hiker is standing in. Somebody laying
+    // out a loop in Harriman is not walking it, and the walk they ARE
+    // building has no profile to put there (chrome/DayHikePanel.tsx).
+    const { rerender } = render(<MapScreen {...PROPS} />)
+    expect(document.querySelector('.next-up__ribbon-card')).not.toBeNull()
+
+    rerender(<MapScreen {...PROPS} builderPanel={<div>the rail</div>} />)
+
+    expect(document.querySelector('.next-up__ribbon-card')).toBeNull()
+    expect(screen.getByText('the rail')).toBeInTheDocument()
+  })
+
+  it('keeps the attribution line, which is a licence condition rather than chrome', () => {
+    // MapAttribution's own rule: the credit may not depend on whether a
+    // profile happened to download, so it may not depend on this either.
+    render(<MapScreen {...PROPS} builderPanel={<div>the rail</div>} />)
+
+    expect(document.querySelector('.next-up-band')).not.toBeNull()
+    expect(screen.getByText(/OpenStreetMap/)).toBeInTheDocument()
+  })
+
+  it('gives the map its room back when the builder closes', () => {
+    // The stand-down is a mode, not a deletion - a hiker who cancels finds
+    // the ribbon where they left it.
+    const { rerender } = render(
+      <MapScreen {...PROPS} builderPanel={<div>the rail</div>} />,
+    )
+    expect(document.querySelector('.next-up__ribbon-card')).toBeNull()
+
+    rerender(<MapScreen {...PROPS} />)
+
+    expect(document.querySelector('.next-up__ribbon-card')).not.toBeNull()
   })
 })

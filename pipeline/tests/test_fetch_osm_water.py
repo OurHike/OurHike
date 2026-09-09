@@ -115,3 +115,75 @@ def test_a_good_scan_writes_the_collection_and_a_receipt(fetch_to_tmp, monkeypat
     receipt = fetch_receipts.load("fetch_osm_water")
     assert receipt is not None
     assert [out["path"] for out in receipt["outputs"]] == [str(fetch_to_tmp)]
+
+
+# --- the early-out (#1065) --------------------------------------------------
+
+
+def _boom(*args, **kwargs):
+    raise AssertionError("the fetch/scan half must not run on this path")
+
+
+def test_a_receipted_scan_already_on_disk_is_not_refetched(fetch_to_tmp, monkeypatch):
+    """#1065: the run most likely to find its own output on disk is the retry
+    of a failed publish, and re-downloading 3.5 GB of extracts to recompute a
+    held file is what lost run 33005545820. The copy a verifying receipt
+    stands behind is reused."""
+    rows = [_row(node_id=i) for i in range(MIN_FEATURES)]
+    monkeypatch.setattr(fetch_osm_water, "scan_states", lambda paths: rows)
+    assert fetch_osm_water.main([]) == 0  # a real run: output plus receipt
+
+    monkeypatch.setattr(fetch_osm_water, "fetch_states", _boom)
+    monkeypatch.setattr(fetch_osm_water, "scan_states", _boom)
+    before = fetch_to_tmp.read_bytes()
+
+    assert fetch_osm_water.main([]) == 0
+    assert fetch_to_tmp.read_bytes() == before
+
+
+def test_refetch_still_forces_a_real_scan(fetch_to_tmp, monkeypatch):
+    """The escape hatch: --refetch means current data, whatever is on disk."""
+    rows = [_row(node_id=i) for i in range(MIN_FEATURES)]
+    monkeypatch.setattr(fetch_osm_water, "scan_states", lambda paths: rows)
+    assert fetch_osm_water.main([]) == 0
+
+    fresh = [_row(node_id=i) for i in range(MIN_FEATURES + 7)]
+    monkeypatch.setattr(fetch_osm_water, "scan_states", lambda paths: fresh)
+
+    assert fetch_osm_water.main(["--refetch"]) == 0
+    assert len(json.loads(fetch_to_tmp.read_text())["features"]) == MIN_FEATURES + 7
+
+
+def test_a_copy_without_a_receipt_is_refetched_not_reused(fetch_to_tmp, monkeypatch):
+    """A copy the workflow restored from the published bucket carries no
+    receipt, and reusing it would fail check_output_quality's
+    --fetched gate on the absence - no finished fetch stands behind it."""
+    restored = [_row(node_id=i) for i in range(MIN_FEATURES)]
+    fetch_to_tmp.write_text(json.dumps({"type": "FeatureCollection", "features": [feature(r) for r in restored]}))
+
+    ran = []
+    rows = [_row(node_id=i) for i in range(MIN_FEATURES)]
+    monkeypatch.setattr(fetch_osm_water, "scan_states", lambda paths: ran.append(1) or rows)
+
+    assert fetch_osm_water.main([]) == 0
+    assert ran
+
+    from lib import fetch_receipts
+
+    assert fetch_receipts.load("fetch_osm_water") is not None
+
+
+def test_a_drifted_copy_is_refetched_not_reused(fetch_to_tmp, monkeypatch):
+    """A receipt that no longer matches the bytes describes a file nobody
+    stands behind - the same re-hash check_output_quality applies (#542)."""
+    rows = [_row(node_id=i) for i in range(MIN_FEATURES)]
+    monkeypatch.setattr(fetch_osm_water, "scan_states", lambda paths: rows)
+    assert fetch_osm_water.main([]) == 0
+
+    fetch_to_tmp.write_text(fetch_to_tmp.read_text() + "\n")  # the bytes move under the receipt
+
+    ran = []
+    monkeypatch.setattr(fetch_osm_water, "scan_states", lambda paths: ran.append(1) or rows)
+
+    assert fetch_osm_water.main([]) == 0
+    assert ran

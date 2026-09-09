@@ -103,6 +103,36 @@ EXTERNAL_ARCGIS_LAYER = "external_arcgis_layer"
 # not ArcGIS.
 WEEKLY_POLYGONS = "weekly_polygons"
 
+# A guide an organization publishes as web pages for people to read - NYNJTC's
+# Long Path End-to-End Section Guide first, forty pages the registered
+# `nynjtc_long_path` layer links to from its own `GuideURL` field. The only
+# place NYNJTC publishes a waypoint (POI_COVERAGE_SURVEY.md section 6 found
+# none on their ArcGIS org), and it publishes them as prose: "4.30  A sign
+# marks the way to a spring, a dependable source of water". Fetched by
+# fetch_nynjtc_long_path_guide.py into data/raw/nynjtc_long_path_guide/ and
+# parsed by lib/nynjtc_long_path_guide.py into facts - a mile, a type, a
+# position - which export_nearby_poi.py reads behind the entry's own
+# `reaches_hikers` gate. Its own kind rather than PUBLISHED_NOTICES (those
+# are reviewed by hand into a file in git and never fetched on a schedule)
+# or CLUB_PDF (a document, with a PDF's text layer to parse): this is HTML on
+# a schedule, and fetch_all.py skips it like everything not ArcGIS.
+GUIDE_PAGES = "guide_pages"
+
+# Day hikes an organization writes up for people to walk - NYNJTC's Favorite
+# Hikes first (#1290): a name, an overview, a dated turn-by-turn, a credited
+# photograph, and the trailhead as a pin on a map, published as WordPress
+# posts of a custom type behind the REST API. Fetched by fetch_nynjtc_hikes.py
+# into data/raw/nynjtc_hikes.json and parsed by lib/nynjtc_hikes.py into
+# facts; the ROUTE each one walks is not published anywhere and is built here
+# from the description, reviewed row by row in reference/nynjtc_hike_routes
+# .json, and shipped by export_suggested_hikes.py behind the entry's own
+# `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
+# thing a reader gets is a hike, not a waypoint, and the exporter that reads
+# it is a different one; and rather than PUBLISHED_NOTICES because these are
+# fetched on a schedule, not reviewed by hand into git. fetch_all.py skips it
+# like everything not ArcGIS.
+PUBLISHED_HIKES = "published_hikes"
+
 KNOWN_KINDS = frozenset(
     {
         ARCGIS_FEATURE_LAYER,
@@ -112,6 +142,8 @@ KNOWN_KINDS = frozenset(
         WATCHED_ONLY,
         WEEKLY_POLYGONS,
         EXTERNAL_ARCGIS_LAYER,
+        GUIDE_PAGES,
+        PUBLISHED_HIKES,
     }
 )
 
@@ -158,6 +190,11 @@ def club_pdf_sources(registry: dict) -> list[dict]:
 def external_arcgis_sources(registry: dict) -> list[dict]:
     """The entries `fetch_external_layers.py` may fetch, in registry order."""
     return [entry for entry in registry.get("sources", []) if is_external_arcgis_layer(entry)]
+
+
+def guide_page_sources(registry: dict) -> list[dict]:
+    """The entries `fetch_nynjtc_long_path_guide.py` may fetch, in registry order."""
+    return [entry for entry in registry.get("sources", []) if source_kind(entry) == GUIDE_PAGES]
 
 
 def find_source(registry: dict, key: str) -> dict | None:

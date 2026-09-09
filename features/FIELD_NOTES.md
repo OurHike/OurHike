@@ -115,8 +115,8 @@ near-identical models for a later reader to reconcile, which is the drift
 takes the record and `DATA_NUDGES.md` keeps what it was actually about: *when* to ask, and
 the passive map prominence that does the asking. That doc's central rule is unchanged and
 still governs the prompt: **no push, no in-app banner, no alert.**
-[HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way alert stays the only notification the app
-ever sends.
+OurHike sends no push notification of any kind — the wrong-way alert, which would have
+been the exception, was removed ([HIKER_SAFETY.md](HIKER_SAFETY.md) §5).
 
 ## 3. The roll-up — what the map shows without reading the feed
 
@@ -179,10 +179,22 @@ because §11's own rule is that the visual channel never carries the meaning alo
 
 ### What corroborates, and what decays
 
-- **Enter** on two `not_found` notes from **distinct accounts on distinct days**, or on one
-  from a maintainer whose `MaintainerAssignment` ([VOLUNTEERING.md](VOLUNTEERING.md)) covers
-  that mile. Distinctness matters more than count: two notes from one account is one
-  observation, and two from hikers walking together on the same afternoon is close to one.
+- **Enter** on two `not_found` notes from **distinct accounts**, or on one from a
+  maintainer whose `MaintainerAssignment` ([VOLUNTEERING.md](VOLUNTEERING.md)) covers that
+  mile. Distinctness matters more than count: two notes from one account is one
+  observation, however many days apart.
+
+  *This line said "distinct accounts on distinct days" until 2026-08-27, and no code ever
+  did that. `_distinct_accounts` built a `(reporter, day)` set and then counted reporters
+  out of it, which is arithmetically the same as counting reporters — the day changed
+  nothing, and `test_two_hikers_on_one_afternoon_are_close_to_one` has asserted the real
+  behaviour all along. The gap was closed toward the looser rule rather than the stricter
+  one, deliberately (maintainer, 2026-08-27): two hikers who find one spring dry on the
+  same afternoon are correlated observers, but in a drought they are also right, and
+  requiring a second day leaves a pin promising water that is not there. That is the
+  direction [../CLAUDE.md](../CLAUDE.md)'s "four ways this app can hurt somebody" cares
+  about. Two notes from hikers walking together are still, in this section's original
+  words, "close to one" — the rule simply does not try to detect a group.*
 - **Leave** on two independent confirming observations, or one maintainer's.
 - **Decay** to normal — never to *confirmed* — after a window with no corroboration, so one
   stale claim cannot mark a place forever.
@@ -374,8 +386,9 @@ proves that, and still the recovery path for anything written before the ledger 
   moderating, and the moderation burden is the thing this design exists to avoid. A note is
   addressed to the next hiker, not to the previous one.
 - **Not a rating system.** No votes, stars, scores or "helpful" taps — settled twice already.
-- **Not a notification.** Nothing here interrupts anyone; `HIKER_SAFETY.md`'s wrong-way alert
-  remains the only one.
+- **Not a notification.** Nothing here interrupts anyone; OurHike sends no push
+  notification of any kind — the wrong-way alert, which would have been the exception, was
+  removed (`HIKER_SAFETY.md` §5).
 - **Not gamified.** No streaks, no contribution counts, no leaderboard, no "you haven't
   contributed lately" — the guardrail stated in four docs, with its boundary settled in
   `VOLUNTEERING.md` (it targets *comparison and pressure*, not *memory*).
@@ -394,10 +407,28 @@ FieldNote                        (new — supersedes DATA_NUDGES.md's ConditionC
   poi_id           soft string ref, "atc_shelters:<GlobalID>" — nullable, no FK
                      (the precedent is backend/app/models/report.py's own poi_id)
   lat, lon, mile   fallback anchor, and what re-anchors an orphan
-  observation      optional tag, by poi_type:
-                     water     flowing | trickling | dry | not_found
-                     shelter   fine | damaged | full | not_found
-                     resupply  open | limited | closed | not_found
+  observation      optional tag, by poi_type (#1122 for the last three rows):
+                     water     flowing | trickling | dry      | not_found
+                     shelter   fine    | problem   | trash    | not_found
+                     campsite  fine    | problem   | trash    | not_found
+                     resupply  open    | limited   | closed   | not_found
+                     parking   open    | full      | trash    | not_found
+                   Four each, which is what the card's two-per-row grid holds.
+                   `full` left the shelter row and landed on parking: capacity
+                   is a fact at a trailhead and a guess at a shelter. It stays
+                   in the server's enum either way — an old client still sends
+                   it, and a narrowed request enum is a break, not a tidy-up.
+                   `problem` replaced `damaged` on both overnight rows (#1140),
+                   and `damaged` stays in the enum for the same reason `full`
+                   does. The word implied structural damage, so a hiker with
+                   mice in the food box or a fouled privy had no button — and
+                   it was ALSO the only thing licensing the escalation to skip
+                   the picker and open the shelter_repair form directly. That
+                   shortcut went with the word: `problem` opens the picker, as
+                   `dry` already did, because no report type is "mice".
+                   The pair the PEEK carries is named per type rather than read
+                   off the ends of these rows; client/src/lib/fieldNotes.ts's
+                   QUICK_ANSWERS is that table and the reasoning.
   note             optional free text, length-capped
   observed_at      when the hiker was there
   posted_at        when it reached the backend

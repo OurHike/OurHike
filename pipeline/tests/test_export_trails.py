@@ -622,3 +622,143 @@ def test_the_overview_is_a_fraction_of_the_line_it_sketches(tmp_path, monkeypatc
     export_trails.main()
 
     assert (out_dir / "trails_overview.geojson").stat().st_size < (out_dir / "trails.geojson").stat().st_size
+
+
+# --- trail_miles.json (#1192) --------------------------------------------------
+#
+# The mile of every centerline vertex, on the same calibrated axis every POI's
+# `mile` and the elevation profile's `distance_mi` come off. These prove the
+# file is keyed to the line it describes, that its numbers are the axis's own
+# (a POI projected by export_poi.attach_miles agrees with the vertex under it),
+# that side trails get none, and that a checkout with no markers gets a loud
+# line rather than an uncalibrated axis.
+
+
+def _miles_fixture(tmp_path, monkeypatch, coords=((-74.0, 40.0), (-74.0, 41.0)), sources=None):
+    """A due-north centerline of one degree of latitude (~69.1 mi) with
+    ATC-shaped markers on its own scale - the same shape test_export_poi.py's
+    attach_miles tests use, so the two exporters are proven against one
+    fixture."""
+    from tests.synthetic import write_half_mile_markers
+
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, sources or [_centerline_source()])
+    _write_fc(raw_dir / "centerline.geojson", [_line_feature(list(coords), {"GlobalID": "c-1", "Name": "A.T."})])
+    write_half_mile_markers(raw_dir / "half_mile_points_from_springer.geojson", list(coords))
+    return raw_dir, out_dir
+
+
+def test_every_centerline_vertex_gets_a_mile_on_the_calibrated_axis(tmp_path, monkeypatch, con):
+    # A zigzag rather than a straight line: the export simplifies at 1 m and
+    # would fold collinear vertices away, leaving two to check.
+    coords = [(-74.0 + (i % 2) * 0.01, 40.0 + i * 0.1) for i in range(11)]
+    raw_dir, out_dir = _miles_fixture(tmp_path, monkeypatch, coords)
+
+    manifest = export_trails.main()
+
+    body = json.loads((out_dir / "trail_miles.json").read_text())
+    assert body["format"] == 1
+    assert body["trails_sha256"] == manifest["geojson"]["sha256"]
+    assert body["vertex_count"] == manifest["miles"]["vertex_count"] == 11
+    assert body["feature_count"] == manifest["miles"]["feature_count"] == 1
+    assert manifest["miles"]["sha256"] == hashlib.sha256((out_dir / "trail_miles.json").read_bytes()).hexdigest()
+
+    published = json.loads((out_dir / "trails.geojson").read_text())["features"]
+    (centerline,) = [f for f in published if f["properties"]["source"] == "centerline"]
+    miles = body["miles"][centerline["properties"]["id"]]
+    assert len(miles) == len(centerline["geometry"]["coordinates"])
+    # Walked south to north, and the far end is the line's own length.
+    metric = shapely_transform(export_trails._TO_METRIC, LineString(coords))
+    assert miles[0] == pytest.approx(0.0, abs=0.05)
+    assert miles[-1] == pytest.approx(metric.length / 1609.344, rel=0.02)
+    assert miles == sorted(miles)
+    assert manifest["miles"]["monotonic_breaks"] == 0
+
+
+def test_a_vertex_mile_is_the_same_measurement_a_poi_gets(tmp_path, monkeypatch, con):
+    """The whole point of the file: a shelter's published `mile` and the mile
+    of the vertex it stands on are one number, by construction, so a phone
+    can put the shelter on its index without searching for it."""
+    import export_poi
+
+    coords = [(-74.0 + (i % 2) * 0.01, 40.0 + i * 0.05) for i in range(21)]
+    raw_dir, out_dir = _miles_fixture(tmp_path, monkeypatch, coords)
+    export_trails.main()
+    body = json.loads((out_dir / "trail_miles.json").read_text())
+    (miles,) = body["miles"].values()
+
+    records = [{"id": "s", "lat": 40.5, "lon": -74.0}]
+    export_poi.attach_miles(con, records, raw_dir / "centerline.geojson", raw_dir / "half_mile_points_from_springer.geojson")
+
+    # Vertex 10 is at (-74.0, 40.5) exactly; the POI stands on it.
+    assert records[0]["mile"] == pytest.approx(miles[10], abs=0.002)
+
+
+def test_side_trails_get_no_miles(tmp_path, monkeypatch, requests_mock, con):
+    """A mile means distance along the A.T.; a blue blaze has no place on that
+    axis (lib/trailPosition.ts indexes `source === 'centerline'` and nothing
+    else), so publishing one would be a number nothing may read."""
+    requests_mock.get(f"{LAYER_URL}?f=json", json=BLAZE_DOMAIN_RESPONSE)
+    raw_dir, out_dir = _miles_fixture(tmp_path, monkeypatch, sources=[_centerline_source(), _side_trails_source()])
+    _write_fc(raw_dir / "side_trails.geojson", [_line_feature(NEAR_COORDS, {"GlobalID": "side-1", "Blaze": "1"})])
+
+    export_trails.main()
+
+    body = json.loads((out_dir / "trail_miles.json").read_text())
+    published = json.loads((out_dir / "trails.geojson").read_text())["features"]
+    assert any(f["properties"]["source"] == "side_trails" for f in published)
+    assert set(body["miles"]) == {f["properties"]["id"] for f in published if f["properties"]["source"] == "centerline"}
+
+
+def test_a_multilinestring_record_carries_one_list_per_part(tmp_path, monkeypatch, con):
+    """The chain merge splits a MultiLineString into one chain per part before
+    anything is written, so the published centerline is LineStrings - but
+    vertex_miles takes records, and a record it is handed whole gets one list
+    per part rather than a flattened one that would mis-align with the
+    coordinates the client walks."""
+    from tests.synthetic import write_half_mile_markers
+
+    coords = [(-74.0, 40.0), (-74.0, 41.0)]
+    centerline = tmp_path / "centerline.geojson"
+    _write_fc(centerline, [_line_feature(coords, {"GlobalID": "c-1"})])
+    markers = tmp_path / "markers.geojson"
+    write_half_mile_markers(markers, coords)
+    record = {
+        "id": "centerline:multi",
+        "source": "centerline",
+        "wkt": "MULTILINESTRING ((-74.0 40.0, -74.0 40.4), (-74.0 40.6, -74.0 41.0))",
+    }
+
+    miles_by_id, stats = export_trails.vertex_miles(con, [record], centerline, markers)
+
+    (miles,) = miles_by_id.values()
+    assert len(miles) == 2 and all(len(part) == 2 for part in miles)
+    assert miles[0][0] < miles[0][1] < miles[1][0] < miles[1][1]
+    assert stats == {"feature_count": 1, "vertex_count": 4, "monotonic_breaks": 0, "features_with_breaks": 0}
+
+
+def test_a_step_against_the_direction_of_travel_is_counted_not_smoothed(tmp_path, monkeypatch, con):
+    """A chain that doubles back on the axis - two source pieces overlapping,
+    a fold the merge kept - produces vertex miles that dip. The client splits
+    a piece at every such step; the manifest says how many there were, so a
+    thousand of them reads as a broken axis rather than as nothing."""
+    import numpy as np
+
+    assert export_trails._monotonic_breaks(np.array([0.0, 1.0, 2.0, 3.0])) == 0
+    assert export_trails._monotonic_breaks(np.array([3.0, 2.0, 1.0, 0.0])) == 0
+    assert export_trails._monotonic_breaks(np.array([0.0, 1.0, 0.9, 2.0, 1.5, 3.0])) == 2
+    assert export_trails._monotonic_breaks(np.array([1.0, 1.0, 1.0])) == 0
+    assert export_trails._monotonic_breaks(np.array([5.0])) == 0
+
+
+def test_no_markers_means_no_miles_and_a_loud_line(tmp_path, monkeypatch, con, capsys):
+    """Every other export_trails test runs without markers and must go on
+    passing: the line is the product and the miles are its sidecar. What a
+    checkout without markers may not get is silence."""
+    raw_dir, out_dir = _run_export(tmp_path, monkeypatch, [_centerline_source()])
+    _write_centerline(raw_dir / "centerline.geojson")
+
+    manifest = export_trails.main()
+
+    assert "miles" not in manifest
+    assert not (out_dir / "trail_miles.json").exists()
+    assert "HELD BACK: trail_miles.json" in capsys.readouterr().out

@@ -18,7 +18,11 @@ archive is about to become the thing hikers download:
               "did the build get everything it tried for", not "does this
               archive resemble a corridor". Declared absences above
               MAX_ABSENT_SHARE still fail: that is a source outage during
-              the build, not scattered upstream gaps.
+              the build, not scattered upstream gaps. Since #1088 the walk
+              follows the TAPER the archive itself declares in metadata
+              (`corridor_taper_miles`) rather than this run's default, so a
+              narrower-than-claimed build is caught instead of excused -
+              see expected_hits().
   decodes     every tile parses as a 256x256 WebP - the browser's image
               decoder is the only decoder the client has, so bytes PIL
               rejects are bytes MapLibre would render as a hole.
@@ -41,7 +45,7 @@ from pmtiles.reader import Reader, all_tiles
 from pmtiles.tile import Compression, TileType, deserialize_header
 
 from export_basemap import load_corridor_4326
-from export_dem import MAX_ZOOM, MIN_ZOOM, OUT_PATH
+from export_dem import CONTEXT_ZOOM, MAX_ZOOM, MIN_ZOOM, OUT_PATH, tapered_tiles
 from extract_package import load_region, tiles_intersecting, to_mercator
 
 TILE_SIZE = 256
@@ -55,6 +59,40 @@ TILE_SIZE = 256
 # measured absence rate; the first real build that trips or grazes it will
 # say whether 1% is the right line.
 MAX_ABSENT_SHARE = 0.01
+
+
+def expected_hits(metadata: dict, region_4326, min_zoom: int, max_zoom: int) -> dict[int, list[tuple[int, int]]]:
+    """The per-zoom (x, y) lists this archive is required to hold.
+
+    READ FROM THE ARCHIVE, NOT FROM A CONSTANT, and that is the whole point.
+    Since #1088 the corridor narrows with depth (export_dem.CORRIDOR_TAPER_MILES),
+    so "which tiles should be here" is a property of the build, not of whatever
+    the exporter's default happens to say today. Checking a tapered archive
+    against the current constant would fail every archive built before the
+    constant last moved, and - far worse - would PASS an archive built to a
+    narrower taper than it claims, which is a hole in the map the gate exists
+    to catch. Same reasoning as absent_tiles below: the build declares, the
+    gate holds it to its own declaration.
+
+    An explicit `region_4326` always wins: that is a maintainer checking one
+    hand-drawn shape, and --region has never meant a taper. An archive with no
+    declared taper falls back to the same single-region walk this check has
+    always done, so an archive built before #1088 still verifies.
+    """
+    declared = metadata.get("corridor_taper_miles")
+    if region_4326 is not None or not declared:
+        region = region_4326 if region_4326 is not None else load_corridor_4326()
+        return tiles_intersecting(to_mercator(region), min_zoom, max_zoom)
+
+    taper = {int(z): float(m) for z, m in declared.items()}
+    context_zoom = int(metadata.get("context_zoom", CONTEXT_ZOOM))
+    print(f"  archive declares a taper: {', '.join(f'z{z}+ = {m:g} mi' for z, m in sorted(taper.items()))}")
+    print(f"  ...with full-bbox context through z{context_zoom}")
+    tiles, _ = tapered_tiles(min_zoom, max_zoom, taper, context_zoom=context_zoom)
+    hits: dict[int, list[tuple[int, int]]] = {z: [] for z in range(min_zoom, max_zoom + 1)}
+    for z, x, y in tiles:
+        hits[z].append((x, y))
+    return hits
 
 
 def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> list[str]:
@@ -79,8 +117,10 @@ def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> l
                 "MapLibre decodes these via the browser's image decoder, which speaks WebP, not gzip"
             )
 
+        metadata = Reader(get_bytes).metadata()
+
         print(f"Walking region tiles, zoom {min_zoom}-{max_zoom}...")
-        hits = tiles_intersecting(to_mercator(region_4326), min_zoom, max_zoom)
+        hits = expected_hits(metadata, region_4326, min_zoom, max_zoom)
         expected = {(z, x, y) for z, tiles in hits.items() for x, y in tiles}
 
         held: set[tuple[int, int, int]] = set()
@@ -98,8 +138,6 @@ def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> l
                     problems.append(f"tile {z}/{x}/{y} is not a valid {TILE_SIZE}px WebP: {error}")
         if bad_tiles > 5:
             problems.append(f"...and {bad_tiles - 5} more tiles that do not decode")
-
-        metadata = Reader(get_bytes).metadata()
 
         # Tiles the EXPORTER already reported the source had no answer for
         # are excused - and only those (#659). export_dem.py deliberately
@@ -144,11 +182,10 @@ def check_archive(archive: Path, region_4326, min_zoom: int, max_zoom: int) -> l
 
 
 def main(args: argparse.Namespace) -> None:
-    if args.region is None:
-        print("Building corridor from centerline...")
-        region = load_corridor_4326()
-    else:
-        region = load_region(args.region)
+    # Deliberately NOT building the corridor here any more: which shape this
+    # archive must cover is the archive's own declaration since #1088, and
+    # expected_hits() reads it. Only an explicit --region short-circuits that.
+    region = load_region(args.region) if args.region else None
 
     problems = check_archive(args.archive, region, args.min_zoom, args.max_zoom)
     if problems:

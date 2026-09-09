@@ -3,12 +3,18 @@
 //
 // The same shape as poiLayers.ts, with two deliberate differences.
 //
-//  1. NO MINZOOM. The POI layer starts at z9 because eight hundred pins on the
-//     whole corridor is a texture rather than a map. Serious warnings are
-//     moderator-escalated and therefore rare - a handful on 2,197 miles - and
-//     zoomed out to plan a week is exactly when someone wants to see where
-//     they are. The route banner (lib/seriousWarnings.ts) counts them; this
-//     says where.
+//  1. THE PINS' OWN MINZOOM, since 2026-09-08 (#1292). This layer had none:
+//     serious warnings are moderator-escalated and rare - a handful on 2,197
+//     miles - and the argument was that zoomed out to plan a week is exactly
+//     when someone wants to see where they are. The maintainer's call that
+//     the opening camera shows trail lines only reverses that, and the honest
+//     half of the old argument survives it: below the seam a 44 px pin covers
+//     on the order of a hundred trail miles, so it said "somewhere here" and
+//     nothing a hiker could act on. From the seam up it draws exactly as
+//     before, and the route banner (lib/seriousWarnings.ts) still counts
+//     warnings at every zoom. Written out at this length because it sits on
+//     HIKER_SAFETY.md's "in front of something dangerous" path, where a mark
+//     withdrawn has to say so.
 //  2. `icon-allow-overlap: true`. Every other symbol on this map submits to
 //     the collision engine. This one must not: a warning dropped because a
 //     shelter pin got there first is a warning nobody was shown, and the
@@ -17,12 +23,12 @@
 //     it pushes waypoints aside rather than being pushed.
 //
 // NOTHING HERE PUSHES, and that is a rule rather than an omission.
-// lib/push.ts makes the wrong-way alert the only notification this app sends
-// and push.test.ts scans the tree to keep it true, so the module that finally
-// mounts the warning path must not become the exception. HIKER_SAFETY.md §1 is
-// where the reasoning lives: a warning about a named person arriving as a
-// phone notification is a different and much worse thing than the same words
-// on a map a hiker chose to open.
+// OurHike sends no push notifications at all, and warningLayers.test.ts
+// scans this file's own source to keep it that way, so the module that
+// finally mounts the warning path does not become the exception.
+// HIKER_SAFETY.md §1 is where the reasoning lives: a warning about a named
+// person arriving as a phone notification is a different and much worse
+// thing than the same words on a map a hiker chose to open.
 
 import type {
   GeoJSONSourceSpecification,
@@ -30,6 +36,7 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { POI_PIN_PIXEL_RATIO } from './poiIcons'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { buildWarningIcon, WARNING_ICON_ID } from './warningPin'
 import { whenStyleReady } from './styleReady'
 
@@ -83,6 +90,7 @@ export function buildWarningLayer(
     id: WARNING_LAYER_ID,
     type: 'symbol',
     source: sourceId,
+    minzoom: POI_PIN_MIN_ZOOM,
     layout: {
       'icon-image': WARNING_ICON_ID,
       // One size at every zoom, unlike the waypoints, which interpolate down

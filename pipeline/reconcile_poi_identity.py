@@ -41,6 +41,15 @@ confident wrong merge cannot be unmade. A wholesale upstream re-mint
 that tier 2 cannot mostly carry still refuses to write (the retire-share
 guard below), staying a loud, blocked event.
 
+A DERIVED point has a passport of its own (#1028). A crossing's key is the
+coordinate where a trail line meets a stream line, so a trail re-measure
+changes the key - and a crossing with no name could score at most 1.5
+against tier 2's 2.5, retired and re-minted whatever the distance: 3,370 of
+the ledger's 8,469 live rows were that shape on 2026-08-25. The stream half
+of the meeting cannot have moved (the NHD snapshot is frozen), so its id
+rides each such row as `stream_id` and agreement on it scores like an exact
+name. See SCORE_STREAM_INTACT.
+
 OVERRIDES are `reference/poi_identity_overrides.json` - hand-written,
 never touched by this script: `same` rows carry an id onto a named key
 before any scoring (the one door back in for a tombstone), `not_same`
@@ -162,6 +171,33 @@ NEAR_DISTANCE_M = 50.0
 SCORE_MILE = 0.5
 NEAR_MILE = 0.25
 
+# The stream a DERIVED point is made of (#1028). A crossing is where a trail
+# line meets a stream line, and its key is the coordinate of that meeting -
+# so when the trail is re-measured the key changes, and a crossing with no
+# name has nothing above to be carried on: SCORE_NEAR + SCORE_MILE is 1.5
+# against a 2.5 threshold, whatever the distance. Measured 2026-08-25 (the
+# issue): 3,370 of the ledger's 8,469 live rows were that shape, and the one
+# retirement that run produced was an unnamed crossing re-minted 24.7 m away
+# while "Beechy Bottom Brook", 8 m moved, survived on its name.
+#
+# The stream half of the meeting cannot have moved: NHD's permanent
+# identifier is a snapshot USGS froze in 2023 (fetch_trail_water.py). Two
+# records agreeing on it after the trail moved is the strongest evidence a
+# nameless crossing can offer - as strong as an exact name, which two
+# crossings of one creek share anyway (the ledger's two "Stover Creek" rows
+# sit 1.2 km apart) - so it scores the same. A MISMATCH IS NEUTRAL, not the
+# fingerprint's -3.0: the id a merged crossing carries is whichever
+# hydrography's record dedupe_crossings kept, and the two draw one stream
+# tens of metres apart, so a trail nudge can hand the same water a different
+# id - a fact about our merge, not about the ground. The margin and the
+# ceiling still decide the case this cannot: one reach crossing the trail
+# twice, which is why a reach id was never the KEY.
+# @unvalidated - the value is reasoned, not measured. What settles it is the
+# first trail re-measure after this lands, read in identity_review/summary.txt:
+# how many crossings carry on "stream intact", and whether any carry put two
+# streams' pins on one id, which is the failure this must never buy.
+SCORE_STREAM_INTACT = 2.0
+
 # Acceptance: clear the threshold, clear it by a margin over the runner-up
 # ON BOTH SIDES, and be mutual best. 2.5 means no single signal suffices:
 # a name alone (2.0) or proximity alone (1.5 with the mile) retires-and-
@@ -208,7 +244,8 @@ class Outcome:
 
 def _refresh_from(row: dict, record: dict) -> None:
     """The upstream-owned fields, taken silently: what a place is called,
-    where it is, and what its inventory says about it."""
+    where it is, what its inventory says about it - and, for a derived
+    point, which stream it is made of."""
     row["name"] = record.get("name")
     row["lat"] = record["lat"]
     row["lon"] = record["lon"]
@@ -217,6 +254,14 @@ def _refresh_from(row: dict, record: dict) -> None:
         row["fingerprint"] = fingerprint
     else:
         row.pop("fingerprint", None)
+    # Refreshed with the rest (#1028): dedupe_crossings may keep the other
+    # hydrography's record for the same water next run, and the row has to
+    # carry whatever the CURRENT snapshot says to compare against the next.
+    stream = record.get("stream_id")
+    if stream:
+        row["stream_id"] = stream
+    else:
+        row.pop("stream_id", None)
 
 
 def _fingerprint_verdict(old: dict | None, new: dict | None) -> tuple[str, float]:
@@ -255,6 +300,17 @@ def _score_pair(row: dict, record: dict, mile_delta: float | None) -> tuple[floa
     score += contribution
     if verdict != "absent":
         evidence.append(f"fingerprint {verdict}")
+
+    # The stream a derived point is made of (#1028) - see SCORE_STREAM_INTACT
+    # for why agreement scores like a name and disagreement scores nothing.
+    # Said in the sentence either way, so a reviewer reading a carry that
+    # rested on the name alone can see the streams did not agree.
+    if row.get("stream_id") and record.get("stream_id"):
+        if row["stream_id"] == record["stream_id"]:
+            score += SCORE_STREAM_INTACT
+            evidence.append("stream intact")
+        else:
+            evidence.append("stream differs")
 
     if d <= NEAR_DISTANCE_M:
         score += SCORE_NEAR
@@ -541,6 +597,8 @@ def reconcile(
         }
         if record.get("fingerprint"):
             next_pois[minted]["fingerprint"] = record["fingerprint"]
+        if record.get("stream_id"):
+            next_pois[minted]["stream_id"] = record["stream_id"]
         seen_ids.add(minted)
         outcome.minted.append(minted)
 
@@ -669,6 +727,18 @@ def load_ledger(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))["pois"]
 
 
+def stream_passport(properties: dict) -> str | None:
+    """The stream a derived point is made of, off the raw properties
+    export_poi.load_trail_water keeps for it (#1028) - as a string, the way
+    fetch_trail_water.py writes it, so an NHD permanent identifier and an OSM
+    way id compare the same way on both sides of a refresh. None when the
+    record is not a derived point at all, which is every facility."""
+    stream = properties.get("stream_id")
+    if stream in (None, ""):
+        return None
+    return str(stream)
+
+
 def published_records() -> list[dict]:
     """This snapshot's publishable POIs, id-bearing fields settled - THE SAME
     STEPS export_poi.main() takes before anything depends on an id, shared
@@ -676,7 +746,17 @@ def published_records() -> list[dict]:
     cannot drift (read_sources' own docstring makes the same argument for
     --check). Each record also gains its inventory `fingerprint` (#672),
     read off the raw properties unify_poi kept for exactly this kind of
-    composition."""
+    composition - and, for a crossing or a site's water point, the
+    `stream_id` it is made of (#1028, stream_passport).
+
+    export_poi.build_enriched_records() also caches this call across process
+    invocations (#1331): this function and export_poi.main() used to each
+    pay for read_sources()+attach_sites()+the water-distance attach from
+    scratch, ~20 minutes apiece in production, back to back in the same
+    publish job. `record["id"]` comes back ledger-resolved as a side effect
+    (build_enriched_records applies it for main()'s sake) - harmless here,
+    since reconcile() below matches on `(source, source_feature_id)` and
+    never reads `id` at all."""
     import duckdb
 
     import export_poi
@@ -684,12 +764,7 @@ def published_records() -> list[dict]:
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     try:
-        records = export_poi.read_sources(con)
-        export_poi.attach_sites(records)
-        distances = export_poi.load_water_distances(export_poi.WATER_DISTANCE_PATH)
-        if distances:
-            export_poi.attach_water_distance(records, distances)
-            export_poi.synthesize_csi_water(records)
+        records = export_poi.build_enriched_records(con)
     finally:
         con.close()
 
@@ -702,6 +777,9 @@ def published_records() -> list[dict]:
         }
         if fingerprint:
             record["fingerprint"] = fingerprint
+        stream = stream_passport(properties)
+        if stream:
+            record["stream_id"] = stream
     return records
 
 

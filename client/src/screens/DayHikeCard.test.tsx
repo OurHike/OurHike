@@ -3,41 +3,26 @@
 // Two kinds of pin. The positive ones check the sourced blocks render from
 // the LIVE resolution, org names from the steward join and never raw source
 // keys. The negative ones are the point of the card's scope: nothing here may
-// print a figure whose source does not exist yet - no ≈time, no ±ft, no
-// parking, no "Chip in" - because a block invented to fill the frame is the
-// exact failure CLAUDE.md's evidence standard names.
+// print a figure whose source does not exist yet - no ±ft, no parking, no
+// "Chip in" - because a block invented to fill the frame is the exact failure
+// CLAUDE.md's evidence standard names.
+//
+// ≈time and ± elevation moved sides with #1011: the graph carries per-edge
+// climb now, so the card prints both when the walk can be priced and neither
+// when it cannot. The tests below pin both halves - the numbers when there
+// are numbers, and silence rather than a placeholder when there are not.
 
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DayHikeCard } from './DayHikeCard'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import type { DayHike } from '../lib/dayHikes'
-import type { Stewards } from '../lib/stewards'
+import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 
 afterEach(cleanup)
-
-const STEWARDS: Stewards = [
-  {
-    provider: 'NYS OPRHP',
-    name: 'NYS Parks',
-    trust: null,
-    licence: null,
-    attribution: null,
-    layers: [],
-    keys: ['oprhp_trails'],
-  },
-  {
-    provider: 'NYNJTC',
-    name: 'NY–NJ Trail Conference',
-    trust: null,
-    licence: null,
-    attribution: null,
-    layers: [],
-    keys: ['nynjtc_long_path'],
-  },
-]
 
 const HIKE: DayHike = {
   id: 'hike-1',
@@ -57,13 +42,14 @@ const HIKE: DayHike = {
       {
         name: 'Pine Meadow Trail',
         source: 'oprhp_trails',
-        blaze_color: 'blue',
+        blaze_color: 'Blue',
         miles: 5,
       },
     ],
   },
   looped: true,
   recorded: 'planned',
+  note: '',
 }
 
 const RESOLVED: ResolvedDayHike = {
@@ -78,14 +64,14 @@ const RESOLVED: ResolvedDayHike = {
     {
       name: 'Pine Meadow Trail',
       source: 'oprhp_trails',
-      blaze_color: 'blue',
+      blaze_color: 'Blue',
       trail_id: 'oprhp_trails:1',
       miles: 2.1,
     },
     {
       name: 'Seven Hills Trail',
       source: 'nynjtc_long_path',
-      blaze_color: 'white',
+      blaze_color: 'White',
       trail_id: 'nynjtc_long_path:2',
       miles: 4.3,
     },
@@ -93,7 +79,7 @@ const RESOLVED: ResolvedDayHike = {
 }
 
 const BAIL_OUTS: BailOut[] = [
-  { miles: 3.2, name: 'Kakiat Trail', blaze_color: 'white', source: 'nynjtc_long_path' },
+  { miles: 3.2, name: 'Kakiat Trail', blaze_color: 'White', source: 'nynjtc_long_path' },
 ]
 
 function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) {
@@ -102,8 +88,8 @@ function renderCard(overrides: Partial<Parameters<typeof DayHikeCard>[0]> = {}) 
       hike={HIKE}
       resolved={RESOLVED}
       bailOuts={BAIL_OUTS}
-      stewards={STEWARDS}
       units="imperial"
+      pace={STANDARD_PACE}
       networkAvailable={true}
       mode="saved"
       onClose={vi.fn()}
@@ -124,10 +110,16 @@ describe('the sourced blocks', () => {
     // Per-leg miles, back since #1002 priced them at the walked metres.
     expect(screen.getByText('2.1 mi')).toBeInTheDocument()
     expect(screen.getByText('4.3 mi')).toBeInTheDocument()
-    // The steward join's names, never the export's raw keys.
-    expect(screen.getByText('NYS Parks')).toBeInTheDocument()
+    // The maintaining organization is NOT on the row any more (#1112): it
+    // repeated per leg, it is the least actionable part of a row read to walk
+    // by, and the published names are long enough to break the layout. Both
+    // spellings are asserted absent, because the bug was the resolved NAME
+    // and the fallback is the raw KEY - dropping one and leaving the other
+    // would look fixed on a phone with no stewards export and nowhere else.
+    expect(screen.queryByText(/NYS Parks/)).not.toBeInTheDocument()
     expect(screen.queryByText(/oprhp_trails/)).not.toBeInTheDocument()
-    // Both orgs counted, in the frame's own sentence.
+    // The credit survives as a COUNT, which is what it always was - orgCount
+    // reads leg.source, so it never depended on the labels that left.
     expect(
       screen.getByText(/Two organizations keep this loop walkable/),
     ).toBeInTheDocument()
@@ -140,7 +132,61 @@ describe('the sourced blocks', () => {
     // A walked length, so it converts for a metric hiker - not the A.T.'s
     // "mi 3.2" marker voice, which names a point that never converts.
     expect(screen.getByText('at 3.2 mi')).toBeInTheDocument()
-    expect(screen.getByText(/Kakiat Trail \(white\)/)).toBeInTheDocument()
+    // Capitalised, because that is what the pipeline publishes and what the
+    // ways-off row prints verbatim. The fixtures here said 'white' until
+    // #1112 and were masking it: nothing keyed on the string, so the wrong
+    // case rendered as plausible prose. `blaze.ts`'s palette IS keyed on it.
+    expect(screen.getByText(/Kakiat Trail \(White\)/)).toBeInTheDocument()
+    // The blaze stays and the organization goes, which is the split #1112
+    // settled: a hiker leaving a route in a hurry navigates by the blaze, and
+    // whose ground it is does not help them get down.
+    expect(screen.queryByText(/NY–NJ Trail Conference/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nynjtc_long_path/)).not.toBeInTheDocument()
+  })
+
+  it('paints each leg’s blaze as the map paints that line, and nothing else', () => {
+    const { container } = renderCard()
+
+    // The paint, not the word: a hiker reads this list against the blazes in
+    // front of them, and the swatch is the same hue map/style.ts gives the
+    // line - both through lib/blaze.ts's closed palette, so they cannot drift.
+    const swatches = container.querySelectorAll('.day-hike-card__blaze')
+    expect(swatches).toHaveLength(2)
+    expect(swatches[0]).toHaveStyle({ backgroundColor: blazePaintColor('Blue') })
+    expect(swatches[1]).toHaveStyle({ backgroundColor: blazePaintColor('White') })
+
+    // The colour is never the only carrier. The word rides underneath for a
+    // screen reader - Today's freshness dots' arrangement - which is what
+    // makes a grey swatch legible at all (see the next test).
+    expect(screen.getByText('Blue blaze')).toBeInTheDocument()
+    expect(screen.getByText('White blaze')).toBeInTheDocument()
+  })
+
+  it('paints the neutral grey for the three values that name no hue', () => {
+    // Not an edge case: measured against the published graph (2026-08-27),
+    // 48.1% of edges are `Unknown`, 1.8% `None` and 1.3% `Other` - half the
+    // network has no hue to show. All three take the grey the map already
+    // spends on a line whose blaze it does not know, so the card agrees with
+    // the canvas rather than inventing a fourth meaning; the words are what
+    // tell them apart, and they say different things.
+    renderCard({
+      resolved: {
+        ...RESOLVED,
+        legs: [
+          { ...RESOLVED.legs[0], blaze_color: 'Unknown' },
+          { ...RESOLVED.legs[1], blaze_color: 'None' },
+        ],
+      },
+    })
+
+    const swatches = document.querySelectorAll('.day-hike-card__blaze')
+    expect(swatches[0]).toHaveStyle({ backgroundColor: NEUTRAL_BLAZE_COLOR })
+    expect(swatches[1]).toHaveStyle({ backgroundColor: NEUTRAL_BLAZE_COLOR })
+    // Same grey, different sentence - "not recorded" is not "confirmed to
+    // have no blazes", and a hiker looking for paint on a tree needs the
+    // difference.
+    expect(screen.getByText('Blaze not recorded')).toBeInTheDocument()
+    expect(screen.getByText('Unblazed')).toBeInTheDocument()
   })
 
   it('says so when no marked trail leaves the route, rather than omitting the block', () => {
@@ -181,7 +227,11 @@ describe('the honest absences', () => {
 
     // The cache's own numbers, under a sentence saying that is what they are.
     expect(screen.getByText(/5\.0 mi · 1 leg\b/)).toBeInTheDocument()
-    expect(screen.getByText(/hasn.t got the trail network yet/)).toBeInTheDocument()
+    // "no trail network", not "not yet" - #1049. There is no graph coming
+    // on production (#1048), and "yet" was the same false promise the plan
+    // door was making.
+    expect(screen.getByText(/has no trail network/)).toBeInTheDocument()
+    expect(screen.queryByText(/network yet/)).not.toBeInTheDocument()
     // No ways-off section at all: nothing honest to put in it.
     expect(screen.queryByText('If you need to get off')).not.toBeInTheDocument()
   })
@@ -242,6 +292,106 @@ describe('the two modes', () => {
   })
 })
 
+describe('the door onto the ground (#1041)', () => {
+  const FOLLOW = { name: 'Follow this hike on the map' }
+
+  it('offers following once the walk is saved and the graph can place it', async () => {
+    const user = userEvent.setup()
+    const onFollow = vi.fn()
+    renderCard({ onFollow })
+
+    await user.click(screen.getByRole('button', FOLLOW))
+    expect(onFollow).toHaveBeenCalledOnce()
+  })
+
+  it('does not offer it over the stored cache', () => {
+    // Following is a live position against a ROUTE, and with `resolved` null
+    // the card is leaning on a list of figures rather than on ground. Absent
+    // rather than disabled: a greyed control is a promise the app cannot say
+    // why it is not keeping.
+    renderCard({ onFollow: vi.fn(), resolved: null })
+
+    expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
+  })
+
+  it('does not offer it on a review, which has no record to point at', () => {
+    renderCard({ mode: 'review', onSave: vi.fn() })
+
+    expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
+  })
+})
+
+describe('the #1008 additions', () => {
+  it('offers the date as a field the hiker sets, and clearing it clears the date', async () => {
+    const user = userEvent.setup()
+    const onSetDate = vi.fn()
+    renderCard({ onSetDate })
+
+    const field = screen.getByLabelText('When') as HTMLInputElement
+    expect(field.value).toBe('2026-08-29')
+
+    await user.clear(field)
+    expect(onSetDate).toHaveBeenLastCalledWith(null)
+  })
+
+  it('shows no date field at all when the shell offers no way to keep one', () => {
+    renderCard()
+    expect(screen.queryByLabelText('When')).not.toBeInTheDocument()
+  })
+
+  it('draws a gap as a gap: straight-line miles and the refusal to route it', () => {
+    renderCard({
+      hike: {
+        ...HIKE,
+        looped: false,
+        segments: [
+          [
+            { coord: [-74.095, 41.25], poiId: null },
+            { coord: [-74.09, 41.25], poiId: null },
+          ],
+          [
+            { coord: [-74.085, 41.25], poiId: null },
+            { coord: [-74.08, 41.25], poiId: null },
+          ],
+        ],
+      },
+      // The cache path: a multi-segment loop refuses resolution anyway.
+      resolved: null,
+    })
+
+    expect(
+      screen.getByText(/with no trail under it, straight across/),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/that stretch is yours/)).toBeInTheDocument()
+  })
+
+  it('a single-segment walk shows no gap row - nothing to be honest about', () => {
+    renderCard()
+    expect(screen.queryByText(/no trail under it/)).not.toBeInTheDocument()
+  })
+
+  it('saved mode opens Leave this with someone in the same sheet frame', async () => {
+    const user = userEvent.setup()
+    renderCard()
+
+    await user.click(screen.getByRole('button', { name: 'Leave this with someone' }))
+    expect(
+      screen.getByRole('dialog', { name: 'Leave this with someone' }),
+    ).toBeInTheDocument()
+    // The card's own blocks stepped aside; the close returns to them.
+    expect(screen.queryByText('Legs')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    expect(screen.getByText('Legs')).toBeInTheDocument()
+  })
+
+  it('review mode offers no leave door - Save stays the one primary', () => {
+    renderCard({ mode: 'review', onSave: vi.fn() })
+    expect(
+      screen.queryByRole('button', { name: 'Leave this with someone' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
 describe('the climb, once the phone can price it (#1011)', () => {
   it('prints ascent and descent beside the miles', () => {
     renderCard()
@@ -270,6 +420,43 @@ describe('the climb, once the phone can price it (#1011)', () => {
     expect(screen.getByText(/≈2h 40m walking/)).toBeInTheDocument()
   })
 
+  it("walks this day at the hiker's own pace, and says so (#1040)", () => {
+    // The half this card did not have. It priced with naismithMinutes - the
+    // STANDARD rule - so a hiker who told this app they walk at 2 mph read
+    // their A.T. plan at 2 and their day hike at 3.107, with nothing on
+    // either screen saying which was which.
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2 }
+    renderCard({ pace: slow })
+
+    // 6.4 mi at 2 mph is 192 min; 1,240 ft of ascent adds 37.8 at Naismith's
+    // own climb term, which this control does not move; 229.8 -> ≈3h 50m.
+    expect(screen.getByText(/≈3h 50m walking/)).toBeInTheDocument()
+    // And what it was adjusted from, so the figure cannot pass as the rule's
+    // own (#851).
+    expect(screen.getByText('was ≈2h 40m · 1.4× standard')).toBeInTheDocument()
+  })
+
+  it('adds the descent penalty this walk measured, when one is set (#900)', () => {
+    // routeClimb measured 1,180 ft of loss and the card used to throw it
+    // away. A hiker who set the knee penalty is asking for exactly this walk
+    // to cost more; the control only ever ADDS time, so the direction is the
+    // cautious one.
+    const knees: PaceProfile = { ...STANDARD_PACE, descentMinutesPer1000m: 60 }
+    renderCard({ pace: knees })
+
+    // 161.4 standard minutes plus 1,180 ft = 359.7 m of descent at an hour
+    // per 1,000 m: 21.6 more, 183 -> ≈3h 5m.
+    expect(screen.getByText(/≈3h 5m walking/)).toBeInTheDocument()
+  })
+
+  it('says nothing about pace when the hiker never moved a control', () => {
+    // The other half of #851's rule: "1.0× standard" on a fresh install is a
+    // caveat that teaches hikers to stop reading the ones that matter.
+    renderCard()
+
+    expect(screen.queryByText(/standard/)).not.toBeInTheDocument()
+  })
+
   it('says the figures are estimates rather than letting them read as surveyed', () => {
     // The maintainer's call, 2026-08-25. The pipeline's own gate reads +18.8%
     // against a maintaining club on terrain like this, so a hiker comparing
@@ -281,6 +468,45 @@ describe('the climb, once the phone can price it (#1011)', () => {
     ).toBeInTheDocument()
   })
 
+  it('says the time is moving time, which is what stops it reading as a promise', () => {
+    // #1042. The storyboard names this sentence as one of the two reasons
+    // frame D5 exists, and #1008 shipped the ≈time without it. It is a
+    // DIFFERENT claim from the estimates note beside it: that one is about how
+    // precise the figure is, this one about what it measures at all. A hiker
+    // can believe the first and still be an hour late because of the second.
+    renderCard()
+
+    expect(
+      screen.getByText(/knows nothing about lunch, a swim, or half an hour/),
+    ).toBeInTheDocument()
+  })
+
+  it('warns about both things at once, or a reader skips the pair', () => {
+    // Two `role="note"` paragraphs in a row read as boilerplate. One note, and
+    // the sentence that matters is not the one that gets skipped.
+    renderCard()
+
+    const notes = screen
+      .getAllByRole('note')
+      .filter((node) =>
+        /Moving time|estimates from the best/.test(node.textContent ?? ''),
+      )
+    expect(notes).toHaveLength(1)
+    expect(notes[0].textContent).toMatch(/Moving time/)
+    expect(notes[0].textContent).toMatch(/estimates from the best elevation data/)
+  })
+
+  it('says neither thing when there is no time to qualify', () => {
+    // A caveat about a number that is not on the screen is noise, and the
+    // absence is the honest output - not a degraded one.
+    renderCard({ resolved: { ...RESOLVED, climb: null } })
+
+    expect(screen.queryByText(/knows nothing about lunch/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/estimates from the best elevation data/),
+    ).not.toBeInTheDocument()
+  })
+
   it('never prints a climb over the stored cache, which has none', () => {
     // The cache was written before any of this existed. Printing today's
     // climb over yesterday's walk would be a display outrunning its source -
@@ -289,5 +515,31 @@ describe('the climb, once the phone can price it (#1011)', () => {
 
     expect(screen.queryByText(/ft\b/)).not.toBeInTheDocument()
     expect(screen.queryByText(/≈/)).not.toBeInTheDocument()
+  })
+})
+
+describe('the climb when the live resolution is gone (#1045, 2026-08-27)', () => {
+  it('falls back to the cached climb, under the sentence that says it is cached', () => {
+    // The condition on printing a cached figure at all: the card already
+    // tells the hiker these numbers are the ones stored at save time, so the
+    // climb is covered by the same disclosure the miles are.
+    renderCard({
+      hike: {
+        ...HIKE,
+        figures: { ...HIKE.figures, climb: { gainFt: 1240, lossFt: 1240 } },
+      },
+      resolved: null,
+    })
+
+    expect(screen.getByText(/1,240/)).toBeInTheDocument()
+  })
+
+  it('says nothing about climb for a hike saved before the field existed', () => {
+    // `undefined` reads exactly as `null` does on this card - no figure, no
+    // ≈time, nothing invented - which is what it looked like before #1011.
+    renderCard({ hike: HIKE, resolved: null })
+
+    expect(screen.queryByText(/ft/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/walking/)).not.toBeInTheDocument()
   })
 })

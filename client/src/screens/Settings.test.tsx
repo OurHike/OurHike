@@ -382,11 +382,19 @@ describe('MapSettings', () => {
     expect(screen.getByText(/no background data is fetched/i)).toBeInTheDocument()
   })
 
-  it('disables the Later row so it cannot be operated, tagged so someone knows why', () => {
+  it('does not claim roads are off, because they are not (#931)', () => {
+    // This row was a disabled, unticked checkbox labelled "Roads &
+    // walkability" - the settings screen disagreeing with the map, which has
+    // drawn roads, tracks and OSM paths on the live sheet all along. There is
+    // still no control, and deliberately: the walkability tiers a toggle here
+    // would govern stay unbuilt for want of evidence.
     renderMap()
 
-    expect(screen.getByRole('checkbox', { name: /roads & walkability/i })).toBeDisabled()
-    expect(screen.getByText('Later')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('checkbox', { name: /roads & walkability/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/Roads and tracks are on the map/)).toBeInTheDocument()
+    expect(screen.getByText(/never routes a walk along one/)).toBeInTheDocument()
   })
 
   describe('waypoints shown', () => {
@@ -506,18 +514,26 @@ describe('DisplaySettings', () => {
 })
 
 describe('SafetyPrivacySettings', () => {
-  it('states that closures and serious warnings are always shown', () => {
+  it('states that closures and serious warnings are not a setting', () => {
     render(<SafetyPrivacySettings {...PROPS} />)
 
-    expect(screen.getByText(/always shown/i)).toHaveTextContent(
+    expect(screen.getByText(/not a setting/i)).toHaveTextContent(
       /closures and serious warnings/i,
     )
   })
 
-  it('says the absence of a switch is deliberate, not an oversight', () => {
+  it('says how far the legend\u2019s Alerts switch reaches, rather than denying it', () => {
+    // This notice used to end "There is no switch, here or anywhere", which
+    // was true until #1047 built one. A settings screen that goes on denying a
+    // control the hiker can see teaches them to disbelieve the rest of it - so
+    // what it promises now is the part this screen can actually keep: never
+    // saved, never synced, and gone by the next open.
     render(<SafetyPrivacySettings {...PROPS} />)
 
-    expect(screen.getByText(/no switch, here or anywhere/i)).toBeInTheDocument()
+    const notice = screen.getByText(/not a setting/i)
+    expect(notice).toHaveTextContent(/while you are looking at it/i)
+    expect(notice).toHaveTextContent(/never on your other phones/i)
+    expect(notice).toHaveTextContent(/opens with them shown/i)
   })
 
   it('renders no control at all for closures or warnings', () => {
@@ -527,29 +543,6 @@ describe('SafetyPrivacySettings', () => {
       .map((el) => el.getAttribute('name') ?? '')
 
     expect(toggles.filter((name) => /closure|warning/i.test(name))).toEqual([])
-  })
-
-  it('shows the wrong-way alert as Later, because nothing implements it yet', () => {
-    // The preference is real (lib/userPreferences.ts) but the feature is not:
-    // no monitor runs, no cue mounts, no push fires. A live-looking switch
-    // here told a hiker an alarm was armed when there is no alarm - the worst
-    // kind of safety copy. The row stays visible so the answer to "is there a
-    // wrong-way alert?" is an honest "later", not a hunt through screens.
-    render(<SafetyPrivacySettings {...PROPS} />)
-    const toggle = screen.getByRole('checkbox', { name: /wrong-way alert.*later/i })
-
-    expect(toggle).toBeDisabled()
-    expect(toggle).not.toBeChecked()
-    expect(screen.getAllByText('Later').length).toBeGreaterThan(0)
-  })
-
-  it('never reports a wrong-way preference change, since no tap can happen', async () => {
-    const user = userEvent.setup()
-    render(<SafetyPrivacySettings {...PROPS} />)
-
-    await user.click(screen.getByRole('checkbox', { name: /wrong-way alert.*later/i }))
-
-    expect(PROPS.onChange).not.toHaveBeenCalled()
   })
 
   describe('the location switch (#312)', () => {

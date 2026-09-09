@@ -29,6 +29,7 @@ Five separate docs each independently added a piece of identity or privacy desig
 | A hiker's own device | Only that hiker | Full local data - trail name, all their own contributions, unredacted | [ONBOARDING.md](ONBOARDING.md) / local storage |
 | A trip or a private photo synced to the hiker's account | Only that hiker, on their own signed-in devices | Their own content, unredacted, served to nobody else and public nowhere | [ACCOUNT_SYNC.md](ACCOUNT_SYNC.md) |
 | A contact detail on an app-failure report | Whoever maintains OurHike, reading the database directly | Whatever the hiker typed, verbatim. Served by no endpoint at all, so this row has no API surface to get wrong | [APP_FAILURE_REPORTS.md](APP_FAILURE_REPORTS.md) |
+| A recorded GPS trace | Only that hiker, on the one device that recorded it | A continuous list of their own positions, timestamped, with the accuracy the phone claimed - the most precise record of somebody's movements this app can hold, kept until they delete it. No endpoint, no sync, and no path to an app-failure report: `readAll`, `traceToCsv` and `downloadTrace` have one caller between them, the manual export. It leaves the phone only if the hiker saves the file and sends it somewhere themselves | #1180, `client/src/lib/gpsTrace.ts` |
 
 ### What v1 actually ships, as against the row above — written down 2026-08-07
 
@@ -82,6 +83,8 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
 ```
 
 **Deliberately excluded:** `show_closures` isn't a preference at all - Map Options already recommends it stay always-on, not user-hideable, since suppressing known safety information isn't the same kind of choice as picking a background tile style. It's a fixed display rule, not a setting.
+
+**Still excluded after [#1047](https://github.com/OurHike/OurHike/issues/1047), and that issue is the sharpest argument for the exclusion this model has.** The legend now carries an Alerts switch that takes the closure bands, the ATC's marks and the serious-warning pins off the canvas — so there *is* a hiker-facing control, and the question of whether it belongs in this object came up and was answered no. A field here syncs, which means a hiker who cleared the bands once in Virginia would open a new phone in Maine with them already gone. The flag lives in a `useState` in `client/src/chrome/alertLayerPanel.ts` instead, is written nowhere, and is back on at the next open. **A control existing is not a reason for this model to learn about it**; whether the state may outlive the moment is.
 
 ### What this replaces
 

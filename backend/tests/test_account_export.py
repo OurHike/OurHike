@@ -27,6 +27,8 @@ from tests.tokens import auth_headers
 SECTION_FOR_TABLE = {
     "synced_trips": "trips",
     "synced_day_hikes": "day_hikes",
+    "synced_hikes": "long_hikes",
+    "synced_active_hikes": "long_hike_you_were_on",
     "synced_planned_hikes": "planned_hike",
     "hikes": "hikes",
     "user_preferences": "preferences",

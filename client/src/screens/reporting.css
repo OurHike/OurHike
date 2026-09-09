@@ -6,6 +6,7 @@
   background: var(--bg-page);
 }
 .reporting__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 20px;
   color: var(--fg-1);
@@ -215,7 +216,7 @@
   border-radius: 10px;
 }
 .reporting__tile-hint {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 400;
   line-height: 1.25;
   color: var(--fg-3);

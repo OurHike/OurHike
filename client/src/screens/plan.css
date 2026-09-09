@@ -333,6 +333,25 @@
   white-space: nowrap;
 }
 
+/* An honest unknown, not a warning: the DEM has a hole here and the day's
+   climb cannot be stated. Quieter than a figure rather than louder, because
+   nothing is wrong with the plan - only with what we can say about it. */
+.plan__day-figure--unmeasured {
+  color: var(--fg-3);
+  white-space: normal;
+}
+
+/* Whose estimate the ≈time beside it is (#851/#1040): quiet provenance, never
+   a warning, in the same voice elevation-chart__pace and closure-sheet__pace
+   already use. Absent entirely at the standard pace, so it keeps its weight
+   for the hikers who moved a control. */
+.plan__day-figure--baseline {
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+  white-space: normal;
+}
+
 .plan__day-carry {
   position: relative;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -635,6 +654,7 @@
 }
 
 .trip-list__name {
+  font-family: var(--font-display, Georgia, serif);
   font-size: 14px;
   font-weight: 600;
   color: var(--fg-1);
@@ -1314,7 +1334,7 @@
 }
 
 .plan__food-note--quiet {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -1593,6 +1613,580 @@
   color: var(--fg-2);
 }
 
+/* ----- the mode bands (#1008) ----- */
+
+/* The band is the mode: Day hikes wears the brand green, Trips wears the
+   chrome family - the one pair documented as dark under BOTH themes
+   (design-system/tokens/colors.css), which is what an identity band is.
+   Negative margins bleed it to the screen edges through .plan's padding.
+
+   Measured 2026-08-25, WCAG contrast of each pairing below against its own
+   band, in both themes - the lowest is the trips link at night:
+     trips band text  paper-0/pine-900 16.60:1 · bone-100/ink-900 14.94:1
+     trips link       moss-300/pine-900 7.73:1 · bone-500/ink-900  4.96:1
+     day band text    paper-0/forest-600 7.53:1 · ink-950/moss-400 5.59:1
+   Re-runnable from the hexes in tokens/colors.css; every one clears 4.5:1,
+   which is why these bands take no per-theme overrides of their own. */
+.plan-band {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin: calc(-1 * var(--space-4, 16px)) calc(-1 * var(--space-4, 16px)) 0;
+  padding: var(--space-4, 16px);
+}
+
+.plan-band--day {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.plan-band--trips {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.plan-band__words {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 0.85, not 0.75. Measured: ink-950 at 75% over moss-400 is 4.01:1 - under
+   the AA floor for 10px text, so the eyebrow was legible by day and not by
+   night on the same screen. At 85% it is 4.72:1. The table above measures
+   the full-opacity pairings; anything that thins one of them has to carry
+   its own figure, which is what this line is. */
+.plan-band__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+.plan-band__word {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+
+/* The way to the other room. Colour comes from the band (currentColor), so
+   one rule serves both bands in both themes. */
+.plan-band__switch {
+  position: relative;
+  min-height: 38px;
+  padding: 0 var(--space-3, 12px);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Drawn at 38px like every header button, hit at 44 - chrome.css's idiom for
+   anything under the effective touch target.
+
+   It used to say "the ONLY route between the two Plan homes", which stopped
+   being true at #1317: that chip is gone and the app's mode switch is the
+   door between the rooms. Since #1329 this slot carries "Switch hike ›" in
+   the hike's room, and it is the only route between one hike and another -
+   so a thumb that misses it still has nowhere else to go. */
+.plan-band__switch::after {
+  content: '';
+  position: absolute;
+  inset: calc((38px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* THE FOCUS RING HAS TO BE VISIBLE ON THE BAND IT SITS ON.
+   desktop.css draws every focus ring in --brand-primary, which is exactly
+   what the day band paints its background with: measured 1.00:1, ring
+   invisible in both themes, on controls that are the only way off their
+   screens. On the trips band the same ring is 2.21:1 in the light theme,
+   under WCAG 1.4.11's 3:1 for a focus indicator. Both bands re-point it at
+   their own foreground, which is the colour already proven legible there by
+   the table above. */
+.plan-band :focus-visible,
+.plan__head--day :focus-visible,
+.plan__head--trips :focus-visible {
+  outline-color: currentColor;
+}
+
+/* Existing headers, painted as their mode's band on the sub-screens - the
+   timeline and hike zoom are trips-mode rooms, the day-hike list a day-mode
+   one, and the band is what says so at a glance. */
+.plan__head--trips,
+.plan__head--day {
+  margin: calc(-1 * var(--space-4, 16px)) calc(-1 * var(--space-4, 16px)) 0;
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+}
+
+.plan__head--trips {
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.plan__head--trips .plan__head-note {
+  color: var(--fg-chrome-2);
+}
+
+/* moss-300 on pine: 7.7:1, measured in the token file's own comment - the
+   page's --link would sit at no such figure on this ground. */
+.plan__head--trips .plan__trips {
+  color: var(--fg-chrome-3);
+}
+
+.plan__head--day {
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+/* The OUTER element only. `.plan__crumb-up` is a span inside the button, and
+   opacity composites per element - naming both dropped the text to
+   0.85 × 0.85 = 0.72, measured 3.85:1 on the dark band: under the AA floor,
+   on this screen's only way back. At a single 0.85 it is 4.72:1 dark and
+   5.99:1 light. The inner span takes the colour and no second fade. */
+.plan__head--day .plan__crumb {
+  color: inherit;
+  opacity: 0.85;
+}
+
+.plan__head--day .plan__crumb-up {
+  color: inherit;
+}
+
+.plan-home__quiet-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* PlanKindSheet's unavailable-door sentence, worn by the day home's foot
+   when the junction graph is missing - a sentence, never a dead button. */
+.plan-home__refused {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+  background: var(--bg-sunken);
+  border-radius: 10px;
+}
+
+/* ----- the day-hike list (#1008, frame D7) ----- */
+
+/* A Plan screen that must not outgrow the viewport, because a sheet docks
+   against it. `.plan` is `min-height: 100%` and the containing block for
+   `.day-hike-card`, so a screen taller than the pane puts that card's
+   `bottom: 0` below the fold. Here the container is exactly the pane and the
+   long thing inside it scrolls.
+
+   `box-sizing` IS LOAD-BEARING, not tidiness. This app sets no universal
+   border-box reset - the only `box-sizing` in src/ is one rule scoped to
+   volunteer.css - so `height: 100%` sizes the CONTENT box, and `.plan`'s own
+   `padding: 16px` + `padding-bottom: 32px` are added outside it. The border
+   box came out 48px taller than the pane, and since `bottom: 0` resolves
+   against the padding box, the docked card hung 48px below the fold with
+   "Leave this with someone" and "Delete this day hike" on the wrong side of
+   it. That is the same defect this class was added to fix, reduced from a
+   screenful to 48px rather than removed.
+
+   NO `overflow` ON THIS ELEMENT. Bounding the height is the whole job; a
+   clip here would also clip the mode band, which reaches the screen edges
+   through .plan's padding with negative margins. The scrolling is one level
+   in, around the rows only. */
+.plan--bounded {
+  box-sizing: border-box;
+  height: 100%;
+}
+
+.plan--bounded .day-hike-list {
+  flex: 1;
+  min-height: 0;
+}
+
+.plan--bounded .day-hike-list__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.day-hike-list,
+.day-hike-list__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.day-hike-list__sorts {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.day-hike-list__sorts [aria-pressed='true'] {
+  border-color: var(--border-strong);
+  background: var(--fg-1);
+  color: var(--bg-surface);
+}
+
+/* A walked row is a record: the sunken ground the timeline's walked days
+   already use, so the two read as the same state. */
+.day-hike-list__row--walked {
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+}
+
+.day-hike-list__empty,
+.day-hike-list__note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* ----- the trailhead door (#1008, frame D8) ----- */
+
+/* Collapsed: one pill in the map's lower third. Expanded: the sheet frame
+   every bottom surface here wears. Both sit in MapScreen's routeSheet slot
+   and position themselves, as its other occupants do. */
+.hikes-here__pill {
+  min-height: 42px;
+  padding: 0 var(--space-4, 16px);
+  border: 1px solid var(--edge-over-map);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-over-map);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 14%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hikes-here__dismiss {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--edge-over-map);
+  border-radius: 50%;
+  background: var(--surface-over-map);
+  color: var(--fg-2);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* An icon-only × over a map, tapped at a trailhead with cold hands: drawn at
+   34 and hit at 44, chrome.css's own idiom for a control under the target. */
+.hikes-here__dismiss::after {
+  content: '';
+  position: absolute;
+  inset: calc((34px - var(--min-touch-target, 44px)) / 2);
+}
+
+/* z-index 2, which is what every other occupant of the routeSheet slot and
+   the waypoint card use (chrome.css). 3 is for surfaces that cover the map
+   outright - search, the stop picker - and this one must never cover a
+   waypoint card: unlike the builders, the door and a tapped pin can be on
+   screen at the same time. */
+.hikes-here {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  /* Capped, like every sibling sheet in this slot (.day-hike-bar 60%,
+     .plan-target and .day-hike-card 85%). The candidate list has no ceiling
+     - it is every planned hike inside the radius - and a sheet that grows
+     from the bottom edge pushes its own head, and the × on it, off the top
+     of the canvas: unreadable and unclosable at once. In landscape two
+     nearby hikes were enough.
+
+     NO `overflow` HERE. The scrolling is one level in, around the rows only
+     (.hikes-here__rows), for two reasons this element cannot serve: the head
+     with the × on it and the straight-line qualification under it have to
+     stay put while the rows move, and `.hikes-here--closed` shares this rule
+     - a scroll container on the collapsed pill clipped its own drop shadow,
+     the only thing lifting it off pale terrain, and cut 6px off the right of
+     the dismiss button's 44px hit area. */
+  max-height: 60%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.85rem 1rem 1rem;
+  background: var(--bg-surface);
+  border-top: 3px solid var(--brand-primary);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+/* After the sheet rule on purpose: same specificity, and the closed pill
+   has to win the shared properties it re-points.
+
+   ABOVE THE MAP'S OWN CONTROLS, not among them. A pill centred at
+   bottom:12px lay across the scale bar and half the compass and won the hit
+   test against both, so a hiker reaching for north got the door instead.
+
+   THE ARITHMETIC, re-measured in Chromium against the real maplibre-gl.css
+   and chrome.css (2026-08-25), because the first version of it was wrong
+   twice over and the pill was clearing the controls by luck rather than by
+   this number:
+
+   - `bottom` here resolves against `.map-screen__canvas`, which is a flex
+     column of `.map-view` AND the attribution strip below it, while the
+     MapLibre controls are absolute inside `.map-view` alone. So the strip -
+     measured 15px - sits between the two origins and has to be added. The
+     earlier 104px derivation left it out.
+   - mapChrome.ts stacks a NavigationControl over the GeolocateControl
+     bottom-right, each group carrying maplibre's own 10px bottom margin.
+     With a coarse pointer the nav group is the compass alone: 10 + 42 + 10 +
+     42 = 104px, so the stack reaches 104 + 15 = 119px above the canvas
+     floor. The old 110px sat 9px INSIDE that band; only the pill's own width
+     kept the two apart, since it is centred and its longest label ("12 day
+     hikes start here") runs nowhere near the right-hand controls.
+   - `showZoomButtons` is `finePointer`, which is `matchMedia('(pointer:
+     fine)')` - the same condition the media query below tests, so the two
+     cannot drift. It adds zoom-in and zoom-out to that group: 10 + 126 + 10
+     + 42 = 188, reaching 203px above the canvas floor.
+
+   7px of gap on top of each, so the clearance is visible rather than exact.
+
+   The cost, stated rather than discovered: on a landscape phone the canvas
+   is short enough that this sits at the top edge of the lower third
+   WIREFRAMES.md §1 reserves for what gets tapped (measured at 844x390: the
+   lower third begins 130px up, and the pill's foot is at 126). Landing on
+   the compass is the worse of the two, and this door is pressed standing at
+   a car rather than mid-stride. */
+.hikes-here--closed {
+  left: 50%;
+  right: auto;
+  bottom: calc(15px + 104px + 7px);
+  transform: translateX(-50%);
+  max-width: calc(100% - var(--space-6, 24px));
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+/* The same condition `showZoomButtons` is passed under (lib/useFinePointer.ts
+   is this exact query), so the pill rises by exactly the two buttons that
+   appear with it: 188px of stack plus the 15px strip. */
+@media (pointer: fine) {
+  .hikes-here--closed {
+    bottom: calc(15px + 188px + 7px);
+  }
+}
+
+.hikes-here__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hikes-here__title {
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* The one scrolling part of the sheet. `min-height: 0` because a flex item's
+   default `min-height: auto` refuses to shrink below its content, which would
+   push the sheet past its own 60% cap rather than scroll inside it. */
+.hikes-here__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hikes-here__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hikes-here__row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+}
+
+.hikes-here__row-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hikes-here__row-away {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.hikes-here__row-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.hikes-here__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.hikes-here__all {
+  align-self: flex-start;
+  padding: var(--space-1, 4px) 0;
+  border: 0;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ----- leave this with someone (#1008, frame D6) ----- */
+
+.leave-word {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
+.leave-word__lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.leave-word__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.leave-word__label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.leave-word__field input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+}
+
+/* The line the whole card exists for gets the warning frame the target
+   sheet's caveat wears - read before it is filled in. */
+.leave-word__field--back-by input {
+  border-color: var(--warning);
+}
+
+.leave-word__note {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.leave-word__preview-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.leave-word__preview {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.leave-word__status {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* ----- the finished card's additions (#1008) ----- */
+
+.day-hike-card__date {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+}
+
+/* The one writable field this card adds, so it meets the touch target
+   outright rather than through a pseudo-element - a date input opens a
+   picker, and a mistap lands on the figures line above it. */
+.day-hike-card__date input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+.day-hike-card__gap {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--fg-1);
+}
+
 /* ----- the Plan home (#805) ----- */
 
 .plan-home {
@@ -1669,6 +2263,38 @@
   color: var(--fg-2);
 }
 
+/* "This hike, end to end" (#1329, handoff §4). A row's box with no tap in it
+   - a card holding two figures and a picture of them - so it takes
+   `.plan-home__row`'s anatomy without its cursor. */
+.plan-home__row--figures {
+  gap: var(--space-2, 8px);
+  cursor: default;
+}
+
+/* TWO BANDS, WALKED AND TO GO, and there is no third one. The handoff
+   overrides features/SEGMENTS.md's derived-gap idea for these screens in as
+   many words - "no gap rows, no gap arithmetic, no dashed gap band" - and
+   this is where that would have gone.
+
+   Sized by `flex` from the two miles rather than by a percentage width, so
+   nothing in the DOM or the stylesheet ever holds a percentage of the hike:
+   the ratio is drawn, never printed, which is OurHikeValues.md #1 at the
+   grain a stylesheet can keep. */
+.plan-home__bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.plan-home__bar-walked {
+  background: var(--brand-primary);
+}
+
+.plan-home__bar-left {
+  background: var(--border-1);
+}
+
 /* ---------- The day summary (#966, wireframe 2c frame 1) ---------- */
 
 /* Docked to the screen's bottom edge, like the call-it-a-day and cascade
@@ -1705,6 +2331,7 @@
 }
 
 .day-summary__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 17px;
   font-weight: 600;
@@ -1716,6 +2343,20 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 13px;
   color: var(--fg-2);
+}
+
+/* An honest unknown where the climb would be - quieter than the figure it
+   stands in for, because nothing is wrong with the day (#1039). */
+.day-summary__unmeasured {
+  color: var(--fg-3);
+}
+
+/* The same quiet provenance the timeline row carries, on the card read after
+   the walk: what the printed ≈time was adjusted from (#851/#1040). */
+.day-summary__baseline {
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
 }
 
 /* The one generated sentence. Warm, and a fact about the ground - never a
@@ -1856,6 +2497,23 @@
   color: var(--fg-3);
 }
 
+/* The one refusal a hiker can act on (#1049): "it needs a connection" is the
+   only absence retrying can cure, so it is the only one that gets a control.
+   Quiet - a link rather than a button shape - because the row it sits in is
+   not a door and must not start looking like one. */
+.plan-kind__retry {
+  align-self: flex-start;
+  min-height: var(--min-touch-target);
+  padding: 0.35rem 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
 /* Frame `1j`'s builder bar (#978). Wears RouteMapPickBar's anatomy - the two
    are the same gesture on two kinds of trail. */
 .day-hike-bar {
@@ -1921,6 +2579,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Whose pace the ≈time above is (#851/#1040), in the quiet voice the rest of
+   the app uses for provenance - never a warning, and absent entirely at the
+   standard pace. */
+.day-hike-bar__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
 .day-hike-bar__orgs {
   display: flex;
   flex-wrap: wrap;
@@ -1961,6 +2631,44 @@
   background: var(--brand-primary);
   border-color: var(--brand-primary);
   color: var(--fg-on-dark);
+}
+
+/* The gap between two stretches (#935/#983), on the builder bar.
+   Dashed like the finished card's `.day-hike-card__gap`, and for the same
+   reason rather than for consistency's sake: a dashed border is the app's
+   one visual word for "this is a boundary, not a route". */
+.day-hike-bar__gap {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+/* The acknowledgement's frame (#983): the warning colours the target sheet's
+   caveat wears, because this is the one thing on the bar a hiker is being
+   asked to take on rather than told. */
+.day-hike-bar__gap--warn {
+  border-color: var(--warning);
+  background: var(--surface-warning);
+  color: var(--fg-1);
+}
+
+.day-hike-bar__note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* Draw mode, pressed. aria-pressed carries the state to a screen reader; this
+   carries it to everyone else. */
+.day-hike-bar__action[aria-pressed='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
 }
 
 /* #931's row: named, not omitted, and with nothing to press. */
@@ -2014,6 +2722,7 @@
 }
 
 .day-hike-card__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 1.05rem;
 }
@@ -2039,6 +2748,16 @@
   font-weight: 600;
 }
 
+/* The same provenance on the saved card as on the live bar. */
+.day-hike-card__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
 /* The climb pair reads as one figure, so it wraps as one: "+1,240 ft /
    -1,180 ft" broken across the slash is two numbers a hiker has to reassemble. */
 .day-hike-card__climb {
@@ -2059,33 +2778,86 @@
   color: var(--fg-2);
 }
 
+/* A leg, or a way off it: what the trail is called, and how far.
+
+   WHAT BROKE, AND WHAT ACTUALLY FIXED IT (#1112) - they are two different
+   things, and the second one is not this rule. The row used to carry a THIRD
+   part, the maintaining organization's name, and was `1fr auto auto` with
+   both trailing columns `white-space: nowrap`. An `auto` track sized by text
+   that cannot break takes whatever width that text needs and then overflows
+   the card: the `1fr` name track squeezed to its `min-width: 0` floor, its
+   own text wrapped and drew OVER the mileage, and the organization still ran
+   off the right edge and was cut. Measured against the published
+   `stewards.json` (2026-08-27), `oprhp_trails` carries 68 characters - "New
+   York State Office of Parks, Recreation and Historic Preservation" - so no
+   unusual name was needed to get there.
+
+   The organization came OFF this row (maintainer's call, 2026-08-27: it is
+   repeated per leg, it is the least actionable part of the row, and the
+   attribution obligation is `SourcesSection`'s, which renders each steward's
+   licence and attribution verbatim). With it gone the collision has no cause
+   left: two parts, one of which can wrap inside its own box.
+
+   FLEX ANYWAY, rather than reverting to a two-column grid. A wrapping flex
+   line cannot produce that pile-up whatever is added to it later - an item
+   too long for the line moves to the next line instead of drawing over its
+   neighbour - so this is the guard that keeps a future third part from
+   reintroducing #1112. The name keeps the slack (`flex: 1 1 auto`), which is
+   what holds the one-line arrangement.
+
+   The `--mile` variant's rule went with the grid rather than being ported:
+   it existed only to re-order the columns so a way-off row leads with its
+   mile, and DOM order already does that here. */
 .day-hike-card__row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  gap: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
+  column-gap: 0.5rem;
+  row-gap: 0.1rem;
   font-size: 0.9375rem;
 }
 
-/* A way-off row leads with its mile; the trail name takes the slack. */
-.day-hike-card__row--mile {
-  grid-template-columns: auto 1fr auto;
+/* The blaze, as the legend used to paint it: a short length of the line
+   itself, 22x4 with a hairline border so White and Yellow still read against
+   the card's paper. Those numbers are the legend's own - `.legend__swatch`,
+   removed 2026-08-25 when the blaze rows came off that panel - rather than
+   picked again here, so the one thing this app has ever drawn to mean "this
+   blaze" keeps one shape. */
+.day-hike-card__blaze {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 4px;
+  border-radius: 2px;
+  border: 1px solid var(--border-2);
+  /* The row is baseline-aligned and this box has no text in it to sit on, so
+     it would hang off the bottom of the line. Nudged to sit against the
+     name's x-height instead. */
+  align-self: center;
 }
 
 .day-hike-card__row-mile {
+  flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
   color: var(--fg-2);
 }
 
 .day-hike-card__row-name {
+  /* Takes the slack, and is allowed below its own longest word so a long
+     trail name wraps inside its own box instead of widening the row. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.day-hike-card__row-figures,
-.day-hike-card__row-org {
+.day-hike-card__row-figures {
+  flex: 0 0 auto;
+  /* The one thing in this row that must never break: "0.4 mi" split across
+     two lines reads as a different number at a glance. */
+  white-space: nowrap;
+}
+
+.day-hike-card__row-figures {
   font-size: 0.8125rem;
   color: var(--fg-2);
-  white-space: nowrap;
 }
 
 .day-hike-card__note {
@@ -2118,4 +2890,1159 @@
   align-items: baseline;
   gap: 0.75rem;
   font-size: 0.875rem;
+}
+
+/* The door out of the planning room and onto the ground (#1041, frame D9).
+   Secondary rather than quiet: "Leave this with someone" above it is the
+   card's one primary and stays that way - what a hiker does on the morning
+   of, before anything else - but following is a real action with a real
+   surface behind it, and a plain underlined link beside Delete would read as
+   the same weight as throwing the walk away. */
+.day-hike-card__follow {
+  align-self: stretch;
+  min-height: var(--min-touch-target);
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-1);
+  cursor: pointer;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+}
+
+/* ----- a walk already done (#982, screens/WalkedHike.tsx) ----- */
+
+/* Its own chrome rather than the card's, because it is its own screen - see
+   the component's header for why that is structural rather than cosmetic.
+   What it borrows is the surface and the type ramp; what it does NOT borrow
+   is the brand band, which #1008 gave a meaning (the day-hike ROOM) that a
+   backward-looking screen would blur. */
+.walked-hike {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-5, 20px);
+  background: var(--bg-surface);
+  max-height: 85%;
+  overflow-y: auto;
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.walked-hike__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.walked-hike__title {
+  margin: 0;
+  font-family: var(--font-display, serif);
+  font-size: 1.25rem;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.walked-hike__day {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.walked-hike__when input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 6px 8px;
+  border: 1.5px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* The hiker's own sentence, and the one field on this screen the app did not
+   write. It gets the most room of anything here on purpose. */
+.walked-hike__note textarea {
+  width: 100%;
+  padding: var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.walked-hike__figures {
+  display: flex;
+  gap: var(--space-6, 24px);
+  margin: 0;
+}
+
+.walked-hike__figures div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.walked-hike__figures dt {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.walked-hike__figures dd {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+.walked-hike__cached,
+.walked-hike__orgs {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.walked-hike__actions {
+  display: flex;
+  gap: 0.5rem;
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+}
+
+/* #979's one action on the line sheet. Deliberately a modest secondary
+   control rather than a primary one: the sheet is still a view-only surface
+   whose job is to say what a trail is, and this is a door out of it. */
+.line-sheet__add {
+  align-self: flex-start;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.8rem;
+  font: inherit;
+  font-size: 0.875rem;
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  border: 1px solid var(--border-2);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+   The day-hike builder's panel (#1194, the Claude Design handoff for `1j`).
+
+   IN THE FLOW, NOT OVER THE MAP, and that is the whole fix. `.day-hike-bar`
+   below is an overlay capped at 60% of the canvas, which is what made the
+   builder's map too small. This panel is a SIBLING of `.map-screen__canvas`
+   (chrome/MapScreen.tsx's `builderPanel` slot), so it takes its own room:
+   a band above the map here, a 348px left rail on a desktop (src/desktop.css).
+
+   THE BUTTONS ARE NOT IN HERE. They stayed on `.day-hike-bar` at the foot of
+   the canvas - the maintainer's instruction, and what this repository already
+   believed: src/desktop.css says the bar's position at the bottom of a phone
+   is a thumb-reach decision, and a builder used one-handed on a trail is the
+   case that decision was made for. So this panel is what a hiker READS and
+   the bar is what they PRESS.
+
+   Everything below is unguarded by a media query and therefore reaches the
+   phone, unlike src/desktop.css - this IS the phone layout, and the rail is
+   the variant. --------------------------------------------------------- */
+
+.day-hike-panel {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem 0.7rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-1);
+  /* Capped so a long route list can never push the map off the screen: the
+     complaint this whole change answers is that the map was too small, and a
+     panel that grows without limit would reintroduce it through the top of
+     the screen instead of the bottom.
+
+     35% rather than the 45% this shipped at first, measured off this pull
+     request's own preview at 390x844: with the details open the panel was
+     taking 39% of the screen and the map was left a band in the middle,
+     narrower than the bottom sheet had ever made it. The cap is what the
+     panel scrolls inside; nothing in it is lost. */
+  max-height: 35%;
+  overflow-y: auto;
+}
+
+.day-hike-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.day-hike-panel__title-block {
+  flex: 1;
+  min-width: 0;
+}
+
+.day-hike-panel__eyebrow {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__title {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--fg-1);
+  /* One line: the title is generated from the walk's own legs and a walk over
+     six trails would otherwise wrap to three lines of chrome above a map the
+     hiker is trying to make bigger. */
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.day-hike-panel__summary {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+
+.day-hike-panel__details-toggle {
+  flex: 0 0 auto;
+  min-height: var(--min-touch-target);
+  padding: 0 1rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* Three figures, evenly split, with the climb marked as the emphasised one -
+   the handoff's choice and the right one: climb is what makes a day-hike time
+   honest, and it is the figure a flat mileage hides. */
+.day-hike-panel__stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  border: 1px solid var(--border-1);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.day-hike-panel__stat {
+  padding: 0.45rem 0.6rem;
+  border-right: 1px solid var(--border-1);
+}
+
+.day-hike-panel__stat:last-child {
+  border-right: 0;
+}
+
+.day-hike-panel__stat--climb {
+  background: var(--bg-sunken);
+}
+
+.day-hike-panel__stat dt {
+  margin: 0;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__stat dd {
+  margin: 0.15rem 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.day-hike-panel__stat--climb dd {
+  color: var(--accent-blaze-orange);
+}
+
+.day-hike-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.day-hike-panel__section-head {
+  margin: 0 0 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__climb-figures {
+  display: flex;
+  gap: 0.9rem;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.day-hike-panel__climb-up {
+  color: var(--accent-blaze-orange);
+}
+
+.day-hike-panel__climb-down {
+  color: var(--fg-2);
+}
+
+/* The line standing where the handoff drew an elevation silhouette. It is
+   prose rather than a chart because the samples that would draw one are not
+   published for network trails - see chrome/DayHikePanel.tsx. */
+.day-hike-panel__note,
+.day-hike-panel__unknown,
+.day-hike-panel__empty {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__empty {
+  margin: 0;
+}
+
+.day-hike-panel__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.2rem;
+  border-bottom: 1px solid var(--border-1);
+}
+
+.day-hike-panel__row:last-child {
+  border-bottom: 0;
+}
+
+.day-hike-panel__row--stop {
+  background: var(--bg-sunken);
+  border-bottom: 0;
+  border-radius: 9px;
+  margin: 0.2rem 0;
+  padding: 0.5rem 0.4rem;
+}
+
+.day-hike-panel__row--gap {
+  color: var(--fg-3);
+}
+
+.day-hike-panel__row-index {
+  flex: 0 0 1.4rem;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-3);
+}
+
+/* The blaze chip. A neutral paper fill when a trail publishes no blaze, never
+   a guessed colour: lib/blaze.ts warns rather than inventing one, and a chip
+   that made one up would be the map's own rule broken in a list. */
+.day-hike-panel__blaze {
+  flex: 0 0 auto;
+  width: 5px;
+  height: 22px;
+  border-radius: 3px;
+  background: var(--bg-sunken);
+  border: 1px solid rgb(20 19 15 / 12%);
+}
+
+.day-hike-panel__row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+.day-hike-panel__row-detail {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.6875rem;
+  color: var(--fg-3);
+}
+
+.day-hike-panel__row-remove {
+  flex: 0 0 auto;
+  width: var(--min-touch-target);
+  height: var(--min-touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 0.875rem;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.day-hike-panel__turn-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-panel__turn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: var(--min-touch-target);
+  padding: 0 0.7rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.day-hike-panel__turn-x {
+  color: var(--fg-3);
+}
+
+/* OUTSIDE the collapsible body, so a hiker can change what the map labels
+   while the details are shut and the map is at its tallest - which is the
+   state the redesign puts them in by default. */
+.day-hike-panel__labels {
+  border-top: 1px solid var(--border-1);
+  padding-top: 0.5rem;
+}
+
+.day-hike-panel__label-grid {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  /* A scrolling row on a phone, a 2-column grid in the desktop rail. Both are
+     the handoff's, at its two breakpoints. */
+  padding-bottom: 0.15rem;
+}
+
+.day-hike-panel__label-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--min-touch-target);
+  padding: 0 0.8rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--fg-2);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* ON is the filled state, per the handoff's phone chips. `aria-pressed` is
+   what says so to a screen reader; this is the same fact in paint. */
+.day-hike-panel__label-toggle[aria-pressed='true'] {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.day-hike-panel__label-tier {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.5625rem;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.day-hike-panel__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Setting up a long hike (#1317).
+
+   The header is `.plan-band--trips` unchanged - same pine ground, same
+   eyebrow, same 24px display word - because this IS that band with a
+   different word in it, and a second one styled to match is how two bands
+   drift apart. Only the body below it is new.
+
+   The points list inside reuses `chrome.css`'s `.route-stops__*` rows
+   verbatim: the dots, the dotted rail between them, the field, the mile and
+   the leg line. What is NOT reused is `.route-stops` itself, which is
+   absolutely positioned over the map - this is a full screen, so the
+   container is its own and the rows are that panel's.
+*/
+
+.hike-setup {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+  padding: var(--space-4, 16px);
+}
+
+.hike-setup__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding-top: var(--space-4, 16px);
+}
+
+.hike-setup__lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* The rows' own container, standing in for `.route-stops` on a screen that
+   is not floating over a map. */
+.hike-setup__points {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  background: var(--surface-card);
+}
+
+.hike-setup__note {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.hike-setup__total {
+  margin: var(--space-2, 8px) 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.hike-setup__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* "Forget this hike" (#1317). The name carries the danger colour and the
+   note carries the reassurance, because the two are both true at once: it is
+   the one door here that cannot be undone, and every section survives it. */
+.plan-kind__door-name--danger {
+  color: var(--danger);
+}
+
+/* The confirm, in place of the door rather than over it - a dialog over a
+   sheet is two layers of "are you sure" for one question. */
+.plan-kind__door--confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  border: 1.5px solid var(--danger);
+  border-radius: 3px;
+  background: var(--bg-sunken);
+}
+
+.plan-kind__confirm-row {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+/* ---------------------------------------------------------------------------
+   The finish (#1317) - the one celebratory screen, on pine.
+
+   Everything here is chrome ink over `--bg-chrome`, which is dark in both
+   themes, so the screen reads the same at 6am in a shelter and at noon in a
+   car park. The gradient over the hero is the only place this file paints a
+   literal colour, and it is a scrim rather than a hue: a photo needs a
+   guaranteed contrast floor under the words, and a token cannot know how
+   bright the picture behind it is.
+*/
+
+/* `100dvh` rather than `100%`, and it is the one place in this file that
+   needs it: every other screen here sits on paper, so an unfilled tail below
+   it is invisible. This one is pine, and a dark screen that stops two-thirds
+   of the way down with page ground under it reads as a rendering fault
+   rather than as a short page. `dvh` rather than `vh` so a phone's
+   retracting address bar does not leave a strip either. */
+.finish {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.finish__hero {
+  position: relative;
+  height: 300px;
+  overflow: hidden;
+}
+
+.finish__hero-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.finish__hero-words {
+  position: absolute;
+  inset: auto 18px 18px;
+  background: linear-gradient(
+    to top,
+    var(--bg-chrome) 8%,
+    rgb(18 32 22 / 35%) 55%,
+    rgb(18 32 22 / 15%) 100%
+  );
+}
+
+.finish__eyebrow {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--accent-chrome);
+}
+
+.finish__name {
+  margin: 4px 0 0;
+  font-family: var(--font-display, serif);
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--fg-chrome-1);
+}
+
+.finish__sentence {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+}
+
+.finish__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+  padding: var(--space-5, 20px) var(--space-4, 16px);
+}
+
+.finish__figures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-3, 12px);
+}
+
+.finish__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.finish__figure-value {
+  font-family: var(--font-display, serif);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-chrome-1);
+}
+
+.finish__figure-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.finish__rule,
+.finish__crews-line {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.finish__crews-line {
+  letter-spacing: normal;
+  text-transform: none;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+}
+
+.finish__tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: var(--space-2, 8px);
+}
+
+.finish__tile {
+  height: 78px;
+  margin: 0;
+  border-radius: var(--radius-m, 8px);
+  overflow: hidden;
+}
+
+.finish__tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Dashed and empty: what says on screen that a hiker's own photos stay on
+   their phone unless they share them. */
+.finish__tile--slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: 1px dashed var(--border-chrome);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 9px;
+  text-align: center;
+  color: var(--fg-chrome-3);
+}
+
+.finish__caption {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-chrome-3);
+}
+
+.finish__crews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  border-radius: var(--radius-l, 14px);
+  background: var(--surface-chrome-raised);
+}
+
+.finish__crews-button,
+.finish__outline {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 1px solid var(--border-chrome);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent-chrome);
+  cursor: pointer;
+}
+
+.finish__outline {
+  color: var(--fg-chrome-1);
+}
+
+.finish__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.finish__closing {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-chrome-3);
+}
+
+/* Sharing a hike (#1317). The preview is `LeaveWithSomeone`'s `<pre>` at the
+   same size on the same sunken ground - it is the same kind of object, a
+   card of plain text somebody is about to hand over, and two of them styled
+   differently would read as two different things. */
+.share-hike {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+  background: var(--bg-surface);
+}
+
+.share-hike__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.share-hike__note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.share-hike__person {
+  cursor: default;
+}
+
+.share-hike__preview {
+  margin: 0;
+  padding: var(--space-3, 12px);
+  border-radius: var(--radius-m, 8px);
+  background: var(--bg-sunken);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--fg-1);
+  white-space: pre-wrap;
+}
+
+.share-hike__status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+/* The finished hike as it lives in Plan (#1317). Paper rather than pine
+   below the band: it is a record to read, not a moment to mark - the finish
+   screen is where the moment lives, and this is what it leaves behind. */
+.finished-hike {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+  padding: var(--space-4, 16px);
+}
+
+.finished-hike__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding-top: var(--space-4, 16px);
+}
+
+.finished-hike__header {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.finished-hike__photo {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-l, 14px);
+}
+
+.finished-hike__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.finished-hike__closing {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* ---------------------------------------------------------------------------
+   THE HIKE WINDOW (#1317, rebuilt by #1329) - one chrome for every long-hike
+   surface, over WHATEVER screen the hiker is on.
+
+   `.plan-kind` itself is an in-flow block - the planning sheet sits at the
+   bottom of the Plan screen's own column, which is right there and wrong
+   here. The mode switch that opens "Which long hike?" lives on Today, in
+   Settings and in the desktop sidebar, and stepping away is reached from
+   More, so these have no single column to sit in and have to float.
+
+   Fixed rather than absolute, so the surface is docked to the VIEWPORT: an
+   absolutely-positioned one would be placed against whichever ancestor
+   happened to be positioned, which differs per tab and is how a sheet ends
+   up half a screen down a scrolled column.
+
+   TWO MODIFIERS, ONE BLOCK, AND THE SECOND ONE IS #1329'S WHOLE CHANGE.
+   #1317 shipped the three sheets docked here and the five screens as
+   `flowScreen`s - two different arrangements for what a hiker experiences as
+   one feature, and the screens' arrangement took the map out of the
+   accessibility tree, which is why "Choose on the map" had no map to choose
+   on. Both are this block now, and both are OVERLAYS: what is behind stays
+   mounted, which is what lets `--screen` become a window at desktop.css's
+   breakpoint rather than only ever being a page.
+
+   What is NOT changed is the phone, deliberately. `--sheet` still docks to
+   the bottom edge (a thumb-reach decision, and the thumb is still there) and
+   `--screen` still fills the viewport. Every difference lives in desktop.css,
+   under WEBSITE.md §8's rule that the layout used on a mountain is the one
+   that must not move.
+*/
+
+.hike-window {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A scrim, not a blur: what is behind stays legible, which matters when the
+   sheet is asking a hiker to choose between hikes they can see. */
+.hike-window--sheet {
+  justify-content: flex-end;
+  background: rgb(18 32 22 / 45%);
+}
+
+.hike-window--sheet > * {
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding-top: var(--space-3, 12px);
+  border-top-left-radius: var(--radius-l, 14px);
+  border-top-right-radius: var(--radius-l, 14px);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-raised, 0 -6px 24px rgb(0 0 0 / 18%));
+}
+
+/* No scrim on a phone: this fills the viewport, so a scrim would be painting
+   under an opaque screen. The screens carry their own ground
+   (`.hike-setup`, `.hike-day`, `.hike-finish`, `.finished-hike`,
+   `.share-hike`), which is why this rule sets none. */
+.hike-window--screen > * {
+  flex: 1;
+  /* Flex items floor at their content height; without this the screen cannot
+     be shorter than what is inside it and the page grows a second scrollbar
+     instead - `.app__screen > :first-child`'s rule, same reason (#631). */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* The hike you are already on, inside its own door's name (#1329). Quiet -
+   `--fg-3` at the door note's size rather than a badge - because it is a
+   fact about the list, not a call to press this one. */
+.plan-kind__door-here {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+/* Naming the hike while it is being made (#1344). The `.route-stops__field`
+   anatomy this screen already uses for its points, as an input rather than a
+   button - one field shape on one screen. */
+.hike-setup__name {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+}
+
+.hike-setup__name-field {
+  width: 100%;
+  /* This project sets no global `box-sizing`, and `.route-stops__field`
+     carries 12px of horizontal padding and a 1.5px border - so a bare
+     `width: 100%` put the right-hand edge of this input off the screen.
+     Every other user of that class is a flex CONTAINER sized by its content;
+     this is the first one that is an input sized by a percentage. */
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  /* `.route-stops__field` is a button everywhere else and says so. A caret
+     belongs in a text field. */
+  cursor: text;
+}
+
+/* A section row that can also be MOVED (#1367). `.plan-home__row` is a
+   column of name-over-meta; this turns the box into a row holding that
+   column plus the move control, so the two shelves stop being a division a
+   hiker can see and cannot change. */
+.plan-home__row--movable {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  cursor: default;
+}
+
+.plan-home__row-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  /* The name is what a long section title squeezes; without this the flex
+     item floors at its content width and pushes the move control off the
+     card's right edge. */
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-home__row-move {
+  flex: none;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- Planning a section in place (#1344) ---------- */
+
+/* Sits in the hike room's own column, where the primary was. Not a sheet and
+   not a window: the whole point of the ask was that this content is on the
+   page a hiker is already on. */
+.section-planner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  /* NOT the blaze border, deliberately. today.css says of its own that it is
+     "the only card on this screen wearing one, which is what makes it mean
+     anything", and `.plan-home__open` carries it here for the same reason -
+     somewhere obvious to go back to. A second blaze card in the same column
+     spends that meaning; this panel is where the hiker already is, not
+     somewhere to return to. */
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface-card);
+}
+
+.section-planner__ends {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+/* `.route-stops__field` is a div in the route panel and a button here, so the
+   two things a button brings and a div does not are undone: a centred label
+   and a text colour of its own. */
+.section-planner__ends .route-stops__field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2, 8px);
+  color: var(--fg-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.section-planner__end-label {
+  flex: none;
+  width: 3rem;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.section-planner__end-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* A door out of the inline flow, drawn as one. It borrowed
+   `.stop-picker__door` first, which is borderless because in the picker it
+   sits in a bordered stack - out of that stack it read as bare bold text
+   with nothing to say it was pressable. */
+.section-planner__map {
+  align-self: flex-start;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The stop picker, given the window as its frame.
+
+   `.stop-picker` is `position: absolute; inset: 0` because in the route
+   builder it fills the panel it belongs to. Here its own layer IS the frame,
+   so it becomes an ordinary flex child instead - which is what lets
+   desktop.css size it like every other window rather than having it resolve
+   against the fixed scrim and fill the viewport. */
+.hike-window--picker > .stop-picker {
+  position: static;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Held open, but out of the way, while the hiker is choosing a point on the
+   map behind it (#1329). Hidden rather than unmounted: the set-up screen is
+   holding a draft nobody has saved, and re-mounting it to take one tap is
+   how a half-described hike gets lost. `visibility` rather than `display`
+   keeps that subtree's scroll position and its focus history intact. */
+.hike-window--stood-aside {
+  visibility: hidden;
 }

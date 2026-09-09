@@ -83,13 +83,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -105,7 +105,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          # Split rather than `&&`: `apt-get update` exits non-zero when any
+          # repository preinstalled on the runner image fails, which stopped
+          # the install running at all. See backend-tests.yml for the measured
+          # case and the trade (#1361).
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
 
       - name: Warm the DuckDB spatial extension
@@ -154,15 +159,37 @@ jobs:
             --out data/processed/at_basemap_package_z13.pmtiles \
             --name "OurHike AT corridor basemap (z13)"
 
-      # The 50-mile stretch units (#556): the corridor package partitioned
-      # by calibrated trail-mile, plus one shared context archive and the
-      # coverage index. Cut from the package rather than the build because
-      # the package is already corridor-clipped - every tile in it belongs
-      # to some stretch. fetch_all.py above supplies the centerline AND the
-      # half-mile markers the axis calibration reads (#652).
-      - name: Cut the stretch units from the package
+      # The Light level (#1088/#1107): the same cut capped at z12. The taper
+      # narrowed Standard's TERRAIN and left both rungs carrying the same
+      # 182.6 MB of vector basemap, so Light was only ~93 MB below Standard -
+      # thin for a choice a hiker has to understand. This is the other ~107 MB.
+      #
+      # Safe where the DEM's z12 cap was not, and the asymmetry is measured
+      # rather than assumed: BASEMAP.md's own finding is that MapLibre
+      # overzooms z13 VECTOR cleanly, where the same cap on the raster-dem
+      # measured worse than a quantize step already rejected
+      # (pipeline/LIGHT_DOWNLOAD.md). Geometry and labels survive
+      # magnification; a hillshade computed from magnified elevation does not.
+      - name: Cut the z12 package from the build
         run: |
-          python cut_stretches.py data/processed/at_basemap_package.pmtiles \
+          python extract_package.py data/processed/basemap.pmtiles \
+            --region data/processed/basemap_region.geojson \
+            --max-zoom 12 \
+            --out data/processed/at_basemap_package_z12.pmtiles \
+            --name "OurHike AT corridor basemap (z12)"
+
+      # The 1-degree coverage cells (#1175): the corridor package partitioned
+      # by graticule cell, plus one shared context archive and the coverage
+      # index. Cut from the package rather than the build because the package
+      # is already corridor-clipped - every tile in it belongs to some cell.
+      #
+      # This replaces the 50-mile stretch cut (#556), which built the unit the
+      # maintainer's #552 decision superseded on 2026-08-25. Needs no
+      # centerline and no half-mile markers: cell membership is a rectangle
+      # overlap, not a projection onto a calibrated mile axis.
+      - name: Cut the coverage cells from the package
+        run: |
+          python cut_cells.py data/processed/at_basemap_package.pmtiles \
             --family at_basemap
 
       # The whole point of the spike: real numbers where estimates were. To
@@ -180,6 +207,7 @@ jobs:
           report_archive(Path('data/processed/basemap.pmtiles'))
           report_archive(Path('data/processed/at_basemap_package.pmtiles'))
           report_archive(Path('data/processed/at_basemap_package_z13.pmtiles'))
+          report_archive(Path('data/processed/at_basemap_package_z12.pmtiles'))
           " | tee measure.txt
           {
             echo "## Basemap build"
@@ -199,19 +227,20 @@ jobs:
           if-no-files-found: error
 
       # The packages ride separately so the publish job downloads the ~0.7 GB
-      # it ships and not the source build beside it. The stretch units and
+      # it ships and not the source build beside it. The coverage cells and
       # their manifest ride here too - publish.py's collect_artifacts reads
-      # at_basemap_stretches_manifest.json out of PROCESSED_DIR (#556).
+      # at_basemap_cells_manifest.json out of PROCESSED_DIR (#1175).
       - uses: actions/upload-artifact@v4
         with:
           name: basemap-package
           path: |
             pipeline/data/processed/at_basemap_package.pmtiles
             pipeline/data/processed/at_basemap_package_z13.pmtiles
-            pipeline/data/processed/at_basemap_stretch_*.pmtiles
+            pipeline/data/processed/at_basemap_package_z12.pmtiles
+            pipeline/data/processed/at_basemap_cell_*.pmtiles
             pipeline/data/processed/at_basemap_context.pmtiles
-            pipeline/data/processed/at_basemap_stretches.json
-            pipeline/data/processed/at_basemap_stretches_manifest.json
+            pipeline/data/processed/at_basemap_cells.json
+            pipeline/data/processed/at_basemap_cells_manifest.json
           retention-days: 7
           if-no-files-found: error
 
@@ -219,7 +248,12 @@ jobs:
     needs: build
     if: inputs.publish
     runs-on: ubuntu-latest
-    environment: production
+    # Gated only for a real production dispatch (#1330) - a `ua` publish is
+    # the routine, disposable case (RELEASING.md §3b) and runs straight
+    # through. Nothing else in this job branches on data_environment, so
+    # there is no second, independently-written copy of this predicate for
+    # it to drift out of sync with (the #1262/#1265 failure mode).
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
     # Every writer of latest.json shares this group: publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could
     # interleave and clobber each other's entries.
@@ -244,7 +278,7 @@ jobs:
 
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
           cache: pip

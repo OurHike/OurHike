@@ -1,8 +1,29 @@
 import React from 'react';
+/*
+ * THE TWO FILLED VARIANTS TAKE `--fg-on-brand`, NOT `--paper-0` (#1131).
+ *
+ * Both used to hardcode `--paper-0`, and `secondary` used to read the BASE
+ * token `--blaze-orange` rather than the semantic `--brand-secondary`. Two
+ * bugs with one symptom, measured 2026-08-27 against tokens/colors.css:
+ *
+ *   secondary  paper-0 on blaze-orange   4.14:1 in BOTH themes
+ *   primary    paper-0 on brand-primary  7.53:1 light, 3.42:1 dark
+ *
+ * AA wants 4.5:1, and `size="s"` is 14px, so the large-text exemption does
+ * not apply. `--fg-on-brand` exists for exactly this and colors.css says so:
+ * "a filled brand button is dark green under the light theme and pale moss
+ * under the dark one, so what is legible on it is not the same colour."
+ * A base token cannot follow a theme at all - colors.css is explicit that
+ * base entries are never re-pointed - so `secondary` could not have been
+ * fixed by changing the label alone.
+ *
+ * The pairs are asserted in Button.contrast.test.ts, computed from the token
+ * file rather than from hex written down here.
+ */
 const sizes = { s: { padding: '8px 16px', fontSize: 'var(--text-body-s)' }, m: { padding: '11px 22px', fontSize: 'var(--text-body)' }, l: { padding: '14px 28px', fontSize: 'var(--text-body-l)' } };
 const variants = {
-primary: { background: 'var(--brand-primary)', color: 'var(--paper-0)', border: '1px solid var(--brand-primary)' },
-secondary: { background: 'var(--blaze-orange)', color: 'var(--paper-0)', border: '1px solid var(--blaze-orange)' },
+primary: { background: 'var(--brand-primary)', color: 'var(--fg-on-brand)', border: '1px solid var(--brand-primary)' },
+secondary: { background: 'var(--brand-secondary)', color: 'var(--fg-on-brand)', border: '1px solid var(--brand-secondary)' },
 outline: { background: 'transparent', color: 'var(--brand-primary)', border: '1px solid var(--border-2)' },
 ghost: { background: 'transparent', color: 'var(--fg-2)', border: '1px solid transparent' },
 };

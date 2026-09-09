@@ -11,12 +11,19 @@ uniform 1-degree grid with a deterministic URL per cell:
 
 Verified 2026-08-12 against the real ANST centerline buffered 30 miles:
 **56/56 corridor cells resolve, zero discovery requests.** That measurement is
-of the corridor alone and predates the network extent below; how many cells the
-network adds has not been measured here, because this sandbox has no fetched
-layers to measure against. It is bounded rather than unknown - the network's
-own ring is nine cells (export_nearby_trails.RING_BBOX), most of which the
-corridor already crosses in NY and NJ - and the run prints the before/after
-counts, so the real figure lands in the log rather than in this docstring.
+of the corridor alone and predates the network extent below.
+
+WHAT THE NETWORK ADDS IS NO LONGER BOUNDED BY NINE CELLS. This docstring used
+to say it was - the network was clipped to a bounding box around New York City
+that spans nine cells, most of which the corridor already crosses in NY and NJ.
+#1019 removed that clip and registered NYS DEC, so the network is now every
+line NYS Parks, DEC, NYNJTC and Mohonk Preserve publish: measured 2026-08-25
+against the exported artifact either side of that change, **the lines touch 31
+cells where they used to touch 7** - from n41w073 in the Hudson Highlands to
+n46w074 on the Canadian border and n43w080 at Lake Erie. How many of those 31 the corridor already crosses is still unmeasured
+here, because this sandbox has no centerline fetch to compare against - and
+main() prints the before/after counts, so the real figure lands in the log
+rather than in this docstring.
 
 WHY THIS FILE USED TO ASK TNM ACCESS, AND WHY IT NO LONGER DOES
 
@@ -76,6 +83,7 @@ import argparse
 import json
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import duckdb
@@ -84,6 +92,7 @@ import requests
 from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.http_retry import request_with_retry
 
 # One cheap metadata request per corridor cell, and the only requests this
 # script makes. See stamp_last_modified().
@@ -234,7 +243,32 @@ def build_tile_index(bbox: tuple[float, float, float, float], corridor_hit) -> l
     return index
 
 
-def stamp_last_modified(index: list[dict], *, head=None) -> list[dict]:
+#: How many HEADs are in flight at once.
+#:
+#: What is measured is the STEP, not the loop: run #92 of
+#: publish-vector-data.yml spent **4m38s** in "Fetch elevation tiles"
+#: (18:42:01-18:46:39 on 2026-09-08, read off the job API 2026-09-09) and that
+#: step is 473 sequential HEADs *plus* main()'s corridor build and its
+#: per-candidate-cell intersection against the network table. Nothing
+#: separates the two halves, because Python was still block-buffering the
+#: runner's log on that run - the thing this branch's PYTHONUNBUFFERED commit
+#: fixes, and the reason the next run can say which half it was. So "473 round
+#: trips are worth overlapping" is the claim here; "they were 0.59 s each" is
+#: an inference from a step total that has something else in it, and is not
+#: made. The cell list stopped being ~110 corridor tiles when #1019 removed
+#: the network clip, and a per-cell round trip that was fine at 110 grows with
+#: every trail system registered.
+#:
+#: 8 is picked rather than derived - `@unvalidated`, like the sampler's
+#: DEFAULT_TILE_WORKERS next door, and what would settle it is the same thing:
+#: one real run timed at a few widths. It is deliberately modest because these
+#: are HEADs against somebody else's bucket for a detail nothing downstream
+#: depends on; the point is to stop the wait dominating, not to extract the
+#: last second from it.
+HEAD_WORKERS = 8
+
+
+def stamp_last_modified(index: list[dict], *, head=None, workers: int = HEAD_WORKERS) -> list[dict]:
     """Add each tile's S3 `Last-Modified` to the index, in place.
 
     WHY THIS IS NOT A CONTRADICTION OF "ZERO DISCOVERY REQUESTS". Discovery -
@@ -263,23 +297,77 @@ def stamp_last_modified(index: list[dict], *, head=None) -> list[dict]:
 
     Non-fatal on purpose. A tile whose HEAD fails records `None`, which
     freshness_state already keeps rather than filters - "we did not find out"
-    is a state it models. The index itself is unaffected, so a network
-    problem costs freshness detail and never the elevation profile.
+    is a state it models. The index itself is unaffected, so a network problem
+    costs freshness detail and never the elevation profile.
+
+    IT DOES COST ONE MORE THING THAN IT USED TO, and this promise is the one
+    place a reader would look for it. export_elevation.py's per-point sample
+    cache is keyed on the marker these timestamps build, so a cell that
+    answered nothing has no edition to pin and that cell's samples are held
+    out of the cache file entirely (`_sources_with_no_pinned_edition` there,
+    and the stale ground it reproduces). The profile is still unaffected -
+    those points are read from the tile rather than guessed - so what a flake
+    costs is that cell's points being re-read next run. Slower, and the
+    cautious direction; still never a wrong elevation.
+
+    ASKED IN PARALLEL, WRITTEN IN ORDER (see HEAD_WORKERS for the measurement
+    that made that worth doing). `pool.map` yields in submission order, and
+    every write to `index` happens here in the calling thread, so the entries
+    come back in exactly the order they went in - which is a property
+    `elevation_marker` does not need (it sorts) but a diff of two
+    tile_index.json files does. What the pool changes is how long the waiting
+    takes; it changes nothing about what a failed HEAD records, because that
+    decision is still `_head`'s and is still `None`.
     """
     send = head if head is not None else _head
-    for tile in index:
-        tile["last_modified"] = send(tile["url"])
+    if not index:
+        return index
+    with ThreadPoolExecutor(max_workers=min(workers, len(index))) as pool:
+        for tile, last_modified in zip(index, pool.map(lambda tile: send(tile["url"]), index)):
+            tile["last_modified"] = last_modified
     return index
+
+
+#: One retry, two seconds, and impatient on purpose - the opposite posture
+#: from every other caller of `request_with_retry` in this pipeline, which is
+#: exactly the per-caller policy `lib/http_retry.py` says it exists to allow.
+#: This HEAD runs once per indexed cell, and what it buys is freshness DETAIL
+#: rather than the elevation profile; nothing downstream stops if it comes
+#: back None. It was ~110 cells when the index was the A.T. corridor alone;
+#: run #92 measured 473 (2026-09-08) now that the index covers the network
+#: extent too, which makes the budget argument below stronger rather than
+#: weaker - and is why the HEADs go out on a pool (HEAD_WORKERS). The default
+#: (5, 30) ladder against a USGS outage would be up to 64 minutes of sleeping
+#: to learn nothing, so the budget is small enough to absorb a single flake
+#: and no more (#1295).
+#:
+#: WHAT A None COSTS IS NO LONGER ONLY FRESHNESS DETAIL, and
+#: `stamp_last_modified`'s docstring above carries it where it makes the
+#: promise: export_elevation.py's sample cache is keyed on the marker these
+#: timestamps build, so a cell that answers nothing has no edition to pin and
+#: its samples are held out of that file (see
+#: `_sources_with_no_pinned_edition` there). The elevation profile is still
+#: unaffected; what a flake now costs is that cell's points being re-read next
+#: run, which is the cautious direction.
+HEAD_BACKOFF_SECONDS = (2,)
 
 
 def _head(url: str) -> str | None:
     try:
-        response = requests.head(url, timeout=HEAD_TIMEOUT)
-        if response.status_code >= 400:
-            return None
-        return response.headers.get("Last-Modified")
+        response = request_with_retry(
+            url,
+            method="head",
+            timeout=HEAD_TIMEOUT,
+            backoff=HEAD_BACKOFF_SECONDS,
+        )
     except requests.RequestException:
+        # Still non-fatal, and this is the property that had to survive the
+        # move: `capture_markers`'s docstring records that a tile whose HEAD
+        # fails writes None, which freshness_state keeps as "we did not find
+        # out" rather than rounding to fresh. Retrying changes how often we
+        # land here, never what happens when we do.
         return None
+    return response.headers.get("Last-Modified")
 
 
 def _env_flag_set(name: str) -> bool:

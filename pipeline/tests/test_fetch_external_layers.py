@@ -156,3 +156,237 @@ def test_a_default_kind_source_is_never_fetched_here(tmp_path, monkeypatch, requ
     manifest = json.loads(manifest_path.read_text())
     assert "centerline" not in manifest
     assert manifest["oprhp_fake"]["feature_count"] == 1
+
+
+# --- the substitute markers (#1311) -----------------------------------------
+#
+# Eleven of the eighteen registered layers come from servers with no
+# editingInfo, so the skip above could never fire for them and every run
+# re-fetched ~195,000 features. sources.json records a substitute per entry;
+# these pin that the fetcher reads it, records it, and never rounds a marker
+# it could not get to "unchanged".
+
+SERVICE_URL = "https://apps.fs.usda.gov/arcx/rest/services/EDW/Fake/MapServer?f=json"
+
+
+def _pages(requests_mock, **matcher):
+    """The two-page feature fetch every refetch test needs (see the first
+    refetch test above for why two pages)."""
+    requests_mock.get(
+        LAYER_URL + "/query",
+        [
+            {"json": {"features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"features": []}},
+        ],
+        **matcher,
+    )
+
+
+def _no_statistics(request) -> bool:
+    return "outstatistics" not in request.qs
+
+
+def _statistics(request) -> bool:
+    return "outstatistics" in request.qs
+
+
+def test_a_layer_without_editing_info_skips_on_an_unchanged_service_etag(tmp_path, monkeypatch, requests_mock):
+    """The Forest Service's server: no editingInfo, no date column, one ETag
+    on the service description. Recorded last time, unchanged now, file on
+    disk - no feature request may be made, and none is mocked."""
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="usfs_fake", freshness={"marker": "etag", "url": SERVICE_URL})],
+        prior_manifest={
+            "usfs_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 1,
+                "data_last_edit_date": None,
+                "marker": {"kind": "etag", "url": SERVICE_URL, "value": '"1a7709d0"'},
+            }
+        },
+    )
+    (raw_dir / "usfs_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={"no": "editingInfo here"})
+    requests_mock.head(SERVICE_URL, headers={"ETag": '"1a7709d0"'})
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["usfs_fake"]["marker"]["value"] == '"1a7709d0"'
+    assert manifest["usfs_fake"]["feature_count"] == 1
+
+
+def test_a_moved_service_etag_refetches_and_records_the_new_tag(tmp_path, monkeypatch, requests_mock):
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="usfs_fake", freshness={"marker": "etag", "url": SERVICE_URL})],
+        prior_manifest={
+            "usfs_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 9,
+                "data_last_edit_date": None,
+                "marker": {"kind": "etag", "url": SERVICE_URL, "value": '"old"'},
+            }
+        },
+    )
+    (raw_dir / "usfs_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={})
+    requests_mock.head(SERVICE_URL, headers={"ETag": '"new"'})
+    _pages(requests_mock)
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["usfs_fake"]["marker"] == {"kind": "etag", "url": SERVICE_URL, "value": '"new"'}
+    assert manifest["usfs_fake"]["feature_count"] == 1
+    assert manifest["usfs_fake"]["data_last_edit_date"] is None
+
+
+def test_a_layer_with_a_max_field_marker_skips_on_an_unchanged_maximum(tmp_path, monkeypatch, requests_mock):
+    """NYS DEC's server: no editingInfo, but an UPDATED column, so the marker
+    is one statistics query. The same /query URL serves the feature fetch;
+    only the statistics shape is mocked, so a feature request here fails
+    loudly rather than passing as a skip."""
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="dec_fake", freshness={"kind": "arcgis_max_field", "field": "UPDATED"})],
+        prior_manifest={
+            "dec_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 3,
+                "data_last_edit_date": None,
+                "marker": {"kind": "max_field", "field": "UPDATED", "value": "1755475200000"},
+            }
+        },
+    )
+    (raw_dir / "dec_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={})
+    requests_mock.get(
+        LAYER_URL + "/query", json={"features": [{"attributes": {"marker": 1755475200000}}]}, additional_matcher=_statistics
+    )
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["dec_fake"]["feature_count"] == 3
+    assert manifest["dec_fake"]["marker"]["value"] == "1755475200000"
+
+
+def test_a_moved_maximum_refetches_and_records_it_as_a_string(tmp_path, monkeypatch, requests_mock):
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="dec_fake", freshness={"kind": "arcgis_max_field", "field": "UPDATED"})],
+        prior_manifest={
+            "dec_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 3,
+                "data_last_edit_date": None,
+                "marker": {"kind": "max_field", "field": "UPDATED", "value": "1755475200000"},
+            }
+        },
+    )
+    (raw_dir / "dec_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={})
+    requests_mock.get(
+        LAYER_URL + "/query", json={"features": [{"attributes": {"marker": 1756000000000}}]}, additional_matcher=_statistics
+    )
+    _pages(requests_mock, additional_matcher=_no_statistics)
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["dec_fake"]["marker"] == {"kind": "max_field", "field": "UPDATED", "value": "1756000000000"}
+    assert manifest["dec_fake"]["feature_count"] == 1
+
+
+def test_a_layer_with_no_marker_of_any_kind_is_fetched_every_run(tmp_path, monkeypatch, requests_mock):
+    """NH GRANIT: `marker: none`, honestly. Fetched, and the manifest says
+    there was nothing to compare - never a skip on the strength of a file
+    happening to be on disk."""
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="granit_fake", freshness={"marker": "none"})],
+        prior_manifest={
+            "granit_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 5,
+                "data_last_edit_date": None,
+                "marker": None,
+            }
+        },
+    )
+    (raw_dir / "granit_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={})
+    _pages(requests_mock)
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["granit_fake"]["marker"] is None
+    assert manifest["granit_fake"]["feature_count"] == 1
+
+
+def test_a_marker_that_cannot_be_read_costs_a_fetch_and_never_the_run(tmp_path, monkeypatch, requests_mock):
+    """A metadata endpoint answering 404 is "we did not find out", which is
+    a fetch - the same posture the editingInfo check has always taken - and
+    the manifest records no marker rather than the stale one."""
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="usfs_fake", freshness={"marker": "etag", "url": SERVICE_URL})],
+        prior_manifest={
+            "usfs_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 9,
+                "data_last_edit_date": None,
+                "marker": {"kind": "etag", "url": SERVICE_URL, "value": '"old"'},
+            }
+        },
+    )
+    (raw_dir / "usfs_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={})
+    requests_mock.head(SERVICE_URL, status_code=404)
+    _pages(requests_mock)
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["usfs_fake"]["marker"] is None
+    assert manifest["usfs_fake"]["feature_count"] == 1
+
+
+def test_editing_info_wins_over_a_registered_substitute(tmp_path, monkeypatch, requests_mock):
+    """A server that gains editingInfo is compared on it, whatever the
+    registry still says - the substitute exists for the servers that lack it."""
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(key="dec_fake", freshness={"kind": "arcgis_max_field", "field": "UPDATED"})],
+        prior_manifest={
+            "dec_fake": {
+                "title": "Fake External Layer",
+                "url": LAYER_URL,
+                "feature_count": 3,
+                "data_last_edit_date": 777,
+            }
+        },
+    )
+    (raw_dir / "dec_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 777}})
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["dec_fake"]["feature_count"] == 3

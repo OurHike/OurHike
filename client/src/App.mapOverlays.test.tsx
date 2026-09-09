@@ -16,18 +16,22 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
 import { WARNING_SOURCE_ID } from './map/warningLayers'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
-vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
+}))
 vi.mock('./map/protocol', () => ({
   PMTILES_SCHEME: 'pmtiles',
   registerPMTilesProtocol: vi.fn(),
@@ -120,6 +124,7 @@ afterEach(() => vi.restoreAllMocks())
 async function renderApp(): Promise<MockMap> {
   const { default: App } = await import('./App')
   render(<App />)
+  await openMapTab()
 
   // `renderedMap`, not `findByRole` then `MockMap.live[0]`. The container div
   // commits before the effect that builds the map runs, so reading the array
@@ -143,17 +148,46 @@ function featuresIn(map: MockMap, sourceId: string) {
 }
 
 describe('what the shell draws once the reads land', () => {
-  it('places the closure on the trail, from its mile markers', async () => {
-    // The only place the two halves meet: the backend sends mile markers, the
-    // phone holds the centerline, and neither on its own can put a band on the
-    // map.
-    const map = await renderApp()
+  // A BUDGET RATHER THAN THE DEFAULT FOR THE CASE BELOW, AND THE NUMBER IS
+  // MEASURED (#1083).
+  //
+  // It is the first case in the file, so it pays for the whole App's cold
+  // start - the module graph, the map, and every published read the shell
+  // fires on mount. Measured on this machine 2026-08-27: 4,445 ms at
+  // 9824e554, which is 89% of vitest's 5,000 ms default. #1083 added an
+  // eighth published read (NYNJTC's alerts) and it went to 5,370 ms, which
+  // is a timeout on two runs in three.
+  //
+  // The extra read is the feature and it is not the problem: it fires
+  // alongside the other seven, nothing on the map waits for it, and the app
+  // itself is no slower to draw. What was wrong was a test sitting 555 ms
+  // from its limit with nothing recording that it was.
+  //
+  // 20 s rather than a shave over the measurement, so the next read added to
+  // `useConditions` does not spend another session's afternoon rediscovering
+  // this. If a change ever takes this near 20 s, that IS a behaviour change
+  // and the number is the alarm rather than the cost.
+  //
+  // Above the call rather than beside the argument, because prettier has no
+  // stable place for a comment between a callback and a trailing number and
+  // reflows it differently on every run.
+  const COLD_START_BUDGET_MS = 20_000
 
-    await waitFor(() => {
-      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
-    })
-    expect(featuresIn(map, CLOSURE_SOURCE_ID)[0].id).toBe('c1')
-  })
+  it(
+    'places the closure on the trail, from its mile markers',
+    async () => {
+      // The only place the two halves meet: the backend sends mile markers,
+      // the phone holds the centerline, and neither on its own can put a band
+      // on the map.
+      const map = await renderApp()
+
+      await waitFor(() => {
+        expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+      })
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)[0].id).toBe('c1')
+    },
+    COLD_START_BUDGET_MS,
+  )
 
   it('draws only the reports a moderator escalated', async () => {
     const map = await renderApp()
@@ -174,6 +208,73 @@ describe('what the shell draws once the reads land', () => {
       expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
     })
     expect(screen.queryByRole('alert')).toBe(null)
+  })
+})
+
+// The alerts switch, end to end (#1047).
+//
+// Covered here rather than only in chrome/Legend.test.tsx and
+// chrome/alertLayerPanel.test.ts because the thing worth proving spans all
+// three: a tap in the legend has to reach the two GeoJSON sources on the
+// canvas, and the app has to take the hide back on its own. Either half tested
+// alone would pass with the wiring cut.
+
+describe('taking the alerts off the map, and getting them back (#1047)', () => {
+  async function openLegendAndToggleAlerts(): Promise<void> {
+    await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /alerts/i }))
+  }
+
+  it('clears the bands and the warning pins on one tap', async () => {
+    const map = await renderApp()
+    // Waited on rather than assumed: the closure needs the centerline index
+    // AND the backend read, so the source is empty for a beat at first render
+    // and a test that toggled straight away would pass on the wrong emptiness.
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
+    })
+
+    await openLegendAndToggleAlerts()
+
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
+      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(0)
+    })
+  })
+
+  it('says on the map that it is withholding them', async () => {
+    const map = await renderApp()
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+    })
+
+    await openLegendAndToggleAlerts()
+
+    expect(await screen.findByText('Alerts hidden')).toBeInTheDocument()
+  })
+
+  it('puts them back when the hiker comes back to the app', async () => {
+    // The maintainer's constraint on #1047, at the only level that can show
+    // it: "The map should always open to the alerts being shown." On a phone
+    // that keeps this app alive for days, opening it is this event.
+    const map = await renderApp()
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+    })
+    await openLegendAndToggleAlerts()
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(0)
+    })
+
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible')
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    await waitFor(() => {
+      expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1)
+      expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1)
+    })
+    expect(screen.queryByText('Alerts hidden')).toBe(null)
   })
 })
 
@@ -254,7 +355,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
 
     expect(
-      await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' }),
+      await screen.findByRole('button', { name: 'Read all 2 trail notices' }),
     ).toBeInTheDocument()
   })
 
@@ -263,12 +364,10 @@ describe('every ATC notice is readable, drawn or not', () => {
     await renderApp()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
-    await userEvent.click(
-      await screen.findByRole('button', { name: /ATC trail updates/ }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /trail notices/ }))
 
     const list = screen.getByRole('dialog', {
-      name: /Appalachian Trail Conservancy/,
+      name: 'Every trail notice OurHike holds',
     })
     expect(within(list).getByText('Hurricane Helene Storm Damage')).toBeInTheDocument()
     expect(
@@ -285,9 +384,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     await renderApp()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
-    await userEvent.click(
-      await screen.findByRole('button', { name: /ATC trail updates/ }),
-    )
+    await userEvent.click(await screen.findByRole('button', { name: /trail notices/ }))
 
     const items = screen.getAllByRole('listitem')
     const helene = items.find((item) =>
@@ -314,7 +411,7 @@ describe('every ATC notice is readable, drawn or not', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBe(null)
+      expect(screen.queryByRole('button', { name: /trail notice/ })).toBe(null)
     })
   })
 })
@@ -341,7 +438,7 @@ describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
     await renderApp()
 
     expect(
-      await screen.findByRole('button', { name: 'ATC · New alert issued' }),
+      await screen.findByRole('button', { name: /New notice issued/ }),
     ).toBeInTheDocument()
   })
 
@@ -353,7 +450,7 @@ describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
     await renderApp()
 
     await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
-    await screen.findByRole('button', { name: 'Read all 2 ATC trail updates' })
+    await screen.findByRole('button', { name: 'Read all 2 trail notices' })
 
     expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
   })
@@ -363,13 +460,13 @@ describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
     await renderApp()
 
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Silence new ATC alerts' }),
+      await screen.findByRole('button', { name: 'Silence new trail notices' }),
     )
 
     expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
-    expect(screen.queryByRole('dialog', { name: /Appalachian Trail Conservancy/ })).toBe(
-      null,
-    )
+    expect(
+      screen.queryByRole('dialog', { name: 'Every trail notice OurHike holds' }),
+    ).toBe(null)
   })
 
   it('is also silenced by reading the full list instead', async () => {
@@ -377,12 +474,12 @@ describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
     await renderApp()
 
     await userEvent.click(
-      await screen.findByRole('button', { name: 'ATC · New alert issued' }),
+      await screen.findByRole('button', { name: /New notice issued/ }),
     )
 
     expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
     expect(
-      screen.getByRole('dialog', { name: /Appalachian Trail Conservancy/ }),
+      screen.getByRole('dialog', { name: 'Every trail notice OurHike holds' }),
     ).toBeInTheDocument()
   })
 })

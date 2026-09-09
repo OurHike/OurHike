@@ -12,13 +12,16 @@ import gzip
 import json
 import pathlib
 import re
+import time
+from functools import partial
 
 import boto3
 import pytest
+from boto3.s3.transfer import TransferConfig
 from moto import mock_aws
 
 import publish
-from lib import data_env
+from lib import data_change, data_env
 from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
 
 BUCKET = "ourhike-test-bucket"
@@ -316,8 +319,30 @@ def test_offline_sheet_archives_are_the_basemap_cuts_and_the_dem():
     assert publish.OFFLINE_SHEET_ARCHIVES == {
         "basemap": "at_basemap_package.pmtiles",
         "basemap_z13": "at_basemap_package_z13.pmtiles",
+        "basemap_z12": "at_basemap_package_z12.pmtiles",
         "dem": "dem.pmtiles",
+        "dem_light": "dem_light.pmtiles",
     }
+
+
+def test_each_hiking_level_has_a_basemap_cut_and_a_dem():
+    """The hiking sheet's levels are pairs, and the pairing is what a hiker
+    downloads. A level with one half published and the other missing is the
+    404-on-a-mountain packages.ts remembers - so the two families are held to
+    the same count rather than growing independently."""
+    basemaps = {k for k in publish.OFFLINE_SHEET_ARCHIVES if k.startswith("basemap")}
+    dems = {k for k in publish.OFFLINE_SHEET_ARCHIVES if k.startswith("dem")}
+
+    assert len(basemaps) == 3, f"three basemap cuts - light/standard/fine: {basemaps}"
+    assert len(dems) == 2, f"two DEM tapers - light and the one both other levels share: {dems}"
+
+
+def test_the_light_dem_is_not_named_as_a_zoom_capped_cut():
+    """R2_LAYOUT.md reserves `_z<maxzoom>` for an archive that really stops at
+    that zoom. The Light DEM is z0-13 like its sibling and narrows at the deep
+    end instead (#1088), so a `_z12` spelling would promise a ceiling that is
+    not there - and the additive-only merge means a wrong name is permanent."""
+    assert "z" not in publish.OFFLINE_SHEET_ARCHIVES["dem_light"].removesuffix(".pmtiles").split("_")[-1]
 
 
 def test_offline_sheet_archives_do_not_collide_with_the_raster_tiers():
@@ -561,6 +586,14 @@ def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, loc
 # and a card resolving to a 404 on a mountain.
 
 
+def _refuse_one_object_at_a_time(**kwargs):
+    """A `head_object` that fails the test rather than answering it. Since
+    #1311 a publish asks the prefix ONE listing and nothing per object, and a
+    HEAD creeping back in is a per-photo round trip nothing would otherwise
+    notice - the run would still be correct, just slow again."""
+    raise AssertionError(f"the publish asked about {kwargs.get('Key')!r} one object at a time")
+
+
 def _poi_artifact(tmp_path, properties_list):
     path = tmp_path / "poi_shelters.geojson"
     features = [{"type": "Feature", "properties": props, "geometry": None} for props in properties_list]
@@ -583,6 +616,28 @@ def test_referenced_photo_keys_reads_the_card_key_and_the_gallery(tmp_path):
     assert publish.referenced_photo_keys(artifacts) == {"photos/aaa.jpg", "photos/bbb.jpg"}
 
 
+def test_referenced_photo_keys_reads_the_suggested_hikes_photographs(tmp_path):
+    """#1290: a published route's photo is a `photos/<digest>.jpg` key in the
+    same store, and the same promise - verify_photo_promises() must settle
+    it against the bucket, or a card would resolve a key nobody uploaded."""
+    path = tmp_path / "suggested_hikes.json"
+    path.write_text(
+        json.dumps(
+            {
+                "hikes": [
+                    {"id": "a", "photo": {"url": "photos/ccc.jpg", "credit": "c", "licence": "l"}},
+                    {"id": "b"},
+                    {"id": "c", "photo": {"url": "https://elsewhere.test/hosted.jpg", "credit": "c", "licence": "l"}},
+                ]
+            }
+        )
+    )
+
+    keys = publish.referenced_photo_keys({publish.SUGGESTED_HIKES_KEY: {"path": str(path), "sha256": "irrelevant"}})
+
+    assert keys == {"photos/ccc.jpg"}
+
+
 def test_referenced_photo_keys_ignores_artifacts_that_are_not_poi_layers(tmp_path):
     path = tmp_path / "trails.geojson"
     path.write_text(json.dumps({"type": "FeatureCollection", "features": [{"properties": {"photo_key": "photos/x.jpg"}}]}))
@@ -595,8 +650,13 @@ def test_referenced_photo_keys_ignores_artifacts_that_are_not_poi_layers(tmp_pat
 def test_a_promise_backed_by_the_bucket_passes_without_local_bytes(s3_client, local_artifacts, tmp_path):
     """The whole point of #465: a cold machine whose data/ tree is empty can
     still publish, because the corpus is already content-addressed in the
-    bucket and a HEAD per referenced key proves it."""
+    bucket and what the bucket holds is checkable from here.
+
+    Checkable from ONE listing of the prefix since #1311, which is what the
+    exploding `head_object` pins: this promise is settled against that
+    listing, not against a HEAD per referenced key."""
     s3_client.put_object(Bucket=BUCKET, Key="photos/aaa.jpg", Body=b"\xff\xd8 already there")
+    s3_client.head_object = _refuse_one_object_at_a_time
     artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": "photos/aaa.jpg"}])}
 
     result = publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
@@ -616,9 +676,13 @@ def test_a_promise_backed_by_nothing_fails_the_publish_before_any_artifact_lands
         s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
 
 
-def test_a_promise_backed_by_the_local_store_passes_without_a_head_request(s3_client, local_artifacts, local_photos, tmp_path):
-    """A key in the local store was just settled by upload_photos - HEADing
-    it again would double the request count for the common case."""
+def test_a_promise_backed_by_the_local_store_is_settled_though_the_listing_predates_it(
+    s3_client, local_artifacts, local_photos, tmp_path
+):
+    """A key in the local store was settled by upload_photos a moment ago -
+    and since #1311 the listing the check reads was taken BEFORE that upload,
+    so this key is not in it. The local-store check is the only thing that
+    passes this publish, which is why it is tested on its own."""
     key = next(iter(local_photos))
     artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": key}])}
 
@@ -910,12 +974,94 @@ def test_the_manifest_is_never_cached(s3_client, local_artifacts):
     assert "ContentEncoding" not in stored
 
 
-def _write_nearby_manifest(tmp_path, sources):
+def _write_nearby_manifest(tmp_path, sources, *, tiles=False, cells=False):
     artifact = tmp_path / "nearby_trails.geojson"
     artifact.write_text('{"type":"FeatureCollection","features":[]}')
-    (tmp_path / "nearby_trails_manifest.json").write_text(
-        json.dumps({"path": str(artifact), "sha256": "n34rby", "feature_count": 3663, "sources": sources})
-    )
+    manifest = {"path": str(artifact), "sha256": "n34rby", "feature_count": 3663, "sources": sources}
+    if tiles:
+        archive = tmp_path / "nearby_trails.pmtiles"
+        archive.write_bytes(b"PMTiles")
+        manifest["tiles"] = {"path": str(archive), "sha256": "t1l3s", "layer": "trails", "min_zoom": 9, "max_zoom": 14}
+    (tmp_path / "nearby_trails_manifest.json").write_text(json.dumps(manifest))
+    if cells:
+        # cut_cells.py's own manifest for the nearby_trails family, beside the
+        # export's - what the workflow's cut step leaves in PROCESSED_DIR.
+        entries = {}
+        for name in ("nearby_trails_cells.json", "nearby_trails_cell_n41w075.pmtiles"):
+            (tmp_path / name).write_bytes(b"cut " + name.encode())
+            entries[name] = {"path": str(tmp_path / name), "sha256": f"c3ll-{name}", "size_bytes": 4 + len(name)}
+        (tmp_path / "nearby_trails_cells_manifest.json").write_text(json.dumps({"artifacts": entries, "stats": {}}))
+
+
+def test_collect_publishes_the_network_tiles_inside_the_lines_own_gate(tmp_path, monkeypatch):
+    """The vector tiles (#1257) are the same stewards' geometry re-cut, so
+    they ship with the lines - one decision, three files."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}}, tiles=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["nearby_trails.geojson"]["sha256"] == "n34rby"
+    assert artifacts[publish.NEARBY_TRAILS_TILES_KEY]["sha256"] == "t1l3s"
+
+
+def test_collect_holds_back_the_network_tiles_with_the_lines(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}}, tiles=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert publish.NEARBY_TRAILS_TILES_KEY not in artifacts
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_collect_publishes_the_network_cells_inside_the_lines_own_gate(tmp_path, monkeypatch):
+    """The tiles' 1-degree cells (#1257 stage 2) are the same stewards'
+    geometry cut a fourth way, so they ship with the lines - and through
+    the gated branch, never the ungated sheet loop."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}}, tiles=True, cells=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["nearby_trails_cells.json"]["sha256"] == "c3ll-nearby_trails_cells.json"
+    assert artifacts["nearby_trails_cell_n41w075.pmtiles"]["sha256"] == "c3ll-nearby_trails_cell_n41w075.pmtiles"
+    assert artifacts["nearby_trails_cell_n41w075.pmtiles"]["size_bytes"] == len(b"cut nearby_trails_cell_n41w075.pmtiles")
+
+
+def test_collect_holds_back_the_network_cells_with_the_lines(tmp_path, monkeypatch, capsys):
+    """A steward held back holds back their cells too. This is the test the
+    family's placement exists for: had `nearby_trails` gone into
+    CELL_FAMILIES, the ungated loop would have published these."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}}, tiles=True, cells=True)
+
+    artifacts = publish.collect_artifacts()
+
+    assert not any(name.startswith("nearby_trails") for name in artifacts)
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_the_network_cell_family_is_gated_and_still_a_family():
+    # Two tuples on purpose: what the ungated loop walks, and what
+    # cut_cells.py can be asked for at all (which test_r2_keys.py and
+    # verify_release.py's check 20 both enumerate from).
+    assert publish.NEARBY_TRAILS_CELL_FAMILY not in publish.CELL_FAMILIES
+    assert publish.NEARBY_TRAILS_CELL_FAMILY in publish.ALL_CELL_FAMILIES
+    assert set(publish.CELL_FAMILIES) < set(publish.ALL_CELL_FAMILIES)
+
+
+def test_collect_treats_a_manifest_written_before_the_tiles_as_an_absence(tmp_path, monkeypatch):
+    # An export from before write_tiles existed publishes its lines and no
+    # tileset, and the client reads the missing key as "no lines above the
+    # seam" rather than as a failure.
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_nearby_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "nearby_trails.geojson" in artifacts
+    assert publish.NEARBY_TRAILS_TILES_KEY not in artifacts
 
 
 def test_collect_holds_back_the_network_while_any_steward_has_not_stated_terms(tmp_path, monkeypatch, capsys):
@@ -1037,21 +1183,21 @@ def test_every_conditions_manifest_an_export_writes_is_one_publish_collects():
     )
 
 
-def test_collect_gathers_the_stretch_units_from_their_manifests(tmp_path, monkeypatch):
-    """#556: each sheet's cut leaves <family>_stretches_manifest.json in
-    PROCESSED_DIR and every artifact it names - stretches, context, the
-    coverage index - publishes like any other."""
+def test_collect_gathers_the_coverage_cells_from_their_manifests(tmp_path, monkeypatch):
+    """#1175: each sheet's cut leaves <family>_cells_manifest.json in
+    PROCESSED_DIR and every artifact it names - cells, context, the coverage
+    index - publishes like any other."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
-    stretch = tmp_path / "at_basemap_stretch_00.pmtiles"
-    stretch.write_bytes(b"stretch-bytes")
-    index = tmp_path / "at_basemap_stretches.json"
+    cell = tmp_path / "at_basemap_cell_n40w075.pmtiles"
+    cell.write_bytes(b"cell-bytes")
+    index = tmp_path / "at_basemap_cells.json"
     index.write_text("{}")
-    (tmp_path / "at_basemap_stretches_manifest.json").write_text(
+    (tmp_path / "at_basemap_cells_manifest.json").write_text(
         json.dumps(
             {
                 "artifacts": {
-                    "at_basemap_stretch_00.pmtiles": {"path": str(stretch), "sha256": "a" * 64, "size_bytes": 13},
-                    "at_basemap_stretches.json": {"path": str(index), "sha256": "b" * 64, "size_bytes": 2},
+                    "at_basemap_cell_n40w075.pmtiles": {"path": str(cell), "sha256": "a" * 64, "size_bytes": 13},
+                    "at_basemap_cells.json": {"path": str(index), "sha256": "b" * 64, "size_bytes": 2},
                 },
                 "stats": {"seam_duplication_pct": 1.0},
             }
@@ -1060,12 +1206,12 @@ def test_collect_gathers_the_stretch_units_from_their_manifests(tmp_path, monkey
 
     artifacts = publish.collect_artifacts()
 
-    assert artifacts["at_basemap_stretch_00.pmtiles"]["sha256"] == "a" * 64
-    assert artifacts["at_basemap_stretches.json"]["sha256"] == "b" * 64
+    assert artifacts["at_basemap_cell_n40w075.pmtiles"]["sha256"] == "a" * 64
+    assert artifacts["at_basemap_cells.json"]["sha256"] == "b" * 64
 
 
 def test_collect_publishes_every_artifacts_measured_size(tmp_path, monkeypatch):
-    """#505's third ask, needed for real at stretch scale (#556): size_bytes
+    """#505's third ask, needed for real at cell scale (#1175): size_bytes
     is measured from the built file, never hand-kept."""
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
     path = tmp_path / "background.pmtiles"
@@ -1079,7 +1225,7 @@ def test_collect_publishes_every_artifacts_measured_size(tmp_path, monkeypatch):
 def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
     """The size rides beside the hash in latest.json, so drift between the
     advertised figure and the served bytes is visible in a manifest diff -
-    and per-stretch download prompts have an honest number to print."""
+    and per-cell download prompts have an honest number to print."""
     artifact = tmp_path / "background.pmtiles"
     artifact.write_bytes(b"0123456789")
 
@@ -1095,6 +1241,46 @@ def test_the_manifest_version_carries_size_bytes(tmp_path, s3_client):
     body = s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read()
     manifest = json.loads(body)
     assert manifest["artifacts"]["background.pmtiles"]["size_bytes"] == 10
+
+
+def _write_graph_cells_manifest(tmp_path):
+    """cut_trail_graph.py's own manifest for its family - what the workflow's
+    cut step leaves in PROCESSED_DIR beside the graph's."""
+    entries = {}
+    for name in ("trail_graph_cells.json", "trail_graph_cell_n41w075.json", "trail_graph_geometry_cell_n41w075.json"):
+        (tmp_path / name).write_bytes(b"cut " + name.encode())
+        entries[name] = {"path": str(tmp_path / name), "sha256": f"c3ll-{name}", "size_bytes": 4 + len(name)}
+    (tmp_path / "trail_graph_cells_manifest.json").write_text(json.dumps({"artifacts": entries, "stats": {}, "sources": {}}))
+
+
+def test_collect_publishes_the_graph_cells_inside_the_graphs_own_gate(tmp_path, monkeypatch):
+    """The per-cell shards (#1257 stage 3) are the same stewards' topology
+    re-cut, so they ship with the graph - through the gated branch, never
+    the ungated sheet loop."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+    _write_graph_cells_manifest(tmp_path)
+
+    artifacts = publish.collect_artifacts()
+
+    assert artifacts["trail_graph_cells.json"]["sha256"] == "c3ll-trail_graph_cells.json"
+    assert artifacts["trail_graph_geometry_cell_n41w075.json"]["size_bytes"] == len(b"cut trail_graph_geometry_cell_n41w075.json")
+
+
+def test_collect_holds_back_the_graph_cells_with_the_graph(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}})
+    _write_graph_cells_manifest(tmp_path)
+
+    artifacts = publish.collect_artifacts()
+
+    assert not any(name.startswith("trail_graph") for name in artifacts)
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_the_graph_cell_family_is_gated_and_still_a_family():
+    assert publish.TRAIL_GRAPH_CELL_FAMILY not in publish.CELL_FAMILIES
+    assert publish.TRAIL_GRAPH_CELL_FAMILY in publish.ALL_CELL_FAMILIES
 
 
 def _write_graph_manifest(tmp_path, sources):
@@ -1149,3 +1335,660 @@ def test_collect_treats_an_unbuilt_graph_as_an_absence(tmp_path, monkeypatch):
     monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
 
     assert "trail_graph.json" not in publish.collect_artifacts()
+
+
+def _write_graph_profile_manifest(tmp_path, sources):
+    artifact = tmp_path / "trail_graph_profile.json"
+    artifact.write_text("[[100,101],null]")
+    (tmp_path / "trail_graph_profile_manifest.json").write_text(
+        json.dumps({"path": str(artifact), "sha256": "pr0f1le", "edges": 2, "sources": sources})
+    )
+
+
+def test_collect_holds_back_the_dense_profile_on_the_same_licence_gate_as_its_lines(tmp_path, monkeypatch, capsys):
+    """The dense per-edge profile (#1045) is terrain sampled along
+    nearby_trails.geojson's own lines, one derivation further out than the
+    graph and its climb. It inherits the same reaches_hikers gate: a chart of
+    ground a steward has not licensed is still that steward's data."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_profile_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": False}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "trail_graph_profile.json" not in artifacts
+    assert "HELD BACK" in capsys.readouterr().out
+
+
+def test_collect_publishes_the_dense_profile_once_every_steward_has_answered(tmp_path, monkeypatch):
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_profile_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+
+    assert publish.collect_artifacts()["trail_graph_profile.json"]["sha256"] == "pr0f1le"
+
+
+def test_collect_publishes_the_dense_profile_without_its_two_scalar_sibling(tmp_path, monkeypatch):
+    """The two elevation artifacts answer different questions - one prices a
+    walk, the other draws it - and each degrades on its own. Binding them here
+    would make a chart-only regression take the card's figures down with it."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    _write_graph_profile_manifest(tmp_path, {"oprhp_trails": {"reaches_hikers": True}})
+
+    artifacts = publish.collect_artifacts()
+
+    assert "trail_graph_profile.json" in artifacts
+    assert "trail_graph_elevation.json" not in artifacts
+
+
+def test_collect_treats_an_unbuilt_dense_profile_as_an_absence(tmp_path, monkeypatch):
+    # A publish without `include_elevation` ships a graph and no chart data,
+    # which the client reads as "no ribbon for this hike" rather than as a
+    # failure - the same reading an absent elevation_profile.json already gets.
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+
+    assert "trail_graph_profile.json" not in publish.collect_artifacts()
+
+
+# ------------------------------------------- what changed, described (#919)
+#
+# `lib/data_change.py` decides what a change IS and is tested there. These are
+# about the wiring publish.py owns: that the diff reads the bytes it is meant
+# to, before they are overwritten; that the manifest says which hop it
+# describes; and that a description failing never costs a release.
+
+
+def _write_fc(path, features):
+    path.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+
+
+def _poi_feature(identity, lat=41.0):
+    return {"type": "Feature", "properties": {"id": identity}, "geometry": {"type": "Point", "coordinates": [-74.0, lat]}}
+
+
+@pytest.fixture
+def water_artifact(tmp_path):
+    """One vector artifact whose contents a test can rewrite between publishes."""
+    path = tmp_path / "poi_water.geojson"
+
+    def write(features):
+        _write_fc(path, features)
+        return {"poi_water.geojson": {"path": str(path), "sha256": publish.sha256_file(path)}}
+
+    return write
+
+
+def test_a_first_publication_is_described_as_one(s3_client, water_artifact):
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+
+    assert manifest["artifacts"]["poi_water.geojson"]["change"]["first_publication"] is True
+    assert manifest["previous_version"] is None
+
+
+def test_an_added_point_is_described_against_the_bytes_that_were_live(s3_client, water_artifact):
+    """The ordering this wiring exists to get right: the diff has to read the
+    published copy BEFORE the upload replaces it."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    change = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"][
+        "change"
+    ]
+    assert change == {"severity": data_change.ROUTINE, "added": 1, "removed": 0, "moved": 0, "edited": 0}
+
+
+def test_a_removed_point_is_described_as_consequential(s3_client, water_artifact):
+    publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    change = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"][
+        "change"
+    ]
+    assert change["severity"] == data_change.CONSEQUENTIAL
+    assert change["removed"] == 1
+
+
+def test_the_manifest_names_the_version_its_descriptions_are_relative_to(s3_client, water_artifact):
+    """A phone two releases behind must be able to tell that these descriptions
+    do not cover its own hop."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+    first = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["version"]
+
+    publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert manifest["previous_version"] == first
+    assert manifest["version"] != first
+
+
+def test_an_artifact_that_did_not_change_carries_no_stale_description(s3_client, water_artifact, tmp_path):
+    """A description names a transition. Carrying one forward onto a release it
+    is not about is the confident-and-wrong answer the field exists to avoid."""
+    other = tmp_path / "poi_shelter.geojson"
+    _write_fc(other, [_poi_feature("s1")])
+    shelter = {"poi_shelter.geojson": {"path": str(other), "sha256": publish.sha256_file(other)}}
+
+    publish.publish({**water_artifact([_poi_feature("a")]), **shelter}, s3_client=s3_client, bucket=BUCKET)
+    # Only the water layer changes this time; the shelter bytes are identical.
+    publish.publish({**water_artifact([_poi_feature("a"), _poi_feature("b")]), **shelter}, s3_client=s3_client, bucket=BUCKET)
+
+    artifacts = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]
+    assert "change" in artifacts["poi_water.geojson"]
+    assert "change" not in artifacts["poi_shelter.geojson"]
+
+
+def test_archives_are_not_described(s3_client, tmp_path):
+    """Vector-only, the maintainer's decision (2026-08-21). Reading the previous
+    copy of a 1.18 GB archive to describe it would cost more than the sentence
+    is worth."""
+    archive = tmp_path / "background.pmtiles"
+    archive.write_bytes(b"not really an archive")
+
+    publish.publish(
+        {"background.pmtiles": {"path": str(archive), "sha256": publish.sha256_file(archive)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert "change" not in manifest["artifacts"]["background.pmtiles"]
+
+
+def test_conditions_are_not_described(s3_client, tmp_path):
+    """They already refresh on every launch, and their baked generated_at moves
+    the hash daily - a description there would mean nothing every day."""
+    path = tmp_path / "closures.json"
+    path.write_text(json.dumps({"items": []}))
+
+    publish.publish(
+        {"conditions/closures.json": {"path": str(path), "sha256": publish.sha256_file(path)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    manifest = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())
+    assert "change" not in manifest["artifacts"]["conditions/closures.json"]
+
+
+def test_a_description_that_cannot_be_produced_never_fails_the_publish(s3_client, water_artifact, monkeypatch):
+    """The data is fine; only the sentence about it is missing. Losing a release
+    over that would be the wrong trade in the obvious direction - and the phone
+    still asks, because an unreadable change is CONSEQUENTIAL."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("bucket had a bad day")
+
+    monkeypatch.setattr(publish, "_published_bytes", explode)
+    result = publish.publish(water_artifact([_poi_feature("a"), _poi_feature("b")]), s3_client=s3_client, bucket=BUCKET)
+
+    assert result["uploaded"] == ["poi_water.geojson"]
+    change = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"][
+        "change"
+    ]
+    assert change["severity"] == data_change.CONSEQUENTIAL
+    assert "RuntimeError" in change["unreadable"]
+
+
+def test_the_gzipped_object_is_decompressed_before_it_is_diffed(s3_client, water_artifact):
+    """upload_args stores .geojson gzipped, and boto3 hands back what is stored
+    rather than what a browser would see. Read raw, every release would look
+    like unreadable bytes and every update would be CONSEQUENTIAL."""
+    publish.publish(water_artifact([_poi_feature("a")]), s3_client=s3_client, bucket=BUCKET)
+    stored = s3_client.get_object(Bucket=BUCKET, Key="poi_water.geojson")
+    assert stored.get("ContentEncoding") == "gzip"
+
+    assert publish._published_bytes(s3_client, BUCKET, "poi_water.geojson").startswith(b'{"type"')
+
+
+def test_the_manifest_carries_what_a_phone_will_actually_transfer(s3_client, water_artifact, tmp_path):
+    """The gzipped size, not the decoded one - `size_bytes` is ~3x larger for
+    the text artifacts, and this figure is shown to a hiker deciding whether to
+    spend it on mobile data."""
+    artifacts = water_artifact([_poi_feature(f"p{i}") for i in range(200)])
+    publish.publish(artifacts, s3_client=s3_client, bucket=BUCKET)
+
+    entry = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"]
+    on_disk = pathlib.Path(artifacts["poi_water.geojson"]["path"]).stat().st_size
+    assert entry["transfer_bytes"] < on_disk
+    assert entry["transfer_bytes"] == s3_client.head_object(Bucket=BUCKET, Key="poi_water.geojson")["ContentLength"]
+
+
+def test_an_unchanged_artifact_keeps_the_transfer_size_an_earlier_run_measured(s3_client, water_artifact, tmp_path):
+    """A skipped artifact is never gzipped, so this run measures nothing for it.
+    Dropping the figure would make a manifest lose sizes the longer nothing
+    changed, which is exactly backwards."""
+    water = water_artifact([_poi_feature("a")])
+    publish.publish(water, s3_client=s3_client, bucket=BUCKET)
+    measured = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"][
+        "poi_water.geojson"
+    ]["transfer_bytes"]
+
+    # A second publish with the water layer untouched, and something else moving
+    # so that publish() has an upload and writes a new manifest at all.
+    other = tmp_path / "spurs.json"
+    other.write_text(json.dumps({"n": 1}))
+    publish.publish(
+        {**water, "spurs.json": {"path": str(other), "sha256": publish.sha256_file(other)}},
+        s3_client=s3_client,
+        bucket=BUCKET,
+    )
+
+    entry = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]["poi_water.geojson"]
+    assert entry["transfer_bytes"] == measured
+
+
+def test_collect_publishes_the_vertex_miles_beside_the_trails_they_describe(tmp_path, monkeypatch):
+    """#1192: export_trails.write_trail_miles' manifest entry becomes the flat
+    `trail_miles.json` key the client fetches - and an older manifest without
+    one publishes no such key, which the client reads as "measure the line
+    yourself" rather than as a failure."""
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path)
+    geojson = tmp_path / "trails.geojson"
+    geojson.write_text("lines")
+    miles = tmp_path / "trail_miles.json"
+    miles.write_text("miles")
+    manifest = {"geojson": {"path": str(geojson), "sha256": "lines-hash"}}
+    (tmp_path / "trails_manifest.json").write_text(json.dumps(manifest))
+    assert publish.TRAIL_MILES_KEY not in publish.collect_artifacts()
+
+    manifest["miles"] = {"path": str(miles), "sha256": "miles-hash", "vertex_count": 3}
+    (tmp_path / "trails_manifest.json").write_text(json.dumps(manifest))
+
+    entry = publish.collect_artifacts()[publish.TRAIL_MILES_KEY]
+    assert (entry["path"], entry["sha256"]) == (str(miles), "miles-hash")
+
+
+# ------------------------------ what a publish spends per object (#1311) ---
+#
+# Run #88 of publish-vector-data.yml (2026-09-08) spent 35:47 in "Publish to
+# R2" moving 1,267.68 MB across 1,715 artifacts plus ~3,016 photo objects -
+# 0.45 s per object, one sequential round trip each, while the same runner
+# wrote 422 MB into the Actions cache at 172 MB/s. That is root cause 3 of
+# #1311, "The vector build went from 20 to 108 minutes in twelve days".
+#
+# NONE OF THESE TESTS MEASURE A SPEED-UP, and they are not meant to: moto
+# answers in microseconds, so a suite here can say nothing about a round trip
+# on a runner. What it can hold is the shape of the fix and the four things
+# parallelism is capable of quietly breaking - the stage orderings, the
+# per-artifact figures, the loud photo check, and a worker's failure being the
+# publish's failure.
+
+
+@pytest.fixture
+def many_artifacts(tmp_path):
+    """Thirty artifacts - comfortably more than PUBLISH_CONCURRENCY, so the
+    upload stage really does run several threads rather than taking
+    `_in_parallel`'s trivial path."""
+    artifacts = {}
+    for index in range(30):
+        path = tmp_path / f"poi_cell_{index:03d}.geojson"
+        _write_fc(path, [_poi_feature(f"p{index}")])
+        artifacts[path.name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+    return artifacts
+
+
+def test_every_changed_artifact_lands_and_the_pointer_is_written_last(s3_client, many_artifacts):
+    """The property the upload loop had for free when it was a `for`: every
+    artifact in `changed` is in the bucket, and `latest.json` - the pointer
+    every client fetches first - is written after the last of them. Parallelism
+    is within the stage, never across it."""
+    seen: list[str] = []
+    real_upload, real_put = s3_client.upload_file, s3_client.put_object
+
+    def record_upload(path, bucket, key, **kwargs):
+        result = real_upload(path, bucket, key, **kwargs)
+        seen.append(key)
+        return result
+
+    def record_put(**kwargs):
+        result = real_put(**kwargs)
+        seen.append(kwargs["Key"])
+        return result
+
+    s3_client.upload_file, s3_client.put_object = record_upload, record_put
+
+    result = publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert sorted(result["uploaded"]) == sorted(many_artifacts)
+    assert set(many_artifacts) <= set(_keys_in(s3_client))
+    # Every upload is behind the pointer, not merely most of them.
+    assert seen[-1] == publish.MANIFEST_KEY
+    assert set(many_artifacts) <= set(seen)
+
+
+def test_each_artifact_keeps_its_own_transfer_size_when_they_upload_together(s3_client, tmp_path):
+    """The figure `dataRefresh.ts` prints to a hiker deciding whether to spend
+    mobile data on an update. Measured inside the worker and recorded against
+    the name that worker returned, so thirty threads cannot hand one artifact
+    another's number - which would be a wrong figure shown rather than a crash,
+    and so would never be noticed."""
+    artifacts = {}
+    for index in range(20):
+        path = tmp_path / f"poi_cell_{index:03d}.geojson"
+        # Deliberately different lengths, so a swapped figure is visible.
+        _write_fc(path, [_poi_feature(f"p{n}") for n in range(index + 1)])
+        artifacts[path.name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+
+    publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    published = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]
+    for name in artifacts:
+        assert published[name]["transfer_bytes"] == s3_client.head_object(Bucket=BUCKET, Key=name)["ContentLength"]
+
+
+def test_a_photo_the_prefix_listing_already_shows_is_not_uploaded_again(s3_client, local_artifacts, local_photos):
+    """One paginated listing of `photos/` in place of a HEAD per photo. The key
+    IS the hash, so a key the listing shows is by construction the bytes we
+    were about to send - and the listing is the only thing asked, which is what
+    stubbing `head_object` into a failure asserts."""
+    already, fresh = sorted(local_photos)
+    s3_client.put_object(Bucket=BUCKET, Key=already, Body=pathlib.Path(local_photos[already]).read_bytes())
+    s3_client.head_object = _refuse_one_object_at_a_time
+
+    result = publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["photos_uploaded"] == [fresh]
+    assert s3_client.get_object(Bucket=BUCKET, Key=fresh)["Body"].read() == pathlib.Path(local_photos[fresh]).read_bytes()
+
+
+def test_a_ua_publish_does_not_read_productions_photos_as_already_there(s3_client, local_artifacts, local_photos):
+    """The listing is scoped to the publishing environment's prefix, and this
+    is why: `photos/` is the one hiker-facing prefix objects are DELETED from,
+    so a UA publish seeing production's corpus as present would let a
+    withdrawal rehearsed in UA take a picture out of production."""
+    publish.publish(
+        local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET, environment="production"
+    )
+
+    result = publish.publish(
+        local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET, environment="ua"
+    )
+
+    assert sorted(result["photos_uploaded"]) == sorted(local_photos)
+    assert {f"environments/ua/{key}" for key in local_photos} <= set(_keys_in(s3_client))
+
+
+def test_a_promise_the_prefix_listing_cannot_back_still_fails_by_name(s3_client, local_artifacts, tmp_path):
+    """The loud half of #465, now settled against the listing rather than a
+    HEAD per referenced key. What must not have changed with the mechanism: an
+    artifact naming a photo that is in neither the local store nor the bucket
+    fails the publish, by name, before the manifest can make the promise
+    reachable. This is the check standing between a hiker's card and a 404.
+
+    `head_object` explodes so that the raise is the listing's verdict rather
+    than a surviving per-key HEAD's - the mechanism changed under this check,
+    and a test that passes either way would not have noticed."""
+    s3_client.put_object(Bucket=BUCKET, Key="photos/aaa.jpg", Body=b"\xff\xd8 already there")
+    s3_client.head_object = _refuse_one_object_at_a_time
+    artifacts = {
+        **local_artifacts,
+        **_poi_artifact(tmp_path, [{"photo_key": "photos/aaa.jpg"}, {"photo_key": "photos/bbb.jpg"}]),
+    }
+
+    with pytest.raises(RuntimeError, match=re.escape("photos/bbb.jpg")):
+        publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    with pytest.raises(s3_client.exceptions.NoSuchKey):
+        s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
+
+
+# Every name the junction graph publishes under: the four whole files, the
+# cell index, and one cell's routing and geometry shards
+# (pipeline/cut_trail_graph.py's CELL_NAMES).
+GRAPH_FAMILY = (
+    "trail_graph.json",
+    "trail_graph_geometry.json",
+    "trail_graph_elevation.json",
+    "trail_graph_profile.json",
+    "trail_graph_cells.json",
+    "trail_graph_cell_n41w074.json",
+    "trail_graph_geometry_cell_n41w074.json",
+)
+
+
+def _graph_and_vector_layers(tmp_path, marker):
+    """The graph family plus the two vector layers the phone's "what changed"
+    prompt is actually built from - every one of them carrying `marker`, so a
+    second call changes every hash."""
+    artifacts = {}
+    for name in GRAPH_FAMILY:
+        path = tmp_path / name
+        # A keyed document of nodes and edges, which is what these really are -
+        # never a FeatureCollection, which is the whole point below.
+        path.write_text(json.dumps({"nodes": [[-74.0, 41.0]], "edges": [{"id": marker}]}))
+        artifacts[name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+    for name in ("poi_water.geojson", "trails.geojson"):
+        path = tmp_path / name
+        _write_fc(path, [_poi_feature(marker)])
+        artifacts[name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+    return artifacts
+
+
+def test_the_graph_family_is_neither_described_nor_downloaded_to_be_described(s3_client, tmp_path):
+    """`data_change.classify` grades every one of these `unreadable` - they are
+    keyed documents, not FeatureCollections - and it grades them that way AFTER
+    downloading them. On run #88 that was 78.9 MB of trail_graph.json, 224.4 MB
+    of trail_graph_geometry.json and 1,004 cell shards fetched back out of the
+    bucket to produce the same sentence 1,006 times."""
+    publish.publish(_graph_and_vector_layers(tmp_path, "a"), sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    read: list[str] = []
+    real_get = s3_client.get_object
+
+    def record_get(**kwargs):
+        read.append(kwargs["Key"])
+        return real_get(**kwargs)
+
+    s3_client.get_object = record_get
+    publish.publish(_graph_and_vector_layers(tmp_path, "b"), sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    published = json.loads(real_get(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]
+    for name in GRAPH_FAMILY:
+        assert "change" not in published[name], name
+        assert name not in read, f"{name} was fetched back only to be graded unreadable"
+    # And the layers the prompt is built from keep their descriptions, read
+    # from the bytes that were live - which is the half of this that a
+    # too-wide exclusion would silently take away.
+    assert "trails.geojson" in read
+    assert published["poi_water.geojson"]["change"]["removed"] == 1
+    assert published["trails.geojson"]["change"]["added"] == 1
+
+
+def test_the_release_folder_copies_everything_and_writes_its_manifest_last(s3_client, many_artifacts):
+    """A release folder must be complete or absent - a half-copied one has the
+    index advertising something incomplete as somewhere to roll back to. The
+    copies run together; the folder's own manifest is written after every one
+    of them has returned, so it never describes bytes that have not landed."""
+    order: list[str] = []
+    real_copy, real_put = s3_client.copy_object, s3_client.put_object
+
+    def record_copy(**kwargs):
+        result = real_copy(**kwargs)
+        order.append(kwargs["Key"])
+        return result
+
+    def record_put(**kwargs):
+        result = real_put(**kwargs)
+        order.append(kwargs["Key"])
+        return result
+
+    s3_client.copy_object, s3_client.put_object = record_copy, record_put
+
+    result = publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    folder = f"releases/{result['release']}/"
+    written = [key for key in order if key.startswith(folder)]
+    assert sorted(written) == sorted([f"{folder}{name}" for name in many_artifacts] + [f"{folder}manifest.json"])
+    assert written[-1] == f"{folder}manifest.json"
+    assert set(result["release_artifacts"]) == set(many_artifacts)
+
+
+def test_a_failed_artifact_upload_fails_the_publish_rather_than_moving_the_pointer(s3_client, many_artifacts):
+    """A worker's exception is the publish's exception. Swallowed, the run
+    would go on to write a `latest.json` naming a version whose bytes are not
+    all in the bucket - a 404 on a hiker's download instead of a failed job,
+    and nothing in the log to say which."""
+    doomed = sorted(many_artifacts)[7]
+    real_upload = s3_client.upload_file
+
+    def refuse_one(path, bucket, key, **kwargs):
+        if key == doomed:
+            raise RuntimeError("R2 refused this object")
+        return real_upload(path, bucket, key, **kwargs)
+
+    s3_client.upload_file = refuse_one
+
+    with pytest.raises(RuntimeError, match="R2 refused this object"):
+        publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    with pytest.raises(s3_client.exceptions.NoSuchKey):
+        s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
+
+
+def test_a_failed_photo_upload_fails_the_publish_before_any_artifact_lands(s3_client, local_artifacts, local_photos):
+    """The same rule one stage earlier, where the ordering argument is
+    sharpest: photos land before the artifacts that name them, so a photo
+    stage that failed quietly would leave a card pointing at a 404."""
+
+    def refuse_every_photo(path, bucket, key, **kwargs):
+        raise RuntimeError("R2 refused this photo")
+
+    s3_client.upload_file = refuse_every_photo
+
+    with pytest.raises(RuntimeError, match="R2 refused this photo"):
+        publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert _keys_in(s3_client) == []
+
+
+def test_a_corpus_larger_than_one_page_is_listed_all_the_way_to_the_end(s3_client):
+    """`list_objects_v2` answers a thousand keys at a time and the corpus is
+    already about three thousand (run #88 sent ~3,016 photo HEADs), so the
+    single-page version of this would report the tail of the corpus absent -
+    re-uploading it every run, and failing the publish by name for any photo
+    that lives only in the bucket. One key over the page size is all it takes
+    to reach the second page; the extra two keep this an assertion about a
+    page boundary rather than about an off-by-one."""
+    keys = sorted(photo_key(f"{index:064x}") for index in range(1003))
+    for key in keys:
+        s3_client.put_object(Bucket=BUCKET, Key=key, Body=b"\xff\xd8")
+    # One key in another environment, to hold the scoping while the pagination
+    # is being held: a UA publish must not read production's corpus as present.
+    s3_client.put_object(Bucket=BUCKET, Key=f"environments/ua/{keys[0]}", Body=b"\xff\xd8")
+
+    assert publish.published_photo_keys(s3_client, BUCKET) == set(keys)
+    assert publish.published_photo_keys(s3_client, BUCKET, "environments/ua/") == {keys[0]}
+
+
+def test_the_earliest_submitted_failure_is_the_one_a_publish_reports():
+    """Which exception surfaces has to be a property of the work, not of the
+    race: a publish that named a different object every time it was re-run
+    would send whoever is fixing it hunting a different fault each round.
+    Slowest-to-fail is submitted first here, so a version gathering results as
+    they complete would report the other one.
+
+    The same test holds the other half of `_in_parallel`'s promise: nothing is
+    still running against the bucket when the exception arrives. A stage that
+    failed while its own uploads went on landing behind it is the half-publish
+    every ordering rule in publish.py exists to prevent."""
+    for _ in range(3):
+        started, finished = [], []
+
+        def slow_failure():
+            started.append("slow")
+            time.sleep(0.05)
+            finished.append("slow")
+            raise RuntimeError("the earliest-submitted failure")
+
+        def quick_failure():
+            raise RuntimeError("a later one that finishes first")
+
+        def bystander(index):
+            started.append(index)
+            time.sleep(0.05)
+            finished.append(index)
+            return index
+
+        work = [partial(bystander, 0), slow_failure, quick_failure, *[partial(bystander, i) for i in range(3, 30)]]
+
+        with pytest.raises(RuntimeError, match="the earliest-submitted failure"):
+            publish._in_parallel(work)
+
+        assert sorted(started, key=str) == sorted(finished, key=str), "a worker was still running when the failure surfaced"
+
+
+def test_results_come_back_in_the_order_the_work_was_given():
+    """Everything reading `_in_parallel`'s answer pairs it with the list it
+    passed in - `describe_changes` zips it against the names, and the upload
+    stage relies on each result carrying its own name. Finishing order is
+    deliberately the reverse of submission order here."""
+    work = [partial(lambda i: (time.sleep((10 - i) * 0.005), i)[1], index) for index in range(10)]
+
+    assert publish._in_parallel(work) == list(range(10))
+
+
+def test_the_client_publish_builds_can_hold_every_request_it_opens(monkeypatch, s3_client, local_artifacts):
+    """The pool is invisible when it is wrong - botocore does not block on a
+    full one, it opens a connection outside the pool and drops it after,
+    paying a TLS handshake per 8 MiB part and logging a line nobody reads. So
+    the only place that can notice is here: the client publish() builds for
+    itself carries a pool covering the requests its own stages can open, which
+    is PUBLISH_CONCURRENCY times what a managed upload fans out to."""
+    seen = {}
+
+    def capture(*args, **kwargs):
+        seen.update(kwargs)
+        return s3_client
+
+    monkeypatch.setattr(publish.boto3, "client", capture)
+    for name in ("R2_ENDPOINT_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+        monkeypatch.setenv(name, "unused")
+
+    publish.publish(local_artifacts, sidecars={}, photos={}, bucket=BUCKET)
+
+    assert seen["config"].max_pool_connections == publish.PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
+
+
+def test_publishing_with_nothing_collected_fails_loudly(monkeypatch):
+    """An empty data/processed/ during a real publish is a broken handoff.
+
+    THE RUN THAT PROMPTED THIS (#1347). publish-vector-data.yml extracted the
+    build job's artifact to `pipeline/`, but upload-artifact roots an archive
+    at the least common ancestor of its search paths - `pipeline/data` here -
+    so the exports landed at `pipeline/processed/`. collect_artifacts() found
+    nothing under `pipeline/data/processed/`, main() returned normally, and
+    the workflow reported "Published to <env>" having uploaded nothing. Runs
+    #93, #94 - that one against production - and #98 all did this.
+
+    The branch had no test at all, which is how three runs got away with it.
+    """
+    monkeypatch.setattr(publish, "collect_artifacts", dict)
+
+    with pytest.raises(SystemExit) as raised:
+        publish.main()
+
+    # The message has to name the fix, because whoever reads it is looking at
+    # a green-until-now workflow and has no reason to suspect the extract path.
+    assert "publishing is enabled" in str(raised.value)
+    assert "handoff" in str(raised.value)
+
+
+def test_nothing_collected_without_writes_is_still_an_ordinary_empty_run(monkeypatch, capsys):
+    """The other half, and the reason the refusal above is conditional.
+
+    Run by hand or as a dry run, "nothing has been exported yet" is a true
+    answer and the right one - `writes_enabled()` is what separates the two,
+    so a contributor who has not run the exporters gets the message rather
+    than a traceback.
+    """
+    monkeypatch.delenv(publish.WRITE_ENABLED_ENV_VAR, raising=False)
+    monkeypatch.setattr(publish, "collect_artifacts", dict)
+
+    result = publish.main()
+
+    assert result["version_written"] is False
+    assert result["uploaded"] == []
+    assert "No exported artifacts found" in capsys.readouterr().out

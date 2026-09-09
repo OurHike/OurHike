@@ -51,6 +51,7 @@ from lib.club_sections import (
     canonical_clubs,
     is_attributable,
 )
+from lib.manifest_paths import to_manifest_path
 from lib.spurs import PointIndex
 
 ROOT = Path(__file__).parent
@@ -246,12 +247,14 @@ def main() -> dict:
     OUT_PATH.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n")
 
     digest = hashlib.sha256(OUT_PATH.read_bytes()).hexdigest()
-    # ABSOLUTE path, like every sibling manifest (export_trails.py's is the
-    # precedent publish-vector-data.yml cites): publish.py resolves this
-    # string against its own CWD, so the relative path this used to store
-    # crashed any publish not started from pipeline/ - mid-loop, which is
-    # exactly how a partial flat-key state gets made (#659).
-    manifest = {"path": str(OUT_PATH), "sha256": digest}
+    # Via to_manifest_path() (#1265) - not the plain relative path that used
+    # to live here: that one resolved against publish.py's CWD at
+    # invocation time, so any publish not started from pipeline/ crashed
+    # mid-loop, leaving a partial flat-key state published (#659).
+    # to_manifest_path()/from_manifest_path() resolve against Path(__file__)'s
+    # own directory instead of the CWD, the same fix lib/fetch_receipts.py
+    # already carries for receipts - see lib/manifest_paths.py.
+    manifest = {"path": to_manifest_path(OUT_PATH), "sha256": digest}
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n")
 
     unattributed_miles = sum(r["end_mile"] - r["start_mile"] for r in output["unattributed"])

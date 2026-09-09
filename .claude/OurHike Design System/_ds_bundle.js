@@ -651,8 +651,8 @@ function MembershipCallout() {
     action: /*#__PURE__*/React.createElement(Button, {
       variant: "primary",
       size: "m"
-    }, "Join Today")
-  }, "Membership starts at $25/year and funds trail crews, maps, and conservation programs across the region.")));
+    }, "Support Them")
+  }, "The organizations who maintain these trails take members and donations directly, on their own sites. OurHike takes no cut and holds no money.")));
 }
 function Homepage() {
   const NS = window.OurHikeDesignSystem_60cee1;

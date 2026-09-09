@@ -4,9 +4,9 @@ affine==2.4.0
     # via rasterio
 attrs==26.1.0
     # via rasterio
-boto3==1.43.76
+boto3==1.43.88
     # via -r requirements.in
-botocore==1.43.78
+botocore==1.43.89
     # via
     #   boto3
     #   s3transfer
@@ -39,9 +39,9 @@ pillow==12.3.0
     # via -r requirements.in
 pmtiles==3.7.0
     # via -r requirements.in
-psycopg[binary]==3.3.4
+psycopg[binary]==3.3.5
     # via -r requirements.in
-psycopg-binary==3.3.4
+psycopg-binary==3.3.5
     # via psycopg
 pyparsing==3.3.2
     # via rasterio

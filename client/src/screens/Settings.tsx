@@ -30,6 +30,8 @@ import { BackgroundPicker } from '../chrome/BackgroundPicker'
 import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
 import { typeLabel } from '../chrome/legendLabels'
+import { ModeSwitch } from '../chrome/ModeSwitch'
+import type { HikerMode } from '../lib/hikerMode'
 import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisibility'
 import { MapStylePicker } from './MapStylePicker'
 import { ThemePicker } from './ThemePicker'
@@ -47,6 +49,9 @@ export interface SettingsProps {
   onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /** The "today I'm…" mode, reflected under You - see YouSettingsProps. */
+  mode?: HikerMode
+  onChangeMode?: (mode: HikerMode) => void
   /**
    * The background, written through its own callback rather than `onChange`.
    *
@@ -143,6 +148,18 @@ export interface YouSettingsProps {
   onSignOut: () => void
   preferences: UserPreferences
   onChange: (patch: Partial<UserPreferences>) => void
+  /**
+   * The "today I'm…" mode and its setter (#1054, lib/hikerMode.ts).
+   *
+   * Reflected here so the state is discoverable from the place people look
+   * for preferences, but it is NOT a UserPreferences key and must not become
+   * one - the blob syncs at a schema with extra="forbid", and a mode is a
+   * statement about today on this phone (the module's header has the whole
+   * argument). Optional so a caller without the state renders no row rather
+   * than a dead control.
+   */
+  mode?: HikerMode
+  onChangeMode?: (mode: HikerMode) => void
 }
 
 // The account row (Phase E5) states plainly that signing out keeps
@@ -157,10 +174,22 @@ export function YouSettings({
   onSignOut,
   preferences,
   onChange,
+  mode,
+  onChangeMode,
 }: YouSettingsProps) {
   return (
     <section className="settings__group">
       <h2 className="settings__heading">You</h2>
+
+      {/* The same state the Today header's switch writes - one control in
+          two homes, never two states (chrome/ModeSwitch.tsx renders all
+          three segments always, and why is its comment to keep). */}
+      {mode !== undefined && onChangeMode !== undefined && (
+        <div className="settings__row settings__row--mode">
+          <span className="settings__label">Today I&rsquo;m</span>
+          <ModeSwitch mode={mode} onChange={onChangeMode} variant="paper" />
+        </div>
+      )}
 
       <p className="settings__row">
         <span className="settings__label">Trail name</span>
@@ -704,11 +733,23 @@ export function MapSettings({
         </p>
       </fieldset>
 
-      <label className="settings__row settings__row--later">
-        <span className="settings__label">Roads &amp; walkability</span>
-        <LaterTag />
-        <input type="checkbox" name="show_roads" disabled checked={false} readOnly />
-      </label>
+      {/* #931: this row claimed roads were off. They are not - map/liveTopo.ts
+          has drawn roads, tracks and OSM paths on the live sheet all along, so
+          an unticked box next to "Roads & walkability" was the settings screen
+          disagreeing with the map.
+
+          The control is still absent rather than wired, and deliberately.
+          MAP_OPTIONS.md §2's walkability tiers are what a toggle here would
+          govern, and they stay unbuilt for want of evidence: a road with a
+          shoulder and a road with a guardrail at 55 mph are the same OSM line
+          class. Wiring the preference as MAP_OPTIONS.md:204 specifies - off by
+          default - would also HIDE road context every hiker has today, which
+          is a worse answer than the one this row now gives. */}
+      <p className="settings__note">
+        <strong>Roads and tracks are on the map.</strong> OurHike draws them so you can
+        see them, and never routes a walk along one — nobody maintains a road for walking,
+        so there is nothing we can stand behind about it.
+      </p>
     </section>
   )
 }
@@ -793,25 +834,6 @@ export function SafetyPrivacySettings({
         just cannot say where you are on it.
       </p>
 
-      {/* The detection exists (lib/wrongWay.ts) and nothing runs it yet -
-          no monitor is wired, no cue is mounted, no push ever fires. Until
-          that changes, a live-looking switch here is the most dangerous
-          control in the app: a hiker who checks that it is on believes an
-          alarm is armed, and there is no alarm. "Later" is the same honest
-          treatment the other unbuilt rows get, and the preference key stays
-          (default on, lib/userPreferences.ts) so the day the monitor is
-          wired, every phone already has it enabled. */}
-      <label className="settings__row settings__row--later">
-        <span className="settings__label">Wrong-way alert</span>
-        <LaterTag />
-        <input
-          type="checkbox"
-          name="wrong_way_alert_enabled"
-          disabled
-          checked={false}
-          readOnly
-        />
-      </label>
       <label className="settings__row settings__row--later">
         <span className="settings__label">Hide my name on reports for…</span>
         <LaterTag />
@@ -824,9 +846,22 @@ export function SafetyPrivacySettings({
         />
       </label>
 
+      {/* WHAT THIS NOTICE PROMISES, AND WHY THE WORDING CHANGED (#1047).
+          It read "Closures and serious warnings are always shown. There is no
+          switch, here or anywhere." The second sentence was true until the
+          legend gained an Alerts switch, and a settings screen that goes on
+          denying a control a hiker can see is worse than one that says
+          nothing.
+
+          What is promised now is what this screen can actually keep: nothing
+          about the alert layers is a setting, nothing about them is saved, and
+          the map opens with them on. That is a stronger claim than it sounds -
+          it is the whole reason chrome/alertLayerPanel.ts holds the flag in a
+          `useState` rather than in the object this screen edits. */}
       <p className="settings__locked" role="note">
-        Closures and serious warnings are always shown. There is no switch, here or
-        anywhere.
+        Closures and serious warnings are not a setting. The legend can take them off the
+        map while you are looking at it — never for longer, and never on your other
+        phones. The map opens with them shown, and tells you what is ahead either way.
       </p>
     </section>
   )
@@ -903,8 +938,9 @@ export function DataSettings({
         </div>
       )}
       <p className="settings__note">
-        Map data: USGS US Topo, ATC GIS, © OpenStreetMap contributors, OpenFreeMap ©
-        OpenMapTiles, USGS 3DEP via AWS Terrain Tiles.
+        Map data: USGS US Topo, ATC GIS, NYNJTC, NY State Parks, Mohonk Preserve, NYS DEC,
+        © OpenStreetMap contributors, OpenFreeMap © OpenMapTiles, USGS 3DEP via AWS
+        Terrain Tiles.
       </p>
       {/* NDMC's credit, in their own words and unabridged (#720).
           droughtmonitor.unl.edu/About/Permission.aspx asks for this exact

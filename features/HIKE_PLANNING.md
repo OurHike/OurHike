@@ -62,6 +62,8 @@ They are compared anyway — `App.tsx` windows the elevation ribbon at the GPS f
 
 **Recommendation: one scale, and it is the pipeline's.** The client should stop deriving miles from geometry it re-measures locally, and read a mile that was computed once, upstream, on the same line the elevation profile was sampled along.
 
+> **Built (#1192 — A returning hiker's launch freezes for ten seconds while every waypoint is placed on the trail, on the main thread).** `export_trails.write_trail_miles` projects every centerline vertex of `trails.geojson` onto `calibrated_trail_axis` — the same call `attach_miles` makes for a POI — and publishes them as `trail_miles.json`, keyed by feature id and naming the hash of the line they were measured on. The client's index (`lib/trailPosition.ts`) reads those numbers instead of summing haversines, and says which it did (`onPipelineAxis`); on that axis a `StoredPoi.mile` *is* its position on the index, so the per-POI search this finding was a footnote to is gone, and `lib/route.ts`'s anchors are the identity (`SAME_AXIS_ANCHORS`). The phone's own measurement and the pairwise anchors stay for a release that predates the sidecar — the axes are still two there, and the code says so rather than pretending. What the anchors used to reconcile is now a *check*: the build samples two hundred waypoints, compares published against placed, and the console hears about a drift past a quarter-mile (`AXIS_DRIFT_WARN_MILES`, `@unvalidated`). Measured on the 2026-09-02 release: 216,759 vertex miles across 461 chains, 112 steps backward in 46 of them (the largest 0.27 mi, where the calibrated axis's nearest piece changes under a chain), each of which the client treats as a piece boundary rather than a run of trail.
+
 ## Finding 2 — the pipeline should publish a mile on every POI
 
 Which falls straight out of Finding 1, and is worth stating separately because it is a small change that unlocks most of this feature.
@@ -270,7 +272,27 @@ So the route runs **exactly between the two tapped points**, and the junction gr
 
 Note what the rule is stated about: **POIs, not pixels.** The app may not decide a hiker meant the trailhead because they tapped 400 m past it. That is the refusal `locateOnTrail()` already makes on the A.T. when a tap is off-corridor — it declines rather than inventing a plausible mile — carried onto a network.
 
-**Left open, and not ruled on:** frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. But it is also not what was decided, and it wants settling before the turn list is built rather than during.
+**An end is wherever the hiker put it; a lot is an annotation, never a precondition (2026-08-25).** The same decision read forward into storage and into the card, taken by the maintainer on [#981](https://github.com/OurHike/OurHike/issues/981) — *A day hike starts at a parking lot, and nothing in the pipeline knows where the lots are*:
+
+> A dayhike should be able to start anywhere - not just the parking lot. Can you make sure the issues and features are built to allow the user to choose their start/end points
+
+The merged builder already obeys it and this records why it must keep doing so. `tapAt` accepts any point the junction graph can claim, and `lib/dayHikes.ts`'s `DayHikeEnd` stores that end as the **coordinate** it landed on, with `poiId` an optional annotation — null on every hike the builder has made. No code path asks for a trailhead. #981's body asserted the opposite — that ends are "stored as POI references rather than coordinates" — and that was corrected rather than implemented: a POI reference as an end's identity would turn a start the app cannot *name* into a start the hiker cannot *take*, which is the failure this whole section exists to prevent.
+
+So frame `1l`'s parking block is an annotation on a start that happens to be near a lot, and its absence is not a degraded card: a hike starting halfway up a trail nobody parks at is a first-class hike with no lot to name. #981 is worth building for the hiker who *did* drive — it just does not get to be the way a day hike begins.
+
+**The one real limit, stated rather than implied:** an end must sit on a trail one of the three organizations maintains — the #935 rule below, not a parking rule. A tap on open ground, a road shoulder or a herd path is refused in words, and widening *that* is [#931](https://github.com/OurHike/OurHike/issues/931)'s to do.
+
+**Left open, and then answered from the other end (#1041).** Frame `1l`'s turn list is junction-relative throughout — *"mi 2.1 Right onto Seven Hills (blue) at the Pine Meadow junction"* — and a leg starting mid-segment has no such phrase available for its first line. Describing that start by the nearest **named feature** ("0.4 mi along the Pine Meadow Trail from Reeves Meadow") is not the guess this decision forbids, because it describes where the hiker put the point rather than moving it. It is still not what was decided, and it is still the option on the table if a junction-relative list is ever wanted.
+
+The storyboard's on-trail frames sidestep it. `D10` names no junction at all — it names the **arms**:
+
+> **Turn left** onto *Seven Hills Trail*, white blaze
+> Straight on is **Pine Meadow Trail**, blue blaze — not your route
+> Behind you is **Pine Meadow Trail**, blue blaze — the way you came
+
+Every one of those is an edge attribute the published graph already carries, and the mid-segment first leg stops being a problem because **the start of a walk is not a turn** — it never appears in the list. What a hiker checks against the blaze in front of them is the trail's own name and colour, not a junction's name, which is the one thing they cannot see from where they are standing. `client/src/lib/dayHikeTurns.ts` builds the list on that rule; a turn is exactly a leg boundary, tested against the same `sameTrail` predicate the leg list uses, so the two cannot disagree about where Pine Meadow becomes Seven Hills.
+
+This unblocks the list without settling the naming question it was blocked on. A junction-relative *list* — the whole walk, read at the kitchen table — still wants the named-feature answer above for its first row.
 
 **A drawn line snaps only to a marked path, and a day hike may be more than one segment (#935).** Verbatim:
 
@@ -287,7 +309,245 @@ Two things, and the second changes the model.
 
 It also gives [#931](https://github.com/OurHike/OurHike/issues/931) — *Roads and connectors: a loop that only closes along a shoulder, drawn honestly or not at all* — a shape it did not have. A loop that only closes along a road shoulder is expressible as two segments with a gap where the road is, without OurHike drawing a route onto a road no steward maintains. That does not build #931 or close it — a hiker still cannot **see** that the road is there, which is the whole point of its `LATER` row — but it does mean the builder is not blocked on it.
 
-**Still undecided: the tolerance itself — and the decision above changes what kind of number it is.** Nobody has measured one, and "always snap to a marked path" removes the walkable/unwalkable ambiguity without touching the one that bites in a park: *which marked path*. Along the A.T. through Harriman–Bear Mountain, **48% of sampled points sit within 150 m of a different marked trail** ([NEARBY_TRAILS.md](NEARBY_TRAILS.md), measured from the #771 spike). A tolerance generous enough to catch a line drawn with a thumb on a moving bus is therefore, across roughly half that corridor, generous enough to reach two trails at once. So this is a **disambiguation** problem rather than a reach problem, and a single number will not settle it. Whatever lands carries `@unvalidated` and what would settle it until somebody has drawn on it outdoors; #935 stays open for that half.
+**The builder's own screen, redesigned (#1194, 2026-09-02).** Three complaints came back from a design pass on this screen, and none of them was about routing: the map was too small, nothing on it was labelled, and the highlighted route was hard to pick out. What changed, and the two places the design was not taken as drawn:
+
+- **The map got its room back.** `chrome/DayHikePickBar.tsx` is a sheet over the canvas at `max-height: 60%`, and above 900px it was the only wide surface in the app that had never been given a desktop layout. The figures, the ordered legs and stops, and the map-label toggles moved into `chrome/DayHikePanel.tsx` — a band above the map on a phone, a 348px left rail on a desktop ([WEBSITE.md](../WEBSITE.md) §6). **The buttons stayed at the bottom**, on both breakpoints: a hiker building a walk one-handed at a trailhead is what put them there, and the design's floating single CTA would have moved every other control out of thumb reach. Cancel stays too — the design had no exit control on either breakpoint and the shipped bar has had one since #978.
+
+- **Labels are ranked, not merely drawn.** `map/labelLadder.ts` is one ordering for every label on the map, because there were three: waypoint pins by `map/poiPriority.ts`, trail names by `map/trailLabels.ts`, and the live sheet's own labels by nothing at all. It puts **the way in above the furniture on it** — parking and road names outrank a spring — which is deliberately the *opposite* of `poiPriority.ts`, and both are right about their own question: that one orders pins for a hiker already walking, this orders labels for one choosing where to start. Waypoint names (`map/poiLabels.ts`) and road names are new and draw only while the builder is open; #1135 settled what the walking map shows without them.
+
+- **One of the design's nine label classes has no data**, and is absent rather than shipped inert: junctions exist only as graph nodes in `build_trail_graph.py`, so they route every walk and nothing publishes them as features. That is [#1213](https://github.com/OurHike/OurHike/issues/1213) — *Junctions route every day hike and nothing publishes them, so the label ladder's junction rung draws nothing* — which is as much about **which** junctions are worth naming as about the export: a route crosses a median of 23 of them (p90 232), and Harriman–Bear Mountain holds one every 1.2 trail-miles.
+
+  It was two. [#1197](https://github.com/OurHike/OurHike/issues/1197) — *The map cannot label a trailhead, because `POI_TYPES` has no such category* — gave `pipeline/lib/poi_schema.py` a ninth type, and OPRHP's 287 trailheads now ship in `nearby_poi.geojson`. Tier 1 of the ladder is "trailheads, parking, road names", and it was the rung the ladder most wanted: the whole argument for ranking roads above springs is that a hiker is choosing where to start, and the start point itself was the thing the map could not draw. What is published is a floor rather than a ceiling — NYS DEC publishes 10,520 more that we do not yet ingest ([POI_COVERAGE_SURVEY.md](../pipeline/POI_COVERAGE_SURVEY.md) §7(c)).
+
+- **The selection is more legible and the blaze is still its own colour.** The design's fix was a `--blaze-yellow` core drawn *over* the trail line. That was refused: yellow is a real blaze in Harriman, and `map/dayHikeLayers.ts` exists on the rule that a route highlight never recolours a blaze, because the blaze is how a hiker picks the right trail at a junction. The contrast comes instead from a wider `--pine-900` casing *under* the line — a dark fringe either side, which is the one part of the highlight a ghosted trail does not dim — and from the design's own mile marks.
+
+- **A stop's row carries the two facts it was chosen on (#1198).** How many the shelter sleeps, and how far its water is — the figures `build_shelter_capacity.py` and `build_water_distance.py` publish. They had lived only on the waypoint card, and the card is unreachable while the builder owns the tap (`map/MapView.tsx` attaches no POI tap handler then: "two live handlers would race to interpret one touch"), so choosing where to spend the night meant choosing blind on the one screen built for choosing. On the row rather than behind a tap is better than the card would have been in any case: a hiker deciding between two shelters reads both rows at once instead of opening and closing two sheets to compare four numbers. Each figure appears only where it was published — absent capacity is not zero and absent water is never "no water", which is `StoredPoi`'s own rule and the one that matters most here, because it is being applied to the thing being decided.
+
+- **There is no elevation profile on this screen yet — and the reason first written here was wrong.** #1194 said the samples do not exist, citing `export_network_elevation.py`'s "worth publishing only if a chart is ever drawn for a network route, and then as a fourth artifact" — a sentence describing a decision taken *before* that artifact was built. It has been built since: `export_network_profile.py` publishes `trail_graph_profile.json`, the client fetches it, and `lib/walkProfile.ts` already turns a walk into ribbon samples on the walk's own mile axis (#1119, closing #1045). What is genuinely missing is narrower — `walkProfile` takes `WalkStep[]`, and `lib/dayHikeWalk.ts` builds those from a saved `ResolvedDayHike` rather than from a draft being tapped out. That is [#1210](https://github.com/OurHike/OurHike/issues/1210). The panel says "No profile drawn here yet", which is a claim about the screen rather than about the bucket.
+
+**Settled since: a tap is measured against the trail's own vertices, never against the chord between two junctions (#1093, 2026-08-27).** The published graph splits in two — `trail_graph.json` (nodes, lengths, attribution) at launch, `trail_graph_geometry.json` (every edge's vertices) only when the builder opens, because it is much the heavier half (7.5 MB against 17.3 MB, measured on the live bucket 2026-08-27). A phone in between holds the shape of the network and not where any of it runs, and the snap used to fall back to the straight line between an edge's junctions. (Since #1257 stage 3 the two halves are per cell — `trail_graph_cell_<name>.json` and `trail_graph_geometry_cell_<name>.json` — and the same two-step holds for each cell; see *The graph a phone keeps is the cells it planned in* below.)
+
+Measured against the artifact that ships — both files as data.ourhike.org served them on 2026-08-27, release `a6292547`: 31,545 nodes, 40,596 edges, median edge 68 m, longest 58,615 m. Of **20,000 taps placed exactly on the drawn line** (five along each of 4,000 randomly chosen edges, seed 1093):
+
+| | against the chords | against the vertices |
+|---|---|---|
+| refused as off-network | **11.3%** | 0.0% |
+| placed on a *different trail* than the one tapped | **19.7%** | 5.9% |
+
+The trail leaves the 150 ft tolerance of its own chord somewhere along **21% of edges** (8,297 of 39,709), p90 worst-case deviation 462 ft. The 5.9% floor is an upper bound rather than a finding: "different trail" compares `trail_id` and `name`, so two stewards publishing the same ground as separate lines counts against it, and what remains is the corridor ambiguity the tolerance already names — #771's 48% of A.T. points within 150 m of a different marked trail.
+
+So `nearestPointOnGraph` now considers only edges that carry vertices, and a phone that cannot answer a tap says **that** rather than saying the tap was off the network — two situations, two sentences. This is the rule `lib/dayHikeFollow.ts` and `routeGeometry` already applied to following and drawing; the snap was the last place a chord was still accepted.
+
+**The tolerance is 25 m, and inside it the app asks (#935, maintainer, 2026-08-27).** Verbatim:
+
+> Ask which trail. But only match to trails within 25M.
+
+Two rules, and the second is the one the paragraph this replaces was arguing for. **25 m is a REACH limit** — past it nothing matches, which under the segments model above ends a stretch rather than refusing the walk. It is deliberately tighter than a tap's `MAX_OFF_NETWORK_FEET` (150 ft, 45.7 m), because a tap is one deliberate aim and a stroke is a sweep across the map where every sample is a candidate. **Inside 25 m, proximity does not decide** — where two marked trails are both plausible, the app asks, and it asks with the blaze colour, which is the thing a hiker will be checking against the paint on the tree.
+
+**A third rule, which came from measuring the first two rather than from anybody's preference: an ask is only worth making when the answer changes where somebody walks.** Measured against the published network as `data.ourhike.org` served it on 2026-08-27, 4,000 points sampled on real trail vertices inside Harriman–Bear Mountain:
+
+| | within 150 ft | within 25 m |
+|---|---|---|
+| more than one marked trail in reach | 71.5% | **64.3%** |
+| nothing in reach | 0.0% | 0.0% |
+
+Tightening to 25 m barely moves it, and the reason is visible in the pairs themselves: **the median separation between the top two candidates is 0.0 m, and 70% of them are within 1 m of each other.** They are trails sharing tread. Through that park the A.T. runs concurrently with Ramapo-Dunderberg (red), 1777 East (white) and the Long Path (aqua), and OPRHP publishes its own line over ground ATC's centerline already covers — 57.9% of the ambiguous points are two organizations' lines within 5 m of each other, none of them sharing a name. Asking "which trail did you mean" there is asking about a **label**, not about a walk: both answers route the hiker over identical ground.
+
+So a candidate closer than `SAME_TREAD_METRES` to the nearest one is not a separate answer. That constant is **8 m, derived rather than picked**: `build_trail_graph.py`'s `ENDPOINT_SNAP_M` is 8.0 and its own comment says what the number means — *"Two vertices closer together than this are the same place."* If the pipeline would weld two line-ends that far apart into one node, the app has no business asking which of two lines that far apart somebody meant. One home for "the same place", read from both ends.
+
+With that filter, measured on the same 4,000 points: **17.3% of points would ask** in Harriman, 20.6% across the whole network. Two things that figure is not. It is not the rate at which a hiker gets asked — these are one question per sampled point, and a drawn stroke resolves a run of samples into one stretch before anything is asked, so it is an **upper bound**. And it is not a claim about a real drawn line.
+
+**All three numbers ship `@unvalidated`, and what would settle them is unchanged: somebody drawing a route on a phone in Harriman.** The 25 m is the maintainer's, the 8 m is the pipeline's own, and the ask rate is a property of the published data rather than of anybody's hand.
+
+## Two rooms, one tab — the mode is the chrome (#1008, 2026-08-25)
+
+The fork above ("What are you planning?", #977) asked its question once and then nothing downstream looked different: day hikes were a shelf section between "Your hikes" and "Recent trips", in identical chrome, and no screen past the fork said which of two kinds of plan a hiker was inside. [#1008 — Day hikes and trips share one Plan tab that never says which one you're planning, and a saved day hike has no way back to it but one row on a mixed shelf](https://github.com/OurHike/OurHike/issues/1008) — consolidated from the planning-personas storyboard ("Plan a hike — day vs multi-day", 15 frames) — made the mode visible:
+
+- **The Plan home is two rooms with a switch chip.** Day hikes wear the brand band and speak in legs and walks; Trips wear the dark chrome band and keep the trail vocabulary — days, zeros, resupply, carries. SEGMENTS.md calls `Hike.type` "a label, not a constraint"; this makes the label load-bearing on screen without enforcing anything in the model. Each room's one primary action does what its label says — "Plan a day hike" opens the day-hike builder, "Plan a new trip" the route builder — and the fork stays the entrance where the question is real: the empty state, where no mode exists yet.
+- **A saved day hike has two ways back to it.** A list screen (the trips-side `TripList` counterpart) splits still-to-walk from walked off the store's own `recorded` flag, with the cached figures a list is allowed to print; and the map offers a saved hike when the GPS fix is near its start — a straight-line radius that ships `@unvalidated` in `lib/dayHikeShelf.ts`, because nobody has measured how far from a trailhead a parked hiker stands.
+- **"Leave this with someone"** is the day flow's one safety surface that is not a map: a plain-text card of the plan, with the route and the trail miles from the app's own figures and everything else — the start, the car, above all "if I'm not back by" — typed by the hiker and never computed. The app has no arrival clock and does not pretend to one on precisely the card somebody will decide to worry from.
+
+- **≈ walking time and ± elevation arrived from the other side.** This branch built a corridor-profile pricing module for the day-hike surfaces; **#1011 — Give the network's trails their climb** landed on `main` first and did it better, so the module was deleted rather than kept beside it. The graph carries per-edge climb now, `routeClimb` scales it by the metres actually walked, and both the builder bar and the finished card price Naismith from `route.climb` — on *every* trail in the network, not just the A.T. centerline the corridor profile covered. The two implementations agreed on the rule that matters and that rule is the one that survived: **null is all or nothing**. A walk with one unmeasured edge prints no time at all, because pricing that edge at zero ascent is a flat-ground claim about real ground and pricing only the measured edges understates by the same amount with a number attached. Both fail *short*, which is the direction that gets somebody caught by the dark.
+
+**What the storyboard drew that deliberately did not ship, and what each waits on:** starter hikes ("laid out by the clubs that maintain them" — no club-laid route dataset exists anywhere in this repository; the storyboard itself calls the work editorial, related to #981's parking lots); the whole-walk turn list (#934's first-leg naming question, above — the *next* turn and the junction card ship with #1041, which needs no junction name at all).
+
+**The cached climb: decided and built (maintainer, 2026-08-27).** This paragraph used to hold ≈ time on the day-hike **list** and the trailhead door as waiting, on a reason it had narrowed to one sentence: both surfaces read the stored cache, and #1011 gave the network its climb without giving it to `DayHikeFigures`, which persisted `miles` and `legs` and nothing else. It was flagged as a stored-shape change that "wants deciding rather than doing quietly". It was decided, and `DayHikeFigures.climb` now exists.
+
+Three things about its shape are load-bearing rather than incidental:
+
+- **Null is all or nothing**, inheriting `RouteClimb`'s rule verbatim rather than restating it: a walk with one unmeasured edge caches no climb, because pricing that edge at zero ascent is a flat-ground claim about real ground and pricing only the measured edges understates by the same amount with a number attached. Both fail **short**, which is the direction that gets somebody caught by the dark.
+- **Absent is not null**, which is why the field is optional rather than `RouteClimb | null`. A hike saved before 2026-08-27 has no key — the app never asked — while `null` means the app asked and the graph had no answer. Only the first is fixed by re-resolving against a live graph, so a surface that rendered them identically would be reporting a limit of the artifact where the truth is a limit of the record. On the card they *read* the same (no figure, no ≈ time), which is correct: the difference is about what a fix would do, not about what a hiker should be told today.
+- **Nothing falls back to distance alone.** Naismith with no ascent is a flat-ground answer, and on this network that is short.
+
+What it unblocked, all three at once: ≈ time on the list rows and on the trailhead door, and the storyboard's **"fits my time"** sort — which ships as **"shortest first"**, because the storyboard's phrase implies the app knows how long a hiker has and it does not. There is no field for it, and asking would be a planner that keeps a schedule, which value #1 rules out. The chip appears only once at least one saved hike carries a climb to price from, per the no-dead-controls rule.
+
+Also still waiting on their own issues: recording a finished walk (#982); freehand drawing (#983).
+
+**The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
+
+## Roads: drawn already, and the sentence that was wrong (#931, 2026-08-27)
+
+The maintainer chose the middle option #931 asks not to be defaulted past — *draw walkable connectors as context a hiker can see and decide about, and never let the router choose one.* Building it turned up that **half of it already shipped, and the issue's premise was false.**
+
+#931 says *"a hiker still cannot see that the road is there, which is the whole point of its `LATER` row."* Measured 2026-08-27: `map/liveTopo.ts` draws four transportation classes on the live vector sheet — `topo-road-major`, `topo-road-minor`, `topo-track` and `topo-path` — and its own comment says why tracks get their own weight: *"Tracks are how you reach most trailheads, and forest roads are a real bail-out option."* The road under a Harriman loop has been on the map, in the hiker's hand, the whole time.
+
+**So what was missing was not cartography. It was a sentence.** The builder answered a tap on a clearly-drawn road with *"That tap isn't on a marked hiking route"* — true, and reading as **there is nothing there**, about a line the app itself had drawn. `map/roadTaps.ts` names what was tapped, says why it is not a route, and says what the hiker can do instead:
+
+> Seven Lakes Drive is a road, and no organization maintains it for walking — so OurHike won't route you along it. If you're walking it anyway, start a new stretch on the far side.
+
+Three things that sentence has to do, and the one it replaces failed the second: say what was tapped, say the refusal is about **evidence** rather than the road being unimportant, and point at #935's segments model, which is what actually closes a loop along a shoulder.
+
+**No walkability judgement, and a test that enforces it.** MAP_OPTIONS.md §2's tiers — `confirmed_sidewalk`, `no_sidewalk_low_traffic`, `no_sidewalk_high_speed` — stay unbuilt, because a road with a shoulder and a road with a guardrail at 55 mph are the same OSM line class. The refusal is asserted to contain none of *safe*, *dangerous*, *busy*, *quiet*, *shoulder*, *traffic* or *careful*.
+
+**Two surfaces were saying the opposite of what the map shows, and both are fixed.** The builder bar's `LATER` row, and a disabled unticked checkbox in Settings labelled "Roads & walkability" — the settings screen disagreeing with the map. The `show_roads` preference is still stored, synced and wired to nothing; wiring it as MAP_OPTIONS.md:204 specifies (off by default) would *hide* road context every hiker has today, which is a worse answer than the one those rows now give.
+
+**Nothing here reaches the router.** A road is never a candidate, never an edge, never part of a route or a total.
+
+## A walk already done (#982, 2026-08-27)
+
+Decided by the maintainer, against two drawn options — the same card in the past tense, or its own screen:
+
+> Today shouldn't have other day hikes. I think the previous hikes need to live on a different screen.
+
+Two rulings, and the second was not what the question asked about.
+
+**A finished walk gets its own surface.** Which is #982's own argument arriving one level down from the comparison it makes with `screens/DaySummary.tsx`: two surfaces that look similar and know different things is the cheaper mistake. A card that has to keep asking which tense it is in answers the question twice for every future addition. The differences are structural rather than cosmetic — a finished walk has no ways off, nothing to follow, nobody to leave it with, and a date rather than an optional one.
+
+**And Today does not carry finished walks.** Today is the day in front of the hiker; a walk from last Saturday belongs on the screen that keeps walks.
+
+**What it prints and what it will not.** The figures prefer the live resolution and fall back to the cache under the same sentence `DayHikeCard` uses. It prints **no walking time at all** — the hiker walked it, and telling somebody how long the app thinks their own finished walk took is the app arguing with them about their afternoon. It carries **the one line they write themselves**, which is the part of the screen the app did not write and is placed first to say so; the app never fills it, suggests it or completes it.
+
+The standing negative assertion — no *behind*, no *ahead*, no score — is carried by this screen's own suite, not only inherited by convention. `Plan.test.tsx` has it and `DaySummary.test.tsx` mirrors it, and a third copy earns its place because a screen about a walk somebody already finished is exactly where prescriptive gamification creeps in.
+
+**How a walk becomes one.** By the door, not by the date. `PlanKindSheet`'s third door — *"A walk I've already done"* — was wired to nothing (`walkedAvailable={false}`) and is now the same builder entered in the past tense, which is #982's own "this is that flow with a different entrance, not a second implementation". The flag is set there rather than inferred from a date, because a hiker can plan next Saturday's walk and lay out last Saturday's, and only they know which.
+
+## The graph a phone keeps (#1050, 2026-08-27)
+
+The junction graph was fetched over the network on every launch and written nowhere, so a hiker who downloaded the corridor at home, drove to Harriman and opened the app at the trailhead with no signal got a day-hike builder that refused every tap. That is the situation this app exists for, and the builder worked at the hostel and not at the trailhead.
+
+**All three artifacts ride with the corridor download** — the maintainer's decision, taken against two findings that both point the same way.
+
+**There is no cheap "routing only" option, and there was when the issue was written.** #1050's body proposes `trail_graph.json` alone as the minimum that routes. #1093 removed the chord fallback from snapping the same week, so `nearestPointOnGraph` now skips every edge with no vertices, `canSnapToGraph` is false for the routing half alone, and `tapAt` returns `NETWORK_STILL_ARRIVING` for every tap. A phone holding graph-without-geometry opens a builder that refuses everything with *"OurHike hasn't got this area's trail lines yet… Try again in a moment"* — a sentence `lib/dayHikeDraft.ts` already documents as false when the geometry is never coming. **The minimum set that works offline is graph plus geometry.**
+
+**And the sizes in the issue are decoded rather than wire.** Measured against `data.ourhike.org` on 2026-08-27 with `Accept-Encoding: gzip`:
+
+| artifact | wire | decoded |
+|---|---|---|
+| `trail_graph.json` | 1,204,136 B | 7,475,349 B |
+| `trail_graph_geometry.json` | 4,695,479 B | 17,285,133 B |
+| `trail_graph_elevation.json` | 54,902 B | 277,331 B |
+| **all three** | **5.95 MB** | **25.04 MB** |
+
+So taking everything costs about **2% on top of a corridor package that is already ~314 MB of tiles**. The issue's reasoning — "a hiker on the A.T. who never builds a day hike should probably not pay 17 MB for geometry" — was priced against the wrong number: they pay 4.7 MB once, on a download they have already agreed to. What 25 MB actually costs is IndexedDB, which is a different argument.
+
+**The store is `{bytes, sha256, manifest version, fetchedAt}`, verified on write.** A phone offline cannot reach `latest.json`, so it cannot re-derive what the bytes it holds should hash to — it has to trust a hash recorded at write time, which is safe because nothing is written that did not match the manifest when it was fetched. The template is `lib/nearbyTrailData.ts`, which already stores a 7.3 MB artifact against its published hash. It is **not** `lib/conditionsCache.ts`, which #1050's own comment names: that module stores `{document, storedAt}` — no bytes, no hash, no version — and its `MAX_CACHED_BYTES = 2 MB` would silently delete a 7.5 MB graph on every write.
+
+**Two things the store does that nothing else in the client did.** It records the **manifest version**, which is what lets a phone tell *the graph I hold* from *the graph my saved hike was priced against* — the same hazard `lib/dayHikes.ts` refuses to persist an `edgeIndex` over, one level up. It is recorded rather than acted on: what it enables is a card that can say its cached figures came from a different release, and that is a change to what a screen **says**, which wants its own before-and-after. And it **checks for room before writing**, which nothing in this codebase did for a vector artifact. A quota error is caught either way, so this is not about correctness — it is about not letting a browser under pressure evict a hiker's 314 MB downloaded map to make room for a routing graph.
+
+The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it.
+
+## The graph a phone keeps is the cells it planned in (#1257 stage 3, 2026-09-08)
+
+The section above was written when the whole graph was 7.5 MB. On 2026-09-07 it was
+published at **78,595,556 bytes** decoded — nationwide USFS trails, #1231 — and parsing it on
+the main thread was the frozen first page of [#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254). The
+budget that issue added stops a phone parsing it; it does not give the phone a graph.
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) does, by changing the shape: the graph is
+published in the same 1° cells as the hiking sheet and the network tiles
+(`pipeline/cut_trail_graph.py`, `trail_graph_cells.json`), and a phone loads the cells it
+is planning in.
+
+**Which cells, and who decides.** The shell knows where a day hike could be wanted and
+`lib/useTrailGraph.ts` turns that into a graph. Wanted are the cells under the planned hike's
+centerline slice, under the fix, under the camera once it is past the pin seam (below it a tap
+cannot land within 150 ft of anything, and the corridor view would otherwise ask for every cell
+it shows), under every tap and stroke in the builder, and under the ends of the hike a card is
+showing or the hiker is following — a saved hike re-resolves from its coordinates, so its cells
+are what it needs to resolve at all. Cells are loaded **one at a time** — the densest is 12.7 MB
+of JSON, and four of those parsed together is the frozen page one artifact further down — and
+never unloaded within a session.
+
+**Edges are never cut.** An edge within 3 km of a seam is filed whole into both cells, so a tap
+anywhere in a cell is answered by that cell alone, and a route across the seam needs only the
+two cells either side. Merging is **append-only** (`mergeGraphShard`): every node and edge
+already merged keeps its position, unseen ones go on the end, and the seam edge both cells
+carry is merged once — which is what lets a `GraphPoint.edgeIndex` in a draft survive a cell
+landing mid-build. Measured on the production graph, 2026-09-08: 466,966 edges become 530,190
+placements across 502 cells, 13.5% seam duplication.
+
+**The door answers from the index, not from a load.** *"A day hike"* on the Plan door used to
+open when the whole graph's parse finished; it opens now on `trail_graph_cells.json` — 166,721
+bytes on the same data — being present and non-empty, and the sentences for its absence are the
+index's: not in this release, or unreachable. A tap in a cell that has not landed yet gets
+`lib/dayHikeDraft.ts`'s *"hasn't got this area's trail lines yet… Try again in a moment"* — the
+right sentence, and the same collapse that paragraph already records: it cannot tell a cell
+still arriving from one the bucket refused for good. The console says which; the door does not.
+
+**What a phone keeps is the cells it loaded, four halves each** (`lib/trailGraphStore.ts`):
+graph, geometry, elevation, profile, under `ourhike:trail-graph-cell:<half>:<name>`, stored
+verified exactly as the whole files were. A cell loaded once with signal routes at the trailhead
+without it — the promise of the section above, kept at the cell's grain. The four whole-file
+records earlier releases wrote are deleted at every launch; nothing reads them, and a phone
+that fetched 2026-09-07's graph before the budget existed is still holding 78.6 MB of it.
+
+| | wire-free measure (decoded bytes, 2026-09-08) |
+|---|---|
+| `trail_graph_cells.json` | 166,721 |
+| Harriman, `n41w075`, graph / geometry | 1,791,818 / 2,290,941 |
+| median cell, graph / geometry | 28,406 / 220,210 |
+| densest cell, `n44w072`, graph / geometry | 12,663,031 / 6,954,151 |
+
+**Two things this does not do, said plainly.** The climb and profile halves are cut only when
+the whole-file companions align with the graph, and production's do not today — 42,103 entries
+against 466,966 edges, written for an earlier graph — so the cutter refuses them with a warning
+and the cells carry no climb until `include_elevation` reruns; a card prints miles and no ±.
+And a phone that holds the whole hiking sheet is not offered network or graph cells, because
+cells ride the stretch download (stage 2) and the stretch is what a phone without the sheet
+takes — the graph is loaded where the hiker plans either way, so what that phone lacks is
+only the offline copy of cells it never planned in.
+
+## The elevation under a walk that is not the A.T. (#1045, 2026-08-27)
+
+Decided by the maintainer: *"Show the elevation. B then C, and anything else that needs to show the gain/loss"* — and, on what to do about the ribbon that was already drawing, *"Treat it as a bug and fix it first… If a ribbon is drawing on a followed day hike from two scalars per edge, that's a picture of terrain nobody measured on the band a hiker uses to judge daylight. Blank it in the same branch, then build B and C properly."*
+
+### The bug was worse than the issue's premise
+
+#1045 opens with *"a followed day hike shows no elevation at all"*, which was what #1041 deliberately shipped and is the honest state. What was actually happening is one step past that. `lib/ribbonView.ts` knew nothing about following, so its precedence fell straight through to the ten-mile fix window — and **the A.T. runs through the same woods as a Harriman loop**, so `fix.mile` is a real number while somebody walks that loop. A hiker following a day hike got the *Appalachian Trail's* profile, captioned "Elevation profile ahead", under a header counting down their own walk. A picture of a different walk, announced as the strongest claim the five labels make, on the band a hiker reads to decide whether they beat the dark.
+
+That is fixed first and independently of the new data: a followed day hike now suppresses the fall-through whether or not there is anything to draw in its place. `App.followDayHike.test.tsx`'s *"draws no ribbon at all when the release carries no profile"* is that guard, and it fails on the old behaviour.
+
+### One asymmetry, deliberately
+
+A **trip day** that cannot be drawn *does* fall through to the fix window; a **day hike** never does. Both are "today", and the difference is what the fall-through would be a picture of. `ahead` under a trip is a different window of the hiker's own trail, correctly labelled — honest if less useful. `ahead` under a day hike is different ground entirely.
+
+### B — the trip half, which needed no new data
+
+`'todays-walk'` is a fifth `RibbonSubject`, and on a trip it is today camp to camp: `lib/plan.ts`'s `currentDayIndex` and the two `PlanStop` miles either side of it, both already on the pipeline axis the published profile is measured on. It replaces `'ahead'` for anyone with a plan open; `'ahead'` survives for a hiker walking with no plan loaded, which is what #1045 asks for. The gain over the sliding window is that the day's ends are the hiker's ends: a ten-mile window's edges are arbitrary and can cut off the climb that decides whether somebody makes the shelter before dark.
+
+A zero day is not a walk and yields nothing — the ribbon shows whatever it showed before, because there is nothing about today for it to be wrong about.
+
+### C — the day-hike half, from the fourth artifact
+
+`pipeline/export_network_profile.py` publishes `trail_graph_profile.json`: one array of whole feet per edge, index-aligned with `trail_graph.json`'s `edges` like the geometry and elevation files already are (and, since #1257 stage 3, cut per cell beside them as `trail_graph_profile_cell_<name>.json`, aligned to that cell's shard — the client fetches those). 694,955 samples at 25 m — 3.47 MB raw, 1.22 MB over the wire, measured. `lib/walkProfile.ts` is the client half, and it reads `lib/dayHikeWalk.ts`'s existing flattening rather than adding a fourth accumulation: the ribbon's x-axis is `WalkStep.beforeMetres`, which is the *same* axis the follow header prints `walkedMi` on and the turn list counts down, so the rule under the ribbon lands on the number written above it.
+
+**Fetched only once a walk is being followed** — never at launch, never with the builder. That is the artifact's own contract (`export_network_elevation.py`: *"a fourth artifact fetched when that chart opens"*), and it means a hiker who opens the builder, draws a loop and never walks it pays nothing for it.
+
+Four rules, each of which is a wrong picture if dropped, and every one of them a pipeline measurement rather than an opinion:
+
+1. **The sample count comes from the published array's own length**, never from `length_m / 25`. 63 of 40,596 edges (0.155%) disagree, because the published length and the walked geometry differ by a median 0.035 m and up to 1.50 m. Those 63 would draw every sample after the first in the wrong place.
+2. **A null is unknown and never zero**, in both its shapes — a whole entry null (the DEM covers none of that edge) and a null inside an array (one missing sample with its place kept). Either one anywhere on the walk means no ribbon, the all-or-nothing rule `ResolvedDayHike.climb` already follows.
+3. **Nothing sums a climb from these samples.** The ± figures a card prints come from `trail_graph_elevation.json`, which is per-edge by construction. Two screens showing two totals for one walk is worse than either total on its own — and the disagreement is measured: per-edge summing understates a continuous profile by a median 6.9% (p90 46.9%) across 300 six-mile routes, in the unsafe direction. That measurement is **#1120 — Summing a route's climb edge by edge understates it by a median 6.9%, in the unsafe direction** and is not this change's to settle.
+4. **A gap between stretches breaks the drawn line rather than sloping across it.** A day hike built from several stretches (#983) has ground between them OurHike will not route — a road walk, most often. `ElevationSample.partStart` marks the first sample of each later stretch and `ElevationRibbon` starts a new subpath there, so nothing is stroked or shaded across it. The name and the convention are `lib/elevationGain.ts`'s, deliberately, rather than a second marker meaning the same thing.
+
+A junction *inside* a stretch is **not** marked. This ribbon prices nothing, so the vertical step an endpoint weld can leave — up to 19.06 m of horizontal separation, measured — is a step in a drawing rather than climbing in a total, and it is sub-pixel on a 54 px band. A route crosses a median 23 of those junctions (p90 232), so marking them all would render the ribbon as dots.
+
+The gap consumes **no width on the x-axis**, because `ResolvedDayHike.miles` does not count it either. One axis for the ribbon, the header and the card, rather than a ribbon measuring the walk differently from every figure printed beside it.
+
+### The trap this opened, and where it is closed
+
+`RibbonView` gained `axis: 'trail' | 'walk'`, and it exists because `'todays-walk'` is **both**. Every POI this app holds carries a mile on the published centerline; a followed day hike's domain is miles from the hiker's first step. Without the field, `ribbonLanes` would have read "mile 2" of a Harriman loop and hung the shelters at A.T. mile 2 — in Georgia — under it, and nothing about the picture would have looked wrong. So the lanes are dropped entirely on a `walk`-axis ribbon and kept on a trip day, which is measured with the same ruler as the POIs.
+
+What would fix that properly is placing a walk's own POIs on the walk's own axis, which `lib/dayHikeCard.ts`'s bail-out arithmetic already demonstrates for junctions. It is its own issue.
 
 ## Where a plan lives
 
@@ -321,7 +581,7 @@ That work also fixed a real defect in the zero question this document leaves ope
 - **Whether "absorb" is allowed to change where a resupply happens.** Re-balancing days is safe; silently moving which town someone buys food in is not obviously safe, and the pin mechanism may need resupply stops pinned by default.
 - **Whether generated days should be visibly marked as generated.** The `generated` flag is in the model above so the option exists; whether the timeline shows it is a UX call about how much the app should admit it guessed.
 - **How side trails become routable**, which is the real blocker on this being a plan someone keeps rather than a sketch. Related to [SPUR_TRAILS.md](SPUR_TRAILS.md)'s spur-destination work and to [MAP_OPTIONS.md](MAP_OPTIONS.md)'s snap-to-segment.
-- **How a first leg that starts mid-segment is described**, now that a tap splits the segment rather than snapping to a junction (#934). The turn list's vocabulary is junction-relative and has no phrase for it; see "The day hike on a network" above for the option that looks right and was not decided.
+- **How a first leg that starts mid-segment is described**, now that a tap splits the segment rather than snapping to a junction (#934). Still open, and narrower than it was: the on-trail cards (#1041) need no junction name, so what is left is the whole-walk turn list somebody reads before they go. See "The day hike on a network" above for the option that looks right and was not decided.
 
 ## Suggested build order
 
@@ -344,3 +604,65 @@ python spike_day_planner.py --targets 12,15,18 --cap 25
 ```
 
 It reports what Q1 asks for: the real spacing distribution of designated stops, how close a generated plan gets to a range of targets, what the worst day looks like, and what campsites buy over shelters alone. It was **not** run while this document was written — the environment it was written in has no route to ATC's servers — so every number in it is still unmeasured, and the table in Finding 3 is arithmetic over counts from `pipeline/README.md` rather than a measurement of spacing. That is the first thing to close.
+
+## The plan bench — three panes over one selection, and a day boundary you can drag (#971, 2026-08-27)
+
+Everything above this section describes a planner that works on a phone. [WIREFRAMES.md](../WIREFRAMES.md)'s frame `3a` describes what a desk adds, and until this section nothing in the repository built it: above 900px the Plan tab was the phone's terrain-row timeline, widened.
+
+**The name, first, because the repository already has a confusable one.** `desktop.css:233` is headed *"The planning station (#1054): the journal beside the map"* — the **Today** screen docked beside the canvas, what a hiker reads on the day. This is a different room and is called the **plan bench**: where a trip gets laid out flat and its days get moved. Both names are stated together at the top of `desktop.css`, so a reader landing on either section heading is told which is which.
+
+### What it is
+
+Three panes over one selection, with the whole section's elevation running the width beneath them.
+
+- **The tree** (left) is [SEGMENTS.md](SEGMENTS.md)'s tree with nothing invented on top of it — the hike, the trip, and the trip's resupply sections. It is the same tree the zoom control (#790) already walks one level at a time; the wide layout only makes all of it visible at once, which is the argument for the layout. Days are *not* drawn here: they are the timeline pane, and drawing them twice would make one of the two copies the real one.
+- **The map** (middle) is a **slot**, `mapPane`, filled by the app shell — the same move `MapScreen`'s `journal` slot makes for the planning station, and for the same reason: the map has about sixty inputs and none of them are the planner's business. When the shell has no map to lend, the bench draws **two** panes. A framed grey box captioned "map" would be the display outrunning its source.
+- **The timeline** (right) is the existing day rows, unchanged except that a click **selects** rather than opening the actions sheet. On a desk those are separate moves — the sheet would cover the chart the whole screen exists for — so the actions live one click away, on the strip below.
+
+The tree and the map are sticky; the timeline is the pane that scrolls. A hiker scrolling to day 40 must not lose the section they are in or the ground they are on.
+
+### The gesture: a day boundary is draggable
+
+This is the one planning gesture a phone cannot offer. The phone's ribbon shows ten miles because that is all there is room for; there is nothing to drag a day *between* in ten miles. A desk shows the plan's whole section, so a boundary becomes a thing a pointer can take hold of.
+
+**It is a new writer of `plan.stops`, and #971's body says otherwise.** The issue says the drag *"has to land on the existing mutators, not a new path"*, because *"`cascade.ts` already owns what happens to the days either side"*. Checked against the code on 2026-08-27: it does not. Every mutator in `lib/plan.ts` and `lib/cascade.ts` either adds a boundary (`insertZeroAfter`), drops one (`removeDay`), flips a flag on one (`toggleResupply`, `togglePinned`), writes prose (`setDayNote`), or moves the single boundary at the end of the day being closed (`callItADay`). Nothing moves an arbitrary boundary in the middle of a plan. `lib/planBench.ts` is that writer, written as one rather than smuggled in behind an existing name.
+
+That makes it a hiker-safety path under [CLAUDE.md](../CLAUDE.md)'s four-ways rule — *unable to get off the trail quickly* is the one it touches — because moving one boundary changes the miles **and** the climb of the two days that meet at it. Four commitments follow, each enforced in code rather than remembered:
+
+1. **Two days, never more. The drag does not cascade.** `absorbPlan` and `shiftPlan` re-lay everything after the day they are given, which is right for *"I stopped early today"*: the hiker asked a question and the cascade sheet answers it with three outcomes to choose between. A drag asks no question — the handle promises that *this* line moves — so re-laying the next fortnight off a gesture nobody confirmed would be exactly the silent re-plan the cascade design exists to prevent. A hiker who wants the rest to follow still has the cascade.
+2. **Both changed days say so.** Each carries `wasDistanceMi` out of the move, so the timeline prints "was 17.1 mi" on both — the mechanism #758 already built for this, reused rather than reinvented. Written once and never overwritten, matching `shiftPlan`: "was" answers *what did the app lay out for me*, not *what was it three seconds ago*.
+3. **It is undoable.** The move returns the plan it was given alongside the new one, and the strip prints what changed on **both** days with an Undo beside it. A line naming only the day that grew would hide the one that shrank, and the shorter one is the half a hiker has already bought food for.
+4. **A moved stop loses its name.** A boundary dragged off "Lost Mountain Shelter" is not Lost Mountain Shelter, so the name and the POI reference are dropped unless the new mile lands on a real stop — `nearestStop`'s existing half-mile window, the one "call it a day" already uses. A bare mile marker is honest; a shelter name over ground three miles from the shelter is not. The snap never crosses a neighbouring stop, which would reorder the plan.
+
+### What cannot be dragged, and why each one
+
+Stated on the boundary rather than discovered on release: a fixed boundary is still **drawn** — dashed and dimmed — because a section whose first and last edges were invisible reads as a plan running off both sides of the picture, and because "you cannot drag this" has to be legible before the attempt.
+
+| | |
+|---|---|
+| `end` | The plan's first and last stops. Those are what the trip **is**; moving one re-routes the walk, which is the route builder's job. |
+| `walked` | At or behind the walked prefix. Where a walked day ended is a record, not a plan (SEGMENTS.md's completion model). |
+| `pinned` | Either adjacent day is pinned. "Nothing re-plans through a pin" — and a pin whose day a drag could lengthen is a pin that does not hold. |
+| `zero` | Either adjacent day is a zero, so **another stop sits on this exact mile**. Two boundaries draw as one line, so a hiker cannot see which they are taking; and moving either edge turns a rest day into a walking day of four miles off a gesture nobody confirmed. |
+
+**Each dashed line carries its own reason**, as the line's `<title>` — "A pinned day meets here, and a pin means the day does not move. Unpin it to move this." That is #1049's lesson applied here: a refusal that does not name *which* absence it is sends somebody looking for a fix that does not exist, and three of these four are states a hiker can undo.
+
+**The `zero` rule has a cost worth naming.** Every zero freezes the two boundaries around it, so a twenty-day plan with three rest days has six of its nineteen boundaries fixed. What would settle it is moving **both** coincident stops together, so the drag relocates the rest day along the trail and it stays a zero. That is a better answer and a bigger one — one gesture writing two stops — and it is not what shipped.
+
+A drag *can* still collapse a day to zero by clamping onto its neighbour. That is a real edit, the row says "Zero · no walking", Undo sits beside it, and "Remove this zero" is in the day's own actions.
+
+### Two things #971's body asks for that were re-derived rather than inherited
+
+**The "1.5% collapse threshold" concern does not apply to this chart.** #971 quotes the wireframe: *"the 1.5% collapse threshold becomes 2.5 mi so pills swallow real runs"*. `COLLAPSE_THRESHOLD_PCT` was deleted by #1054 (commit `1f54f426`, 2026-08-26), and the surviving arithmetic lives in `lib/ribbonView.ts` as `MAX_LANE_SPAN_MI = 8 / 0.015` — a bound on the **elevation ribbon's waypoint lanes**. `chrome/ElevationChart.tsx` has no lanes and no pills: `grep -i 'lane\|pill'` over it returns nothing, before this change and after. The concern was real about the ribbon and is not a property of the chart the bench draws.
+
+**"The desktop chart needs a selectable window" is answered, differently from how it was framed.** The chart now takes a `restingDomain` and the bench hands it the plan's own miles, so a 166-mile section fills the plot instead of being a sliver of 2,197. Zooming out of that says "Whole section" rather than "Whole trail", because on this screen the whole trail is not what zooming out means.
+
+### The keyboard, which is not an afterthought here
+
+A drag on a chart is the one gesture in this app with no keyboard equivalent, and #971 makes it the gesture a whole screen exists for. So every movable boundary is also a focusable `role="slider"` carrying its own `aria-valuemin`/`max`/`now` — the range is announced *before* it is moved rather than discovered by hitting it. Arrow keys nudge 0.1 mi, Shift 1 mi; both are `@unvalidated` in `chrome/ElevationChart.tsx` with the arithmetic for why there are two of them (0.1 mi is 0.6 px on a 166-mile domain, so the fine step moves the plan without visibly sliding anything, and a hiker placing a boundary precisely zooms first).
+
+### What this does not do
+
+- **No cascade off a drag**, by decision — see above.
+- **No routing.** The bench works without a URL and would be much more useful with one: [#970 — The website links at /app/ and the app has no router](https://github.com/OurHike/OurHike/issues/970) is adjacent, not blocking.
+- **No third pane until the shell fills the slot.** The component takes `mapPane` and renders two panes without it; wiring it is one prop in `App.tsx`.

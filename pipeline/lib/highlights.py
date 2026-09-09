@@ -24,7 +24,7 @@ trail. Every entry on the list today has one leg on the A.T.; the shape is what
 lets the first cross-trail loop be added without a migration.
 
 The word `stretch` is deliberately not used for this. It belongs to the ~50-mile
-offline download unit cut_stretches.py cuts (#552, decided 2026-08-18).
+offline download unit cut_cells.py cuts (#552, decided 2026-08-25).
 
 WHY THE MILES COME FROM THE PUBLISHED POIs
 

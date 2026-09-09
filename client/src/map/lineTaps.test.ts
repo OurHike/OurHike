@@ -4,7 +4,8 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
-import { BLAZE_LAYER_ID } from './style'
+import { BLAZE_DOTTED_LAYER_ID, BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
+import { TRAIL_BADGE_LAYER_ID } from './trailBadges'
 import { CORRIDOR_HIGHLIGHT_LAYER_ID, HIGHLIGHT_ID_PROPERTY } from './corridorLayers'
 import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
 
@@ -16,6 +17,9 @@ function buildMap(): MockMap {
   const map = new MockMap({})
   map.layerIds = [
     BLAZE_LAYER_ID,
+    // The ghosted blaze layer every other organization's lines are drawn on
+    // (#979). A style that holds one holds both.
+    NEARBY_BLAZE_LAYER_ID,
     POI_LAYER_ID,
     ATC_UPDATE_LAYER_ID,
     CORRIDOR_HIGHLIGHT_LAYER_ID,
@@ -63,6 +67,10 @@ describe('tapping a line', () => {
       lengthMiles: null,
       park: null,
       trailStatus: null,
+      closureKind: null,
+      closureReason: null,
+      closureSource: null,
+      badge: false,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
       at: [120, 240],
@@ -99,6 +107,42 @@ describe('tapping a line', () => {
         lengthMiles: 24,
         park: 'Harriman State Park',
         trailStatus: 'Closed',
+      }),
+    )
+  })
+
+  it('carries an area closure’s kind, reason and closing layer to the sheet (#1142)', () => {
+    // The exporter's three closure properties, on a line another org drew -
+    // the sheet needs all three to speak in the closing organization's voice
+    // instead of the line's.
+    const map = buildMap()
+    const onSelect = vi.fn()
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: {
+          id: 'nynjtc_long_path:44:closed',
+          source: 'nynjtc_long_path',
+          name: 'Long Path',
+          blaze_color: 'Aqua',
+          trail_status: 'closed',
+          closure_kind: 'area',
+          closure_reason: 'Closed Until 2027',
+          closure_source: 'oprhp_trail_closures',
+        },
+        geometry: { type: 'LineString', coordinates: [] },
+      },
+    ])
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(10, 10))
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'nynjtc_long_path',
+        trailStatus: 'closed',
+        closureKind: 'area',
+        closureReason: 'Closed Until 2027',
+        closureSource: 'oprhp_trail_closures',
+        badge: false,
       }),
     )
   })
@@ -201,11 +245,16 @@ describe('tapping a line', () => {
       source: 'centerline',
       name: null,
       blazeColor: 'White',
-      // An A.T. line publishes none of the nearby-trail facts (#783), and
-      // reads them as absent rather than as zero or "Unknown".
+      // An A.T. line publishes none of the nearby-trail facts (#783) nor the
+      // closure facts (#1142), and reads them as absent rather than as zero
+      // or "Unknown".
       lengthMiles: null,
       park: null,
       trailStatus: null,
+      closureKind: null,
+      closureReason: null,
+      closureSource: null,
+      badge: false,
       at: [10, 10],
     })
   })
@@ -342,5 +391,121 @@ describe('yielding to a highlight mark (#858)', () => {
     map.emit('click', touchAt(120, 240))
 
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'centerline:0' }))
+  })
+})
+
+describe('the trails a day hike is made of (#979)', () => {
+  it('queries the ghosted blaze layer as well as the chosen one', () => {
+    // Every organization's lines except the chosen system's are ghosted onto
+    // NEARBY_BLAZE_LAYER_ID. Querying only the first meant a tap on any of
+    // them reported nothing - so #134's sheet, and #979's action on it, were
+    // unreachable on exactly the trails a day hike is made of.
+    const map = buildMap()
+    map.renderedFeatures.set(NEARBY_BLAZE_LAYER_ID, [
+      line('oprhp_trails:1', 'oprhp_trails', 'Blue', 'Pine Meadow Trail'),
+    ])
+
+    const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+
+    const query = map.featureQueries.at(-1)
+    expect(query?.layers).toContain(BLAZE_LAYER_ID)
+    expect(query?.layers).toContain(NEARBY_BLAZE_LAYER_ID)
+    expect(tapped?.name).toBe('Pine Meadow Trail')
+  })
+
+  it('asks only for the layers the style actually holds', () => {
+    // Querying a layer the style does not hold fires an error event rather
+    // than throwing - the same guard poiTaps.ts states, extended to the
+    // second layer rather than assumed away.
+    const map = buildMap()
+    map.layerIds = map.layerIds.filter((id) => id !== NEARBY_BLAZE_LAYER_ID)
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [line('centerline:1', 'centerline')])
+
+    tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+
+    expect(map.featureQueries.at(-1)?.layers).toEqual([BLAZE_LAYER_ID])
+  })
+})
+
+describe('the through-route badge (#1283)', () => {
+  // A badge is a deliberate thumb target on its line, carrying the line's own
+  // published properties - so a tap on it opens the sheet the line opens.
+  // Not a switch: features/NEARBY_TRAILS.md §2's decision stands.
+  function badgeMap(): MockMap {
+    const map = buildMap()
+    map.layerIds = [...map.layerIds, TRAIL_BADGE_LAYER_ID, BLAZE_DOTTED_LAYER_ID]
+    return map
+  }
+
+  it('reports the line a badge names, snapped to the badge’s own vertex', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: {
+          id: 'centerline:chain:0',
+          source: 'centerline',
+          name: 'Appalachian National Scenic Trail',
+          blaze_color: 'White',
+          mark: 'trail-mark-AT',
+          chip: 'blaze-chip-White',
+        },
+        geometry: { type: 'Point', coordinates: [-74.1, 41.25] },
+      },
+    ])
+
+    const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+
+    expect(tapped).toMatchObject({
+      id: 'centerline:chain:0',
+      source: 'centerline',
+      name: 'Appalachian National Scenic Trail',
+      blazeColor: 'White',
+      at: [-74.1, 41.25],
+      // And says it was the badge (#1306): the shell takes an untaken trail
+      // from its badge, and opens the sheet from its line.
+      badge: true,
+    })
+  })
+
+  it('wins over the line under it, since the plate is wider than the line', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: { id: 'centerline:chain:0', source: 'centerline', name: 'A.T.' },
+        geometry: { type: 'Point', coordinates: [1, 1] },
+      },
+    ])
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
+
+    expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })?.id).toBe(
+      'centerline:chain:0',
+    )
+  })
+
+  it('still yields to a pin under the same thumb', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: { source: 'centerline', name: 'A.T.' },
+        geometry: { type: 'Point', coordinates: [1, 1] },
+      },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'shelter-1' } },
+    ])
+
+    expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('reads the dotted layers too, where every line outside the chosen system now draws', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [
+      line('oprhp:42', 'oprhp_trails', 'Aqua', 'Long Path'),
+    ])
+
+    const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+    expect(tapped?.name).toBe('Long Path')
+    const queried = map.featureQueries.map((q) => q.layers)
+    expect(queried).toContainEqual(expect.arrayContaining([BLAZE_DOTTED_LAYER_ID]))
   })
 })

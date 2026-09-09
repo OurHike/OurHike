@@ -49,7 +49,7 @@ describe('the entrance', () => {
     expect(screen.getByText('Where from?')).toBeInTheDocument()
     expect(screen.getByText('Damascus')).toBeInTheDocument()
     expect(screen.getByText('mi 470.8')).toBeInTheDocument()
-    expect(screen.getByLabelText('Miles of trail')).toHaveValue(45)
+    expect(screen.getByLabelText('Trail distance in miles')).toHaveValue(45)
     expect(screen.getByText(/of trail — type it, or drag/)).toBeInTheDocument()
     expect(screen.getByText('Ends near')).toBeInTheDocument()
     expect(screen.getByText('Old Orchard Shelter')).toBeInTheDocument()
@@ -120,7 +120,7 @@ describe('the entrance', () => {
   it('moves the sliders and the direction through the shell', () => {
     const { rerender } = render(<RouteEntranceSheet {...PROPS} />)
 
-    fireEvent.change(screen.getByLabelText('Miles of trail, slider'), {
+    fireEvent.change(screen.getByLabelText('Trail distance in miles, slider'), {
       target: { value: '25' },
     })
     expect(PROPS.onMiles).toHaveBeenCalledWith(25)
@@ -159,7 +159,7 @@ describe('the entrance', () => {
 
     expect(screen.getByText(/predates trail miles/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Use this stretch' })).toBeNull()
-    expect(screen.queryByLabelText('Miles of trail')).toBeNull()
+    expect(screen.queryByLabelText('Trail distance in miles')).toBeNull()
   })
 
   it('never prints an arrival clock', () => {
@@ -173,7 +173,7 @@ describe('the entrance', () => {
 describe('no ceiling on the answer (#804)', () => {
   it('runs the slider to the trail’s own length, from the download', () => {
     render(<RouteEntranceSheet {...PROPS} />)
-    expect(screen.getByLabelText('Miles of trail, slider')).toHaveAttribute(
+    expect(screen.getByLabelText('Trail distance in miles, slider')).toHaveAttribute(
       'max',
       '2197.4',
     )
@@ -188,19 +188,65 @@ describe('no ceiling on the answer (#804)', () => {
     render(<RouteEntranceSheet {...PROPS} miles={2500} />)
 
     // The number the hiker typed is still on screen, unreduced.
-    expect(screen.getByLabelText('Miles of trail')).toHaveValue(2500)
+    expect(screen.getByLabelText('Trail distance in miles')).toHaveValue(2500)
     expect(screen.getByText(/Past the end of the trail/)).toBeInTheDocument()
     expect(screen.getByText(/haven’t shortened your answer/)).toBeInTheDocument()
     // ...and the slider simply pegs.
-    expect(screen.getByLabelText('Miles of trail, slider')).toHaveValue('2197.4')
+    expect(screen.getByLabelText('Trail distance in miles, slider')).toHaveValue('2197.4')
   })
 
   it('takes any number from the field', () => {
     render(<RouteEntranceSheet {...PROPS} />)
-    fireEvent.change(screen.getByLabelText('Miles of trail'), {
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
       target: { value: '2189' },
     })
     expect(PROPS.onMiles).toHaveBeenCalledWith(2189)
+  })
+})
+
+// The field and the label have to agree about what unit they are in (#1038).
+// They did not: the value was a raw mile count and the label beside it read
+// "km", so a metric hiker asking for 45 was handed 45 miles - 72 km, before
+// the target sheet had even opened.
+describe('the typed distance is in the hiker’s own unit (#1038)', () => {
+  const metric = { ...PROPS, units: 'metric' as const }
+
+  it('shows a metric hiker kilometres, not miles wearing a km label', () => {
+    render(<RouteEntranceSheet {...metric} />)
+    // 45 miles is 72.4 km, and that is the figure this sheet already prints
+    // for the same stretch through formatDistance three rows away.
+    expect(screen.getByLabelText('Trail distance in kilometres')).toHaveValue(72.4)
+    expect(screen.getByText('km')).toBeInTheDocument()
+  })
+
+  it('takes kilometres back off a metric hiker and stores miles', () => {
+    render(<RouteEntranceSheet {...metric} />)
+    fireEvent.change(screen.getByLabelText('Trail distance in kilometres'), {
+      target: { value: '45' },
+    })
+    // 45 km is 27.96 mi - what they asked for, on the axis everything
+    // downstream of this sheet is computed on.
+    const asked = vi.mocked(PROPS.onMiles).mock.calls.at(-1)?.[0] as number
+    expect(asked).toBeCloseTo(27.96, 2)
+  })
+
+  it('runs the slider to the trail’s length in kilometres', () => {
+    render(<RouteEntranceSheet {...metric} />)
+    // 2,197.4 mi of Appalachian Trail is 3,536.4 km, and a slider that
+    // stopped at 2,197 under a km label was answering a different question.
+    expect(screen.getByLabelText('Trail distance in kilometres, slider')).toHaveAttribute(
+      'max',
+      '3536.4',
+    )
+  })
+
+  it('leaves an imperial hiker exactly where they were', () => {
+    render(<RouteEntranceSheet {...PROPS} />)
+    expect(screen.getByLabelText('Trail distance in miles')).toHaveValue(45)
+    expect(screen.getByLabelText('Trail distance in miles, slider')).toHaveAttribute(
+      'max',
+      '2197.4',
+    )
   })
 })
 
@@ -224,7 +270,7 @@ describe('naming an end (#804)', () => {
     expect(screen.getByText('554.2 mi')).toBeInTheDocument()
     expect(screen.getByText(/Damascus → Harpers Ferry · north/)).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'How far' })).toBeNull()
-    expect(screen.queryByLabelText('Miles of trail')).toBeNull()
+    expect(screen.queryByLabelText('Trail distance in miles')).toBeNull()
   })
 
   it('says the day count is an aid, not a claim about this hiker', () => {

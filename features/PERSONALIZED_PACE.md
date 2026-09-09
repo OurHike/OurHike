@@ -68,7 +68,7 @@ This is not invented: the shape matches Langmuir's corrections to Naismith (whic
 
 A hiker stops. For water, for a view, for lunch, for forty minutes at a shelter. Elapsed time between two points includes all of it, and a model trained on elapsed time learns that this hiker is extremely slow and highly erratic — which is both useless and, since it would inflate every estimate, actively harmful.
 
-**Observations must record moving time**, with stops detected and excluded (a sustained low-movement window, reusing the same trailing-GPS-window machinery [HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way detector already needs).
+**Observations must record moving time**, with stops detected and excluded (a sustained low-movement window over a trailing GPS trace — machinery nothing in the client has built yet; the now-removed wrong-way alert never got that far either, [HIKER_SAFETY.md](HIKER_SAFETY.md) §5).
 
 This is the single most likely thing to quietly ruin the feature, which is why it is called out at design level rather than left as an implementation detail.
 

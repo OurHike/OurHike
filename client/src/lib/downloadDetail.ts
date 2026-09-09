@@ -14,10 +14,19 @@
 //
 // This number's only job is to let a hiker at a trailhead decide whether they
 // have room, so it tracks the object they will actually download.
-// `verify_release.py` check 18 fails a release where any tier drifts more than
-// 2% from what is advertised here, which is what caught this and what keeps it
-// honest - and #505 carries the better fix, publishing `size_bytes` in
-// `latest.json` so the figure stops being hand-kept at all.
+//
+// SINCE #505 THESE ARE THE FALLBACK, NOT THE FIGURE. lib/usePublishedSizes.ts
+// reads what publish.py measured on upload out of `latest.json`, and
+// packageSizeBytes prefers it wherever the manifest carries one. What is left
+// here is the answer for a phone that has not been able to ask - first run
+// before the manifest lands, a build with no bucket, an unreachable one - and
+// that is a real state rather than a degenerate one, so these stay measured
+// and stay maintained.
+//
+// `verify_release.py` check 18 still fails a release where any tier drifts more
+// than 2% from what is advertised here, and it is worth more rather than less
+// now: it is the only thing that notices when the fallback rots, and the
+// fallback is what a hiker on a slow connection actually reads.
 
 export type DetailLevel = 'light' | 'standard' | 'fine'
 

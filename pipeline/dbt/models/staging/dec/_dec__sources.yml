@@ -1,0 +1,162 @@
+version: 2
+
+sources:
+  - name: dec
+    description: >
+      NYS DEC's Info Locator feature layers - eight of them, fetched by
+      fetch_external_layers.py into data/raw/external/ and loaded untouched
+      by load_raw.py. The largest block of non-A.T. data the warehouse holds,
+      and the one that makes dim_pois genuinely multi-organization rather
+      than multi-layer.
+
+      SIX OF THE EIGHT DECLARE THEIR OWN `poi_type` IN sources.json, which is
+      why the staging models can stamp a type without anybody inventing one:
+      lean_tos -> shelter, primitive_campsites -> campsite, scenic_vistas /
+      firetowers / viewing_areas -> viewpoint, parking_areas -> parking. DEC
+      splits by asset type where lib/poi_schema.py splits by what a hiker
+      walks to; that mapping is the registry's, transcribed here.
+
+      THE PER-TYPE SERVICES ARE DEC'S OWN PUBLIC SLICE, which is the reason
+      for using them rather than filtering the big layer: measured live
+      2026-08-27, dec_backcountry_features carries 325 LEAN-TO rows of which
+      exactly 315 read PUBLICUSE 'Y' - the count this service publishes. Four
+      of those cross-checks are exact and three are within five features
+      (firetowers 35 vs 34, viewing_areas 34 vs 33, parking 1,852 vs 1,857);
+      the near-misses are recorded so they are known rather than a surprise
+      to whoever re-measures.
+
+      NO WATER SHIPS FROM ANY DEC LAYER. That is a measured refusal recorded
+      in the registry, not an omission here, and nothing in this source
+      group mints a `water` poi_type.
+    schema: raw
+    loaded_at_field: _loaded_at
+    freshness:
+      # load_raw.py's cadence, not DEC's - and DEC is the one provider where
+      # there is no upstream editingInfo to compare against at all (on-prem
+      # MapServers publish none), so the substitute marker is a max(UPDATED)
+      # statistics query the fetcher runs. @unvalidated threshold, same open
+      # question as _atc__sources.yml.
+      warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_dec__dec_hiking_trails
+        description: >
+          NYS DEC Hiking Trails, statewide (sources.json: discovered
+          2026-08-25). 5,286 polyline segments - 4,931 LineString, 355
+          MultiLineString - fetched whole and counted that day, against the
+          5,277 the 2026-08-11 survey read, so the layer moves. The name
+          oversells it: 'Hiking Trails' is DEC's per-use split, so a row is
+          here because foot travel is allowed on it, not because it is a
+          footpath (446 rows are ASSET 'SNOWMOBILE TRAIL' with FOOT 'Y').
+        columns:
+          - name: OBJECTID
+            description: >
+              The id the published artifacts actually use. DEC spells the
+              stable column GLOBALID where lib/feature_id.py looks for
+              GlobalID, so ids fall back here - unique across the fetched
+              5,286 and stable within a fetch, but a DEC republish that
+              renumbers OBJECTIDs renumbers ours.
+            data_tests: [not_null, unique]
+          - name: MARKER
+            description: >
+              DEC aliases it 'Trail Marker Color' and it is this pipeline's
+              blaze - a coded domain whose codes ARE the words. Live values
+              on the 5,286 rows: 2,929 blank or null, Yellow 704, Blue 692,
+              Red 622, White 128, Other 97, Orange 78, Green 35, and one
+              'ORANGE AND RED' that DEC's own domain does not declare. No
+              accepted_values test: the domain is the finding.
+          - name: FOOT
+            description: >
+              Y on 4,050 rows and M on 1,236, and nothing else. DEC's CORRIDOR
+              USE domain declares Y=YES, N=NO, U=UNDECIDED, M=MAINTAINED,
+              -99=NO JURISDICTION (read off live field metadata 2026-08-25).
+              Reading M as "maintained for foot travel" is ours rather than
+              DEC's and is made in export_nearby_trails.py, not here.
+      - name: raw_dec__dec_lean_tos
+        description: >
+          NYS DEC Lean-tos, statewide (sources.json: discovered 2026-08-27).
+          315 rows, counted live that day. Registered as LAYER 0 ONLY - layer
+          1 of the same service is the conservation-easement variant, assets
+          on private land the public holds access rights over, which carries
+          an access question layer 0's state land does not.
+
+          NO CAPACITY FIELD. The measured field list is UNIT/FACILITY/NAME/
+          ASSET/DESCRIP/NOTES/ACCESSIBLE/UPDATED/PHOTO_LINK and nothing in it
+          states how many the shelter sleeps. Two fields that look useful and
+          are not: PHOTO_LINK points at an internal DEC drive, and NOTES
+          carries DEC's '-99' null sentinel on some rows.
+        columns:
+          - name: OBJECTID
+            description: The entry's declared `id_field`.
+            data_tests: [not_null, unique]
+          - name: PUBLICUSE
+            description: >
+              DEC's public/internal split. On the big layer it divides
+              7,645 Y / 13,823 N; on these per-type services it is expected
+              to drop nothing, and is carried anyway so a service DEC later
+              widens cannot quietly bring internal assets with it.
+      - name: raw_dec__dec_primitive_campsites
+        description: >
+          NYS DEC Primitive Campsites, statewide (discovered 2026-08-27).
+          2,078 rows counted live that day, and exactly the big layer's
+          public slice. Genuine BACKCOUNTRY sites - one row is one tent site,
+          where one OPRHP campsite row is a whole drive-in campground.
+        columns:
+          - name: OBJECTID
+            data_tests: [not_null, unique]
+      - name: raw_dec__dec_scenic_vistas
+        description: >
+          NYS DEC Scenic Vistas, statewide (discovered 2026-08-27). 134 rows
+          counted live that day, matching the big layer's 134 PUBLICUSE 'Y'
+          SCENIC VISTA rows exactly.
+        columns:
+          - name: OBJECTID
+            data_tests: [not_null, unique]
+      - name: raw_dec__dec_firetowers
+        description: >
+          NYS DEC Firetowers, statewide (discovered 2026-08-27). 35 rows
+          counted live that day against 34 in the big layer's public slice -
+          one of three near-misses, recorded so the discrepancy is known.
+        columns:
+          - name: OBJECTID
+            data_tests: [not_null, unique]
+      - name: raw_dec__dec_viewing_areas
+        description: >
+          NYS DEC Viewing Areas, statewide (discovered 2026-08-27). 34 rows
+          counted live that day against 33 OBSERVATION PLATFORM rows in the
+          big layer's public slice. The layer's own name carries a leading
+          space in DEC's service metadata, which is hygiene rather than
+          meaning - nothing matches on it.
+        columns:
+          - name: OBJECTID
+            data_tests: [not_null, unique]
+      - name: raw_dec__dec_parking_areas
+        description: >
+          NYS DEC Parking, statewide (discovered 2026-08-27). 1,852 rows
+          counted live that day against 1,857 parking-shaped rows in the big
+          layer's public slice - the third and widest near-miss, five
+          features. The layer states no seasonal access: one sampled row read
+          'SEASONALLY OPEN MAY 1 TO SEPT 30' in free-text NOTES, so
+          seasonality exists in DEC's data as prose and not as a field.
+        columns:
+          - name: OBJECTID
+            data_tests: [not_null, unique]
+      - name: raw_dec__dec_backcountry_features
+        description: >
+          NYS DEC Back Country Features (discovered 2026-08-27). 21,468
+          points counted live that day, and NOT A POI LAYER - DEC's own
+          description calls it point data locating man-made assets requiring
+          periodic maintenance, and its largest single value is CULVERT at
+          4,290 features. Registered for exactly two poi types (privy and
+          crossing) through an allowlist in export_nearby_poi.py, never a
+          type-prefix match, which is why the entry declares no `poi_type`
+          and stg_dec__backcountry_features stamps none.
+        columns:
+          - name: OBJECTID
+            data_tests: [not_null, unique]
+          - name: ASSET
+            description: >
+              Free text: 234 values as stored, 223 after trimming. The 12
+              whitespace variants include 'FORD ' beside 'FORD' and a bare
+              ' ' on 86 rows, and DEC's own misspellings are in there
+              ('PRIMATIVE CAMPSITE'). Any match on it is case-insensitive and
+              stripped.

@@ -279,6 +279,43 @@ def test_poi_verdict_ok_when_every_type_has_features_except_crossing(tmp_path):
     assert report["counts"]["poi:shelter"] == 5
 
 
+def test_poi_verdict_ok_when_trailhead_is_the_only_empty_type(tmp_path):
+    """trailhead is export_poi.py's other legal zero (lib.poi_schema's
+    ALLOWED_EMPTY_POI_TYPES) - OPRHP's 287 ship through nearby_poi.geojson,
+    not this export. Regression test for the gap where this file had its
+    own hardcoded copy of that dict, `trailhead` never joined it, and a
+    real v1.2.1 UA publish (run 33798908097) failed this check over an
+    export that had nothing wrong with it."""
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"trailhead": 0})))
+
+    report = check_output_quality.poi_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"]["poi:trailhead"] == 0
+    assert report["counts"]["poi:shelter"] == 5
+
+
+def test_the_two_poi_gates_read_one_allowed_empty_set():
+    """export_poi.py's gate and this one must never disagree about which
+    emptiness is honest - the exact way they drifted in #1225/#1227.
+
+    Both import lib.poi_schema.ALLOWED_EMPTY_POI_TYPES now, so this asserts
+    the identity rather than the contents: a future exemption is one
+    sentence in poi_schema.py, not two copies to keep in step. The second
+    half guards a different failure mode - a typo in the allowlist quietly
+    exempting nothing at all, rather than the type somebody meant.
+    """
+    import export_poi
+    from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
+
+    assert export_poi.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+    assert check_output_quality.ALLOWED_EMPTY_POI_TYPES is ALLOWED_EMPTY_POI_TYPES
+
+    for poi_type in ALLOWED_EMPTY_POI_TYPES:
+        assert poi_type in check_output_quality.POI_TYPES
+
+
 def test_poi_verdict_flags_a_zero_count_poi_type_other_than_crossing(tmp_path):
     manifest_path = tmp_path / "manifest.json"
     manifest_path.write_text(json.dumps(_poi_manifest(tmp_path, {"crossing": 0, "shelter": 0})))
@@ -456,41 +493,41 @@ def test_spurs_verdict_flags_an_artifact_that_drifted_from_its_manifest(tmp_path
 # --- manifests_verdict (#659) --------------------------------------------------
 
 
-def test_manifests_verdict_verifies_club_sections_and_present_stretch_manifests(tmp_path):
+def test_manifests_verdict_verifies_club_sections_and_present_cell_manifests(tmp_path):
     club_manifest = tmp_path / "club_sections_manifest.json"
     club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
     club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
 
-    stretch_entry = _artifact_entry(tmp_path / "at_basemap_stretch_00.pmtiles", "stretch bytes", 0)
-    (tmp_path / "at_basemap_stretches_manifest.json").write_text(
-        json.dumps({"artifacts": {"at_basemap_stretch_00.pmtiles": stretch_entry}})
+    cell_entry = _artifact_entry(tmp_path / "at_basemap_cell_n40w075.pmtiles", "cell bytes", 0)
+    (tmp_path / "at_basemap_cells_manifest.json").write_text(
+        json.dumps({"artifacts": {"at_basemap_cell_n40w075.pmtiles": cell_entry}})
     )
 
-    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)
+    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, cells_dir=tmp_path)
 
     assert report["verdict"] is Verdict.OK
     assert report["problems"] == []
 
 
-def test_manifests_verdict_flags_a_stretch_artifact_that_drifted_from_its_manifest(tmp_path):
+def test_manifests_verdict_flags_a_cell_artifact_that_drifted_from_its_manifest(tmp_path):
     """The audited gap: publish.py trusts these manifests' hashes across the
     time gap since the cut, and nothing re-verified them (#659)."""
     club_manifest = tmp_path / "club_sections_manifest.json"
     club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
     club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
 
-    stretch_entry = _artifact_entry(tmp_path / "dem_stretch_03.pmtiles", "original bytes", 0)
-    (tmp_path / "dem_stretches_manifest.json").write_text(json.dumps({"artifacts": {"dem_stretch_03.pmtiles": stretch_entry}}))
-    (tmp_path / "dem_stretch_03.pmtiles").write_text("rebuilt after the manifest recorded its hash")
+    cell_entry = _artifact_entry(tmp_path / "dem_cell_n40w074.pmtiles", "original bytes", 0)
+    (tmp_path / "dem_cells_manifest.json").write_text(json.dumps({"artifacts": {"dem_cell_n40w074.pmtiles": cell_entry}}))
+    (tmp_path / "dem_cell_n40w074.pmtiles").write_text("rebuilt after the manifest recorded its hash")
 
-    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)
+    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, cells_dir=tmp_path)
 
     assert report["verdict"] is Verdict.PROBLEM
-    assert any("dem_stretch_03" in p for p in report["problems"])
+    assert any("dem_cell_n40w074" in p for p in report["problems"])
 
 
 def test_manifests_verdict_treats_a_missing_club_manifest_as_an_excusable_problem(tmp_path):
-    report = check_output_quality.manifests_verdict(club_manifest_path=tmp_path / "absent.json", stretches_dir=tmp_path)
+    report = check_output_quality.manifests_verdict(club_manifest_path=tmp_path / "absent.json", cells_dir=tmp_path)
 
     assert report["verdict"] is Verdict.PROBLEM
     assert report["reason"] == check_output_quality.MANIFEST_MISSING, (
@@ -498,14 +535,14 @@ def test_manifests_verdict_treats_a_missing_club_manifest_as_an_excusable_proble
     )
 
 
-def test_manifests_verdict_does_not_fail_a_vector_run_for_having_no_stretches(tmp_path):
+def test_manifests_verdict_does_not_fail_a_vector_run_for_having_no_cells(tmp_path):
     """Stretch archives exist only after a basemap/dem build; their absence
     on a vector-only run is normal and must be noted, not failed."""
     club_manifest = tmp_path / "club_sections_manifest.json"
     club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
     club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
 
-    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, stretches_dir=tmp_path)
+    report = check_output_quality.manifests_verdict(club_manifest_path=club_manifest, cells_dir=tmp_path)
 
     assert report["verdict"] is Verdict.OK
     assert "not built this run" in report["detail"]
@@ -1319,7 +1356,7 @@ def passing_pipeline(tmp_path, monkeypatch):
     _write_receipts(tmp_path, ["fetch_all", "fetch_opentrail"])
 
     # The club sections manifest joined the passing set with #659's
-    # manifests check; stretch manifests stay absent on purpose (noted,
+    # manifests check; cell manifests stay absent on purpose (noted,
     # never failed - most vector runs rightly have none).
     club_manifest = tmp_path / "club_sections_manifest.json"
     club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
@@ -1536,3 +1573,24 @@ def test_main_still_flags_a_drop_an_unrelated_changed_source_cannot_explain(pass
 
     # poi:shelter is fed by 'atc' alone, so an elevation refresh explains nothing.
     assert check_output_quality.main(["--changed-source", "elevation"]) != 0
+
+
+def test_trails_verdict_checks_the_vertex_miles_when_the_manifest_claims_them(tmp_path):
+    """#1192: trail_miles.json is optional in a manifest, but a manifest that
+    records one whose bytes no longer match is the same silent corruption the
+    line's own hash check exists to catch - and on a phone the client's
+    fallback would hide it."""
+    manifest_path = tmp_path / "trails_manifest.json"
+    manifest = {
+        "geojson": _artifact_entry(tmp_path / "trails.geojson", "geojson bytes", 10),
+        "fgb": _artifact_entry(tmp_path / "trails.fgb", "fgb bytes", 10),
+        "miles": _artifact_entry(tmp_path / "trail_miles.json", "miles", 1),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    assert check_output_quality.trails_verdict(manifest_path)["verdict"] is Verdict.OK
+
+    (tmp_path / "trail_miles.json").write_text("truncated")
+    report = check_output_quality.trails_verdict(manifest_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("trail_miles.json" in p and "sha256 mismatch" in p for p in report["problems"])

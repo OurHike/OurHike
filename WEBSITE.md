@@ -112,9 +112,19 @@ These are not nice-to-haves; they are why this surface has to be good.
 **Money.** FEATURES.md: *"No purchases, subscriptions, tips, or payment prompts
 inside the mobile app shell — this avoids the ~15-30% Apple/Google App Store
 cut... Any paid tier, donation flow, or sponsorship purchase lives on the web
-version only."* The entire funding mechanism for the ATC and its maintaining
-clubs — the stated point of the project — has exactly one available surface, and
-it is this one. A weak website is a weak business model, not a weak brochure.
+version only."* Any charge OurHike ever makes for itself therefore has exactly
+one available surface, and it is this one. A weak website is a weak business
+model, not a weak brochure.
+
+> *Corrected 2026-08-27.* This paragraph read *"The entire funding mechanism for
+> the ATC and its maintaining clubs — the stated point of the project"*, and that
+> was never true: no money reaches the ATC or a club through OurHike, and since
+> 2026-08-27 that is settled design rather than an unbuilt stage
+> ([features/PRICING_MODEL.md](features/PRICING_MODEL.md) pricing value #6). The
+> site's job for the organizations is real but different — it is where their own
+> donate and membership pages are linked, so a hiker can reach them in one click
+> and give them money that never touches us. That is a traffic job, not a
+> treasury one, and it is if anything harder to do well.
 
 **Being found.** An installed app is opaque to search engines. A website is not.
 Somebody typing "water sources near Harpers Ferry AT" or "AT shelters in the
@@ -275,12 +285,18 @@ reintroduces it silently. Carry the comment across with the code.
 ### 5.5 Support the trail — the money page
 The business model's only surface. Per `features/PRICING_MODEL.md`: the
 thru-hike pass, the regional pass, the all-access ceiling, the volunteer
-exemption, and a plain donation path. Structure the page now even though pricing
-is Post-MVP and deliberately un-timed — today it can be a donation path plus an
-honest statement of intent. What the page has to make unmistakable, because it
+exemption, and direct links to the organizations' own giving pages. Structure
+the page now even though pricing is Post-MVP and deliberately un-timed — today
+it is those links plus an honest statement of intent. (This read "a plain
+donation path… today it can be a donation path plus an honest statement of
+intent" until 2026-08-27. A donation path OurHike ran on an organization's
+behalf is the thing that got decided against, so the spec had to move with the
+page.) What the page has to make unmistakable, because it
 is the entire differentiator against FarOut: **where the money goes**, and that
-nothing safety-relevant is ever behind it. Pricing value #6 — "money follows the
-trail it came from" — is a design problem as much as a copy problem.
+nothing safety-relevant is ever behind it. Pricing value #6 — "money never
+passes through OurHike" — is a design problem as much as a copy problem. (It
+read "money follows the trail it came from" until 2026-08-27; the value keeps
+its number precisely so this citation still resolves.)
 
 ### 5.6 Get involved
 Volunteering with maintaining clubs, reporting conditions, contributing code and
@@ -349,6 +365,47 @@ thumb targets, so it carries the icon alone (WIREFRAMES.md §1). That is a
 deliberate floor rather than the answer: how much chrome this screen should
 carry before the map gets what is left is a real design question, and is tracked
 as its own spike rather than settled here.
+
+**The day-hike builder gets a rail.** The one surface this section's layout
+rule was written for and then not applied to. `chrome/DayHikePickBar.tsx` is a
+sheet anchored to the bottom of the canvas at `max-height: 60%`, and above the
+breakpoint it stayed that way — a letterboxed map with a sheet across the foot
+of it on a 27" display, which is exactly the "sheet that covers the map" the
+paragraph above rules out. Since [#1194](https://github.com/OurHike/OurHike/issues/1194)
+the information moves into a 348px left rail (`chrome/DayHikePanel.tsx`) — the
+route's figures, its ordered legs and stops, and the map-label toggles — and the
+map takes the whole remaining frame.
+
+**The long hike's nine surfaces become windows.** The same rule, applied a
+second time and for the same reason.
+[#1317](https://github.com/OurHike/OurHike/issues/1317) shipped them in two
+arrangements — three sheets docked to the bottom edge, and five screens that
+replace the app entirely — and the design handoff had already asked for
+something else above this breakpoint: *"the frames here become the content
+column."* Both arrangements are a phone's answers. A sheet at the foot of a
+1440px browser is the letterboxed map above in a second place; a full-screen
+takeover is worse, because it removes the very thing that tells somebody where
+they are. A maintainer's report of it —
+[#1329](https://github.com/OurHike/OurHike/issues/1329) — was *"having them
+full screen makes it hard for me to remember where I am"*, which is the
+sentence [#1133](https://github.com/OurHike/OurHike/issues/1133) already wrote
+for the report window: a dialog leaves the screen you were on visible around
+it, and that is what says you have not gone anywhere. So all nine wear one
+`.hike-window` chrome, unchanged on a phone and centred over the dimmed app
+here.
+
+One consequence is not cosmetic. With the screens no longer replacing the app,
+the map behind stays mounted — and the set-up screen's *"Choose on the map"*
+door, which had been wired to close its picker and place nothing, has a map to
+offer.
+
+**The buttons do not move, on either breakpoint**, and that is the one place
+this workstream's own reasoning gets applied against itself. The tab bar becomes
+a sidebar because "the tab bar's placement is a thumb-reach decision that means
+nothing with a mouse"; the builder's actions stay at the foot of the map because
+a hiker building a walk one-handed at a trailhead is precisely the case thumb
+reach was about, and a desktop rail is no reason to teach two different places
+to press Cancel.
 
 **The elevation profile earns the space.** `ElevationRibbon` is a thin strip
 because a phone has no room. On a desktop it can be the full interactive chart
@@ -517,9 +574,15 @@ a volunteer project, and none is needed for the jobs in §2.
    something NYNJTC/ATC-affiliated? The DS's voice notes assume an organisational
    "we" that does not yet map onto a real organisation, and every page's copy
    depends on the answer. This is the one open question that blocks writing.
-5. **Money, today.** Does Phase 2's Support page take donations now (needs a
+5. ~~**Money, today.** Does Phase 2's Support page take donations now (needs a
    Stripe account and an answer to "who receives it"), or state intent until
-   PRICING_MODEL.md's structure is built?
+   PRICING_MODEL.md's structure is built?~~ **Answered 2026-08-27.** Neither, as
+   posed. The page ships, it takes nothing, and it links to the organizations'
+   own giving pages — so "who receives it" stops being OurHike's question to
+   answer, which is the half of this that was actually hard. Whether OurHike
+   ever takes a donation toward **its own** costs is still open and is a
+   different question; see [features/PRICING_MODEL.md](features/PRICING_MODEL.md)
+   value #6 and its superseding banner.
 
 ---
 

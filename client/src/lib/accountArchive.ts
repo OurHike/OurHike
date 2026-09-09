@@ -32,6 +32,7 @@ import { PLAN_KEY, loadPlan } from './plan'
 import { PLANNED_HIKE_KEY, loadPlannedHike } from './plannedHike'
 import { loadPreferences } from './preferences'
 import { OUTBOX_KEY } from './outbox'
+import { DAY_HIKES_KEY, loadDayHikes } from './dayHikes'
 import { loadTrips } from './trips'
 import { WALKED_STORAGE_KEY, readWalked } from './walkedMiles'
 
@@ -84,17 +85,29 @@ function unavailableBecause(error: unknown): AccountUnavailable {
  * that changes cannot leave this file quietly reading nothing.
  */
 async function deviceHalf(): Promise<Record<string, unknown>> {
-  const [trips, plannedHike, plan, preferences, outbox, pace] = await Promise.all([
-    loadTrips(),
-    loadPlannedHike(),
-    loadPlan(),
-    loadPreferences(),
-    get(OUTBOX_KEY),
-    get(PACE_STORAGE_KEY),
-  ])
+  const [trips, dayHikes, plannedHike, plan, preferences, outbox, pace] =
+    await Promise.all([
+      loadTrips(),
+      loadDayHikes(),
+      loadPlannedHike(),
+      loadPlan(),
+      loadPreferences(),
+      get(OUTBOX_KEY),
+      get(PACE_STORAGE_KEY),
+    ])
 
   return {
     trips: trips.trips,
+    // The rest of the same document, and a whole store, all of it the
+    // hiker's own and none of it exported until now (#1040). `trips.trips`
+    // alone left out the hikes that group them (#788), the groups a hiker
+    // named themselves (#800), and every day hike (#976) - which is where
+    // the coordinates somebody tapped live. "Everything of yours, in one
+    // file" is this module's first line, and it was short by three
+    // collections.
+    hikes: trips.hikes,
+    groups: trips.groups,
+    day_hikes: dayHikes.hikes,
     planned_hike: plannedHike,
     plan,
     preferences,
@@ -108,6 +121,9 @@ async function deviceHalf(): Promise<Record<string, unknown>> {
     // own storage rather than from an account.
     read_from: {
       trips: 'ourhike:trips',
+      hikes: 'ourhike:trips',
+      groups: 'ourhike:trips',
+      day_hikes: DAY_HIKES_KEY,
       planned_hike: PLANNED_HIKE_KEY,
       plan: PLAN_KEY,
       outbox: OUTBOX_KEY,

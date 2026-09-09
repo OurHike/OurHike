@@ -265,6 +265,11 @@ a:hover {
   font-size: clamp(38px, 6vw, 56px);
   font-weight: 700;
   letter-spacing: -0.01em;
+  /* The rotating slides run from ~38 to ~72 characters, wrapping to
+   * different line counts at the same width. Reserving two lines (the
+   * longest slides need, at typical hero widths) keeps the CTA and beta
+   * notice below from jumping every few seconds. */
+  min-height: calc(2 * 1.15em);
 }
 
 .hero__tagline {

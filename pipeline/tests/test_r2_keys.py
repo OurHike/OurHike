@@ -15,6 +15,7 @@ pass fails here rather than in a bucket nobody can undo.
 
 import pytest
 
+import cut_trail_graph
 import publish
 from lib import data_env, r2_keys
 
@@ -33,6 +34,28 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "trails.fgb",
         "elevation_profile.json",
         "spurs.json",
+        # The junction graph and the three files index-aligned with its edges
+        # (#974, #1011, #1045). One family, spelled here together, because the
+        # alignment invariant is the reason they share a stem and a rename of
+        # any one of them is a rename of the set.
+        "trail_graph.json",
+        "trail_graph_geometry.json",
+        "trail_graph_elevation.json",
+        "trail_graph_profile.json",
+        # The same four cut per 1-degree cell (#1257 stage 3,
+        # cut_trail_graph.py): JSON shards, one per half per cell, spelled by
+        # the cutter's own cell_key so a respelling there is a failure here.
+        *[cut_trail_graph.cell_key(name, half) for name in ("n34w084", "s34e007") for half in cut_trail_graph.HALVES],
+        # The other organizations' network (#950, #1135, #1257): the lines,
+        # their corridor-view sketch, and the same lines as vector tiles, all
+        # three written by export_nearby_trails.py and published as one
+        # reaches_hikers decision. The archive is the one the client reads by
+        # byte range, so its extension is what the bucket's CORS and
+        # content-type rules key off - a respelling here is a map that draws
+        # no network above the seam and reports nothing.
+        "nearby_trails.geojson",
+        "network_overview.geojson",
+        "nearby_trails.pmtiles",
         # The tombstones (#673). Spelled WITHOUT the `poi_` prefix on
         # purpose - that prefix is a namespace meaning "live rows of one
         # poi_type", and export_retired_poi.py's docstring lists the three
@@ -43,19 +66,19 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
             for poi_type in ("shelter", "water", "campsite", "resupply", "crossing")
             for kind in ("geojson", "fgb")
         ],
-        # The stretch units (#556, cut_stretches.py): the coverage index,
-        # the shared context, and the per-stretch archives - spelled here
-        # exactly as that module builds them, first and last id of the
-        # widest plausible range so the zero-padded shape stays a legal key
-        # at both ends.
+        # The coverage cells (#1175, cut_cells.py): the coverage index, the
+        # shared context, and the per-cell archives - spelled here exactly as
+        # that module builds them. Both hemispheres and a three-digit
+        # longitude, because a cell name is permanent once published and the
+        # key rules have to admit every corner of the grid, not just the A.T.
         *[
             name
-            for family in publish.STRETCH_FAMILIES
+            for family in publish.ALL_CELL_FAMILIES
             for name in (
-                f"{family}_stretches.json",
+                f"{family}_cells.json",
                 f"{family}_context.pmtiles",
-                f"{family}_stretch_00.pmtiles",
-                f"{family}_stretch_43.pmtiles",
+                f"{family}_cell_n34w084.pmtiles",
+                f"{family}_cell_s34e007.pmtiles",
             )
         ],
     ]

@@ -9,7 +9,7 @@
 // WHY A REFUSAL IS PART OF THE STATE
 //
 // A tap that lands on no maintained line does not silently do nothing. Frame
-// `1j` shows a sentence, and it is the same sentence every time:
+// `1j` shows a sentence:
 //
 //   "That tap isn't on a marked hiking route. OurHike only builds routes on
 //    trails an organization maintains."
@@ -20,14 +20,32 @@
 // A.T. points through Harriman sit within 150 m of a different marked trail.
 // So the refusal is a value this module returns, and the bar prints it.
 //
-// A DRAFT IS ALREADY SEVERAL SEGMENTS
+// IT IS NOT THE SAME SENTENCE EVERY TIME, AND #1093 IS WHY
+//
+// It used to be, and that was a bug rather than a simplification. A phone
+// holding the routing artifact but not yet the geometry one cannot answer any
+// tap at all, and it used to answer them all with the sentence above - telling
+// a hiker their finger was off the trail when their finger was fine and the
+// download was not finished. Two situations, two sentences; see
+// NETWORK_STILL_ARRIVING.
+//
+// A DRAFT IS SEVERAL STRETCHES
 //
 // #935's answer - "users should be able to have multiple segments to a day
 // hike (>1 start/stop)" - means the finished thing is an ORDERED LIST of routed
-// segments, not one route. This module holds the first case of that: one
-// segment being built. The gaps between segments arrive with frame `1k`, and
-// the shape here is chosen so they can, rather than assuming a single route
-// and having to be unpicked.
+// segments, not one route. The store has held that shape since #976; this
+// module held ONE segment until 2026-08-27, so every multi-segment path in the
+// client was exercised by fixtures alone and nothing a hiker could do produced
+// a second stretch. It now builds them.
+//
+// THE GAP BETWEEN TWO STRETCHES IS NOT A ROUTE AND MUST NEVER BECOME ONE.
+// That is the whole point of the model: a hiker who means to bushwhack, or to
+// walk a road shoulder (#931), says so by starting a new stretch, and the app
+// never claims the ground between. So {@link DraftStatus} deliberately does
+// NOT hand back one combined `GraphRoute` with its `sections` concatenated -
+// `sections` is what drawing follows, and a concatenated one draws a line
+// across the gap. The totals a bar prints are summed here; the geometry stays
+// per stretch, where it is true.
 //
 // WHAT IT WILL NOT DO
 //
@@ -36,13 +54,19 @@
 // no "behind", no "ahead", no score - and this is a new surface where that
 // would creep in.
 
+import { straightLineMiles } from './dayHikeShelf'
+import { matchStroke, strokeToStretches } from './strokeMatch'
 import {
+  canSnapToGraph,
   closeTheLoop,
   nearestPointOnGraph,
+  metresToMiles,
   routeThrough,
   type GraphPoint,
   type GraphRoute,
   type LonLat,
+  type RouteClimb,
+  type RouteLeg,
   type TrailGraphIndex,
 } from './trailGraph'
 
@@ -56,16 +80,101 @@ import {
 export const OFF_NETWORK_REFUSAL =
   "That tap isn't on a marked hiking route. OurHike only builds routes on trails an organization maintains."
 
+/**
+ * The other thing a tap can be answered with, and it is NOT a refusal (#1093).
+ *
+ * The routing half of a cell (`trail_graph_cell_<name>.json` - nodes,
+ * lengths, attribution; one 1° cell at a time since #1257 stage 3) arrives
+ * as the cell is wanted; the lines themselves
+ * (`trail_graph_geometry_cell_<name>.json`) are fetched only when this
+ * builder opens, because they are much the heavier half. In between, this
+ * phone knows the shape of the network and not where
+ * any of it runs, and `nearestPointOnGraph` declines every tap rather than
+ * measuring it against the straight chord between two junctions - measured on
+ * the published artifact at 11.3% of on-trail taps refused and 19.7% placed on
+ * a different trail than the one tapped, see its own note.
+ *
+ * Saying {@link OFF_NETWORK_REFUSAL} in that window would be the app telling a
+ * hiker their aim was wrong when the aim was fine and the app was not ready -
+ * a false statement about the hiker, on the screen where they are learning
+ * what this tool will and will not do. So it is its own sentence, it names
+ * what is happening, and it tells them the thing worth knowing: try again.
+ *
+ * It is deliberately NOT phrased as a failure. Nothing has gone wrong, and
+ * the ordinary outcome a second later is that the same tap works.
+ *
+ * WHERE IT OVER-PROMISES, AND IT DOES. "Try again in a moment" is true for
+ * the window this sentence exists for, and false for the one case where the
+ * geometry artifact never arrives at all - a release that published the
+ * routing half without the lines, a hash the manifest disagrees with, an edge
+ * count that does not match. `fetchTrailGraphGeometryCells` collapses all of
+ * those to `null`, so nothing here can tell them apart from a fetch still in
+ * flight; lib/trailGraphData.ts's own header records that collapse as the bug
+ * #1049 fixed for the ROUTING half and left standing for this one. A hiker in
+ * that state is told to wait for something that is not coming.
+ *
+ * It is still the better sentence than the one it replaced, which told them
+ * their finger was in the wrong place. Telling the two apart needs the
+ * geometry fetch to carry its reason the way `loadGraphShard` now does, which
+ * is a change to a different module than this one. Since #1257 stage 3 the
+ * same sentence also covers a tap in a cell whose routing half has not
+ * landed yet - App.tsx asks that before it asks this module - and a cell
+ * the bucket refused for good, which the console names and the door does
+ * not.
+ */
+export const NETWORK_STILL_ARRIVING =
+  "OurHike hasn't got this area's trail lines yet, so it can't tell what you tapped. Try again in a moment."
+
 export interface DayHikeDraft {
-  /** The taps, in the order they were made. */
-  points: GraphPoint[]
+  /**
+   * The stretches, in order, each one the taps that make it.
+   *
+   * INVARIANT: never empty. There is always a last stretch and it is the one
+   * being built, so `tapAt` never has to decide whether to create one. A
+   * brand-new draft is `[[]]` - one stretch with nothing in it yet - not `[]`.
+   */
+  segments: GraphPoint[][]
   /** Why the last tap did not land, or null when it did. */
   refusal: string | null
   /** Whether the hiker asked to walk back to the first tap. */
   looped: boolean
+  /**
+   * Miles of a DRAWN line that had no maintained trail under them, measured
+   * along the stroke (#983, frame `1k`). Zero for a tapped walk.
+   *
+   * Measured along the stroke rather than as the straight line between the
+   * stretches it separates, because that is what the hiker actually drew - the
+   * straight line is a different and shorter claim about ground nobody has
+   * checked. It is kept on the draft rather than recomputed because the stroke
+   * itself is gone by the time the bar renders: this is the only record that
+   * the app declined to guess, and losing it would make the drop silent.
+   */
+  droppedMiles: number
 }
 
-export const EMPTY_DRAFT: DayHikeDraft = { points: [], refusal: null, looped: false }
+export const EMPTY_DRAFT: DayHikeDraft = {
+  segments: [[]],
+  refusal: null,
+  looped: false,
+  droppedMiles: 0,
+}
+
+/** The stretch being built - the invariant above is what makes this total. */
+function currentStretch(draft: DayHikeDraft): GraphPoint[] {
+  return draft.segments[draft.segments.length - 1]
+}
+
+/**
+ * Every tap in the draft, in walking order, flattened across stretches.
+ *
+ * For counting and for drawing the taps themselves, which is honest across a
+ * gap - a tap is a place the hiker pointed at either way. NOT for routing:
+ * routing across a stretch boundary is exactly what this model exists to
+ * prevent, and {@link draftStatus} routes each stretch separately.
+ */
+export function draftPoints(draft: DayHikeDraft): GraphPoint[] {
+  return draft.segments.flat()
+}
 
 /**
  * A tap on the map.
@@ -78,13 +187,84 @@ export function tapAt(
   draft: DayHikeDraft,
   at: LonLat,
 ): DayHikeDraft {
+  // Asked BEFORE the tap is projected, not after it comes back null: the two
+  // nulls are indistinguishable at the call site and only one of them is
+  // about where the finger went.
+  // Asked BEFORE the tap is projected, not after it comes back null: the two
+  // nulls are indistinguishable at the call site and only one of them is
+  // about where the finger went.
+  if (!canSnapToGraph(index)) {
+    return { ...draft, refusal: NETWORK_STILL_ARRIVING }
+  }
   const found = nearestPointOnGraph(index, at)
   if (found === null) {
     return { ...draft, refusal: OFF_NETWORK_REFUSAL }
   }
   // A new tap reopens a closed loop rather than being appended after the
   // return leg, which would be a walk nobody described.
-  return { points: [...draft.points, found], refusal: null, looped: false }
+  const segments = draft.segments.map((stretch, at) =>
+    at === draft.segments.length - 1 ? [...stretch, found] : stretch,
+  )
+  return { ...draft, segments, refusal: null, looped: false }
+}
+
+/**
+ * Frame `1k`: a drawn line, put on the trails.
+ *
+ * REPLACES THE DRAFT RATHER THAN APPENDING TO IT. A stroke describes the whole
+ * walk - "this is where I went" - and appending it to taps already placed
+ * would join two descriptions of a walk into one walk that is neither. The
+ * hiker draws again to change it, which is what "Redraw" on frame `1k` is.
+ *
+ * The refusal is the honest one for a stroke that matched nothing: not "your
+ * finger was in the wrong place", which is a tap's sentence, but that the line
+ * ran where no organization maintains a trail.
+ */
+export function drawStroke(
+  index: TrailGraphIndex,
+  stroke: readonly LonLat[],
+): DayHikeDraft {
+  if (!canSnapToGraph(index)) {
+    return { ...EMPTY_DRAFT, refusal: NETWORK_STILL_ARRIVING }
+  }
+  const match = matchStroke(index, stroke)
+  const stretches = strokeToStretches(match)
+  const droppedMiles = metresToMiles(match.droppedMetres)
+  if (stretches.length === 0) {
+    return { ...EMPTY_DRAFT, refusal: NOTHING_DRAWN_ON_TRAIL, droppedMiles }
+  }
+  return { segments: stretches, refusal: null, looped: false, droppedMiles }
+}
+
+/** What a drawn line that never touched a maintained trail is told. */
+export const NOTHING_DRAWN_ON_TRAIL =
+  'None of what you drew is on a marked hiking route. OurHike only builds routes on trails an organization maintains.'
+
+/**
+ * Frame `1k`'s other half: end this stretch, and start the next one.
+ *
+ * What the hiker is saying is "the walk continues, and OurHike does not know
+ * the bit in between" - a bushwhack, a road shoulder (#931), a herd path.
+ * The app records the gap and never routes it, which is
+ * features/NEARBY_TRAILS.md's omit-rather-than-guess rule applied to a walk
+ * rather than to a published line.
+ */
+export function startStretch(draft: DayHikeDraft): DayHikeDraft {
+  if (!canStartStretch(draft)) return draft
+  return { ...draft, segments: [...draft.segments, []], refusal: null, looped: false }
+}
+
+/**
+ * Whether starting a new stretch is worth offering.
+ *
+ * The stretch in hand has to be a walk already - two taps - because a stretch
+ * of one tap is a start with no finish, and a draft holding two of those is a
+ * pair of pins rather than a hike. Not while a loop is closed either: a loop
+ * is a walk that comes back, and "comes back, then continues elsewhere" is not
+ * a thing this model can describe.
+ */
+export function canStartStretch(draft: DayHikeDraft): boolean {
+  return currentStretch(draft).length >= 2 && !draft.looped
 }
 
 /**
@@ -100,13 +280,90 @@ export function undoTap(draft: DayHikeDraft): DayHikeDraft {
   // a point at the same time would silently take back two edits, and the
   // second one is a tap the hiker placed on purpose.
   if (draft.looped) return { ...draft, looped: false }
-  if (draft.points.length === 0) return draft
-  return { points: draft.points.slice(0, -1), refusal: null, looped: false }
+
+  // Starting a stretch is one action too, and this is the same rule one level
+  // up: an empty last stretch is a "start a new stretch" the hiker has not
+  // typed into yet, so undo takes back THAT and leaves the tap before it
+  // alone.
+  if (currentStretch(draft).length === 0) {
+    if (draft.segments.length === 1) return draft
+    return {
+      ...draft,
+      segments: draft.segments.slice(0, -1),
+      refusal: null,
+      looped: false,
+    }
+  }
+
+  return {
+    ...draft,
+    segments: draft.segments.map((stretch, at) =>
+      at === draft.segments.length - 1 ? stretch.slice(0, -1) : stretch,
+    ),
+    refusal: null,
+    looped: false,
+  }
+}
+
+/**
+ * Remove one tap, wherever it sits in the walk (#1194).
+ *
+ * WHY THIS IS NOT `undoTap` WITH AN ARGUMENT. Undo takes back the last EDIT,
+ * which is why it un-loops and un-starts-a-stretch before it touches a tap at
+ * all - it is the hiker's keystroke history. This is a different verb: it
+ * takes back a POINT OF THE WALK, and the walk re-routes around the hole.
+ * With five taps down, undo can only reach the fifth; the redesigned route
+ * list needs to drop the second, which was not possible before this existed.
+ *
+ * `ordinal` indexes {@link draftPoints} - the flat walking order across
+ * stretches - because that is the numbering the route list shows a hiker. An
+ * out-of-range ordinal returns the draft unchanged rather than throwing: the
+ * list and the draft are re-rendered from the same state, but a row tapped in
+ * the frame before a re-route lands would otherwise crash the builder.
+ *
+ * THE LOOP SURVIVES A VIA-POINT AND NOT AN END. Dropping a middle tap of a
+ * closed loop leaves a closed loop, so `looped` stays. Dropping enough taps
+ * that the stretch is no longer a walk takes the loop with it, for
+ * {@link canCloseLoop}'s reason - a loop from one point is not a walk, and
+ * leaving the flag set would have the router close a loop onto a single tap.
+ */
+export function removeTap(draft: DayHikeDraft, ordinal: number): DayHikeDraft {
+  if (ordinal < 0 || !Number.isInteger(ordinal)) return draft
+
+  let seen = 0
+  const segments: GraphPoint[][] = []
+  let removed = false
+
+  for (const stretch of draft.segments) {
+    if (!removed && ordinal < seen + stretch.length) {
+      const next = [...stretch]
+      next.splice(ordinal - seen, 1)
+      removed = true
+      // An emptied stretch goes rather than lingering as a gap between
+      // nothing and the next walk. Its own points were the only thing that
+      // made it a stretch.
+      if (next.length > 0) segments.push(next)
+    } else {
+      segments.push(stretch)
+    }
+    seen += stretch.length
+  }
+
+  if (!removed) return draft
+
+  // The invariant dayHikeDraft holds everywhere: there is always a last
+  // stretch, and it is the one being built.
+  if (segments.length === 0) segments.push([])
+
+  const looped =
+    draft.looped && segments.length === 1 && segments[segments.length - 1].length >= 2
+
+  return { ...draft, segments, refusal: null, looped }
 }
 
 /** Frame `1j`'s "Close the loop". */
 export function loopDraft(draft: DayHikeDraft): DayHikeDraft {
-  if (draft.points.length < 2) return draft
+  if (!canCloseLoop(draft)) return draft
   return { ...draft, looped: true, refusal: null }
 }
 
@@ -115,28 +372,86 @@ export function clearDraft(): DayHikeDraft {
 }
 
 /**
- * The route the draft currently describes, or null.
+ * One stretch of the draft, routed.
+ *
+ * Its `route` carries that stretch's own `sections`, which is what drawing
+ * follows - so a caller physically cannot draw across the gap to the next
+ * stretch, because there is no geometry here that spans one.
+ */
+export interface DraftStretch {
+  points: GraphPoint[]
+  route: GraphRoute
+}
+
+/**
+ * The route ONE stretch describes, or null.
  *
  * Null covers two different things and the caller has to tell them apart,
- * which is why {@link draftStatus} exists: a draft with one tap has nothing to
- * route YET, and a draft whose taps the network cannot connect has nothing to
- * route AT ALL. The first is a normal moment in building a hike; the second is
- * a thing the hiker needs told.
+ * which is why {@link draftStatus} exists: a stretch with one tap has nothing
+ * to route YET, and a stretch whose taps the network cannot connect has
+ * nothing to route AT ALL. The first is a normal moment in building a hike;
+ * the second is a thing the hiker needs told.
  */
-export function draftRoute(
+export function stretchRoute(
   index: TrailGraphIndex,
-  draft: DayHikeDraft,
+  points: readonly GraphPoint[],
+  looped: boolean,
 ): GraphRoute | null {
-  if (draft.points.length < 2) return null
-  return draft.looped
-    ? closeTheLoop(index, draft.points)
-    : routeThrough(index, draft.points)
+  if (points.length < 2) return null
+  return looped ? closeTheLoop(index, [...points]) : routeThrough(index, [...points])
+}
+
+/**
+ * One gap between two stretches, placed in the walk as well as measured.
+ *
+ * The builder's counterpart to `lib/dayHikeShelf.ts`'s {@link DayHikeGap},
+ * which a SAVED hike carries. That one positions a gap by segment, because a
+ * saved record is a list of segments; this one positions it by leg, because
+ * the surfaces reading it - the numbered route list above all - walk the flat
+ * concatenation of every stretch's legs and have no segment to count against.
+ */
+export interface DraftGap {
+  /** How many legs of the walk come before this gap. */
+  afterLegs: number
+  /** Straight-line miles across it. The ground walked is the hiker's own
+   *  guess - that is what a gap IS - so nothing rounder exists to print. */
+  miles: number
 }
 
 export type DraftStatus =
   | { kind: 'empty' }
   | { kind: 'started' }
-  | { kind: 'routed'; route: GraphRoute }
+  | {
+      kind: 'routed'
+      /** Each stretch with its own geometry. Drawing reads THIS. */
+      stretches: DraftStretch[]
+      /** Trail miles, summed across the stretches. Excludes every gap. */
+      miles: number
+      legs: RouteLeg[]
+      legsBySource: Array<{ source: string | null; legs: number }>
+      /**
+       * Ascent and descent across the whole walk, or null when any stretch of
+       * it cannot be priced - the same all-or-nothing rule one stretch's own
+       * climb already follows, applied one level up. A total that skipped an
+       * unpriceable stretch would understate, with a number attached.
+       */
+      climb: RouteClimb | null
+      /**
+       * Straight-line miles the hiker crosses on their own, summed across the
+       * gaps. Zero for a single-stretch walk.
+       *
+       * Never added to `miles`, and the two are printed apart for the reason
+       * the whole model exists: one is ground an organization maintains and
+       * the other is ground nobody has walked for us.
+       */
+      gapMiles: number
+      /**
+       * The same crossings, one at a time and each placed in the walk - what a
+       * surface listing the route in order needs and `gapMiles` cannot give
+       * it. Empty for a single-stretch walk, and `gapMiles` is exactly its sum.
+       */
+      gaps: DraftGap[]
+    }
   | { kind: 'unroutable' }
 
 /**
@@ -144,17 +459,128 @@ export type DraftStatus =
  *
  * `unroutable` is the case worth naming: the taps are all on real trails and
  * the network still holds no way between them. That happens for honest reasons
- * - the published network is clipped to a ring, two parks can be genuinely
- * unconnected by maintained trail, and build_trail_graph.py rounds toward
- * leaving a junction unmade rather than inventing one. Drawing a straight line
- * between them instead would be the app claiming ground it has no evidence for.
+ * - two parks can be genuinely unconnected by maintained trail, and
+ * build_trail_graph.py rounds toward leaving a junction unmade rather than
+ * inventing one. Drawing a straight line between them instead would be the app
+ * claiming ground it has no evidence for.
+ *
+ * A stretch that cannot be routed makes the WHOLE draft unroutable rather than
+ * being quietly dropped. Dropping it would turn a walk the hiker described
+ * into a shorter one they did not, and the totals would be right about a
+ * different walk.
  */
 export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftStatus {
-  if (draft.points.length === 0) return { kind: 'empty' }
-  if (draft.points.length === 1) return { kind: 'started' }
-  const route = draftRoute(index, draft)
-  if (route === null) return { kind: 'unroutable' }
-  return { kind: 'routed', route }
+  const total = draftPoints(draft).length
+  if (total === 0) return { kind: 'empty' }
+  // One tap anywhere, or a final stretch just begun: there is a walk being
+  // built and nothing yet to route. `started` is the bar's "tap again further
+  // along" state and it is right for both.
+  if (total === 1) return { kind: 'started' }
+
+  const stretches: DraftStretch[] = []
+  // How many legs each segment contributed, by segment index. A gap is a thing
+  // between two segments, and every surface that lists a walk in order counts
+  // in legs, so this is the translation between the two - kept here because
+  // this is the only place that knows which segments became stretches at all.
+  const legsBySegment = new Map<number, number>()
+  for (let at = 0; at < draft.segments.length; at += 1) {
+    const points = draft.segments[at]
+    // A stretch with one tap is the one being built. It is not an error and
+    // not a route - the walk so far is the stretches behind it.
+    if (points.length === 0) continue
+    if (points.length === 1) {
+      if (points === draft.segments[draft.segments.length - 1]) continue
+      return { kind: 'unroutable' }
+    }
+    const route = stretchRoute(index, points, draft.looped)
+    if (route === null) return { kind: 'unroutable' }
+    stretches.push({ points, route })
+    legsBySegment.set(at, route.legs.length)
+  }
+  if (stretches.length === 0) return { kind: 'started' }
+
+  const legs = stretches.flatMap((stretch) => stretch.route.legs)
+  const gaps = gapsAcross(draft, legsBySegment)
+  return {
+    kind: 'routed',
+    stretches,
+    miles: stretches.reduce((sum, stretch) => sum + stretch.route.miles, 0),
+    legs,
+    legsBySource: tallyLegsBySource(legs),
+    climb: climbAcrossStretches(stretches),
+    // Summed here rather than measured separately, so the total and the parts
+    // are the same arithmetic and cannot disagree about one walk.
+    gapMiles: gaps.reduce((total, gap) => total + gap.miles, 0),
+    gaps,
+  }
+}
+
+/** Legs per organization, in first-seen order - the bar's live tally. The
+ *  same shape one stretch's own `legsBySource` has, summed across stretches
+ *  rather than recomputed from a concatenation that would double-count a
+ *  source appearing in two of them. */
+function tallyLegsBySource(
+  legs: readonly RouteLeg[],
+): Array<{ source: string | null; legs: number }> {
+  const order: Array<string | null> = []
+  const counts = new Map<string | null, number>()
+  for (const leg of legs) {
+    const seen = counts.get(leg.source)
+    if (seen === undefined) {
+      order.push(leg.source)
+      counts.set(leg.source, 1)
+    } else {
+      counts.set(leg.source, seen + 1)
+    }
+  }
+  return order.map((source) => ({ source, legs: counts.get(source) as number }))
+}
+
+/** Null the moment any stretch is unpriced - see the field's own note. */
+function climbAcrossStretches(stretches: readonly DraftStretch[]): RouteClimb | null {
+  let gainFt = 0
+  let lossFt = 0
+  for (const stretch of stretches) {
+    if (stretch.route.climb === null) return null
+    gainFt += stretch.route.climb.gainFt
+    lossFt += stretch.route.climb.lossFt
+  }
+  return { gainFt, lossFt }
+}
+
+/**
+ * The gaps, measured the one way a gap can be measured, and placed.
+ *
+ * Straight-line from the last tap of one stretch to the first of the next -
+ * `lib/dayHikeShelf.ts`'s `straightLineMiles`, shared rather than copied, so
+ * the figure the builder prints and the figure the saved card prints for the
+ * same gap cannot drift apart.
+ *
+ * `afterLegs` is where that gap falls in a walk counted in legs. A segment
+ * that produced no stretch contributes none, so a gap can land after the last
+ * leg there is - which happens the moment a hiker taps the first point of a
+ * new stretch, and is honest: they have named ground across a gap and not yet
+ * any trail beyond it.
+ *
+ * The pairs visited are exactly the ones this measured before it also placed
+ * them, so summing the result reproduces the old `gapMilesAcross` figure.
+ */
+function gapsAcross(
+  draft: DayHikeDraft,
+  legsBySegment: ReadonlyMap<number, number>,
+): DraftGap[] {
+  const gaps: DraftGap[] = []
+  let afterLegs = 0
+  for (let at = 0; at + 1 < draft.segments.length; at += 1) {
+    afterLegs += legsBySegment.get(at) ?? 0
+    const before = draft.segments[at]
+    const after = draft.segments[at + 1]
+    const from = before[before.length - 1]
+    const to = after[0]
+    if (from === undefined || to === undefined) continue
+    gaps.push({ afterLegs, miles: straightLineMiles(from.at, to.at) })
+  }
+  return gaps
 }
 
 /**
@@ -162,7 +588,13 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
  *
  * Two taps minimum, because a loop from one point is not a walk, and not while
  * the draft is already closed.
+ *
+ * AND NOT ACROSS A GAP. A loop is a walk that comes back to where it started;
+ * with two stretches there is no defined way back across the ground the app
+ * declined to route, and `lib/dayHikeCard.ts` already refuses to resolve such
+ * a hike - so offering the control here would let a hiker save a walk that can
+ * never be re-resolved and falls back to its cache for ever.
  */
 export function canCloseLoop(draft: DayHikeDraft): boolean {
-  return draft.points.length >= 2 && !draft.looped
+  return draft.segments.length === 1 && currentStretch(draft).length >= 2 && !draft.looped
 }

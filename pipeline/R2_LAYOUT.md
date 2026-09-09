@@ -52,6 +52,21 @@ put here is published, not stored. Also never: credentials, mirrors of raw upstr
 about generated data), and anything whose licence has not been established
 ([CONTRIBUTING.md](../CONTRIBUTING.md)).
 
+**There is a design for a raw store, and it is a different bucket** —
+[INCREMENTAL.md](INCREMENTAL.md), designed 2026-09-09, unbuilt. It exists to keep the
+fetchers' outputs between runs, which is exactly the "mirror of raw upstream pulls" the
+paragraph above forbids here, so the maintainer's decision (2026-09-08) is a **second,
+private R2 bucket** that is never given a public domain or `r2.dev` access — read-only
+token in the build job, write token in the extract job. The rule on this page does not
+gain an exemption; it gains a sibling, and it stays true of the public bucket because raw
+layers carry rows this project has decided never to publish (ATC's user-created campsites,
+USFS's dispersed camping areas, DEC's non-public rows, and opentrail, whose licence is
+open as [#98](https://github.com/OurHike/OurHike/issues/98)). One consequence belongs
+here rather than there: **`lib/r2_keys.py` does not govern that bucket.** Its rules — four
+segments, the banned word `latest`, the closed extension set — are all consequences of a
+key being a permanent public URL, and none of them describes a private store, so the raw
+store gets a small validator of its own rather than these rules loosened for both.
+
 ## Top-level prefixes
 
 These are the places an object can be, and a new one is a design decision — recorded in

@@ -265,3 +265,34 @@ def test_the_gate_is_fetch_trail_waters_and_not_a_second_copy_of_it():
 
     assert cwr.MATCH_RADIUS_FT is MATCH_RADIUS_FT
     assert cwr.MATCH_RADIUS_M == MATCH_RADIUS_FT * M_PER_FT
+
+
+# --- the union this checks has to be the gate's union (#1016) ---------------
+
+
+def test_the_network_lines_join_the_lines_this_measures_against(tmp_path, monkeypatch):
+    """A checker measuring against a narrower union than the gate would fail
+    every point the gate correctly passed on a network trail - and "the release
+    gate went red on water" is exactly the kind of noise that gets a check
+    switched off rather than believed."""
+    processed = tmp_path / "processed"
+    (processed / "poi").mkdir(parents=True)
+    network = processed / "nearby_trails.geojson"
+    network.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
+    monkeypatch.setattr(cwr, "PROCESSED_DIR", processed)
+
+    _, lines, _ = cwr.processed_paths()
+
+    assert network in lines
+
+
+def test_an_at_only_publish_checks_what_it_always_checked(tmp_path, monkeypatch):
+    """No network artifact is the ordinary state on a publish whose licences
+    are held back, and it must not change what this measures."""
+    processed = tmp_path / "processed"
+    (processed / "poi").mkdir(parents=True)
+    monkeypatch.setattr(cwr, "PROCESSED_DIR", processed)
+
+    _, lines, _ = cwr.processed_paths()
+
+    assert [path.name for path in lines] == ["centerline.geojson", "side_trails.geojson"]

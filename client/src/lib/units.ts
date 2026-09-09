@@ -136,6 +136,45 @@ export function distanceUnitLabel(units: UnitSystem): string {
   return units === 'metric' ? 'km' : 'mi'
 }
 
+/**
+ * A distance as the BARE NUMBER to put beside that label, and back again.
+ *
+ * The other half of `distanceUnitLabel`, and it exists because shipping the
+ * label alone was not enough (#1038): the route entrance rendered a raw mile
+ * count next to "km" and fed it back onto the mile axis unconverted, so a
+ * metric hiker who asked for 45 was handed 45 miles - 72 km, a day and a
+ * half more trail than they typed. The same sheet printed the same stretch
+ * as "72.4 km" three rows away, because that figure went through
+ * `formatDistance`, which does convert.
+ *
+ * So a control that splits the number from its unit needs BOTH halves, and
+ * they live next to each other now rather than one being the documented
+ * exception to the other. Rounded to `digits` because these feed a numeric
+ * input, where 27.961 km is not a thing anybody typed or wants to arrow
+ * through; miles are the storage and the round-trip is lossy by design.
+ */
+export function displayDistance(miles: number, units: UnitSystem, digits = 1): number {
+  const value = units === 'metric' ? miles * KM_PER_MILE : miles
+  const scale = 10 ** digits
+  return Math.round(value * scale) / scale
+}
+
+/**
+ * The unit's spoken name, for a label a screen reader reads aloud.
+ *
+ * "mi" is right on screen beside a number and wrong in an accessible name,
+ * where it is read as a word. Separate from `distanceUnitLabel` for that
+ * reason alone - same fact, two audiences.
+ */
+export function distanceUnitName(units: UnitSystem): string {
+  return units === 'metric' ? 'kilometres' : 'miles'
+}
+
+/** The inverse of {@link displayDistance}: what the hiker typed, as miles. */
+export function milesFromDisplay(value: number, units: UnitSystem): number {
+  return units === 'metric' ? value / KM_PER_MILE : value
+}
+
 export function formatDistanceRange(
   lowMi: number,
   highMi: number,
@@ -172,6 +211,25 @@ function digitsFor(value: number, precision: DistancePrecision): Digits {
 export function formatShortDistance(feet: number, units: UnitSystem): string {
   return formatElevation(feet, units)
 }
+
+/**
+ * One metre, in feet - the floor under any distance this app STATES.
+ *
+ * pipeline/lib/poi_description.py's `MIN_PART_FT` is the same number for the
+ * same reason, and chrome/PoiCard.tsx held a private copy of it until #1198
+ * gave the figure a second reader (a day hike's stop rows). Two copies of a
+ * rounding rule is how two surfaces come to disagree about one shelter's
+ * water.
+ *
+ * WHAT IT IS FOR. A stated distance arrives unfloored - `water_distance_ft`
+ * is its own published column rather than something measured between two
+ * coordinates - and a surface claiming a hiker walks zero of anything to
+ * reach water reads as a bug rather than as the very short walk it is
+ * asserting. Stated in the coarser unit so neither system rounds it away:
+ * flooring at 1 ft would still print "0 m" for a metric hiker, which is the
+ * same defect arriving in the other unit.
+ */
+export const MIN_STATED_FEET = 3.28084
 
 /**
  * What the system is called, for a control that has to name it.

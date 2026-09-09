@@ -31,6 +31,7 @@ import {
   POI_ICON_EXPRESSION,
   POI_ICON_SIZE_EXPRESSION,
   POI_ID_PROPERTY,
+  POI_NAME_PROPERTY,
   POI_LAYER_ID,
   POI_PIN_MIN_ZOOM,
   POI_SORT_KEY_EXPRESSION,
@@ -104,31 +105,32 @@ describe('the dot rank', () => {
     expect(buildPoiDotLayer().type).toBe('circle')
   })
 
-  it('reaches below the pin seam, because a dot makes no claim a seam protects', () => {
-    // #603, reversing what this test used to assert. The seam is about whether
-    // a PIN can say what it is without colliding; a dot says only "something is
-    // here", so that argument never covered it - and holding both ranks at one
-    // seam left the opening corridor view drawing the trail line and nothing
-    // else. features/POI_VISIBILITY.md had this open as a question and it is
-    // answered yes.
-    //
-    // The two ranks now stop in different places, deliberately, which is the
-    // thing a later reader is most likely to "tidy" back into agreement.
+  it('stops at the seam with the pins, so the corridor view is trails-only again', () => {
+    // #1135, reversing what this test used to assert - which itself reversed
+    // what it asserted before #603. The history is the point of pinning it:
+    // both ranks at the seam (pre-#603) left the opening view empty; the dot
+    // rank at z0 (#603) put a stipple on it that #1097 then quietly broke,
+    // 8,480 network waypoints joining this source while their trails' lines
+    // draw only from the seam up. The maintainer's 2026-08-27 decision is the
+    // constant's docstring; what this test holds is that the two ranks share
+    // ONE seam - a second number that merely agrees today is the drift this
+    // rank's history says to expect.
     expect(buildPoiDotLayer().minzoom).toBe(POI_DOT_MIN_ZOOM)
-    expect(POI_DOT_MIN_ZOOM).toBeLessThan(POI_PIN_MIN_ZOOM)
+    expect(POI_DOT_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
     expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
-  it('shrinks to a stipple at the corridor view rather than keeping its seam size', () => {
-    // What makes the line above honest. At z4 the corridor's waypoints sit
-    // within a few hundred pixels of trail line, so a dot sized for the seam
-    // would draw a solid bar and claim the trail is one continuous place.
+  it('opens its radius ramp at the shared seam, with no stop below it', () => {
+    // The 1.2 px corridor stop went with the below-seam dots it sized
+    // (#1135). A ramp that still opened below the floor would be dead
+    // arithmetic today and a silently-live one the day someone lowers the
+    // floor without re-deciding the size.
     const ramp = POI_DOT_RADIUS_EXPRESSION
-    const atDotFloor = ramp[ramp.indexOf(POI_DOT_MIN_ZOOM) + 1] as number
+    const firstStop = ramp[3] as number
     const atSeam = ramp[ramp.indexOf(POI_PIN_MIN_ZOOM) + 1] as number
 
-    expect(atDotFloor).toBeLessThan(atSeam)
-    expect(atDotFloor).toBeGreaterThan(0)
+    expect(firstStop).toBe(POI_PIN_MIN_ZOOM)
+    expect(atSeam).toBeGreaterThan(0)
   })
 
   it('reads the same source as the pins, which is what makes it site-correct', () => {
@@ -313,6 +315,11 @@ describe('poiFeatureCollection', () => {
       // the property arrived - a `toMatchObject` here would have let a fourth
       // property appear unnoticed.
       [SITE_MEMBERS_PROPERTY]: '',
+      // The name map/poiLabels.ts draws (#1194), and empty here because this
+      // fixture's MapPoint carries none. Always a string for the same reason
+      // the site key above always is: the label layer's filter is then one
+      // comparison rather than a `coalesce`.
+      [POI_NAME_PROPERTY]: '',
       // The day-one defaults with no note roll-up supplied: no ring, no fade
       // (#256's maintainer decision, lib/stalenessDisplay.ts).
       staleness_ring: 'none',

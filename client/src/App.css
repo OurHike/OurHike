@@ -46,6 +46,24 @@
    its canvas by chrome.css's .map-screen--entering, so there is one map instead
    of two and nothing here to lay out. */
 
+/* The map kept under another tab (#1081). Once a session has built a map, the
+   shell never unmounts it for a tab switch - App.tsx puts this wrapper around
+   the whole map subtree while Today, Plan or More is up (with `inert` and
+   `aria-hidden` alongside, which are what take it out of reach; this only
+   takes it out of sight).
+
+   `position: fixed; inset: 0` keeps the canvas at viewport size while out of
+   flow, so the covering screen lays out from the top of the page and coming
+   back costs no resize. `visibility: hidden` rather than `display: none` for
+   the same reason: a display change zeroes the canvas and hands MapLibre a
+   resize on every return, where an invisible box keeps its geometry and the
+   compositor simply skips it. */
+.app__map-held {
+  position: fixed;
+  inset: 0;
+  visibility: hidden;
+}
+
 .app__notice {
   margin: 0;
   padding: var(--space-3, 12px) var(--space-4, 16px);

@@ -32,7 +32,6 @@ import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
 import type { DayHike } from '../lib/dayHikes'
 import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
 import type { TripGroup } from '../lib/tripGroups'
-import { formatNaismithMinutes } from '../lib/naismith'
 import {
   currentDayIndex,
   foodCarries,
@@ -53,14 +52,25 @@ import {
   stopLabel,
   tripRowHeight,
 } from '../lib/planDisplay'
-import { legFigures, type LegFigures } from '../lib/route'
+import {
+  moveBoundary,
+  planBoundaries,
+  planStretch,
+  type BenchStretch,
+} from '../lib/planBench'
+import { legFigures, priceLeg, type PricedLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
+import type { TrailNetworkState } from '../lib/trailGraphData'
+import type { LonLat } from '../lib/trailGraph'
 import type { Trip } from '../lib/trips'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
-import { STANDARD_PACE, paceEstimate, type PaceProfile } from '../lib/pace'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
+import { useDesktop } from '../lib/useDesktop'
+import { ElevationChart } from '../chrome/ElevationChart'
+import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
-import { PlanHome } from './PlanHome'
+import { PlanHome, type PlanRoom } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
@@ -104,8 +114,62 @@ export interface PlanScreenProps {
    *  reads as a way back to it rather than a fresh start, because opening
    *  the builder reopens the draft where it stood. */
   draftLive: boolean
-  /** Open the route builder on the map - the empty state's one action. */
+  /** Open the fork, or return to a live draft (#977's opener rule). The
+   *  empty state's one action, and every home's way back to a draft. */
   onStartOnMap: () => void
+  /** Open the day-hike builder directly - the day home's own action
+   *  (#1008). Only offered while the junction graph is loaded. */
+  onNewDayHike: () => void
+  /** Open the route builder directly - the trips home's own action. */
+  onNewTrip: () => void
+  /** Whether the junction graph is loaded, so the day home can offer its
+   *  action or the sentence instead (PlanKindSheet's rule). */
+  /** Whether a day hike can be routed, and when it cannot, why - so the
+   *  refusal PlanHome prints says which absence it is (#1049). Replaces the
+   *  boolean this used to take: two facts derived from one state cannot
+   *  disagree, and a boolean beside a reason can. */
+  network: TrailNetworkState
+  /** Ask the bucket for the graph again. Only ever offered where waiting
+   *  could change the answer - see lib/trailNetworkText.ts. */
+  onRetryNetwork?: () => void
+  /** The GPS fix, or null - the day-hike list's "nearest me" sort exists
+   *  only while this does. */
+  gpsAt: LonLat | null
+  /**
+   * Which home the tab shows (#1008), derived from `hikerMode` since #1317
+   * rather than held as a second switch of Plan's own.
+   *
+   * Still passed in rather than read here: this screen unmounts on every tab
+   * switch, and the shell is where the mode lives.
+   */
+  room: PlanRoom
+  /** Open the "add a day hike to this hike" sheet (#1317). Passed straight
+   *  through: the sheet is the shell's, like every other one here. */
+  onAddDayHikeToHike?: () => void
+  /** The long hike the app is on, or null - which decides whether the
+   *  sections room is the HIKE's room (#1329). Passed in for the same reason
+   *  `room` is: the pointer lives in the shell's trip store. */
+  activeHike: Hike | null
+  /** Open the pick sheet as a switch. The shell's, like every sheet here. */
+  onSwitchHike?: () => void
+  /** Give the active hike a different name (#1344). The store's, like every
+   *  other write on this screen. */
+  onRenameHike?: (name: string) => void
+  /** The inline section planner (#1344), rendered where the primary is.
+   *  The shell's, like every other surface this screen only positions. */
+  sectionPlanner?: ReactNode
+  /** Move a section into the active hike, or out of it (#1367). The store's,
+   *  like every other write this screen only positions. */
+  onAddSectionToHike?: (tripId: string) => void
+  onTakeSectionOut?: (tripId: string) => void
+  /** Whether the full day-hike list is open, for the same reason: the map's
+   *  trailhead door opens it from another tab. */
+  dayListOpen: boolean
+  onDayListOpen: (open: boolean) => void
+  /** Which builder holds a live draft, or null - each room offers a way back
+   *  to its OWN draft and its own action otherwise, so the day room never
+   *  puts a button into the trips builder. */
+  draftKind: 'day' | 'trip' | null
   /** Reopen the target sheet over this plan's route. */
   onChangeTarget: () => void
   onInsertZeroAfter: (dayIndex: number) => void
@@ -154,6 +218,24 @@ export interface PlanScreenProps {
   /** Start a route at one end of a gap, walking toward the other (#791).
    *  Which end is the start is the hiker's pick; the direction follows. */
   onPlanFrom: (start: PlaceRef, toward: PlaceRef) => void
+  /**
+   * The map, for the middle pane of the plan bench (#971, wireframe 3a).
+   *
+   * A SLOT rather than this screen knowing the map's props - MapScreen's own
+   * `journal` slot is the same move, for the same reason (#1054): the map has
+   * about sixty inputs and none of them are the planner's business. Absent
+   * and the bench is two panes rather than three, which is honest; a framed
+   * grey box captioned "map" would not be.
+   */
+  mapPane?: ReactNode
+  /**
+   * The bench's selection changed - the miles of the selected day, or null.
+   *
+   * "One plan, three views" (wireframe 3a) needs the map to follow a day the
+   * tree or the timeline picked, and the map is above this screen. Reported
+   * only from the bench: on a phone there is no third pane to keep in step.
+   */
+  onSelectStretch?: (stretch: BenchStretch | null) => void
 }
 
 export function PlanScreen({
@@ -165,6 +247,22 @@ export function PlanScreen({
   pace = STANDARD_PACE,
   draftLive,
   onStartOnMap,
+  onNewDayHike,
+  onNewTrip,
+  network,
+  onRetryNetwork,
+  gpsAt,
+  room,
+  onAddDayHikeToHike,
+  activeHike,
+  onSwitchHike,
+  onRenameHike,
+  sectionPlanner,
+  onAddSectionToHike,
+  onTakeSectionOut,
+  dayListOpen,
+  onDayListOpen,
+  draftKind,
   onChangeTarget,
   onInsertZeroAfter,
   onRemoveDay,
@@ -190,6 +288,8 @@ export function PlanScreen({
   onOpenGroup,
   onPlanGap,
   onPlanFrom,
+  mapPane,
+  onSelectStretch,
 }: PlanScreenProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -217,22 +317,75 @@ export function PlanScreen({
   const [atHome, setAtHome] = useState(
     trips.length > 1 || hikes.length > 0 || dayHikes.length > 0,
   )
+  /**
+   * THE BENCH'S ONE SELECTION (#971): the day the tree, the map and the
+   * timeline are all looking at.
+   *
+   * Its own state rather than a second meaning for `selectedDay`, which opens
+   * the actions sheet. On a desk, picking a day and acting on a day are
+   * separate moves - the sheet would cover the chart the whole screen is for -
+   * so a click here highlights, and the actions are one more click away.
+   */
+  const [benchDay, setBenchDay] = useState<number | null>(null)
+  /**
+   * The plan as it stood before the last boundary drag, and the line
+   * describing what that drag did.
+   *
+   * REQUIRED, not a nicety. A drag changes the miles and the climb of two
+   * days at once; CLAUDE.md's four-ways rule makes that a safety path, and a
+   * safety path's edit has to be visible and reversible. The days themselves
+   * carry "was 17.1 mi" out of `moveBoundary`, which is the visible half;
+   * this is the other one.
+   *
+   * `after` IS THE SAFETY CATCH, and it closes a way this could destroy work
+   * rather than save it: drag a boundary, then add a zero from the day's
+   * actions, then press Undo, and a bar that only remembered `was` would put
+   * back the pre-drag plan and take the zero with it. So the bar is offered
+   * only while the plan on screen is still exactly the one the drag produced.
+   * Anything else replacing it - another edit, a cascade, a re-target, a trip
+   * switch - retires the offer, because the thing it offered to undo is no
+   * longer what is there.
+   */
+  const [lastMove, setLastMove] = useState<{
+    was: HikePlan
+    after: HikePlan
+    line: string
+  } | null>(null)
+  const isDesktop = useDesktop()
 
   const views = useMemo(() => (plan === null ? [] : planDayViews(plan)), [plan])
   const sections = useMemo(() => planSections(views), [views])
 
+  // The bench's two derived inputs (#971), memoised HERE rather than beside
+  // the rest of the bench below - hooks cannot run after this component's
+  // early returns, and both of these are identity-sensitive downstream: the
+  // chart re-decimates its whole envelope whenever its resting domain is a
+  // new object, and a fresh array of boundaries on every render would do the
+  // same to the handles.
+  const benchStretch = useMemo(() => (plan === null ? null : planStretch(plan)), [plan])
+  const benchBoundaries = useMemo(
+    () => (plan === null ? [] : planBoundaries(plan)),
+    [plan],
+  )
+
   // One figures pass for every walking day - heights, terrain and labels all
   // read from it, so they cannot disagree about what a day costs.
   const figures = useMemo(() => {
-    const byIndex = new Map<number, LegFigures>()
+    const byIndex = new Map<number, PricedLeg>()
     if (elevation === null) return byIndex
     for (const day of views) {
       if (!day.zero) {
-        byIndex.set(day.index, legFigures(elevation, day.start.mile, day.end.mile, pace))
+        const walked = legFigures(elevation, day.start.mile, day.end.mile, pace)
+        // The printed time and its baseline together (#851/#1040): a hiker
+        // who moved the pace control sees what they moved it from, and one
+        // who has not sees nothing extra - `paceEstimate` returns no line at
+        // standard pace. The timeline printed the adjusted figure naked for
+        // as long as the guard meant to catch that was skipping every file.
+        byIndex.set(day.index, priceLeg(walked, pace))
       }
     }
     return byIndex
-  }, [views, elevation])
+  }, [views, elevation, pace])
 
   // What the cascade can honestly offer. A walking-hours target on a
   // download with no profile cannot price a shift, so it is not offered -
@@ -254,9 +407,47 @@ export function PlanScreen({
   }, [plan, elevation])
 
   if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
+    if (dayListOpen) {
+      return (
+        // `plan--bounded`: the list is the one Plan screen with no ceiling on
+        // its own length, and a day-hike card docks against `.plan` rather
+        // than the viewport - so on a long list "bottom: 0" was the bottom of
+        // the LIST, and tapping a row opened a card a screen or two below the
+        // fold. The list scrolls inside a screen-height container instead.
+        <div className="plan plan--day plan--bounded">
+          <DayHikeList
+            dayHikes={dayHikes}
+            units={units}
+            at={gpsAt}
+            pace={pace}
+            onOpen={onOpenDayHike}
+            onBack={() => onDayListOpen(false)}
+            // The day room's own action, on the day room's own terms: a live
+            // TRIP draft is not this screen's business, and a live day draft
+            // is reached from the home's "Back to your route" rather than
+            // offered again here.
+            onNewDayHike={
+              network.kind === 'ready' && draftKind === null ? onNewDayHike : null
+            }
+          />
+          {targetSheet}
+          {kindSheet}
+          {dayHikeCard}
+          {tripList}
+        </div>
+      )
+    }
     return (
-      <div className="plan">
+      <div className={room === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
+          room={room}
+          activeHike={activeHike}
+          onSwitchHike={onSwitchHike}
+          onRenameHike={onRenameHike}
+          sectionPlanner={sectionPlanner}
+          onAddSectionToHike={onAddSectionToHike}
+          onTakeSectionOut={onTakeSectionOut}
+          onAddDayHikeToHike={onAddDayHikeToHike}
           trips={trips}
           hikes={hikes}
           dayHikes={dayHikes}
@@ -265,7 +456,6 @@ export function PlanScreen({
           pois={pois}
           units={units}
           openTrip={trips.find((trip) => trip.id === openTripId) ?? null}
-          draftLive={draftLive}
           onOpenTrip={(id) => {
             onOpenTrip(id)
             setZoomWanted('days')
@@ -277,7 +467,13 @@ export function PlanScreen({
           }}
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
-          onNewTrip={onStartOnMap}
+          onAllDayHikes={() => onDayListOpen(true)}
+          onNewDayHike={network.kind === 'ready' ? onNewDayHike : null}
+          network={network}
+          onRetryNetwork={onRetryNetwork}
+          onNewTrip={onNewTrip}
+          draftKind={draftKind}
+          onResumeDraft={onStartOnMap}
         />
         {targetSheet}
         {kindSheet}
@@ -346,8 +542,8 @@ export function PlanScreen({
   // what it knows.
   if (zoom === 'hike' && hike !== null) {
     return (
-      <div className="plan">
-        <header className="plan__head">
+      <div className="plan plan--trips">
+        <header className="plan__head plan__head--trips">
           <h1 className="plan__title">{hike.name}</h1>
           <span className="plan__head-note">{hike.type}</span>
           <button type="button" className="plan__trips" onClick={onOpenTrips}>
@@ -381,8 +577,24 @@ export function PlanScreen({
               onPlanGap={onPlanGap}
               onWhatsLeft={() => setWhatsLeftOpen(true)}
             />
-            <button type="button" className="plan__primary" onClick={onStartOnMap}>
-              {draftLive ? 'Back to your route' : 'Plan another trip'}
+            {/* `draftKind`, not `draftLive`, for TripsHome's reason: the hike
+                zoom is a trips-mode screen, and a live DAY draft here would
+                have offered "Back to your route" into the day-hike builder
+                from a screen headed by a hike's own name. Each room offers a
+                way back only to its own draft. */}
+            {/* And the same cost note TripsHome carries, because this button
+                reaches the same sweep. */}
+            {draftKind === 'day' && (
+              <p className="plan-home__refused" role="note">
+                There&rsquo;s an unfinished day hike on the map. Starting a trip drops it.
+              </p>
+            )}
+            <button
+              type="button"
+              className="plan__primary"
+              onClick={draftKind === 'trip' ? onStartOnMap : onNewTrip}
+            >
+              {draftKind === 'trip' ? 'Back to your route' : 'Plan another trip'}
             </button>
           </>
         )}
@@ -423,6 +635,11 @@ export function PlanScreen({
             Or say where from and how far, and it&rsquo;ll find the stretch and break it
             into days.
           </p>
+          {/* The one screen that reads `draftLive` rather than `draftKind`,
+              and deliberately: this is the state with NO mode - nothing has
+              been planned, so there is no room whose draft this is. Any live
+              draft is the one to go back to, and `onStartOnMap` routes to
+              whichever builder holds it (App's openPlanKind). */}
           <button type="button" className="plan__primary" onClick={onStartOnMap}>
             {draftLive ? 'Back to your route' : 'Start on the map'}
           </button>
@@ -440,9 +657,61 @@ export function PlanScreen({
   const current = currentDayIndex(plan)
   const anythingWalked = walkedDayCount(plan) > 0
 
+  // ---- The plan bench (#971, wireframe 3a) -------------------------------
+  //
+  // Only at the day zoom, and only above the breakpoint. Everything below
+  // this line is dead on a phone by construction rather than by promise -
+  // `useDesktop()` is false wherever the media query does not match, which
+  // includes every environment that cannot answer at all.
+  const onBench = isDesktop && zoom === 'days'
+  const benchSelected = benchDay === null ? null : (views[benchDay] ?? null)
+  const pickBenchDay = (index: number | null) => {
+    setBenchDay(index)
+    const day = index === null ? null : (views[index] ?? null)
+    onSelectStretch?.(
+      day === null
+        ? null
+        : {
+            startMile: Math.min(day.start.mile, day.end.mile),
+            endMile: Math.max(day.start.mile, day.end.mile),
+          },
+    )
+  }
+  const dragBoundary = (stopIndex: number, mile: number) => {
+    const move = moveBoundary(plan, stopIndex, mile, pois)
+    if (move === null) return
+    onReplacePlan(move.plan)
+    // Named off the RESULT's views rather than the plan that went in, because
+    // the timeline the hiker is about to read is the result's - and a move can
+    // change what a day is called (a walking day shortened to nothing becomes
+    // a zero, and zeros carry no day number).
+    const after = planDayViews(move.plan)
+    const name = (index: number) => {
+      const day = after[index]
+      if (day === undefined) return `Day ${index + 1}`
+      return day.dayNumber === null
+        ? `Zero at ${stopLabel(day.start)}`
+        : `Day ${day.dayNumber}`
+    }
+    setLastMove({
+      was: move.was,
+      after: move.plan,
+      // BOTH days, before and after. A line naming only the day that got
+      // longer would hide the one that got shorter, and the shorter one is
+      // the half a hiker has already bought food for.
+      line: `${name(move.days[0])}: ${formatDistance(move.before[0], units)} → ${formatDistance(
+        move.after[0],
+        units,
+      )} · ${name(move.days[1])}: ${formatDistance(move.before[1], units)} → ${formatDistance(
+        move.after[1],
+        units,
+      )}`,
+    })
+  }
+
   return (
-    <div className="plan">
-      <header className="plan__head">
+    <div className="plan plan--trips">
+      <header className="plan__head plan__head--trips">
         <h1 className="plan__title">
           {/* The trip's own name once it has one - a hiker who renamed it
               "Grayson week" should read that back, not have it silently
@@ -501,15 +770,18 @@ export function PlanScreen({
         </ol>
       )}
 
-      {zoom === 'days' && elevation !== null && (
-        <p className="plan__legend">
-          <span className="plan__legend-swatch" aria-hidden="true" />
-          row height = walking hours
-        </p>
-      )}
+      {(() => {
+        if (zoom !== 'days') return null
 
-      {zoom === 'days' &&
-        sections.map((section, sectionIndex) => (
+        const legend =
+          elevation === null ? null : (
+            <p className="plan__legend">
+              <span className="plan__legend-swatch" aria-hidden="true" />
+              row height = walking hours
+            </p>
+          )
+
+        const timeline = sections.map((section, sectionIndex) => (
           <section className="plan__section" key={section.days[0].id}>
             <header className="plan__section-head">
               <div className="plan__section-title-row">
@@ -550,21 +822,150 @@ export function PlanScreen({
                     }
                     units={units}
                     elevation={elevation}
-                    onSelect={() =>
+                    picked={onBench && benchDay === day.index}
+                    onSelect={() => {
+                      // ON THE BENCH A CLICK SELECTS, and that is the whole
+                      // difference: three panes over one selection means a row
+                      // has somewhere to point, and opening a sheet over the
+                      // chart would cover the thing the layout exists for. The
+                      // actions are one more click, on the strip below.
+                      if (onBench) {
+                        pickBenchDay(day.index)
+                        return
+                      }
                       // A walked day has no actions on it and never gains
                       // any - it opens its own record instead (#966).
-                      day.walked ? setSummaryDay(day.index) : setSelectedDay(day.index)
-                    }
+                      if (day.walked) setSummaryDay(day.index)
+                      else setSelectedDay(day.index)
+                    }}
                   />
                 </li>
               ))}
             </ol>
           </section>
-        ))}
+        ))
 
-      {/* Days of food are days in every unit system, so this block takes no
-          units - the one figure on the Plan tab that does not convert. */}
-      {zoom !== 'hike' && <FoodBlock sections={sections} />}
+        if (!onBench) {
+          return (
+            <>
+              {legend}
+              {timeline}
+              {/* Days of food are days in every unit system, so this block
+                  takes no units - the one figure on the Plan tab that does
+                  not convert. */}
+              <FoodBlock sections={sections} />
+            </>
+          )
+        }
+
+        return (
+          <>
+            <div className="plan-bench">
+              <BenchTree
+                hike={hike}
+                tripName={tripName}
+                views={views}
+                sections={sections}
+                units={units}
+                selectedDay={benchDay}
+                onPickDay={pickBenchDay}
+                onOpenHike={hike === null ? null : () => setZoomWanted('hike')}
+              />
+              {/* Two panes rather than a framed grey box when the shell has no
+                  map to lend - see `mapPane`. */}
+              {mapPane !== undefined && <div className="plan-bench__map">{mapPane}</div>}
+              <div className="plan-bench__timeline">
+                {legend}
+                {timeline}
+                <FoodBlock sections={sections} />
+              </div>
+            </div>
+
+            <div className="plan-bench__strip">
+              <BenchCaption
+                day={benchSelected}
+                units={units}
+                onActions={
+                  benchSelected === null || benchSelected.walked
+                    ? null
+                    : () => setSelectedDay(benchSelected.index)
+                }
+                onSummary={
+                  benchSelected !== null && benchSelected.walked
+                    ? () => setSummaryDay(benchSelected.index)
+                    : null
+                }
+              />
+              {lastMove !== null && lastMove.after === plan && (
+                <p className="plan-bench__undo" role="status">
+                  <span className="plan-bench__undo-line">{lastMove.line}</span>
+                  <button
+                    type="button"
+                    className="plan-bench__undo-action"
+                    onClick={() => {
+                      onReplacePlan(lastMove.was)
+                      setLastMove(null)
+                    }}
+                  >
+                    Undo
+                  </button>
+                </p>
+              )}
+              {elevation !== null && benchStretch !== null ? (
+                <ElevationChart
+                  profile={elevation}
+                  units={units}
+                  pace={pace}
+                  currentMile={gpsMile}
+                  restingDomain={benchStretch}
+                  boundaries={benchBoundaries}
+                  onMoveBoundary={dragBoundary}
+                  // The chart's own selection IS the bench's, so a day picked
+                  // in the tree or the timeline bands here too - and it is
+                  // marked as coming from a plan, which is what stops a stray
+                  // click on the chart unmaking it.
+                  selection={
+                    benchSelected === null
+                      ? null
+                      : {
+                          startMile: Math.min(
+                            benchSelected.start.mile,
+                            benchSelected.end.mile,
+                          ),
+                          endMile: Math.max(
+                            benchSelected.start.mile,
+                            benchSelected.end.mile,
+                          ),
+                        }
+                  }
+                  selectionFromPlan={true}
+                  selectionLabel="day"
+                  // What a drag on this plot actually does. The chart's own two
+                  // invitations both promise a measurement or a route, and
+                  // neither is true here.
+                  hint="Drag a day boundary to move where a day ends"
+                />
+              ) : (
+                <p className="plan-bench__no-chart" role="note">
+                  {/* No promise that it turns up: a release can publish no
+                      profile at all, and #1049's lesson is that "it arrives
+                      with the next data sync" is a sentence four of the five
+                      ways of having no data cannot keep. The days and their
+                      miles beside this are unaffected, which is the part a
+                      hiker needs to know. */}
+                  This download has no elevation profile, so there is nothing to drag a
+                  day boundary along. The days and their miles are unaffected.
+                </p>
+              )}
+            </div>
+          </>
+        )
+      })()}
+
+      {/* The trip zoom's own copy. The days zoom renders its food block inside
+          the block above, because on the bench it belongs in the timeline
+          column rather than under three panes. */}
+      {zoom === 'trip' && <FoodBlock sections={sections} />}
 
       <div className="plan__foot">
         {/* Re-targeting replaces the whole plan, so it retires the moment
@@ -767,15 +1168,24 @@ function finishLabel(views: PlanDayView[]): string | null {
   return `${date.getUTCDate()} ${month}`
 }
 
+/**
+ * A section's confirmed ascent, or null when it cannot be stated whole.
+ *
+ * All or nothing across the days, and now across the DEM too (#1039): one
+ * day with unmeasured ground makes the roll-up an understatement, and a
+ * section header is the one place a hiker has no way to notice that a single
+ * row was withheld below it.
+ */
 function sectionAscent(
   section: PlanSection,
-  figures: Map<number, LegFigures>,
+  figures: Map<number, PricedLeg>,
 ): number | null {
   let total = 0
   for (const day of section.days) {
     if (day.zero) continue
     const f = figures.get(day.index)
     if (f === undefined) return null
+    if (f.unmeasuredMi > 0) return null
     total += f.ascentFt
   }
   return total
@@ -790,17 +1200,35 @@ function targetLabel(plan: HikePlan, units: UnitSystem): string {
 
 interface DayRowProps {
   day: PlanDayView
-  figures: LegFigures | undefined
+  figures: PricedLeg | undefined
   /** Days of food out of this row's resupply stop, or null when the row is
    *  not a resupply (or the plan ends here). */
   carryOut: number | null
   units: UnitSystem
   elevation: ElevationProfile | null
+  /** This row is the bench's selection (#971). False everywhere else, so the
+   *  phone timeline has no selected state at all - a row there opens a sheet
+   *  and closes it again, and there is nothing for a highlight to mean. */
+  picked?: boolean
   onSelect: () => void
 }
 
-function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowProps) {
+function DayRow({
+  day,
+  figures,
+  carryOut,
+  units,
+  elevation,
+  picked = false,
+  onSelect,
+}: DayRowProps) {
   const resupply = day.end.resupply
+  /** Marks the row for the eye AND for assistive tech. `aria-current` rather
+   *  than `aria-selected`, which is only meaningful inside a listbox or a
+   *  tablist - this is an ordinary list of days. */
+  const pickedProps = picked
+    ? ({ 'aria-current': 'true' } as const)
+    : ({} as Record<string, never>)
 
   // A walked day is a record, not a plan - grey and immutable, and there
   // are still no actions to take on the past. It became a button anyway
@@ -812,7 +1240,16 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     return (
       <div className="plan__row">
         <RowGutter day={day} />
-        <button type="button" className="plan__day plan__day--walked" onClick={onSelect}>
+        <button
+          type="button"
+          className={
+            picked
+              ? 'plan__day plan__day--walked plan__day--picked'
+              : 'plan__day plan__day--walked'
+          }
+          onClick={onSelect}
+          {...pickedProps}
+        >
           <span className="plan__day-top">
             <span className="plan__day-title">
               {stopLabel(day.start)} → {stopLabel(day.end)}
@@ -837,7 +1274,16 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     return (
       <div className="plan__row">
         <RowGutter day={day} />
-        <button type="button" className="plan__day plan__day--zero" onClick={onSelect}>
+        <button
+          type="button"
+          className={
+            picked
+              ? 'plan__day plan__day--zero plan__day--picked'
+              : 'plan__day plan__day--zero'
+          }
+          onClick={onSelect}
+          {...pickedProps}
+        >
           <span>Zero · {stopLabel(day.start)}</span>
           {/* Terrain, not judgement - and "rest" only where the hiker's own
               rhythm put it, never as the app's opinion of the day (#798). */}
@@ -849,6 +1295,22 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
     )
   }
 
+  // A FLOOR, NOT A FIXED HEIGHT (#1032). `.plan__day` hides its overflow -
+  // it has to, because the terrain silhouette is positioned against the row
+  // box - so an exact height cut the bottom line off whenever the content
+  // outgrew it. Measured at 390 px: a title wrapping to two lines needs
+  // 59 px, and the badges live on that bottom line, so "nearo · your rest
+  // day" rendered as 3 px of a 13 px line on precisely the short days that
+  // are nearos.
+  //
+  // WHAT THIS COSTS THE ENCODING, since row height = walking hours is a
+  // chosen wireframe decision and not an accident: rows between the 44 px
+  // floor and their own content height now all render at content height, so
+  // the proportionality is flat from 0 up to roughly 3.5 walking hours
+  // rather than up to 2. It was already flat below the floor, this widens
+  // that band, and above it every row is still exactly as tall as its hours.
+  // The alternative - keeping the exact height and truncating the stop names
+  // - would trade a label a hiker asked for against one the app added.
   const height = figures === undefined ? MIN_ROW_PX : dayRowHeight(figures.minutes)
 
   return (
@@ -856,9 +1318,13 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
       <RowGutter day={day} />
       <button
         type="button"
-        className={resupply ? 'plan__day plan__day--resupply' : 'plan__day'}
-        style={{ height: `${height}px` }}
+        className={
+          `${resupply ? 'plan__day plan__day--resupply' : 'plan__day'}` +
+          (picked ? ' plan__day--picked' : '')
+        }
+        style={{ minHeight: `${height}px` }}
         onClick={onSelect}
+        {...pickedProps}
       >
         {!resupply && elevation !== null && (
           <DayTerrain
@@ -889,10 +1355,26 @@ function DayRow({ day, figures, carryOut, units, elevation, onSelect }: DayRowPr
           <span className="plan__day-carry">resupply</span>
         )}
         <span className="plan__day-bottom">
-          {figures !== undefined && (
+          {figures !== undefined && figures.unmeasuredMi === 0 && (
             <span className="plan__day-figure">
-              {formatNaismithMinutes(figures.minutes)} ·{' '}
-              {formatElevation(figures.ascentFt, units)} ↑
+              {figures.estimate.text} · {formatElevation(figures.ascentFt, units)} ↑
+            </span>
+          )}
+          {figures?.estimate.relativeLine != null && figures.unmeasuredMi === 0 && (
+            <span className="plan__day-figure plan__day-figure--baseline">
+              {figures.estimate.relativeLine}
+            </span>
+          )}
+          {/* A hole in the DEM prices as flat ground, so the climb and the
+              time are both understated - and understated is the direction
+              that gets somebody caught out after dark. The distance above is
+              still honest and stays; these two are withheld and said to be
+              withheld, which is what the network half already does by
+              returning no time at all (#1039). */}
+          {figures !== undefined && figures.unmeasuredMi > 0 && (
+            <span className="plan__day-figure plan__day-figure--unmeasured">
+              no climb measured for{' '}
+              {formatDistance(figures.unmeasuredMi, units, 'trimmed')} of this day
             </span>
           )}
           {day.wasDistanceMi !== null && (
@@ -916,6 +1398,160 @@ function RowGutter({ day }: { day: PlanDayView }) {
       {day.date !== null && <span>{dayDateLabel(day.date)}</span>}
       {day.dayNumber !== null && <span>DAY {day.dayNumber}</span>}
     </span>
+  )
+}
+
+interface BenchTreeProps {
+  hike: Hike | null
+  tripName: string | null
+  views: PlanDayView[]
+  sections: PlanSection[]
+  units: UnitSystem
+  selectedDay: number | null
+  onPickDay: (index: number | null) => void
+  /** Zoom out to the hike, or null when this trip belongs to no hike - which
+   *  is the common case and not a degraded one (see `hike`'s own note). */
+  onOpenHike: (() => void) | null
+}
+
+/**
+ * The bench's left pane (#971, wireframe 3a): the hike as a tree.
+ *
+ * SEGMENTS.md's tree with nothing invented on top of it - a hike holds trips,
+ * a trip holds sections, a section holds days - and it is the same tree the
+ * zoom control already walks one level at a time (#790). What the wide layout
+ * changes is only that all of it is visible at once, which is the whole
+ * argument for the layout: on a phone you pick a level and lose the others.
+ *
+ * Days are NOT drawn here. They are the timeline pane, three feet to the
+ * right, and drawing them twice would make one of the two copies the real one.
+ * A section row selects its first day instead, which is what pointing at a
+ * section means when the selection is a day.
+ */
+function BenchTree({
+  hike,
+  tripName,
+  views,
+  sections,
+  units,
+  selectedDay,
+  onPickDay,
+  onOpenHike,
+}: BenchTreeProps) {
+  return (
+    <nav className="plan-bench__tree" aria-label="This hike">
+      {hike !== null && onOpenHike !== null && (
+        <button type="button" className="plan-bench__tree-hike" onClick={onOpenHike}>
+          {hike.name}
+        </button>
+      )}
+      {tripName !== null && <p className="plan-bench__tree-trip">{tripName}</p>}
+      <ol className="plan-bench__tree-sections">
+        {sections.map((section, sectionIndex) => {
+          const first = section.days[0]
+          const last = section.days[section.days.length - 1]
+          const holdsSelection =
+            selectedDay !== null &&
+            selectedDay >= first.index &&
+            selectedDay <= last.index
+          return (
+            <li key={first.id}>
+              <button
+                type="button"
+                className={
+                  holdsSelection
+                    ? 'plan-bench__tree-section plan-bench__tree-section--picked'
+                    : 'plan-bench__tree-section'
+                }
+                {...(holdsSelection ? { 'aria-current': 'true' } : {})}
+                onClick={() => onPickDay(first.index)}
+              >
+                <span className="plan-bench__tree-name">
+                  {stopLabel(first.start)} → {stopLabel(last.end)}
+                </span>
+                <span className="plan-bench__tree-figures">
+                  <span>SEC {sectionIndex + 1}</span>
+                  <span>{formatDistance(section.distanceMi, units, 'whole')}</span>
+                  <span>
+                    {section.days.length} {section.days.length === 1 ? 'day' : 'days'}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+      {/* The one thing the tree says that the panes beside it do not: how many
+          of these days are already a record. A count, never a proportion and
+          never a bar - see this file's header for why that line is drawn
+          here rather than left to taste. */}
+      {views.some((day) => day.walked) && (
+        <p className="plan-bench__tree-walked">
+          {views.filter((day) => day.walked).length} of {views.length} days walked
+        </p>
+      )}
+    </nav>
+  )
+}
+
+interface BenchCaptionProps {
+  day: PlanDayView | null
+  units: UnitSystem
+  /** Open the day's actions, or null for a walked day (it has none) and for
+   *  no selection at all. */
+  onActions: (() => void) | null
+  /** Open a walked day's record instead (#966). */
+  onSummary: (() => void) | null
+}
+
+/**
+ * What the bench's three panes are all pointing at, printed once above the
+ * chart - and the way from a selection to the actions on it.
+ *
+ * IDENTITY AND DISTANCE ONLY, deliberately. The chart directly below carries
+ * the same selection, and it already prints the climb, the descent and the
+ * ≈time from `legFigures` - so a caption that repeated them would put the same
+ * four numbers on two adjacent lines, and a reader would have to check they
+ * agreed. The distance stays because it names the day rather than measures the
+ * window, and "was 17.1 mi" stays because nothing else on this strip says it.
+ */
+function BenchCaption({ day, units, onActions, onSummary }: BenchCaptionProps) {
+  if (day === null) {
+    return (
+      <p className="plan-bench__caption plan-bench__caption--empty">
+        Pick a day to see it on the map and the profile — then drag a boundary to move
+        where it ends.
+      </p>
+    )
+  }
+
+  return (
+    <p className="plan-bench__caption">
+      <span className="plan-bench__caption-title">
+        {day.dayNumber === null ? 'Zero' : `Day ${day.dayNumber}`} ·{' '}
+        {day.zero
+          ? stopLabel(day.start)
+          : `${stopLabel(day.start)} → ${stopLabel(day.end)}`}
+      </span>
+      <span className="plan-bench__caption-figure">
+        {formatDistance(Math.abs(day.end.mile - day.start.mile), units)}
+      </span>
+      {day.wasDistanceMi !== null && (
+        <span className="plan-bench__caption-was">
+          was {formatDistance(day.wasDistanceMi, units)}
+        </span>
+      )}
+      {onActions !== null && (
+        <button type="button" className="plan-bench__caption-action" onClick={onActions}>
+          Day actions…
+        </button>
+      )}
+      {onSummary !== null && (
+        <button type="button" className="plan-bench__caption-action" onClick={onSummary}>
+          Open this day&rsquo;s record
+        </button>
+      )}
+    </p>
   )
 }
 
@@ -1027,7 +1663,7 @@ function DayActions({
         </button>
       )}
       <button type="button" className="plan__action" onClick={onTogglePinned}>
-        {day.pinned ? 'Unpin this day' : 'Pin this day — it does not move'}
+        {day.pinned ? 'Unpin this day' : 'Pin this day — it doesn’t move'}
       </button>
       <button type="button" className="plan__action" onClick={onRemoveDay}>
         {day.zero ? 'Remove this zero' : 'Remove this day'}
@@ -1060,8 +1696,8 @@ interface CallItADaySheetProps {
 /**
  * "Call it Day 24?" - the record half of the cascade (#758, wireframe 2b
  * frame 1), without the background inference: the hiker opens it from the
- * current day's actions, and it never pushes - the wrong-way alert stays
- * the only notification OurHike sends.
+ * current day's actions, and it never pushes - OurHike sends no push
+ * notifications at all.
  *
  * Two honest ends are offered: the planned stop, and where the hiker
  * actually is when a fix exists - named by the nearest real stop when one
@@ -1094,13 +1730,12 @@ function CallItADaySheet({
   const describe = (end: CalledEnd) => {
     const distanceMi = Math.abs(end.mile - day.start.mile)
     if (elevation === null) return formatDistance(distanceMi, units)
-    const figures = legFigures(elevation, day.start.mile, end.mile, pace)
-    // paceEstimate rather than formatting these minutes by hand. They are
+    // priceLeg rather than formatting these minutes by hand. They are
     // pace-adjusted, so this line owes its baseline (#851) - and formatting
     // them directly is the one bypass test/paceBaseline.test.ts exists to
     // catch, which is how this call site was found.
-    const estimate = paceEstimate(
-      { distanceMi: figures.distanceMi, ascentFt: figures.ascentFt },
+    const { estimate } = priceLeg(
+      legFigures(elevation, day.start.mile, end.mile, pace),
       pace,
     )
     const shown = `${formatDistance(distanceMi, units)} · ${estimate.text}`

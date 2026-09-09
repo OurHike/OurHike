@@ -1,0 +1,353 @@
+"""Tests for cut_cells.py - the 1-degree coverage cells (#1175).
+
+Synthetic everything, in the shape the stretch cut's own suite used (#556,
+removed with it): the
+source archive is built in test code with each tile's payload encoding its
+own address, the test_extract_package.py idiom that makes byte-identity
+assertions meaningful. No centerline and no markers - the mile axis is the
+machinery this cut deletes.
+
+The fixture geography is chosen so the cell arithmetic can be checked by
+hand. A source declaring bounds (-74.6, 40.2) to (-73.4, 40.8) covers
+exactly two whole-degree cells - n40w075 spanning lon -75..-74 and n40w074
+spanning -74..-73 - with the seam at lon -74.0.
+
+Tiles are z15 (about 1.1 km across at this latitude) so that a tile is
+comfortably smaller than the 3 km seam margin. At a low zoom a tile is wider
+than the margin and every assertion about seams goes mushy.
+"""
+
+import json
+import random
+
+import pytest
+from pmtiles.reader import MmapSource, all_tiles
+from pmtiles.tile import Compression, TileType, zxy_to_tileid
+from pmtiles.writer import write
+from pyproj import Transformer
+
+import cut_cells
+from lib.corridor_grid import graticule_cells
+from lib.tiling import tile_range_for_bounds
+
+SOURCE_BOUNDS = (-74.6, 40.2, -73.4, 40.8)
+SEAM_LON = -74.0
+
+
+def _merc(lon, lat):
+    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    return transformer.transform(lon, lat)
+
+
+def _tile_at(lon, lat, z=15):
+    """The z/x/y tile containing a lon/lat point."""
+    x_merc, y_merc = _merc(lon, lat)
+    x0, _x1, y0, _y1 = tile_range_for_bounds((x_merc, y_merc, x_merc, y_merc), z)
+    return z, x0, y0
+
+
+def payload(z, x, y):
+    return f"{z}/{x}/{y}".encode()
+
+
+def _build_source(path, tiles, bounds=SOURCE_BOUNDS):
+    west, south, east, north = bounds
+    header = {
+        "tile_type": TileType.MVT,
+        "tile_compression": Compression.GZIP,
+        "min_lon_e7": int(west * 1e7),
+        "min_lat_e7": int(south * 1e7),
+        "max_lon_e7": int(east * 1e7),
+        "max_lat_e7": int(north * 1e7),
+        "center_lon_e7": int((west + east) / 2 * 1e7),
+        "center_lat_e7": int((south + north) / 2 * 1e7),
+        "center_zoom": 0,
+    }
+    with write(str(path)) as writer:
+        for z, x, y in sorted(set(tiles), key=lambda t: zxy_to_tileid(*t)):
+            writer.write_tile(zxy_to_tileid(z, x, y), payload(z, x, y))
+        writer.finalize(header, {"name": "source", "vector_layers": ["kept"]})
+    return path
+
+
+def read_all(path):
+    with open(path, "rb") as f:
+        return {zxy: data for zxy, data in all_tiles(MmapSource(f))}
+
+
+def _cut(tmp_path, tiles, bounds=SOURCE_BOUNDS, family="at_basemap", **kwargs):
+    source = _build_source(tmp_path / "source.pmtiles", tiles, bounds)
+    out_dir = tmp_path / "out"
+    manifest = cut_cells.cut_cells(
+        source,
+        family,
+        out_dir=out_dir,
+        margin_km=kwargs.pop("margin_km", 3.0),
+        **kwargs,
+    )
+    return out_dir, manifest
+
+
+def _both_cells_tiles():
+    """One tile well inside each of the two fixture cells, far enough from
+    the seam that a 3 km margin does not reach it."""
+    return [_tile_at(-74.5, 40.5), _tile_at(-73.5, 40.5)]
+
+
+# ---------------------------------------------------------------- the grid
+
+
+def test_graticule_cells_begin_on_whole_degrees():
+    """The property the whole scheme rests on: two organizations whose
+    sheets cover the same ground must get the same cells, which only holds
+    if cells are anchored to the graticule rather than to a bounding box."""
+    cells = graticule_cells(SOURCE_BOUNDS)
+    assert cells == [(-75.0, 40.0, -74.0, 41.0), (-74.0, 40.0, -73.0, 41.0)]
+    for west, south, east, north in cells:
+        assert west == int(west) and south == int(south)
+        assert east - west == 1.0 and north - south == 1.0
+
+
+def test_a_second_sheet_over_the_same_ground_gets_the_same_cells():
+    """The offset that would reintroduce #193's duplication. A different
+    bounding box over overlapping ground must not produce a different grid."""
+    at = graticule_cells((-74.6, 40.2, -73.4, 40.8))
+    other_org = graticule_cells((-74.37, 40.11, -73.62, 40.93))
+    assert set(other_org) <= set(at)
+
+
+def test_cell_names_say_which_ground_they_hold():
+    assert cut_cells.cell_name(-75.0, 40.0) == "n40w075"
+    assert cut_cells.cell_name(-74.0, 40.0) == "n40w074"
+    # Both hemispheres, because the naming is permanent once published.
+    assert cut_cells.cell_name(7.0, -34.0) == "s34e007"
+
+
+# ---------------------------------------------------------------- the cut
+
+
+def test_every_tile_lands_in_the_cell_its_bounds_say(tmp_path):
+    out_dir, _manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=0.0)
+
+    west_tile, east_tile = _both_cells_tiles()
+    assert set(read_all(out_dir / "at_basemap_cell_n40w075.pmtiles")) == {west_tile}
+    assert set(read_all(out_dir / "at_basemap_cell_n40w074.pmtiles")) == {east_tile}
+
+
+def test_a_tile_near_the_seam_rides_in_both_neighbours(tmp_path):
+    """The margin is the data-side share of #552's non-negotiable: a wrong
+    answer must not cost a hiker map where they are walking."""
+    near_seam = _tile_at(SEAM_LON - 0.01, 40.5)
+    tiles = [*_both_cells_tiles(), near_seam]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=3.0)
+
+    assert near_seam in read_all(out_dir / "at_basemap_cell_n40w075.pmtiles")
+    assert near_seam in read_all(out_dir / "at_basemap_cell_n40w074.pmtiles")
+
+
+def test_without_a_margin_the_same_tile_rides_in_one(tmp_path):
+    """Proves the previous test measures the margin rather than a tile that
+    straddles the boundary on its own."""
+    near_seam = _tile_at(SEAM_LON - 0.01, 40.5)
+    tiles = [*_both_cells_tiles(), near_seam]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=0.0)
+
+    assert near_seam in read_all(out_dir / "at_basemap_cell_n40w075.pmtiles")
+    assert near_seam not in read_all(out_dir / "at_basemap_cell_n40w074.pmtiles")
+
+
+def test_context_tiles_publish_once_and_not_into_every_cell(tmp_path):
+    """Measured on the real z12 A.T. package: 5.71 MB published once, or
+    354.3 MB carried across its 62 cells. That saving is the whole reason
+    the split is worth making."""
+    context = [(5, 9, 12), (9, 150, 192)]
+    tiles = [*_both_cells_tiles(), *context]
+    out_dir, manifest = _cut(tmp_path, tiles, context_zoom=9)
+
+    assert set(read_all(out_dir / "at_basemap_context.pmtiles")) == set(context)
+    for name in ("n40w075", "n40w074"):
+        cut = read_all(out_dir / f"at_basemap_cell_{name}.pmtiles")
+        assert not set(cut) & set(context)
+    assert manifest["stats"]["context_tiles"] == len(context)
+
+
+def test_a_cell_with_no_tiles_is_simply_not_built(tmp_path):
+    """The bounding box proposes; the tiles decide.
+
+    An earlier version REFUSED the cut when any cell of the box held no
+    tiles, and the fixtures could not catch how wrong that is because their
+    bounds hug their tiles. Run against the real z12 A.T. package it failed
+    outright: that archive's bounds span 221 graticule cells and only 62
+    contain a tile, because a trail is a thin winding band inside a large
+    rectangle. An empty cell is ordinary - it is ground the corridor does
+    not cross - and building it would publish an archive covering nothing.
+    """
+    only_west = [_tile_at(-74.5, 40.5)]
+    out_dir, manifest = _cut(tmp_path, only_west, margin_km=0.0)
+
+    assert (out_dir / "at_basemap_cell_n40w075.pmtiles").exists()
+    assert not (out_dir / "at_basemap_cell_n40w074.pmtiles").exists()
+    assert manifest["stats"] == {**manifest["stats"], "cells": 1, "candidate_cells": 2}
+
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+    assert [c["name"] for c in index["cells"]] == ["n40w075"]
+
+
+def test_an_archive_whose_tiles_miss_its_own_bounds_is_refused(tmp_path):
+    """The real disagreement worth failing on, and all that is left of it:
+    a header describing ground none of the tiles are on."""
+    far_away = [_tile_at(2.5, 48.5)]
+    with pytest.raises(SystemExit, match="no tile in this archive"):
+        _cut(tmp_path, far_away, margin_km=0.0)
+
+
+def test_tile_bytes_are_copied_verbatim(tmp_path):
+    out_dir, _manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=0.0)
+    cut = read_all(out_dir / "at_basemap_cell_n40w075.pmtiles")
+    for (z, x, y), data in cut.items():
+        assert data == payload(z, x, y)
+
+
+def test_every_cut_carries_the_sources_format_and_layer_catalogue(tmp_path):
+    """MapLibre reads the layer catalogue out of the metadata, so a cell
+    without one is an archive a style cannot draw from - and the bytes are
+    copied rather than re-encoded, so the format facts must carry too."""
+    out_dir, _manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=0.0)
+
+    for name in ("n40w075", "n40w074"):
+        with open(out_dir / f"at_basemap_cell_{name}.pmtiles", "rb") as f:
+            source = MmapSource(f)
+            from pmtiles.reader import Reader
+
+            reader = Reader(source)
+            assert reader.metadata()["vector_layers"] == ["kept"]
+            assert reader.header()["tile_type"] == TileType.MVT
+            assert reader.header()["tile_compression"] == Compression.GZIP
+
+
+# ------------------------------------------------------- index and manifest
+
+
+def test_the_index_lists_the_cells_that_were_built(tmp_path):
+    """Which cells the grid DEFINES is computable on the phone; which were
+    built and published is not, and that difference is what the index is."""
+    out_dir, _manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=0.0)
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+
+    assert index["cell_degrees"] == 1.0
+    assert [c["name"] for c in index["cells"]] == ["n40w075", "n40w074"]
+    assert index["cells"][0]["key"] == "at_basemap_cell_n40w075.pmtiles"
+    assert index["cells"][0]["bounds"] == [-75.0, 40.0, -74.0, 41.0]
+
+
+def test_the_index_states_core_bounds_not_the_margin(tmp_path):
+    """The margin is generosity in the bytes, never a promise in the
+    metadata - or something downstream treats a margin as coverage."""
+    out_dir, _manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=25.0)
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+
+    assert index["seam_margin_km"] == 25.0
+    assert index["cells"][0]["bounds"] == [-75.0, 40.0, -74.0, 41.0]
+
+
+def test_the_manifest_prices_and_hashes_every_artifact(tmp_path):
+    out_dir, manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=0.0)
+
+    expected = {
+        "at_basemap_cells.json",
+        "at_basemap_cell_n40w075.pmtiles",
+        "at_basemap_cell_n40w074.pmtiles",
+    }
+    assert expected <= set(manifest["artifacts"])
+    for name, entry in manifest["artifacts"].items():
+        assert len(entry["sha256"]) == 64
+        assert entry["size_bytes"] == (out_dir / name).stat().st_size
+
+
+def test_the_manifest_reports_what_the_margin_cost(tmp_path):
+    """#193's duplication figure gets its successor measured on every run
+    rather than assumed away."""
+    near_seam = _tile_at(SEAM_LON - 0.01, 40.5)
+    tiles = [*_both_cells_tiles(), near_seam]
+    _out_dir, manifest = _cut(tmp_path, tiles, margin_km=3.0)
+
+    stats = manifest["stats"]
+    assert stats["distinct_cell_tiles"] == 3
+    assert stats["cell_tile_placements"] == 4
+    assert stats["seam_duplication_pct"] == pytest.approx(33.33, abs=0.01)
+    assert stats["cells"] == 2
+
+
+# --------------------------------------------- a family that is not a sheet (#1257)
+
+
+@pytest.mark.parametrize("family", ["at_basemap", "dem", "nearby_trails"])
+def test_every_artifact_is_named_for_its_family(tmp_path, family):
+    """publish.py collects a family's cut by these names and nothing else, so
+    the family string has to reach every file the cut writes. Every fixture
+    above says at_basemap, which is exactly how a leaked literal would have
+    passed this suite."""
+    out_dir, manifest = _cut(tmp_path, _both_cells_tiles(), family=family, margin_km=0.0)
+
+    assert set(manifest["artifacts"]) == {
+        f"{family}_cells.json",
+        f"{family}_cell_n40w075.pmtiles",
+        f"{family}_cell_n40w074.pmtiles",
+    }
+    index = json.loads((out_dir / f"{family}_cells.json").read_text())
+    assert [c["key"] for c in index["cells"]] == [
+        f"{family}_cell_n40w075.pmtiles",
+        f"{family}_cell_n40w074.pmtiles",
+    ]
+    assert (out_dir / f"{family}_cells_manifest.json").exists()
+
+
+def test_a_context_zoom_under_the_archive_leaves_no_context_and_cuts_every_zoom_into_cells(tmp_path):
+    """The network family's cut (#1257 stage 2): publish-vector-data.yml
+    passes --context-zoom 8 against z9-z14 tiles, so nothing is a context
+    tile and the coarsest zoom rides in the cells with the rest - a stretch
+    then costs nothing shared. Modelled with the real archive's minimum
+    zoom: the z9 tile over lon -74.5 spans -74.53 to -73.83 and so crosses
+    the seam into both cells, margin or no margin."""
+    coarse = _tile_at(-74.5, 40.5, z=9)
+    fine = _tile_at(-74.5, 40.5)
+    out_dir, manifest = _cut(tmp_path, [coarse, fine], family="nearby_trails", context_zoom=8, margin_km=0.0)
+
+    index = json.loads((out_dir / "nearby_trails_cells.json").read_text())
+    assert index["context"] is None
+    assert index["context_zoom"] == 8
+    assert manifest["stats"]["context_tiles"] == 0
+    assert not any(name.endswith("_context.pmtiles") for name in manifest["artifacts"])
+    assert set(read_all(out_dir / "nearby_trails_cell_n40w075.pmtiles")) == {coarse, fine}
+    assert set(read_all(out_dir / "nearby_trails_cell_n40w074.pmtiles")) == {coarse}
+
+
+def test_graticule_routing_is_the_rectangle_scan_exactly():
+    """GraticuleLookup exists because a nationwide archive proposes a
+    thousand candidates and 173,209 tiles (measured 2026-09-07), and scanning
+    is a quarter of a billion tests. It may be faster; it may not be
+    different. Held to cells_for_tile on rectangles of every size at every
+    margin the cutter is run with, edges included - a rectangle touching a
+    square from outside is a hit in neither."""
+    cells = graticule_cells((-76.0, 39.0, -72.0, 42.0))
+    lookup = cut_cells.GraticuleLookup(cells)
+    rng = random.Random(1257)
+    for _ in range(500):
+        west, south = rng.uniform(-77.0, -71.0), rng.uniform(38.0, 43.0)
+        tile = (west, south, west + rng.uniform(0.001, 1.5), south + rng.uniform(0.001, 1.5))
+        margin = rng.choice([0.0, 3.0, 25.0])
+        assert lookup.hits(tile, margin) == cut_cells.cells_for_tile(tile, cells, margin), (tile, margin)
+
+    on_the_east_edge = (-72.0, 39.5, -71.5, 39.6)
+    assert lookup.hits(on_the_east_edge, 0.0) == cut_cells.cells_for_tile(on_the_east_edge, cells, 0.0) == []
+    on_the_west_edge = (-76.5, 39.5, -76.0, 39.6)
+    assert lookup.hits(on_the_west_edge, 0.0) == cut_cells.cells_for_tile(on_the_west_edge, cells, 0.0) == []
+
+
+def test_graticule_routing_refuses_a_grid_it_cannot_represent():
+    """A caller with ragged or bbox-anchored cells gets an error, never a
+    quietly wrong route - the scan is the answer for those."""
+    with pytest.raises(ValueError):
+        cut_cells.GraticuleLookup([(-74.6, 40.2, -73.6, 41.2)])
+    with pytest.raises(ValueError):
+        cut_cells.GraticuleLookup([(-75.0, 40.0, -74.5, 41.0)])

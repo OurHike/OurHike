@@ -8,15 +8,16 @@
 // features/ATC_TRAIL_UPDATES.md measured the case that makes this necessary.
 // ATC's Hurricane Helene update spans NOBO 239.4 to 637.8 - 398 miles, a fifth
 // of the Appalachian Trail. Drawn the way map/closureLayers.ts draws a closure
-// that is a barred red band across a fifth of the map, at every zoom, and it
+// that is red barrier tape across a fifth of the map, at every zoom, and it
 // would visually swamp the nine-mile Creeper Trail closure a hiker actually has
 // to walk around. The more urgent warning buried under the broader one. ATC's
 // own text says the damage is patchy: "The worst of the damage occurred along
 // the section between...".
 //
-// This is the same instinct as features/HIKER_SAFETY.md's deliberately
-// conservative wrong-way alert. A warning that fires too broadly trains people
-// to ignore warnings, and a safety surface cannot afford to be ignored.
+// This is the same instinct as the wrong-way alert's deliberately conservative
+// design (features/HIKER_SAFETY.md §5, removed #93/#308): a warning that fires
+// too broadly trains people to ignore warnings, and a safety surface cannot
+// afford to be ignored.
 //
 // IT IS NOT ONLY ATC'S PROBLEM. Nothing in the data model or the moderation
 // path stops an OurHike moderator entering a 300-mile range today, which is why

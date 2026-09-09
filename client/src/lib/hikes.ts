@@ -31,6 +31,7 @@
 // reference itself has gone (`from: 'missing'` below), which is the case
 // the UI is required to say out loud.
 
+import type { HikeDirection } from '../chrome/Header'
 import { buildPlan, type HikePlan, type PlanStop } from './plan'
 import type { StoredPoi } from './trailData'
 import type { Trip } from './trips'
@@ -109,6 +110,83 @@ export function resolvePlace(ref: PlaceRef, pois: readonly StoredPoi[]): Resolve
   }
 }
 
+/**
+ * One point on a hike's way through (#1317).
+ *
+ * A `PlaceRef` with a date on it, and it is that rather than a bare mile
+ * DELIBERATELY - the design handoff wrote this shape as `{ mile, name?,
+ * date? }` and that is exactly the shape this file's header argues against
+ * for a multi-year hike. The reasoning does not weaken by being applied to
+ * a point in the middle instead of an end: a hike whose way through was
+ * stored as bare miles describes different ground after a relocation, and
+ * the failure is silent because the numbers still parse. So a point carries
+ * its `poiId` and re-resolves through `resolvePlace` like the ends always
+ * did, and the mile stays the perishable hint.
+ *
+ * The date is the handoff's own decision #10 and is genuinely optional: a
+ * point with no date is normal, not incomplete. Days get planned as they
+ * are walked, and nothing falls behind for want of one.
+ */
+export interface HikePoint extends PlaceRef {
+  /** ISO date (YYYY-MM-DD), or absent. Absent means nobody has said when -
+   *  never "unknown" on screen and never today's date by default. */
+  date?: string
+}
+
+/**
+ * Where a hike is in its life.
+ *
+ * - `planning` - set up, nothing walked on it yet.
+ * - `walking` - the hiker is on it. The ordinary state.
+ * - `paused` - stepped off deliberately, with `pausedAtMile` kept so
+ *   resuming does not mean re-entering where you stopped. Dates stop
+ *   moving; nothing is deleted.
+ * - `finished` - closed, with `finishedOn` set. Keeps every section in it.
+ *
+ * Stored rather than derived, which is the opposite call from direction
+ * below, and the difference is that none of these four is recoverable from
+ * the miles. A hike with no walked section might be one a hiker set up this
+ * morning or one they abandoned in 2019, and only they know which.
+ */
+export type HikeStatus = 'planning' | 'walking' | 'paused' | 'finished'
+
+/**
+ * The trail a hike with no stored `trailId` is on.
+ *
+ * Every hike written before #1317 is an A.T. hike by construction: this
+ * client has had exactly one mile axis for its whole life (`StoredPoi.mile`
+ * is NOBO miles from Springer), so there was no second trail a stored hike
+ * could have meant.
+ */
+export const DEFAULT_TRAIL_ID = 'AT'
+
+/**
+ * Whether this build can measure a hike on `trailId` at all.
+ *
+ * Only the A.T. today, and this is a statement about the DATA rather than
+ * about the trails: `lib/trails.ts` can name and badge four trails, but a
+ * mile on a hike's points is a mile on one published axis, and the pipeline
+ * publishes exactly one - `export_poi.attach_miles` projects onto the A.T.'s
+ * ordered centerline and nothing else. The Long Path ships lines and
+ * waypoints (#1288) and no mile axis, so a hike on it could be stored but
+ * not measured, and every figure it produced would be an A.T. mileage
+ * wearing a Long Path's name.
+ *
+ * So this gates CREATION, not reading. A hike already on a trail this build
+ * cannot measure keeps its points and prints what it honestly can - the
+ * same asymmetry `legLine` already applies to a leg on a download with no
+ * elevation profile, and for the same reason: refusing to store is how you
+ * lose somebody's record, refusing to compute is how you avoid inventing
+ * one.
+ *
+ * @unvalidated as a permanent shape, not as a number. What would settle it
+ * is the pipeline publishing a per-trail mile axis, at which point this
+ * becomes a lookup over whatever it publishes rather than a literal.
+ */
+export function trailHasMileAxis(trailId: string): boolean {
+  return trailId === DEFAULT_TRAIL_ID
+}
+
 /** A hike, as SEGMENTS.md models it. `type` is a label and a default
  *  suggestion, not a constraint - and it is read elsewhere: PRICING_MODEL.md
  *  scopes the thru-hike pass by exactly this field, so it is named
@@ -117,25 +195,164 @@ export interface Hike {
   id: string
   name: string
   type: 'thru' | 'section' | 'day'
-  start: PlaceRef
-  end: PlaceRef
+  /**
+   * Which centerline this hike's miles are on. SEGMENTS.md's data model
+   * has carried "trail reference (which centerline this hike is on)" since
+   * it was written; nothing stored it until #1317.
+   *
+   * Never assumed - but see `trailHasMileAxis` for what this build can
+   * actually do with a value other than the default.
+   */
+  trailId: string
+  /**
+   * The hike's way through, in walk order, at least two long.
+   *
+   * ORDER IS MEANING HERE, and that is what separates this list from
+   * `tripIds` below. Two points are a straight there-and-that's-it; a third
+   * can turn it around, which is how a flip-flop, a section skipped back
+   * for, or simply more detail about the intended route is said without a
+   * mode, a toggle or a second object.
+   *
+   * Shorter than two is stored rather than refused (`validateHike` keeps
+   * it) and is unusable as an active hike (`isUsableHike`). Deleting a
+   * hike to punish it for a bad write is how a hiker loses years.
+   */
+  points: HikePoint[]
+  status: HikeStatus
   /** The trips walked, or planned, inside this hike. Order is not meaning:
-   *  a flip-flopper walks the pieces in whatever order suits them (#791). */
+   *  a flip-flopper walks the pieces in whatever order suits them (#791).
+   *  Called SECTIONS in UI copy since #1317 - the model rename is a larger,
+   *  separate change and is deliberately not required to ship the screens. */
   tripIds: string[]
+  /** Set when status becomes 'paused': the mile the hiker stopped at, so
+   *  coming back does not start by asking them where they were. */
+  pausedAtMile?: number
+  /** ISO date the pause began - what "paused 11 days" is counted from. */
+  pausedOn?: string
+  /** ISO date, set with status 'finished'. */
+  finishedOn?: string
+}
+
+/** The smallest a hike's point list can be and still describe a walk. */
+export const MIN_HIKE_POINTS = 2
+
+/**
+ * Whether this hike can be the active one.
+ *
+ * Split from `validateHike` on purpose, and the handoff is explicit about
+ * why: "points.length < 2 makes a hike unusable as an active hike but must
+ * not delete it." A hike that cannot lead the app is still a hike whose
+ * sections are the hiker's record.
+ */
+export function isUsableHike(hike: Hike): boolean {
+  return hike.points.length >= MIN_HIKE_POINTS
 }
 
 export function validateHike(candidate: unknown): Hike | null {
   if (typeof candidate !== 'object' || candidate === null) return null
-  const hike = candidate as Partial<Hike>
+  const hike = candidate as Partial<Hike> & { start?: unknown; end?: unknown }
   if (typeof hike.id !== 'string' || hike.id.length === 0) return null
   if (typeof hike.name !== 'string') return null
   if (hike.type !== 'thru' && hike.type !== 'section' && hike.type !== 'day') return null
+  const points = validateHikePoints(hike)
+  if (points === null) return null
+  if (!Array.isArray(hike.tripIds)) return null
+  const tripIds = hike.tripIds.filter((id): id is string => typeof id === 'string')
+  return {
+    id: hike.id,
+    name: hike.name,
+    type: hike.type,
+    // Kept as stored even when this build has never heard of it. A value
+    // it does not recognise is a hike written by a later build, and
+    // rewriting it to the default would move somebody's hike onto a trail
+    // they did not choose - which is worse than being unable to measure it.
+    trailId:
+      typeof hike.trailId === 'string' && hike.trailId !== ''
+        ? hike.trailId
+        : DEFAULT_TRAIL_ID,
+    points,
+    // A hike stored before #1317 has no status, and 'walking' is the
+    // assumption that costs least if wrong. Such a hike exists because the
+    // hiker grouped sections they already had, so telling them they are
+    // still 'planning' would deny a record they can see on the same screen;
+    // the two states this could not honestly guess - paused and finished -
+    // both carry their own dated field, and neither is set here.
+    status: validateHikeStatus(hike.status),
+    tripIds,
+    ...(Number.isFinite(hike.pausedAtMile) ? { pausedAtMile: hike.pausedAtMile } : {}),
+    ...(typeof hike.pausedOn === 'string' ? { pausedOn: hike.pausedOn } : {}),
+    ...(typeof hike.finishedOn === 'string' ? { finishedOn: hike.finishedOn } : {}),
+  }
+}
+
+function validateHikeStatus(candidate: unknown): HikeStatus {
+  return candidate === 'planning' ||
+    candidate === 'walking' ||
+    candidate === 'paused' ||
+    candidate === 'finished'
+    ? candidate
+    : 'walking'
+}
+
+/**
+ * A hike's points, migrating the two-ended shape (#788) on read.
+ *
+ * The migration lives here rather than in a one-off pass over IndexedDB for
+ * `loadTrips`' stated reason: every read goes through the validator, so a
+ * shape converted here cannot be missed by a code path that loaded the
+ * store some other way. A hike written by the #788 build has `start` and
+ * `end` and no `points`, and those two ARE its point list - in that order,
+ * which is the order they were stored in and the order the hiker walks.
+ *
+ * Null only when neither shape is present, which is not a hike.
+ */
+function validateHikePoints(hike: {
+  points?: unknown
+  start?: unknown
+  end?: unknown
+}): HikePoint[] | null {
+  if (Array.isArray(hike.points)) {
+    // ONE UNREADABLE POINT REFUSES THE WHOLE HIKE, which is the opposite of
+    // what `validateTripStore` does with an unreadable trip, and the
+    // difference is worth stating because it looks like an inconsistency.
+    //
+    // A store is a LIST OF SEPARATE THINGS: dropping one trip loses that
+    // trip and leaves every other one exactly as it was. A point list is
+    // ONE THING - the route - and dropping a point from it does not lose a
+    // point, it silently describes different ground. A hike stored as
+    // Springer, Harpers Ferry, Katahdin whose middle point cannot be read
+    // would become Springer to Katahdin: still valid, still plausible, and
+    // no longer the walk the hiker entered. That is the silent failure this
+    // file's header exists to prevent, so it refuses instead.
+    //
+    // Refusing costs the GROUPING and nothing else. `validateTripStore`
+    // drops the hike and keeps every trip in it, which is `removeHike`'s
+    // rule arriving by another road: a hike is a way of looking at
+    // sections, and losing the way of looking never loses the walking.
+    //
+    // An EMPTY list is different and is kept: zero points is unambiguous -
+    // nobody said where - where a garbled point is a claim this build
+    // cannot read. `isUsableHike` is what refuses to walk it.
+    const points: HikePoint[] = []
+    for (const entry of hike.points) {
+      const point = validateHikePoint(entry)
+      if (point === null) return null
+      points.push(point)
+    }
+    return points
+  }
+
   const start = validatePlaceRef(hike.start)
   const end = validatePlaceRef(hike.end)
   if (start === null || end === null) return null
-  if (!Array.isArray(hike.tripIds)) return null
-  const tripIds = hike.tripIds.filter((id): id is string => typeof id === 'string')
-  return { id: hike.id, name: hike.name, type: hike.type, start, end, tripIds }
+  return [start, end]
+}
+
+function validateHikePoint(candidate: unknown): HikePoint | null {
+  const ref = validatePlaceRef(candidate)
+  if (ref === null) return null
+  const date = (candidate as Partial<HikePoint>).date
+  return { ...ref, ...(typeof date === 'string' ? { date } : {}) }
 }
 
 function validatePlaceRef(candidate: unknown): PlaceRef | null {
@@ -147,6 +364,144 @@ function validatePlaceRef(candidate: unknown): PlaceRef | null {
     ...(typeof ref.poiId === 'string' ? { poiId: ref.poiId } : {}),
     ...(typeof ref.name === 'string' ? { name: ref.name } : {}),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Legs. Derived on every read, stored nowhere (#1317).
+
+/**
+ * One pair of consecutive points, and which way it is walked.
+ *
+ * DIRECTION BELONGS TO THE LEG, NOT TO THE HIKE, and that is the whole
+ * reason this type exists. A flip-flop reads northbound on one leg and
+ * southbound on the next, so a hike-level direction would be wrong for at
+ * least one of them and there would be no way to tell which.
+ *
+ * Nothing stores it. `lib/plannedHike.ts` keeps the rule this file inherits
+ * - "whether a hike is NOBO or SOBO is fully determined by comparing the
+ * references; storing a separate direction value would just be a second
+ * source of truth that could drift" - and the only thing #1317 changed is
+ * WHICH two miles get compared: this leg's own, rather than the hike's
+ * outermost ends.
+ */
+export interface HikeLeg {
+  /** Position in the point list: leg `i` runs points[i] to points[i + 1]. */
+  index: number
+  from: ResolvedPlace
+  to: ResolvedPlace
+  /** Always positive - a leg's length, not a signed difference. */
+  distanceMi: number
+  /**
+   * Null for a leg between two points at the same mile, where there is no
+   * direction to report. Printing one would be inventing a fact about
+   * ground nobody covers.
+   */
+  direction: HikeDirection | null
+}
+
+/** A hike's legs, in walk order, each resolved against this download. */
+export function hikeLegs(hike: Hike, pois: readonly StoredPoi[]): HikeLeg[] {
+  const resolved = hike.points.map((point) => resolvePlace(point, pois))
+  const legs: HikeLeg[] = []
+  for (let index = 0; index < resolved.length - 1; index += 1) {
+    const from = resolved[index]
+    const to = resolved[index + 1]
+    legs.push({
+      index,
+      from,
+      to,
+      distanceMi: Math.abs(to.mile - from.mile),
+      direction: to.mile === from.mile ? null : to.mile > from.mile ? 'NOBO' : 'SOBO',
+    })
+  }
+  return legs
+}
+
+/**
+ * How far this hike's points describe WALKING, which is not the same as how
+ * much trail it covers.
+ *
+ * A there-and-back over the same 1,023 miles is 2,046 miles of walking
+ * across two legs, and both numbers are true of it. This is the one the
+ * set-up screen totals, because a hiker laying out points is asking how far
+ * they will walk. `hikeFigures`' `totalMi` is the other one - the extent -
+ * because "what is left" is a question about ground, and ground walked
+ * twice is not owed twice (see `mergeSpans`).
+ */
+export function hikeLegMiles(hike: Hike, pois: readonly StoredPoi[]): number {
+  return hikeLegs(hike, pois).reduce((sum, leg) => sum + leg.distanceMi, 0)
+}
+
+/**
+ * A hike's outermost points, low mile and high, resolved.
+ *
+ * Min and max across EVERY point rather than the first and the last, which
+ * differ the moment a hike turns around: a flip-flop stored as Harpers
+ * Ferry, Katahdin, Springer starts and ends in the middle of its own
+ * extent, and taking `points[0]` and `points[n - 1]` for its ends would
+ * describe a shorter trail than the one being walked.
+ */
+export function resolvedHikePoints(
+  hike: Hike,
+  pois: readonly StoredPoi[],
+): ResolvedPlace[] {
+  return hike.points.map((point) => resolvePlace(point, pois))
+}
+
+/**
+ * The points at a hike's low and high mile, resolved.
+ *
+ * What a ribbon labels its two ends with, and NOT `points[0]` and
+ * `points[n - 1]`: a hike that turns around starts and ends inside its own
+ * extent, so the first point is not necessarily the southern one. Null on
+ * a hike with no readable points.
+ */
+/**
+ * A name for a hike that has none, from its own two ends.
+ *
+ * `renameTrip`'s rule at the hike's grain, and #1344's second pass is why it
+ * exists: set-up now carries a name FIELD, and a field can be cleared. An
+ * empty name is not stored as an empty name - it falls back to what the hike
+ * already says about itself, so a cleared box cannot leave a blank heading
+ * on Today, in the Plan band, in the sidebar and on the pick sheet at once.
+ *
+ * Falls back again where the ends cannot be resolved at all, because a hike
+ * whose points this download cannot place still needs something to be called.
+ */
+export function hikeNameFromEnds(
+  hike: Hike,
+  pois: readonly StoredPoi[],
+  fallback = 'A long hike',
+): string {
+  const { low, high } = hikeEnds(hike, pois)
+  if (low === null || high === null) return fallback
+  return `${placeLabel(low)} \u2192 ${placeLabel(high)}`
+}
+
+/** A resolved point's own word for itself - its name, or its mile as a
+ *  MARKER (#986), never as a distance. `stopLabel`'s rule, kept here so
+ *  lib/ does not reach into planDisplay for one string. */
+function placeLabel(place: ResolvedPlace): string {
+  if (place.name !== undefined && place.name !== '') return place.name
+  return `mi ${place.mile.toLocaleString('en-US', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })}`
+}
+
+export function hikeEnds(
+  hike: Hike,
+  pois: readonly StoredPoi[],
+): { low: ResolvedPlace | null; high: ResolvedPlace | null } {
+  const resolved = resolvedHikePoints(hike, pois)
+  if (resolved.length === 0) return { low: null, high: null }
+  let low = resolved[0]
+  let high = resolved[0]
+  for (const point of resolved) {
+    if (point.mile < low.mile) low = point
+    if (point.mile > high.mile) high = point
+  }
+  return { low, high }
 }
 
 // ---------------------------------------------------------------------------
@@ -245,12 +600,8 @@ export function hikeFigures(
   trips: readonly Trip[],
   pois: readonly StoredPoi[],
 ): HikeFigures {
-  const start = resolvePlace(hike.start, pois)
-  const end = resolvePlace(hike.end, pois)
-  const bounds: Span = {
-    from: Math.min(start.mile, end.mile),
-    to: Math.max(start.mile, end.mile),
-  }
+  const resolved = resolvedHikePoints(hike, pois)
+  const bounds = boundsOf(resolved)
 
   const mine = trips.filter((trip) => hike.tripIds.includes(trip.id))
   const walked = mergeSpans(
@@ -271,8 +622,17 @@ export function hikeFigures(
       0,
     ),
     tripCount: mine.length,
-    uncertain: start.from === 'missing' || end.from === 'missing',
+    uncertain: resolved.some((point) => point.from === 'missing'),
   }
+}
+
+/** The extent a set of resolved points covers, low mile to high. Empty
+ *  points give a zero-length span at mile 0 rather than NaN - a hike this
+ *  build could read nothing out of still has to render without throwing. */
+function boundsOf(resolved: readonly ResolvedPlace[]): Span {
+  if (resolved.length === 0) return { from: 0, to: 0 }
+  const miles = resolved.map((point) => point.mile)
+  return { from: Math.min(...miles), to: Math.max(...miles) }
 }
 
 // ---------------------------------------------------------------------------
@@ -313,8 +673,16 @@ export function hikeFromTrips(
     id: crypto.randomUUID(),
     name,
     type,
-    start: low,
-    end: high,
+    trailId: DEFAULT_TRAIL_ID,
+    // Two points, low to high. Grouping trips a hiker already kept says
+    // nothing about which way round they walked them - order here is trail
+    // order, not a claim about a route - so this is deliberately the
+    // shallowest possible point list and the set-up flow is where a hiker
+    // says more.
+    points: [low, high],
+    // Trips that are already kept are trips already walked or planned, so
+    // this is not a hike anybody is still setting up.
+    status: 'walking',
     tripIds: trips.map((trip) => trip.id),
   }
 }
@@ -397,12 +765,7 @@ export function gapSpans(
   pois: readonly StoredPoi[],
   minGapMi: number = MIN_GAP_MI,
 ): Span[] {
-  const start = resolvePlace(hike.start, pois)
-  const end = resolvePlace(hike.end, pois)
-  const bounds: Span = {
-    from: Math.min(start.mile, end.mile),
-    to: Math.max(start.mile, end.mile),
-  }
+  const bounds = boundsOf(resolvedHikePoints(hike, pois))
 
   const walked = mergeSpans(
     clipSpans(
@@ -450,12 +813,7 @@ export function spanFraction(
 
 /** A hike's own extent, resolved - the ribbon's and the gaps' frame. */
 export function hikeBounds(hike: Hike, pois: readonly StoredPoi[]): Span {
-  const start = resolvePlace(hike.start, pois)
-  const end = resolvePlace(hike.end, pois)
-  return {
-    from: Math.min(start.mile, end.mile),
-    to: Math.max(start.mile, end.mile),
-  }
+  return boundsOf(resolvedHikePoints(hike, pois))
 }
 
 /**
@@ -587,13 +945,13 @@ function refAtMile(
   // Math.min/max and clipping, never arithmetic on it.
   const EPS = 0.01
 
-  for (const end of [hike.start, hike.end]) {
-    const resolved = resolvePlace(end, pois)
+  for (const point of hike.points) {
+    const resolved = resolvePlace(point, pois)
     if (Math.abs(resolved.mile - mile) < EPS && resolved.name !== undefined) {
       return {
         mile,
         name: resolved.name,
-        ...(end.poiId === undefined ? {} : { poiId: end.poiId }),
+        ...(point.poiId === undefined ? {} : { poiId: point.poiId }),
       }
     }
   }

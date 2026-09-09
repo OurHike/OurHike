@@ -20,9 +20,14 @@ import { CLOSURE_COLOR } from '../lib/closureStyle'
 //    prose speaking for categories that are not there - so the empty-state
 //    sentences and the drop summary are still decided by the viewport alone,
 //    and are asserted here to be.
-//  - Closure and serious-warning rows carry "Always shown" and have NO hide
-//    control. Not merely defaulted-on: there is no affordance to turn a safety
-//    layer off, here or anywhere else in the app.
+//  - Closure and serious-warning rows have NO hide control OF THEIR OWN, and
+//    say which of two states they are in. The rule they used to carry - "there
+//    is no affordance to turn a safety layer off, here or anywhere in the app"
+//    - was narrowed by #1047: the panel now has an Alerts switch, and what
+//    survives is that nothing STORED can reach a closure. So a panel with no
+//    switch on it still reads "Always shown", because on that panel it is
+//    simply true; a panel with one names it instead and greys the rows with
+//    it. Both are asserted below, because the pair is the claim.
 
 const BBOX = { west: -78, south: 39, east: -77, north: 40 }
 
@@ -186,7 +191,7 @@ describe('Legend', () => {
   })
 
   it.each(['Closure', 'Serious warning'])(
-    'gives the %s row no hide control at all - a safety layer has no off switch',
+    'gives the %s row no hide control of its own - it is not a category',
     (label) => {
       render(<Legend {...PROPS} />)
       const row = rowFor(label)
@@ -318,17 +323,52 @@ describe('every hideable category has a row, in view or not', () => {
     expect(first.slice(0, HIDEABLE_TYPES.length)).toEqual(HIDEABLE_TYPES.map(typeLabel))
   })
 
-  it('never invents a safety row for a stretch with no closure on it', () => {
-    // Closures and serious warnings are not in HIDEABLE_TYPES, have no switch to
-    // reach, and a standing "Closure 0" would be this panel making a claim about
-    // closures that nothing asked it to make.
+  it('names both safety symbols on a stretch that holds neither (#1051)', () => {
+    // The key is the whole point. These rows were unreachable for as long as
+    // they existed - `computeLegendContents` counts `MapPoint`s, and a closure
+    // is a `ClosureBand` and a serious warning a `WarningPoint` - so a hiker who
+    // saw the barred red band across the trail, or the red triangle pin bigger
+    // than every other mark on the map, had nowhere in the app to look up what
+    // it was. A key that appears only once you are already looking at the thing
+    // you did not recognise is not a key, so these two do not wait for the
+    // viewport the way every other row does.
     render(<Legend {...PROPS} points={[]} />)
 
-    expect(screen.queryByRole('listitem', { name: 'Closure' })).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('listitem', { name: 'Serious warning' }),
-    ).not.toBeInTheDocument()
+    expect(rowFor('Closure')).toBeInTheDocument()
+    expect(rowFor('Serious warning')).toBeInTheDocument()
   })
+
+  it.each(['Closure', 'Serious warning'])(
+    'puts no number on the %s row, on a stretch that holds none',
+    (label) => {
+      // What the old rule was protecting, kept: "Closure 0" is a claim about
+      // closures that nothing asked this panel to make, and nothing measures
+      // either layer to make it with - `map/drawnPois.ts` measures the pin
+      // layers, a closure is a line, and `warningLayers.ts` sets
+      // `icon-allow-overlap: true` on purpose. A key entry makes no claim about
+      // the rectangle at all, which is what lets the row stand on every panel.
+      render(<Legend {...PROPS} points={[]} />)
+
+      expect(rowFor(label).querySelector('.legend__count')).toBe(null)
+      // The contrast is the assertion: an ordinary row still says `0` here, and
+      // that number is true about this rectangle.
+      expect(rowFor('Water')).toHaveTextContent('0')
+    },
+  )
+
+  it.each(['Closure', 'Serious warning'])(
+    'puts no number on the %s row with one of each in view either',
+    (label) => {
+      // PROPS holds a closure and a serious warning inside the bbox, so this is
+      // the case where a count could be rendered and must not be. The row means
+      // one thing rather than changing shape with whatever the shell fed it -
+      // and no shell feeds these today, which is exactly how the two rows went
+      // unseen for as long as they did.
+      render(<Legend {...PROPS} />)
+
+      expect(rowFor(label).querySelector('.legend__count')).toBe(null)
+    },
+  )
 
   it('still says the map is empty here, with eight rows of zero on screen', () => {
     // `isEmpty` is decided by the viewport, not by the grid. Decided by the grid
@@ -362,7 +402,7 @@ describe('every hideable category has a row, in view or not', () => {
 //
 // The legend named categories the map draws as pins and drew none of them.
 // What is asserted here is not "an icon is present" but that it is THE icon -
-// the same glyph data, the same broken rim, the same barred band - because a
+// the same glyph data, the same broken rim, the same barrier tape - because a
 // legend drawing its own approximation of a pin is worse than one drawing
 // none: it teaches a symbol the map does not use.
 
@@ -394,7 +434,7 @@ describe('legend icons are the map’s icons', () => {
     )
   })
 
-  it('draws a closure as the barred band it is, not as a pin it never was', () => {
+  it('draws a closure as the barrier tape it is, not as a pin it never was', () => {
     render(<Legend {...PROPS} />)
     const icon = iconIn(rowFor('Closure'))
 
@@ -483,6 +523,154 @@ describe('the whole legend row is the hide control', () => {
     render(<Legend {...PROPS} hiddenTypes={new Set(['closure'])} />)
 
     expect(rowFor('Closure')).not.toHaveClass('legend__row--hidden')
+  })
+})
+
+// --- The Alerts switch (#1047) ---------------------------------------------
+//
+// The first control this app has ever put over a safety layer, and the tests
+// that matter are the ones about what it is NOT. It is not stored - that is
+// chrome/alertLayerPanel.test.ts's job. Here: it exists only where a shell
+// offers the handler, it says what it costs before the tap rather than after,
+// and the grid above it never goes on claiming a mark the map is not drawing.
+
+describe('the Alerts switch (#1047)', () => {
+  const ALERTS = { ...PROPS, onToggleAlerts: vi.fn() }
+
+  function alertsSwitch() {
+    return screen.getByRole('checkbox', { name: /alerts/i })
+  }
+
+  it('is not drawn where the shell offers no handler for it', () => {
+    // The rule the verified toggle and the downloads link both keep: a control
+    // that goes nowhere is worse than one that is not there. It matters more
+    // here than anywhere else on the panel, because a switch that appears to
+    // clear the bands and does not is a hiker believing the map is telling
+    // them everything when it is not.
+    render(<Legend {...PROPS} />)
+
+    expect(screen.queryByRole('checkbox', { name: /alerts/i })).toBe(null)
+  })
+
+  it('starts checked - the alerts are on the map', () => {
+    render(<Legend {...ALERTS} />)
+
+    expect(alertsSwitch()).toBeChecked()
+  })
+
+  it('hands the tap back to the shell rather than deciding anything itself', async () => {
+    const user = userEvent.setup()
+    const onToggleAlerts = vi.fn()
+    render(<Legend {...ALERTS} onToggleAlerts={onToggleAlerts} />)
+
+    await user.click(alertsSwitch())
+
+    expect(onToggleAlerts).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads unchecked while the marks are off', () => {
+    render(<Legend {...ALERTS} alertsShown={false} />)
+
+    expect(alertsSwitch()).not.toBeChecked()
+  })
+
+  it('says what it does not take away, BEFORE the tap', () => {
+    // The moment that matters is while a hiker is deciding. A control that
+    // only explains itself once it is off has already let somebody turn it off
+    // believing they were going quiet about a closed trail.
+    render(<Legend {...ALERTS} />)
+
+    expect(alertsSwitch().closest('label')).toHaveTextContent(
+      /what is ahead of you is called out at the top/i,
+    )
+  })
+
+  it('promises the marks back at the next open, once they are off', () => {
+    render(<Legend {...ALERTS} alertsShown={false} />)
+
+    expect(alertsSwitch().closest('label')).toHaveTextContent(
+      /hidden until you open the app again/i,
+    )
+    expect(alertsSwitch().closest('label')).toHaveTextContent(
+      /what is ahead of you is still called out at the top/i,
+    )
+  })
+
+  it.each(['Closure', 'Serious warning'])(
+    'points the %s row at the switch rather than promising "always"',
+    (label) => {
+      // The row and the switch are on the same panel, six lines apart. A row
+      // reading "Always shown" beside a switch that plainly is not always is
+      // the panel contradicting itself in one screenful.
+      render(<Legend {...ALERTS} />)
+
+      expect(rowFor(label)).toHaveTextContent(/alerts/i)
+      expect(rowFor(label)).not.toHaveTextContent(/always shown/i)
+    },
+  )
+
+  it.each(['Closure', 'Serious warning'])(
+    'greys the %s row out when the marks come off the map',
+    (label) => {
+      // The one case the older "never grey a safety row" rule does not cover,
+      // and the reason it does not: that rule is about the stored category
+      // filter, which still cannot reach these. This is the map actually not
+      // drawing them, and a row that stayed lit would be the panel claiming a
+      // band that is not there.
+      render(<Legend {...ALERTS} alertsShown={false} />)
+
+      expect(rowFor(label)).toHaveClass('legend__row--hidden')
+      expect(rowFor(label)).toHaveTextContent(/alerts off/i)
+    },
+  )
+
+  it('leaves the safety rows without a toggle of their own, either way', () => {
+    // These rows are not category switches and must not grow into them: the
+    // stored preference is what could outlive the day, and #1047 keeps it out
+    // of reach on purpose.
+    render(<Legend {...ALERTS} alertsShown={false} />)
+
+    expect(within(rowFor('Closure')).queryByRole('button')).not.toBeInTheDocument()
+    expect(
+      within(rowFor('Serious warning')).queryByRole('button'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('keeps "Always shown" on a panel that genuinely has no switch', () => {
+    // The other half of the pair. Where nothing on the panel can hide these
+    // marks, the original promise is the accurate one and stays.
+    render(<Legend {...PROPS} />)
+
+    expect(rowFor('Closure')).toHaveTextContent(/always shown/i)
+  })
+
+  it('never promises "always" over a map that is not drawing them', () => {
+    // A shell that draws no alerts and offers no way back is not a state this
+    // app produces, and the tag still may not read "Always shown" in it: what
+    // is on the screen decides this word, never what the panel can offer.
+    render(<Legend {...PROPS} alertsShown={false} />)
+
+    expect(rowFor('Closure')).not.toHaveTextContent(/always shown/i)
+    expect(rowFor('Closure')).toHaveClass('legend__row--hidden')
+  })
+
+  it('never offers alerts through the type picker', () => {
+    // The picker writes `waypoint_types_shown`, which syncs to an account. An
+    // "Alerts" entry there would be the one shape #1047 rules out: a phone
+    // that OPENS with the bands already off, days later, on a different
+    // handset.
+    render(
+      <Legend
+        {...ALERTS}
+        onOnlyType={vi.fn()}
+        onShowAllTypes={vi.fn()}
+        typesShown={[]}
+      />,
+    )
+
+    const picker = screen.getByRole('combobox', { name: /showing waypoint types/i })
+    expect(within(picker).queryByRole('option', { name: /alert/i })).toBe(null)
+    expect(within(picker).queryByRole('option', { name: /closure/i })).toBe(null)
   })
 })
 
@@ -724,40 +912,40 @@ describe('the way to every ATC notice (#687)', () => {
   // this is the row itself.
 
   it('is not there when the app holds no ATC notices', () => {
-    render(<Legend {...PROPS} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} onOpenNotices={vi.fn()} />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBeNull()
   })
 
   it('draws no such row where the shell offers no handler', () => {
-    render(<Legend {...PROPS} atcNoticeCount={6} />)
+    render(<Legend {...PROPS} noticeCount={6} />)
 
-    expect(screen.queryByRole('button', { name: /ATC trail update/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /trail notice/ })).toBeNull()
   })
 
   it('names every notice it holds', () => {
-    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'Read all 6 ATC trail updates' }),
+      screen.getByRole('button', { name: 'Read all 6 trail notices' }),
     ).toBeInTheDocument()
   })
 
   it('counts one notice without pluralising it', () => {
-    render(<Legend {...PROPS} atcNoticeCount={1} onOpenAtcNotices={vi.fn()} />)
+    render(<Legend {...PROPS} noticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'Read the 1 ATC trail update' }),
+      screen.getByRole('button', { name: 'Read the 1 trail notice' }),
     ).toBeInTheDocument()
   })
 
   it('reports the tap up to the shell', async () => {
-    const onOpenAtcNotices = vi.fn()
-    render(<Legend {...PROPS} atcNoticeCount={6} onOpenAtcNotices={onOpenAtcNotices} />)
+    const onOpenNotices = vi.fn()
+    render(<Legend {...PROPS} noticeCount={6} onOpenNotices={onOpenNotices} />)
 
-    await userEvent.click(screen.getByRole('button', { name: /ATC trail updates/ }))
+    await userEvent.click(screen.getByRole('button', { name: /trail notices/ }))
 
-    expect(onOpenAtcNotices).toHaveBeenCalledTimes(1)
+    expect(onOpenNotices).toHaveBeenCalledTimes(1)
   })
 
   it('sits above the downloaded-map block, not inside it', () => {
@@ -766,13 +954,13 @@ describe('the way to every ATC notice (#687)', () => {
     const { container } = render(
       <Legend
         {...PROPS}
-        atcNoticeCount={6}
-        onOpenAtcNotices={vi.fn()}
+        noticeCount={6}
+        onOpenNotices={vi.fn()}
         onOpenDownloads={vi.fn()}
       />,
     )
 
-    const atcLink = screen.getByRole('button', { name: /ATC trail updates/ })
+    const atcLink = screen.getByRole('button', { name: /trail notices/ })
     const foot = container.querySelector('.legend__downloads')
     expect(foot).not.toBeNull()
     expect(atcLink.compareDocumentPosition(foot as HTMLElement)).toBe(
@@ -1017,7 +1205,22 @@ describe('reporting waypoints that did not fit', () => {
     // is one slot per row and no second badge beside it.
     const rows = container.querySelectorAll('.legend__pins .legend__row')
     expect(rows.length).toBeGreaterThan(0)
-    expect(container.querySelectorAll('.legend__count')).toHaveLength(rows.length)
+    // One slot on every row that has a number, and no slot at all on the two
+    // that do not (#1051). Subtracting the key rows rather than a literal, for
+    // the same reason the total is counted rather than written down: what is
+    // being asserted is one slot per counted row, not how many categories the
+    // app ships.
+    const keyRows = container.querySelectorAll('.legend__pins .legend__row--always')
+    expect(keyRows).toHaveLength(2)
+    expect(container.querySelectorAll('.legend__count')).toHaveLength(
+      rows.length - keyRows.length,
+    )
+    // And never two in one row, which is the wrap this design replaced. The
+    // total above cannot catch that on its own: a row with two badges and a row
+    // with none sum to the same figure.
+    for (const row of rows) {
+      expect(row.querySelectorAll('.legend__count').length).toBeLessThanOrEqual(1)
+    }
     expect(container.querySelector('.legend__drawn')).toBe(null)
   })
 
@@ -1130,11 +1333,46 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
-    // Reworded by #603. The dot rank draws below the seam now, so the panel
-    // must not say waypoints are absent here - it says what a hiker is looking
-    // at (dots) and what zooming in buys (knowing which is which).
-    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
+    // Reworded by #1135, its third flip - each time with the layer it
+    // describes (#528, then #603's dots, now the trails-only corridor view).
+    // Both ranks stop at the seam again, so "appear from a closer zoom" is
+    // the true sentence, and "pan or zoom out" stays the wrong direction.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
+  })
+
+  it('says it over a viewport full of waypoints too, because none of them draw', () => {
+    // The dots-era sentence rendered only on an empty viewport - dots WERE
+    // the below-seam answer everywhere else. With the floor shared (#1135)
+    // the sentence describes every below-seam rectangle, so it must not
+    // vanish behind the counted rows; and the rows keep their plain in-view
+    // counts rather than `0/N` fractions, because down here "drawn" would
+    // measure the floor, not the collision engine.
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[{ id: 'p1', type: 'shelter', lat: 0, lon: 0, confidence: 'high' }]}
+        drawnCounts={new Map()}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        belowPoiZoom
+      />,
+    )
+
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
+    // Plain names, no "none of 1 shown" fractions: the fraction is the
+    // collision engine's report, and it was not consulted. (Two shelter
+    // listitems are expected - the row, and its inner toggle button both
+    // carry the name.)
+    expect(
+      screen.getAllByRole('listitem', { name: /^shelter$/i }).length,
+    ).toBeGreaterThan(0)
+    // Narrow enough to spare the safety rows' "Always shown" tag, which is
+    // not a fraction and stays.
+    expect(screen.queryByText(/of \d+ shown/)).not.toBeInTheDocument()
   })
 
   it('still says "nothing here" when that is the true one', () => {
@@ -1258,5 +1496,165 @@ describe('the maintaining club', () => {
     expect(
       screen.getByText('Maintaining club not recorded along here.'),
     ).toBeInTheDocument()
+  })
+})
+
+describe('the "Trails in view" block (#1283)', () => {
+  const TRAILS = [
+    {
+      name: 'Appalachian National Scenic Trail',
+      source: 'centerline',
+      blazeColor: 'White',
+      throughRoute: true,
+      takeable: true,
+      chosen: true,
+      anchor: [-74.1, 41.25] as [number, number],
+      badgeFit: 'full' as const,
+      properties: {},
+    },
+    {
+      name: 'Long Path',
+      source: 'oprhp_trails',
+      blazeColor: 'Aqua',
+      throughRoute: false,
+      takeable: false,
+      chosen: false,
+      anchor: null,
+      badgeFit: 'full' as const,
+      properties: {},
+    },
+  ]
+
+  it('lists one row per trail the map is drawing, above the pin grid', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(
+      within(block).getByRole('heading', { name: 'Trails in view' }),
+    ).toBeInTheDocument()
+    const rows = within(block).getAllByRole('listitem')
+    expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
+      'Appalachian National Scenic Trail · taken',
+      'Long Path',
+    ])
+    // Above the pin grid: the block precedes the first pin row in the DOM.
+    const pinRow = rowFor('Water')
+    expect(
+      block.compareDocumentPosition(pinRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('offers `take` on an untaken through-route and takes it on tap (#1306)', async () => {
+    // Nothing is taken on first launch; the row is the legend's half of the
+    // handoff's "tap a badge to take that trail", and it says so in the slot
+    // `taken` fills afterwards.
+    const onTakeTrail = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <Legend
+        {...PROPS}
+        trailsInView={[{ ...TRAILS[0], chosen: false }, TRAILS[1]]}
+        onTakeTrail={onTakeTrail}
+      />,
+    )
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const at = within(block).getByRole('button', {
+      name: /Appalachian National Scenic Trail/,
+    })
+    expect(within(at).getByText('take')).toBeInTheDocument()
+    expect(within(block).queryByText('taken')).toBeNull()
+    // A side trail is not a through-route and has nothing to take: its row
+    // is a row, not a control.
+    expect(within(block).queryByRole('button', { name: /Long Path/ })).toBeNull()
+    expect(within(block).getByText('Long Path')).toBeInTheDocument()
+
+    await user.click(at)
+
+    expect(onTakeTrail).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'centerline' }),
+    )
+  })
+
+  it('draws the taken trail solid and every other row dotted, as the map does', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const [at, longPath] = within(block).getAllByRole('listitem')
+
+    expect(at.querySelector('svg')?.getAttribute('data-drawn')).toBe('solid')
+    expect(longPath.querySelector('svg')?.getAttribute('data-drawn')).toBe('dotted')
+    expect(within(at).getByText('taken')).toBeInTheDocument()
+    expect(within(longPath).queryByText('taken')).toBeNull()
+  })
+
+  it('prints no mileage, because nothing published carries a trail’s length', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).queryByText(/mi\b/)).toBeNull()
+  })
+
+  it('draws no block at all when the map is drawing no named trail', () => {
+    render(<Legend {...PROPS} trailsInView={[]} />)
+    expect(screen.queryByRole('region', { name: 'Trails in view' })).toBeNull()
+    cleanup()
+    render(<Legend {...PROPS} />)
+    expect(screen.queryByRole('region', { name: 'Trails in view' })).toBeNull()
+  })
+
+  it('makes a row a control only when the shell offers to take a trail', async () => {
+    const { unmount } = render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).queryAllByRole('button')).toEqual([])
+    unmount()
+
+    // With the seam plugged in, only the through-route's row is a control
+    // (#1306): the Long Path is a side trail here and has nothing to take.
+    const onTakeTrail = vi.fn()
+    render(<Legend {...PROPS} trailsInView={TRAILS} onTakeTrail={onTakeTrail} />)
+    const buttons = within(
+      screen.getByRole('region', { name: 'Trails in view' }),
+    ).getAllByRole('button')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(buttons[0])
+    expect(onTakeTrail).toHaveBeenCalledWith(TRAILS[0])
+  })
+
+  it('gives a through-route no button when it earns a badge without earning TAKEABLE_SOURCES (#1307)', () => {
+    // The Long Path's real shape since #1307: a badge (throughRoute) with
+    // nothing behind a tap (takeable stays false, map/trailBadges.ts's
+    // TAKEABLE_SOURCES). A row this build cannot measure must stay a row -
+    // "a button that does nothing is worse than a row" is this file's own
+    // rule, and #1307 is the case that would have quietly broken it by
+    // reusing throughRoute for both questions.
+    const marked = {
+      ...TRAILS[1],
+      source: 'nynjtc_long_path',
+      throughRoute: true,
+      takeable: false,
+    }
+    const onTakeTrail = vi.fn()
+    render(
+      <Legend {...PROPS} trailsInView={[TRAILS[0], marked]} onTakeTrail={onTakeTrail} />,
+    )
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const buttons = within(block).getAllByRole('button')
+    // Only the A.T.'s row, still - the Long Path's stays a plain row and
+    // never invites a tap that would silently do nothing.
+    expect(buttons).toHaveLength(1)
+    const longPathRow = within(block).getByText('Long Path').closest('li')
+    expect(longPathRow?.querySelector('button')).toBeNull()
+    expect(within(block).queryByText('take')).toBeNull()
+  })
+
+  it('keeps the ghosting sentence directly under the rows it explains', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} ghostedTrailsDrawn />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const note = screen.getByText(GHOSTED_TRAILS_NOTE)
+    expect(
+      block.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      note.compareDocumentPosition(rowFor('Water')) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
   })
 })

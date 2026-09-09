@@ -51,7 +51,7 @@ describe('SeriousWarningSheet', () => {
     render(<SeriousWarningSheet {...PROPS} />)
 
     expect(
-      screen.getByText(/only.*wrong.way|didn.t.*notif|never sends/i),
+      screen.getByText(/didn.t.*notif|doesn.t send push|never sends/i),
     ).toBeInTheDocument()
   })
 

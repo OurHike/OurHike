@@ -161,7 +161,7 @@ from lib import fetch_receipts
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
 from lib.hashing import sha256_file
-from lib.poi_schema import POI_TYPES
+from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES, POI_TYPES
 
 ROOT = Path(__file__).parent
 PROCESSED_DIR = ROOT / "data" / "processed"
@@ -317,6 +317,14 @@ def trails_verdict(manifest_path: Path | None = None) -> dict:
     if "geojson" in kind_counts and "fgb" in kind_counts and kind_counts["geojson"] != kind_counts["fgb"]:
         problems.append(f"trails: geojson/fgb feature_count disagree ({kind_counts['geojson']} vs {kind_counts['fgb']})")
 
+    # The per-vertex miles (#1192) are optional in a manifest - a checkout
+    # with no half-mile markers writes none - but where the manifest claims
+    # them the file has to be what it says, for the same reason as the line
+    # itself: a truncated sidecar would fail its hash on every phone that
+    # fetched it, and the client's fallback would hide that from everybody.
+    if "miles" in manifest:
+        problems += artifact_problems("trail_miles.json", manifest["miles"])
+
     feature_count = kind_counts.get("geojson", kind_counts.get("fgb", 0))
     # The count tracked against the baseline is the PRE-MERGE segment count
     # where the manifest records one (#161). The published feature count
@@ -348,11 +356,13 @@ def trails_verdict(manifest_path: Path | None = None) -> dict:
 def poi_verdict(manifest_path: Path | None = None) -> dict:
     """Re-derive export_poi.py's own per-poi_type completeness gate from
     what is actually on disk right now - see the module docstring's check
-    #1 section. `crossing` is excepted from the non-zero requirement,
-    mirroring export_poi.py's own minimums={"crossing": 0} override (see
-    that script's module docstring: there is no NHD-crossing fetch script
-    yet, so an empty-but-present crossing layer is the intentional, honest
-    state, not a bug)."""
+    #1 section. The minimums mirror lib.poi_schema.ALLOWED_EMPTY_POI_TYPES,
+    export_poi.py's own gate - shared rather than copied, after `trailhead`
+    joining that dict once left this file with its own stale copy: this
+    check flagged a correct, empty-by-design trailhead export as a PROBLEM
+    and refused a v1.2.1 UA publish that had nothing wrong with it (run
+    33798908097). Nothing shipped wrong - refusing to publish is what this
+    gate is for - but the reason was itself the bug, not the data."""
     if manifest_path is None:
         manifest_path = POI_MANIFEST
 
@@ -392,7 +402,8 @@ def poi_verdict(manifest_path: Path | None = None) -> dict:
             )
         counts[f"poi:{poi_type}"] = kind_counts.get("geojson", kind_counts.get("fgb", 0))
 
-    problems += count_problems(counts, minimums={"poi:crossing": 0})
+    poi_minimums = {f"poi:{poi_type}": limit for poi_type, limit in ALLOWED_EMPTY_POI_TYPES.items()}
+    problems += count_problems(counts, minimums=poi_minimums)
 
     verdict = Verdict.PROBLEM if problems else Verdict.OK
     detail = f"{len(problems)} problem(s)" if problems else f"{sum(counts.values())} features across {len(POI_TYPES)} poi_types"
@@ -508,25 +519,25 @@ def spurs_verdict(manifest_path: Path | None = None) -> dict:
 
 def manifests_verdict(
     club_manifest_path: Path | None = None,
-    stretches_dir: Path | None = None,
+    cells_dir: Path | None = None,
     retired_manifest_path: Path | None = None,
 ) -> dict:
     """Re-verify the manifest-backed artifacts publish.py collects that no
     dedicated verdict covers (#659): club_sections_manifest.json and each
-    stretch family's <family>_stretches_manifest.json. Same thesis as every
+    cell family's <family>_cells_manifest.json. Same thesis as every
     other check here - the exporter's manifest is a claim, and the claim is
     only evidence once the file on disk re-hashes to it.
 
     Asymmetric on absence, deliberately: a missing club_sections manifest
     is a PROBLEM (reason MANIFEST_MISSING, so --optional manifests can
     excuse it) because publish-vector-data.yml now always runs that
-    exporter - while a missing stretch-family manifest is only noted, since
-    stretches exist only after a basemap/dem build and most vector runs
+    exporter - while a missing cell-family manifest is only noted, since
+    cells exist only after a basemap/dem build and most vector runs
     rightly have none."""
     if club_manifest_path is None:
         club_manifest_path = CLUB_SECTIONS_MANIFEST
-    if stretches_dir is None:
-        stretches_dir = PROCESSED_DIR
+    if cells_dir is None:
+        cells_dir = PROCESSED_DIR
     if retired_manifest_path is None:
         retired_manifest_path = RETIRED_POI_MANIFEST
 
@@ -543,7 +554,7 @@ def manifests_verdict(
         details.append("club_sections.json verified")
 
     # The tombstones (#673, export_retired_poi.py). Noted rather than
-    # required when absent, the stretch-family posture rather than
+    # required when absent, the cell-family posture rather than
     # club_sections': the exporter writes no manifest at all where there is
     # no identity ledger to read, which is the pre-#671 state of any
     # checkout that has never run a reconciliation. What it must not do is
@@ -563,21 +574,21 @@ def manifests_verdict(
         problems += artifact_problems("retired_poi.geojson", retired_manifest)
         details.append(f"retired_poi.geojson verified ({retired_manifest.get('retired_count', 0)} tombstones)")
 
-    # publish.py's STRETCH_FAMILIES, imported rather than restated, so a
-    # third family lands here the day it lands there. Imported lazily: this
-    # module runs in contexts that never publish, and should not need
-    # publish.py's boto3 import to answer a local quality question.
-    from publish import STRETCH_FAMILIES
+    # publish.py's CELL_FAMILIES, imported rather than restated, so a third
+    # family lands here the day it lands there. Imported lazily: this module
+    # runs in contexts that never publish, and should not need publish.py's
+    # boto3 import to answer a local quality question.
+    from publish import CELL_FAMILIES
 
-    for family in STRETCH_FAMILIES:
-        manifest = read_manifest(stretches_dir / f"{family}_stretches_manifest.json")
+    for family in CELL_FAMILIES:
+        manifest = read_manifest(cells_dir / f"{family}_cells_manifest.json")
         if manifest is None:
-            details.append(f"{family} stretches: not built this run")
+            details.append(f"{family} cells: not built this run")
             continue
         entries = manifest.get("artifacts", {})
         for name, entry in entries.items():
             problems += artifact_problems(name, entry)
-        details.append(f"{family} stretches: {len(entries)} artifacts verified")
+        details.append(f"{family} cells: {len(entries)} artifacts verified")
 
     verdict = Verdict.PROBLEM if problems else Verdict.OK
     report = {

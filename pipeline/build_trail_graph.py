@@ -106,6 +106,7 @@ from shapely.ops import substring, transform
 from shapely.strtree import STRtree
 
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
@@ -628,7 +629,7 @@ def write_artifact(graph: dict, stats: dict, sources: dict | None = None) -> dic
     geometry_path.write_text(json.dumps(geometry, separators=(",", ":")), encoding="utf-8")
 
     manifest = {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
         "geometry_path": str(geometry_path),
@@ -690,10 +691,21 @@ def main() -> dict:
     print(f"  components:      {stats['components']}")
     print(f"  artifact:        {manifest['bytes']} bytes at {manifest['path']}")
     print(f"  geometry:        {manifest['geometry_bytes']} bytes at {manifest['geometry_path']}")
+    # #757 put the phone's budget at ~3,000 edges and this warning used to
+    # fire above it, pointing at lib/trailGraph.ts's plain-scan shortestPath.
+    # #1020 acted on that and found the scan was the smaller half: the search
+    # is now a binary heap, and the tap that precedes it reads a spatial grid
+    # instead of every edge. Measured against this artifact at 40,596 edges
+    # (2026-08-27), one tap went from 85.5 ms to 0.021 ms and one Harriman-
+    # sized route from 0.057 ms to 0.041 ms.
+    #
+    # So the number below is no longer a warning about the search. What it is
+    # still worth watching is the DOWNLOAD and the parse - the client fetches
+    # every edge in the state, and pipeline-side cuts per coverage unit are
+    # #552's to decide.
     print(
-        "\n#757 established that ~3,000 edges routes acceptably on a phone. "
-        f"This graph has {stats['edges']}; well past 3,000 and lib/trailGraph.ts's plain-scan "
-        "shortestPath is the first thing to revisit."
+        f"\n{stats['edges']} edges. The client indexes these spatially (#1020), so the cost "
+        "that scales here is the artifact's size on a phone, not the search over it."
     )
     return manifest
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { get, set, setMany, del } from 'idb-keyval'
+import { get, set, setMany, del, getMany } from 'idb-keyval'
 import {
   downloadTrailData,
   haveTrailData,
@@ -14,7 +14,9 @@ import {
   RETIRED_POI_STORE_KEY,
   SPURS_STORE_KEY,
   TRAILS_BLOB_KEY,
+  TRAIL_MILES_STORE_KEY,
   TrailDataHashMismatchError,
+  trailMilesClaimedHash,
   type StoredPoi,
 } from './trailData'
 import {
@@ -23,9 +25,11 @@ import {
   RETIRED_POI_KEY,
   dataUrl,
   ELEVATION_KEY,
+  NEARBY_POI_KEY,
   POI_TYPES,
   SPURS_KEY,
   TRAILS_KEY,
+  TRAIL_MILES_KEY,
 } from './config'
 import {
   readTrailsMerged,
@@ -33,11 +37,12 @@ import {
   writeTrailsMerged,
 } from './trailShape'
 import type { ElevationProfile } from './elevationProfile'
-import { publishedHashes } from './dataManifest'
+import { publishedSnapshot } from './dataManifest'
 import { sha256Hex } from './sha256'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   // The commit is ONE transaction since #657, so the double has to offer the
   // call that makes it one - a mock missing it fails every test in this file
@@ -51,9 +56,13 @@ vi.mock('idb-keyval', () => ({
 // The published-hash lookup, mocked the same way archiveDownload.test.ts
 // mocks it: what latest.json says is dataManifest.ts's own subject, and what
 // matters here is only whether these artifacts are held to it.
-vi.mock('./dataManifest', () => ({ publishedHash: vi.fn(), publishedHashes: vi.fn() }))
+vi.mock('./dataManifest', () => ({
+  publishedHash: vi.fn(),
+  publishedHashes: vi.fn(),
+  publishedSnapshot: vi.fn(),
+}))
 
-const mockedPublishedHashes = vi.mocked(publishedHashes)
+const mockedPublishedSnapshot = vi.mocked(publishedSnapshot)
 
 /**
  * What `latest.json` publishes, in the shape the download now reads it: ONE
@@ -61,8 +70,19 @@ const mockedPublishedHashes = vi.mocked(publishedHashes)
  * be re-fetched per artifact, so these tests set a per-key async mock; the
  * expectations are unchanged, only where the answer comes from.
  */
-function publishing(lookup: (key: string) => string | null) {
-  mockedPublishedHashes.mockResolvedValue(lookup)
+function publishing(
+  lookup: (key: string) => string | null,
+  version: string | null = 'v1',
+) {
+  mockedPublishedSnapshot.mockResolvedValue({
+    version,
+    previousVersion: null,
+    lookup,
+    hashes: {},
+    sizes: {},
+    decodedSizes: {},
+    changes: {},
+  })
 }
 
 const store = new Map<string, unknown>()
@@ -82,6 +102,12 @@ beforeEach(() => {
   // exactly as they did before #197.
   publishing(() => null)
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+  // `getMany` follows whatever `get` is doing right now (#1303's one
+  // transaction in lib/trailData.ts), so a test that re-points `get`
+  // mid-file does not have to re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
     return Promise.resolve()
@@ -230,9 +256,10 @@ describe('trail data', () => {
 
     expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
     // Every POI type, plus the trail lines, the spur detail, the maintaining
-    // clubs, the data stewards (#927), the highlights, the tombstones (#831)
-    // and the elevation profile.
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 7)
+    // clubs, the data stewards (#927), the highlights, the tombstones (#831),
+    // the other organizations' waypoints (#1097), the per-vertex miles
+    // (#1192) and the elevation profile.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(POI_TYPES.length + 9)
   })
 
   it('records the merged-chain shape of the trails it stores, both directions', async () => {
@@ -277,6 +304,196 @@ describe('trail data', () => {
       lat: 45.45,
       lon: -69.26,
       confidence: 'high',
+    })
+  })
+
+  // #1097 - NYS DEC's and NYS OPRHP's waypoints. Their own artifact upstream,
+  // because their licence footing is their own, but ONE array on the phone:
+  // map/poiLayers.ts draws every waypoint through a single symbol layer, since
+  // MapLibre can only declutter symbols it places together, so a second source
+  // would have stacked a DEC lean-to on an A.T. shelter.
+  describe("the other organizations' waypoints", () => {
+    /** Serves the A.T. POI files and, separately, nearby_poi.geojson. */
+    function serveWithNearby(nearby: string, nearbyOk = true) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((url: string) => {
+          if (url.includes(NEARBY_POI_KEY)) {
+            return Promise.resolve(
+              nearbyOk
+                ? {
+                    ok: true,
+                    status: 200,
+                    headers: new Headers(),
+                    arrayBuffer: () => Promise.resolve(bytesOf(nearby)),
+                    text: () => Promise.resolve(nearby),
+                  }
+                : { ok: false, status: 404, statusText: 'Not Found' },
+            )
+          }
+          const body = url.includes('poi_')
+            ? poiCollection([
+                {
+                  id: 'atc_shelters:abc',
+                  poi_type: 'shelter',
+                  name: 'Chairback Gap Lean-to',
+                  lat: 45.45,
+                  lon: -69.26,
+                  confidence: 'high',
+                },
+              ])
+            : '{"type":"FeatureCollection"}'
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            arrayBuffer: () => Promise.resolve(bytesOf(body)),
+            blob: () => Promise.resolve(new Blob(['{"type":"FeatureCollection"}'])),
+            text: () => Promise.resolve(body),
+          })
+        }),
+      )
+    }
+
+    it('merges them into the same stored waypoints as the A.T.', async () => {
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'dec_lean_tos:4791653',
+            poi_type: 'shelter',
+            name: 'Saginaw Bay Lean-To',
+            lat: 44.3,
+            lon: -74.400001,
+            confidence: 'high',
+            source: 'dec_lean_tos',
+            description: 'Lean-To in Saranac Lakes Wild Forest.',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      const dec = pois.find((poi) => poi.id === 'dec_lean_tos:4791653')
+      expect(dec).toEqual({
+        id: 'dec_lean_tos:4791653',
+        type: 'shelter',
+        name: 'Saginaw Bay Lean-To',
+        lat: 44.3,
+        lon: -74.400001,
+        confidence: 'high',
+        source: 'dec_lean_tos',
+        description: 'Lean-To in Saranac Lakes Wild Forest.',
+      })
+      // Beside the A.T.'s, not instead of them. The whole point of the merge is
+      // that both end up in one collision pass.
+      expect(pois.some((poi) => poi.id === 'atc_shelters:abc')).toBe(true)
+    })
+
+    it('carries the low confidence OPRHP rows arrive at, so the map can draw the broken rim', async () => {
+      // OPRHP's ParksApp flag SETS CONFIDENCE rather than filtering (their
+      // `Public` field reads Y on all 8,823 rows and so discriminates nothing).
+      // None of their 37 lean-tos is in their own app, so this is the shape
+      // every one of them reaches a phone in - and a client that flattened it
+      // to 'high' would vouch for what the steward has not.
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'oprhp_facilities:2035',
+            poi_type: 'shelter',
+            lat: 42.1,
+            lon: -78.7,
+            confidence: 'low',
+            source: 'oprhp_facilities',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const oprhp = (store.get(POIS_KEY) as StoredPoi[]).find(
+        (poi) => poi.id === 'oprhp_facilities:2035',
+      )
+      expect(oprhp?.confidence).toBe('low')
+      // 82% of OPRHP's rows publish no name, which the card already renders as
+      // "Unnamed" - the pipeline refuses to put the PARK's name on a feature
+      // inside it, so this is the honest arrival shape rather than a gap.
+      expect(oprhp?.name).toBe('Unnamed')
+    })
+
+    it('drops a waypoint whose type this build does not know, rather than filing it under one', async () => {
+      // One file carries every type here, unlike the nine poi_*.geojson keys,
+      // so readPois' fallback type would silently file a bad row under
+      // whichever type happened to be passed. A pipeline that publishes a word
+      // before the client knows it should lose that row, not gain a
+      // mislabelled shelter.
+      //
+      // THE FIXTURE USED TO BE `trailhead`, and #1197 published it. The word
+      // had to change; the rule did not - and the swap is the clearest
+      // statement of what this test is actually for. The dangerous case is not
+      // a pipeline bug, it is AN OLDER CLIENT MEETING A NEWER RELEASE:
+      // `POI_TYPES` lives in lib/config.ts and ships with the app, so every
+      // phone built before #1197 is now being served trailheads it has never
+      // heard of. They must be dropped. `POI_TYPES[0]` is 'shelter', so filed
+      // under the fallback they would become shelter pins - a hiker choosing
+      // where to spend the night sent to a signboard in a parking lot, which
+      // is the app inventing an answer on one of the paths that can hurt
+      // somebody.
+      //
+      // So the fixture is a word nothing publishes today, which is the same
+      // position `trailhead` was in when this test was written.
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'dec_towers:1',
+            poi_type: 'fire_tower',
+            lat: 44,
+            lon: -74,
+            confidence: 'high',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois.some((poi) => poi.id === 'dec_towers:1')).toBe(false)
+    })
+
+    it('keeps a trailhead, which is the ninth type and the one #1197 added', async () => {
+      // The end-to-end proof that the type reaches the phone, and the other
+      // half of the test above: the same filter that drops an unknown word has
+      // to pass a known one, or `POI_TYPES` gaining an entry would be a change
+      // nothing observed.
+      serveWithNearby(
+        poiCollection([
+          {
+            id: 'oprhp_facilities:9001',
+            poi_type: 'trailhead',
+            name: 'Reeves Meadow',
+            lat: 41.2,
+            lon: -74.1,
+            confidence: 'high',
+          },
+        ]),
+      )
+      await downloadTrailData()
+
+      const stored = (store.get(POIS_KEY) as StoredPoi[]).find(
+        (poi) => poi.id === 'oprhp_facilities:9001',
+      )
+      expect(stored?.type).toBe('trailhead')
+      expect(stored?.name).toBe('Reeves Meadow')
+    })
+
+    it('treats a 404 as an ordinary answer and keeps the A.T. waypoints', async () => {
+      // What a phone sees against a release exported before this artifact
+      // existed - and what it sees while either steward's reaches_hikers is
+      // false, since publish.py holds the whole file back rather than part of
+      // it.
+      serveWithNearby('', false)
+      await downloadTrailData()
+
+      const pois = store.get(POIS_KEY) as StoredPoi[]
+      expect(pois.some((poi) => poi.id === 'atc_shelters:abc')).toBe(true)
+      expect(pois.every((poi) => !poi.source?.startsWith('dec_'))).toBe(true)
     })
   })
 
@@ -1455,7 +1672,7 @@ describe('holding the trail data to its published hash (#197)', () => {
 
     await downloadTrailData()
 
-    expect(mockedPublishedHashes).toHaveBeenCalledTimes(1)
+    expect(mockedPublishedSnapshot).toHaveBeenCalledTimes(1)
   })
 
   it('stores what arrived when nothing published a hash for it', async () => {
@@ -1693,5 +1910,130 @@ describe('the highlights', () => {
 
     await deleteTrailData()
     expect(store.has(HIGHLIGHTS_STORE_KEY)).toBe(false)
+  })
+})
+
+describe('the per-vertex miles beside the lines (#1192)', () => {
+  const LINES = '{"type":"FeatureCollection"}'
+  const linesHash = () => sha256Hex(new TextEncoder().encode(LINES))
+  const milesNaming = (hash: string) =>
+    `{"format":1,"trails_sha256":"${hash}","axis":"export_elevation.calibrated_trail_axis","miles":{"centerline:chain:0":[0,0.5]}}`
+
+  /** Serves the lines, empty everything else, and the given trail_miles.json
+   *  body - or a 404 for it when null. */
+  function serveWithMiles(miles: string | null) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (url.includes(TRAIL_MILES_KEY) && miles === null) {
+          return Promise.resolve({ ok: false, status: 404, statusText: 'Not Found' })
+        }
+        const body = url.includes(TRAIL_MILES_KEY)
+          ? (miles as string)
+          : url.includes('poi_')
+            ? poiCollection([])
+            : url.includes(TRAILS_KEY)
+              ? LINES
+              : '{}'
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          headers: new Headers(),
+          arrayBuffer: () => Promise.resolve(bytesOf(body)),
+          blob: () => Promise.resolve(new Blob([body])),
+          text: () => Promise.resolve(body),
+        })
+      }),
+    )
+  }
+
+  it('reads the hash the file names off its front without parsing it', () => {
+    const hash = 'a'.repeat(64)
+    expect(trailMilesClaimedHash(`{"format":1,"trails_sha256":"${hash}","miles":{`)).toBe(
+      hash,
+    )
+    expect(trailMilesClaimedHash(`{"format": 1, "trails_sha256" : "${hash}"`)).toBe(hash)
+    expect(trailMilesClaimedHash('{"format":1,"miles":{}}')).toBeNull()
+    expect(trailMilesClaimedHash('{"trails_sha256":"not-a-hash"}')).toBeNull()
+  })
+
+  it('stores the miles when the file names the lines this attempt verified', async () => {
+    const hash = await linesHash()
+    publishing((key) => (key === TRAILS_KEY ? hash : null))
+    serveWithMiles(milesNaming(hash))
+
+    await downloadTrailData()
+
+    const stored = store.get(TRAIL_MILES_STORE_KEY)
+    expect(stored).toBeInstanceOf(Blob)
+    expect(await (stored as Blob).text()).toBe(milesNaming(hash))
+    expect((await loadTrailData())?.trailMiles).toBe(stored)
+  })
+
+  it('treats a release with no trail_miles.json as no miles, not a failure', async () => {
+    serveWithMiles(null)
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.has(TRAIL_MILES_STORE_KEY)).toBe(true)
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+    expect((await loadTrailData())?.trailMiles).toBeNull()
+  })
+
+  it('refuses miles measured on some other release of the lines, and says so', async () => {
+    // The sidecar is only true of the vertices it was computed from. One that
+    // names another trails.geojson would put every mile a few vertices off,
+    // silently - so it is dropped, the lines are kept, and the phone measures
+    // the line itself as it did before the file existed.
+    const hash = await linesHash()
+    publishing((key) => (key === TRAILS_KEY ? hash : null))
+    serveWithMiles(milesNaming('b'.repeat(64)))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await downloadTrailData()
+
+    expect(store.get(TRAILS_BLOB_KEY)).toBeInstanceOf(Blob)
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('measures the line itself'))
+    warn.mockRestore()
+  })
+
+  it('refuses miles when the lines themselves have no published hash to check against', async () => {
+    // An unpublished manifest verifies nothing, so nothing can vouch that the
+    // miles and the lines are one release. No miles is the honest answer.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    serveWithMiles(milesNaming(await linesHash()))
+
+    await downloadTrailData()
+
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+    warn.mockRestore()
+  })
+
+  it('takes the previous miles down with a re-download that publishes none', async () => {
+    store.set(TRAIL_MILES_STORE_KEY, new Blob(['old miles']))
+    store.set(TRAILS_BLOB_KEY, new Blob([LINES]))
+    serveWithMiles(null)
+
+    await downloadTrailData()
+
+    expect(store.get(TRAIL_MILES_STORE_KEY)).toBeNull()
+  })
+
+  it('reads anything but a Blob in the slot as no miles', async () => {
+    store.set(TRAILS_BLOB_KEY, new Blob([LINES]))
+    store.set(TRAIL_MILES_STORE_KEY, 'a string some other build wrote')
+
+    expect((await loadTrailData())?.trailMiles).toBeNull()
+  })
+
+  it('is removed with the rest of the trail data', async () => {
+    store.set(TRAILS_BLOB_KEY, new Blob([LINES]))
+    store.set(TRAIL_MILES_STORE_KEY, new Blob(['miles']))
+
+    await deleteTrailData()
+
+    expect(store.has(TRAIL_MILES_STORE_KEY)).toBe(false)
   })
 })

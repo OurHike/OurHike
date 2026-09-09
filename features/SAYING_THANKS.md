@@ -25,6 +25,52 @@ Both attribution fields are optional and both can be empty: "someone cleared for
 
 **Why a report type and not a new model.** It shares every field, the same offline outbox, the same location anchoring, and the same photo path. A parallel model would duplicate all of it to express one different word. The places it genuinely diverges are handled explicitly below rather than by forking the whole thing.
 
+## Where a hiker reaches it (added 2026-08-27, #1133; completed #1137)
+
+Three entry points, and each is there because it answers a different question.
+The first two shipped in #1133 and the third in #1137, so this list is now
+what the app actually offers rather than what it was heading for.
+
+- **The foot of Today**, beside "Report a problem" at the same width and the
+  same weight. The pair is the point: reporting a problem and thanking a crew
+  are two sides of one relationship, and an outline button beside a filled one
+  would say, in the only language a button has, which of the two is the
+  afterthought. This is the general-purpose entry — it anchors on the hiker's
+  own fix.
+- **A place's card**, under the "Something wrong here?" plate and in the same
+  construction with a green accent instead of a red one. **This is the one
+  that knows which place is being thanked for**, so the thanks carries a
+  `poiId` and can be routed by the same club lookup described below, rather
+  than landing on whatever stretch the hiker happens to be standing on when
+  they remember to send it.
+- **The map's long-press plate**, for a stretch of trail with no waypoint on
+  it — the "someone cleared forty blowdowns out of this mile" case this doc
+  opens with. Shipped in [#1137](https://github.com/OurHike/OurHike/issues/1137):
+  press and hold anywhere on the map and a small plate opens at the point with
+  both actions on it. It is the only entry point whose anchor may be nowhere
+  near the hiker, which is why it carries the pressed coordinates and never
+  the hiker's own mile.
+
+**Off the corridor is accepted, not refused**, and that is a deliberate
+difference from the route builder, which refuses the same tap. A route *stop*
+is a position on the trail and is meaningless without a mile; a thanks is a
+message about a place, and a lat/lon locates it perfectly well. The plate says
+which case it is in — a mile when there is one, "More than 3 mi off the trail"
+when `lib/trailPosition.ts` looked and refused, and "This spot" when the trail
+index is not on the phone and nobody has looked at all.
+
+**A thanks never files on a tap**, unlike the six condition types that do
+(REPORT_A_PROBLEM.md's core flow). It always opens the form. The reason is not
+symmetry: a thanks is a message to a person, and an empty one sent by accident
+is worse than none sent at all. `reporting/categories.ts`'s `filesOnTap` names
+it alongside "something unsafe happened" as the two exceptions.
+
+**No entry point claims who maintains the place.** The card's hint reads "Say
+thanks to whoever keeps it up" rather than naming a crew, because the app does
+not know until the form asks — and the lookup below returns null for a stretch
+with nobody assigned. Naming a maintainer on the entry would be the card
+asserting, in warm words, a fact it has not looked up.
+
 ## Where it diverges from a condition report — and why each one matters
 
 These are not incidental. A thanks routed through the report machinery unchanged would behave badly in four specific ways.
@@ -78,7 +124,7 @@ This is a deliberate privacy default, not caution for its own sake. Maintainers 
 
 ## Open questions (for you, not decided here)
 
-- **Does a maintainer get notified?** OurHike's one-notification policy says the wrong-way alert is the only push. A thanks should almost certainly reach a maintainer as in-app or digest email, never a push — but "email volunteers" is a channel this project does not have yet, and adding one is its own decision.
+- **Does a maintainer get notified?** OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - [HIKER_SAFETY.md](HIKER_SAFETY.md) §5). A thanks should almost certainly reach a maintainer as in-app or digest email, never a push — but "email volunteers" is a channel this project does not have yet, and adding one is its own decision.
 - **Can a hiker see the thanks they have sent?** Their own, certainly. Whether they see that it was read is a different question, and "read receipts on gratitude" may add pressure where none is wanted.
 - **Club-level vs crew-level.** WIREFRAMES.md's original copy offered "the club or a specific crew." Crews are a real organisational unit in some clubs and absent in others; modelling them now risks inventing structure that does not match how partner clubs actually work. Recommend club + optional individual for v1, crews later if clubs ask.
 - **Abuse handling specifics.** Hiding an unkind "thanks" is clearly needed. Whether that reuses the moderation queue's dismiss action or gets a lighter path is a moderation-policy call, and this doc has deliberately kept thanks *out* of that queue.

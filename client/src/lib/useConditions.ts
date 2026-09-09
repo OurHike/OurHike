@@ -32,8 +32,10 @@ import {
   fetchPublishedDisputes,
   fetchPublishedDrought,
   fetchPublishedFieldNotes,
+  fetchPublishedNynjtcAlerts,
   fetchPublishedReports,
   fetchPublishedWorkProjects,
+  type OrgNotice,
 } from './publishedConditions'
 import type { DroughtBand } from '../map/droughtLayers'
 import type { AtcUpdate } from './atcUpdates'
@@ -105,8 +107,29 @@ export interface Conditions {
    */
   atcUpdates: readonly AtcUpdate[]
   /** The other half of that honesty, beside the list rather than inside the
-   *  rows - it is a fact about the review, not about any one notice. */
+   *  rows - it is a fact about the review, not about any one notice.
+   *
+   *  ATC's ONLY. `conditions/nynjtc_alerts.json` deliberately carries no
+   *  `reviewed_at` - nobody has checked NYNJTC's page, so there is no such
+   *  date, and the exporter refuses to invent one. See `orgNotices`. */
   atcReviewedAt: Date | null
+  /**
+   * Notices from organizations that are not the ATC (#1083).
+   *
+   * A second publisher through the same machinery, and the reason it is a
+   * separate field rather than concatenated onto `atcUpdates` is that the two
+   * artifacts are different shapes: ATC's rows carry two mile columns and
+   * NYNJTC's carry features/ORG_NOTICES.md §2's publisher-agnostic row with
+   * its `place` union. lib/notices.ts adapts the older one into the newer, and
+   * chrome/noticesPanel.tsx is where that happens - which keeps the asymmetry
+   * in one file rather than in every consumer.
+   *
+   * Empty rather than null when nothing comes back, for the same reason
+   * `atcUpdates` is: the bucket serves a 404 while the exporter has never run,
+   * and the pipeline publishes nothing rather than an empty document so that
+   * "we have not looked" cannot render as "NYNJTC reports nothing".
+   */
+  orgNotices: readonly OrgNotice[]
   /**
    * This week's drought bands, and the week they describe (#720).
    *
@@ -137,7 +160,15 @@ export interface Conditions {
   markSynced(): void
 }
 
-export function useConditions(online: boolean): Conditions {
+/**
+ * @param ready Whether the launch is past its first frame (#1302,
+ *   lib/useAfterFirstFrame.ts). The eight published reads and the four live
+ *   ones below wait for it; nothing they feed changes what the first frame
+ *   is, and every line they fill renders "unknown" until they land anyway.
+ *   Defaults to true so a screen or a test that mounts this hook alone
+ *   behaves as before.
+ */
+export function useConditions(online: boolean, ready = true): Conditions {
   // One state each rather than a list plus a separate "where did this come
   // from", because the two reads race and updating two states from a race is
   // how you get fresh closures labelled stale. lib/conditionState.ts owns the
@@ -156,6 +187,7 @@ export function useConditions(online: boolean): Conditions {
   const [disputeState, setDisputeState] =
     useState<ConditionState<DisputeSummary>>(UNAVAILABLE)
   const [atcUpdates, setAtcUpdates] = useState<readonly AtcUpdate[]>([])
+  const [orgNotices, setOrgNotices] = useState<readonly OrgNotice[]>([])
   const [atcReviewedAt, setAtcReviewedAt] = useState<Date | null>(null)
   const [drought, setDrought] = useState<readonly DroughtBand[]>([])
   const [droughtWeek, setDroughtWeek] = useState<{ start: Date; end: Date } | null>(null)
@@ -254,6 +286,7 @@ export function useConditions(online: boolean): Conditions {
   // backend, and a build with no backend configured at all is exactly the one
   // that most needs a baseline.
   useEffect(() => {
+    if (!ready) return
     let cancelled = false
     // Named once rather than repeated six times: every read below wants the
     // same routing, and a read that quietly disagreed would be the one that
@@ -301,6 +334,16 @@ export function useConditions(online: boolean): Conditions {
       setAtcReviewedAt(published.reviewedAt ?? null)
     })
 
+    // NYNJTC's alerts (#1083). Same posture as ATC's above and for the same
+    // reason - they publish on their own site, not through our API - and no
+    // `reviewedAt` to read, because that artifact deliberately carries none.
+    // Nobody has checked NYNJTC's page, so every row ships `unreviewed` and
+    // the list says so rather than the app implying a review nobody did.
+    void fetchPublishedNynjtcAlerts(undefined, how).then((published) => {
+      if (cancelled || published === null) return
+      setOrgNotices(published.items)
+    })
+
     // The volunteer workdays (#760). Reviewed-file data like the ATC
     // notices, so a plain set - and the generated_at travels because the
     // 48-hour opportunity ceiling is judged against it.
@@ -336,7 +379,7 @@ export function useConditions(online: boolean): Conditions {
     return () => {
       cancelled = true
     }
-  }, [online, refreshCount])
+  }, [online, refreshCount, ready])
 
   // The map's own reads (#232), deliberately not gated on an account: browsing
   // has never needed one, and the reads send a token only if there is one
@@ -346,7 +389,7 @@ export function useConditions(online: boolean): Conditions {
   // fails should still warn about the closure - pairing them would mean one
   // failure silencing both, and closures are the half a hiker walks into.
   useEffect(() => {
-    if (!online || !API_CONFIGURED) return
+    if (!ready || !online || !API_CONFIGURED) return
 
     let cancelled = false
     // A read reaching the server IS a sync, and the status strip's age is the
@@ -401,7 +444,7 @@ export function useConditions(online: boolean): Conditions {
     // reachable one current, and a hiker with signal all afternoon should get
     // the closure a moderator verified at lunchtime rather than whatever the
     // backend said when the app opened.
-  }, [online, refreshCount])
+  }, [online, refreshCount, ready])
 
   return {
     closures: itemsOf(closureState),
@@ -413,6 +456,7 @@ export function useConditions(online: boolean): Conditions {
     noteState,
     atcUpdates,
     atcReviewedAt,
+    orgNotices,
     drought,
     droughtWeek,
     workProjects,

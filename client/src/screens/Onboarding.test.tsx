@@ -4,6 +4,16 @@ import userEvent from '@testing-library/user-event'
 import { Onboarding } from './Onboarding'
 import { ONBOARDING_STEPS } from '../lib/onboardingSteps'
 import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
+import { HERO_PHOTOS } from '../lib/heroPhotos'
+import { usePublishedSizes } from '../lib/usePublishedSizes'
+
+// The manifest is the only source of a size since #1167, so first run's
+// figures are now entirely a function of what this hook returns - which makes
+// mocking it the way to drive both states the size step can be in.
+vi.mock('../lib/usePublishedSizes', () => ({
+  usePublishedSizes: vi.fn(() => ({})),
+  NO_PUBLISHED_SIZES: {},
+}))
 
 // WIREFRAMES.md §5, plus TESTING.md item 11 (first run).
 //
@@ -11,10 +21,8 @@ import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
 // that a later well-meaning change could quietly undo, so they are asserted
 // directly:
 //
-//  - NO notification prompt anywhere in first run. Notifications belong to the
-//    wrong-way alert, asked at hike start. OurHike sends exactly one kind of
-//    push and asking for it up front would spend that permission before it has
-//    been earned.
+//  - NO notification prompt anywhere in first run. OurHike sends no push
+//    notifications, so there is nothing to ask permission for.
 //  - NO account prompt. Reading the map never needs an account; sign-in is
 //    asked at the first contribution instead.
 //
@@ -24,18 +32,39 @@ import { HIKING_SHEET, USGS_SHEET } from '../lib/packages'
 
 const PROPS = { onComplete: vi.fn() }
 
+/** The manifest, as the bucket would answer it - keyed the way the client
+ *  builds its keys, so these are the figures the screen must render.
+ *
+ *  Since #1167 this is the ONLY source of a size: hikingDetail.ts carries no
+ *  constants, so a first run with no manifest has nothing to print. Supplying
+ *  it here is what makes "with the real figures" a meaningful assertion again
+ *  - previously the numbers came from the table the screen also read, which
+ *  is a test that cannot notice the two disagreeing. */
+const MANIFEST: Record<string, number> = {
+  'at_basemap_package_z12.pmtiles': 75_451_755,
+  'at_basemap_package_z13.pmtiles': 182_774_166,
+  'at_basemap_package.pmtiles': 533_926_586,
+  'dem.pmtiles': 275_601_483,
+  'dem_light.pmtiles': 182_205_873,
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
 })
 
-/** Moves forward via "Continue". The location step is answered explicitly with
+/** Moves forward via each step's own primary - "Continue", or the size
+ *  step's "Keep going" (#1054). The location step is answered explicitly with
  *  Allow / Not now, since which one is pressed is the thing under test. */
 async function advance(user: ReturnType<typeof userEvent.setup>, times: number) {
   for (let i = 0; i < times; i++) {
-    await user.click(screen.getByRole('button', { name: /^continue$/i }))
+    await user.click(screen.getByRole('button', { name: /^continue$|^keep going$/i }))
   }
 }
+
+/** The step's decline control - "Skip", or the size step's "Decide this
+ *  later", which is the same promise in the words of what it declines. */
+const SKIP = /^skip$|^decide this later$/i
 
 describe('Onboarding', () => {
   it('starts on the value-proposition step', () => {
@@ -47,7 +76,7 @@ describe('Onboarding', () => {
   it('counts steps from the live step list, not a hardcoded total', () => {
     render(<Onboarding {...PROPS} />)
 
-    expect(screen.getByText(`1 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
+    expect(screen.getByText(`Step 1 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
   it('says plainly on the first screen that nothing needs signing up for', () => {
@@ -56,24 +85,83 @@ describe('Onboarding', () => {
     expect(screen.getByText(/no account\. nothing to sign up for\./i)).toBeInTheDocument()
   })
 
-  it('says memberships fund the ATC and the volunteer clubs', () => {
+  // This test used to be titled "says memberships fund the ATC and the other
+  // organizations, not the ATC alone", and it demanded the claim rather than
+  // guarding against it: a /fund/i node containing both /ATC/i and /other
+  // organizations/i. A test that pins a false sentence is worse than no test,
+  // because it makes the sentence expensive to fix and looks like diligence
+  // while doing it. Both halves are replaced - the title as much as the
+  // matchers, since the title is what the next reader takes as the contract.
+  it('sends a hiker to the organizations instead of claiming OurHike funds them', () => {
     render(<Onboarding {...PROPS} />)
 
-    expect(screen.getByText(/fund/i)).toHaveTextContent(/ATC|club/i)
+    const money = screen.getByText(/takes no cut and holds no money/i)
+    expect(money).toHaveTextContent(/ATC/i)
+    expect(money).toHaveTextContent(/other organizations/i)
+    expect(money).toHaveTextContent(/directly/i)
   })
 
-  it('offers the hiking sheet\u2019s two levels on the map-size step, with the real figures', async () => {
+  // The guard, and the reason this file is in the diff rather than only the
+  // component. OurHike sends no money to any organization (maintainer,
+  // 2026-08-27), so no sentence on this step may put OurHike, or anything a
+  // hiker would buy from OurHike, in front of the verb "fund". Asserted against
+  // the value-prop step's whole rendered text rather than one node, because the
+  // defect this replaces spanned two lines and any node-scoped matcher can be
+  // walked around by reflowing the JSX. Scope is that step alone: Onboarding
+  // renders one step at a time and this test never advances past the first.
+  // It is a guard against the sentence coming back, not a proof that no other
+  // screen can say it.
+  it('never puts OurHike or a purchase in front of "fund"', () => {
+    const { container } = render(<Onboarding {...PROPS} />)
+
+    expect(container.textContent).not.toMatch(
+      /\b(OurHike|membership|memberships|donation|donations|revenue|purchase|purchases|subscription|subscriptions|pass|passes)\b[^.]{0,80}\bfund(s|ed|ing)?\b/i,
+    )
+  })
+
+  it('offers the hiking sheet\u2019s three levels on the map-size step, with the manifest\u2019s figures', async () => {
     // The download decision shown is the one a hiker will actually meet in
-    // the Downloads window (#277): the hiking sheet's Standard/Fine cuts at
-    // their whole-sheet sizes, not the optional USGS raster's tiers.
+    // the Downloads window (#277): the hiking sheet's own cuts at their
+    // whole-sheet sizes, not the optional USGS raster's tiers.
+    //
+    // Every figure comes from the manifest since #1167 - the table the screen
+    // reads carries none, so these strings can only be right if the bucket's
+    // own numbers made it all the way to the rung. Asserted as rendered
+    // strings on purpose: this is the number a hiker weighs against their
+    // remaining storage, so a formatter change is a change to that.
+    vi.mocked(usePublishedSizes).mockReturnValue(MANIFEST)
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
-    expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
-    expect(screen.getByText('789.6 MB')).toBeInTheDocument()
-    expect(screen.getByText('1.14 GB')).toBeInTheDocument()
+    for (const level of [/light/i, /standard/i, /fine/i]) {
+      expect(screen.getByRole('radio', { name: level })).toBeEnabled()
+    }
+    expect(screen.getByText('257.7 MB')).toBeInTheDocument()
+    expect(screen.getByText('458.4 MB')).toBeInTheDocument()
+    expect(screen.getByText('809.5 MB')).toBeInTheDocument()
+  })
+
+  it('offers the same three levels with no figure at all when the manifest has not landed (#1167)', async () => {
+    // The state first run is MOST likely to be in: the app has just been
+    // installed and may be on a bad connection, which is exactly when
+    // somebody is deciding whether they have room.
+    //
+    // Three things have to hold at once, and the old constants got the third
+    // wrong by up to 34.7%: every rung is still offered, none is disabled,
+    // and none states a size. A guessed figure here is the one that strands
+    // a hiker who freed exactly enough.
+    vi.mocked(usePublishedSizes).mockReturnValue({})
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+    await advance(user, 1)
+
+    for (const level of [/light/i, /standard/i, /fine/i]) {
+      expect(screen.getByRole('radio', { name: level })).toBeEnabled()
+    }
+    expect(screen.getAllByText(/unknown offline/i)).toHaveLength(3)
+    expect(screen.queryByText(/\d+(\.\d+)? [MG]B/)).toBeNull()
+    expect(screen.queryByText(/not offered/i)).toBeNull()
   })
 
   it('asks the map-size question in the download window\u2019s shape (#298, #855)', async () => {
@@ -94,16 +182,22 @@ describe('Onboarding', () => {
     expect(screen.getByText(HIKING_SHEET.summary)).toBeInTheDocument()
   })
 
-  it('greys the hiking sheet\u2019s missing Light rung rather than dropping it (#298)', async () => {
-    // The basemap is cut at z13 and z14 and nothing below. Under a tab
-    // beside the raster's three, a two-row picker cannot say whether this
-    // map has no Light version or whether the app forgot to ask.
+  it('draws all three of the hiking sheet\u2019s rungs, and every one is takeable (#298)', async () => {
+    // This test used to assert the Light rung was GREYED, and the rule it was
+    // written for is unchanged: a two-row picker cannot say whether this map
+    // has no Light version or whether the app forgot to ask, so an unbuilt
+    // level is drawn and disabled rather than left out. Light was the live
+    // example of that from #1088, which named its artifacts, until #1107 built
+    // them - so what is asserted here now is that first run offers the whole
+    // ladder, and DownloadCard.test.tsx carries the greying with a sheet that
+    // still has no dial at all.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
     await advance(user, 1)
 
-    expect(screen.getAllByRole('radio')).toHaveLength(3)
-    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
+    const levels = screen.getAllByRole('radio')
+    expect(levels).toHaveLength(3)
+    for (const level of levels) expect(level).toBeEnabled()
   })
 
   it('never mentions the withdrawn USGS sheet at all (#855)', async () => {
@@ -189,7 +283,7 @@ describe('Onboarding', () => {
     render(<Onboarding {...PROPS} />)
 
     for (let step = 0; step < ONBOARDING_STEPS.length; step++) {
-      expect(screen.getByRole('button', { name: /skip/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: SKIP })).toBeInTheDocument()
       if (step < ONBOARDING_STEPS.length - 1) await advance(user, 1)
     }
   })
@@ -198,9 +292,9 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
-    await user.click(screen.getByRole('button', { name: /skip/i }))
+    await user.click(screen.getByRole('button', { name: SKIP }))
 
-    expect(screen.getByText(`2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
+    expect(screen.getByText(`Step 2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
   it('finishes with the chosen level', async () => {
@@ -229,17 +323,123 @@ describe('Onboarding', () => {
     )
   })
 
+  it('starts the download from the size step, exactly once', async () => {
+    // #1054: the download happens on the step that asks for it. Once, however
+    // the flow is walked - a second transfer for one choice would spend
+    // trailhead signal twice.
+    const onStartDownload = vi.fn()
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} onStartDownload={onStartDownload} />)
+
+    await advance(user, 2)
+
+    expect(onStartDownload).toHaveBeenCalledTimes(1)
+  })
+
+  it('starts nothing when the size step is declined', async () => {
+    // "Decide this later" means later: the Today screen holds the door open,
+    // and nothing here spends a byte someone declined to spend.
+    const onStartDownload = vi.fn()
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} onStartDownload={onStartDownload} />)
+
+    await advance(user, 1)
+    await user.click(screen.getByRole('button', { name: /decide this later/i }))
+
+    expect(onStartDownload).not.toHaveBeenCalled()
+  })
+
+  it('writes the level through as it changes, before any download starts', async () => {
+    // The shell's download requests derive their URL from the stored
+    // preference, so the write must land ahead of "Keep going" - a level
+    // written at completion would download the wrong artifact.
+    const onChangeLevel = vi.fn()
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} onChangeLevel={onChangeLevel} />)
+
+    await advance(user, 1)
+    await user.click(screen.getByRole('radio', { name: /fine/i }))
+
+    expect(onChangeLevel).toHaveBeenCalledWith('fine')
+  })
+
+  it('shows the transfer honestly while the last step is asked', async () => {
+    const user = userEvent.setup()
+    render(
+      <Onboarding
+        {...PROPS}
+        downloadActivity={{
+          kind: 'downloading',
+          doneBytes: 480_000_000,
+          totalBytes: 1_400_000_000,
+        }}
+      />,
+    )
+    await advance(user, 2)
+
+    expect(screen.getByText(/downloading while you finish up/i)).toBeInTheDocument()
+    expect(screen.getByText('34%')).toBeInTheDocument()
+    expect(
+      screen.getByText(/picks up where it left off if you lose signal/i),
+    ).toBeInTheDocument()
+  })
+
+  it('tells a stalled phone from a stalled connection, in the panel too', async () => {
+    // The checking state exists so someone in a dead spot knows whether to
+    // wait or walk (#197) - the panel keeps that distinction.
+    render(
+      <Onboarding
+        {...PROPS}
+        downloadActivity={{
+          kind: 'checking',
+          doneBytes: 200_000_000,
+          totalBytes: 1_400_000_000,
+        }}
+      />,
+    )
+
+    expect(
+      screen.getByText(/checking what is already on this phone/i),
+    ).toBeInTheDocument()
+  })
+
   it('still completes with a usable default when every step is skipped', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
     for (let step = 0; step < ONBOARDING_STEPS.length; step++) {
-      await user.click(screen.getByRole('button', { name: /skip/i }))
+      await user.click(screen.getByRole('button', { name: SKIP }))
     }
 
     // Skipping must not leave the app with no map to download.
     expect(PROPS.onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ hikingDetailLevel: 'standard' }),
     )
+  })
+})
+
+// --- The backdrop draw (#1054, lib/heroPhotos.ts) ---------------------------
+
+describe('the photo behind the steps', () => {
+  it('credits the photographer of whichever backdrop this run drew', () => {
+    // The pool is random per mount, so what is pinned is the contract, not
+    // the draw: some pool member's credit is on the plate, prefixed so the
+    // photographer's name cannot read as the app's.
+    render(<Onboarding {...PROPS} />)
+
+    const credit = screen.getByText(/^Photo: /)
+    expect(
+      HERO_PHOTOS.some((photo) => credit.textContent === `Photo: ${photo.credit}`),
+    ).toBe(true)
+  })
+
+  it('keeps the backdrop decorative to a screen reader', () => {
+    // The steps are the content; the photo is the room they are read in.
+    const { container } = render(<Onboarding {...PROPS} />)
+
+    const hero = container.querySelector('.onboarding__hero')
+    expect(hero).not.toBeNull()
+    expect(hero).toHaveAttribute('aria-hidden', 'true')
+    expect(hero?.querySelector('img')).toHaveAttribute('alt', '')
   })
 })

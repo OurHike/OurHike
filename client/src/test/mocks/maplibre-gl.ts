@@ -14,9 +14,35 @@ import { vi } from 'vitest'
 
 type Listener = (...args: unknown[]) => void
 
+/** The events real MapLibre delivers as a `MapMouseEvent`/`MapTouchEvent`,
+ *  every one of which carries a `point`. */
+const POINTER_EVENTS = new Set([
+  'click',
+  'dblclick',
+  'mousedown',
+  'mousemove',
+  'mouseup',
+  'touchstart',
+  'touchmove',
+  'touchend',
+  'contextmenu',
+])
+
 export class MockMap {
   /** Every map ever constructed this test, in order - including ones since removed. */
   static instances: MockMap[] = []
+
+  /** Every construction ATTEMPT, the ones `failConstruction` refused
+   *  included. `instances` cannot count those - a constructor that throws
+   *  pushes nothing - and the #1081 boundary tests are about exactly how
+   *  many times the shell tried to build a map it could not have. */
+  static constructionAttempts = 0
+
+  /** Set to make every construction throw, the way a phone out of WebGL
+   *  contexts does. Persistent rather than one-shot, because the tests that
+   *  use it are about what a DETERMINISTIC fault costs; clear it to let the
+   *  next attempt succeed. */
+  static failConstruction: Error | null = null
 
   /** The maps that are still live (constructed and not yet `.remove()`d). */
   static get live(): MockMap[] {
@@ -67,6 +93,10 @@ export class MockMap {
    *  tests need to be able to produce both. */
   layerIds: string[] = []
   sourceIds: string[] = []
+  /** Which sources answer true to `isSourceLoaded` - test-only, where real
+   *  MapLibre answers from its tile cache. Empty by default, because a source
+   *  that was just handed data is exactly the one still loading it. */
+  readonly loadedSources = new Set<string>()
   /**
    * Explicit stand-ins for sources whose behaviour a test needs to observe,
    * by id - see MockVectorSource.
@@ -111,9 +141,12 @@ export class MockMap {
    *  not some other point" is observable. */
   readonly projectCalls: Array<[number, number]> = []
   private readonly listeners = new Map<string, Listener[]>()
-  private canvas: HTMLCanvasElement | undefined = undefined
+  private canvas: HTMLCanvasElement | undefined
+  private container: HTMLElement | undefined = undefined
 
   constructor(options: Record<string, unknown>) {
+    MockMap.constructionAttempts += 1
+    if (MockMap.failConstruction !== null) throw MockMap.failConstruction
     this.options = options
     this.applyCamera(options)
     this.adoptStyleContents(options)
@@ -173,7 +206,30 @@ export class MockMap {
     // MapLibre is never in - and one that quietly breaks anything re-checking
     // later, which is every attach-on-ready helper in map/.
     if (event === 'load') this.styleLoaded = true
-    for (const handler of [...(this.listeners.get(event) ?? [])]) handler(payload)
+    for (const handler of [...(this.listeners.get(event) ?? [])])
+      handler(this.pointed(event, payload))
+  }
+
+  /**
+   * A pointer event always carries its CANVAS POINT in real MapLibre, and a
+   * mock that omits it models a state the library is never in.
+   *
+   * This is not hypothetical tidying: #931 made a refused day-hike tap ask
+   * `queryRenderedFeatures` what was drawn where the hiker pointed, a question
+   * only a screen position can ask - and every suite that emitted a bare
+   * `{lngLat}` then threw on `point.x`. Filled in only where a caller supplied
+   * no point of its own, so a test that cares which pixel was hit still says
+   * so.
+   */
+  private pointed(event: string, payload?: unknown): unknown {
+    if (!POINTER_EVENTS.has(event)) return payload
+    if (typeof payload !== 'object' || payload === null) return payload
+    if ('point' in payload) return payload
+    return { ...payload, point: { x: 0, y: 0 } }
+  }
+
+  isSourceLoaded(id: string): boolean {
+    return this.loadedSources.has(id)
   }
 
   listenerCount(event: string): number {
@@ -413,6 +469,67 @@ export class MockMap {
     this.canvas ??= document.createElement('canvas')
     return this.canvas
   }
+
+  /**
+   * The element the map is mounted in, with a SIZE on it.
+   *
+   * Real MapLibre has always had this; the mock did not until #1137 needed it,
+   * and the missing size is the half worth explaining. A bare
+   * `document.createElement('div')` in jsdom reports `clientWidth: 0`, because
+   * jsdom does no layout - so a caller asking "how big is the map" would be
+   * told zero, which is a state a real phone is never in and which quietly
+   * turns any clamped-to-the-viewport arithmetic into a clamp against nothing.
+   *
+   * Defaults to the 390x844 phone every screenshot in this repo is taken at.
+   * Settable, so a test about a small screen can say so.
+   */
+  containerSize = { width: 390, height: 844 }
+
+  getContainer(): HTMLElement {
+    this.container ??= document.createElement('div')
+    Object.defineProperty(this.container, 'clientWidth', {
+      configurable: true,
+      get: () => this.containerSize.width,
+    })
+    Object.defineProperty(this.container, 'clientHeight', {
+      configurable: true,
+      get: () => this.containerSize.height,
+    })
+    return this.container
+  }
+
+  /**
+   * The gesture handlers, enough of them to observe a suspend.
+   *
+   * Real MapLibre exposes these as handler objects with
+   * enable/disable/isEnabled, and map/routeLayers.ts's `attachRouteStroke`
+   * turns them off for the life of a drawn stroke - two interpreters per touch
+   * is the failure that module's own comment records. Without these here a
+   * test can drive a drag and cannot tell whether the map panned under it,
+   * which is the half worth asserting.
+   */
+  dragPan = new MockHandler()
+  touchZoomRotate = new MockHandler()
+}
+
+/** enable/disable/isEnabled, and a record of every call. */
+export class MockHandler {
+  private enabled = true
+  readonly calls: string[] = []
+
+  enable(): void {
+    this.enabled = true
+    this.calls.push('enable')
+  }
+
+  disable(): void {
+    this.enabled = false
+    this.calls.push('disable')
+  }
+
+  isEnabled(): boolean {
+    return this.enabled
+  }
 }
 
 /**
@@ -506,6 +623,8 @@ export { MockMap as Map }
 /** Clear recorded state between tests. */
 export function resetMapLibreMock(): void {
   MockMap.instances.length = 0
+  MockMap.constructionAttempts = 0
+  MockMap.failConstruction = null
   addProtocol.mockClear()
   removeProtocol.mockClear()
   workerUrl = ''

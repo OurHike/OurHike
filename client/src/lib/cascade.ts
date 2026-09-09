@@ -41,7 +41,15 @@ import {
   type CandidateStop,
   type PlannerOptions,
 } from './dayPlanner'
-import { walkedDayCount, type HikePlan, type PlanDayMeta, type PlanStop } from './plan'
+import {
+  keepingRest,
+  walkedDayCount,
+  type HikePlan,
+  type PlanDayMeta,
+  type PlanStop,
+  type RestRhythm,
+} from './plan'
+import { restLanding } from './restRhythm'
 import type { StoredPoi } from './trailData'
 
 /** Where a day actually ended. */
@@ -83,12 +91,20 @@ export function callItADay(plan: HikePlan, index: number, end: CalledEnd): HikeP
           resupply: false,
         }
 
+  // Both days that touch the rewritten boundary change length: the one
+  // being recorded, and tomorrow, which now starts where the hiker actually
+  // is. So both have their rest flag re-examined - a nearo the hiker walked
+  // straight past, or one that swallowed the miles they did not walk today,
+  // is not the rest it still claims to be (#1031).
+  const stops = plan.stops.map((existing, i) => (i === index + 1 ? stop : existing))
   return {
     ...plan,
-    stops: plan.stops.map((existing, i) => (i === index + 1 ? stop : existing)),
-    days: plan.days.map((meta, i) =>
-      i === index ? { ...meta, walked: true, generated: false } : meta,
-    ),
+    stops,
+    days: plan.days.map((meta, i) => {
+      if (i !== index && i !== index + 1) return meta
+      const walked = i === index ? { ...meta, walked: true, generated: false } : meta
+      return keepingRest(walked, stops[i].mile, stops[i + 1].mile)
+    }),
   }
 }
 
@@ -166,6 +182,52 @@ function replanStretch(plan: HikePlan): Stretch | null {
   }
 }
 
+/**
+ * A zero day's own boundary: the stop the hiker is standing at, repeated.
+ *
+ * NEVER CARRYING THE RESUPPLY FLAG (#1037), which is the whole reason this
+ * is a function rather than a spread. A rebuilt stretch runs TO its barrier,
+ * and a barrier is frequently a resupply town - so a plain `{ ...boundary }`
+ * gives that town a second stop at the same mile. `planSections` closes a
+ * span at every resupply, so the zero is then cut out into a food carry of
+ * its own and the day walking into town under-reports what to buy.
+ *
+ * `plan.ts`'s `insertZeroAfter` already refuses this for the same reason and
+ * says so at length (#799); the cascade's three copies of the operation never
+ * got the rule. Supplies are picked up once, at the stop the hiker walked
+ * into.
+ */
+function zeroAt(boundary: PlanStop): PlanStop {
+  return { ...boundary, resupply: false }
+}
+
+/**
+ * Where a rest lands when a re-plan has moved the ground under it (#1031).
+ *
+ * A zero is a zero wherever it sits, so it needs nothing but the boundary. A
+ * nearo asks `restLanding` again, with `next` taken from the re-planned
+ * stops rather than the old ones - walking past tomorrow's stop would not be
+ * a rest, and tomorrow's stop is not where it used to be.
+ *
+ * WITHOUT A RHYTHM it degrades to a zero rather than guessing. A plan can
+ * carry `rest` days and no `rhythm` - the rhythm is dropped by `validatePlan`
+ * when it is unreadable, and a plan whose days are all there is worth more
+ * than the label - and inventing a nearo window for a plan that never asked
+ * for one would be this module deciding something nobody did.
+ */
+function restAfter(
+  boundary: PlanStop,
+  next: CandidateStop | undefined,
+  pois: readonly StoredPoi[],
+  rhythm: RestRhythm | undefined,
+  wasZero: boolean,
+): PlanStop {
+  if (wasZero || rhythm === undefined || rhythm.kind === 'zero') return zeroAt(boundary)
+  const following =
+    next === undefined ? undefined : ({ ...next, resupply: false } as PlanStop)
+  return restLanding('nearo', zeroAt(boundary), following, pois)
+}
+
 /** Rebuild the stretch's days over new walking boundaries, weaving each
  *  zero back at its original position and keeping every meta's identity and
  *  date. `wasDistanceMi` records what a re-planned walking day used to
@@ -175,6 +237,8 @@ function weave(
   stretch: Stretch,
   chosen: readonly CandidateStop[],
   endStop: PlanStop,
+  pois: readonly StoredPoi[],
+  rhythm: RestRhythm | undefined,
 ): { stops: PlanStop[]; days: PlanDayMeta[] } {
   const stops: PlanStop[] = []
   const days: PlanDayMeta[] = []
@@ -184,9 +248,23 @@ function weave(
   for (let day = stretch.firstDay; day < stretch.endDay; day++) {
     const meta = plan.days[day]
     const zero = plan.stops[day].mile === plan.stops[day + 1].mile
-    if (zero) {
-      stops.push({ ...boundary })
+    if (zero || meta.rest === true) {
+      // A REST DOES NOT SPEND A BOUNDARY (#1031). A zero never did, and a
+      // nearo used to: it is a walking day of four miles, so it consumed one
+      // of the generator's stops and came back re-planned to fifteen. That
+      // made the rest the hiker asked for into an ordinary day still wearing
+      // the badge - and then, once the badge was made honest, into no rest
+      // at all.
+      //
+      // So it is re-placed instead, through `restLanding` - the same rule
+      // that put it there - against the boundary this rebuild has reached
+      // and the one it is heading for. A nearo walks its few miles from
+      // wherever the re-plan now starts it; the walking day after it is
+      // shorter by exactly that, which is what taking a nearo does.
+      const landing = restAfter(boundary, chosen[walkingOrdinal + 1], pois, rhythm, zero)
+      stops.push(landing)
       days.push(meta)
+      boundary = landing
       continue
     }
 
@@ -207,11 +285,17 @@ function weave(
     const changed = Math.abs(newDistance - oldDistance) > 0.05
 
     stops.push(nextStop)
-    days.push({
-      ...meta,
-      generated: true,
-      ...(changed ? { wasDistanceMi: oldDistance } : {}),
-    })
+    days.push(
+      keepingRest(
+        {
+          ...meta,
+          generated: true,
+          ...(changed ? { wasDistanceMi: oldDistance } : {}),
+        },
+        boundary.mile,
+        nextStop.mile,
+      ),
+    )
     boundary = nextStop
   }
 
@@ -250,13 +334,18 @@ export function absorbPlan(
   const chosen = planDaysExact(candidates, walking, options)
   if (chosen === null) return null
 
-  const woven = weave(plan, stretch, chosen, to)
+  const woven = weave(plan, stretch, chosen, to, pois, plan.rhythm)
   const next: HikePlan = {
     ...plan,
     stops: [
       ...plan.stops.slice(0, stretch.firstDay + 1),
-      ...woven.stops.slice(0, -1),
-      ...plan.stops.slice(stretch.endBoundary),
+      // The same correction as shiftPlan's below, for the same reason: keep
+      // every woven stop and take the tail from strictly past the barrier.
+      // `weave` already ends its last walking day on `endStop`, so identity
+      // is preserved without dropping whatever a trailing zero put after it
+      // (#1037).
+      ...woven.stops,
+      ...plan.stops.slice(stretch.endBoundary + 1),
     ],
     days: [
       ...plan.days.slice(0, stretch.firstDay),
@@ -273,9 +362,20 @@ export function absorbPlan(
   }
 }
 
+/**
+ * How many days of the stretch the generator has to lay out.
+ *
+ * A rest is not one of them (#1031), which is the count's half of `weave`'s
+ * rule: a rest no longer spends a boundary, so asking `planDaysExact` for one
+ * on its behalf would hand back a stop nothing consumes and leave the last
+ * day of the stretch short by a whole day's walk. Zeros were already excluded
+ * by the mile comparison; a nearo has to be excluded by its flag, because it
+ * walks and no comparison can see the difference.
+ */
 function countWalkingDays(plan: HikePlan, stretch: Stretch): number {
   let count = 0
   for (let day = stretch.firstDay; day < stretch.endDay; day++) {
+    if (plan.days[day].rest === true) continue
     if (plan.stops[day].mile !== plan.stops[day + 1].mile) count += 1
   }
   return count
@@ -320,14 +420,23 @@ export function shiftPlan(
   const newWalking = chosen.length - 1
   const deltaDays = newWalking - oldWalking
 
-  // Rebuild the stretch: zeros keep their ordinal place among the walking
+  // Rebuild the stretch: rests keep their ordinal place among the walking
   // days; a stretch that grew gains fresh generated days at its end, one
   // that shrank drops from its end.
-  const zeros: number[] = []
+  //
+  // A REST IS A ZERO OR A NEARO AND BOTH BELONG HERE (#1031). Only zeros
+  // were tracked, so a nearo went through the walking path and came back
+  // re-planned to a full day - the rest the hiker asked for, spent. Each
+  // entry records whether it was a zero, because a zero stays a zero
+  // wherever the re-plan puts it while a nearo has to find somewhere new to
+  // sleep.
+  const rests: { after: number; wasZero: boolean }[] = []
   let ordinal = 0
   for (let day = stretch.firstDay; day < stretch.endDay; day++) {
-    if (plan.stops[day].mile === plan.stops[day + 1].mile) zeros.push(ordinal)
-    else ordinal += 1
+    const zero = plan.stops[day].mile === plan.stops[day + 1].mile
+    if (zero || plan.days[day].rest === true) {
+      rests.push({ after: ordinal, wasZero: zero })
+    } else ordinal += 1
   }
 
   const stops: PlanStop[] = []
@@ -341,10 +450,12 @@ export function shiftPlan(
     return meta ?? { id: crypto.randomUUID(), pinned: false, generated: true }
   }
   for (let walk = 1; walk <= newWalking; walk++) {
-    while (zeros.length > 0 && zeros[0] === walk - 1) {
-      zeros.shift()
-      stops.push({ ...boundary })
+    while (rests.length > 0 && rests[0].after === walk - 1) {
+      const rest = rests.shift() as { after: number; wasZero: boolean }
+      const landing = restAfter(boundary, chosen[walk], pois, plan.rhythm, rest.wasZero)
+      stops.push(landing)
       days.push(takeMeta())
+      boundary = landing
     }
     const next = chosen[walk]
     const nextStop: PlanStop =
@@ -361,19 +472,28 @@ export function shiftPlan(
       meta.wasDistanceMi !== undefined ? undefined : distanceOfMeta(plan, meta)
     const newDistance = Math.abs(nextStop.mile - boundary.mile)
     stops.push(nextStop)
-    days.push({
-      ...meta,
-      generated: true,
-      ...(oldDistance !== undefined && Math.abs(newDistance - oldDistance) > 0.05
-        ? { wasDistanceMi: oldDistance }
-        : {}),
-    })
+    days.push(
+      keepingRest(
+        {
+          ...meta,
+          generated: true,
+          ...(oldDistance !== undefined && Math.abs(newDistance - oldDistance) > 0.05
+            ? { wasDistanceMi: oldDistance }
+            : {}),
+        },
+        boundary.mile,
+        nextStop.mile,
+      ),
+    )
     boundary = nextStop
   }
-  // Zeros that sat at the stretch's very end.
-  while (zeros.length > 0) {
-    zeros.shift()
-    stops.push({ ...boundary })
+  // Rests that sat at the stretch's very end. A nearo here would walk past
+  // the barrier - there is no next boundary to stay short of - so these are
+  // zeros whatever the rhythm asks for, which `restAfter` decides by being
+  // handed no following stop.
+  while (rests.length > 0) {
+    rests.shift()
+    stops.push(zeroAt(boundary))
     days.push(takeMeta())
   }
 
@@ -382,8 +502,14 @@ export function shiftPlan(
     ...plan,
     stops: [
       ...plan.stops.slice(0, stretch.firstDay + 1),
-      ...stops.slice(0, -1),
-      to,
+      // Every rebuilt stop, INCLUDING a zero that trails the barrier. This
+      // used to drop the last one and append `to` in its place, to guarantee
+      // the stretch ended on the barrier's own stop - but the loop above
+      // already pushes `to` itself for the last walking day, so the append
+      // was redundant when nothing trailed and wrong when something did: a
+      // zero sitting after the last walking day had its flag-free copy
+      // replaced by the town, resupply flag and all (#1037).
+      ...stops,
       ...plan.stops.slice(stretch.endBoundary + 1),
     ],
     days: [...plan.days.slice(0, stretch.firstDay), ...days, ...tail],

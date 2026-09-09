@@ -9,9 +9,15 @@ The 1-degree grid here is the same one spike_raster_mosaic.py has always
 tiled its output by (see that script's docstring for why: a mosaic sized to
 the corridor's full bounding rectangle would be enormous, since the actual
 corridor is a thin ~60-mile-wide winding band, not a filled rectangle).
+
+TWO ANCHORINGS, deliberately, and they must not be merged. `compute_cells`
+anchors on the corridor's own bounding box; `graticule_cells` anchors on
+whole degrees. Each is right for its caller and wrong for the other's - see
+`graticule_cells` for the measurement and the reasoning.
 """
 
 import json
+import math
 from pathlib import Path
 
 import duckdb
@@ -40,6 +46,49 @@ def compute_cells(corridor_path: Path) -> list[tuple]:
             """).fetchone()[0]
             if hit:
                 cells.append((cx0, cy0, cx1, cy1))
+            y += CELL_DEGREES
+        x += CELL_DEGREES
+    return cells
+
+
+def graticule_cells(bounds: tuple[float, float, float, float]) -> list[tuple]:
+    """Every whole 1-degree graticule cell covering `bounds` (west, south,
+    east, north), as (west, south, east, north) tuples anchored on whole
+    degrees.
+
+    DIFFERENT ANCHORING FROM compute_cells ABOVE, on purpose. That one
+    starts at the corridor's own bbox minimum and clips its last row and
+    column to it, which is right for the job it does: splitting ONE
+    corridor's raster render into units of work, where a cell's edges only
+    ever have to tile that corridor.
+
+    Offline coverage (features/OFFLINE_COVERAGE.md, #552) needs the
+    opposite property. There a cell is a unit two ORGANIZATIONS share, and
+    the reason cells beat trail-derived stretches is that overlap between
+    trails "disappears structurally". That only holds if every corridor
+    lands on the same global grid. Anchored to a bbox it does not: the
+    A.T.'s cells and Harriman's are offset by the fractional difference
+    between two bounding boxes, so shared ground is stored twice - the
+    exact cost the unit decision was taken to avoid.
+
+    Measured 2026-08-28, compute_cells against a corridor spanning
+    (-84.38, 34.12) to (-83.10, 35.90): four cells, three of them partial
+    (0.28 deg wide, 0.78 deg tall) and not one beginning on a whole degree.
+
+    Cells here are always full CELL_DEGREES squares, so a cell's south-west
+    corner is always integral - which is what lets cut_cells.py name an
+    artifact after the ground it holds rather than after an index that
+    would renumber the moment a bounding box moved.
+    """
+    west, south, east, north = bounds
+    x0 = math.floor(west / CELL_DEGREES) * CELL_DEGREES
+    y0 = math.floor(south / CELL_DEGREES) * CELL_DEGREES
+    cells = []
+    x = x0
+    while x < east:
+        y = y0
+        while y < north:
+            cells.append((x, y, x + CELL_DEGREES, y + CELL_DEGREES))
             y += CELL_DEGREES
         x += CELL_DEGREES
     return cells

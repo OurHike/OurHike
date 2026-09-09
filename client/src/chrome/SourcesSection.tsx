@@ -31,11 +31,27 @@ export interface SourcesSectionProps {
  * The framing sentence.
  *
  * The wireframe's version continues "...and takes its own donations — OurHike
- * takes no cut and holds no money", and that half is deliberately not here:
- * no card carries a donate link yet (the registry has no donate fields at all
- * - #932), so promising a hiker something about donations this screen does not
- * show would be a claim about a thing that is not on it. The sentence lands
- * whole when the donate line does.
+ * takes no cut and holds no money", and that half is deliberately still not
+ * here. The REASON changed on 2026-08-27 and the hold-back did not, which is
+ * worth writing down rather than leaving the old reason in place: this comment
+ * used to say "the registry has no donate fields at all - #932", and
+ * #932 - *sources.json can describe a steward but cannot say how to support
+ * one, so every donate line in the v2 design has nowhere to read from* - adds
+ * them on this branch. That issue is still open and its pull request has not
+ * merged, so none of this is on `main` yet. `stewards.json` now carries, for
+ * the three stewards of seven that have one, that organization's own
+ * `donate_url`, their own `donate_cta` verbatim, and `donate_surfaces` naming
+ * this screen (`sources_screen`) as one of the at-most-three places the link
+ * may appear. What is
+ * still missing is the link itself: no card here renders one, so promising a
+ * hiker something about donations this screen does not show would be a claim
+ * about a thing that is not on it. The sentence lands whole when the donate
+ * line does, and the data is now waiting for it rather than the other way
+ * round.
+ *
+ * The second half of that sentence is meanwhile live on the first-run screen
+ * (`screens/Onboarding.tsx`, 2026-08-27), where it belongs to a paragraph that
+ * does not depend on a link being present.
  */
 const FRAMING = 'Each organization below sets its own licence for the data it publishes.'
 

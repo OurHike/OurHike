@@ -13,7 +13,7 @@
 
 import { PMTiles } from 'pmtiles'
 import { IndexedDbArchiveSource } from './pmtilesSource'
-import type { ArchiveZooms } from '../lib/archiveCoverage'
+import type { ArchiveZooms, Footprint } from '../lib/archiveCoverage'
 
 /**
  * The archive's zoom range, or `null` where it cannot be established.
@@ -28,6 +28,31 @@ export async function readArchiveZooms(idbKey: string): Promise<ArchiveZooms | n
   try {
     const header = await new PMTiles(new IndexedDbArchiveSource(idbKey)).getHeader()
     return { minZoom: header.minZoom, maxZoom: header.maxZoom }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The ground the archive declares it covers, or `null` where that cannot be
+ * established - the same nulls as {@link readArchiveZooms}, and the same
+ * rule for callers: null is "do not act on coverage", never "covers nothing".
+ *
+ * The header's bounds are the bounding RECTANGLE of a thin winding band, so
+ * this is the outer edge of the download and not a promise about every point
+ * inside it. That is the honest shape of the fact: lib/archiveCoverage.ts's
+ * `coverageAt` claims "outside" only past this edge, and says nothing about
+ * ground inside it.
+ */
+export async function readArchiveFootprint(idbKey: string): Promise<Footprint | null> {
+  try {
+    const header = await new PMTiles(new IndexedDbArchiveSource(idbKey)).getHeader()
+    return {
+      west: header.minLon,
+      south: header.minLat,
+      east: header.maxLon,
+      north: header.maxLat,
+    }
   } catch {
     return null
   }

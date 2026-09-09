@@ -36,35 +36,75 @@
 // so that step ends the flow the way it already ended, with the report
 // queued.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { MapScreen } from './chrome/MapScreen'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import type { TabId } from './chrome/tabs'
-import { Downloads } from './screens/Downloads'
 import {
   hikingDetailOptions,
   noDetailOptions,
   rasterDetailOptions,
 } from './screens/DetailPicker'
-import { DownloadsDialog } from './screens/DownloadsDialog'
-import { More, type StuckReport } from './screens/More'
-import { Moderation } from './screens/Moderation'
-import { InstallPrompt } from './screens/InstallPrompt'
+import type { MorePage, StuckReport } from './screens/More'
+// The screens a launch does not show arrive through import() (#1302,
+// screens/deferred.ts): parsed when first tapped, or on idle once the first
+// frame is up - whichever comes first - and never in front of Today.
+import {
+  AppFailureReport,
+  ClosureForm,
+  Downloads,
+  DownloadsDialog,
+  EmailSignIn,
+  FindHike,
+  HikeDetail,
+  FinishedHike,
+  GroupScreen,
+  HikeDay,
+  HikeFinish,
+  HikePicker,
+  HikeSetup,
+  IdentitySetup,
+  InstallPrompt,
+  MapScreen,
+  Moderation,
+  More,
+  PlanScreen,
+  PlanTargetSheet,
+  preloadScreens,
+  Registry,
+  ReportForm,
+  ShareHike,
+  SignInPrompt,
+  TripList,
+  Volunteer,
+  VolunteerHours,
+  VolunteerImpact,
+  WalkedHike,
+} from './screens/deferred'
+import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
   ENTRY_CARD_MAX_VIEWPORT_FRACTION,
   Onboarding,
   type OnboardingResult,
 } from './screens/Onboarding'
-import { ClosureForm, type ClosureFormSubmission } from './screens/ClosureForm'
+import type { ClosureFormSubmission } from './screens/ClosureForm'
 import { closureDraft } from './lib/closureDraft'
 import { disputeFor } from './lib/disputes'
 import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
-import { ReportForm, type ReportFormSubmission } from './screens/ReportForm'
-import { ReportTypePicker, type ReportTypeId } from './screens/ReportTypePicker'
+import type { ReportFormSubmission } from './screens/ReportForm'
+import {
+  ReportWindow,
+  UNDO_WINDOW_MS,
+  type ReportWindowAnchor,
+} from './reporting/ReportWindow'
+import { type ReportTypeId } from './reporting/categories'
+import { FIT_PADDING } from './map/MapView'
+import { trailIdForSource } from './map/trailBadges'
+import { chosenSystemSources } from './map/nearbyTrails'
+import type { TappedLine } from './map/lineTaps'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -83,6 +123,7 @@ import {
 import { tripSyncState } from './lib/tripSyncState'
 import { preferencesSyncState } from './lib/preferences'
 import { forgetTripSync } from './lib/tripsSync'
+import { forgetDayHikeSync } from './lib/dayHikesSync'
 import { RemovedPoiCard } from './chrome/RemovedPoiCard'
 import { resolvePoiId, tombstoneFor } from './lib/poiIdentity'
 import { buildAccountArchive, downloadArchive } from './lib/accountArchive'
@@ -101,9 +142,31 @@ import {
 } from './lib/downloadDetail'
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
+import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
-import { useArchiveZooms } from './lib/useArchiveZooms'
-import { archiveCoversZoom } from './lib/archiveCoverage'
+import { usePublishedSizes } from './lib/usePublishedSizes'
+import { useSuggestedHikes } from './lib/useSuggestedHikes'
+import { authorLine, hikePlaces, type SuggestedHike } from './lib/suggestedHikes'
+import { useArchiveFootprint, useArchiveZooms } from './lib/useArchiveZooms'
+import { archiveCoversZoom, coverageAt, type Footprint } from './lib/archiveCoverage'
+import {
+  BASEMAP_CELLS,
+  cellDownloadRequests,
+  cellPackageKey,
+  cellsAlong,
+  cellsAt,
+  CONTEXT_PACKAGE_KEY,
+  GRAPH_CELLS,
+  NETWORK_CELLS,
+  priceStretches,
+  seamEdges,
+  STRETCH_MARGIN_KM,
+  useCellIndex,
+  useCellIndexState,
+} from './lib/coverageCells'
+import { setBasemapCells } from './map/basemap'
+import { setNetworkCells } from './map/networkTiles'
+import type { StretchOffer } from './screens/StretchCard'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
 import {
   backgroundProblem,
@@ -129,35 +192,53 @@ import {
 import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { activeDownload } from './lib/downloadActivity'
 import { useClock } from './lib/useClock'
+import { useDesktop } from './lib/useDesktop'
+import { ModeSwitch } from './chrome/ModeSwitch'
 import { useOnline } from './lib/useOnline'
 import { useDataSaver } from './lib/useDataSaver'
 import { backgroundOverride, effectiveBackground } from './lib/dataSaver'
 import { useFinePointer } from './lib/useFinePointer'
 import { useTheme } from './lib/useTheme'
-import { useDesktop } from './lib/useDesktop'
 import { useInstallPrompt } from './lib/useInstallPrompt'
 import { useAppUpdate, UPDATE_CHECK_MS } from './lib/useAppUpdate'
 import { readCamera, writeCamera } from './lib/cameraMemory'
 import { useGeolocation } from './lib/useGeolocation'
+import { useGpsTrace } from './lib/useGpsTrace'
 import { positionLine } from './lib/positionLine'
-import { naismithMinutes } from './lib/naismith'
 import {
   locateOnTrail,
   mileOnTrail,
+  type TrailIndex,
   trailPointAtMile,
   trailSlice,
 } from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
-import { ribbonWindow } from './lib/elevationProfile'
-import { ribbonLanes, ribbonView } from './lib/ribbonView'
+import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
+import { ascentBetween } from './lib/todayJournal'
+import { loadLastOnTrail, noteOnTrail } from './lib/lastOnTrail'
+import { dayHikeOnTrail, overlaps } from './lib/dayHikeOnTrail'
+import { ribbonLanes, ribbonView, type TodaysWalk } from './lib/ribbonView'
+import { walkProfile } from './lib/walkProfile'
 import { viewportMiles } from './lib/viewportMiles'
-import { anchoredClientMile, anchoredMile, type MileAnchor } from './lib/route'
+import {
+  anchoredClientMile,
+  anchoredMile,
+  SAME_AXIS_ANCHORS,
+  type MileAnchor,
+} from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
-import { type RouteStopChoice } from './chrome/RouteStopPicker'
+import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
+import { RouteMapPickBar } from './chrome/RouteMapPickBar'
+import { SectionPlanner } from './chrome/SectionPlanner'
+import { nearestStop } from './lib/cascade'
+import { mileMarker, stopLabel } from './lib/planDisplay'
+import { longDate } from './lib/hikeText'
+import { formatDistance, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
+  currentDayIndex,
   insertZeroAfter,
   removeDay,
   togglePinned,
@@ -168,8 +249,18 @@ import {
 } from './lib/plan'
 import {
   EMPTY_STORE,
+  activeHikeOf,
   addGroup,
   addHike,
+  assignTrip,
+  unassignTrip,
+  renameHike,
+  finishHike,
+  removeHike,
+  pauseHike,
+  resumeHike,
+  setActiveHike,
+  turnHikeAround,
   addToGroup,
   addTrip,
   loadTrips,
@@ -182,50 +273,106 @@ import {
   renameTrip,
   saveTrips,
   updateTrip,
+  type Trip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips, hikeOfTrip, recordedPlan } from './lib/hikes'
-import { GroupScreen } from './screens/GroupScreen'
-import { TripList } from './screens/TripList'
-import { PlanScreen } from './screens/Plan'
+import {
+  DEFAULT_TRAIL_ID,
+  hikeBounds,
+  hikeEnds,
+  hikeFigures,
+  hikeLegs,
+  MIN_GAP_MI,
+  hikeFromTrips,
+  hikeNameFromEnds,
+  hikeOfTrip,
+  recordedPlan,
+  trailHasMileAxis,
+  type Hike,
+  type PlaceRef,
+} from './lib/hikes'
+import { hikeFiguresLine, setupRefusal } from './lib/hikeText'
+import { dayNumber, endsTheHike, hikeDayToday, type HikeDayAt } from './lib/hikeToday'
+import { datedDaysAhead, pausedDays, resumeOffer } from './lib/hikeResume'
 import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
+import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import {
   canCloseLoop,
+  canStartStretch,
+  draftPoints,
   draftStatus,
   EMPTY_DRAFT,
+  drawStroke,
   loopDraft,
+  OFF_NETWORK_REFUSAL,
+  startStretch,
   tapAt,
+  removeTap,
   undoTap,
   type DayHikeDraft,
+  NETWORK_STILL_ARRIVING,
 } from './lib/dayHikeDraft'
-import { routeGeometry, type TrailGraphIndex } from './lib/trailGraph'
+import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
+import { buildCourse, mileTicks } from './lib/dayHikeCourse'
+import { isStoppable, orderStops, toggleStop } from './lib/dayHikeStops'
+import { poiIdAt } from './map/poiTaps'
+
+/** No stops picked. A module constant rather than a fresh `new Set()` at each
+ *  of the three places that need it: the value is immutable, and a new
+ *  identity per call is a new render for nothing. */
+const EMPTY_STOP_IDS: ReadonlySet<string> = new Set<string>()
+import {
+  ALL_LABELS_SHOWN,
+  hiddenPoiLabelTypes,
+  labelVisibilityPlan,
+  toggleLabelLayer,
+  type HiddenLabelLayers,
+  type LabelLayerKey,
+} from './lib/mapLabelLayers'
+import { DayHikePanel } from './chrome/DayHikePanel'
 import {
   attachTrailGraphElevation,
   attachTrailGraphGeometry,
-  fetchTrailGraphElevation,
-  fetchTrailGraphGeometry,
+  fetchTrailGraphElevationCells,
+  fetchTrailGraphGeometryCells,
+  fetchTrailGraphProfileCells,
 } from './lib/trailGraphData'
-import { orgLabelFrom } from './lib/stewards'
+import { useTrailGraph } from './lib/useTrailGraph'
+import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
 import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
+  logWalk,
   saveDayHikes,
+  savedFromSource,
+  walkedDates,
   type DayHike,
   type DayHikeStore,
 } from './lib/dayHikes'
 import { useDayHikesSync } from './lib/useDayHikesSync'
 import { dayHikeBailOuts, resolveDayHike } from './lib/dayHikeCard'
+import { followDayHike, followHeader, type FollowState } from './lib/dayHikeFollow'
+import { atJunction, dayHikeTurns, nextTurn } from './lib/dayHikeTurns'
+import { dayHikeWalk } from './lib/dayHikeWalk'
+import { NextTurnCard } from './chrome/NextTurnCard'
+import { TurnCard } from './chrome/TurnCard'
+import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
+import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
+import { DayHikesHere } from './chrome/DayHikesHere'
+import { planRoomFor } from './screens/PlanHome'
+import { HikePickSheet } from './chrome/HikePickSheet'
+import { StepAwaySheet } from './chrome/StepAwaySheet'
+import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
+import { hikeShareText } from './lib/hikeShareText'
+import type { LongHikeToday } from './screens/Today'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
-import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
 import { useModerator } from './lib/useModerator'
 import { hasStatedReporterType, signReportAs } from './lib/reporterIdentity'
-import { IdentitySetup } from './screens/IdentitySetup'
-import { SignInPrompt, type AuthProvider } from './screens/SignInPrompt'
-import { EmailSignIn } from './screens/EmailSignIn'
+import type { AuthProvider } from './screens/SignInPrompt'
 import { ENABLED_PROVIDERS } from './lib/supabase'
 import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
@@ -245,7 +392,6 @@ import {
   type AppFailureDraft,
   type FlushResult,
 } from './lib/outbox'
-import { AppFailureReport } from './screens/AppFailureReport'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import { conditionsAgeLabel, worstOf } from './lib/conditionState'
 import { useConditions } from './lib/useConditions'
@@ -256,29 +402,45 @@ import { pinConditionFor, stalenessPresentation } from './lib/stalenessDisplay'
 import { stalenessTier } from './lib/staleness'
 import {
   advanceToday,
+  localDay,
   passedPlaces,
   readPassedToday,
   writePassedToday,
   type PassedToday,
 } from './lib/passedToday'
 import { NOTE_SCOPED_TYPES } from './lib/fieldNotes'
-import { Volunteer } from './screens/Volunteer'
-import { VolunteerHours } from './screens/VolunteerHours'
+import { Today } from './screens/Today'
+import {
+  DEFAULT_HIKER_MODE,
+  loadHikerMode,
+  saveHikerMode,
+  type HikerMode,
+} from './lib/hikerMode'
+import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
+import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
+import { PressPlate } from './chrome/PressPlate'
 import { closureBanner, closureLanes, type RankedClosure } from './lib/closureBanner'
 import { projectClosures } from './lib/closureProjection'
 import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
-import { useAtcNoticesPanel } from './chrome/atcNoticesPanel'
+import { ATC_SOURCE_KEY } from './lib/notices'
+import { useNoticesPanel } from './chrome/noticesPanel'
 import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
+import { useAlertLayerPanel } from './chrome/alertLayerPanel'
 import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
-import { readStoredPace, writeStoredPace, type PaceProfile } from './lib/pace'
+import {
+  paceEstimate,
+  readStoredPace,
+  writeStoredPace,
+  type PaceProfile,
+} from './lib/pace'
 import {
   MAX_FIX_GAP_MILES,
   readWalked,
@@ -287,7 +449,6 @@ import {
   type MileRange,
 } from './lib/walkedMiles'
 import { clubRunAtMile, clubTimeline } from './lib/clubSections'
-import { HikePicker } from './screens/HikePicker'
 import {
   clearPlannedHike,
   hikeSummary,
@@ -304,8 +465,8 @@ import {
   routeBannerText,
   warningsOnRoute,
 } from './lib/seriousWarnings'
-import type { BoundingBox, MapPoint } from './lib/legendContents'
-import type { SearchablePoi } from './lib/searchPoi'
+import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
+import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
 import './App.css'
 // Last, and entirely inside media queries - see the file header. Nothing in it
@@ -352,6 +513,12 @@ const EMPTY_BBOX: BoundingBox = { west: 0, south: 0, east: 0, north: 0 }
  *  looking at a spring does not want to be pulled back out to see a shelter. */
 const SEARCH_RESULT_ZOOM = 14
 
+/** Room the camera leaves around a followed day hike when frame `D11` asks
+ *  for the whole route back on screen. Matches MapScreen's own
+ *  CHART_FIT_PADDING, so the two ways of framing a stretch put its ends the
+ *  same distance off the edge. */
+const FOLLOW_FIT_PADDING = 48
+
 interface Camera {
   center: [number, number]
   zoom: number
@@ -377,7 +544,7 @@ function cardDetail(poi: StoredPoi, searchable: readonly SearchablePoi[]): PoiDe
 
 type ReportingState =
   | null
-  | { step: 'pick'; anchor?: ReportAnchor }
+  | { step: 'window'; anchor?: ReportAnchor }
   | { step: 'form'; type: ReportTypeId; anchor?: ReportAnchor }
 
 // Sign-in is its own flow rather than another step of the reporting one,
@@ -399,6 +566,44 @@ function dayHikeName(route: {
     : 'Day hike'
 }
 
+/**
+ * The anchor a press hands to the report flow (#1137).
+ *
+ * ALWAYS CARRIES THE COORDINATES, and carries a mile only when the index has
+ * one. A press is the one entry point whose point may be nowhere near the
+ * hiker, so an anchor without a mile must NOT fall back to theirs - see
+ * `reportAnchorWords` for the sentence that would otherwise be printed over a
+ * report filed somewhere else.
+ *
+ * `mile` is optional on a report by design (features/REPORT_A_PROBLEM.md:
+ * "Null off-trail, and for a phone with no trail index yet"), which is why an
+ * off-corridor press is accepted rather than refused. That is the difference
+ * from the route builder, which refuses the same tap: a route STOP is a
+ * position on the trail and is meaningless without a mile, while a report is
+ * an observation at a place and a lat/lon locates it perfectly well.
+ */
+function pressAnchor(
+  at: { lat: number; lon: number },
+  trailIndex: TrailIndex | null,
+): ReportAnchor {
+  const mile = trailIndex === null ? null : mileOnTrail(trailIndex, at)
+  return {
+    // No `poiId`: the whole point of a press is that there is no waypoint here.
+    lat: at.lat,
+    lon: at.lon,
+    ...(mile === null ? {} : { mile }),
+  }
+}
+
+/** The empty answers the conditional waypoint passes hand back (#1303).
+ *  Module constants rather than fresh `[]` literals, so a memo that is not
+ *  running this launch keeps one identity and cannot re-trigger the effects
+ *  and memos downstream of it on every render. */
+const NO_MAP_POINTS: MapPoint[] = []
+const NO_DISPUTED_POINTS: DisputePoint[] = []
+const NO_HIKE_PLACES: ReturnType<typeof hikePlaces> = []
+const NO_PASSED_PLACES: { id: string; name: string; type: string; mile: number }[] = []
+
 function App() {
   // Two pieces of state rather than one nullable, because null only ever meant
   // "not read off the phone yet" - and saying that with a boolean keeps the
@@ -411,9 +616,53 @@ function App() {
   // behaviour change: the two values anything read before the load completes
   // (location_permission_requested, max_background_zoom) were already falling
   // back to exactly these defaults.
-  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
+  //
+  // THE MIRROR (#1301, lib/launchMirror.ts). The record is in IndexedDB and
+  // cannot be read synchronously, so the three values the FIRST FRAME depends
+  // on - whether onboarding is done, the theme, the hiker mode - are mirrored
+  // to localStorage on every read and write of the record, and read here
+  // before the first render. A returning hiker's launch therefore starts from
+  // the answer it will get, renders the tab bar and the Today header at once,
+  // and lets the record's own read overwrite the rest a tick later. A phone
+  // with no mirror (the first launch after this shipped, or cleared storage)
+  // starts from the defaults and waits, exactly as every launch used to.
+  const [launchMirror] = useState(readLaunchMirror)
+  const [preferences, setPreferences] = useState<UserPreferences>(() =>
+    launchMirror === null
+      ? DEFAULT_PREFERENCES
+      : {
+          ...DEFAULT_PREFERENCES,
+          onboarding_completed: launchMirror.onboardingCompleted,
+          theme: launchMirror.theme,
+        },
+  )
+  /** Whether the RECORD has been read - not whether enough is known to paint.
+   *  The map's background is decided on the record (see `mapNeededNow`), and
+   *  the shell's first frame on the mirror (`shellKnown` below). */
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
-  const [activeTab, setActiveTab] = useState<TabId>('trail')
+  /** Enough to paint the shell: the record, or the mirror of it. False only on
+   *  a launch with neither, which renders nothing until the record lands. */
+  const shellKnown = preferencesLoaded || launchMirror !== null
+  /** Whether the RECORD answered, as against the read settling either way.
+   *  What the mirror is allowed to follow - see the effect that writes it. */
+  const recordRead = useRef(false)
+  /** Whether the hiker has already changed one of the three mirrored values on
+   *  this launch. Since #1301 the shell paints before the record lands and the
+   *  Today header's mode switch is on that first frame, so a tap can land
+   *  BEFORE the read returns - and applying the stored answer over it would
+   *  undo a choice the hiker watched themselves make. */
+  const mirroredTouched = useRef(false)
+  // The "today I'm…" mode (#1054, lib/hikerMode.ts) - mirrored like the two
+  // preferences above, loaded with them, saved on every change. It re-ranks
+  // the Today screen and never gates anything.
+  const [hikerMode, setHikerMode] = useState<HikerMode>(
+    () => launchMirror?.hikerMode ?? DEFAULT_HIKER_MODE,
+  )
+  // Today is the home (#1054): the default tab, and where finishing first run
+  // lands. During first run the tab branches below are skipped entirely -
+  // `entering` renders the map screen as the steps' backdrop whatever this
+  // says - so the default only takes effect once onboarding is done.
+  const [activeTab, setActiveTab] = useState<TabId>('today')
   // The download window (screens/DownloadsDialog.tsx), which replaced the tab
   // it used to be. Held here rather than on either screen because it opens
   // over both of them, from the one background picker they share.
@@ -505,6 +754,30 @@ function App() {
    * a chord across a switchback is a picture of a trail that does not exist.
    */
   const [dayHikeIndex, setDayHikeIndex] = useState<TrailGraphIndex | null>(null)
+  /**
+   * Where the builder's finger has been (#1257 stage 3): every tap and every
+   * stroke since it opened, as runs of [lon, lat]. A tap in a cell this phone
+   * has not loaded is how that cell gets asked for - the graph is cells now,
+   * and the shell cannot know which ones a hiker will want before they say
+   * so. Cleared wherever the draft is (the three `setDayHike(null)` sites);
+   * the cells they brought in stay merged.
+   */
+  const [graphAnchors, setGraphAnchors] = useState<
+    ReadonlyArray<ReadonlyArray<readonly [number, number]>>
+  >([])
+  /**
+   * `trail_graph_profile.json` - the SHAPE of the ground along each edge
+   * (#1045), held beside the index rather than attached to it.
+   *
+   * Beside, because nothing that routes or prices a walk may read it. The
+   * climb a card prints comes from `trail_graph_elevation.json`, attached to
+   * the edges above; this is what a ribbon DRAWS. Hanging it on the same edge
+   * objects would make swapping them a one-character mistake, and the two
+   * disagree about a walk's total by a measured median 6.9% (#1120).
+   */
+  const [graphProfile, setGraphProfile] = useState<Array<Array<
+    number | null
+  > | null> | null>(null)
   /** The SAVED day hikes (#976) - loaded once, written through saveDayHikes,
    *  and fed to the account sync exactly as tripStore is. */
   const [dayHikeStore, setDayHikeStore] = useState<DayHikeStore>(EMPTY_DAY_HIKES)
@@ -512,6 +785,163 @@ function App() {
    *  it; only "Save this day hike" commits it to the store. The draft stays
    *  alive underneath, so "Back to the map" is a real return, not a rebuild. */
   const [dayHikeReview, setDayHikeReview] = useState<DayHike | null>(null)
+  /**
+   * A date set on the review card, before there is a record to keep it on.
+   *
+   * Its own state because the review record is NOT durable: "Back to the
+   * map" clears it (the draft underneath is what survives), and pressing
+   * Done again rebuilds the record from the draft. A date typed before that
+   * round trip lived only on the discarded record, so it vanished with no
+   * warning - on the one field the list, the split and the trailhead door
+   * all read. Cleared with the draft, never outliving it.
+   */
+  const [dayHikeDraftDate, setDayHikeDraftDate] = useState<string | null>(null)
+  /**
+   * The saved day hike being FOLLOWED, by id (#1041, frames `D9`-`D11`).
+   *
+   * The id rather than the record, so a hike renamed, re-dated or deleted
+   * while it is being followed cannot leave a stale copy on the map screen -
+   * the same reason `DayHikeStore.openId` is an id and lives in the store's
+   * own document.
+   *
+   * NOT PERSISTED, deliberately, and this is the narrower of two possible
+   * answers. `openId` survives a reload; following is a claim about where a
+   * hiker is standing RIGHT NOW, and a phone that wakes up three days later
+   * still saying "leg 2 of 3" would be a display outrunning its source. One
+   * tap restarts it.
+   */
+  const [followingId, setFollowingId] = useState<string | null>(null)
+  /** The last answer lib/dayHikeFollow.ts gave, which is one of its own
+   *  inputs - see `FollowInputs.previous` for the two jobs it does. */
+  const [followState, setFollowState] = useState<FollowState | null>(null)
+  /**
+   * The last answer that WAS one, kept across a gap in fixes.
+   *
+   * `followState` goes null the moment GPS drops, which is right on screen -
+   * nothing should claim a position nobody has. But it is also the hysteresis
+   * memory and the out-and-back tie-break, and storing the null threw both
+   * away: one lost fix under canopy and the next reading came back at the
+   * loose OFF_ROUTE_FEET threshold with no pass settled, re-enabling exactly
+   * the strobe lib/dayHikeFollow.ts's header says it prevents.
+   *
+   * A ref rather than state because nothing renders from it; it is the
+   * function's own memory, handed back to it.
+   */
+  const lastFollowRef = useRef<FollowState | null>(null)
+  /**
+   * The junction card (frame `D10`) is open over the next-turn card for the
+   * turn at THIS walked mile, or null for none.
+   *
+   * A mile rather than a boolean, and that is what stops it latching (#1044
+   * review). A flag stayed true through an off-route excursion and put the
+   * card back unasked when the hiker rejoined - hiding the two things the
+   * standing card exists for, the blaze line and the Stop control - and once
+   * they walked THROUGH the fork it silently became a diagram of the next
+   * junction instead. Keyed to the turn, it closes itself on both.
+   */
+  const [turnOpenAt, setTurnOpenAt] = useState<number | null>(null)
+  // Which home the Plan tab shows was `planMode` until #1317, a switch of
+  // Plan's own that could disagree with the mode the hiker had already
+  // chosen. It is derived from `hikerMode` now - see `planRoomFor` and
+  // screens/PlanHome.tsx's header.
+  /**
+   * Whether the Plan tab shows the full day-hike list (frame D7).
+   *
+   * Held here rather than inside PlanScreen because the map's trailhead door
+   * offers "All your day hikes ›" from another tab entirely, and PlanScreen
+   * is rebuilt on every tab switch - state local to it is always false on
+   * arrival, so that control would have landed one screen short of what it
+   * named.
+   *
+   * Lifting it bought that door its destination and took on the cost every
+   * lifted flag has: it now OUTLIVES the tab switch that used to clear it,
+   * and `Plan.tsx` reads it before it reads the mode. `enterTripsRoom` below
+   * is what pays that cost back.
+   */
+  const [dayListOpen, setDayListOpen] = useState(false)
+  /**
+   * Landing in the trips room, from every door that puts a hiker there.
+   *
+   * ONE FUNCTION RATHER THAN A MIRROR LINE IN EACH DOOR, for the reason
+   * `sweepForBuilder` gives about its own: a rule copied into four openers is
+   * the same fix today and the same bug at the fifth. Three things have to be
+   * true to actually arrive, and each of them was a separate defect when the
+   * doors said only the first:
+   *
+   * - `planMode` is 'trips'. The mode is sticky by design - it is the hiker's
+   *   own pick - so a door that makes a TRIP the subject has to say so, or a
+   *   hiker who once tapped the chip lands on a room their new trip is not in.
+   * - The day-hike list is closed. `Plan.tsx` tests `dayListOpen` BEFORE the
+   *   mode, so a list left open from an earlier visit wins over the trips room
+   *   outright: the trip that was just laid out never appears, and the screen
+   *   that greets the hiker is the day-hike list wearing the day band.
+   * - Any open day-hike card is put away. It docks over up to 85% of the
+   *   screen, and a day-hike surface floating over the trips room is the exact
+   *   "which mode am I in" confusion this split exists to end.
+   *
+   * The close is a read-modify-write that marks the sync ledger, so it is
+   * guarded on there being something to close - inside, against the loaded
+   * store, which is what keeps this callback stable and lets the doors below
+   * list it as a dependency.
+   */
+  /**
+   * Which long-hike sheet is open, or null (#1317).
+   *
+   * `'pick'` is "which long hike?", opened by tapping Long hike with nothing
+   * active. `'setup'` is the full-screen set-up over a draft. Held here
+   * rather than inside a screen because the mode switch that opens the first
+   * one lives in three places and none of them is the Plan tab.
+   */
+  const [hikeSheet, setHikeSheet] = useState<'pick' | 'setup' | null>(null)
+  /** The hike being set up, before it is kept. Held so a trip into the stop
+   *  picker and back does not lose what has been entered. */
+  const [hikeDraft, setHikeDraft] = useState<Hike | null>(null)
+
+  /**
+   * Write the app's mode (#1317).
+   *
+   * Separate from the SWITCH's handler on purpose: tapping the Long hike
+   * segment with no active hike opens the pick sheet, and that belongs to
+   * the tap rather than to every internal mode change. Opening the route
+   * builder puts the app in the long-hike state without asking which hike,
+   * because the hiker did not ask to be asked - they asked to build a route.
+   *
+   * Declared here rather than beside `handleChangeMode` below because
+   * `enterTripsRoom` lists it as a dependency, and a dependency array is
+   * evaluated where it is written.
+   */
+  const applyHikerMode = useCallback((mode: HikerMode) => {
+    // #1301's guard, and it belongs HERE rather than on the tap handler
+    // because since #1317 every mode write funnels through this function -
+    // the switch, entering the sections room, opening the day-hike builder,
+    // and cancelling the pick sheet. On the handler alone, `enterTripsRoom`
+    // would write 'long' without setting it, and the stored record landing a
+    // moment later would undo a change the hiker watched happen.
+    mirroredTouched.current = true
+    setHikerMode(mode)
+    void saveHikerMode(mode)
+  }, [])
+  const enterTripsRoom = useCallback(() => {
+    applyHikerMode('long')
+    setDayListOpen(false)
+    void loadDayHikes().then((store) => {
+      if (store.openId === null) return
+      const next = { ...store, openId: null }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [applyHikerMode])
+  /**
+   * The trailhead door (frame D8), put away - by the hikes it was offering
+   * rather than outright.
+   *
+   * A plain boolean would be wrong for the case that actually happens: drive
+   * to a second trailhead in one session and the door for a DIFFERENT hike
+   * would stay silenced by a dismissal aimed at the first. Holding the ids
+   * means "no thanks" applies to what was asked, and a hike the hiker has
+   * not said no to still gets to ask once.
+   */
+  const [hikesHereDismissed, setHikesHereDismissed] = useState<readonly string[]>([])
   /**
    * The desktop chart's own settled selection - a measurement, nothing more
    * - read only while no route draft is open (PR #885 review). With a draft
@@ -580,7 +1010,50 @@ function App() {
   // read once per sign-in (lib/useModerator.ts) and decides only whether the
   // entry point exists - the backend gates every call regardless (#235).
   const [moderating, setModerating] = useState(false)
+  /** Whether the source registry is open (#929). Local to the shell like every
+   *  other Settings-reached screen, and there is no router to put it in - see
+   *  this file's opening comment. */
+  const [browsingRegistry, setBrowsingRegistry] = useState(false)
   const isModerator = useModerator(account !== null)
+  /**
+   * Which of More's pages is showing (screens/More.tsx). Shell state rather
+   * than More's own useState so the Today column's volunteer card can land a
+   * hiker directly on the volunteer page (#1054) - the deep link is one
+   * setState here, where a page held inside More could only be reached
+   * through More's home.
+   *
+   * Volunteer left the tab bar with #1054 (chrome/tabs.ts records why, and
+   * that the removal was approved rather than drifted into). The surface
+   * itself is unchanged; what changed is the doors: the "Volunteer & report"
+   * row, and the Today column's volunteer card.
+   *
+   * Deliberately NOT reset when the tab changes: a hiker who steps out to
+   * the map mid-form comes back to the page they left, which is the same
+   * courtesy every tab's own state already keeps.
+   */
+  const [morePage, setMorePage] = useState<MorePage>('home')
+  /**
+   * Which room the Today tab is showing (#1284): the journal, or the Find-a-
+   * hike search pushed from its shelf. Not a fifth tab - Today stays the
+   * selected tab while the search is up, which is why this is a page under
+   * the tab rather than a TabId - and any tab selection returns it to the
+   * journal (`selectTab`), so a hiker who leaves mid-search comes back to
+   * the room the tab is named for.
+   */
+  // Three pages in Today's slot (#1284, #1290): the column itself, the
+  // finder pushed from its shelf, and one route's detail pushed from a card
+  // on either. Held as a page plus an id rather than as a route object, so a
+  // republished document cannot leave a stale copy of a hike on screen.
+  const [todayPage, setTodayPage] = useState<'home' | 'find' | 'detail'>('home')
+  const [openHikeId, setOpenHikeId] = useState<string | null>(null)
+  // Which page the detail was pushed from, so Back returns there rather than
+  // always to the column. A boolean rather than a stack: there are two doors
+  // and no third is coming.
+  const [cameFromFinder, setCameFromFinder] = useState(false)
+  const selectTab = useCallback((id: TabId) => {
+    setTodayPage('home')
+    setActiveTab(id)
+  }, [])
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -601,6 +1074,29 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
+  /** A frame after the first commit - the earliest the shell can be on screen
+   *  (#1302, lib/useAfterFirstFrame.ts). What waits on it is everything that
+   *  does not change the first frame: the launch fetches, and the screens a
+   *  tap reaches. */
+  const afterFirstFrame = useAfterFirstFrame()
+  useEffect(() => {
+    if (!afterFirstFrame) return
+    // The other tabs' code, fetched while the thread is idle so a tap on Plan
+    // a second from now is instant. From the service worker's precache on the
+    // web and from the binary in the shells, so this costs no signal; on a
+    // browser without requestIdleCallback (Safari) a second's grace does.
+    const idle =
+      window.requestIdleCallback ??
+      ((callback: () => void) => setTimeout(callback, 1_000))
+    const cancel = window.cancelIdleCallback ?? clearTimeout
+    const handle = idle(() => void preloadScreens().catch(() => {}))
+    return () => cancel(handle as number)
+  }, [afterFirstFrame])
+  // Which layout this viewport gets (lib/useDesktop.ts). Read here as well
+  // as inside MapScreen because two of the shell's own decisions turn on it
+  // since #1054: whether the Today tab is its own screen or the map's
+  // journal column, and whether the sidebar carries the mode switch.
+  const isDesktop = useDesktop()
 
   // What the trail is like right now - closures, reports, the ATC's own
   // notices - and when something last reached the server. See
@@ -614,13 +1110,14 @@ function App() {
     reportState,
     atcUpdates,
     atcReviewedAt,
+    orgNotices,
     drought,
     droughtWeek,
     workProjects,
     workProjectsGeneratedAt,
     lastSyncedAt,
     markSynced,
-  } = useConditions(online)
+  } = useConditions(online, afterFirstFrame)
 
   /**
    * This phone's own just-written notes, echoed locally (FIELD_NOTES.md).
@@ -668,27 +1165,160 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
+  /** The active long hike's trail, or null for nothing taken - first
+   *  launch's all-dotted map (#1306), same as a hiker who has set up no
+   *  hike yet. Derived from the active Hike rather than its own preference
+   *  since #1352: taking a trail from the map is now the same act as
+   *  picking one in Plan, not a second, weaker path answering the same
+   *  question differently. Decides the lines, the legend's `taken`, and -
+   *  since #1357 - whether this download's miles apply at all. The trail
+   *  the rest of this shell is NAMED for is still TRAIL_NAME's. */
+  const chosenTrailId = activeHikeOf(tripStore)?.trailId ?? null
+  const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+
+  /**
+   * The trail this build cannot measure the active hike on, by short name,
+   * or null when it can (#1357).
+   *
+   * `lib/hikeText.ts`'s `setupRefusal` already refuses to CREATE a hike on a
+   * trail with no published mile axis - "a figure on any other trail would
+   * be an A.T. mileage wearing somebody else's name". Nothing carried that
+   * refusal past creation, so `locateOnTrail`, the elevation ribbon and
+   * `legFigures` would have gone on answering in A.T. miles under the other
+   * trail's name. This is where that stops.
+   *
+   * NO ACTIVE HIKE IS MEASURABLE, not unmeasurable: a hiker who has set up
+   * no long hike is on the A.T. shell this app is named for, which is
+   * today's behaviour and stays it.
+   *
+   * SET-UP CANNOT REACH THIS STATE; SYNC CAN. `setupRefusal` blocks
+   * *creating* a hike on any other trail, which is what made this look like
+   * a purely future gate - and that reading was wrong. `lib/tripsSync.ts`'s
+   * `mergeServerHikes` folds in hikes changed on the hiker's OTHER devices
+   * ("unknown row is added, known row is replaced"), each read by
+   * `validateHike`, which accepts any non-empty `trailId` and does not
+   * consult `trailHasMileAxis` at all (lib/hikes.ts, the `trailId` branch).
+   * So a hike on an unmeasurable trail arrives fully formed on this phone
+   * the moment anything upstream writes one, with `activeHikeId` free to
+   * point at it.
+   *
+   * Whether such a row exists on any server TODAY is a different question
+   * and not one this file can answer: the backend's `Hike.trail_id`
+   * defaults to "AT" and nothing known writes another value. The honest
+   * claim is about the path, which is open, rather than about the traffic
+   * on it. That is enough to make this a gate on a live route rather than
+   * one armed for #768.
+   */
+  const unmeasuredTrail = useMemo(() => {
+    if (chosenTrailId === null || trailHasMileAxis(chosenTrailId)) return null
+    return TRAILS[chosenTrailId as keyof typeof TRAILS]?.shortName ?? chosenTrailId
+  }, [chosenTrailId])
+
+  /**
+   * The corridor re-fitted once the entry steps end (#1296).
+   *
+   * The map behind the steps is fitted with `entryFitPadding` (below), and
+   * since #721 it is the same map instance the map screen keeps, so nothing
+   * rebuilds it with a fresh fit when the card goes. Its first moveend has
+   * already reported the padded camera into `camera`, so `bounds` is not
+   * even passed any more. MEASURED 2026-09-09 on the built app, a fresh
+   * profile through Continue, Keep going and Skip: the Map tab opened on the
+   * whole corridor squeezed into the top fifth of the screen under the
+   * identity plate at a 300 mi scale - which, with nothing else drawn down
+   * there since #1292, reads as an empty map. The same framing on `main`.
+   *
+   * Only while the hiker has not taken the map: `mapTaken` latches on the
+   * first pan or pinch, and a view somebody chose is never re-framed. And
+   * only for a map that was built during the steps, which the ref latches:
+   * a returning hiker's map never had the card's padding, and re-fitting it
+   * would throw away the camera lib/cameraMemory.ts put back. No animation,
+   * because Today is showing when this runs and the Map tab is a tap away.
+   * Declared up here with the other unconditional hooks: the shell has early
+   * returns further down, and a hook after one of them is a hook React
+   * cannot count on.
+   *
+   * THIS IS A DESKTOP-ONLY EFFECT SINCE #1324, and the ref is what makes that
+   * true rather than a comment. No map is built behind the steps on a phone
+   * any more, so `entering && map !== null` never holds there, the latch never
+   * sets, and this never runs - which is the right answer rather than a gap:
+   * a phone's map is now built AFTER the steps, so it takes `FIT_PADDING`
+   * from the start and has no card-shaped camera to undo. A desktop still
+   * renders its map from launch (`mapNeededNow` below is not conditioned on
+   * `entering`), so it still gets `entryFitPadding` and still needs this.
+   *
+   * #1328 predicted this would be dead code and was wrong; it is narrower,
+   * not gone. Deleting it would leave a desktop opening on the corridor
+   * squeezed under the identity plate, which is the framing #1296 measured.
+   */
+  const fittedForEntry = useRef(false)
+  useEffect(() => {
+    if (entering && map !== null) fittedForEntry.current = true
+  }, [entering, map])
+  useEffect(() => {
+    if (entering || map === null || mapTaken || !fittedForEntry.current) return
+    fittedForEntry.current = false
+    map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
+  }, [entering, map, mapTaken])
 
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
   // nothing else writes them.
   const {
-    trailIndex,
+    trailIndex: downloadedTrailIndex,
+    poiMiles,
     pois,
     spurs,
-    elevation,
+    elevation: downloadedElevation,
     clubSections,
     stewards,
     highlights,
     retiredPois,
     trailsUrl,
     overviewTrailsUrl,
-    nearbyTrailsUrl,
-    graphIndex,
+    networkOverviewUrl,
+    trailFetchSettled,
     haveTrailLines,
     error: dataError,
     ensure: ensureTrailData,
+    update: trailDataUpdate,
+    updateWarnsAboutData,
+    applyingUpdate,
+    applyUpdate,
+    declineUpdate,
   } = useTrailData(online, { centerlineOnly: entering })
+
+  /**
+   * The mile axis and the profile, withheld when they do not measure the
+   * hike the hiker is on (#1357).
+   *
+   * TWO VALUES GATE ALL THREE COMPUTATIONS, which is why this is four lines
+   * and not a change at forty display sites. `lib/trailPosition.ts` is only
+   * reachable through a `TrailIndex` - `mileOnTrail` and `locateOnTrail`
+   * both take one - and `lib/elevationProfile.ts` and `lib/route.ts`'s
+   * `legFigures()` are only reachable through an `ElevationProfile`.
+   * Withhold those two and no figure measured on the A.T.'s axis can be
+   * computed, let alone printed, for a hike that is not on it. A figure
+   * never computed cannot be displayed wrongly.
+   *
+   * `lib/naismith.ts` and `lib/pace.ts` need nothing and get nothing. They
+   * take `{ distanceMi, ascentFt }` and no trail identity, so they are
+   * already honest about whatever axis feeds them; the defect was only ever
+   * in the provenance of their inputs, which is here.
+   *
+   * NULL RATHER THAN A NEW UNAVAILABLE TYPE, because null is a state every
+   * reader already handles: both of these are null before the download
+   * lands, so the fifteen modules that call `mileOnTrail`/`locateOnTrail`
+   * and the ribbon that calls `ribbonView` all branch on it today.
+   * `ribbonView` returns undefined on a null profile and MapScreen omits
+   * the block entirely - designed for a download with no profile in it
+   * (see that function's own docstring), and exactly right here.
+   *
+   * The one reader for which null is NOT enough is `lib/positionLine.ts`,
+   * which would say "No trail data" about a phone that is holding it. That
+   * line takes `unmeasuredTrail` instead - see the ladder in that file.
+   */
+  const trailIndex = unmeasuredTrail === null ? downloadedTrailIndex : null
+  const elevation = unmeasuredTrail === null ? downloadedElevation : null
 
   /**
    * Closure miles, re-read against the release this phone is holding (#674).
@@ -763,25 +1393,102 @@ function App() {
   }, [])
 
   const resolvedTheme = useTheme(preferences.theme)
-  // Whether this is the big-screen layout - and, for the download, whether the
-  // machine is one that goes up a mountain. See handleOnboardingComplete.
-  const isDesktop = useDesktop()
   const install = useInstallPrompt()
   useEffect(() => {
-    void loadPreferences().then(
-      (stored) => {
-        setPreferences(stored)
+    // The mode rides the same read as the preferences (lib/hikerMode.ts's
+    // "read once, no flash"): the Today header renders the switch on first
+    // paint, and a default that flips a tick later is exactly the flash the
+    // mirror exists to prevent - so the mirror carries the mode too.
+    void Promise.all([loadPreferences(), loadHikerMode()]).then(
+      ([stored, mode]) => {
+        // A choice made in the window before this landed outranks the record:
+        // the hiker is looking at what they picked.
+        if (!mirroredTouched.current) {
+          setPreferences(stored)
+          setHikerMode(mode)
+        }
+        recordRead.current = true
         setPreferencesLoaded(true)
+        markLaunch(LAUNCH_MARKS.preferences)
+        // The record has spoken; the next launch's first frame starts here.
+        writeLaunchMirror(stored, mode)
       },
       // A storage read that rejects - private browsing, an evicted database -
-      // must not keep the gate below closed: `preferencesLoaded` false renders
-      // NOTHING, and a rejection here left the app a permanently blank page
-      // with the map a tick away the whole time. Defaults are the honest
-      // fallback; the preferences another session stored are unreachable
-      // either way.
+      // must not keep the gate below closed: on a launch with no mirror,
+      // `preferencesLoaded` false renders NOTHING, and a rejection here left
+      // the app a permanently blank page with the map a tick away the whole
+      // time. Defaults are the honest fallback; the preferences another
+      // session stored are unreachable either way.
       () => setPreferencesLoaded(true),
     )
   }, [])
+
+  // The five moments features/LAUNCH_BUDGET.md §3 budgets, marked where they
+  // actually happen (#1299, lib/launchMarks.ts). In effects rather than in
+  // render, because what each one claims is that a hiker could SEE something -
+  // which is true after the commit, not during it. Settings -> About this
+  // build reads them back, and so does the bug-report prefill.
+  useEffect(() => {
+    if (shellKnown) markLaunch(LAUNCH_MARKS.shell)
+  }, [shellKnown])
+  useEffect(() => {
+    if (pois.length > 0) markLaunch(LAUNCH_MARKS.today)
+  }, [pois])
+  useEffect(() => {
+    if (trailIndex !== null) markLaunch(LAUNCH_MARKS.index)
+  }, [trailIndex])
+
+  // The mirror follows the record (#1301): every change to what the first
+  // frame depends on is written where the next launch can read it without
+  // waiting. Keyed on the three fields rather than on the whole blob, so a
+  // change to a unit or a map style does not touch localStorage.
+  //
+  // ONLY ONCE THE RECORD HAS ACTUALLY BEEN READ, and that is not the same as
+  // `preferencesLoaded` - a read that REJECTS sets that flag too, deliberately
+  // (the effect above: a private-browsing failure must not leave the app
+  // blank). The state then still holds the defaults, and writing those to the
+  // mirror would tell the next launch that a returning hiker has not
+  // onboarded - the first-run steps, flashed at somebody who finished them
+  // months ago, and persistently, because the bad mirror is what the next
+  // launch reads first. So the mirror follows the RECORD, never the fallback.
+  useEffect(() => {
+    if (!recordRead.current) return
+    writeLaunchMirror(preferences, hikerMode)
+  }, [preferencesLoaded, preferences.onboarding_completed, preferences.theme, hikerMode])
+
+  // The mode is saved as it changes (see `applyHikerMode` above) - there is
+  // no form to submit, and a mode that survived the session but not the
+  // relaunch would make the switch a label rather than a setting.
+  /**
+   * What a tap on the mode switch does (#1317).
+   *
+   * Entering the long-hike state is an ARRIVAL in the sections room, not
+   * just a change of word, so it lands the same way every other door into
+   * that room does - `enterTripsRoom` closes the day-hike card and the day
+   * list. Without that, a day-hike surface floats over the sections room,
+   * which is precisely the mode confusion #1008 split the two rooms to end.
+   * The other two modes need none of it: the day room's list and card are
+   * that room's own furniture.
+   */
+  const handleChangeMode = useCallback(
+    (mode: HikerMode) => {
+      if (mode === 'long') {
+        enterTripsRoom()
+        // Long hike means "the hike I'm on", and with nothing active there
+        // is no such thing to mean - so the sheet asks. The mode is written
+        // first and the switch draws it pending, so what the hiker tapped is
+        // on screen while they answer and the revert on cancel is not a
+        // surprise (#1317's one deliberate exception to an instant mode).
+        if (tripStore.activeHikeId === null) setHikeSheet('pick')
+        return
+      }
+      // Day hike or Volunteer keeps `activeHikeId`: the hike is not
+      // abandoned, just not leading.
+      setHikeSheet(null)
+      applyHikerMode(mode)
+    },
+    [applyHikerMode, enterTripsRoom, tripStore.activeHikeId],
+  )
 
   // Nothing waits on this. A hike changes what the banners can say and
   // nothing about whether the app renders, so unlike preferences it gets no
@@ -898,7 +1605,22 @@ function App() {
   )
 
   const locationAllowed = preferences.location_permission_requested
-  const gps = useGeolocation(locationAllowed)
+  // The recorder for #106's field walk (#1180). Inert unless somebody turns
+  // it on in Settings, and it reads the same watch rather than opening a
+  // second one - a second high-accuracy watch is the mistake map/mapChrome.ts
+  // and this file have each already made once.
+  const gpsTrace = useGpsTrace(trailIndex, locationAllowed)
+  const gps = useGeolocation(locationAllowed, {
+    onFix: gpsTrace.onFix,
+    // Recording holds the watch through a pocket, suspending #313's pause.
+    // Nothing else in the app asks for that.
+    keepAwake: gpsTrace.status.recording,
+  })
+  // The fix as a point, for the surfaces that measure from it rather than
+  // along the trail: the suggested-hikes shelf and the Find screen's "Near
+  // me" (#1284). Null is the honest answer everywhere else the app gives
+  // one - never a stale point, never Springer.
+  const fixAt = gps.status === 'located' ? gps.at : null
 
   const detailLevel: DetailLevel = detailLevelForZoom(preferences.max_background_zoom)
   // The hiking sheet's own level (#276) - a separate dial from the USGS
@@ -922,16 +1644,53 @@ function App() {
   // nothing on its own - `useArchiveDownloads` transfers only when something
   // asks it to.
   const catalogSheets = useMemo(() => [...offeredSheets(), ...withdrawnSheets()], [])
+  // The hiking sheet's cells, as the bucket lists them (#557,
+  // lib/coverageCells.ts): the stored copy at once, the published one with
+  // signal. Null on a phone that has never seen one, which is every phone on
+  // a release without cells - the sheet stays one tap and nothing changes.
+  const cellIndex = useCellIndex(BASEMAP_CELLS, afterFirstFrame)
+  // The other organizations' network as cells of the same grid (#1257 stage
+  // 2, lib/coverageCells.ts's NETWORK_CELLS): what a stretch download carries
+  // above the seam, beside the ground the basemap cells carry under it. Null
+  // on a release without them - an export before the cut existed, or a
+  // steward's lines held back - and then the stretch is the basemap alone,
+  // exactly as before.
+  const networkCellIndex = useCellIndex(NETWORK_CELLS, afterFirstFrame)
+  /**
+   * The junction graph's cells (#1257 stage 3, lib/coverageCells.ts's
+   * GRAPH_CELLS), with the two facts the Plan door reads beside the index:
+   * whether it has answered at all, and whether signal would change the
+   * answer. `graphAttempt` is the door's "Try again": bumping it re-asks the
+   * bucket for the index and, in lib/useTrailGraph.ts, forgives every cell
+   * the bucket refused. The whole graph used to be one 78,595,556-byte
+   * launch fetch (2026-09-07) and the door opened when its parse finished;
+   * the index is 166,721 bytes on the same data, and the cells follow where
+   * the hiker is planning (`graphWanted`, below the fix).
+   */
+  const [graphAttempt, setGraphAttempt] = useState(0)
+  const retryTrailNetwork = useCallback(() => {
+    setGraphAttempt((current) => current + 1)
+  }, [])
+  const graphCellState = useCellIndexState(GRAPH_CELLS, graphAttempt, afterFirstFrame)
+  const graphCellIndex = graphCellState.index
   const downloadRequests = useMemo(
-    () =>
-      catalogSheets
+    () => [
+      ...catalogSheets
         .flatMap((sheet) => offeredPackages(sheet))
         .map((pkg) => ({
           packageKey: pkg.idbKey,
           url: packageDownloadUrl(pkg, detailLevel, hikingLevel),
           artifactKey: packageArtifactKey(pkg, detailLevel, hikingLevel),
         })),
-    [catalogSheets, detailLevel, hikingLevel],
+      // Every cell of both families and each shared context, registered the
+      // moment an index is known, so their markers are read on mount like
+      // every sheet's - a stretch on the phone is a stretch the map draws
+      // from before any window opens. Registering starts nothing
+      // (useArchiveDownloads).
+      ...cellDownloadRequests(cellIndex, BASEMAP_CELLS),
+      ...cellDownloadRequests(networkCellIndex, NETWORK_CELLS),
+    ],
+    [catalogSheets, detailLevel, hikingLevel, cellIndex, networkCellIndex],
   )
   const {
     statusFor: archiveStatusFor,
@@ -942,6 +1701,178 @@ function App() {
     remove: removePackage,
     persistence: archivePersistence,
   } = useArchiveDownloads(downloadRequests)
+
+  // The map's own mount decision lives HERE, below the archive store's hook,
+  // because since #1301 it reads that hook's answer (`archivesRead`): the map
+  // is the one consumer that must wait for every package's marker, and the
+  // tab bar above it no longer does.
+  /**
+   * Whether this session has ever needed the map, because the map is built at
+   * most once per session (#1081). v1.0.0 kept one map for a whole session by
+   * making it the home tab; #1054 moved the home to Today, and the map -
+   * unmounted by every tab branch that renders without it - was being torn
+   * down and rebuilt on every return. One data-loaded build is 2,353 ms of
+   * blocking work on the throttled-phone profile (App.loadBudget.test.tsx's
+   * measurement), which is the "extremely slow after downloading the data"
+   * of the report behind #1081: the build is cheap on an empty phone and
+   * multi-second once the sheet and the trail release are on it.
+   *
+   * So the shell remembers that the map was wanted, and after that the bottom
+   * of this component keeps it mounted, hidden and inert, underneath
+   * whichever tab screen is up. Phones only ever set this through that first
+   * need; a desktop renders the map from launch and the latch is simply
+   * always on.
+   *
+   * What is deliberately NOT changed: a launch that stays on Today still
+   * builds no map at all (the latch starts false), so the entry budget that
+   * test enforces is untouched.
+   *
+   * AND THE FIRST-RUN BACKDROP NO LONGER COUNTS AS A NEED (#1324). It did
+   * from #721 until here, on the argument that every entry step is a claim
+   * about the map and the steps should be read against it. #1054 ended that
+   * and nothing reasoning about launch cost noticed: `.onboarding__hero` is
+   * `inset: 0` with an opaque `--bg-chrome`, so the map spends first run
+   * behind a wall.
+   *
+   * MEASURED 2026-09-09 in pixels, on the built app at 390x844: every layer
+   * of the map screen painted `rgb(255, 0, 255)` by injected CSS, first run
+   * rendered as it normally does, the frame screenshotted and counted. The
+   * map screen was present and so was its canvas; magenta pixels in the
+   * frame, 0 of 329,160. desktop.css ran the same experiment in red on
+   * 2026-08-27 for a different reason and filed the answer under the scrim.
+   *
+   * A `document.elementFromPoint` grid was tried first and is the wrong
+   * instrument, which is worth recording because it looked like the right
+   * one: `.onboarding__hero` is `pointer-events: none`, so a hit test walks
+   * straight past the element whose opacity IS the question and reports
+   * whatever is behind it. It answers "what does a finger reach", never
+   * "what does an eye see".
+   *
+   * What that cost, on three cold runs of the stopwatch against 659598a8:
+   * 730-950 ms of MapLibre self time inside the window a hiker is tapping
+   * Skip, which those runs accepted after 3,721-3,848 ms against a 100 ms
+   * budget. The one thing it bought - "the map is warm the moment the steps
+   * finish" - a phone never collects: `activeTab` starts on Today, nothing
+   * in `handleOnboardingComplete` moves it, and `tabOverMap` covers the map
+   * on Today anyway. It is paid while the hiker is tapping and redeemed
+   * whenever they reach the Map tab, which is any time at all.
+   *
+   * So the map is built when somebody can see it, and warmed on the idle
+   * callback below when a session has just walked out of the steps - which
+   * is the moment the old comment was reaching for, at the point the thread
+   * is free rather than the point it is busiest.
+   */
+  // `entering` counted here until #1324 and no longer does; what the removal
+  // must not disturb is why it was qualified. It counts as true only once the
+  // preferences have been read: before that it is true on a launch with no
+  // mirror (the comment above), nothing is rendered on such a launch -
+  // `shellKnown` gates the tree below - and a latch set during that window
+  // would mount a map on a returning hiker's Today, which is exactly the
+  // launch the budget test keeps free. The warm-up effect below inherits that
+  // hazard whole, and answers it the same way.
+  //
+  // AND THE MAP WAITS FOR THE STORE TO ANSWER (#1301). `archivesRead` used to
+  // gate the whole tree, for one decision: the background the map is built
+  // around must be the downloaded one where there is one, or the map draws
+  // the live sheet for a beat, then throws itself away and rebuilds - a
+  // blink, and ~2 MB of somebody's data (the note at the render gate below
+  // has the history). That decision is the map's, so the wait is the map's:
+  // the tab bar and Today paint while the markers are still being read, and
+  // no map is built until every package has answered AND the record of the
+  // preferences (which names the background) has landed. `mapKept` is what
+  // keeps a built map up when the package set grows and `archivesRead` goes
+  // false again while the new cells' markers are read - the tree no longer
+  // unmounts for that, and neither does the map.
+  const [mapKept, setMapKept] = useState(false)
+  const mapNeededNow =
+    (isDesktop || activeTab === 'map') && preferencesLoaded && archivesRead
+  useEffect(() => {
+    if (mapNeededNow) setMapKept(true)
+  }, [mapNeededNow])
+
+  /**
+   * The map warmed once the entry steps are done (#1324), on the thread's own
+   * time.
+   *
+   * THE REF IS WHAT SCOPES THIS TO FIRST RUN. `entering` is false on every
+   * returning launch too, so the effect alone would build a map on a Today
+   * that never asked for one - the regression `App.loadBudget.test.tsx`
+   * exists to catch. The ref is set only while the steps are actually up, so
+   * "this session walked out of the entry steps" is a thing that happened
+   * rather than a thing that is merely true now. It is deliberately NOT
+   * state: nothing renders differently for it, and a re-render on the way out
+   * of onboarding is the last thing this window needs.
+   *
+   * `preferencesLoaded` guards the set for the reason the block above gives -
+   * `entering` is true before the record has answered, on a launch that
+   * renders nothing, and latching there would make every mirror-less
+   * returning launch look like a first run.
+   *
+   * On idle rather than on a frame, which is the opposite of the choice
+   * lib/useAfterFirstFrame.ts makes for the launch fetches and for the same
+   * reason read the other way: those change what a hiker READS, so they are
+   * worth a frame's delay and no more, while this changes only how long a tap
+   * on Map will take later. A map is the most expensive thing this app
+   * builds - 2,353 ms of blocking work on a loaded phone (App.loadBudget) -
+   * and it has no business competing with Today's first paint or with the
+   * archive download the size step just started. `requestIdleCallback` is
+   * absent in Safari, where the second's grace is the whole mechanism; the
+   * same fallback pair `preloadScreens` uses above.
+   *
+   * If a hiker beats the callback to the Map tab, `mapNeededNow` builds the
+   * map itself and this becomes a no-op through the `mapKept` guard - the tap
+   * is what it always was on a cold map, not slower for this.
+   */
+  const steppedThroughEntry = useRef(false)
+  useEffect(() => {
+    if (entering && preferencesLoaded) steppedThroughEntry.current = true
+  }, [entering, preferencesLoaded])
+  useEffect(() => {
+    if (entering || !steppedThroughEntry.current || mapKept) return
+    if (!preferencesLoaded || !archivesRead) return
+    const idle =
+      window.requestIdleCallback ??
+      ((callback: () => void) => setTimeout(callback, 1_000))
+    const cancel = window.cancelIdleCallback ?? clearTimeout
+    const handle = idle(() => setMapKept(true))
+    return () => cancel(handle as number)
+  }, [entering, preferencesLoaded, archivesRead, mapKept])
+
+  const mapMounted = mapNeededNow || mapKept
+
+  // Whether something is drawn OVER the held map right now - one of the
+  // full-screen flows (each is somewhere a hiker is typing or deciding, so
+  // it wins over any tab), or a tab screen on the form factors where that
+  // tab replaces the map. The return at the bottom renders these over the
+  // held-map wrapper; this pair of facts is computed up here because two
+  // hooks below need them, and hooks cannot sit under the render-time
+  // branches that build the actual screens.
+  const flowOpen =
+    authFlow !== null ||
+    collectingIdentity ||
+    reportingFailure ||
+    reportingClosure ||
+    reporting !== null
+  const tabOverMap =
+    !entering &&
+    (activeTab === 'more' ||
+      activeTab === 'plan' ||
+      (activeTab === 'today' && !isDesktop))
+  const mapShownNow = mapMounted && !flowOpen && !tabOverMap
+
+  // The map boundary's reset, counted in ARRIVALS at the map rather than in
+  // tab changes. With the map permanently mounted (#1081), a resetKey of
+  // `activeTab` would clear a caught map crash - and re-run the whole
+  // multi-second map build, hidden and inert - on every tab switch for the
+  // rest of the session. Keyed this way, a crashed map retries exactly once,
+  // when the hiker actually returns to it and can see the result - which is
+  // what the old unmount-per-tab structure did by accident.
+  const [mapArrivals, setMapArrivals] = useState(0)
+  const mapWasShown = useRef(false)
+  useEffect(() => {
+    if (mapShownNow && !mapWasShown.current) setMapArrivals((n) => n + 1)
+    mapWasShown.current = mapShownNow
+  }, [mapShownNow])
 
   /**
    * The sheets that get a card in the download window - which is not the same
@@ -988,6 +1919,14 @@ function App() {
   // below: freeing space is the app's own printed remedy, and #554 measured
   // that the browser's accounting may never notice on its own.
   const { bytes: availableBytes, refresh: refreshAvailableBytes } = useAvailableBytes()
+  // Every size this shell prints for a download comes from the published
+  // manifest where it carries one, and from the catalog's constants where it
+  // does not (#505) - see lib/usePublishedSizes.ts for why both are needed.
+  const publishedSizes = usePublishedSizes()
+  // Routes somebody published (#1284): the kept copy first, the bucket when
+  // there is signal, empty until an exporter writes any - see
+  // lib/useSuggestedHikes.ts and config.ts's SUGGESTED_HIKES_KEY.
+  const suggestedHikes = useSuggestedHikes(online, afterFirstFrame)
 
   /** One sheet as one state, however many archives are behind it. */
   const sheetStatus = useCallback(
@@ -995,10 +1934,16 @@ function App() {
       combineBackgroundStatus(
         offeredPackages(sheet).map((pkg) => ({
           status: archiveStatusFor(pkg.idbKey),
-          sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel),
+          // WITH the manifest, which this call omitted until #1167. The sheet's
+          // headline figure below has passed `publishedSizes` since #505, so
+          // the two were resolving the same archives from different sources -
+          // the clump from the bucket and this arithmetic from a constant -
+          // and the comment at the breakdown claiming they "cannot disagree"
+          // was true only while the constant happened to match.
+          sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel, publishedSizes),
         })),
       ),
-    [archiveStatusFor, detailLevel, hikingLevel],
+    [archiveStatusFor, detailLevel, hikingLevel, publishedSizes],
   )
 
   /** The first of this sheet's archives with something to report. One card
@@ -1060,15 +2005,204 @@ function App() {
    */
   const [preparingSheets, setPreparingSheets] = useState<readonly string[]>([])
 
+  // Which cells are on this phone (#557): the completion markers' answer,
+  // through the same hook as every sheet, never a second record kept beside
+  // them. Held as package keys as well, because that is what map/basemap.ts
+  // is asked in and what a stretch is priced against.
+  const heldCells = useMemo(
+    () =>
+      cellIndex === null
+        ? []
+        : cellIndex.cells.filter(
+            (cell) => archiveStatusFor(cellPackageKey(cell.name)).state === 'downloaded',
+          ),
+    [cellIndex, archiveStatusFor],
+  )
+  const contextHeld = archiveStatusFor(CONTEXT_PACKAGE_KEY).state === 'downloaded'
+  const heldPackageKeys = useMemo(() => {
+    const keys = new Set(heldCells.map((cell) => cellPackageKey(cell.name)))
+    if (contextHeld) keys.add(CONTEXT_PACKAGE_KEY)
+    return keys
+  }, [heldCells, contextHeld])
+
+  // The tile handler is not a component and cannot subscribe, so it is told
+  // - and told again the moment a cell lands or goes, which is what lets the
+  // next tile the map asks for come off the new archive with nothing rebuilt.
+  useEffect(() => {
+    setBasemapCells(cellIndex, heldPackageKeys)
+  }, [cellIndex, heldPackageKeys])
+
+  // The network's cells, the same way (#1257 stage 2): which are held is the
+  // markers' answer under NETWORK_CELLS' own keys, and map/networkTiles.ts is
+  // told so it can answer a tile from the stretch before it asks the bucket.
+  // Kept apart from the basemap's sets rather than merged: the two families
+  // share cell names and differ in what they cover, so one set would let a
+  // held basemap cell read as held network and draw nothing there.
+  const heldNetworkCells = useMemo(
+    () =>
+      networkCellIndex === null
+        ? []
+        : networkCellIndex.cells.filter(
+            (cell) =>
+              archiveStatusFor(cellPackageKey(cell.name, NETWORK_CELLS)).state ===
+              'downloaded',
+          ),
+    [networkCellIndex, archiveStatusFor],
+  )
+  const networkContextHeld =
+    archiveStatusFor(NETWORK_CELLS.contextPackageKey).state === 'downloaded'
+  const heldNetworkPackageKeys = useMemo(() => {
+    const keys = new Set(
+      heldNetworkCells.map((cell) => cellPackageKey(cell.name, NETWORK_CELLS)),
+    )
+    if (networkContextHeld) keys.add(NETWORK_CELLS.contextPackageKey)
+    return keys
+  }, [heldNetworkCells, networkContextHeld])
+  useEffect(() => {
+    setNetworkCells(networkCellIndex, heldNetworkPackageKeys)
+  }, [networkCellIndex, heldNetworkPackageKeys])
+
+  // Where the download ends, for the canvas: the outer edge of what is held,
+  // which is nothing at all on a phone holding no cells (lib/coverageCells.ts).
+  const coverageSeams = useMemo(
+    () => (cellIndex === null ? [] : seamEdges(heldCells, cellIndex.cellDegrees)),
+    [cellIndex, heldCells],
+  )
+
+  /**
+   * The cells under the hike the hiker says they are on (#558) - derived from
+   * lib/plannedHike.ts's two numbers, walked along the centerline, never
+   * picked off a list. Null while any of the three is missing: no hike, no
+   * trail line to walk it along, no index to place it in.
+   */
+  const stretchCells = useMemo(() => {
+    if (hike === null || trailIndex === null || cellIndex === null) return null
+    return cellsAlong(
+      cellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, cellIndex])
+
+  /**
+   * The network's cells under the same hike (#1257 stage 2), from ITS index -
+   * a different set from the basemap's over the same walk, because the
+   * network's cells exist only where some organization's trail does and the
+   * basemap's only along the corridor. Empty, not null, on a release without
+   * them: the stretch is still a stretch.
+   */
+  const stretchNetworkCells = useMemo(() => {
+    if (hike === null || trailIndex === null || networkCellIndex === null) return []
+    return cellsAlong(
+      networkCellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, networkCellIndex])
+
+  /** The stretch's packages: its cells of both families, and each context
+   *  they are legible through - fetched with the first piece, never offered
+   *  as a decision (features/OFFLINE_COVERAGE.md §6). One list, because a
+   *  hiker taking "the stretch I am walking" is taking the ground and every
+   *  trail on it as one decision (features/NEARBY_TRAILS.md §9). */
+  const stretchPackageKeys = useMemo(() => {
+    if (stretchCells === null || cellIndex === null) return []
+    const keys = stretchCells.map((cell) => cellPackageKey(cell.name))
+    if (cellIndex.context !== null) keys.push(CONTEXT_PACKAGE_KEY)
+    keys.push(
+      ...stretchNetworkCells.map((cell) => cellPackageKey(cell.name, NETWORK_CELLS)),
+    )
+    if (networkCellIndex?.context != null) keys.push(NETWORK_CELLS.contextPackageKey)
+    return keys
+  }, [stretchCells, cellIndex, stretchNetworkCells, networkCellIndex])
+
+  /** One state for the stretch, out of however many pieces it is - the same
+   *  join the sheets use, so "3 of 21 MB" means the same thing on both. */
+  const stretchStatus = useMemo(
+    () =>
+      combineBackgroundStatus(
+        stretchPackageKeys.map((key) => {
+          const artifact = downloadRequests.find(
+            (request) => request.packageKey === key,
+          )?.artifactKey
+          return {
+            status: archiveStatusFor(key),
+            sizeBytes: artifact === undefined ? null : (publishedSizes[artifact] ?? null),
+          }
+        }),
+      ),
+    [stretchPackageKeys, downloadRequests, archiveStatusFor, publishedSizes],
+  )
+
+  /** The missing pieces, in one tap; held ones are left alone. Resume is the
+   *  same call - the hook resumes a partial it is asked to start. */
+  const handleTakeStretch = useCallback(async () => {
+    const missing = stretchPackageKeys.filter(
+      (key) => archiveStatusFor(key).state !== 'downloaded',
+    )
+    if (missing.length === 0) return
+    // No canary: the trail line is already here, or there would be no
+    // stretch to derive. What the sheet's path clears, this clears too -
+    // the basemap source's verdict on the LAST copy of these bytes says
+    // nothing about the ones now arriving (#352).
+    setNotDrawing((current) => forgetPackages(current, [BASEMAP_PACKAGE.idbKey]))
+    await startPackages(missing)
+  }, [stretchPackageKeys, archiveStatusFor, startPackages])
+
+  /** Every piece of the stretch, and the context with them only when no
+   *  other held cell still needs it - it is shared ground, not the
+   *  stretch's own. */
+  const handleRemoveStretch = useCallback(async () => {
+    if (stretchCells === null) return
+    const keys: string[] = []
+    // Both families, each judged against its own held set (the two share
+    // cell names, so a basemap cell still needed is no reason to keep the
+    // network's context, and the other way round).
+    for (const part of [
+      {
+        cells: stretchCells,
+        held: heldCells,
+        context: cellIndex?.context ?? null,
+        family: BASEMAP_CELLS,
+      },
+      {
+        cells: stretchNetworkCells,
+        held: heldNetworkCells,
+        context: networkCellIndex?.context ?? null,
+        family: NETWORK_CELLS,
+      },
+    ]) {
+      const own = part.cells.map((cell) => cellPackageKey(cell.name, part.family))
+      const others = part.held.filter(
+        (cell) => !own.includes(cellPackageKey(cell.name, part.family)),
+      )
+      keys.push(...own)
+      if (others.length === 0 && part.context !== null)
+        keys.push(part.family.contextPackageKey)
+    }
+    await Promise.all(keys.map((key) => removePackage(key)))
+    refreshAvailableBytes()
+  }, [
+    stretchCells,
+    heldCells,
+    cellIndex,
+    stretchNetworkCells,
+    heldNetworkCells,
+    networkCellIndex,
+    removePackage,
+    refreshAvailableBytes,
+  ])
+
   // What is arriving right now, across every sheet, for the link that says so
   // (lib/downloadActivity.ts). Decided here rather than on either screen for
   // the reason the transfer itself lives here: the download outlives the
   // window it was started from and has to be reportable from the map and from
   // Settings alike, which are never both mounted. Off the SHEET statuses the
   // cards already render, so the footer's figure and the card's cannot
-  // disagree about the same download.
+  // disagree about the same download. The stretch counts as one more sheet
+  // for the same reason: it is started from the window and left running.
   const downloadActivity = activeDownload(
-    backgroundSheets.map(sheetStatus),
+    [...backgroundSheets.map(sheetStatus), stretchStatus],
     preparingSheets.length > 0,
   )
 
@@ -1088,12 +2222,178 @@ function App() {
     archiveDownloaded,
   )
 
+  // Whether the hiking sheet's tiles are on the phone AT ALL - the whole
+  // package, or any cell of it - which is what turns a failing basemap source
+  // into "your download is not drawing" rather than "you have no download"
+  // (lib/backgroundHealth.ts, #557).
+  const hikingTilesHeld = hikingSheetDownloaded || heldCells.length > 0
+
+  // What each whole-sheet archive declares it covers, off its own header -
+  // null until a finished archive exists to ask, exactly as archiveZooms is.
+  const basemapFootprint = useArchiveFootprint(
+    BASEMAP_PACKAGE.idbKey,
+    hikingSheetDownloaded,
+  )
+  const rasterFootprint = useArchiveFootprint(
+    CORRIDOR_BACKGROUND_PACKAGE.idbKey,
+    archiveDownloaded,
+  )
+
+  /**
+   * Everything downloaded, as ground (#557): every held cell's core bounds
+   * and each whole-sheet archive's header rectangle. Null - which `coverageAt`
+   * reads as unknown - until the store has answered for every package and
+   * every header has been read: a phone that has not finished reading its own
+   * markers must not be told it is outside a download it may well have.
+   */
+  const heldFootprints = useMemo<Footprint[] | null>(() => {
+    if (!archivesRead) return null
+    if (hikingSheetDownloaded && basemapFootprint === null) return null
+    if (archiveDownloaded && rasterFootprint === null) return null
+    const footprints: Footprint[] = heldCells.map(
+      ({ bounds: [west, south, east, north] }) => ({ west, south, east, north }),
+    )
+    if (basemapFootprint !== null) footprints.push(basemapFootprint)
+    if (rasterFootprint !== null) footprints.push(rasterFootprint)
+    return footprints
+  }, [
+    archivesRead,
+    hikingSheetDownloaded,
+    archiveDownloaded,
+    heldCells,
+    basemapFootprint,
+    rasterFootprint,
+  ])
+
   // A fix moves no camera - see CORRIDOR_BOUNDS. It is read for everything
   // else: the mile below, the direction of travel, the elevation ribbon.
   const fix = useMemo(() => {
     if (trailIndex === null || gps.status !== 'located') return null
     return locateOnTrail(trailIndex, gps.at)
   }, [trailIndex, gps])
+
+  // The mile alone, for every derivation below that reads nothing else.
+  //
+  // locateOnTrail answers with the nearest VERTEX's mile, so a wobble that
+  // stays closer to the same vertex than to any other keeps this value still -
+  // while `fix` itself is a fresh object per wobble, because offTrailFeet
+  // genuinely moves with every one. A memo keyed on `fix` where the mile is
+  // all it reads therefore recomputes once per GPS callback for an answer
+  // that has not changed, the whole time a stationary phone jitters (#1111).
+  // Key on this instead. A wobble that flips between two vertices still
+  // recomputes everything keyed here - that is a changed input, and how often
+  // it happens under canopy is #1100's unmeasured radius question.
+  const fixMile = fix?.mile ?? null
+
+  /** The hike a card is showing: the unsaved review outranks the store's
+   *  open one - they cannot both be on screen, and the review is newer. */
+  const cardDayHike =
+    dayHikeReview ??
+    (dayHikeStore.openId !== null
+      ? (dayHikeStore.hikes.find((hike) => hike.id === dayHikeStore.openId) ?? null)
+      : null)
+  /** The saved hike being followed (#1041), or null. */
+  const followingHike =
+    followingId === null
+      ? null
+      : (dayHikeStore.hikes.find((hike) => hike.id === followingId) ?? null)
+
+  /**
+   * The graph cells under the planned hike (#1257 stage 3) - `stretchCells`'s
+   * walk along the centerline, against the graph's own index. Its own memo
+   * because the slice is thousands of vertices and the rest of `graphWanted`
+   * moves with every fix.
+   */
+  const graphHikeCells = useMemo(() => {
+    if (hike === null || trailIndex === null || graphCellIndex === null) return []
+    return cellsAlong(
+      graphCellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, graphCellIndex])
+
+  /**
+   * The cells a day hike could be wanted in, for lib/useTrailGraph.ts to
+   * load: under the planned hike, under the fix, under the camera once it is
+   * past the seam (below it a tap cannot land within 150 ft of anything, and
+   * the corridor view would otherwise ask for every cell it shows), under
+   * every tap and stroke in the builder, and under the ends of the hike a
+   * card is showing or the hiker is following - a saved hike re-resolves
+   * from its coordinates, so its cells are what it needs to resolve at all.
+   * Cells are never unloaded, so this only ever adds.
+   */
+  const graphWanted = useMemo(() => {
+    if (graphCellIndex === null) return []
+    const runs: Array<ReadonlyArray<readonly [number, number]>> = [...graphAnchors]
+    if (gps.status === 'located') runs.push([[gps.at.lon, gps.at.lat]])
+    if (camera !== null && camera.zoom >= POI_PIN_MIN_ZOOM) runs.push([camera.center])
+    for (const shown of [cardDayHike, followingHike]) {
+      if (shown !== null) runs.push(shown.segments.flat().map((end) => end.coord))
+    }
+    return [
+      ...graphHikeCells,
+      ...cellsAlong(graphCellIndex.cells, runs, STRETCH_MARGIN_KM),
+    ]
+  }, [
+    graphCellIndex,
+    graphHikeCells,
+    graphAnchors,
+    gps,
+    camera,
+    cardDayHike,
+    followingHike,
+  ])
+
+  const { graphIndex, graphMerged, trailNetwork } = useTrailGraph({
+    online,
+    // #1117's gate, kept: with signal the cells wait for the trail line's
+    // own launch fetch, exactly as the whole graph did.
+    gate: trailFetchSettled,
+    cellIndex: graphCellIndex,
+    cellIndexSettled: graphCellState.settled,
+    cellIndexUnreachable: graphCellState.unreachable,
+    wanted: graphWanted,
+    attempt: graphAttempt,
+  })
+
+  /**
+   * Whether the attached index (`dayHikeIndex`) was built from a smaller
+   * graph than the one merged now - a cell landed since. Its edges are a
+   * prefix of the merged graph's (lib/trailGraphData.ts's append-only
+   * merge), so nothing resolved against it is wrong; it just does not reach
+   * the new cell. The companion effect further down replaces it.
+   */
+  const dayHikeIndexStale =
+    dayHikeIndex !== null &&
+    graphIndex !== null &&
+    dayHikeIndex.graph.edges.length !== graphIndex.graph.edges.length
+
+  /**
+   * Whether a tap at `at` falls in a graph cell this phone has not merged
+   * yet - the difference between "still arriving" and "not on a trail",
+   * which lib/dayHikeDraft.ts keeps as two sentences for a reason. The cell
+   * whose own bounds hold the point is the one asked, not its neighbours
+   * within the seam margin: every edge within 3 km of a seam is filed in
+   * both cells (pipeline/cut_trail_graph.py), so the core cell answers for
+   * everything under a tap in it.
+   */
+  const graphCellPendingAt = useCallback(
+    (at: { lon: number; lat: number }): boolean => {
+      if (graphCellIndex === null) return false
+      const loaded = new Set((graphMerged?.cells ?? []).map((cell) => cell.name))
+      return cellsAt(graphCellIndex.cells, at.lon, at.lat).some(
+        (cell) => !loaded.has(cell.name),
+      )
+    },
+    [graphCellIndex, graphMerged],
+  )
+
+  // The settled direction alone, for the same reason: the TRACKER holds its
+  // identity below the quarter-mile threshold (lib/hikeDirection.ts), but a
+  // memo needs only which way was settled, and a plain value cannot regress
+  // to keying on the object by accident.
+  const travelDirection = direction?.direction
 
   /**
    * Which miles this hiker has actually walked (#598's `visited`).
@@ -1114,7 +2414,7 @@ function App() {
    * - is a different feature and needs an explicit, dated decision about rule 2
    * before anybody builds it. This is not that, and does not become it.
    */
-  const [walked, setWalked] = useState<MileRange[]>(() => readWalked())
+  const [walked, setWalked] = useState<readonly MileRange[]>(() => readWalked())
   const previousWalkedMile = useRef<number | null>(null)
 
   // Today's slice of the same record (lib/passedToday.ts), for the Volunteer
@@ -1171,7 +2471,8 @@ function App() {
    * which. Trusting the plan over the observation would redefine "ahead" as
    * the way they are NOT going and warn about closures behind them, which is
    * the worse of the two failures. Telling them they are walking the wrong
-   * way is the wrong-way alert's job (#93, #247), not this line's.
+   * way was the wrong-way alert's job (#93, #247) before its removal - not
+   * this line's, and nothing has taken it on since.
    */
   const heading =
     direction?.direction ?? (hike === null ? undefined : plannedDirection(hike))
@@ -1188,8 +2489,18 @@ function App() {
    * silent for exactly the first quarter mile of a closed section, which is
    * where the warning matters most. closureBanner.ts owns that split.
    */
+  /** Each organization's own short name for the header's one line, off the
+   *  published registry (#1083). Memoized here rather than inside the banner
+   *  memo so it is built once per stewards change and not once per fix. */
+  const noticeOrg = useMemo(() => orgProviderFrom(stewards), [stewards])
+
+  /** Per-source attributions for the tapped-line sheet (#1142), from the
+   *  same stewards artifact the credit surfaces read - one memo per stewards
+   *  change, same shape as `noticeOrg` above. */
+  const trailSources = useMemo(() => trailSourceTableFrom(stewards), [stewards])
+
   const { closureAhead, advisoryAhead } = useMemo(() => {
-    if (fix === null) return { closureAhead: null, advisoryAhead: null }
+    if (fixMile === null) return { closureAhead: null, advisoryAhead: null }
 
     // Two sources compete for each line: OurHike's verified closures and the
     // ATC's own notices (#461). Nearest wins, which is the rule the two lane
@@ -1214,8 +2525,8 @@ function App() {
     // closure three miles ahead for 398 miles of walking. The rule is written
     // once per source (`closureLanes`, `atcUpdateLanes`) and the source tie is
     // broken here, the same way, for each lane.
-    const closureLane = closureLanes(placedClosures ?? [], fix.mile, heading)
-    const atcLane = atcUpdateLanes(atcUpdates, fix.mile, heading)
+    const closureLane = closureLanes(placedClosures ?? [], fixMile, heading)
+    const atcLane = atcUpdateLanes(atcUpdates, fixMile, heading)
 
     // Whichever source the hiker reaches first, in that source's own voice.
     // `<=` keeps ours first on an exact tie, which is arbitrary and has to be
@@ -1225,9 +2536,22 @@ function App() {
       atc: RankedAtcUpdate | null,
     ): string | null => {
       if (closure !== null && (atc === null || closure.distance <= atc.distance)) {
-        return closureBanner(closure.closure, fix.mile, heading, units)
+        return closureBanner(closure.closure, fixMile, heading, units)
       }
-      if (atc !== null) return atcUpdateBanner(atc.update, fix.mile, heading, units)
+      if (atc !== null) {
+        // The organization's own short name, off the registry rather than out
+        // of a string in lib/atcUpdates.ts (#1083). `provider` is the registry's
+        // short form - "ATC", "NYNJTC" - which is what a line read while
+        // walking needs, and it is theirs rather than an abbreviation this app
+        // invented.
+        return atcUpdateBanner(
+          atc.update,
+          fixMile,
+          heading,
+          noticeOrg(ATC_SOURCE_KEY),
+          units,
+        )
+      }
       return null
     }
 
@@ -1235,30 +2559,55 @@ function App() {
       closureAhead: pick(closureLane.specific, atcLane.specific),
       advisoryAhead: pick(closureLane.broad, atcLane.broad),
     }
-  }, [placedClosures, atcUpdates, fix, heading, units])
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [placedClosures, atcUpdates, fixMile, heading, units])
 
   /**
-   * Serious warnings between here and the end of the trail, counted.
+   * Every published report placed on the mile axis.
    *
    * Placing them is `placeAll`'s job (#244), which snaps lat/lon against this
    * same trail index where it can and falls back to the mile the reporting
    * phone recorded where it cannot - the case that used to be uncountable, a
    * report filed against a POI with no coordinates.
    *
+   * ITS OWN MEMO, BECAUSE NOTHING ABOUT IT DEPENDS ON THE HIKER (#1090). This
+   * ran inside `warningsAhead` below, whose deps list `fix` - so a phone
+   * sitting still on Today re-snapped every published report against the
+   * centerline once per GPS fix, computed an identical answer, and threw it
+   * away. The term is `R x mileOnTrail` where `R` is every verified public
+   * report ever published: `PUBLIC_REPORTS_SQL` (pipeline/export_conditions.py)
+   * has no time window, so `R` only goes up, and the phone paid it at the
+   * platform's fix cadence for as long as the app was open.
+   *
+   * Keyed on what the placement actually reads. `reports` is a fetched array
+   * and `trailIndex` is built once per download, so this recomputes when the
+   * conditions refresh or the corridor changes and at no other time.
+   *
+   * The gate on `fix` went with the split, which moves this pass EARLIER
+   * rather than adding one: a phone that never gets a fix now pays a single
+   * placement it used to skip, and any phone that gets one used to pay that
+   * same pass per fix forever.
+   */
+  const placedWarnings = useMemo(() => {
+    if (reports === null || trailIndex === null) return null
+    return placeAll(reports, trailIndex)
+  }, [reports, trailIndex])
+
+  /**
+   * Serious warnings between here and the end of the trail, counted.
+   *
    * `severity` filtering is `warningsOnRoute`'s job, so a report that a
    * moderator has not escalated cannot reach this line.
    */
   const warningsAhead = useMemo(() => {
     if (
-      reports === null ||
+      placedWarnings === null ||
       trailIndex === null ||
-      fix === null ||
+      fixMile === null ||
       heading === undefined
     ) {
       return null
     }
-
-    const placed = placeAll(reports, trailIndex)
 
     // Where the ROUTE ends, which is the phrase the banner uses. A declared
     // hike answers it exactly; without one the terminus is as far as "ahead"
@@ -1275,17 +2624,18 @@ function App() {
     const terminus = heading === 'NOBO' ? trailIndex.totalMiles : 0
     const routeEnd =
       declaredEnd !== null &&
-      (heading === 'NOBO' ? declaredEnd >= fix.mile : declaredEnd <= fix.mile)
+      (heading === 'NOBO' ? declaredEnd >= fixMile : declaredEnd <= fixMile)
         ? declaredEnd
         : terminus
 
     return routeBannerText(
-      warningsOnRoute(placed, { fromMile: fix.mile, toMile: routeEnd }).length,
+      warningsOnRoute(placedWarnings, { fromMile: fixMile, toMile: routeEnd }).length,
     )
-  }, [reports, trailIndex, fix, heading, hike])
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [placedWarnings, trailIndex, fixMile, heading, hike])
 
   /**
-   * The same closures on the canvas: a barred red band along each closed
+   * The same closures on the canvas: red barrier tape along each closed
    * stretch (lib/closureStyle.ts).
    *
    * Needs the centerline index and nothing else - no GPS fix, no direction.
@@ -1319,18 +2669,30 @@ function App() {
   }, [clubSections, highlights, trailIndex])
 
   /**
-   * The ATC's notices: bands, dots, the tapped sheet, the full list and the
-   * "new alerts" banner - chrome/atcNoticesPanel.tsx owns all of it (#327).
+   * Trail notices from every organization that publishes them: bands, dots,
+   * the tapped sheet, the full list and the "new notices" banner -
+   * chrome/noticesPanel.tsx owns all of it (#327, generalized in #1083).
    *
    * What is left here is the header's one line, which is a different
-   * question: `atcUpdateLanes` below ranks an ATC notice against a closure
-   * for the single sentence a walking hiker gets, and that comparison is the
-   * shell's precisely because neither feature can make it alone.
+   * question: `atcUpdateLanes` below ranks a notice against a closure for the
+   * single sentence a walking hiker gets, and that comparison is the shell's
+   * precisely because neither feature can make it alone.
+   *
+   * THE HEADER LINE IS STILL ATC-ONLY, and that is a fact about the data
+   * rather than an omission. That line says how far ahead something is, and
+   * only an `at_miles` notice carries a mile - every NYNJTC row is `unplaced`
+   * today (features/ORG_NOTICES.md §3), so there is no distance to print and
+   * inventing a lane for them would put a notice in the one place a walking
+   * hiker looks with nothing true to say about where it is. They reach a hiker
+   * through the list and the banner, which need no mile.
    */
-  const atc = useAtcNoticesPanel({
+  const atc = useNoticesPanel({
     updates: atcUpdates,
+    orgNotices,
     reviewedAt: atcReviewedAt,
+    stewards,
     trailIndex,
+    bbox,
     now,
   })
 
@@ -1353,30 +2715,40 @@ function App() {
     })
   }, [reports])
 
-  // Built from the POIs alone. The mile is added where the centerline index
-  // exists and simply omitted where it does not - searching for a shelter by
+  // Built from the POIs alone. The mile is added where the index has answered
+  // for it and simply omitted where it has not - searching for a shelter by
   // name needs no geometry, and gating the whole list on the index meant a
   // missing one silently emptied search while 800-odd POIs sat in memory.
   //
-  // `mileOnTrail` rather than `locateOnTrail` (#717). This memo wants the mile
-  // and reads nothing else, and `locateOnTrail` pays for a second search over
-  // the whole tread to answer a question about GPS fixes that a POI never
-  // asks. Measured 2026-08-15 on x86 over the corridor's 2,837 POIs: 975 ms in
-  // one synchronous memo, about half of it that discarded scan - and this runs
-  // on the launch after the trail index lands, which is the same moment the
-  // map is being built.
+  // THE MILES ARRIVE WITH THE INDEX, NOT FROM IT (#1192). This memo used to
+  // run `mileOnTrail` over every stored waypoint the moment the index landed:
+  // 2,837 of them when it was written, 16,949 after #1095, and on a
+  // 4x-throttled phone profile one task of 13 s on the thread every tab tap
+  // waits for. lib/useTrailData.ts now hands over `poiMiles`, one per
+  // waypoint in this same order, answered where the index is built - off this
+  // thread, and on the pipeline's axis simply each waypoint's published mile.
+  // Null while that is still coming, which renders as every mile unknown and
+  // fills in: the honest state of a waypoint nobody has placed yet.
+  // ONE PASS PER THING THAT ARRIVES (#1303). This is the pass Today's journal,
+  // the search rows and the ribbon all read, so it is built as soon as the
+  // waypoints land and rebuilt once when their miles do - the honest-unknown
+  // order the shell already keeps (lib/useTrailData.ts's poiMiles). Every
+  // OTHER full pass over the 16,949 waypoints is now conditional on something
+  // being on screen that reads it, which on a launch that lands on Today means
+  // none of them run: see `viewportPoints`, `hikePlaceOptions`,
+  // `disputedPoints` and `passedPlacesToday` below.
   const searchablePois: SearchablePoi[] = useMemo(
-    () =>
-      pois.map((poi) => ({
-        id: poi.id,
-        name: poi.name,
-        type: poi.type,
-        mile:
-          trailIndex === null
-            ? undefined
-            : (mileOnTrail(trailIndex, { lon: poi.lon, lat: poi.lat }) ?? undefined),
-      })),
-    [pois, trailIndex],
+    () => searchableFrom(pois, poiMiles),
+    [pois, poiMiles],
+  )
+  // The towns and trailheads the Find screen's field can resolve (#1284) -
+  // from the same downloaded waypoints, so the search needs no signal.
+  // The towns and trailheads the Find-a-hike field resolves against - a full
+  // pass over the waypoints, built only while that screen is up (#1303). It is
+  // the only reader, and a launch that lands on Today never opens it.
+  const hikePlaceOptions = useMemo(
+    () => (todayPage === 'find' ? hikePlaces(pois) : NO_HIKE_PLACES),
+    [todayPage, pois],
   )
 
   // What the tapped pin's card says - see cardDetail for why it is assembled
@@ -1529,12 +2901,31 @@ function App() {
    * derivations of one question is the disagreement this file's own comments
    * keep refusing elsewhere.
    */
+  /**
+   * #979's opener, reached through a ref because of WHERE this file puts
+   * things rather than because of anything about the feature.
+   *
+   * `useTappedLinePanel` is called high in this component and `startDayHikeAt`
+   * is defined ~450 lines below it, after the builder state it needs. Moving
+   * either would mean moving everything between them, which is #937's
+   * subject and not this change's to take on. The indirection is one hop and
+   * is stable across renders, so the sheet does not re-memo on every graph
+   * attach - which the direct callback would have caused anyway.
+   */
+  const startDayHikeAtRef = useRef<((at: { lon: number; lat: number }) => void) | null>(
+    null,
+  )
+  const startDayHikeLater = useCallback((at: { lon: number; lat: number }) => {
+    startDayHikeAtRef.current?.(at)
+  }, [])
+
   const line = useTappedLinePanel({
     spurs,
     pois,
     units,
     trailName: TRAIL_NAME,
     pace,
+    trailSources,
     walked,
     trailIndex,
     belowSeam,
@@ -1543,6 +2934,17 @@ function App() {
     highlights,
     elevation,
     onCloseLegend: closeLegend,
+    // #979's door. Offered only when the router could actually use the tap:
+    // a graph WITH its trail lines. Undefined otherwise, so the sheet renders
+    // no control rather than a dead one - LineSheet's own rule.
+    //
+    // `dayHikeIndex` rather than `graphIndex` is the whole guard. The
+    // geometry artifact is fetched when the builder opens, so a phone holding
+    // the topology alone cannot snap anything (#1093): seeding the draft from
+    // there would hand the hiker NETWORK_STILL_ARRIVING for the point they
+    // just tapped on a line they can see, which reads as the app breaking
+    // rather than as a download finishing.
+    onStartDayHikeAt: dayHikeIndex !== null ? startDayHikeLater : undefined,
   })
 
   /**
@@ -1557,30 +2959,22 @@ function App() {
    * drawing somewhere - the same rule the rest of this file keeps about 0,0.
    */
   const disputedPoints: DisputePoint[] = useMemo(() => {
-    if (disputes === null || disputes.length === 0) return []
+    // Map-only, so not built until there is a map to draw them on (#1303).
+    if (!mapMounted) return NO_DISPUTED_POINTS
+    if (disputes === null || disputes.length === 0) return NO_DISPUTED_POINTS
     const disputed = new Set(disputes.map((dispute) => dispute.poi_id))
     return pois
       .filter((poi) => disputed.has(poi.id))
       .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
   }, [disputes, pois])
 
+  // What the map draws, built only once there is a map (#1303,
+  // lib/legendContents.ts's mapPointsFrom). A phone landing on Today mounts no
+  // map at all (#1081's latch), and this pass allocated a point per waypoint
+  // on every one of those launches for a canvas that did not exist.
   const viewportPoints: MapPoint[] = useMemo(
-    () =>
-      pois.map((poi) => ({
-        id: poi.id,
-        type: poi.type,
-        lat: poi.lat,
-        lon: poi.lon,
-        confidence: poi.confidence,
-        // Carried through so the map can draw one pin per site (#524). Spread
-        // conditionally rather than assigned as possibly-undefined, so a POI
-        // from a pre-#523 download has no site keys at all rather than keys
-        // holding undefined - which `composeSites` reads identically, but which
-        // would show up in a snapshot as a claim about a site.
-        ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
-        ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
-      })),
-    [pois],
+    () => (mapMounted ? mapPointsFrom(pois) : NO_MAP_POINTS),
+    [mapMounted, pois],
   )
 
   // The elevation ribbon and the waypoint lanes (WIREFRAMES.md §1.3, §1.4),
@@ -1606,10 +3000,13 @@ function App() {
   // which stretch they are showing.
   const fixWindow = useMemo(
     () =>
-      elevation === null || fix === null
+      elevation === null || fixMile === null
         ? null
-        : ribbonWindow(elevation, fix.mile, direction?.direction),
-    [elevation, fix, direction],
+        : ribbonWindow(elevation, fixMile, travelDirection),
+    // Keyed on the mile and the settled direction, not the objects carrying
+    // them - see fixMile (#1111). The window slides with the mile, so holding
+    // its identity while the mile holds is what lets `ribbon` below hold too.
+    [elevation, fixMile, travelDirection],
   )
 
   /** The lanes' copy of the tier styling (#759's "highest-value surface"):
@@ -1627,13 +3024,15 @@ function App() {
   )
 
   /**
-   * Every POI whose position is known on BOTH mile scales (#755) - the
-   * published pipeline mile (#753) and the client index's own, which
-   * `searchablePois` has already paid `mileOnTrail` for. Zipped by index:
-   * that memo maps over `pois` one to one.
+   * How a client-index mile becomes a pipeline mile (#755), and the reverse.
    *
-   * Empty on a download that predates #753, which is `anchoredMile`'s cue to
-   * refuse - see lib/route.ts for the honest fallback that follows.
+   * On a release that publishes the vertex miles (#1192) the two are one
+   * scale and this is lib/route.ts's identity anchors. Otherwise it is every
+   * POI whose position is known on BOTH scales - the published mile (#753)
+   * and the one the index placed it at, which `searchablePois` carries in the
+   * same order. Empty on a download that predates #753, which is
+   * `anchoredMile`'s cue to refuse - see lib/route.ts for the honest fallback
+   * that follows.
    */
   /**
    * How long the trail is, on the pipeline's own axis - the far end of the
@@ -1650,16 +3049,19 @@ function App() {
     return elevation.distanceMi[elevation.distanceMi.length - 1]
   }, [elevation])
 
-  const mileAnchors: MileAnchor[] = useMemo(
-    () =>
-      pois.flatMap((poi, i) => {
-        const clientMile = searchablePois[i]?.mile
-        return poi.mile !== undefined && clientMile !== undefined
-          ? [{ mile: poi.mile, clientMile }]
-          : []
-      }),
-    [pois, searchablePois],
-  )
+  const mileAnchors: readonly MileAnchor[] = useMemo(() => {
+    // One axis, one anchor (#1192): on a release that publishes the vertex
+    // miles the index IS the pipeline's scale, and lib/route.ts's identity
+    // anchors say so exactly. The pairwise anchors below are for the release
+    // that does not, where the index was measured here.
+    if (trailIndex?.onPipelineAxis) return SAME_AXIS_ANCHORS
+    return pois.flatMap((poi, i) => {
+      const clientMile = searchablePois[i]?.mile
+      return poi.mile !== undefined && clientMile !== undefined
+        ? [{ mile: poi.mile, clientMile }]
+        : []
+    })
+  }, [trailIndex, pois, searchablePois])
 
   // Where the hiker is on the pipeline's own mile axis, for the entrance's
   // "where I am" door and "call it a day where you are". Null without a fix
@@ -1667,9 +3069,10 @@ function App() {
   // pipeline-scale boundaries is the exact mixed measurement lib/route.ts
   // exists to prevent.
   const gpsPlanMile = useMemo(() => {
-    if (fix === null) return null
-    return anchoredMile(fix.mile, mileAnchors)
-  }, [fix, mileAnchors])
+    if (fixMile === null) return null
+    return anchoredMile(fixMile, mileAnchors)
+    // Keyed on the mile, not the fix - see fixMile (#1111).
+  }, [fixMile, mileAnchors])
 
   /** The volunteer workdays on the map and the sheet over a tapped one -
    *  chrome/workdayPanel.tsx owns both (#327). Placed here rather than beside
@@ -1724,7 +3127,7 @@ function App() {
     // `sheetOpen` instead of this line.
     atc.sheetOpen ||
     workday.sheetOpen
-  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost })
+  useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost, ready: afterFirstFrame })
 
   /**
    * The trip the Plan tab is showing, and its plan (#787). Everything below
@@ -1783,6 +3186,766 @@ function App() {
     })
   }, [])
 
+  /** Close the pick sheet without picking - the mode goes back to Day hike,
+   *  because a long-hike state with no hike in it is every screen varying to
+   *  an empty answer. */
+  /**
+   * Closing the pick sheet without picking.
+   *
+   * REVERTS THE MODE ONLY WHERE THERE IS NOTHING TO GO BACK TO (#1329).
+   * The handoff's deliberate exception - "close this and you're back on Day
+   * hike" - is about the sheet's FIRST job: Long hike means "the hike I'm
+   * on", and cancelling before there is one would leave every screen varying
+   * to an empty answer.
+   *
+   * Since the Plan band opens the same sheet as a SWITCH, that argument
+   * stops applying the moment a hike is active. Closing then is a hiker
+   * deciding to stay on the hike they are already on, and reverting to Day
+   * hike would be the app punishing them for looking - and it would say so
+   * only in the lede, which the sheet now varies for exactly this reason.
+   */
+  const handleCancelHikePick = useCallback(() => {
+    setHikeSheet(null)
+    setHikeDraft(null)
+    if (tripStore.activeHikeId === null) applyHikerMode('day')
+  }, [applyHikerMode, tripStore.activeHikeId])
+
+  /** Switch which long hike the app is on - the pick sheet, opened where a
+   *  hike is already active (#1329). */
+  const handleSwitchHike = useCallback(() => {
+    setHikeSheet('pick')
+  }, [])
+
+  /**
+   * Move a section into the hike, or out of it (#1367).
+   *
+   * `unassignTrip` has been in the store since #788 with no caller at all,
+   * so a section could join a hike - two ways since #1344 - and never leave
+   * one. The only escape was "Forget this hike", which ungroups EVERY
+   * section in it: a sledgehammer for a one-row mistake, and the asymmetry
+   * `unassignTrip`'s own docstring warns about ("ungrouping is not deleting").
+   *
+   * Neither touches the section itself. `assignTrip` releases it from
+   * whichever hike had it, because a section belongs to at most one
+   * (SEGMENTS.md's tree has one parent per node), and `unassignTrip` takes
+   * it out of whatever holds it. The trip, its days and its walking are
+   * untouched either way - which is the whole reason this is safe to offer
+   * on a row rather than behind a confirm.
+   */
+  const handleAddSectionToHike = useCallback(
+    (tripId: string) => {
+      applyTripStore((store) =>
+        store.activeHikeId === null
+          ? store
+          : assignTrip(store, store.activeHikeId, tripId),
+      )
+    },
+    [applyTripStore],
+  )
+
+  const handleTakeSectionOut = useCallback(
+    (tripId: string) => {
+      applyTripStore((store) => unassignTrip(store, tripId))
+    },
+    [applyTripStore],
+  )
+
+  /**
+   * PLANNING A SECTION WITHOUT LEAVING THE HIKE ROOM (#1344).
+   *
+   * The room's primary used to be `routeBuilder.openRouteBuilder`, whose
+   * first act is `setActiveTab('map')`. The ask was "that content should
+   * live on the same page", and the answer is not a second route builder:
+   * `chrome/SectionPlanner.tsx`'s header has the argument, but in short, the
+   * two ends come from the route builder's OWN stop picker and the days from
+   * `PlanTargetSheet`, which is a form rather than a map surface. Both
+   * already exist and both already run anywhere.
+   *
+   * `null` is closed; an object with two nullable ends is open. The ends are
+   * `PlaceRef`s for the same reason a hike's points are (#788's rule): a
+   * name and a mile travel together so the row can print a place rather than
+   * a number.
+   */
+  const [sectionDraft, setSectionDraft] = useState<{
+    from: PlaceRef | null
+    to: PlaceRef | null
+  } | null>(null)
+  /** Which end the picker is naming, or null. */
+  const [sectionPointAt, setSectionPointAt] = useState<'from' | 'to' | null>(null)
+
+  const handlePlanSection = useCallback(() => {
+    setSectionDraft({ from: null, to: null })
+    setSectionPointAt(null)
+  }, [])
+
+  const handleCancelSection = useCallback(() => {
+    setSectionDraft(null)
+    setSectionPointAt(null)
+  }, [])
+
+  const handleSectionPointChosen = useCallback(
+    (point: { mile: number; poiId?: string; name?: string }) => {
+      const next: PlaceRef = {
+        mile: point.mile,
+        ...(point.poiId === undefined ? {} : { poiId: point.poiId }),
+        ...(point.name === undefined ? {} : { name: point.name }),
+      }
+      setSectionDraft((draft) =>
+        draft === null || sectionPointAt === null
+          ? draft
+          : { ...draft, [sectionPointAt]: next },
+      )
+      setSectionPointAt(null)
+    },
+    [sectionPointAt],
+  )
+
+  /**
+   * The laid-out section, kept AND put on the hike.
+   *
+   * The second half is the gap #1329's body named and left open: nothing in
+   * the app put a planned section into a hike, so one laid out from the hike
+   * room's own primary landed nowhere near the hike, and the room had to
+   * show it on a separate shelf to avoid hiding it. Planned from inside the
+   * hike, it belongs to the hike - `assignTrip` has said so since #788 and
+   * had exactly one caller before this.
+   *
+   * Not a one-way door, which was the reason for not doing it automatically
+   * out of the route builder: this one is the hiker naming two ends inside
+   * their hike's own room, which is as explicit as an intent gets.
+   */
+  const handleLayOutSection = useCallback(
+    (plan: HikePlan) => {
+      applyTripStore((store) => {
+        const added = addTrip(store, plan)
+        const id = added.openId
+        return id === null || store.activeHikeId === null
+          ? added
+          : assignTrip(added, store.activeHikeId, id)
+      })
+      setSectionDraft(null)
+      setSectionPointAt(null)
+    },
+    [applyTripStore],
+  )
+
+  /**
+   * Give the hike a different name (#1344).
+   *
+   * `renameHike` has been in the store since #788 and nothing has ever
+   * called it, so every hike has kept the "A new long hike" that
+   * `handleNewHike` invents at creation - on the pick sheet, in Today's
+   * chrome, in the Plan band and in the sidebar, all four saying the same
+   * nothing. An empty name is not refused here because the store does not
+   * store one: `renameHike` keeps the old name rather than writing a blank.
+   */
+  const handleRenameHike = useCallback(
+    (name: string) => {
+      if (tripStore.activeHikeId === null) return
+      const id = tripStore.activeHikeId
+      applyTripStore((store) => renameHike(store, id, name))
+    },
+    [applyTripStore, tripStore.activeHikeId],
+  )
+
+  const handlePickHike = useCallback(
+    (hikeId: string) => {
+      applyTripStore((store) => setActiveHike(store, hikeId))
+      setHikeSheet(null)
+      // A finished hike opens its RECORD rather than its day: there is no
+      // next day on it, and landing a hiker on a Today screen with nothing
+      // planned would be the app pretending the walk is still going.
+      const picked = tripStore.hikes.find((hike) => hike.id === hikeId)
+      if (picked?.status === 'finished') setFinishScreen('record')
+    },
+    [applyTripStore, tripStore.hikes],
+  )
+
+  /** Start a new one. The draft is two unnamed points rather than none, so
+   *  the list has the shape of the thing being built from the first frame -
+   *  a hiker looking at an empty box has to guess what goes in it. */
+  /** "Add a stretch you remember" - the recorded-walk flow (#789), which
+   *  already exists behind the planning sheet's third door. Setting up is
+   *  left rather than layered under it: two full screens over each other is
+   *  a back button nobody can predict. */
+  const handleRecordStretchFromSetup = useCallback(() => {
+    setHikeSheet(null)
+    setPlanKindOpen(true)
+  }, [])
+
+  const handleNewHike = useCallback(() => {
+    setHikeDraft({
+      id: crypto.randomUUID(),
+      name: 'A new long hike',
+      type: 'section',
+      trailId: DEFAULT_TRAIL_ID,
+      points: [],
+      status: 'planning',
+      tripIds: [],
+    })
+    setHikeSheet('setup')
+  }, [])
+
+  /**
+   * Editing the draft's points.
+   *
+   * The stop picker this opens is the route builder's own
+   * (`chrome/RouteStopPicker.tsx`), which is what the handoff asks for and
+   * what stops a second stop editor existing: a point on a hike and a stop
+   * on a route are the same act - naming somewhere on the centerline - and
+   * two pickers would drift into naming it two different ways.
+   *
+   * Held here rather than inside the screen because the picker is a sheet
+   * the shell owns, and a screen that opened it would have to own the sheet
+   * too.
+   */
+  const [hikePointAt, setHikePointAt] = useState<number | null>(null)
+
+  /** Name the hike being set up (#1344). The DRAFT's name, not the store's:
+   *  nothing is kept until "Start this long hike", so this is one field of
+   *  the same held draft the points live in. */
+  const handleRenameDraft = useCallback((name: string) => {
+    setHikeDraft((draft) => (draft === null ? draft : { ...draft, name }))
+  }, [])
+
+  const handleEditHikePoint = useCallback((index: number) => {
+    setHikePointAt(index)
+  }, [])
+
+  /**
+   * Where the picker measures from, and which way.
+   *
+   * Appending measures from the last point; editing one measures from the
+   * point before it. Null at the very first point, where there is nothing to
+   * measure from yet and the distance door says so itself.
+   *
+   * The direction is the LAST LEG's, not the hike's - the same rule the list
+   * prints, applied to the question "which way is a day's walk from here".
+   * A hike that has turned around is heading the other way now, and offering
+   * distances up-trail after a turn would be measuring from the wrong end.
+   */
+  const previousHikePoint = useMemo(() => {
+    if (hikeDraft === null || hikePointAt === null) return null
+    const at = hikePointAt < 0 ? hikeDraft.points.length : hikePointAt
+    const before = hikeDraft.points[at - 1]
+    if (before === undefined) return null
+    return { mile: before.mile, label: stopLabel(before) }
+  }, [hikeDraft, hikePointAt])
+
+  const hikePointSouth = useMemo(() => {
+    if (hikeDraft === null || hikePointAt === null) return false
+    const at = hikePointAt < 0 ? hikeDraft.points.length : hikePointAt
+    const before = hikeDraft.points[at - 1]
+    const twoBack = hikeDraft.points[at - 2]
+    if (before === undefined || twoBack === undefined) return false
+    return before.mile < twoBack.mile
+  }, [hikeDraft, hikePointAt])
+
+  const handleAddHikePoint = useCallback(() => {
+    setHikePointAt(-1)
+  }, [])
+
+  /** Take the last point back, one at a time - `RouteStopsPanel`'s undo, on
+   *  a shorter list. */
+  const handleUndoHikePoint = useCallback(() => {
+    setHikeDraft((draft) =>
+      draft === null || draft.points.length === 0
+        ? draft
+        : { ...draft, points: draft.points.slice(0, -1) },
+    )
+  }, [])
+
+  /**
+   * A point chosen in the picker, written into the draft.
+   *
+   * `-1` appends; anything else replaces in place. The reference travels
+   * with it - `poiId` and the name as resolved - so the point re-resolves
+   * later like every other one rather than freezing today's mile.
+   */
+  const handleHikePointChosen = useCallback(
+    (point: { mile: number; poiId?: string; name?: string }) => {
+      setHikeDraft((draft) => {
+        if (draft === null) return draft
+        const next = {
+          mile: point.mile,
+          ...(point.poiId === undefined ? {} : { poiId: point.poiId }),
+          ...(point.name === undefined ? {} : { name: point.name }),
+        }
+        const at = hikePointAt
+        const points =
+          at === null || at < 0
+            ? [...draft.points, next]
+            : draft.points.map((existing, index) =>
+                index === at
+                  ? {
+                      ...next,
+                      ...(existing.date === undefined ? {} : { date: existing.date }),
+                    }
+                  : existing,
+              )
+        return { ...draft, points }
+      })
+      setHikePointAt(null)
+    },
+    [hikePointAt],
+  )
+
+  /**
+   * "CHOOSE ON THE MAP", ARMED (#1329).
+   *
+   * The door was in the picker from the day the set-up screen shipped and
+   * was wired to `() => setHikePointAt(null)` - it closed the picker and did
+   * nothing else, so a hiker who took it watched the screen go back one step
+   * and place no point. It could not have done anything else as built: the
+   * set-up screen was a `flowScreen`, which hides the map subtree and makes
+   * it inert, so there was no map behind it to tap.
+   *
+   * Two things had to change together, which is why this and the window are
+   * one issue rather than two. The window is the first: the set-up screen
+   * is an overlay now, so the map underneath stays mounted. This is the
+   * second - the tap itself, which is the ROUTE BUILDER'S tap, at a
+   * different grain.
+   *
+   * WHY IT MOVES TO THE MAP TAB. The map is only drawn where nothing else
+   * has taken the screen: on Plan, on More and on a phone's Today the shell
+   * holds it hidden and inert (`.app__map-held`), and a "tap the trail" bar
+   * over a hidden map is the same dead door in a new place. Long hikes are
+   * set up from the mode switch, which lives on Today and in Settings, so
+   * that is the common case rather than the corner one. Going to the map is
+   * the honest version: the hiker asked to choose on the map, so the map is
+   * what they get, with the window standing aside behind the bar.
+   *
+   * The window is HELD OPEN behind it (`--stood-aside`, visibility only) and
+   * not unmounted, because it is holding a draft nobody has saved. Taking
+   * one tap must not be able to cost somebody the four points they already
+   * described.
+   */
+  const [hikePointOnMap, setHikePointOnMap] = useState(false)
+  /** The last map tap was off the corridor - `RouteMapPickBar`'s own words
+   *  for it, said where the tap happened rather than in the window behind. */
+  const [hikePointRefusedTap, setHikePointRefusedTap] = useState(false)
+
+  const handleHikePointOnMap = useCallback(() => {
+    setHikePointOnMap(true)
+    setHikePointRefusedTap(false)
+    setActiveTab('map')
+  }, [])
+
+  /**
+   * A point placed by tapping the trail.
+   *
+   * `handleStopMapTap`'s editor branch at the hike's grain, and deliberately
+   * the same three steps in the same order, because the two are describing
+   * one act: locate the tap on the centerline, re-anchor the mile against
+   * the downloaded artifacts' own numbering (`anchoredMile`), then name it
+   * where a real stop is close enough to be named. A hike built by tapping
+   * reads as places rather than as mile markers wherever it can, which is
+   * the same courtesy the route entrance's tap does.
+   *
+   * REFUSES RATHER THAN CORRECTS, per `plannedHike()`'s rule and
+   * lib/trailPosition.ts's: past `MAX_OFF_TRAIL_MILES` there is no honest
+   * mile to give the tap, and the bar says so where the finger landed
+   * instead of the window quietly placing a point somewhere plausible.
+   */
+  const handleHikePointMapTap = useCallback(
+    (at: { lon: number; lat: number }) => {
+      if (trailIndex === null) return
+      const located = locateOnTrail(trailIndex, at)
+      if (located === null) {
+        setHikePointRefusedTap(true)
+        return
+      }
+      setHikePointRefusedTap(false)
+      const clientMile = located.mile
+      const mile = anchoredMile(clientMile, mileAnchors) ?? clientMile
+      const snapped = nearestStop(pois, mile)
+      handleHikePointChosen({
+        mile: snapped?.mile ?? mile,
+        ...(snapped?.name === undefined ? {} : { name: snapped.name }),
+        ...(snapped?.poiId === undefined ? {} : { poiId: snapped.poiId }),
+      })
+      setHikePointOnMap(false)
+    },
+    [trailIndex, mileAnchors, pois, handleHikePointChosen],
+  )
+
+  /** Back to the picker's search screen, having placed nothing. */
+  const handleCancelHikePointOnMap = useCallback(() => {
+    setHikePointOnMap(false)
+    setHikePointRefusedTap(false)
+  }, [])
+
+  /** The long hike the app is in, or null. */
+  const activeHike = useMemo(() => activeHikeOf(tripStore), [tripStore])
+
+  /** Whether the day screen is open over the hike (#1317). */
+  const [hikeDayOpen, setHikeDayOpen] = useState(false)
+
+  /**
+   * The last day this phone had a fix on the trail (#1317), for the resume
+   * offer's "noticed" trigger.
+   *
+   * Read once at mount and kept in state, then written forward as fixes
+   * land - `noteOnTrail` writes only when the day changes, so a hiker
+   * walking for nine hours pays one IndexedDB write rather than thousands.
+   */
+  const [lastCorridorDay, setLastCorridorDay] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    void loadLastOnTrail().then((day) => {
+      if (live) setLastCorridorDay(day)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  useEffect(() => {
+    // A mile on the trail is the whole test: this records THAT the phone was
+    // on the trail, never where, which is the minimum the offer needs.
+    if (fixMile === null || fixMile === undefined) return
+    const today = localDay(now)
+    if (lastCorridorDay === today) return
+    void noteOnTrail(today).then(setLastCorridorDay)
+  }, [fixMile, now, lastCorridorDay])
+
+  /**
+   * The day hikes offerable to the active hike, with the ones that are not
+   * carried WITH THEIR REASON rather than hidden (#1317).
+   *
+   * Hiding an ineligible walk would leave a hiker hunting for something they
+   * can see on the day-hike list one screen away; a dead button would teach
+   * them the app is broken. So each says which it is - chrome/LineSheet.ts's
+   * rule, applied here.
+   */
+  const dayHikeCandidates = useMemo((): DayHikeCandidate[] => {
+    if (activeHike === null) return []
+    const bounds = hikeBounds(activeHike, pois)
+    const already = new Set(activeHike.tripIds)
+
+    return dayHikeStore.hikes
+      .filter((dayHike) => !already.has(dayHike.id))
+      .map((dayHike) => {
+        const stretch = trailIndex === null ? null : dayHikeOnTrail(dayHike, trailIndex)
+        const eligible = stretch !== null && overlaps(stretch, bounds)
+        return {
+          id: dayHike.id,
+          name: dayHike.name,
+          eligible,
+          meta: eligible
+            ? [
+                formatDistance(dayHike.figures.miles, units),
+                dayHike.date === null ? null : `walked ${dayHike.date}`,
+                `mi ${mileMarker(stretch.fromMile)}–${mileMarker(stretch.toMile)} on this trail`,
+              ]
+                .filter((part) => part !== null)
+                .join(' · ')
+            : trailIndex === null
+              ? 'No trail data on this phone yet, so nothing can be placed on the trail.'
+              : 'None of this walk is on this hike’s trail.',
+        }
+      })
+  }, [activeHike, pois, dayHikeStore.hikes, trailIndex, units])
+
+  /** Put a day hike in the hike. `assignTrip` refuses an id the store does
+   *  not hold, so a walk that vanished between the sheet opening and the tap
+   *  changes nothing rather than creating an empty section. */
+  const handleAddDayHikeToHike = useCallback(
+    (id: string) => {
+      if (activeHike === null) return
+      applyTripStore((store) => assignTrip(store, activeHike.id, id))
+      setAddDayHikeOpen(false)
+    },
+    [activeHike, applyTripStore],
+  )
+
+  /**
+   * Which of the finish screens is open (#1317).
+   *
+   * `'finish'` is the celebratory one, offered rather than declared - a
+   * hiker at the terminus with no fix must still be able to say so
+   * themselves, so nothing here opens it without a tap. `'record'` is the
+   * hike as it lives in Plan afterwards, and `'share'` is over either.
+   */
+  const [finishScreen, setFinishScreen] = useState<'finish' | 'record' | 'share' | null>(
+    null,
+  )
+
+  /**
+   * The facts the finish screen, the record and the share card all read.
+   *
+   * ONE derivation for three surfaces, deliberately: they print the same
+   * hike, and three separate readings of the store is how the card a hiker
+   * sends somebody comes to disagree with the screen they sent it from.
+   */
+  const finishedFacts = useMemo(() => {
+    if (activeHike === null) return null
+    const figures = hikeFigures(activeHike, tripStore.trips, pois)
+    const mine = activeHike.tripIds
+      .map((id) => tripStore.trips.find((trip) => trip.id === id))
+      .filter((trip) => trip !== undefined)
+    const dates = mine
+      .flatMap((trip) => trip.plan.days.map((day) => day.date))
+      .filter((date) => date !== undefined)
+      .sort()
+
+    return {
+      hike: activeHike,
+      figures,
+      sections: mine,
+      startedOn: dates[0] ?? null,
+      // The hike's own finish date where it has one; otherwise the last day
+      // anything in it was dated. Never today's date as a fallback - that
+      // would put a date on a finish nobody recorded.
+      finishedOn: activeHike.finishedOn ?? dates[dates.length - 1] ?? null,
+      directions: hikeLegs(activeHike, pois).map((leg) => leg.direction),
+    }
+  }, [activeHike, tripStore.trips, pois])
+
+  /** The step-away sheet, and whether its one destructive door is armed. */
+  const [stepAwayOpen, setStepAwayOpen] = useState(false)
+  const [confirmingForget, setConfirmingForget] = useState(false)
+  /** Hikes whose resume offer this session has already made. Per hike, not
+   *  global: two hikes are two different absences (lib/hikeResume.ts). */
+  const [resumeDismissed, setResumeDismissed] = useState<readonly string[]>([])
+  const [addDayHikeOpen, setAddDayHikeOpen] = useState(false)
+
+  const closeStepAway = useCallback(() => {
+    setStepAwayOpen(false)
+    // Never leave a half-armed confirm behind for the next time it opens.
+    setConfirmingForget(false)
+  }, [])
+
+  const handlePauseHike = useCallback(() => {
+    if (activeHike === null) return
+    // The mile the hiker stopped at, from position rather than from a
+    // typed number - and the hike's own last point when there is no fix,
+    // which is the honest fallback: it is where they said they were going.
+    const at = fixMile ?? hikeEnds(activeHike, pois).low?.mile ?? 0
+    applyTripStore((store) => pauseHike(store, activeHike.id, at, localDay(now)))
+    closeStepAway()
+  }, [activeHike, fixMile, pois, applyTripStore, now, closeStepAway])
+
+  const handleResumeHike = useCallback(() => {
+    if (activeHike === null) return
+    applyTripStore((store) => resumeHike(store, activeHike.id))
+    setResumeDismissed((seen) => [...seen, activeHike.id])
+  }, [activeHike, applyTripStore])
+
+  /** Leave the plan exactly as it is - which is what doing nothing does too,
+   *  and the point of the button is that a hiker can say so and stop being
+   *  asked rather than having to ignore a card. */
+  const handleLeaveHikePlan = useCallback(() => {
+    if (activeHike === null) return
+    setResumeDismissed((seen) => [...seen, activeHike.id])
+  }, [activeHike])
+
+  const handleTurnHikeAround = useCallback(() => {
+    if (activeHike === null) return
+    const at = fixMile ?? hikeEnds(activeHike, pois).low?.mile ?? 0
+    applyTripStore((store) => turnHikeAround(store, activeHike.id, at))
+    closeStepAway()
+  }, [activeHike, fixMile, pois, applyTripStore, closeStepAway])
+
+  const handleFinishHike = useCallback(() => {
+    if (activeHike === null) return
+    applyTripStore((store) => finishHike(store, activeHike.id, localDay(now)))
+    closeStepAway()
+    // Offered, never declared - and this IS the hiker saying so, so the
+    // screen follows the tap rather than appearing on its own.
+    setFinishScreen('finish')
+  }, [activeHike, applyTripStore, now, closeStepAway])
+
+  /** First press arms, second press forgets. Never a swipe - see
+   *  chrome/StepAwaySheet.tsx. */
+  const handleForgetHike = useCallback(() => {
+    if (activeHike === null) return
+    if (!confirmingForget) {
+      setConfirmingForget(true)
+      return
+    }
+    applyTripStore((store) => removeHike(store, activeHike.id))
+    closeStepAway()
+    // The hike is gone, so the long-hike state has nothing to mean.
+    applyHikerMode('day')
+  }, [activeHike, confirmingForget, applyTripStore, closeStepAway, applyHikerMode])
+
+  /**
+   * What Today says about the hike leading it.
+   *
+   * Built here, once, so the Today card and the day screen cannot come to
+   * describe the same day differently - the alert sentences' own rule, at a
+   * different grain.
+   */
+  const longHikeToday = useMemo((): LongHikeToday | null => {
+    if (activeHike === null || hikerMode !== 'long') return null
+    const today = localDay(now)
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, today)
+    const ends = hikeEnds(activeHike, pois)
+
+    const offer = resumeOffer(activeHike, lastCorridorDay, today, resumeDismissed)
+    const paused = pausedDays(activeHike, today)
+
+    return {
+      name: activeHike.name,
+      // The name IS the door (#1344), and only where the door leads
+      // somewhere: with one hike kept, a sheet offering that same hike back
+      // is a control that does nothing.
+      ...(tripStore.hikes.length > 0 ? { onSwitch: handleSwitchHike } : {}),
+      figures: hikeFiguresLine(activeHike, tripStore.trips, pois, units),
+      dayNumber: dayNumber(tripStore.trips, activeHike.tripIds, today),
+      awayLine:
+        activeHike.status !== 'paused'
+          ? null
+          : [
+              paused === null ? 'paused' : `paused ${paused} days`,
+              activeHike.pausedAtMile === undefined
+                ? null
+                : `last at mi ${mileMarker(activeHike.pausedAtMile)}`,
+            ]
+              .filter((part) => part !== null)
+              .join(' · '),
+      resume:
+        offer === null
+          ? null
+          : {
+              dated: datedDaysAhead(
+                activeHike.tripIds
+                  .map((id) => tripStore.trips.find((trip) => trip.id === id))
+                  .filter((trip) => trip !== undefined)
+                  .map((trip) => trip.plan),
+                today,
+              ),
+              // Empty until the closure and staleness feeds are scoped to
+              // this hike's stretch, which is its own piece of work. Empty
+              // renders NO card rather than one saying "nothing happened",
+              // which would be a claim this build cannot make.
+              changes: [],
+              onMoveToToday: handleResumeHike,
+              onLeaveIt: handleLeaveHikePlan,
+              onSetWhereIAm: () => setActiveTab('map'),
+              onSeeOnMap: () => setActiveTab('map'),
+            },
+      day:
+        at === null
+          ? null
+          : {
+              title: `${stopLabel(at.trip.plan.stops[at.index])} → ${stopLabel(
+                at.trip.plan.stops[at.index + 1],
+              )}`,
+              planned: `${formatDistance(
+                Math.abs(
+                  at.trip.plan.stops[at.index + 1].mile -
+                    at.trip.plan.stops[at.index].mile,
+                ),
+                units,
+              )} planned`,
+              // The next resupply is a stop's own flag (`PlanStop.resupply`),
+              // so this is a lookup rather than a guess. Null when none is
+              // marked, and then the card simply does not say - "no
+              // resupply" would be a claim about the trail rather than about
+              // the plan.
+              resupply: nextResupplyLine(at, units),
+              last:
+                ends.high !== null && endsTheHike(at.trip.plan, at.index, ends.high.mile),
+              onOpen: () => setHikeDayOpen(true),
+              onTakeZero: () => setHikeDayOpen(true),
+              onSeeOnMap: () => setActiveTab('map'),
+            },
+    }
+  }, [
+    activeHike,
+    hikerMode,
+    now,
+    tripStore.trips,
+    pois,
+    units,
+    lastCorridorDay,
+    resumeDismissed,
+    handleResumeHike,
+    handleLeaveHikePlan,
+    handleSwitchHike,
+    tripStore.hikes.length,
+  ])
+
+  /**
+   * Everything the day screen draws, or null when there is no day to draw.
+   *
+   * The profile is sliced from the SAME published samples the map's ribbon
+   * reads (`ribbonSamples`), and the ascent from `ascentBetween`, which
+   * returns null rather than a number when the window runs past what the
+   * download measured. Both matter: a day screen that computed its own climb
+   * would be a second opinion about the same ground, and one that summed a
+   * partial window would print an optimistic figure for a day a hiker is
+   * deciding whether they can finish before dark.
+   */
+  const hikeDayView = useMemo(() => {
+    if (activeHike === null) return null
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, localDay(now))
+    if (at === null) return null
+
+    const from = at.trip.plan.stops[at.index]
+    const to = at.trip.plan.stops[at.index + 1]
+    const domain = {
+      startMile: Math.min(from.mile, to.mile),
+      endMile: Math.max(from.mile, to.mile),
+    }
+    const samples = elevation === null ? [] : ribbonSamples(elevation, domain)
+
+    return {
+      hikeName: activeHike.name,
+      title: `${dayLabelFor(at, now)}`,
+      subtitle: `${stopLabel(from)} → ${stopLabel(to)} · ${formatDistance(
+        Math.abs(to.mile - from.mile),
+        units,
+      )}`,
+      samples,
+      domain,
+      ascentFt: ascentBetween(samples, domain.startMile, domain.endMile),
+      currentMile: fixMile ?? null,
+      // The day's own stretch, from the same POI store the map draws - never
+      // a second list, and never redrawn glyphs (map/poiIcons.ts).
+      waypoints: pois
+        .filter(
+          (poi) =>
+            poi.mile !== undefined &&
+            poi.mile >= domain.startMile &&
+            poi.mile <= domain.endMile &&
+            poi.name !== '',
+        )
+        .map((poi) => ({
+          id: poi.id,
+          type: poi.type,
+          name: poi.name,
+          mile: poi.mile as number,
+        }))
+        .sort((a, b) => a.mile - b.mile),
+    }
+  }, [activeHike, tripStore.trips, now, elevation, pois, units, fixMile])
+
+  /** Keep the draft and walk it. Refused where the screen refuses, so the
+   *  button and the store cannot disagree about whether this is a hike. */
+  const handleStartHike = useCallback(() => {
+    if (hikeDraft === null) return
+    if (setupRefusal(hikeDraft, trailIndex?.totalMiles ?? null) !== null) return
+    // A CLEARED NAME FALLS BACK RATHER THAN BEING STORED (#1344, second
+    // pass). Set-up carries a name field now, and a field can be emptied;
+    // `renameTrip` has refused to store a blank since it was written, for
+    // the reason that applies here four times over - a hike with no name
+    // leaves a blank heading on Today, in the Plan band, in the sidebar and
+    // on the pick sheet at once. Its own two ends are what it already says
+    // about itself.
+    const named =
+      hikeDraft.name.trim() === ''
+        ? { ...hikeDraft, name: hikeNameFromEnds(hikeDraft, pois) }
+        : { ...hikeDraft, name: hikeDraft.name.trim() }
+    const started: Hike = { ...named, status: 'walking' }
+    applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
+    setHikeDraft(null)
+    setHikeSheet(null)
+  }, [hikeDraft, applyTripStore, trailIndex, pois])
+
   /**
    * Keep a drafted stretch as ground already walked (#789).
    *
@@ -1801,9 +3964,11 @@ function App() {
     (stops: readonly ViaStopLike[]) => {
       const plan = recordedPlan(stops.map((stop) => ({ ...stop, resupply: false })))
       applyTripStore((store) => addTrip(store, plan, undefined, true))
+      // The trips room, because a trip is what just happened (#1008).
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore],
+    [applyTripStore, enterTripsRoom],
   )
 
   /**
@@ -1835,7 +4000,7 @@ function App() {
    * decision; #997 records it.
    */
   const sweepForBuilder = useCallback(() => {
-    setActiveTab('trail')
+    setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
@@ -1845,7 +4010,30 @@ function App() {
     // over the route builder describing a walk that no longer exists.
     setDayHikeReview(null)
     setDayHike(null)
-  }, [])
+    setGraphAnchors([])
+    setDayHikeDraftDate(null)
+    // AND FOLLOWING, which is the fifth occupant of the routeSheet slot and
+    // was missed when it was added (#1044 review). It outranks the route
+    // builder in that chain, so leaving it running meant the follow card sat
+    // over a live builder - no end picker, no Cancel, and map taps still
+    // going into a route draft whose bar was invisible. Following is a
+    // surface, and the one-thing-open rule lives here.
+    //
+    // Inlined rather than calling `stopFollowing`, which is declared further
+    // down: naming it in this callback's dependency list would read it before
+    // its own initialiser has run.
+    setFollowingId(null)
+    setFollowState(null)
+    lastFollowRef.current = null
+    setTurnOpenAt(null)
+    // A route being built IS the trip room's subject, so the Plan tab is set
+    // to it now rather than when the route becomes a trip. Without this the
+    // mode a hiker last picked outlives the thing they are actually doing:
+    // build a route after a visit to the day room and the Plan tab still
+    // opens on Day hikes, where the one primary button is "Plan a day hike"
+    // - and that button reaches this same sweep, discarding the route.
+    applyHikerMode('long')
+  }, [applyHikerMode])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -1886,6 +4074,44 @@ function App() {
     openFromMiles,
     closeRouteBuilder,
   } = routeBuilder
+
+  /** The one part of planning a section that genuinely needs a canvas (#1344),
+   *  handed to the builder that already owns it rather than reimplemented in
+   *  the panel. Declared here rather than beside its siblings above because
+   *  `routeBuilder` is built on the line before it, and a dependency array is
+   *  evaluated where it is written. */
+  const handleSectionOnMap = useCallback(() => {
+    setSectionDraft(null)
+    setSectionPointAt(null)
+    routeBuilder.openRouteBuilder()
+  }, [routeBuilder])
+  /**
+   * Toggle a shelter or campsite as a stop, and say whether the tap was
+   * consumed.
+   *
+   * WHILE THE BUILDER IS OPEN, a tap on one of these pins means "stop here"
+   * rather than "tell me about this" - the handoff's interaction, and the
+   * reading that matches what a hiker is doing on this screen. Every other
+   * pin, and every pin at every other time, still opens its card.
+   *
+   * What this costs, said rather than hidden: the waypoint card is where a
+   * shelter's capacity and its distance to water live, which is exactly what
+   * somebody choosing a stop wants to know, and while building they cannot
+   * reach it. #979 already built the other direction - starting a walk from a
+   * sheet a hiker has open - and adding a stop from one is its natural pair.
+   * Recorded on #1194 rather than half-built here.
+   */
+  const toggleDayHikeStop = useCallback(
+    (poiId: string): boolean => {
+      if (dayHike === null) return false
+      const poi = pois.find((candidate) => candidate.id === poiId)
+      if (poi === undefined || !isStoppable(poi)) return false
+      setDayHikeStopIds((chosen) => toggleStop(chosen, poiId))
+      return true
+    },
+    [dayHike, pois],
+  )
+
   /**
    * A tap on the map, while either builder is open.
    *
@@ -1900,20 +4126,81 @@ function App() {
    * features rather than about either one.
    */
   const handleMapTap = useCallback(
-    (at: { lon: number; lat: number }) => {
+    (at: { lon: number; lat: number }, point: { x: number; y: number }) => {
       if (dayHike !== null) {
         // While frame `1l`'s card reviews the route, the map underneath is a
         // picture, not a control: a tap that edited the draft would desync
         // the card from the ground it is describing.
         if (dayHikeReview !== null) return
-        const graphForTaps = dayHikeIndex ?? graphIndex
-        if (graphForTaps === null) return
-        setDayHike((draft) => (draft === null ? draft : tapAt(graphForTaps, draft, at)))
+
+        // A SHELTER OR CAMPSITE PIN UNDER THE FINGER MEANS "STOP HERE" (#1194).
+        //
+        // Asked HERE rather than by a second tap handler, and that is the
+        // one-interpreter rule rather than a preference. map/MapView.tsx does
+        // not attach `attachPoiTaps` at all while a builder owns the tap -
+        // "two live handlers would race to interpret one touch" - so a pin
+        // tapped during a build never reaches `handleSelectPoi`, and a stop
+        // added that way would have needed exactly the race that comment
+        // forbids. map/lineTaps.ts already solves this shape the same way: it
+        // asks the POI layer itself and reports null where the pin wins.
+        //
+        // The canvas point is what makes it possible, and it is here for this
+        // reason already: #931 added it so a refused tap could ask what the
+        // app had DRAWN under the finger, which a coordinate alone cannot.
+        if (map !== null) {
+          const tappedPoi = poiIdAt(map, point)
+          if (tappedPoi !== null && toggleDayHikeStop(tappedPoi)) return
+        }
+
+        // The tap asks for its cell whether or not it can be answered yet
+        // (#1257 stage 3): a cell this phone has not loaded is loaded because
+        // a finger landed in it, and nothing else knows to ask.
+        setGraphAnchors((current) => [...current, [[at.lon, at.lat]]])
+        // While the cell under the finger is still arriving, the honest
+        // answer is lib/dayHikeDraft.ts's "not yet" and never its "not on a
+        // trail": a bare index would say the first on its own, and an index
+        // holding every OTHER cell's lines would say the second.
+        const pending = graphCellPendingAt(at)
+        // An attached index behind the merged graph is still right about
+        // every edge it holds, so the card and the highlight keep it; taps go
+        // to the bare graph, which answers "not yet" until the companions
+        // catch up (`dayHikeIndexStale`).
+        const graphForTaps = dayHikeIndexStale ? graphIndex : (dayHikeIndex ?? graphIndex)
+        if (graphForTaps === null && !pending) return
+        setDayHike((draft) => {
+          if (draft === null) return draft
+          if (pending || graphForTaps === null) {
+            return { ...draft, refusal: NETWORK_STILL_ARRIVING }
+          }
+          const tapped = tapAt(graphForTaps, draft, at)
+          // #931: a tap that missed every trail may still have landed on
+          // something the app DREW. `map/liveTopo.ts` puts roads, tracks and
+          // OSM paths on the live sheet, so "that tap isn't on a marked
+          // hiking route" was being said about a line the hiker could see -
+          // true, and reading as "there is nothing there".
+          //
+          // Only when the tap was refused for being OFF the network. A
+          // refusal about the geometry still downloading is a different
+          // situation and keeps its own sentence.
+          if (tapped.refusal !== OFF_NETWORK_REFUSAL || map === null) return tapped
+          const road = tappedRoadAt(map, point)
+          return road === null ? tapped : { ...tapped, refusal: roadRefusal(road) }
+        })
         return
       }
-      routeBuilder.mapScreen.onRouteTap?.(at)
+      routeBuilder.mapScreen.onRouteTap?.(at, point)
     },
-    [dayHike, dayHikeReview, dayHikeIndex, graphIndex, routeBuilder],
+    [
+      dayHike,
+      dayHikeReview,
+      dayHikeIndex,
+      dayHikeIndexStale,
+      graphIndex,
+      graphCellPendingAt,
+      routeBuilder,
+      map,
+      toggleDayHikeStop,
+    ],
   )
   // Opening the day-hike builder repeats the route builder's sweep rather
   // than sharing one. That was argued when this door was written - "the
@@ -1931,7 +4218,7 @@ function App() {
   // which this door is creating. Merging them would need a parameter, and a
   // sweep with a mode flag is not a shared rule.
   const openDayHike = useCallback(() => {
-    setActiveTab('trail')
+    setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
     setSearchOpen(false)
@@ -1942,13 +4229,150 @@ function App() {
     // Re-entering the builder puts the review away: the taps are live again,
     // and a card reviewing a snapshot of a draft being edited would lie.
     setDayHikeReview(null)
+    // And stops following, the mirror of sweepForBuilder's own line: while a
+    // hiker taps out a NEW walk, the header would otherwise still read the
+    // old one's "leg 2 of 3" and its position line the old one's miles, with
+    // an off-route alert about a route no longer drawn.
+    setFollowingId(null)
+    setFollowState(null)
+    lastFollowRef.current = null
+    setTurnOpenAt(null)
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
-  }, [routeBuilder])
+    // The mirror of `sweepForBuilder`'s last line, and for the same reason:
+    // the draft a hiker is building is what the Plan tab is about.
+    applyHikerMode('day')
+  }, [routeBuilder, applyHikerMode])
+
+  /**
+   * Whether the map is taking a DRAWN line rather than taps (#983, frame 1k).
+   *
+   * Shell state rather than draft state: it is about what the map is doing
+   * with a gesture, not about the walk being built, and a hiker who switches
+   * back to tapping keeps whatever they have drawn.
+   */
+  const [dayHikeDrawMode, setDayHikeDrawMode] = useState(false)
+
+  /**
+   * Which door the builder was entered by (#982): a plan, or a walk already
+   * done.
+   *
+   * SET BY THE DOOR, NOT INFERRED. A date in the past does not make a walk a
+   * walk - a hiker can plan next Saturday's hike and a hiker can lay out last
+   * Saturday's, and only they know which. The flag is what every past-tense
+   * screen reads, so guessing it here would put the guess in front of all of
+   * them.
+   */
+  const [dayHikeKind, setDayHikeKind] = useState<'planned' | 'walked'>('planned')
+
+  /**
+   * Shelters and campsites the hiker has picked as stops (#1194).
+   *
+   * A SET OF IDS, not resolved stops: where each one falls in the route is
+   * derived from the walk on every change (lib/dayHikeStops.ts), so a stop
+   * cannot end up listed between two legs it does not sit between. Ephemeral
+   * like the draft itself - it is emptied by Cancel and by Save, because a
+   * stop belongs to the walk it was picked for.
+   */
+  const [dayHikeStopIds, setDayHikeStopIds] =
+    useState<ReadonlySet<string>>(EMPTY_STOP_IDS)
+
+  /**
+   * Which classes of map label the hiker has switched off, while building.
+   *
+   * `useState` rather than a stored preference, and that is #530's problem
+   * rather than this one's: `verifiedOnly` in the legend is ephemeral for the
+   * same reason and the same issue covers both. What decided it here is that
+   * these toggles answer "what am I looking for right now" - a hiker hunting
+   * for a lot wants roads up and everything else down, and wanting that on
+   * Tuesday is not evidence they want it in October.
+   */
+  const [dayHikeLabels, setDayHikeLabels] = useState<HiddenLabelLayers>(ALL_LABELS_SHOWN)
+
+  /**
+   * Whether the panel's detail body is open. Phone only - the desktop rail
+   * has the room and shows everything (src/desktop.css).
+   *
+   * DEFAULT CLOSED, which is the handoff's default and the whole point of the
+   * redesign: the complaint was that the map was too small, so the state a
+   * hiker lands in is the one where the map is biggest.
+   */
+  const [dayHikeDetailsOpen, setDayHikeDetailsOpen] = useState(false)
+
+  /** The hikes Today may show - see the prop's own note for the rule. */
+  const plannedDayHikes = useMemo(
+    () => dayHikeStore.hikes.filter((hike) => hike.recorded === 'planned'),
+    [dayHikeStore.hikes],
+  )
+
+  const handleDayHikeStroke = useCallback(
+    (stroke: Array<{ lon: number; lat: number }>) => {
+      // The whole stroke is an anchor (#1257 stage 3): a line drawn into a
+      // cell this phone has not loaded asks for it, as a tap there would.
+      setGraphAnchors((current) => [
+        ...current,
+        stroke.map(({ lon, lat }) => [lon, lat] as const),
+      ])
+      const graphForTaps = dayHikeIndexStale ? graphIndex : (dayHikeIndex ?? graphIndex)
+      // Same relaxation as the tap handler above (#1257 stage 3): before the
+      // first cell has merged at all, graphForTaps is null too, and without
+      // the `!pending` escape hatch a stroke drawn in that window vanished
+      // with no feedback while an identical tap correctly showed
+      // NETWORK_STILL_ARRIVING (v1.2.2 release review).
+      const pending = stroke.some((at) => graphCellPendingAt(at))
+      if (graphForTaps === null && !pending) return
+      if (pending || graphForTaps === null) {
+        setDayHike({ ...EMPTY_DRAFT, refusal: NETWORK_STILL_ARRIVING })
+        return
+      }
+      setDayHike(drawStroke(graphForTaps, stroke))
+    },
+    [dayHikeIndex, dayHikeIndexStale, graphIndex, graphCellPendingAt],
+  )
+
+  /**
+   * Open the builder with one point already placed (#979, frame `1f`).
+   *
+   * THE TAP IS PROJECTED HERE rather than handed to the builder raw, because
+   * the projection can refuse and this is the layer that knows what to do
+   * about it. `tapAt` answers a tap it cannot place with a refusal SENTENCE,
+   * and a builder that opens already showing "that tap isn't on a marked
+   * hiking route" - about a line the hiker was looking at when they pressed
+   * the button - reads as the app breaking rather than as an honest edge
+   * case. So a refusal opens an empty builder instead, and the hiker taps.
+   *
+   * The caller has already established that this phone holds the trail lines
+   * (see the `onStartDayHikeAt` prop): without them nothing can be snapped at
+   * all, and the button is not offered.
+   */
+  const startDayHikeAt = useCallback(
+    (at: { lon: number; lat: number }) => {
+      openDayHike()
+      if (dayHikeIndex === null) return
+      const seeded = tapAt(dayHikeIndex, EMPTY_DRAFT, at)
+      if (seeded.refusal !== null) return
+      setDayHike(seeded)
+    },
+    [openDayHike, dayHikeIndex],
+  )
+  startDayHikeAtRef.current = startDayHikeAt
 
   const handleDayHikeCancel = useCallback(() => {
     setDayHikeReview(null)
     setDayHike(null)
-  }, [])
+    setGraphAnchors([])
+    setDayHikeDraftDate(null)
+    setDayHikeDrawMode(false)
+    setDayHikeKind('planned')
+    // The stops go with the walk they were picked for. Leaving them would
+    // put yesterday's shelters into tomorrow's route the moment the builder
+    // reopened, which is the same staleness `openId` is kept in the store to
+    // avoid (lib/dayHikes.ts).
+    setDayHikeStopIds(EMPTY_STOP_IDS)
+    setDayHikeDetailsOpen(false)
+    // The setter is named although it is stable: the React Compiler infers it
+    // as a dependency here and warns when the list disagrees, and a warning
+    // nobody can act on is worse than a redundant entry.
+  }, [setDayHikeStopIds])
 
   // Derived once per state change, not per render - draftStatus runs the
   // router and App re-renders on the GPS clock.
@@ -1961,30 +4385,112 @@ function App() {
 
   // What the builder bar prints as ≈time, and the one place it is derived.
   //
-  // Naismith takes ascent and no descent - structurally, so a call site cannot
-  // wire descent in without changing its signature first (lib/naismith.ts).
-  // The climb comes off the route, which priced it from the same walked metres
-  // its legs are priced from, so the time and the miles cannot disagree about
-  // how much of an edge was walked.
+  // AT THE HIKER'S OWN PACE, and with the baseline attached (#880/#851, fixed
+  // as #1040). This used to call `naismithMinutes` - the standard rule - so a
+  // hiker who told this app they walk at 2 mph got their A.T. plan at 2 and
+  // their day hike at 3.1, with nothing on either screen saying which. Both
+  // halves travel in the PaceEstimate: `paceEstimate` applies their
+  // coefficients AND returns the "was ... × standard" line the bar prints
+  // under the figure.
+  //
+  // Descent is in, unlike Naismith's own rule, and deliberately: the route
+  // already measured it from the same walked metres, and #900's control only
+  // ever ADDS time, so the direction is the cautious one. `paceMinutes` is
+  // where that decision lives; naismith.ts keeps `descentFt` structurally
+  // absent and is untouched by this.
   //
   // Null whenever the walk cannot be priced: no elevation on this phone, or an
   // edge of it nobody has measured. The bar supports printing no time, and
   // that is the honest output - an over-read dead band on rolling terrain
   // over-states time, which is the safe direction, but zero would understate
   // it, which is not.
-  const dayHikeWalkingMinutes = useMemo(() => {
+  const dayHikeWalking = useMemo(() => {
     if (dayHikeStatus === null || dayHikeStatus.kind !== 'routed') return null
-    const climb = dayHikeStatus.route.climb
+    const climb = dayHikeStatus.climb
     if (climb === null) return null
-    return naismithMinutes({
-      distanceMi: dayHikeStatus.route.miles,
-      ascentFt: climb.gainFt,
-    })
-  }, [dayHikeStatus])
+    return paceEstimate(
+      {
+        // Trail miles only. The gap a hiker crosses on their own is not
+        // priced - the app has no idea what that ground is, which is why it
+        // declined to route it - and folding it in would put a number on the
+        // one stretch nobody measured.
+        distanceMi: dayHikeStatus.miles,
+        ascentFt: climb.gainFt,
+        descentFt: climb.lossFt,
+      },
+      pace,
+    )
+  }, [dayHikeStatus, pace])
+
+  /**
+   * The walk with a mile on every vertex (#1194) - what the stops, the mile
+   * marks and the route list all measure against.
+   *
+   * Built once here rather than three times where it is needed, for
+   * lib/dayHikeCourse.ts's reason: three copies of "walk the vertices adding
+   * haversine" is three chances to disagree about how long the walk is, on a
+   * screen whose figures a hiker reads before deciding whether they beat the
+   * dark.
+   */
+  const dayHikeCourse = useMemo(() => {
+    if (
+      dayHikeIndex === null ||
+      dayHikeStatus === null ||
+      dayHikeStatus.kind !== 'routed'
+    ) {
+      return null
+    }
+    return buildCourse(dayHikeIndex.graph, dayHikeStatus.stretches)
+  }, [dayHikeIndex, dayHikeStatus])
+
+  /** The chosen stops, in the order the walk reaches them. */
+  const dayHikeStops = useMemo(() => {
+    if (dayHikeCourse === null) return []
+    return orderStops(dayHikeCourse, dayHikeStopIds, pois)
+  }, [dayHikeCourse, dayHikeStopIds, pois])
+
+  /**
+   * What the map does about labels, as one object.
+   *
+   * ONE MEMO because MapView takes it as one prop, and that is deliberate
+   * there: the five fields change together - every one of them is a
+   * consequence of the builder's own panel - and separate props would
+   * re-push the label layer once per field for a single toggle.
+   *
+   * `undefined` when no walk is being built, which is what turns the whole
+   * thing off: waypoint names are this screen's answer to complaint #2 and
+   * the walking map has a density budget that was set without them (#1135).
+   */
+  const mapLabelState = useMemo(() => {
+    const building = dayHike !== null
+    // ALWAYS AN INSTRUCTION, never `undefined` when no walk is being built.
+    // Returning nothing here was a bug: the effect had nothing to do, so
+    // every label the builder switched on stayed on over the walking map for
+    // the rest of the session. `labelVisibilityPlan` answers both halves -
+    // what to show and what to hide - so closing the builder puts the sheet
+    // back rather than merely stopping changing it.
+    const plan = labelVisibilityPlan(dayHikeLabels, building)
+    return {
+      poiLabelsShown: building,
+      hiddenPoiLabelTypes: hiddenPoiLabelTypes(dayHikeLabels),
+      chosenStopIds: [...dayHikeStopIds],
+      shownLabelLayerIds: plan.shown,
+      hiddenLabelLayerIds: plan.hidden,
+    }
+  }, [dayHike, dayHikeLabels, dayHikeStopIds])
+
+  /** A mark at every whole mile - empty while nothing is routed. */
+  const dayHikeTicks = useMemo(
+    () => (dayHikeCourse === null ? [] : mileTicks(dayHikeCourse)),
+    [dayHikeCourse],
+  )
 
   const dayHikeDrawing = useMemo<DayHikeDrawing | null>(() => {
     if (dayHike === null) return null
-    const points = dayHike.points.map((point, index) => ({
+    // Numbered across the whole walk rather than per stretch: the labels are
+    // the order the hiker tapped, and restarting at 1 after a gap would say
+    // the second stretch is a second hike.
+    const points = draftPoints(dayHike).map((point, index) => ({
       lon: point.at.lon,
       lat: point.at.lat,
       label: String(index + 1),
@@ -1999,14 +4505,42 @@ function App() {
     ) {
       return { lines: [], points }
     }
-    const first = dayHike.points[0]
-    const last = dayHike.looped
-      ? dayHike.points[0]
-      : dayHike.points[dayHike.points.length - 1]
-    const lines =
-      routeGeometry(dayHikeIndex.graph, dayHikeStatus.route.edgeIndices, first, last) ??
-      []
-    return { lines, points }
+    // Leg by leg, off the route's own sections (#1040). Handing
+    // `route.edgeIndices` to routeGeometry with the first and last tap was
+    // wrong for every walk that re-uses ground: that list is deduplicated
+    // across leg joins, so an out-and-back over one edge became one edge
+    // trimmed between two taps - and for a LOOP, whose first and last tap are
+    // the same point, trimmed to nothing. Measured: a 0.62 mi out-and-back
+    // drew null, so the bar priced a walk the map did not show.
+    // STRETCH BY STRETCH, and that is the load-bearing part rather than a
+    // detail of the loop: each stretch draws from its own geometry, so there
+    // is no path through this function that can put a line across a gap the
+    // app declined to route.
+    const lines = dayHikeStatus.stretches.flatMap(
+      (stretch) => routeLines(dayHikeIndex.graph, stretch.route) ?? [],
+    )
+    // The gap drawn as the app's declined guess (#983, the maintainer's
+    // decision of 2026-08-27): a straight dotted line between the end of one
+    // stretch and the start of the next, so a hiker can see WHERE the app
+    // stopped rather than only that it did.
+    //
+    // Straight, and the same straight line `dayHikeGaps` measures for a saved
+    // hike - not the stroke the finger drew. The stroke is not stored, so the
+    // finished card could not show it either, and two surfaces drawing the
+    // same gap differently is worse than one of them drawing it plainly.
+    const gaps: Array<Array<[number, number]>> = []
+    for (let at = 0; at + 1 < dayHikeStatus.stretches.length; at += 1) {
+      const before = dayHikeStatus.stretches[at].points
+      const after = dayHikeStatus.stretches[at + 1].points
+      const from = before[before.length - 1]
+      const to = after[0]
+      if (from === undefined || to === undefined) continue
+      gaps.push([
+        [from.at.lon, from.at.lat],
+        [to.at.lon, to.at.lat],
+      ])
+    }
+    return { lines, points, gaps }
   }, [dayHike, dayHikeIndex, dayHikeStatus])
 
   const dayHikeOrgLabel = useMemo(() => orgLabelFrom(stewards), [stewards])
@@ -2025,34 +4559,77 @@ function App() {
     if (dayHike === null || dayHikeStatus === null || dayHikeStatus.kind !== 'routed') {
       return
     }
-    const route = dayHikeStatus.route
+    const status = dayHikeStatus
     const hike: DayHike = {
       id: crypto.randomUUID(),
-      name: dayHikeName(route),
-      date: null,
-      segments: [
-        dayHike.points.map((point) => ({
-          coord: [point.at.lon, point.at.lat] as [number, number],
-          poiId: null,
-        })),
-      ],
+      // Named off the longest leg of the whole walk, gaps included in the
+      // sense that they contribute no leg to be named after - which is right:
+      // a walk is named for the trail it spends most of its miles on.
+      name: dayHikeName({ legs: status.legs }),
+      // Whatever the hiker set on a review card before "Back to the map"
+      // discarded it - see dayHikeDraftDate.
+      date: dayHikeDraftDate,
+      // Each stretch stored as its own run of ends, which is what makes the
+      // gap survive a save. A stretch of fewer than two ends is dropped: a
+      // "start a new stretch" the hiker never finished describes a place
+      // rather than a walk, and lib/dayHikeCard.ts cannot resolve one - so
+      // storing it would guarantee the hike falls back to its cache for ever.
+      segments: dayHike.segments
+        .filter((stretch) => stretch.length >= 2)
+        .map((stretch) =>
+          stretch.map((point) => ({
+            coord: [point.at.lon, point.at.lat] as [number, number],
+            poiId: null,
+          })),
+        ),
       figures: {
-        miles: route.miles,
-        legs: route.legs.map((leg) => ({
+        miles: status.miles,
+        legs: status.legs.map((leg) => ({
           name: leg.name,
           source: leg.source,
           blaze_color: leg.blaze_color,
           miles: leg.miles,
+          // The concurrent orgs ride into the cache (#1115): the credit
+          // surfaces that may only read this record still owe them the count.
+          ...(leg.concurrent_sources !== undefined && leg.concurrent_sources.length > 0
+            ? { concurrent_sources: [...leg.concurrent_sources] }
+            : {}),
         })),
+        // The climb as this phone's graph priced it, cached so that the two
+        // surfaces which may only read the cache - the day-hike list and the
+        // trailhead door - can print a ≈time at all. `status.climb` is already
+        // null-or-nothing across every stretch, so caching it verbatim
+        // inherits that rule rather than restating it.
+        climb: status.climb,
       },
+      // The stops, in the order the walk reaches them, and only the three
+      // fields that are facts about the STOP - mile and off-course distance
+      // are facts about the ROUTE and are re-derived when it is (see
+      // DayHike.stops). Absent rather than `[]` for a walk with none, so a
+      // record made before stops existed and one made without them are the
+      // same record.
+      ...(dayHikeStops.length > 0
+        ? {
+            stops: dayHikeStops.map((stop) => ({
+              poiId: stop.poiId,
+              type: stop.type,
+              name: stop.name,
+            })),
+          }
+        : {}),
       looped: dayHike.looped,
-      recorded: 'planned',
+      // The builder makes a PLAN. A walk already done enters through the
+      // third door and is marked there (#982) - the flag is set once, by the
+      // door that describes what the hiker is doing, rather than guessed at
+      // from a date in the past.
+      recorded: dayHikeKind,
+      note: '',
     }
     // Done no longer saves: it hands the record to frame `1l`'s card, and
     // "Save this day hike" there is the commit (#980). The draft stays live
     // underneath so closing the card returns to the builder mid-thought.
     setDayHikeReview(hike)
-  }, [dayHike, dayHikeStatus])
+  }, [dayHike, dayHikeStatus, dayHikeDraftDate, dayHikeKind, dayHikeStops])
 
   const handleDayHikeSave = useCallback(() => {
     if (dayHikeReview === null) return
@@ -2070,7 +4647,15 @@ function App() {
     })
     setDayHikeReview(null)
     setDayHike(null)
-  }, [dayHikeReview])
+    setGraphAnchors([])
+    setDayHikeDraftDate(null)
+    // The stops belong to the walk that just saved. Clearing them here as
+    // well as on Cancel is what keeps the two exits symmetrical - a builder
+    // reopened after a save must not arrive holding the last walk's shelters.
+    setDayHikeStopIds(EMPTY_STOP_IDS)
+    setDayHikeDetailsOpen(false)
+    // See handleDayHikeCancel for why the stable setter is named.
+  }, [dayHikeReview, setDayHikeStopIds])
 
   /** Open a saved hike's card from the Plan tab. Written through the store
    *  because that is where `openId` lives - held in the one document so the
@@ -2081,6 +4666,97 @@ function App() {
         ...store,
         openId: store.hikes.some((hike) => hike.id === id) ? id : null,
       }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
+  // ---- Opening and saving a published route (#1290) ----
+
+  const openSuggestedHike = useCallback(
+    (id: string) => {
+      setCameFromFinder(todayPage === 'find')
+      setOpenHikeId(id)
+      setTodayPage('detail')
+    },
+    [todayPage],
+  )
+
+  /**
+   * Draw a published route on the real map, by opening the hiker's own saved
+   * copy of it - `openId` is what the map reads, and a saved hike
+   * re-resolves from its coordinates against the graph this phone holds.
+   *
+   * ONLY OFFERED ONCE IT IS SAVED, and that is the honest shape rather than
+   * a limitation worked around. Nothing draws a route the store does not
+   * hold, so the alternatives were a button that quietly saves on the
+   * hiker's behalf or one that does nothing - and a control that cannot do
+   * its job is not offered (chrome/LineSheet.tsx's rule). Save is the button
+   * beside it, so the path is two taps and both of them say what they do.
+   */
+  const showSavedHikeOnMap = useCallback(
+    (id: string) => {
+      handleOpenDayHike(id)
+      setActiveTab('map')
+    },
+    [handleOpenDayHike],
+  )
+
+  /**
+   * Save a published route into the hiker's own day hikes - or, when it is
+   * already there, log today as another walk of it.
+   *
+   * ONE RECORD, MANY DATES, which is the maintainer's own framing of the
+   * problem: "we need 1 record, with the ability to log multiple dates".
+   * Pressing this on a route already saved used to mint a second uuid and
+   * leave two identically named rows with nothing to tell them apart. It
+   * finds the existing record by `sourceId` instead - the publisher's route
+   * id, which is stable in a way the name (renameable) and the ends
+   * (re-resolved against whatever graph the phone holds) are not.
+   *
+   * The store is re-read rather than trusted from React state, so a save
+   * landing from the sync between renders is never overwritten -
+   * handleDayHikeSave's rule, and the same reason.
+   */
+  const saveSuggestedHike = useCallback((hike: SuggestedHike) => {
+    void loadDayHikes().then((store) => {
+      const already = savedFromSource(store.hikes, hike.id)
+      const today = new Date().toISOString().slice(0, 10)
+      const hikes =
+        already === undefined
+          ? [
+              ...store.hikes,
+              {
+                id: crypto.randomUUID(),
+                name: hike.name,
+                date: null,
+                segments: hike.segments,
+                // The publisher's miles as this phone measured them, and
+                // their climb where there is one. `legs` stays empty: a leg
+                // list is a fact about a resolved route, and this record is
+                // re-resolved when it opens.
+                figures: {
+                  miles: hike.miles,
+                  legs: [],
+                  ...(hike.climb === undefined ? {} : { climb: hike.climb }),
+                },
+                looped: false,
+                // A plan, even though somebody else wrote it - the hiker has
+                // not walked it yet, and the door they came through was
+                // "save", not "I did this".
+                recorded: 'planned' as const,
+                note: '',
+                sourceId: hike.id,
+                // The publisher's credit, captured now. A route that later
+                // leaves the published document must not take its
+                // attribution off a record the hiker already holds.
+                sourceAuthor: authorLine(hike.author),
+              },
+            ]
+          : store.hikes.map((saved) =>
+              saved.id === already.id ? logWalk(saved, today) : saved,
+            )
+      const next = { hikes, openId: null }
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
@@ -2109,13 +4785,37 @@ function App() {
     })
   }, [])
 
-  /** The hike a card is showing: the unsaved review outranks the store's
-   *  open one - they cannot both be on screen, and the review is newer. */
-  const cardDayHike =
-    dayHikeReview ??
-    (dayHikeStore.openId !== null
-      ? (dayHikeStore.hikes.find((hike) => hike.id === dayHikeStore.openId) ?? null)
-      : null)
+  /** Date a saved hike (#1008) - the same read-modify-write every other
+   *  store edit takes, so a sync landing between renders is never lost. */
+  const handleSetDayHikeDate = useCallback((id: string, date: string | null) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, date } : hike)),
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
+  /**
+   * The hiker's own line about a walk they did (#982).
+   *
+   * The same read-modify-write `handleSetDayHikeDate` uses, and deliberately
+   * the same shape rather than a shared generic one: `lib/dayHikes.ts` is ONE
+   * DOCUMENT, ONE KEY, so every writer reloads before it writes and there is
+   * no pair of writes that can half-land.
+   */
+  const handleSetDayHikeNote = useCallback((id: string, note: string) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, note } : hike)),
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
 
   // Derived once per state change, not per render, for dayHikeStatus's
   // reason: resolution runs the router per tapped pair and App re-renders
@@ -2134,19 +4834,347 @@ function App() {
     return dayHikeBailOuts(graph, cardResolution)
   }, [cardResolution, dayHikeIndex, graphIndex])
 
+  /**
+   * Following a saved day hike (#1041, frames `D9`-`D11`).
+   *
+   * The graph preferred here is `dayHikeIndex` for the same reason the card
+   * prefers it: without the geometry artifact an edge projects and draws as
+   * the chord between its junctions, which across a switchback is a picture
+   * of a trail that does not exist - and, new here, a bearing along that
+   * chord can point the opposite way to the trail, which is what
+   * lib/dayHikeTurns.ts withholds a turn's side rather than guess at.
+   */
+  const followResolution = useMemo(() => {
+    if (followingHike === null) return null
+    const graph = dayHikeIndex ?? graphIndex
+    if (graph === null) return null
+    return resolveDayHike(graph, followingHike)
+  }, [followingHike, dayHikeIndex, graphIndex])
+
+  const followTurns = useMemo(() => {
+    if (followResolution === null) return []
+    const graph = dayHikeIndex ?? graphIndex
+    if (graph === null) return []
+    return dayHikeTurns(graph, followResolution)
+  }, [followResolution, dayHikeIndex, graphIndex])
+
+  /**
+   * Where the hiker is, re-read on every fix.
+   *
+   * An effect rather than a memo because the previous answer is an INPUT
+   * (lib/dayHikeFollow.ts's hysteresis and its out-and-back tie-break), and a
+   * memo that read its own last value would either need it in the dependency
+   * list - re-running forever - or a ref, which is the same state with the
+   * re-render suppressed. The updater form below is what gets the previous
+   * answer without making it a dependency.
+   */
+  useEffect(() => {
+    const graph = dayHikeIndex ?? graphIndex
+    if (followResolution === null || graph === null) {
+      setFollowState(null)
+      return
+    }
+    const next = followDayHike({
+      index: graph,
+      resolved: followResolution,
+      at: gps.status === 'located' ? gps.at : null,
+      // The last real answer, not the last rendered one - see lastFollowRef.
+      previous: lastFollowRef.current,
+    })
+    if (next !== null) lastFollowRef.current = next
+    setFollowState(next)
+  }, [followResolution, dayHikeIndex, graphIndex, gps])
+
+  const followNext = useMemo(() => {
+    if (followState === null || followState.kind !== 'on-route') return null
+    return nextTurn(followTurns, followState.walkedMi)
+  }, [followState, followTurns])
+
+  /** The route on the map while it is being followed. Same drawing shape the
+   *  builder produces, so the casing rule (map/dayHikeLayers.ts - UNDER the
+   *  trail lines, so a blaze is never recoloured) holds unchanged.
+   *
+   *  Leg by leg, through routeLines, for #1040's reason and not a second one:
+   *  `segment.route.edgeIndices` is deduplicated across leg joins, so an
+   *  out-and-back over a single edge collapses to one edge trimmed between
+   *  the outer taps - and on a loop, whose ends are the same point, trimmed
+   *  to nothing. #1040 measured that as a 0.62 mi out-and-back drawing null.
+   *  The builder's own drawing hit it first; this surface is the same call on
+   *  the same shapes, being followed, which is the worse place to draw a walk
+   *  that is missing the ground somebody is standing on. */
+  const followDrawing = useMemo<DayHikeDrawing | null>(() => {
+    if (followResolution === null || dayHikeIndex === null) return null
+    const lines: Array<Array<[number, number]>> = []
+    for (const segment of followResolution.segments) {
+      const drawn = routeLines(dayHikeIndex.graph, segment.route)
+      if (drawn === null) return null
+      lines.push(...drawn)
+    }
+    // No numbered marks: those are the BUILDER's taps, and a hiker walking
+    // does not need their own planning gestures replayed at them.
+    return { lines, points: [] }
+  }, [followResolution, dayHikeIndex])
+
+  const stopFollowing = useCallback(() => {
+    setFollowingId(null)
+    setFollowState(null)
+    lastFollowRef.current = null
+    setTurnOpenAt(null)
+  }, [])
+
+  const startFollowing = useCallback(
+    (id: string) => {
+      setFollowingId(id)
+      // Cleared rather than carried over: the previous answer is an INPUT to
+      // the next one (lib/dayHikeFollow.ts), and one walk's last position is
+      // not evidence about where somebody is on a different walk.
+      setFollowState(null)
+      lastFollowRef.current = null
+      setTurnOpenAt(null)
+      // The card came from the Plan tab and the walk happens on the map, so
+      // this puts the card away and goes there - the same one-surface-
+      // continuing move the builder's own doors make.
+      handleDayHikeCardClose()
+      setActiveTab('map')
+    },
+    [handleDayHikeCardClose],
+  )
+
+  /** Frame the whole walk, which is the one navigational thing frame `D11`
+   *  can honestly offer somebody standing off their route. */
+  const showWholeRoute = useCallback(() => {
+    if (map === null || followDrawing === null) return
+    const points = followDrawing.lines.flat()
+    if (points.length === 0) return
+    let west = points[0][0]
+    let south = points[0][1]
+    let east = points[0][0]
+    let north = points[0][1]
+    for (const [lon, lat] of points) {
+      west = Math.min(west, lon)
+      east = Math.max(east, lon)
+      south = Math.min(south, lat)
+      north = Math.max(north, lat)
+    }
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: FOLLOW_FIT_PADDING },
+    )
+  }, [map, followDrawing])
+
+  const followHeaderText = followHeader({
+    following: followingHike !== null,
+    follow: followState,
+    atJunction: atJunction(followNext),
+  })
+
+  const followSheetNode = (() => {
+    // GATED ON THE MODE, NOT ON THE POSITION (#1044 review). This used to
+    // return null whenever `followState` was null - which is every ordinary
+    // no-fix state: waiting for the first fix, GPS lost under canopy, an edge
+    // with no vertices. The card vanished, and with it the only Stop control
+    // in the app, so a hiker was left in a mode the header still announced
+    // and nothing on screen could leave.
+    if (followingHike === null) return null
+
+    if (followState === null) {
+      return (
+        <NextTurnCard
+          positionKnown={false}
+          turn={null}
+          milesAway={0}
+          onTrail={null}
+          onTrailBlaze={null}
+          toGoMi={0}
+          units={units}
+          onOpenTurn={() => undefined}
+          onStopFollowing={stopFollowing}
+        />
+      )
+    }
+    if (followState.kind === 'off-route') {
+      return (
+        <OffRouteCard
+          follow={followState}
+          units={units}
+          // Only where there is a route drawn to frame. Without the geometry
+          // artifact `followDrawing` is null and this button did nothing at
+          // all, silently.
+          onShowRoute={followDrawing === null ? undefined : showWholeRoute}
+          onStopFollowing={stopFollowing}
+        />
+      )
+    }
+    // Keyed to the turn it was opened for: walk through that junction, or
+    // leave the route and come back, and it closes itself rather than
+    // reappearing over a different fork.
+    if (followNext !== null && turnOpenAt === followNext.turn.miles) {
+      return (
+        <TurnCard
+          turn={followNext.turn}
+          milesAway={followNext.milesAway}
+          units={units}
+          onClose={() => setTurnOpenAt(null)}
+        />
+      )
+    }
+    return (
+      <NextTurnCard
+        turn={followNext?.turn ?? null}
+        milesAway={followNext?.milesAway ?? 0}
+        onTrail={followState.leg.name}
+        onTrailBlaze={followState.leg.blaze_color}
+        toGoMi={followState.toGoMi}
+        units={units}
+        onOpenTurn={() =>
+          setTurnOpenAt(followNext === null ? null : followNext.turn.miles)
+        }
+        onStopFollowing={stopFollowing}
+      />
+    )
+  })()
+
   const dayHikeCardNode =
-    cardDayHike !== null ? (
+    // A WALK ALREADY DONE GETS ITS OWN SCREEN (#982). Branching here rather
+    // than inside DayHikeCard is the decision: a card that has to keep asking
+    // which tense it is in answers the question twice for every future
+    // addition, which is the failure #982 names when it argues against
+    // folding this into the A.T. day summary.
+    cardDayHike !== null && cardDayHike.recorded === 'walked' ? (
+      <WalkedHike
+        hike={cardDayHike}
+        resolved={cardResolution}
+        stewards={stewards}
+        units={units}
+        onClose={handleDayHikeCardClose}
+        onSetNote={(note) => handleSetDayHikeNote(cardDayHike.id, note)}
+        onSetDate={(date) => handleSetDayHikeDate(cardDayHike.id, date)}
+        onDelete={
+          dayHikeReview === null ? () => handleDeleteDayHike(cardDayHike.id) : undefined
+        }
+      />
+    ) : cardDayHike !== null ? (
       <DayHikeCard
         hike={cardDayHike}
         resolved={cardResolution}
         bailOuts={cardBailOuts}
-        stewards={stewards}
         units={units}
+        pace={pace}
         networkAvailable={graphIndex !== null}
         mode={dayHikeReview !== null ? 'review' : 'saved'}
+        // Saved only: a review card's hike is not in the store yet, so there
+        // is no id for `followingId` to hold and nothing for the map to keep
+        // pointing at once the card closes.
+        onFollow={
+          dayHikeReview === null ? () => startFollowing(cardDayHike.id) : undefined
+        }
         onSave={handleDayHikeSave}
         onClose={handleDayHikeCardClose}
         onDelete={() => handleDeleteDayHike(cardDayHike.id)}
+        onSetDate={(date) => {
+          if (dayHikeReview === null) {
+            handleSetDayHikeDate(cardDayHike.id, date)
+            return
+          }
+          // Pre-save it rides the review record AND the draft-scoped state,
+          // so a trip back to the map to re-check the route does not throw
+          // it away.
+          setDayHikeReview({ ...dayHikeReview, date })
+          setDayHikeDraftDate(date)
+        }}
+      />
+    ) : null
+
+  /**
+   * The card for a hike that is already in the store, for every shelf that
+   * offers one.
+   *
+   * A REVIEW card is the builder continuing - Done hands frame `1l` the slot
+   * the pick bar just left, over the map, and it belongs nowhere else. What
+   * is below is the other act entirely: a hiker tapped a row on a shelf of
+   * saved hikes and asked what is on that walk.
+   *
+   * Named because there are now TWO such shelves and there was one renderer.
+   * #1054 put "Your day hikes" on the Today tab and wired its taps to
+   * `handleOpenDayHike`, which writes `openId` into the store - but the only
+   * things rendering that pointer were the Plan tab's own slot and the map's
+   * route sheet, and the route sheet only takes a review. So a tap on Today
+   * stored the pointer, re-ran the geometry fetch the card needs, and put
+   * nothing on screen: the store said a hike was open and every surface a
+   * hiker could see disagreed.
+   */
+  const savedDayHikeCardNode = dayHikeReview === null ? dayHikeCardNode : null
+
+  /**
+   * Which Plan home to show (#1008), from the app's mode since #1317.
+   *
+   * The stores-based default this used to compute is gone with it, and that
+   * is the point: guessing which room a hiker wants from what they happen to
+   * have kept was only ever standing in for asking, and the mode control
+   * asks.
+   */
+  const effectivePlanRoom = planRoomFor(hikerMode)
+
+  /** The trailhead door's candidates (frame D8): saved starts near the fix,
+   *  less the ones this session has already been told no about. */
+  const hikesNearHere = useMemo(() => {
+    if (gps.status !== 'located') return []
+    return dayHikesNearHere(dayHikeStore.hikes, gps.at).filter(
+      (entry) => !hikesHereDismissed.includes(entry.hike.id),
+    )
+  }, [gps, dayHikeStore.hikes, hikesHereDismissed])
+
+  /**
+   * Whether something a hiker ASKED for already has the map's lower third.
+   *
+   * The door is the only occupant of that space nobody asked for - every
+   * other one is the answer to a tap. The builders it defers to could never
+   * collide with these, because opening a builder suppresses the taps that
+   * raise them; the door renders in exactly the state where those taps are
+   * live, so it is the first surface here that can land on top of one. z-index
+   * does not settle it either: these are siblings at the same level, and the
+   * routeSheet slot is the LAST child of the canvas, so equal z-index means
+   * the door wins on DOM order.
+   */
+  const lowerThirdTaken =
+    selectedPoiId !== null ||
+    line.mapScreen.lineSheet != null ||
+    atc.mapScreen.atcUpdateSheet != null ||
+    atc.mapScreen.noticeList != null ||
+    workday.mapScreen.workdaySheet != null
+
+  const dayHikesHereNode =
+    hikesNearHere.length > 0 && !lowerThirdTaken ? (
+      <DayHikesHere
+        near={hikesNearHere}
+        units={units}
+        pace={pace}
+        // lib/passedToday.ts's own helper rather than a second copy of the
+        // idiom - it already spells the phone's LOCAL calendar day as
+        // YYYY-MM-DD, which is the store's date shape and the right clock
+        // here: "that's today" is a claim about the hiker's morning, not
+        // UTC's.
+        today={localDay(now)}
+        onOpen={(id) => {
+          handleOpenDayHike(id)
+          applyHikerMode('day')
+          setDayListOpen(false)
+          setActiveTab('plan')
+        }}
+        onAll={() => {
+          applyHikerMode('day')
+          setDayListOpen(true)
+          setActiveTab('plan')
+        }}
+        onDismiss={() =>
+          setHikesHereDismissed((dismissed) => [
+            ...dismissed,
+            ...hikesNearHere.map((entry) => entry.hike.id),
+          ])
+        }
       />
     ) : null
 
@@ -2163,49 +5191,138 @@ function App() {
   // elevation the walk still draws and the climb goes unsaid. Both are states
   // the surfaces below already know how to say.
   //
-  // BOTH DOORS, NOT JUST THE BUILDER. A saved card opens from the Plan tab
-  // with no draft in hand, so keying this on `dayHike` alone left the one
-  // surface a hiker returns to resolving against the routing-only graph -
-  // no vertices to draw and, since #1011, no climb to print. Either door
-  // opening is what these are needed for.
+  // BOTH DOORS, NOT JUST THE BUILDER - and since #1044, three. A saved card
+  // opens from the Plan tab with no draft in hand, so keying this on
+  // `dayHike` alone left the one surface a hiker returns to resolving against
+  // the routing-only graph - no vertices to draw and, since #1011, no climb
+  // to print.
+  //
+  // FOLLOWING IS THE THIRD, and it was missed: `startFollowing` closes the
+  // card, so a followed hike put the app in exactly the state this effect
+  // treats as "nobody needs geometry" - and then aborted the in-flight fetch
+  // with no path back to it. The route was never drawn, "Show the whole
+  // route" framed nothing, and lib/dayHikeFollow.ts (which now refuses
+  // without vertices rather than measuring off a chord) could say nothing at
+  // all. Either door opening, or a walk under way, is what these are for.
+  //
+  // KEYED ON A BOOLEAN, NEVER ON THE DRAFT ITSELF (#1093). `dayHike` was in
+  // this list, and `tapAt` returns a NEW draft object on every tap - a refused
+  // one included. So each tap re-ran the effect, the cleanup aborted the
+  // in-flight request, and the fetch restarted from the top: re-download,
+  // re-hash. A hiker tapping every second or two while being refused could
+  // keep cancelling the very fetch that would stop the refusals, and the
+  // refusals are what makes somebody tap again. `wantsGraphGeometry` flips
+  // once, when a door opens.
+  //
+  // PER CELL SINCE #1257 STAGE 3, AND AGAIN WHEN THE GRAPH GROWS. The
+  // companions are fetched for every merged cell at once and aligned to the
+  // merged graph's edges (lib/trailGraphData.ts), so a cell landing after
+  // the attached index was built leaves that index BEHIND - still right
+  // about every edge it holds, since the merge is append-only, and missing
+  // the new cell's. The effect replaces it rather than clearing it first, so
+  // a followed walk keeps its vertices while the new cell's lines arrive.
+  const wantsGraphGeometry =
+    dayHike !== null || cardDayHike !== null || followingId !== null
   useEffect(() => {
-    if (
-      (dayHike === null && cardDayHike === null) ||
-      graphIndex === null ||
-      dayHikeIndex !== null
-    ) {
-      return
-    }
+    if (!wantsGraphGeometry || graphIndex === null || graphMerged === null) return
+    if (dayHikeIndex !== null && !dayHikeIndexStale) return
 
     const controller = new AbortController()
     let wanted = true
 
-    const edgeCount = graphIndex.graph.edges.length
     void Promise.all([
-      fetchTrailGraphGeometry(edgeCount, controller.signal),
-      fetchTrailGraphElevation(edgeCount, controller.signal),
+      // `online` is passed rather than assumed (#1050): offline both read the
+      // store, which is what makes a drawn or followed walk work at a
+      // trailhead with no signal instead of only at the hostel.
+      fetchTrailGraphGeometryCells(graphMerged, controller.signal, online),
+      fetchTrailGraphElevationCells(graphMerged, controller.signal, online),
     ]).then(([geometry, elevation]) => {
       if (!wanted) return
       let next = graphIndex
       if (geometry !== null) next = attachTrailGraphGeometry(next, geometry)
       if (elevation !== null) next = attachTrailGraphElevation(next, elevation)
-      // Unchanged means both 404'd - leave dayHikeIndex null so the builder
-      // keeps routing on the graph it already has.
+      // Unchanged means neither half is on this phone for some merged cell -
+      // leave dayHikeIndex null so the builder keeps routing on the graph it
+      // already has. An index built before the graph grew goes too: a
+      // highlight drawn from it would stop at the old cells' edge without
+      // saying so, and null is the state every surface below already says.
       if (next !== graphIndex) setDayHikeIndex(next)
+      else if (dayHikeIndexStale) setDayHikeIndex(null)
     })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [dayHike, cardDayHike, graphIndex, dayHikeIndex])
+  }, [
+    wantsGraphGeometry,
+    graphIndex,
+    graphMerged,
+    dayHikeIndex,
+    dayHikeIndexStale,
+    online,
+  ])
+
+  /**
+   * The dense per-edge profile, fetched ONLY once a walk is being followed
+   * (#1045) - never with the builder, and never at launch.
+   *
+   * That gate is the artifact's own contract rather than a preference:
+   * pipeline/export_network_profile.py sizes it at 3.47 MB raw / 1.22 MB over
+   * the wire and export_network_elevation.py's header names it as "a fourth
+   * artifact fetched when that chart opens". A hiker who opens the builder,
+   * draws a loop and never walks it pays nothing for it.
+   *
+   * Keyed on `followingId !== null` rather than on the resolved walk, for the
+   * reason the geometry effect above learned the hard way (#1093): anything
+   * that changes per tap or per GPS fix re-runs the effect, and the cleanup
+   * aborts the very fetch that would let the ribbon draw.
+   */
+  const wantsGraphProfile = followingId !== null
+  // Behind the merged graph the way `dayHikeIndexStale` is, and refetched
+  // the same way. lib/walkProfile.ts answers null for a walk that reaches
+  // past the end of a profile that is, so the ribbon waits rather than
+  // draws short.
+  const graphProfileStale =
+    graphProfile !== null &&
+    graphIndex !== null &&
+    graphProfile.length !== graphIndex.graph.edges.length
+  useEffect(() => {
+    if (!wantsGraphProfile || graphIndex === null || graphMerged === null) return
+    if (graphProfile !== null && !graphProfileStale) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void fetchTrailGraphProfileCells(graphMerged, controller.signal, online).then(
+      (profile) => {
+        if (!wanted) return
+        // Null is ordinary and its consequence is #1041's: no ribbon on this
+        // walk, which is the honest state rather than a missing feature.
+        if (profile !== null) setGraphProfile(profile)
+        else if (graphProfileStale) setGraphProfile(null)
+      },
+    )
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [
+    wantsGraphProfile,
+    graphIndex,
+    graphMerged,
+    graphProfile,
+    graphProfileStale,
+    online,
+  ])
 
   // The Plan tab's one primary action (#805). A live draft goes BACK to its
   // builder - the door is for starting, never a toll gate on the way back to
   // your own route (openRouteBuilderFrom's rule, kept here for both modes).
   const openPlanKind = useCallback(() => {
     if (dayHike !== null) {
-      setActiveTab('trail')
+      setActiveTab('map')
       return
     }
     if (routeBuilder.draftLive) {
@@ -2237,6 +5354,68 @@ function App() {
   }, [mapTaken, trailIndex, bbox, mileAnchors])
 
   /**
+   * Today's walk, end to end - the domain #1045 asks the ribbon to prefer over
+   * its ten-mile sliding window, in whichever of the two shapes today is.
+   *
+   * A FOLLOWED DAY HIKE WINS EVEN WHEN IT CANNOT BE DRAWN, and that is the
+   * half of #1045 that is a bug fix. Returning `{samples: null}` rather than
+   * null tells lib/ribbonView.ts "the hiker is on a walk this phone has no
+   * shape for", which suppresses the A.T. fix window; returning null would say
+   * "the hiker is on no walk" and let the A.T.'s ten miles draw under a header
+   * about a Harriman loop. The A.T. runs through those same woods, so
+   * `fix.mile` there is a real number and the wrong picture was a plausible
+   * one.
+   *
+   * The trip half needs no new data: `lib/plan.ts` already computes today camp
+   * to camp on the pipeline axis, which is the axis the published profile is
+   * measured on. A zero day is not a walk and yields null - the ribbon falls
+   * back to whatever it showed before, because there is nothing about today
+   * for it to be wrong about.
+   */
+  /**
+   * The followed walk's own shape, on its own axis - the expensive half, kept
+   * out of the memo below because that one has to re-run on every fix.
+   *
+   * A six-mile walk is about 390 samples at the pipeline's 25 m interval, and
+   * the ground does not change when the hiker moves along it. Recomputing it
+   * per GPS callback would undo exactly what #1111 measured and fixed one
+   * block down.
+   */
+  const followSamples = useMemo(() => {
+    const graph = dayHikeIndex ?? graphIndex
+    if (followResolution === null || graph === null || graphProfile === null) return null
+    return walkProfile(graph.graph, dayHikeWalk(graph, followResolution), graphProfile)
+  }, [followResolution, dayHikeIndex, graphIndex, graphProfile])
+
+  const todaysWalk = useMemo<TodaysWalk | null>(() => {
+    if (followingHike !== null) {
+      return {
+        kind: 'route',
+        samples: followSamples,
+        // The same accumulation the header prints and the turn list counts
+        // down - lib/dayHikeWalk.ts's `beforeMetres`, read through
+        // lib/dayHikeFollow.ts - so the rule under the ribbon lands on the
+        // number written above it. Off-route the hiker's own miles are still
+        // the best answer this phone has about where along the walk they are.
+        alongMi:
+          followState === null
+            ? null
+            : followState.kind === 'on-route'
+              ? followState.walkedMi
+              : followState.nearest.walkedMi,
+      }
+    }
+
+    if (plan === null) return null
+    const today = currentDayIndex(plan)
+    if (today === null) return null
+    const from = plan.stops[today]
+    const to = plan.stops[today + 1]
+    if (from === undefined || to === undefined || from.mile === to.mile) return null
+    return { kind: 'trail', domain: { startMile: from.mile, endMile: to.mile } }
+  }, [followingHike, followSamples, followState, plan])
+
+  /**
    * The one ribbon the phone draws, whichever of the four it turns out to be
    * (lib/ribbonView.ts holds the precedence and the reasoning).
    *
@@ -2252,14 +5431,53 @@ function App() {
     () =>
       ribbonView({
         profile: elevation,
+        todaysWalk,
         planStretch: draftStretch,
         mapStretch,
-        fixClientMile: fix?.mile ?? null,
+        fixClientMile: fixMile,
         fixPlanMile: gpsPlanMile,
         fixWindow,
-        ...(direction?.direction === undefined ? {} : { direction: direction.direction }),
+        ...(travelDirection === undefined ? {} : { direction: travelDirection }),
       }),
-    [elevation, draftStretch, mapStretch, fix, gpsPlanMile, fixWindow, direction],
+    // Keyed on the mile and the settled direction, not the objects carrying
+    // them - see fixMile (#1111). While every dep here holds, so does the
+    // ribbon's identity, and with it the ~640-sample rebuild in ribbonView,
+    // the lanes keyed on `ribbon` below, and ElevationRibbon's path memo.
+    //
+    // `todaysWalk` is memoized one block up, and holds its identity across a
+    // GPS callback ON THE PLAN BRANCH ONLY - which is the half of #1045's
+    // claim that survives reading. Both branches are worth stating, because
+    // the difference is not a defect to fix but a property of what each one
+    // is made of:
+    //
+    //  - No hike being followed: `followResolution` is null, so the effect
+    //    above holds `followState` at null, nothing in this memo's dep list
+    //    moves on a fix, and the plan-derived `{ kind: 'trail' }` object
+    //    survives every callback. That is the case #1045 measured.
+    //  - Following a hike: `followState` is a FRESH object per fix
+    //    (`followDayHike` builds one), so `todaysWalk` is rebuilt on every
+    //    callback including one that moves nobody, and the ~640-sample
+    //    ribbonView pass below runs with it.
+    //
+    // Keying on the scalar the way `fixMile` does would not save the second
+    // case, and that is the thing worth knowing before anybody tries:
+    // `fixMile` is stable under jitter because `locateOnTrail` answers with a
+    // VERTEX's mile, which is already quantised. `alongMi` here is a
+    // continuous projection - `alongFraction * step.metres` - so it takes a
+    // new value on essentially every fix from a phone standing still. Making
+    // this branch hold would mean quantising `walkedMi`, which would make the
+    // ribbon's own position marker step rather than glide. Nobody has decided
+    // that trade; it is not made here by accident.
+    [
+      elevation,
+      todaysWalk,
+      draftStretch,
+      mapStretch,
+      fixMile,
+      gpsPlanMile,
+      fixWindow,
+      travelDirection,
+    ],
   )
 
   /**
@@ -2326,7 +5544,7 @@ function App() {
     // THE sweep, not a copy of it (#997). This handler used to repeat four
     // of its five lines inline, which is how the day-hike clear could have
     // been added to one opener and missed here. The one line it did not
-    // repeat - setActiveTab('trail') - is a no-op on this path rather than a
+    // repeat - setActiveTab('map') - is a no-op on this path rather than a
     // difference: the chart is a MapScreen prop, and App returns early for
     // every other tab, so nothing reaches here from anywhere else.
     sweepForBuilder()
@@ -2444,9 +5662,11 @@ function App() {
       )
       setTargetRequest(null)
       closeRouteBuilder()
+      // Laid-out days are a trip: land in the room that shows them.
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [targetRequest, applyTripStore, closeRouteBuilder],
+    [targetRequest, applyTripStore, closeRouteBuilder, enterTripsRoom],
   )
 
   // Every timeline edit runs through here, against whichever trip is open.
@@ -2487,9 +5707,10 @@ function App() {
     (id: string) => {
       applyTripStore((store) => openTrip(store, id))
       setTripsOpen(false)
+      enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore],
+    [applyTripStore, enterTripsRoom],
   )
 
   const handleRenameTrip = useCallback(
@@ -2590,6 +5811,15 @@ function App() {
     camera !== null &&
     !archiveCoversZoom(archiveZooms, camera.zoom)
 
+  // Past the edge of everything downloaded (#557), read off the same settled
+  // camera as the zoom flag above, so the two edges are decided from one
+  // view. Nothing is claimed before the map has reported a camera, and
+  // nothing before the store has answered - `heldFootprints` is null until
+  // then, and null is unknown.
+  const outsideDownload =
+    camera !== null &&
+    coverageAt(heldFootprints, camera.center[0], camera.center[1]) === 'outside'
+
   /**
    * Write preferences to the phone, and do not let the failure be silent (#315).
    *
@@ -2656,6 +5886,20 @@ function App() {
   })
 
   /**
+   * The legend's fourth switch, and the one thing on this screen that decides
+   * what the map leaves out WITHOUT writing it down (#1047).
+   *
+   * Its own hook rather than a fifth field on the filters above, and the
+   * reason is the whole design: everything that one owns is a preference and
+   * reaches an account, and the alerts flag must never do either. Two files
+   * make that hard to undo by accident - `preferences` and
+   * `updatePreferences` are not in scope inside chrome/alertLayerPanel.ts at
+   * all, so storing the flag would take an import somebody would have to add
+   * on purpose.
+   */
+  const alerts = useAlertLayerPanel()
+
+  /**
    * Opens the download window, and clears whatever else was open over the map.
    *
    * One thing open at a time, the same rule the legend and the waypoint card
@@ -2718,28 +5962,16 @@ function App() {
         location_permission_requested: locationRequested,
         hiking_detail_level: hikingDetailLevel,
       })
-      // The download window, over the map rather than instead of it. The
-      // choice just made is a download that has not started, so the window is
-      // still what someone leaving onboarding needs; what has changed is that
-      // it no longer costs them the first sight of the map to see it.
-      //
-      // NOT ON A DESKTOP (WEBSITE.md §6, "Download UX"). A laptop has signal,
-      // and the assumption worth making about it is the one it is almost
-      // always right about: this connection is not being metered by the mile.
-      // The live sheet is already the default background, so a browser that
-      // never opens this window still gets the whole trail drawn - the
-      // download buys it nothing it does not already have, and 314 MB is a
-      // real cost to put in front of someone before they have seen the map.
-      //
-      // It is withheld, not removed, and that distinction is the whole of the
-      // rule. The legend is a permanent panel above 900px, and DownloadsLink
-      // sits in it, so "Choose what to download" is on screen the entire time
-      // - more visible than the phone's, where the legend has to be opened
-      // first. Someone setting up a cabin machine, or a laptop that is coming
-      // along, is one click away and was never told no.
-      if (!isDesktop) openDownloads()
+      // No window opens here any more (#1054). The download starts on the
+      // size step itself - the step that asks the question - through
+      // handleOnboardingDownload below, and keeps running behind the last
+      // step and past it; the window is the MANAGE surface, reachable from
+      // the legend and from More. A hiker who chose "Decide this later"
+      // gets the door held open on the Today screen instead of a takeover
+      // they just declined. (The old desktop carve-out went with it: with
+      // nothing auto-opening, there is nothing to withhold from a laptop.)
     },
-    [updatePreferences, openDownloads, isDesktop],
+    [updatePreferences],
   )
 
   /** One sheet: every archive it is made of, in one tap. Archives already on
@@ -2776,6 +6008,19 @@ function App() {
     },
     [archiveStatusFor, ensureTrailData, startPackages],
   )
+
+  /**
+   * The size step's own download start (#1054). The level preference is
+   * already written - Onboarding writes it through onChangeLevel as the
+   * radio moves, which is what points `downloadRequests` at the right
+   * artifact BEFORE this fires - so what is left is marking the choice made
+   * and starting the sheet through the same path the window's button takes,
+   * canary and all.
+   */
+  const handleOnboardingDownload = useCallback(() => {
+    updatePreferences({ download_choice_made: true })
+    void handleDownloadSheet(HIKING_SHEET)
+  }, [updatePreferences, handleDownloadSheet])
 
   /** Resume, which skips the trail-data step: those bytes are already here,
    *  and the point of resuming is not to spend signal twice. */
@@ -2860,6 +6105,48 @@ function App() {
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
+  /**
+   * Taking a trail (#1306), from a badge tap or a legend row. False where
+   * there is nothing to do - a source the registry has no trail for, or the
+   * trail already taken - so the caller can fall through to what the tap
+   * would otherwise have meant.
+   *
+   * Opens the same "Which long hike?" sheet Long hike's mode switch opens
+   * on nothing active, rather than writing a preference directly, since
+   * #1352: the map's chosen trail is read off the active Hike
+   * (`chosenTrailId` above), so taking one from the map has to go through
+   * the door that sets one, not a second write next to it. True the moment
+   * the sheet opens, not once a hike is actually picked - `handleSelectLine`
+   * below reads this to decide whether the tap ALSO meant to open the
+   * line's own sheet, and it did not: the sheet this opens is the answer to
+   * the tap.
+   */
+  const takeTrail = useCallback(
+    (source: string | null): boolean => {
+      const id = trailIdForSource(source)
+      if (id === null || id === chosenTrailId) return false
+      setHikeSheet('pick')
+      return true
+    },
+    [chosenTrailId],
+  )
+  const handleTakeTrail = useCallback(
+    (trail: TrailInView) => {
+      takeTrail(trail.source)
+    },
+    [takeTrail],
+  )
+  /** A badge tap takes an untaken trail and opens nothing; every other tap -
+   *  a line, or the badge of the trail already taken - is the sheet's, as
+   *  features/NEARBY_TRAILS.md §2 decides for lines (#1306). */
+  const handleSelectLine = useCallback(
+    (tapped: TappedLine | null) => {
+      if (tapped?.badge === true && takeTrail(tapped.source)) return
+      line.mapScreen.onSelectLine?.(tapped)
+    },
+    [takeTrail, line.mapScreen.onSelectLine],
+  )
+
   // How many of the waypoints in view the map actually drew (#528). Measured on
   // `idle` rather than derived, because the collision engine decides it and only
   // MapLibre knows what it decided - see lib/useDrawnPoiCounts.ts.
@@ -2867,7 +6154,14 @@ function App() {
     counts: drawnPoiCounts,
     belowPoiZoom,
     ghostedTrailsDrawn,
-  } = useDrawnPoiCounts(map)
+  } = useDrawnPoiCounts(map, chosenSources)
+
+  // The named trails the map is drawing (#1283), for the legend's "Trails in
+  // view" block. Reported by the map off its settled frame (map/trailsInView.ts)
+  // rather than derived here, for the reason the drawn counts above are: only
+  // MapLibre knows what it actually drew. The setter is the stable callback
+  // MapView asks for.
+  const [trailsInView, setTrailsInView] = useState<readonly TrailInView[]>([])
 
   // One thing open at a time. The waypoint card floats by its pin rather than
   // at the bottom where the legend sits, but the rule survives the move: two
@@ -2878,10 +6172,72 @@ function App() {
   // Null is a tap on bare map - the card's tap-elsewhere-to-dismiss, which
   // every map card teaches. It only clears the selection: closing the LEGEND
   // from a stray tap on the map above it would punish a miss twice.
-  const handleSelectPoi = useCallback((id: string | null) => {
-    setSelectedPoiId(id)
-    if (id !== null) setLegendOpen(false)
-  }, [])
+  /**
+   * The press-and-hold plate (#1137): where it is, and what it says.
+   *
+   * Held as the PRESS rather than as a resolved anchor, so the mile is worked
+   * out at render from whatever `trailIndex` the phone has by then - a press
+   * held while the corridor is still downloading would otherwise be stuck
+   * saying "This spot" after the index arrives.
+   */
+  const [pressPlate, setPressPlate] = useState<{
+    at: { lat: number; lon: number }
+    point: { x: number; y: number }
+    within: { width: number; height: number }
+  } | null>(null)
+
+  const handleLongPress = useCallback(
+    (at: { lon: number; lat: number }, point: { x: number; y: number }) => {
+      if (map === null) return
+      // A press with a card open replaces the card. Two panels over one map,
+      // one of them describing a place the hiker is no longer pointing at, is
+      // the screen arguing with itself.
+      setSelectedPoiId(null)
+      // The map's own box, read once here rather than on every render of the
+      // plate. `point` is in the canvas's CSS pixels, so the container's CSS
+      // size is what it has to be clamped against - and both are settled at
+      // the moment of the press, since the plate closes on the first movement
+      // afterwards.
+      const box = map.getContainer()
+      setPressPlate({
+        at: { lat: at.lat, lon: at.lon },
+        point,
+        within: { width: box.clientWidth, height: box.clientHeight },
+      })
+    },
+    [map],
+  )
+
+  /**
+   * The plate goes on the first sign the map is moving under it.
+   *
+   * `movestart` rather than `moveend`, and rather than repositioning: the
+   * plate names a point, and a panel that rides along while its point slides
+   * out from under it is worse than one that leaves. Nothing here fights the
+   * gesture - by the time this fires MapLibre has already decided the touch
+   * was a pan, which is the same signal map/longPress.ts defers to.
+   */
+  useEffect(() => {
+    if (map === null || pressPlate === null) return
+    const close = () => setPressPlate(null)
+    map.on('movestart', close)
+    return () => {
+      map.off('movestart', close)
+    }
+  }, [map, pressPlate])
+
+  const handleSelectPoi = useCallback(
+    (id: string | null) => {
+      // A shelter or campsite tapped WHILE BUILDING is a stop, not a card -
+      // see `toggleDayHikeStop`, which refuses (and returns false) for every
+      // other pin and whenever no builder is open, so this falls through to
+      // the card in every case it does not own.
+      if (id !== null && toggleDayHikeStop(id)) return
+      setSelectedPoiId(id)
+      if (id !== null) setLegendOpen(false)
+    },
+    [toggleDayHikeStop],
+  )
 
   const handleOpenLegend = useCallback(() => {
     setLegendOpen(true)
@@ -3063,18 +6419,208 @@ function App() {
    * A report that starts from a place card carries the place (FIELD_NOTES.md
    * step 1): the escalation after a problem-shaped tap, and the card's own
    * "report a problem here". With a type it goes straight to the form -
-   * `damaged` names shelter_repair - and without one it opens the picker,
-   * because no report type is "a dry spring" and pre-picking a wrong one
-   * would file a flooding report about the absence of water.
+   * `trash` names the report type of the same name (#1122) - and without one
+   * it opens the picker, because no report type is "a dry spring" and
+   * pre-picking a wrong one would file a flooding report about the absence of
+   * water.
+   *
+   * `damaged` used to be the other one that named a type, and #1140 took that
+   * away with the word: the button now reads "Problem", which covers mice and
+   * a fouled privy as well as a hole in the roof, so `shelter_repair` stopped
+   * being a safe guess. It reaches this function without a type now, like
+   * `dry`. The parameter keeps `shelter_repair` in its union because the
+   * picker still offers it and the form still takes it - what changed is that
+   * nothing pre-picks it.
    */
   const handleReportFromPoi = useCallback(
-    (anchor: ReportAnchor, type?: 'shelter_repair') => {
+    (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => {
       setSelectedPoiId(null)
       setReporting(
-        type === undefined ? { step: 'pick', anchor } : { step: 'form', type, anchor },
+        type === undefined ? { step: 'window', anchor } : { step: 'form', type, anchor },
       )
     },
     [],
+  )
+
+  /**
+   * A thanks from a place's card (#1133).
+   *
+   * STRAIGHT TO THE FORM, not through the window, for the reason
+   * reporting/categories.ts states as `filesOnTap`: a thanks is one of the two
+   * things that must never be filed by a tap. It is a message to a person, and
+   * an empty one sent by accident is worse than none - so it gets the form,
+   * where there is something to write and a Cancel to change your mind with.
+   *
+   * The anchor is the card's own, so the club lookup has a `poiId` to work
+   * from. Same shape as `handleReportFromPoi`'s escalation arm, deliberately:
+   * this is that path with the type already picked.
+   */
+  const handleThanksFromPoi = useCallback((anchor: ReportAnchor) => {
+    setSelectedPoiId(null)
+    setReporting({ step: 'form', type: 'thanks', anchor })
+  }, [])
+
+  /**
+   * What the report window's header prints for where this is going (#1133).
+   *
+   * A place's NAME when the report started from its card, because that is
+   * what a hiker is looking at; otherwise the mile, because that is what they
+   * can check against the header. "here" only when neither is known, which is
+   * a real state - no fix yet, no trail index downloaded - and one the window
+   * has to be able to say rather than printing "mi 0.0", which is Springer
+   * Mountain (chrome/Header.tsx keeps the same rule about the mile readout).
+   */
+  const reportAnchorWords = useCallback(
+    (anchor?: ReportAnchor): { label: string; phrase: string } => {
+      if (anchor?.poiId !== undefined) {
+        const place = searchablePois.find((poi) => poi.id === anchor.poiId)
+        if (place !== undefined) return { label: place.name, phrase: `at ${place.name}` }
+      }
+      // THE FALLBACK IS FOR HAVING NO ANCHOR, NOT FOR AN ANCHOR WITH NO MILE.
+      // `anchor?.mile ?? fix?.mile` reads the same and is wrong in the one
+      // case #1137 introduced: a press held on the map two miles up the trail
+      // has a place but may have no mile - the trail index is not downloaded,
+      // or the point is off the corridor - and borrowing the HIKER's mile
+      // there would print "Filed - blow down at mi 628.4" over a report filed
+      // somewhere else entirely. A mile is a position claim; the wrong one
+      // resolves, which is what makes it worse than none.
+      const mile = anchor === undefined ? fix?.mile : anchor.mile
+      // "here" is an adverb where the other two are nouns, which is why the
+      // window takes both forms rather than composing `at ${label}` itself.
+      // That naive version reads perfectly for a mile and produced "Filed —
+      // blow down at here" the first time anybody photographed the screen
+      // with no fix.
+      if (mile === undefined) return { label: 'here', phrase: 'here' }
+      const shown = `mi ${mile.toLocaleString('en-US', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}`
+      return { label: shown, phrase: `at ${shown}` }
+    },
+    [searchablePois, fix?.mile],
+  )
+
+  /**
+   * File a report from the window, held back for its undo window (#1133).
+   *
+   * `beginContribution` first and always, exactly as `handleSubmitReport`
+   * does: saved before anything is asked about who the contributor is. The
+   * difference is the fourth argument - without it, the `syncOutbox` below
+   * would routinely send the report before the countdown on screen finished,
+   * and the Undo button would be a lie.
+   *
+   * The sign-in and identity steps are deliberately NOT taken here. Under 1a
+   * the tap is the whole interaction for most hikers, and putting an account
+   * question between somebody and the map they were reading - for a report
+   * they may be about to undo - is the interruption this window exists to
+   * remove. They are asked when the window closes instead.
+   */
+  const handleFileFromWindow = useCallback(
+    async (type: ReportTypeId, note: string, holdUntil: Date): Promise<string> => {
+      const anchor = reporting !== null ? reporting.anchor : undefined
+      // WHERE THE REPORT SAYS IT IS, and the rule is `ReportForm`'s own,
+      // carried over rather than reinvented: the ANCHOR when the report
+      // started from a place card, and otherwise the hiker's own fix.
+      //
+      // Dropping the second half is a regression that looks like nothing -
+      // the report still files, the receipt still says "Filed" - and leaves a
+      // maintainer a blow-down with no location. App.flows.test.tsx names the
+      // behaviour exactly ("files the report at the position the hiker is
+      // actually standing"), which is how it was caught here.
+      //
+      // The mile is separately unknown from the coordinates: a fix off the
+      // centerline, or a trail index not downloaded yet, has one and not the
+      // other. Absent rather than zero, always - "mi 0.0" is Springer
+      // Mountain and 0,0 is the Atlantic off West Africa, so neither is a
+      // stand-in for "we do not know".
+      const at =
+        anchor?.lat !== undefined && anchor.lon !== undefined
+          ? { lat: anchor.lat, lon: anchor.lon }
+          : gps.status === 'located'
+            ? { lat: gps.at.lat, lon: gps.at.lon }
+            : null
+      const mile = anchor?.mile ?? fix?.mile
+
+      const item = await beginContribution(
+        {
+          type,
+          reporter_type: signReportAs(preferences.reporter_type),
+          ...(note === '' ? {} : { note }),
+          ...(anchor?.poiId !== undefined ? { poi_id: anchor.poiId } : {}),
+          ...(at !== null ? at : {}),
+          ...(mile !== undefined ? { mile } : {}),
+        },
+        new Date(),
+        undefined,
+        holdUntil,
+      )
+      return item.id
+    },
+    [reporting, preferences.reporter_type, gps, fix?.mile],
+  )
+
+  /** Undo: the same `removeQueued` everything else uses. There is no second
+   *  withdrawal path, because the report was a real queue entry all along. */
+  const handleUndoFromWindow = useCallback(
+    async (outboxId: string) => {
+      await removeQueued(outboxId)
+      await refreshOutbox()
+    },
+    [refreshOutbox],
+  )
+
+  /**
+   * Closing the window is where the account question finally gets asked - and
+   * only if something was actually filed, which `refreshOutbox` has already
+   * counted.
+   */
+  const handleCloseWindow = useCallback(
+    (filedAnything: boolean) => {
+      setReporting(null)
+      // NOTHING WAS FILED, so nothing is owed. Somebody who opened the window,
+      // read it and closed it has not contributed - and asking them to sign in
+      // for a report they did not write is the interruption this whole change
+      // exists to remove. The old flow could not get this wrong, because
+      // reaching its save path meant submitting a form; a window you can open
+      // and close for free can, which is what the test asserts.
+      if (!filedAnything) return
+
+      void syncOutbox().then((result) => {
+        if (result === null) return
+        if (result.sent > 0) markSynced()
+        // AND AGAIN ONCE THE UNDO WINDOW HAS SHUT (#1133), which is #640
+        // re-opening quietly if this is left out.
+        //
+        // #640 is the rule that a freshly filed report goes NOW rather than
+        // waiting for the connection to flap: `useOutboxSync`'s effect fires
+        // on `online` or the account CHANGING, and filing a report changes
+        // neither. The flush above is what satisfies it - except that under
+        // 1a the report it was filed for is usually still HELD when it runs,
+        // because `Done` sits right there and a hiker presses it in about two
+        // seconds. So the flush drains everything except the one report the
+        // hiker just wrote, and that one then sits as "waiting to send"
+        // exactly as #640 described.
+        //
+        // `held` is why FlushResult counts it apart from `stuck`: this is the
+        // one caller that can do something about it. One follow-up, not a
+        // loop - the hold is bounded and a second held report would be a
+        // second window, with its own close and its own follow-up.
+        if (result.held > 0) {
+          setTimeout(() => {
+            void syncOutbox().then((later) => {
+              if (later !== null && later.sent > 0) markSynced()
+            })
+          }, UNDO_WINDOW_MS)
+        }
+      })
+      const next = stepAfterSaving({
+        hasAccount: account !== null,
+        hasIdentity: hasStatedReporterType(preferences.reporter_type),
+      })
+      if (next === 'sign-in') setAuthFlow({ screen: 'choose', afterReport: true })
+      else if (next === 'identity') askForIdentity()
+    },
+    [account, preferences.reporter_type, askForIdentity, markSynced],
   )
 
   /**
@@ -3102,6 +6648,7 @@ function App() {
       onAddNote: (draft: FieldNoteDraft, photo?: Blob) =>
         void handleAddFieldNote(draft, photo),
       onReportProblem: handleReportFromPoi,
+      onSayThanks: handleThanksFromPoi,
       now,
     }),
     [
@@ -3111,6 +6658,7 @@ function App() {
       preferences.contribute_conditions,
       handleAddFieldNote,
       handleReportFromPoi,
+      handleThanksFromPoi,
       now,
     ],
   )
@@ -3126,7 +6674,15 @@ function App() {
   const [localHours, setLocalHours] = useState<readonly VolunteerHoursSummary[]>([])
 
   useEffect(() => {
-    if (!online || account === null || activeTab !== 'volunteer') return
+    // "Open" means the volunteer surface itself since #1054, not a tab: the
+    // fetch-when-looked-at rule is the point, and where the looking happens
+    // moved - it is More's volunteer page now.
+    if (
+      !online ||
+      account === null ||
+      !(activeTab === 'more' && morePage === 'volunteer')
+    )
+      return
     let cancelled = false
     fetchMyVolunteerHours().then(
       (records) => {
@@ -3139,7 +6695,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [online, account, activeTab])
+  }, [online, account, activeTab, morePage])
 
   const hoursRecords = useMemo(() => {
     if (myHours === null && localHours.length === 0) return null
@@ -3192,23 +6748,37 @@ function App() {
   )
 
   /**
-   * Today's walked-past water, shelters, campsites and resupply, oldest mile
-   * first - the Volunteer tab's list (lib/passedToday.ts). Names come from
-   * the same searchable index every other list reads.
+   * Today's walked-past water, shelters, campsites, resupply and - since
+   * #1122 - trailhead parking, oldest mile first: the Volunteer tab's list
+   * (lib/passedToday.ts). Names come from the same searchable index every
+   * other list reads.
+   *
+   * PARKING ARRIVED HERE AS A CONSEQUENCE RATHER THAN A DECISION, which is
+   * worth saying because it is a visible change nobody asked for directly:
+   * the list is built from NOTE_SCOPED_TYPES, so bringing parking into the
+   * ask brought it into the evening list too. Left that way on purpose. The
+   * alternative is a second, narrower list of types here, and then the app
+   * holds two answers to "what do we ask about" - a hiker who can file a note
+   * on a lot from its card but cannot find that lot in the list of places
+   * they passed is being told two different things by one feature.
    */
-  const passedPlacesToday = useMemo(
-    () =>
-      passedPlaces(
-        passedToday.ranges,
-        searchablePois.flatMap((poi) =>
-          poi.mile === undefined
-            ? []
-            : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
-        ),
-        NOTE_SCOPED_TYPES,
+  const passedPlacesToday = useMemo(() => {
+    // Nothing walked today, nothing passed - and no pass over the waypoints to
+    // find that out (#1303). `passedPlaces` already answers [] for an empty
+    // range list; what this skips is the flatMap that builds its argument,
+    // which is a full pass over 16,949 rows on every launch before a hiker has
+    // taken a step.
+    if (passedToday.ranges.length === 0) return NO_PASSED_PLACES
+    return passedPlaces(
+      passedToday.ranges,
+      searchablePois.flatMap((poi) =>
+        poi.mile === undefined
+          ? []
+          : [{ id: poi.id, name: poi.name, type: poi.type, mile: poi.mile }],
       ),
-    [passedToday.ranges, searchablePois],
-  )
+      NOTE_SCOPED_TYPES,
+    )
+  }, [passedToday.ranges, searchablePois])
 
   /**
    * A tap on a passed place opens its card, on the map, framed - the exact
@@ -3217,7 +6787,7 @@ function App() {
    */
   const handleOpenPassedPlace = useCallback(
     (id: string) => {
-      setActiveTab('trail')
+      setActiveTab('map')
       handleSelectPoi(id)
       const found = pois.find((candidate) => candidate.id === id)
       if (found !== undefined && map !== null) {
@@ -3308,6 +6878,7 @@ function App() {
     setAccountDeleted(true)
     await forgetPreferencesSync()
     await forgetTripSync()
+    await forgetDayHikeSync()
     await signOut()
     return receipt
   }, [])
@@ -3327,6 +6898,12 @@ function App() {
     // handset, look like a device that had already synced, and upload one
     // person's plans into another person's account as ordinary edits (#892).
     await forgetTripSync()
+    // And the day hikes' own ledger, for exactly the same reason (#1035).
+    // It landed with its own store (#976) and its own forget function, and
+    // that function was never called from here - so a day hike's segments,
+    // which are the coordinates somebody tapped, were the one thing a shared
+    // handset still carried across a sign-out.
+    await forgetDayHikeSync()
   }, [])
 
   /**
@@ -3460,29 +7037,33 @@ function App() {
     if (account !== null && authFlow?.afterReport === true) askForIdentity()
   }, [account, authFlow, askForIdentity])
 
-  // Nothing renders until the phone has answered about itself: its stored
-  // preferences, so a returning hiker never sees a flash of the first-run
-  // onboarding, and what is in its archive store, so the map is built around
-  // the right background the first time (App.mapLifecycle.test.tsx).
+  // Nothing renders until enough is known to choose the first frame: whether
+  // onboarding is done, so a returning hiker never sees a flash of the
+  // first-run steps. Since #1301 that answer comes from the launch mirror
+  // (lib/launchMirror.ts) on every launch but the first after it was written,
+  // so this gate is open before the first render and the tab bar and the Today
+  // header paint from the app's own markup while IndexedDB is still being
+  // asked. A launch with no mirror waits here for the record, as every launch
+  // used to - slower, and never wrong.
   //
-  // The second half is the same argument as the first, one screen further in.
-  // `archiveStatusFor` answers "not downloaded" for a package it has not read
-  // yet, which is the same answer it gives for one that genuinely is not
-  // there - and effectiveBackground() below turns that into "draw the live
-  // sheet". So a phone WITH the corridor on it used to open on the live sheet,
-  // start pulling vector and DEM tiles over the network, and then throw the
-  // whole map away and rebuild it around the archive when the read landed a
-  // beat later. A blink, a re-frame, and roughly 2 MB of somebody's data
-  // allowance spent on a background they had already downloaded their way out
-  // of - which is precisely the spend lib/dataSaver.ts exists to prevent.
-  //
-  // Both reads start on mount and run in parallel, so what this waits for is
-  // the slower of the two rather than their sum, and both are IndexedDB reads
-  // of small things - an object of preferences, and blob HANDLES whose bytes
-  // are not touched. Neither can hang the app open: loadPreferences() falls
-  // back to defaults if it rejects, and every path through the archive read,
-  // including its catch, sets a status.
-  if (!preferencesLoaded || !archivesRead) return null
+  // THIS GATE USED TO WAIT FOR THE ARCHIVE STORE TOO, and the reason is worth
+  // keeping because the wait moved rather than vanished. `archiveStatusFor`
+  // answers "not downloaded" for a package it has not read yet, which is the
+  // same answer it gives for one that genuinely is not there - and
+  // effectiveBackground() below turns that into "draw the live sheet". So a
+  // phone WITH the corridor on it used to open on the live sheet, start
+  // pulling vector and DEM tiles over the network, and then throw the whole
+  // map away and rebuild it around the archive when the read landed a beat
+  // later. A blink, a re-frame, and roughly 2 MB of somebody's data allowance
+  // spent on a background they had already downloaded their way out of -
+  // which is precisely the spend lib/dataSaver.ts exists to prevent
+  // (App.mapLifecycle.test.tsx). That is a decision about the MAP, so the map
+  // now waits for it (`mapNeededNow` above) and the tab bar does not. Measured
+  // 2026-09-09 against production, the whole tree sat behind that read for
+  // every archive package - the offered sheets, then every coverage cell as
+  // the cell indexes arrived, re-blanking the tree twice on a launch with
+  // signal - which is what #1301 is about.
+  if (!shellKnown) return null
 
   /**
    * Where the opening view has room to be, which during first run is not the
@@ -3500,6 +7081,15 @@ function App() {
    * card is (`ENTRY_CARD_MAX_VIEWPORT_FRACTION`), so the two move together on a
    * short screen and a tall one alike. The left/right/top insets stay the plain
    * breathing room every fitted box gets.
+   *
+   * AND IT ONLY REACHES A DESKTOP NOW (#1324). This applies to a map that is
+   * mounted while `entering`, and on a phone none is: the steps build no map,
+   * so nothing is fitted around a card that covers nothing. A desktop still
+   * renders its map from launch and so still lands here - where the bottom
+   * inset is a phone's card measured on a laptop's viewport, which is why
+   * #1296's re-fit exists to undo it the moment the steps end. Neither this
+   * nor that is wrong; both are simply about a screen this budget is not
+   * about, and the phone arm is now unreachable rather than merely unused.
    */
   const entryFitPadding = entering
     ? {
@@ -3544,60 +7134,62 @@ function App() {
   // hiker sees behind the steps has changed - still the canvas and nothing
   // else, still untouchable, still credited - and there is now one map.
 
+  // The full-screen flows, over the held map rather than instead of it
+  // (#1081, second pass). These were early returns, which was correct when
+  // every screen was: opening a report from Today then cancelling it cost
+  // nothing extra, because nothing extra was mounted. With the map kept, an
+  // early return here silently destroyed the kept map and remounted it -
+  // hidden, at full build cost - the moment the flow closed. So they render
+  // as `flowScreen` in the one return at the bottom, exactly the way the tab
+  // screens do, and the map they were typed over is still there afterwards.
+  // A flow outranks whatever tab is active - it is somewhere a hiker is
+  // typing or deciding - and while one is up the downloads window is not
+  // rendered, which is the behaviour the early returns gave it.
+  let flowScreen: ReactNode = null
   if (authFlow !== null) {
-    if (authFlow.screen === 'email') {
-      return (
+    flowScreen =
+      authFlow.screen === 'email' ? (
         <EmailSignIn
           onMagicLink={sendMagicLink}
           onSignIn={signInWithEmail}
           onSignUp={signUpWithEmail}
           onCancel={() => setAuthFlow(null)}
         />
+      ) : (
+        <SignInPrompt
+          providers={ENABLED_PROVIDERS}
+          reportSaved={authFlow.afterReport}
+          // #315: Google and Apple are a full off-origin navigation, so
+          // offline they take the hiker out of the app and away from the map
+          // rather than merely failing. The screen holds those two and says so.
+          online={online}
+          onSignIn={handleChooseProvider}
+          onCancel={() => setAuthFlow(null)}
+        />
       )
-    }
-
-    return (
-      <SignInPrompt
-        providers={ENABLED_PROVIDERS}
-        reportSaved={authFlow.afterReport}
-        // #315: Google and Apple are a full off-origin navigation, so
-        // offline they take the hiker out of the app and away from the map
-        // rather than merely failing. The screen holds those two and says so.
-        online={online}
-        onSignIn={handleChooseProvider}
-        onCancel={() => setAuthFlow(null)}
-      />
-    )
-  }
-
-  // After the report is saved and after sign-in, which is the order
-  // contributionFlow.ts insists on: a trail name belongs to a profile, so
-  // asking first collects something with nowhere to put it (#233).
-  if (collectingIdentity) {
-    return (
+  } else if (collectingIdentity) {
+    // After the report is saved and after sign-in, which is the order
+    // contributionFlow.ts insists on: a trail name belongs to a profile, so
+    // asking first collects something with nowhere to put it (#233).
+    flowScreen = (
       <IdentitySetup
         onSave={handleSaveIdentity}
         onSkip={() => setCollectingIdentity(false)}
       />
     )
-  }
-
-  // Before the report screens below and after the auth ones above, which is
-  // the order this file already keeps: a full-screen flow renders instead of
-  // the map. Nothing here is gated on an account, deliberately - see
-  // handleSubmitAppFailure.
-  if (reportingFailure) {
-    return (
+  } else if (reportingFailure) {
+    // Before the report screens below and after the auth ones above, which
+    // is the order this file already keeps. Nothing here is gated on an
+    // account, deliberately - see handleSubmitAppFailure.
+    flowScreen = (
       <AppFailureReport
         online={online}
         onSubmit={(draft, authoredAt) => void handleSubmitAppFailure(draft, authoredAt)}
         onClose={() => setReportingFailure(false)}
       />
     )
-  }
-
-  if (reportingClosure) {
-    return (
+  } else if (reportingClosure) {
+    flowScreen = (
       <ClosureForm
         // The snapped mile the header is already showing, or null when there
         // is no fix or it could not be placed on the centerline. Never zero:
@@ -3608,70 +7200,341 @@ function App() {
         onCancel={() => setReportingClosure(false)}
       />
     )
-  }
-
-  if (reporting !== null) {
-    if (reporting.step === 'pick') {
-      const anchor = reporting.anchor
-      return (
-        <ReportTypePicker
-          // The anchor rides through the pick (FIELD_NOTES.md step 1): a
-          // report that started from a place card stays about that place
-          // whichever type gets chosen.
-          onPick={(type) =>
-            setReporting(
-              anchor === undefined
-                ? { step: 'form', type }
-                : { step: 'form', type, anchor },
-            )
+  } else if (reporting !== null) {
+    // THE PICKER IS NO LONGER A ROUTE (#1133). `step: 'window'` renders the
+    // report window at the foot of this component's return instead, as an
+    // OVERLAY - the whole point being that the screen underneath stays
+    // mounted and visible rather than being replaced. So there is nothing to
+    // assign to `flowScreen` here, and assigning one would undo the change.
+    //
+    // `step: 'form'` is still a route, and still needs to be: it is reached
+    // only by `bad_hikers` and `thanks`, both of which are long forms with
+    // things to type, and neither of which files on a tap.
+    if (reporting.step === 'form') {
+      flowScreen = (
+        <ReportForm
+          type={reporting.type}
+          trailName={preferences.trail_name}
+          // The stored answer, or the floor when nobody has said (#233). It was
+          // a hardcoded "thru" here and in More below, so every report in the
+          // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
+          // for why the fallback is the weakest claim rather than that one.
+          reporterType={signReportAs(preferences.reporter_type)}
+          // Anchored reports carry the PLACE (FIELD_NOTES.md step 1): the
+          // POI's own coordinates and mile, which need no GPS fix - it is the
+          // place being reported on, not the hiker's position. Un-anchored
+          // ones keep the fix: null with no fix, rather than 0,0 - a real
+          // place in the Atlantic a maintainer cannot tell from a missing
+          // location. The mile is separately unknown when the fix is off the
+          // centerline or the trail index has not been downloaded yet.
+          location={
+            reporting.anchor !== undefined
+              ? {
+                  lat: reporting.anchor.lat,
+                  lon: reporting.anchor.lon,
+                  ...(reporting.anchor.mile !== undefined
+                    ? { mile: reporting.anchor.mile }
+                    : {}),
+                }
+              : gps.status === 'located'
+                ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
+                : null
           }
-          // A closure leaves the report flow rather than continuing it: it
-          // is a different record with a different form (#832).
-          onReportClosure={() => {
-            setReporting(null)
-            setReportingClosure(true)
-          }}
+          poiId={reporting.anchor?.poiId}
+          online={online}
+          onSubmit={(submission) => void handleSubmitReport(submission)}
           onCancel={() => setReporting(null)}
         />
       )
     }
+  }
 
-    return (
-      <ReportForm
-        type={reporting.type}
-        trailName={preferences.trail_name}
-        // The stored answer, or the floor when nobody has said (#233). It was
-        // a hardcoded "thru" here and in More below, so every report in the
-        // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
-        // for why the fallback is the weakest claim rather than that one.
-        reporterType={signReportAs(preferences.reporter_type)}
-        // Anchored reports carry the PLACE (FIELD_NOTES.md step 1): the
-        // POI's own coordinates and mile, which need no GPS fix - it is the
-        // place being reported on, not the hiker's position. Un-anchored
-        // ones keep the fix: null with no fix, rather than 0,0 - a real
-        // place in the Atlantic a maintainer cannot tell from a missing
-        // location. The mile is separately unknown when the fix is off the
-        // centerline or the trail index has not been downloaded yet.
-        location={
-          reporting.anchor !== undefined
-            ? {
-                lat: reporting.anchor.lat,
-                lon: reporting.anchor.lon,
-                ...(reporting.anchor.mile !== undefined
-                  ? { mile: reporting.anchor.mile }
-                  : {}),
-              }
-            : gps.status === 'located'
-              ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
-              : null
-        }
-        poiId={reporting.anchor?.poiId}
-        online={online}
-        onSubmit={(submission) => void handleSubmitReport(submission)}
-        onCancel={() => setReporting(null)}
+  /**
+   * THE HIKE WINDOW (#1317, rebuilt by #1329) - every long-hike surface, in
+   * one chrome, over whatever screen the hiker was already on.
+   *
+   * #1317 shipped these nine as two different arrangements: three sheets
+   * welded to the bottom edge in `.hike-sheet-dock`, and five screens in the
+   * `flowScreen` chain above, which REPLACES the screen and takes the map
+   * out of the accessibility tree. A maintainer using it on a desktop found
+   * both, in the same sitting: a sheet at the foot of a 1440px browser, and
+   * "having them full screen makes it hard for me to remember where I am".
+   *
+   * The second sentence is #1133's, arrived at independently. The report
+   * window stopped being a route for exactly this reason - a dialog leaves
+   * the screen you were already on visible around it, "which is what says
+   * you have not gone anywhere" - and its comment at the foot of this
+   * component states the general rule: an overlay that leaves what is behind
+   * it mounted belongs down there, not in `flowScreen`.
+   *
+   * So all nine are overlays now, and `screens/plan.css`'s `.hike-window`
+   * plus desktop.css's breakpoint decide the shape. On a phone nothing
+   * moves: `--sheet` still docks to the bottom edge, `--screen` still fills
+   * the viewport. Above 900px both become a window over the dimmed app.
+   *
+   * ONE CONSEQUENCE IS LOAD-BEARING RATHER THAN COSMETIC. With the screens
+   * out of `flowScreen`, the map is no longer unmounted from under them -
+   * which is the whole reason `handleHikePointOnMap` above can offer a map
+   * to tap. The window and the map pick are one change seen twice.
+   *
+   * THE PRECEDENCE IS #1317'S, UNCHANGED: the finish screens, then the day,
+   * then set-up; and separately whichever sheet is up. Nothing may outrank a
+   * hiker halfway through describing their own hike.
+   */
+  let hikeScreen: ReactNode = null
+  if (finishScreen !== null && finishedFacts !== null) {
+    // Sharing renders OVER whichever of the other two opened it, so closing
+    // the share sheet returns to the screen it was opened from rather than
+    // dropping the hiker back into Plan.
+    const under =
+      finishScreen === 'record' ? (
+        <FinishedHike
+          hikeName={finishedFacts.hike.name}
+          header={finishedHeader(finishedFacts, units)}
+          photo={null}
+          sections={finishedSections(finishedFacts, units)}
+          totalSections={finishedFacts.sections.length}
+          someUnpriced={false}
+          units={units}
+          onOpenSection={handleOpenTrip}
+          onAllSections={() => setTripsOpen(true)}
+          onShare={() => setFinishScreen('share')}
+          // Export is FEATURES.md's existing commitment and its own piece of
+          // work. Until it lands the door must not look like it did
+          // something - so it says what it will do and does nothing yet,
+          // which is the honest version of "not built".
+          onExport={() => undefined}
+          onStartAnother={handleNewHike}
+          onBack={() => setFinishScreen(null)}
+        />
+      ) : (
+        <HikeFinish
+          hikeName={finishedFacts.hike.name}
+          sentence={finishedSentence(finishedFacts, units)}
+          finishedOn={finishedFacts.finishedOn ?? localDay(now)}
+          walkedMi={finishedFacts.figures.walkedMi}
+          daysWalking={finishedFacts.figures.daysWalked}
+          climbedFt={null}
+          sections={finishedFacts.figures.tripCount}
+          seasons={null}
+          photos={[]}
+          crews={null}
+          units={units}
+          onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
+          onShare={() => setFinishScreen('share')}
+          onKeepTheRecord={() => setFinishScreen('record')}
+        />
+      )
+
+    hikeScreen =
+      finishScreen === 'share' ? (
+        <ShareHike
+          hikeName={finishedFacts.hike.name}
+          cardText={hikeShareText(
+            {
+              name: finishedFacts.hike.name,
+              trailName: TRAILS[finishedFacts.hike.trailId]?.name ?? 'One trail',
+              walkedMi: finishedFacts.figures.walkedMi,
+              toGoMi: finishedFacts.figures.leftMi,
+              startedOn: finishedFacts.startedOn,
+              finishedOn: finishedFacts.finishedOn,
+              daysWalking: finishedFacts.figures.daysWalked,
+              sections: finishedFacts.figures.tripCount,
+              directions: finishedFacts.directions,
+            },
+            units,
+          )}
+          // Mutual connections are AUTHENTICATION.md's and
+          // COMMUNITY_BUILDING.md's own feature and nothing builds them yet.
+          // Empty means the section shows only its invite row and its
+          // no-public-link note, which is true rather than a placeholder.
+          recipients={[]}
+          units={units}
+          onInvite={() => undefined}
+          onClose={() => setFinishScreen('record')}
+        />
+      ) : (
+        under
+      )
+  } else if (hikeDayOpen && hikeDayView !== null) {
+    hikeScreen = (
+      <HikeDay
+        {...hikeDayView}
+        units={units}
+        onBack={() => setHikeDayOpen(false)}
+        onOpenWaypoint={handleOpenPassedPlace}
+        // The three edits and the explicit end-of-day are #1317's next
+        // slice; until they land the screen must not offer a control that
+        // silently does nothing, so each closes back to the hike - the
+        // honest version of "not yet", and the same rule LineSheet keeps.
+        onStopShort={() => setHikeDayOpen(false)}
+        onPushOn={() => setHikeDayOpen(false)}
+        onTakeZero={() => setHikeDayOpen(false)}
+        onCallItADay={() => setHikeDayOpen(false)}
+      />
+    )
+  } else if (hikeSheet === 'setup' && hikeDraft !== null) {
+    // Last in the chain, and it is the one that can be underneath something:
+    // the picker below is a second layer over this window rather than a
+    // branch of it, so this stays assigned while a point is being chosen.
+    hikeScreen = (
+      <HikeSetup
+        hike={hikeDraft}
+        recorded={tripStore.trips.filter((trip) => trip.recorded === true)}
+        pois={pois}
+        units={units}
+        totalMiles={trailIndex?.totalMiles ?? null}
+        onRename={handleRenameDraft}
+        onEditPoint={handleEditHikePoint}
+        onAddPoint={handleAddHikePoint}
+        onUndo={hikeDraft.points.length > 0 ? handleUndoHikePoint : null}
+        onRecordStretch={handleRecordStretchFromSetup}
+        onOpenRecorded={handleOpenTrip}
+        onStart={handleStartHike}
+        onCancel={handleCancelHikePick}
       />
     )
   }
+
+  /**
+   * The sheets, in their own chain rather than the screens'.
+   *
+   * Two chains rather than one because the two shapes are genuinely
+   * different - a sheet is `--sheet` and a screen is `--screen` - and
+   * because they can legitimately coexist in exactly one direction: the pick
+   * sheet is what opens set-up, and closing set-up must find the sheet gone
+   * rather than waiting underneath. `handleNewHike` already clears it; this
+   * ordering is what makes that observable rather than incidental.
+   */
+  let hikeSheetNode: ReactNode = null
+  if (stepAwayOpen && activeHike !== null) {
+    // Over whatever screen it was opened from, because the row that opens it
+    // is in More and the sheet has to appear where it was tapped.
+    hikeSheetNode = (
+      <StepAwaySheet
+        hikeName={activeHike.name}
+        status={activeHike.status}
+        confirmingForget={confirmingForget}
+        // A zero and a town night edit the day rather than the hike, and
+        // that editing is #1317's next slice - so for now each closes
+        // rather than pretending to act. A control that looks like it did
+        // something and did not is worse than one that says "not yet".
+        onZero={closeStepAway}
+        onTownNight={closeStepAway}
+        onPause={handlePauseHike}
+        onTurnAround={handleTurnHikeAround}
+        onFinish={handleFinishHike}
+        onForget={handleForgetHike}
+        onCancelForget={() => setConfirmingForget(false)}
+        onClose={closeStepAway}
+      />
+    )
+  } else if (addDayHikeOpen && activeHike !== null) {
+    hikeSheetNode = (
+      <AddDayHikeSheet
+        candidates={dayHikeCandidates}
+        onAdd={handleAddDayHikeToHike}
+        onClose={() => setAddDayHikeOpen(false)}
+      />
+    )
+  } else if (hikeSheet === 'pick') {
+    // "Which long hike?" - over whatever screen the hiker is on, because the
+    // mode switch that opens it lives on Today, in Settings and in the
+    // sidebar, and since #1329 the Plan band's switch opens it too.
+    hikeSheetNode = (
+      <HikePickSheet
+        hikes={tripStore.hikes}
+        trips={tripStore.trips}
+        pois={pois}
+        units={units}
+        today={localDay(now)}
+        activeHikeId={tripStore.activeHikeId}
+        onPick={handlePickHike}
+        onNew={handleNewHike}
+        onClose={handleCancelHikePick}
+      />
+    )
+  }
+
+  /**
+   * Whether anything in this family is up.
+   *
+   * Read by the map wrapper below (what is behind a modal must not be
+   * reachable by tab or by a screen reader) and by the two windows at the
+   * foot of the return, which decline to draw over a hike window for the
+   * reason they already decline to draw over a flow.
+   */
+  const hikeWindowOpen = hikeScreen !== null || hikeSheetNode !== null
+  /**
+   * ...and whether it is standing over the map OPAQUELY.
+   *
+   * Three ways this is false while `hikeWindowOpen` is true, and each one
+   * matters:
+   *   - a desktop, where the window IS a window and the app behind it is the
+   *     thing that says a hiker has not gone anywhere;
+   *   - a map pick in flight, where the map behind is what the hiker is
+   *     aiming at;
+   *   - both at once, which is the ordinary desktop case for placing a point.
+   */
+  const hikeWindowHidesMap = hikeWindowOpen && !hikePointOnMap && !isDesktop
+
+  const hikeWindow = hikeWindowOpen ? (
+    <>
+      {hikeScreen !== null && (
+        <div
+          className={
+            // STOOD ASIDE, NOT UNMOUNTED (screens/plan.css). The set-up
+            // window is holding a draft nobody has saved; taking one tap on
+            // the map, or one search in the picker, must not be able to cost
+            // somebody the four points they already described.
+            hikePointAt !== null || hikePointOnMap
+              ? 'hike-window hike-window--screen hike-window--stood-aside'
+              : 'hike-window hike-window--screen'
+          }
+        >
+          {hikeScreen}
+        </div>
+      )}
+      {/* The route builder's own stop picker, over the set-up window - NOT a
+          second one. A point on a hike and a stop on a route are the same
+          act, naming somewhere on the centerline, and two pickers would
+          drift into naming it two different ways.
+
+          Its own layer rather than a child of the window, because
+          `.stop-picker` is `position: absolute; inset: 0` and an absolutely
+          positioned overlay inside a scrolling box is sized to the SCROLL
+          CONTENT, not to what is visible - so a long points list would put
+          the picker's top somewhere above the fold. */}
+      {hikeSheet === 'setup' &&
+        hikeDraft !== null &&
+        hikePointAt !== null &&
+        !hikePointOnMap && (
+          <div className="hike-window hike-window--screen hike-window--picker">
+            <RouteStopPicker
+              choices={routeStopChoices}
+              pois={pois}
+              // The point before the slot being filled, so the distance door
+              // has somewhere to measure from. Appending measures from the
+              // last point; editing measures from the one before it.
+              previous={previousHikePoint}
+              south={hikePointSouth}
+              // A hike's points are never "removed" from the picker: the ends
+              // are the hike, and a point on the way is taken back with the
+              // undo in the list, which is the control it already offers.
+              removable={false}
+              units={units}
+              onPick={handleHikePointChosen}
+              onMapPick={handleHikePointOnMap}
+              onRemove={() => setHikePointAt(null)}
+              onClose={() => setHikePointAt(null)}
+            />
+          </div>
+        )}
+      {hikeSheetNode !== null && (
+        <div className="hike-window hike-window--sheet">{hikeSheetNode}</div>
+      )}
+    </>
+  ) : null
 
   // Rendered beside whichever screen is showing rather than instead of it -
   // it is a window over the app, and the map or Settings behind it is still
@@ -3682,6 +7545,46 @@ function App() {
   // and the tab that used to carry them is gone; leaving them on a screen
   // would mean an archive that failed at 4 AM announcing itself over the map
   // for the rest of the walk.
+  /**
+   * The second decision on the hiking sheet's panel (#558): the stretch under
+   * the hike, priced against what is missing. Built whatever the state, so the
+   * card can say why there is nothing to take - no hike set, no index yet, the
+   * whole trail already here - rather than vanishing.
+   */
+  // Both families as one price (#1257 stage 2): a piece is a square of
+  // ground whatever is published for it, and the bytes are every missing
+  // archive of either family. Each family is held against its own key set.
+  const stretchPrice = priceStretches(
+    [
+      {
+        cells: stretchCells ?? [],
+        context: cellIndex?.context ?? null,
+        family: BASEMAP_CELLS,
+      },
+      {
+        cells: stretchNetworkCells,
+        context: networkCellIndex?.context ?? null,
+        family: NETWORK_CELLS,
+      },
+    ],
+    (key) => heldPackageKeys.has(key) || heldNetworkPackageKeys.has(key),
+    publishedSizes,
+  )
+  const stretchOffer: StretchOffer = {
+    hike: hike === null ? null : hikeSummary(hike),
+    available: cellIndex !== null && trailIndex !== null,
+    pieces: stretchPrice.pieces,
+    missing: stretchPrice.missing,
+    bytes: stretchPrice.bytes,
+    marginKm: cellIndex?.seamMarginKm ?? STRETCH_MARGIN_KM,
+    units,
+    status: stretchStatus,
+    wholeSheetHere: hikingSheetDownloaded,
+    onTake: () => void handleTakeStretch(),
+    onResume: () => void handleTakeStretch(),
+    onRemove: () => void handleRemoveStretch(),
+  }
+
   const downloadsWindow = downloadsOpen && (
     <DownloadsDialog onClose={() => setDownloadsOpen(false)}>
       {!DATA_CONFIGURED && (
@@ -3716,7 +7619,7 @@ function App() {
           title: sheet.title,
           summary: sheet.summary,
           status: sheetStatus(sheet),
-          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel),
+          sizeBytes: sheetSizeBytes(sheet, detailLevel, hikingLevel, publishedSizes),
           error: sheetError(sheet),
           // Answered against the card's OWN status, not a second reading of
           // what is downloaded: this notice exists to contradict a card that
@@ -3730,6 +7633,22 @@ function App() {
           // The step before this sheet's transfer, so the tap has something
           // to show for itself while the canary is in flight.
           preparing: preparingSheets.includes(sheet.id),
+          // The sheet's own archives, named (#1103). The card's one figure
+          // stays the sheet's - a sheet is chosen and downloaded as one
+          // decision (lib/packages.ts) - and this list is the detail under
+          // it: which assets that decision buys, each with the size and
+          // state the store actually reports. The same statuses the sheet
+          // figure is combined FROM, so the breakdown and the clump cannot
+          // disagree.
+          assets: offeredPackages(sheet).map((pkg) => ({
+            title: pkg.title,
+            summary: pkg.summary,
+            sizeBytes: packageSizeBytes(pkg, detailLevel, hikingLevel, publishedSizes),
+            status: archiveStatusFor(pkg.idbKey),
+          })),
+          // Only the hiking sheet is cut into cells, so only its panel
+          // carries the stretch (#558).
+          stretch: sheet.id === HIKING_SHEET.id ? stretchOffer : undefined,
           // Each sheet's picker carries its own level set and writes its own
           // preference (#276) - the USGS raster's tiers and the hiking
           // sheet's cuts are separate dials. The `as` casts are safe because
@@ -3737,7 +7656,7 @@ function App() {
           detail:
             sheet.id === USGS_SHEET.id
               ? {
-                  options: rasterDetailOptions(),
+                  options: rasterDetailOptions(publishedSizes),
                   value: detailLevel,
                   name: 'usgs-detail',
                   availableBytes,
@@ -3748,7 +7667,7 @@ function App() {
                 }
               : sheet.id === HIKING_SHEET.id
                 ? {
-                    options: hikingDetailOptions(),
+                    options: hikingDetailOptions(publishedSizes),
                     value: hikingLevel,
                     name: 'hiking-detail',
                     availableBytes,
@@ -3774,14 +7693,227 @@ function App() {
     </DownloadsDialog>
   )
 
-  if (activeTab === 'more') {
+  // The one line the map plate and the Today header both read - decided once
+  // (lib/positionLine.ts), never twice, so the two screens cannot disagree
+  // about where the hiker is.
+  const position = positionLine({
+    gps,
+    enabled: locationAllowed,
+    mile: fix?.mile,
+    direction: direction?.direction,
+    // `downloadedTrailIndex`, not the gated one: this asks whether the phone
+    // HAS the data, and the gate below answers the different question of
+    // whether it measures this hike. Passing the gated value would print
+    // "No trail data" at a phone holding all of it.
+    trailReady: downloadedTrailIndex !== null,
+    unmeasuredTrail,
+    // A park has no mile axis (#928), so a followed hike replaces the
+    // Springer mile with distance along the hiker's own walk.
+    follow: followState,
+    units,
+  })
+
+  // The journal, built once for its two rooms (#1054): the phone's Today tab
+  // below, and the desktop's planning station, where the map branch docks
+  // this same element beside the canvas. One element rather than two JSX
+  // copies, so the forty-odd props feeding it cannot drift between layouts.
+  const todayScreen = (
+    <Today
+      now={now}
+      position={position}
+      online={online}
+      hasGpsFix={gps.status === 'located'}
+      lastSyncedAt={lastSyncedAt}
+      conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
+      backgroundProblem={backgroundProblem({
+        sources: notDrawing,
+        online,
+        rasterArchiveDownloaded: archiveDownloaded,
+        hikingSheetDownloaded: hikingTilesHeld,
+        outsideDownload,
+      })}
+      backgroundOverride={backgroundOverride(
+        preferences.background_source,
+        saveData,
+        archiveDownloaded,
+      )}
+      trailLinesMissing={!haveTrailLines && dataError !== null}
+      mode={hikerMode}
+      onChangeMode={handleChangeMode}
+      longHike={longHikeToday}
+      pois={searchablePois}
+      currentMile={fix?.mile}
+      direction={direction?.direction}
+      stalenessFor={laneStaleness}
+      onOpenPoi={handleOpenPassedPlace}
+      closureAhead={closureAhead}
+      warningsAhead={warningsAhead}
+      advisoryAhead={advisoryAhead}
+      onShowOnMap={() => setActiveTab('map')}
+      elevation={ribbon}
+      units={units}
+      pace={pace}
+      opportunities={workProjects}
+      opportunitiesAsOf={workProjectsGeneratedAt}
+      onOpenVolunteer={() => {
+        setActiveTab('more')
+        setMorePage('volunteer')
+      }}
+      passedPlaces={passedPlacesToday}
+      queuedReportCount={queuedCount}
+      onStartReport={() => setReporting({ step: 'window' })}
+      // A thanks goes straight to its form rather than through the window: it
+      // is not a problem, and the window is a list of problems
+      // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
+      // splitting it out of one.
+      onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
+      // ONLY WHAT IS STILL AHEAD (#982, the maintainer's decision of
+      // 2026-08-27: "Today shouldn't have other day hikes. I think the
+      // previous hikes need to live on a different screen"). Today is the day
+      // in front of the hiker; a walk from last Saturday belongs on the
+      // screen that keeps walks.
+      dayHikes={plannedDayHikes}
+      onOpenDayHike={handleOpenDayHike}
+      hasDownload={anySheetDownloaded}
+      onOpenDownloads={openDownloads}
+      // The shelf (#1284): routes somebody published, and the way to the rest
+      // of them. The cards press since #1290 built the detail they open.
+      suggestedHikes={suggestedHikes}
+      fixAt={fixAt}
+      onFindHike={() => setTodayPage('find')}
+      onOpenSuggestedHike={openSuggestedHike}
+    />
+  )
+
+  // The search the shelf's row pushes (#1284), in Today's slot on both
+  // layouts: the phone's Today branch and the desktop's journal column both
+  // dock `todayPane`, so the tab bar under it stays put and Today stays the
+  // selected tab.
+  const findHikeScreen = (
+    <FindHike
+      hikes={suggestedHikes}
+      places={hikePlaceOptions}
+      fixAt={fixAt}
+      units={units}
+      pace={pace}
+      onBack={() => setTodayPage('home')}
+      onOpenHike={openSuggestedHike}
+    />
+  )
+
+  // One route's detail (#1290, wireframe 1g). Resolved from the id against
+  // the routes on screen right now: if the published document is refetched
+  // while this is open and the route is gone from it, the screen falls back
+  // to where the hiker came from rather than holding a copy nothing stands
+  // behind any more.
+  const openHike =
+    openHikeId === null
+      ? null
+      : (suggestedHikes.find((hike) => hike.id === openHikeId) ?? null)
+  /** The hiker's own copy of the route on screen, or undefined when they
+   *  have not saved it. Saved-but-never-logged and not-saved-at-all are
+   *  different answers, and the buttons say different things for each. */
+  const savedCopy =
+    openHike === null ? undefined : savedFromSource(dayHikeStore.hikes, openHike.id)
+  const hikeDetailScreen =
+    openHike === null ? null : (
+      <HikeDetail
+        hike={openHike}
+        pace={pace}
+        units={units}
+        onBack={() => setTodayPage(cameFromFinder ? 'find' : 'home')}
+        onSave={saveSuggestedHike}
+        {...(savedCopy === undefined
+          ? {}
+          : {
+              savedWalks: walkedDates(savedCopy),
+              onShowOnMap: () => showSavedHikeOnMap(savedCopy.id),
+            })}
+      />
+    )
+  const todayPane =
+    todayPage === 'detail' && hikeDetailScreen !== null
+      ? hikeDetailScreen
+      : todayPage === 'find'
+        ? findHikeScreen
+        : todayScreen
+
+  // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
+  // for it, and only the desktop needs it there - the phone carries the same
+  // control on the Today header. Undefined below the breakpoint, so TabBar
+  // draws nothing extra on a phone.
+  const sidebarModeSwitch = isDesktop ? (
+    <ModeSwitch mode={hikerMode} onChange={handleChangeMode} />
+  ) : undefined
+  /**
+   * The hike a hiker is on, in the sidebar, on every screen (#1344).
+   *
+   * Rendered only where there IS one and where there is somewhere to go: a
+   * button reading the hike's name that opened a sheet offering that same
+   * hike back would be a control that does nothing, which is LineSheet's
+   * rule and the reason `onSwitchHike` is undefined on the Plan band under
+   * the same condition.
+   */
+  const sidebarHikeSwitch =
+    isDesktop && activeHike !== null && tripStore.hikes.length > 0 ? (
+      <button type="button" className="tab-bar__hike" onClick={handleSwitchHike}>
+        {activeHike.name}
+        <span aria-hidden="true"> ▾</span>
+        <span className="visually-hidden"> — change which hike you&rsquo;re on</span>
+      </button>
+    ) : undefined
+
+  // Every tab branch below is skipped during first run: `entering` needs the
+  // map screen rendered as the steps' backdrop (#721), whatever tab the
+  // default names. The Today branch is also skipped on a desktop, where the
+  // journal reads beside the map instead of replacing it - the map branch
+  // at the bottom of this component docks `todayScreen` there.
+  //
+  // These are screens OVER the held map rather than early returns instead of
+  // it (#1081): each renders as `overlayScreen` in the one return at the
+  // bottom, with the map - if this session has built one - kept mounted and
+  // hidden underneath, so coming back to the Map tab shows the map that is
+  // already there instead of paying for a new one. The screens themselves
+  // still mount and unmount exactly as they did as returns, which is what
+  // More's boundary comment below relies on (#175).
+  let overlayScreen: ReactNode = null
+  if (!entering && activeTab === 'today' && !isDesktop) {
+    overlayScreen = (
+      <div className="app__screen">
+        <div>
+          {/* Its own boundary like More's and Plan's, for their shared
+              reason: a throw here must not cost the map, and the tab bar
+              underneath is the way back. The card is inside it for that same
+              reason rather than beside it - a throw while resolving a saved
+              walk is a throw on this screen. */}
+          <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
+            {todayPane}
+            {/* The details a row on "Your day hikes" promises. A sheet over
+                the journal, not a screen instead of it: the tab bar stays
+                put and closing returns to the row that was tapped. It docks
+                against this pane, which App.css makes `position: relative`
+                for exactly this - and `.today` is bounded to the pane's own
+                height, so `bottom: 0` is the bottom a hiker can see rather
+                than the bottom of a scrolled column. */}
+            {savedDayHikeCardNode}
+          </ErrorBoundary>
+        </div>
+        <TabBar
+          active={activeTab}
+          onSelect={selectTab}
+          modeSwitch={sidebarModeSwitch}
+          hikeSwitch={sidebarHikeSwitch}
+        />
+      </div>
+    )
+  } else if (!entering && activeTab === 'more') {
     // Its own boundary for the same reason the map has one, with the roles
     // reversed: a throw anywhere in Settings used to escape to the ROOT
     // boundary, which has no tab bar and no reset - one bad stored value
     // rendering More was a permanently dead app. Caught here, the tab bar
     // survives underneath and the map stays one tap away, which is the only
     // recovery that matters on a trail.
-    return (
+    overlayScreen = (
       <>
         <div className="app__screen">
           <div>
@@ -3790,7 +7922,12 @@ function App() {
                 a resetKey={activeTab} here could never change while mounted
                 (#175). */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              {moderating ? (
+              {browsingRegistry ? (
+                // Replaces More, like Moderation beside it and for the same
+                // reason: reached from here and nowhere else, so there is
+                // nothing behind it worth keeping visible.
+                <Registry onClose={() => setBrowsingRegistry(false)} />
+              ) : moderating ? (
                 // Replaces More rather than covering it, for the same reason
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
@@ -3816,8 +7953,21 @@ function App() {
                 // the standard the same file already keeps for "Roads &
                 // walkability".
                 <More
+                  page={morePage}
+                  onNavigate={setMorePage}
+                  // #1180's recorder. `now` comes from the shell's clock so
+                  // the elapsed reading advances without the section holding
+                  // a timer of its own on the one screen that costs battery.
+                  // `gps.status` too: the recorder hook runs BEFORE the
+                  // watch (the watch takes its onFix), so the trace section
+                  // can only learn what the watch is doing here. Without it a
+                  // recording with a denied permission reads as "0 readings"
+                  // and nothing else (#1180).
+                  gpsTrace={{ ...gpsTrace, gpsStatus: gps.status, now }}
                   stewards={stewards}
                   account={account}
+                  mode={hikerMode}
+                  onChangeMode={handleChangeMode}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
                   onSignOut={() => void handleSignOut()}
                   preferences={preferences}
@@ -3835,31 +7985,69 @@ function App() {
                   now={now}
                   dataSaver={saveData}
                   archiveDownloaded={archiveDownloaded}
-                  hasDownload={anySheetDownloaded}
+                  hikingStatus={sheetStatus(HIKING_SHEET)}
                   downloadActivity={downloadActivity}
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
+                  longHikeName={activeHike?.name ?? null}
+                  onStepAwayFromHike={() => setStepAwayOpen(true)}
+                  onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
                   onEditHike={() => setPickingHike(true)}
-                  onStartReport={() => setReporting({ step: 'pick' })}
+                  onStartReport={() => setReporting({ step: 'window' })}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
+                  onOpenRegistry={() => setBrowsingRegistry(true)}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
+                  volunteerScreen={
+                    <Volunteer
+                      contributeConditions={preferences.contribute_conditions}
+                      onToggleContribute={(next) =>
+                        updatePreferences({ contribute_conditions: next })
+                      }
+                      passedToday={passedPlacesToday}
+                      onOpenPlace={handleOpenPassedPlace}
+                      units={units}
+                      opportunities={workProjects}
+                      opportunitiesAsOf={workProjectsGeneratedAt}
+                      gpsMile={fix?.mile ?? null}
+                      now={now}
+                    >
+                      <VolunteerHours
+                        records={hoursRecords}
+                        onLog={(draft) => void handleLogHours(draft)}
+                        now={now}
+                      />
+                      {/* Under the hours it summarises, deliberately (#969).
+                          The panel is a reading of that logbook, and a summary
+                          above the record it summarises is a number a hiker
+                          cannot check without scrolling past it. */}
+                      <VolunteerImpact
+                        records={hoursRecords}
+                        shown={preferences.impact_panel_shown}
+                        onToggleShown={(next) =>
+                          updatePreferences({ impact_panel_shown: next })
+                        }
+                      />
+                    </Volunteer>
+                  }
                 />
               )}
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={selectTab}
+            modeSwitch={sidebarModeSwitch}
+            hikeSwitch={sidebarHikeSwitch}
+          />
         </div>
-        {downloadsWindow}
       </>
     )
-  }
-
-  if (activeTab === 'plan') {
-    return (
+  } else if (!entering && activeTab === 'plan') {
+    overlayScreen = (
       <>
         <div className="app__screen">
           <div>
@@ -3870,17 +8058,69 @@ function App() {
               <PlanScreen
                 plan={plan}
                 elevation={elevation}
+                // The hike the app is on, and the way to a different one
+                // (#1329). Both the shell's: the pointer lives in the trip
+                // store and the sheet is rendered at the foot of this file,
+                // like every other sheet Plan opens.
+                activeHike={activeHike}
+                onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
+                onRenameHike={handleRenameHike}
+                onAddSectionToHike={handleAddSectionToHike}
+                onTakeSectionOut={handleTakeSectionOut}
+                // Open, it takes the primary's place in the column; closed,
+                // undefined leaves the primary alone. Two shapes in one slot:
+                // the ends first, then `PlanTargetSheet` on the same ground
+                // once both are named - which is the whole of "that content
+                // should live on the same page".
+                sectionPlanner={
+                  sectionDraft === null ? undefined : sectionDraft.from !== null &&
+                    sectionDraft.to !== null ? (
+                    <PlanTargetSheet
+                      route={[sectionDraft.from, sectionDraft.to]}
+                      pois={pois}
+                      elevation={elevation}
+                      units={units}
+                      pace={pace}
+                      onCancel={handleCancelSection}
+                      onLayOut={handleLayOutSection}
+                    />
+                  ) : (
+                    <SectionPlanner
+                      from={sectionDraft.from}
+                      to={sectionDraft.to}
+                      onPickFrom={() => setSectionPointAt('from')}
+                      onPickTo={() => setSectionPointAt('to')}
+                      onChooseOnMap={handleSectionOnMap}
+                      onCancel={handleCancelSection}
+                    />
+                  )
+                }
                 kindSheet={
                   planKindOpen ? (
                     <PlanKindSheet
-                      networkAvailable={graphIndex !== null}
-                      walkedAvailable={false}
-                      onPickDayHike={openDayHike}
+                      // The reason, not just the fact (#1049): four of the
+                      // five ways to have no junction graph never resolve by
+                      // waiting, and this door used to promise all of them a
+                      // data sync that was not coming.
+                      network={trailNetwork}
+                      onRetryNetwork={retryTrailNetwork}
+                      walkedAvailable
+                      onPickDayHike={() => {
+                        setDayHikeKind('planned')
+                        openDayHike()
+                      }}
                       onPickTrip={() => {
                         setPlanKindOpen(false)
                         routeBuilder.openRouteBuilder()
                       }}
-                      onPickWalked={() => setPlanKindOpen(false)}
+                      onPickWalked={() => {
+                        // The SAME builder, entered in the past tense (#982's
+                        // own "this is that flow with a different entrance,
+                        // not a second implementation"). What differs is the
+                        // flag it saves under and the screen that reads it.
+                        setDayHikeKind('walked')
+                        openDayHike()
+                      }}
                       onClose={() => setPlanKindOpen(false)}
                     />
                   ) : null
@@ -3890,12 +8130,39 @@ function App() {
                 units={units}
                 pace={pace}
                 draftLive={routeBuilder.draftLive || dayHike !== null}
+                // WHICH builder holds it, not merely that one does: each
+                // room offers a way back to its own draft and its own
+                // action otherwise. The day hike wins a tie for the reason
+                // the map tap does - the two are exclusive (#997), and this
+                // is the same precedence stated once more.
+                draftKind={
+                  dayHike !== null ? 'day' : routeBuilder.draftLive ? 'trip' : null
+                }
+                dayListOpen={dayListOpen}
+                onDayListOpen={setDayListOpen}
                 dayHikes={dayHikeStore.hikes}
                 onOpenDayHike={handleOpenDayHike}
-                {...(dayHikeReview === null && dayHikeCardNode !== null
-                  ? { dayHikeCard: dayHikeCardNode }
-                  : {})}
+                {...(savedDayHikeCardNode === null
+                  ? {}
+                  : { dayHikeCard: savedDayHikeCardNode })}
                 onStartOnMap={openPlanKind}
+                onNewDayHike={openDayHike}
+                // The hike room's primary is the inline planner now (#1344);
+                // the day room and the no-hike sections room keep the builder,
+                // which is the surface that suits them.
+                onNewTrip={
+                  activeHike === null ? routeBuilder.openRouteBuilder : handlePlanSection
+                }
+                // The state rather than the boolean (#1049): the Plan tab
+                // prints the refusal, and a refusal needs to know which
+                // absence it is refusing for.
+                network={trailNetwork}
+                onRetryNetwork={retryTrailNetwork}
+                gpsAt={gps.status === 'located' ? gps.at : null}
+                room={effectivePlanRoom}
+                onAddDayHikeToHike={
+                  activeHike === null ? undefined : () => setAddDayHikeOpen(true)
+                }
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
                   applyPlanEdit((current) => insertZeroAfter(current, index))
@@ -3924,6 +8191,14 @@ function App() {
                 onOpenGroup={setOpenGroupId}
                 onPlanGap={routeBuilder.handlePlanGap}
                 onPlanFrom={routeBuilder.handlePlanFrom}
+                // The plan bench's selection (#971): the day the tree and the
+                // timeline are pointing at, so the third pane follows the
+                // other two. Straight into the state `handleChartStretch`
+                // already writes when no draft is open, which is what makes
+                // the Map tab and the desktop chart pick it up for free -
+                // rather than a second copy of "which stretch is selected"
+                // that could disagree with the first.
+                onSelectStretch={setFreeChartStretch}
                 onOpenTrips={() => setTripsOpen(true)}
                 {...(targetSheet === null ? {} : { targetSheet })}
                 {...(openGroup !== null
@@ -3980,46 +8255,13 @@ function App() {
               />
             </ErrorBoundary>
           </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
+          <TabBar
+            active={activeTab}
+            onSelect={selectTab}
+            modeSwitch={sidebarModeSwitch}
+            hikeSwitch={sidebarHikeSwitch}
+          />
         </div>
-        {downloadsWindow}
-      </>
-    )
-  }
-
-  if (activeTab === 'volunteer') {
-    return (
-      <>
-        <div className="app__screen">
-          <div>
-            {/* Its own boundary like More's and Plan's, for their shared
-                reason: a throw here must not cost the map, and the tab bar
-                underneath is the way back. */}
-            <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              <Volunteer
-                contributeConditions={preferences.contribute_conditions}
-                onToggleContribute={(next) =>
-                  updatePreferences({ contribute_conditions: next })
-                }
-                passedToday={passedPlacesToday}
-                onOpenPlace={handleOpenPassedPlace}
-                units={units}
-                opportunities={workProjects}
-                opportunitiesAsOf={workProjectsGeneratedAt}
-                gpsMile={fix?.mile ?? null}
-                now={now}
-              >
-                <VolunteerHours
-                  records={hoursRecords}
-                  onLog={(draft) => void handleLogHours(draft)}
-                  now={now}
-                />
-              </Volunteer>
-            </ErrorBoundary>
-          </div>
-          <TabBar active={activeTab} onSelect={setActiveTab} />
-        </div>
-        {downloadsWindow}
       </>
     )
   }
@@ -4035,280 +8277,630 @@ function App() {
   // thing that can put a map back on a phone that has none, so it has to
   // survive the map falling over - and it is already open, over the failure,
   // whenever the map threw while someone was in it.
+  //
+  // The wrapper is #1081's other half. With a tab screen up, it takes the
+  // whole map subtree - the fallback included, which is why it sits outside
+  // the boundary rather than being a MapScreen prop - out of flow, out of
+  // sight and out of the accessibility tree, without unmounting any of it.
+  // `visibility: hidden` rather than `display: none`, so the canvas keeps
+  // its size and coming back costs no resize, no re-layout and no rebuild.
+  // Not rendered at all until the session first needs a map (`mapMounted`),
+  // so a launch that stays on Today still builds nothing.
+  // What is over the map right now: a full-screen flow outranks the active
+  // tab's screen, per the flow comment above.
+  //
+  // THIS IS NOT `mapShownNow` INVERTED, and this comment used to say it was
+  // ("must agree with `mapShownNow` up top") - false since #1134, which is
+  // #1148's entry for it. The two ask different questions and one case
+  // separates them: the report WINDOW. `flowOpen` counts `reporting !== null`
+  // for both steps, while `step: 'window'` deliberately assigns no
+  // `flowScreen` - it renders as an overlay at the foot of this return
+  // precisely so the screen underneath stays mounted and visible. So with
+  // the window open over the map tab, `mapShownNow` is false and
+  // `screenOver` is null.
+  //
+  // Which is right for each, because they are used for different things:
+  // `screenOver` decides whether the map subtree is taken out of flow and
+  // out of the accessibility tree, and a window that deliberately leaves the
+  // map visible must not do that. `mapShownNow` feeds `mapArrivals`, the
+  // ErrorBoundary's retry key, where the cost of the divergence is one
+  // spurious bump when the window closes - which clears error state on a map
+  // that has none, and does nothing to a healthy one.
+  //
+  // WHAT THE NEXT OVERLAY AUTHOR NEEDS FROM THIS: adding a full-screen flow
+  // means touching BOTH lists; adding an overlay that leaves the map visible
+  // means touching neither, and adding one to `flowOpen` alone is how a
+  // deliberately-visible map ends up counted as hidden.
+  const screenOver = flowScreen ?? overlayScreen
+
+  // REACHING THIS RETURN BEFORE THERE IS A MAP (#1301, and a defect an
+  // adversarial review of it found). The map subtree carries the tab bar for
+  // every screen that has no screen of its own here - the map tab on a phone,
+  // and every tab on a desktop, whose layout docks the journal beside the map.
+  // Since the shell now paints before the archive store has answered, a hiker
+  // can reach the tab bar and tap Map inside the few hundred milliseconds that
+  // read takes, and a desktop lands here on its first frame. With `mapMounted`
+  // false and nothing in `screenOver`, this return rendered nothing at all - a
+  // blank screen with no tab bar and no way back, which is precisely the
+  // failure TECHNICAL_ARCHITECTURE.md's error-boundary section exists to
+  // prevent, and worse than what it was written for, because nothing threw.
+  //
+  // The wait itself stays: the map has to know which background it is built
+  // around or it draws the live sheet and throws itself away (the note at the
+  // render gate). What does not wait is the way off this screen.
+  //
+  // ONLY where nothing else is rendering. A phone on Today gets its screen
+  // through `screenOver`, which carries its own tab bar - and an early return
+  // here would have taken Today away for the length of that read, which is a
+  // worse bug than the one being fixed. NOT during first run either: the entry
+  // steps ARE the map subtree (#721 draws them over its canvas), there is no
+  // tab bar behind them by design, and a bare one flashing up before the first
+  // step would offer to leave a flow that has not started.
+  // `?? null` rather than a bare `=== null`, because `ReactNode` admits
+  // undefined and a branch that ever assigns one would silently turn this
+  // guard off - which is the shape of the bug it exists to prevent.
+  const nothingWouldRender = !mapMounted && (screenOver ?? null) === null && !entering
+
   return (
     <>
-      <ErrorBoundary
-        resetKey={activeTab}
-        fallback={() => (
-          <div className="app__screen">
-            <ScreenFailed what="The map" />
-            <TabBar active={activeTab} onSelect={setActiveTab} />
-          </div>
-        )}
-      >
-        <MapScreen
-          // First run (#721). Hides everything but the canvas and makes the
-          // whole subtree inert, so the steps below are drawn over the map
-          // rather than over a second copy of it.
-          entering={entering}
-          topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
-          trailsUrl={trailsUrl}
-          overviewTrailsUrl={overviewTrailsUrl}
-          nearbyTrailsUrl={nearbyTrailsUrl}
-          background={effectiveBackground(
-            preferences.background_source,
-            saveData,
-            archiveDownloaded,
-          )}
-          // Same inputs, same module, one line apart - so the strip cannot say
-          // the background was overridden while the canvas draws the one that
-          // was chosen, which is the mismatch dataSaver.ts exists to stop.
-          backgroundOverride={backgroundOverride(
-            preferences.background_source,
-            saveData,
-            archiveDownloaded,
-          )}
-          // The CHOICE, not the outcome above: the picker in the legend shows
-          // and writes what the hiker asked for, and the override note beside it
-          // explains any gap between that and what is drawn.
-          backgroundChoice={preferences.background_source}
-          onChangeBackground={handleChangeBackground}
-          // And whether that choice still exists to make (#855). False on a
-          // phone with no raster archive, which is every phone that did not
-          // take one before the sheet was withdrawn.
-          offlineBackgroundAvailable={offlineBackground}
-          // The link at the foot of the legend, and the wording it gets. This
-          // is the only way to the download from the map now that the tab is
-          // gone - which is why it is carried, and not why it is given room.
-          onOpenDownloads={openDownloads}
-          hasDownload={anySheetDownloaded}
-          // The bar on that same link. This is the only place a download in
-          // flight is visible from the map, and the map is where a hiker who
-          // shut the window is standing.
-          downloadActivity={downloadActivity}
-          // Narrower than the line above on purpose: the credit corner names
-          // the USGS survey only while there are USGS tiles on the phone to
-          // draw, and a hiking-sheet-only download has none.
-          hasRasterArchive={archiveDownloaded}
-          hasNearbyTrails={nearbyTrailsUrl !== null}
-          // Decided here rather than on the screen (#334): the same failing
-          // source has to reach the downloads window, which opens over the
-          // More tab where the map screen is not rendered at all. What the
-          // sources reported and what is on the phone mean nothing apart, so
-          // they are joined once, in one place, and both screens read the
-          // same answer. The DEM is deliberately not an input - an outage
-          // there costs relief and contours on a sheet that still draws.
-          backgroundProblem={backgroundProblem({
-            sources: notDrawing,
-            online,
-            rasterArchiveDownloaded: archiveDownloaded,
-            hikingSheetDownloaded,
-          })}
-          onLiveSourceHealth={recordSourceHealth}
-          belowArchiveZoom={belowArchiveZoom}
-          // Only once something has actually gone wrong, not merely because
-          // the lines have not arrived yet. A first launch spends a few
-          // seconds with no trail on the map in the ordinary case, and a flag
-          // that fired during it would be crying wolf on every cold start -
-          // which is how a flag stops being read. `dataError` is what turns
-          // "not yet" into "not coming".
-          trailLinesMissing={!haveTrailLines && dataError !== null}
-          // For the opening camera only - MapView keeps it out of the zooms
-          // the download has no tiles for.
-          archiveZooms={archiveZooms}
-          trailName={TRAIL_NAME}
-          trailLogo={TRAIL_LOGO}
-          // One sentence rather than a number, decided in one place
-          // (lib/positionLine.ts): the header used to say "Looking for GPS…"
-          // for six different situations, three of which never resolve (#312).
-          position={positionLine({
-            gps,
-            enabled: locationAllowed,
-            mile: fix?.mile,
-            direction: direction?.direction,
-            trailReady: trailIndex !== null,
-          })}
-          // Which also decides whether the map offers its locate control -
-          // attaching it regardless was a second high-accuracy watch and a
-          // permission prompt behind this preference's back.
-          locationEnabled={locationAllowed}
-          closureAhead={closureAhead}
-          advisoryAhead={advisoryAhead}
-          warningsAhead={warningsAhead}
-          closures={closureBandsOnMap}
-          corridor={corridorOnMap}
-          maintainerLine={maintainerLine}
-          disputes={disputedPoints}
-          // Three features, three files, three lines (#327). Each spread is
-          // exactly the `MapScreenProps` fields that feature owns - a
-          // `Pick<>` on the screen's own type, so the compiler refuses a
-          // second owner for any of them and a change to one of these
-          // features never reaches this file at all.
-          {...atc.mapScreen}
-          {...line.mapScreen}
-          {...workday.mapScreen}
-          // The route builder's three, from the same kind of hook (#991).
-          {...routeBuilder.mapScreen}
-          dayHikeDrawing={dayHikeDrawing}
-          // Two things sit OVER the builder's own surface, and both are the
-          // shell's: the break-into-days sheet, and the day-hike builder.
-          // The precedence between them is unchanged - target, then day
-          // hike, then whatever the route builder wanted to show.
-          onRouteTap={
-            targetRequest !== null ||
-            (dayHike === null && routeBuilder.mapScreen.onRouteTap === undefined)
-              ? undefined
-              : handleMapTap
+      {nothingWouldRender && (
+        <div className="app__screen">
+          <TabBar
+            active={activeTab}
+            onSelect={selectTab}
+            modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
+            hikeSwitch={sidebarHikeSwitch}
+          />
+        </div>
+      )}
+      {mapMounted && (
+        <div
+          // HELD AND REACHABLE ARE TWO QUESTIONS SINCE #1329, and the hike
+          // window is what separates them. `app__map-held` is
+          // `visibility: hidden` - right under a phone's full-bleed window,
+          // and wrong under a desktop's, where the app around the window is
+          // the thing that says the hiker has not gone anywhere. Whether the
+          // map may be TABBED INTO is a different question with a different
+          // answer: never, while a modal is up, on either form factor - and
+          // always, while a map pick is in flight, because then the map is
+          // what the hiker is aiming at.
+          className={
+            screenOver !== null || hikeWindowHidesMap ? 'app__map-held' : undefined
           }
-          routeSheet={
-            targetRequest !== null ? (
-              targetSheet
-            ) : dayHikeReview !== null ? (
-              // Frame `1l` as a review, in the same slot the bar held - one
-              // surface continuing, with Save as its one primary action.
-              dayHikeCardNode
-            ) : dayHike !== null ? (
-              <DayHikePickBar
-                draft={dayHike}
-                status={dayHikeStatus ?? { kind: 'empty' }}
-                units={units}
-                orgLabel={dayHikeOrgLabel}
-                // Priced from the graph's own per-edge climb (#1011). Still
-                // null - and the bar still prints no time - whenever this
-                // phone holds no elevation artifact or the walk crosses an
-                // edge nobody measured: ascentFt: 0 would price a climb in
-                // Harriman at zero, a flat-ground claim on real ground.
-                walkingMinutes={dayHikeWalkingMinutes}
-                onUndo={() =>
-                  setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
-                }
-                onCloseLoop={() =>
-                  setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
-                }
-                onDone={handleDayHikeDone}
-                onCancel={handleDayHikeCancel}
-                canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
-              />
-            ) : (
-              routeBuilder.mapScreen.routeSheet
-            )
+          inert={screenOver !== null || (hikeWindowOpen && !hikePointOnMap) || undefined}
+          aria-hidden={
+            screenOver !== null || (hikeWindowOpen && !hikePointOnMap) || undefined
           }
-          warnings={warningPins}
-          time={now}
-          online={online}
-          hasGpsFix={gps.status === 'located'}
-          lastSyncedAt={lastSyncedAt}
-          conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
-          activeTab={activeTab}
-          onSelectTab={setActiveTab}
-          onOpenLegend={handleOpenLegend}
-          onOpenSearch={() => setSearchOpen(true)}
-          legendOpen={legendOpen}
-          onCloseLegend={closeLegend}
-          searchOpen={searchOpen}
-          onCloseSearch={() => setSearchOpen(false)}
-          searchablePois={searchablePois}
-          onSelectSearchResult={(poi) => {
-            const found = pois.find((p) => p.id === poi.id)
-            // AND OPEN ITS CARD (§3 of #527). Moving the camera was the whole of
-            // what selecting a result did, which broke the moment sites landed:
-            // `composeSites` removes a folded member from the source, so
-            // searching "Mt. Algo Shelter Privy" centred the map on a coordinate
-            // with NO PIN on it - the privy rides the shelter's pin ~42 m away -
-            // and then said nothing. The search found it and the map denied it.
-            //
-            // Selecting it is what makes the card open, and the card is where
-            // the answer is: PoiCard opens on whichever part the shell asked for
-            // (`shown = site.find(...) ?? poi`), so this lands on the PRIVY's
-            // chip with the rest of the site beside it, rather than on the
-            // shelter. Nothing here special-cases a member - passing the id that
-            // was searched for is what makes it right.
-            handleSelectPoi(poi.id)
-            // Centring alone left the zoom wherever it was, which from the opening
-            // view of the whole corridor meant tapping a result moved the map by a
-            // few pixels and looked like nothing happened at all.
-            // The miss is unreachable, and kept for the type checker: every result
-            // the sheet can offer was built by mapping this same `pois` array, and
-            // the sheet only exists on the map screen, so `found` is always there
-            // and `map` is never null. Ignored for coverage rather than covered -
-            // no input produces a search result pointing at a POI the app does not
-            // hold, or a tap on a sheet that is not rendered.
-            /* v8 ignore start */
-            if (found !== undefined && map !== null) {
-              map.jumpTo({
-                center: [found.lon, found.lat],
-                zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
-              })
-            }
-            /* v8 ignore stop */
-            setSearchOpen(false)
-          }}
-          bbox={bbox}
-          // Which of the four the ribbon is showing is lib/ribbonView.ts's
-          // decision, made above. The LANES follow it (#913): one window for
-          // both, from that same decision, so a pin always sits under the
-          // ground it names - and dropped entirely, rather than re-windowed
-          // or emptied, on the domains where a pill would stand for more
-          // trail than a place (lib/ribbonView.ts has the arithmetic).
-          elevation={ribbon}
-          chart={desktopChart}
-          waypoints={waypoints}
-          onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
-          viewportPoints={viewportPoints}
-          ghostedTrailsDrawn={ghostedTrailsDrawn}
-          drawnCounts={drawnPoiCounts}
-          belowPoiZoom={belowPoiZoom}
-          {...filters.mapScreen}
-          selectedPoi={selectedPoi}
-          selectedSite={selectedSite}
-          removedPoiCard={
-            removedPoi === null ? undefined : (
-              <RemovedPoiCard
-                tombstone={removedPoi.tombstone}
-                successorName={removedPoi.successor?.name}
-                onOpenSuccessor={
-                  removedPoi.successor === undefined
+        >
+          <ErrorBoundary
+            resetKey={mapArrivals}
+            fallback={() => (
+              <div className="app__screen">
+                <ScreenFailed what="The map" />
+                <TabBar active={activeTab} onSelect={selectTab} />
+              </div>
+            )}
+          >
+            <MapScreen
+              // First run (#721). Hides everything but the canvas and makes the
+              // whole subtree inert, so the steps below are drawn over the map
+              // rather than over a second copy of it.
+              entering={entering}
+              // The desktop planning station (#1054): with Today active above the
+              // breakpoint, this branch is the one rendering - the Today branch
+              // stands aside - and the journal reads beside the map. Never during
+              // first run, whose backdrop must stay bare down to the canvas.
+              journal={
+                !entering && isDesktop && activeTab === 'today' ? (
+                  <>
+                    {todayPane}
+                    {/* The same card the phone's Today docks, in the column
+                        the row was tapped in rather than over the map beside
+                        it - the map's own sheet slot belongs to the builders
+                        and the trailhead door, and a shelf tap must not
+                        outrank a walk in progress there. desktop.css makes
+                        the column its containing block. */}
+                    {savedDayHikeCardNode}
+                  </>
+                ) : undefined
+              }
+              modeSwitch={sidebarModeSwitch}
+              hikeSwitch={sidebarHikeSwitch}
+              // The ask before this phone's map is replaced (#919). Undefined
+              // while there is nothing newer published, which is every launch but
+              // the ones after a release - see lib/dataRefresh.ts.
+              trailDataUpdate={
+                trailDataUpdate === null
+                  ? undefined
+                  : {
+                      update: trailDataUpdate,
+                      warnsAboutData: updateWarnsAboutData,
+                      applying: applyingUpdate,
+                      onApply: () => void applyUpdate(),
+                      onDecline: () => void declineUpdate(),
+                    }
+              }
+              topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
+              trailsUrl={trailsUrl}
+              overviewTrailsUrl={overviewTrailsUrl}
+              haveTrailLines={haveTrailLines}
+              networkOverviewUrl={networkOverviewUrl}
+              background={effectiveBackground(
+                preferences.background_source,
+                saveData,
+                archiveDownloaded,
+              )}
+              // Same inputs, same module, one line apart - so the strip cannot say
+              // the background was overridden while the canvas draws the one that
+              // was chosen, which is the mismatch dataSaver.ts exists to stop.
+              backgroundOverride={backgroundOverride(
+                preferences.background_source,
+                saveData,
+                archiveDownloaded,
+              )}
+              // The CHOICE, not the outcome above: the picker in the legend shows
+              // and writes what the hiker asked for, and the override note beside it
+              // explains any gap between that and what is drawn.
+              backgroundChoice={preferences.background_source}
+              onChangeBackground={handleChangeBackground}
+              // And whether that choice still exists to make (#855). False on a
+              // phone with no raster archive, which is every phone that did not
+              // take one before the sheet was withdrawn.
+              offlineBackgroundAvailable={offlineBackground}
+              // The link at the foot of the legend, and the wording it gets. This
+              // is the only way to the download from the map now that the tab is
+              // gone - which is why it is carried, and not why it is given room.
+              onOpenDownloads={openDownloads}
+              hasDownload={anySheetDownloaded}
+              // The bar on that same link. This is the only place a download in
+              // flight is visible from the map, and the map is where a hiker who
+              // shut the window is standing.
+              downloadActivity={downloadActivity}
+              // Narrower than the line above on purpose: the credit corner names
+              // the USGS survey only while there are USGS tiles on the phone to
+              // draw, and a hiking-sheet-only download has none.
+              hasRasterArchive={archiveDownloaded}
+              // The sketch is what the shell can see of the network: above the
+              // seam its lines are tiles the map reads straight off the bucket
+              // (map/networkTiles.ts, #1257), which no prop carries. The two
+              // ship as one publish decision and no release has the tiles
+              // without the sketch, so the sketch stands for both - and
+              // OPRHP's terms, credit whenever their lines are drawn, are met
+              // at every zoom by the one flag.
+              hasNearbyTrails={networkOverviewUrl !== null}
+              // Decided here rather than on the screen (#334): the same failing
+              // source has to reach the downloads window, which opens over the
+              // More tab where the map screen is not rendered at all. What the
+              // sources reported and what is on the phone mean nothing apart, so
+              // they are joined once, in one place, and both screens read the
+              // same answer. The DEM is deliberately not an input - an outage
+              // there costs relief and contours on a sheet that still draws.
+              backgroundProblem={backgroundProblem({
+                sources: notDrawing,
+                online,
+                rasterArchiveDownloaded: archiveDownloaded,
+                hikingSheetDownloaded: hikingTilesHeld,
+                outsideDownload,
+              })}
+              onLiveSourceHealth={recordSourceHealth}
+              belowArchiveZoom={belowArchiveZoom}
+              // The horizontal edge (#557), decided beside the vertical one
+              // above from the same camera, and the line the canvas draws
+              // where the held cells end.
+              outsideDownload={outsideDownload}
+              coverageSeams={coverageSeams}
+              // Only once something has actually gone wrong, not merely because
+              // the lines have not arrived yet. A first launch spends a few
+              // seconds with no trail on the map in the ordinary case, and a flag
+              // that fired during it would be crying wolf on every cold start -
+              // which is how a flag stops being read. `dataError` is what turns
+              // "not yet" into "not coming".
+              trailLinesMissing={!haveTrailLines && dataError !== null}
+              // For the opening camera only - MapView keeps it out of the zooms
+              // the download has no tiles for.
+              archiveZooms={archiveZooms}
+              // The mode signal costs ZERO pixels (frame `D9`): it is this
+              // eyebrow saying "Day hike · leg 2 of 3 · Pine Meadow Trail" where
+              // it usually says the trail, not a new band. The A.T.'s own mark
+              // goes with it - a followed park loop is not on the A.T., and
+              // leaving the logo up would be the header naming the wrong trail.
+              trailName={followHeaderText?.trailName ?? TRAIL_NAME}
+              trailLogo={followHeaderText === null ? TRAIL_LOGO : undefined}
+              state={followHeaderText?.state}
+              // One sentence rather than a number, decided in one place
+              // (lib/positionLine.ts): the header used to say "Looking for GPS…"
+              // for six different situations, three of which never resolve (#312).
+              // Computed above the tab branches since #1054, because the Today
+              // header reads the same line.
+              position={position}
+              // As data too, for the next-up rail's heading: "NEXT UP" is a
+              // direction claim and the rail refuses to make it unsettled
+              // (chrome/NextUpRail.tsx).
+              direction={direction?.direction}
+              // And the hiker's own mile as a number, which is what the waypoint
+              // card subtracts against to say how far ahead a place is (#953).
+              // `position` above is the same fact already spent into a sentence -
+              // that is exactly why the card could not say it.
+              {...(fix === null ? {} : { hikerMile: fix.mile })}
+              // Which also decides whether the map offers its locate control -
+              // attaching it regardless was a second high-accuracy watch and a
+              // permission prompt behind this preference's back.
+              locationEnabled={locationAllowed}
+              closureAhead={closureAhead}
+              advisoryAhead={advisoryAhead}
+              warningsAhead={warningsAhead}
+              closures={closureBandsOnMap}
+              corridor={corridorOnMap}
+              maintainerLine={maintainerLine}
+              disputes={disputedPoints}
+              // Three features, three files, three lines (#327). Each spread is
+              // exactly the `MapScreenProps` fields that feature owns - a
+              // `Pick<>` on the screen's own type, so the compiler refuses a
+              // second owner for any of them and a change to one of these
+              // features never reaches this file at all.
+              {...atc.mapScreen}
+              {...line.mapScreen}
+              onSelectLine={handleSelectLine}
+              {...workday.mapScreen}
+              // The route builder's three, from the same kind of hook (#991).
+              {...routeBuilder.mapScreen}
+              dayHikeDrawing={dayHikeDrawing ?? followDrawing}
+              dayHikeTicks={dayHikeTicks}
+              mapLabels={mapLabelState}
+              builderPanel={
+                // Only while a walk is being built, and never over the review
+                // card: `dayHikeReview` means the walk is finished and the
+                // panel's controls no longer apply to anything.
+                dayHike !== null && dayHikeReview === null ? (
+                  <DayHikePanel
+                    draft={dayHike}
+                    status={dayHikeStatus ?? { kind: 'empty' }}
+                    stops={dayHikeStops}
+                    units={units}
+                    walking={dayHikeWalking}
+                    hiddenLabels={dayHikeLabels}
+                    onToggleLabel={(key: LabelLayerKey) =>
+                      setDayHikeLabels((hidden) => toggleLabelLayer(hidden, key))
+                    }
+                    onRemoveStop={(poiId) =>
+                      setDayHikeStopIds((chosen) => toggleStop(chosen, poiId))
+                    }
+                    onRemoveTurn={(ordinal) =>
+                      setDayHike((draft) =>
+                        draft === null ? draft : removeTap(draft, ordinal),
+                      )
+                    }
+                    detailsOpen={dayHikeDetailsOpen}
+                    onToggleDetails={() => setDayHikeDetailsOpen((open) => !open)}
+                  />
+                ) : undefined
+              }
+              followBand={
+                followState !== null && followState.kind === 'off-route' ? (
+                  <OffRouteBand follow={followState} units={units} />
+                ) : undefined
+              }
+              // The same condition, said once, with no distance in it (#1055).
+              // followState is rebuilt on every fix, so anything carrying
+              // `offRouteFeet` into a live region announces on every fix; this
+              // string has only two values, and lib/dayHikeFollow.ts's hysteresis
+              // (90 ft out, 45 ft back) is what keeps it from flipping between
+              // them while somebody stands at the edge of the threshold.
+              followAnnouncement={
+                followState !== null && followState.kind === 'off-route'
+                  ? 'You are off your route.'
+                  : null
+              }
+              // Two things sit OVER the builder's own surface, and both are the
+              // shell's: the break-into-days sheet, and the day-hike builder.
+              // The precedence between them is unchanged - target, then day
+              // hike, then whatever the route builder wanted to show.
+              onRouteTap={
+                // A HIKE POINT OUTRANKS BOTH BUILDERS (#1329), and cannot
+                // collide with either in practice: arming it goes through
+                // the set-up window, which is only open when no route or
+                // day-hike draft is. Stated as precedence rather than left
+                // to that, because "cannot happen" is how two interpreters
+                // end up on one touch - map/routeLayers.ts's rule.
+                hikePointOnMap
+                  ? handleHikePointMapTap
+                  : targetRequest !== null ||
+                      (dayHike === null &&
+                        routeBuilder.mapScreen.onRouteTap === undefined)
                     ? undefined
-                    : () => handleSelectPoi(removedPoi.successor?.id ?? null)
+                    : handleMapTap
+              }
+              // Draw mode replaces the tap handler rather than joining it -
+              // one interpreter per touch, which is routeLayers.ts's rule for
+              // taps and the same race one level up for a drag.
+              onRouteStroke={
+                dayHike !== null && dayHikeDrawMode ? handleDayHikeStroke : undefined
+              }
+              // Press and hold (#1137). MapView suppresses it in route and
+              // draw mode itself, so nothing is conditioned here.
+              onLongPress={handleLongPress}
+              pressPlateOpen={pressPlate !== null}
+              pressPlate={
+                pressPlate === null ? undefined : (
+                  <PressPlate
+                    point={pressPlate.point}
+                    within={pressPlate.within}
+                    // Resolved at RENDER rather than at press time, so a plate
+                    // opened while the corridor was still downloading starts
+                    // saying the mile the moment the index lands.
+                    mile={
+                      trailIndex === null
+                        ? null
+                        : mileOnTrail(trailIndex, {
+                            lon: pressPlate.at.lon,
+                            lat: pressPlate.at.lat,
+                          })
+                    }
+                    knowsTrail={trailIndex !== null}
+                    units={units}
+                    onReport={() => {
+                      setPressPlate(null)
+                      setReporting({
+                        step: 'window',
+                        anchor: pressAnchor(pressPlate.at, trailIndex),
+                      })
+                    }}
+                    onThanks={() => {
+                      setPressPlate(null)
+                      setReporting({
+                        step: 'form',
+                        type: 'thanks',
+                        anchor: pressAnchor(pressPlate.at, trailIndex),
+                      })
+                    }}
+                    onClose={() => setPressPlate(null)}
+                  />
+                )
+              }
+              routeSheet={
+                hikePointOnMap ? (
+                  // The picker's map door, open: the same slim bar the route
+                  // builder shows, saying what a tap will do while the map
+                  // underneath is the whole screen. Its refusal is the same
+                  // gate said in the same words - past MAX_OFF_TRAIL_MILES
+                  // there is no honest mile - and it is said HERE, where the
+                  // finger landed, rather than in the window standing aside
+                  // behind it.
+                  <RouteMapPickBar
+                    refusedTap={hikePointRefusedTap}
+                    units={units}
+                    onCancel={handleCancelHikePointOnMap}
+                  />
+                ) : targetRequest !== null ? (
+                  targetSheet
+                ) : dayHikeReview !== null ? (
+                  // Frame `1l` as a review, in the same slot the bar held - one
+                  // surface continuing, with Save as its one primary action.
+                  dayHikeCardNode
+                ) : dayHike !== null ? (
+                  <DayHikePickBar
+                    draft={dayHike}
+                    status={dayHikeStatus ?? { kind: 'empty' }}
+                    units={units}
+                    orgLabel={dayHikeOrgLabel}
+                    // Priced from the graph's own per-edge climb (#1011). Still
+                    // null - and the bar still prints no time - whenever this
+                    // phone holds no elevation artifact or the walk crosses an
+                    // edge nobody measured: ascentFt: 0 would price a climb in
+                    // Harriman at zero, a flat-ground claim on real ground.
+                    walking={dayHikeWalking}
+                    onUndo={() =>
+                      setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
+                    }
+                    onCloseLoop={() =>
+                      setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
+                    }
+                    onStartStretch={() =>
+                      setDayHike((draft) =>
+                        draft === null ? draft : startStretch(draft),
+                      )
+                    }
+                    onDone={handleDayHikeDone}
+                    onCancel={handleDayHikeCancel}
+                    canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
+                    canStartNew={dayHike !== null && canStartStretch(dayHike)}
+                    drawing={dayHikeDrawMode}
+                    onToggleDraw={() => setDayHikeDrawMode((on) => !on)}
+                  />
+                ) : followSheetNode !== null ? (
+                  // Following outranks both doors below and neither builder above:
+                  // a hiker mid-walk is not planning, and a hiker who IS planning
+                  // has said so more recently than they said "follow this".
+                  followSheetNode
+                ) : (
+                  // The trailhead door (frame D8) takes the slot only when
+                  // nothing else wants it - a door must never cover a builder.
+                  (routeBuilder.mapScreen.routeSheet ?? dayHikesHereNode)
+                )
+              }
+              warnings={warningPins}
+              time={now}
+              online={online}
+              hasGpsFix={gps.status === 'located'}
+              lastSyncedAt={lastSyncedAt}
+              conditionsAge={conditionsAgeLabel(worstOf(closureState, reportState), now)}
+              activeTab={activeTab}
+              onSelectTab={selectTab}
+              onOpenLegend={handleOpenLegend}
+              onOpenSearch={() => setSearchOpen(true)}
+              legendOpen={legendOpen}
+              onCloseLegend={closeLegend}
+              searchOpen={searchOpen}
+              onCloseSearch={() => setSearchOpen(false)}
+              searchablePois={searchablePois}
+              onSelectSearchResult={(poi) => {
+                const found = pois.find((p) => p.id === poi.id)
+                // AND OPEN ITS CARD (§3 of #527). Moving the camera was the whole of
+                // what selecting a result did, which broke the moment sites landed:
+                // `composeSites` removes a folded member from the source, so
+                // searching "Mt. Algo Shelter Privy" centred the map on a coordinate
+                // with NO PIN on it - the privy rides the shelter's pin ~42 m away -
+                // and then said nothing. The search found it and the map denied it.
+                //
+                // Selecting it is what makes the card open, and the card is where
+                // the answer is: PoiCard opens on whichever part the shell asked for
+                // (`shown = site.find(...) ?? poi`), so this lands on the PRIVY's
+                // chip with the rest of the site beside it, rather than on the
+                // shelter. Nothing here special-cases a member - passing the id that
+                // was searched for is what makes it right.
+                handleSelectPoi(poi.id)
+                // Centring alone left the zoom wherever it was, which from the opening
+                // view of the whole corridor meant tapping a result moved the map by a
+                // few pixels and looked like nothing happened at all.
+                // The miss is unreachable, and kept for the type checker: every result
+                // the sheet can offer was built by mapping this same `pois` array, and
+                // the sheet only exists on the map screen, so `found` is always there
+                // and `map` is never null. Ignored for coverage rather than covered -
+                // no input produces a search result pointing at a POI the app does not
+                // hold, or a tap on a sheet that is not rendered.
+                /* v8 ignore start */
+                if (found !== undefined && map !== null) {
+                  map.jumpTo({
+                    center: [found.lon, found.lat],
+                    zoom: Math.max(map.getZoom(), SEARCH_RESULT_ZOOM),
+                  })
                 }
-                onClose={handleClosePoi}
-              />
-            )
-          }
-          noteContext={noteContext}
-          pinCondition={pinCondition}
-          onSelectPoi={handleSelectPoi}
-          onClosePoi={handleClosePoi}
-          // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
-          // this, so `showZoomButtons` sat on its default of false everywhere and
-          // a browser with a mouse had no visible way to zoom at all.
-          showZoomButtons={finePointer}
-          // The canvas is WebGL and cannot read the `data-theme` attribute the
-          // rest of the app follows, so the resolved answer goes down as a prop
-          // - see map/style.ts's attachMapAppearance. The style, red-light and
-          // detail preferences ride the same road for the same reason.
-          theme={resolvedTheme}
-          themeChoice={preferences.theme}
-          mapStyle={preferences.map_style}
-          redLight={preferences.red_light_enabled}
-          detail={preferences.layer_detail_level}
-          // And the same road for the same reason: the contour interval, the
-          // summit labels, the scale bar and the elevation ribbon's three
-          // labels all answer from this one value (#619). The machinery on the
-          // map side has been there since the contours were built - what was
-          // missing was anybody passing the preference into it.
-          units={units}
-          // The corridor is the opening view only. Once there is a camera to put
-          // back, it wins: `bounds` would otherwise re-frame the entire trail
-          // every time the map screen came back from another tab.
-          center={camera?.center}
-          zoom={camera?.zoom}
-          bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
-          boundsPadding={entryFitPadding}
-          onViewportChange={handleViewportChange}
-          onMapReady={handleMapReady}
-        />
-      </ErrorBoundary>
+                /* v8 ignore stop */
+                setSearchOpen(false)
+              }}
+              bbox={bbox}
+              // Which of the four the ribbon is showing is lib/ribbonView.ts's
+              // decision, made above. The LANES follow it (#913): one window for
+              // both, from that same decision, so a pin always sits under the
+              // ground it names - and dropped entirely, rather than re-windowed
+              // or emptied, on the domains where a pill would stand for more
+              // trail than a place (lib/ribbonView.ts has the arithmetic).
+              elevation={ribbon}
+              chart={desktopChart}
+              waypoints={waypoints}
+              onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
+              viewportPoints={viewportPoints}
+              ghostedTrailsDrawn={ghostedTrailsDrawn}
+              trailsInView={trailsInView}
+              onTrailsInView={setTrailsInView}
+              chosenTrailId={chosenTrailId}
+              onTakeTrail={handleTakeTrail}
+              drawnCounts={drawnPoiCounts}
+              belowPoiZoom={belowPoiZoom}
+              // The Map tab's own two halves of #1367: the plate SAYS
+              // which hike, and the actions row beside it changes which.
+              // Both withheld off a long hike, and the switch withheld
+              // where there is nothing to switch to - never a control that
+              // does nothing.
+              hikeName={activeHike?.name}
+              onSwitchHike={
+                activeHike !== null && tripStore.hikes.length > 0
+                  ? handleSwitchHike
+                  : undefined
+              }
+              {...filters.mapScreen}
+              {...alerts.mapScreen}
+              selectedPoi={selectedPoi}
+              selectedSite={selectedSite}
+              removedPoiCard={
+                removedPoi === null ? undefined : (
+                  <RemovedPoiCard
+                    tombstone={removedPoi.tombstone}
+                    successorName={removedPoi.successor?.name}
+                    onOpenSuccessor={
+                      removedPoi.successor === undefined
+                        ? undefined
+                        : () => handleSelectPoi(removedPoi.successor?.id ?? null)
+                    }
+                    onClose={handleClosePoi}
+                  />
+                )
+              }
+              noteContext={noteContext}
+              pinCondition={pinCondition}
+              onSelectPoi={handleSelectPoi}
+              onClosePoi={handleClosePoi}
+              // WIREFRAMES.md §1.5: zoom buttons are web-only. Nothing was passing
+              // this, so `showZoomButtons` sat on its default of false everywhere and
+              // a browser with a mouse had no visible way to zoom at all.
+              showZoomButtons={finePointer}
+              // The canvas is WebGL and cannot read the `data-theme` attribute the
+              // rest of the app follows, so the resolved answer goes down as a prop
+              // - see map/style.ts's attachMapAppearance. The style, red-light and
+              // detail preferences ride the same road for the same reason.
+              theme={resolvedTheme}
+              themeChoice={preferences.theme}
+              mapStyle={preferences.map_style}
+              redLight={preferences.red_light_enabled}
+              detail={preferences.layer_detail_level}
+              // And the same road for the same reason: the contour interval, the
+              // summit labels, the scale bar and the elevation ribbon's three
+              // labels all answer from this one value (#619). The machinery on the
+              // map side has been there since the contours were built - what was
+              // missing was anybody passing the preference into it.
+              units={units}
+              // The corridor is the opening view only. Once there is a camera to put
+              // back, it wins: `bounds` would otherwise re-frame the entire trail
+              // every time the map screen came back from another tab.
+              center={camera?.center}
+              zoom={camera?.zoom}
+              bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
+              boundsPadding={entryFitPadding}
+              onViewportChange={handleViewportChange}
+              onMapReady={handleMapReady}
+            />
+          </ErrorBoundary>
+        </div>
+      )}
+      {/* Whichever screen is up, over the held map - a full-screen flow, or
+          the active tab's screen. After the map in the fragment so a
+          positioned screen would also paint over it - though the wrapper
+          above has already taken the map out of flow and out of sight
+          whenever this is non-null. */}
+      {screenOver}
+      {/* Every long-hike surface, built above. After `screenOver` so it
+          paints over whichever tab screen is up, and before the entry steps
+          so first run still outranks everything. */}
+      {hikeWindow}
+      {/* Naming one end of a section (#1344) - the SAME picker the hike's own
+          points use, on the same layer, for the reason its sibling gives:
+          two pickers would drift into naming a place two different ways.
+          Outside `hikeWindow` because a section is planned from the Plan tab
+          with no hike window open at all. */}
+      {sectionPointAt !== null && sectionDraft !== null && (
+        <div className="hike-window hike-window--screen hike-window--picker">
+          <RouteStopPicker
+            choices={routeStopChoices}
+            pois={pois}
+            // The far end measures from the near one, so "a distance from…"
+            // has somewhere to start. The near end has nothing before it and
+            // the door says so itself.
+            previous={
+              sectionPointAt === 'to' && sectionDraft.from !== null
+                ? {
+                    mile: sectionDraft.from.mile,
+                    label: stopLabel(sectionDraft.from),
+                  }
+                : null
+            }
+            // Which way a distance counts. Unknowable before both ends
+            // exist, and false is the honest floor rather than a guess:
+            // the picker offers distances north, and a hiker walking south
+            // names the place instead.
+            south={false}
+            removable={false}
+            units={units}
+            onPick={handleSectionPointChosen}
+            // No map door here. The panel behind carries one already, and it
+            // hands the whole job to the route builder rather than placing a
+            // single end - two map doors on one flow would be two answers to
+            // "where does the tap go".
+            onMapPick={handleSectionOnMap}
+            onRemove={() => setSectionPointAt(null)}
+            onClose={() => setSectionPointAt(null)}
+          />
+        </div>
+      )}
       {/* The entry steps, over the map screen rather than instead of it
           (#721). A sibling of the boundary, not a child: they are the way out
           of first run, so a map that throws mid-onboarding must not take them
@@ -4320,10 +8912,220 @@ function App() {
           hidden the chrome and made the whole screen inert - and the download
           window below cannot be open yet, because the only thing that opens it
           is finishing these steps. */}
-      {entering && <Onboarding onComplete={handleOnboardingComplete} />}
-      {downloadsWindow}
+      {entering && (
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          onChangeLevel={(level) => updatePreferences({ hiking_detail_level: level })}
+          onStartDownload={handleOnboardingDownload}
+          downloadActivity={downloadActivity}
+        />
+      )}
+      {/* Not while a full-screen flow is up: the flows used to be early
+          returns above this window's own construction, so it never rendered
+          over one, and a dialog floating over somebody's half-typed report
+          is not an arrangement worth inventing now. */}
+      {flowScreen === null && !hikeWindowOpen && downloadsWindow}
+
+      {/* THE REPORT WINDOW (#1133), last in the fragment so it stacks over
+          everything - including the tab screen it is deliberately NOT
+          replacing. That is the whole change: `flowScreen` swaps the screen
+          out, and this leaves it there, dimmed behind the scrim, so closing
+          costs a hiker nothing and `Cancel` stops being load-bearing.
+
+          Not rendered while a full-screen flow is up, for the reason the
+          downloads window above gives: a dialog floating over somebody's
+          half-typed report is not an arrangement worth inventing. In practice
+          the two cannot coexist anyway - `bad_hikers` LEAVES the window for
+          the form - but the guard is what makes that a fact rather than a
+          coincidence of the current flow. */}
+      {flowScreen === null &&
+        !hikeWindowOpen &&
+        reporting !== null &&
+        reporting.step === 'window' && (
+          <ReportWindow
+            anchor={
+              {
+                ...(reporting.anchor ?? {}),
+                ...reportAnchorWords(reporting.anchor),
+              } satisfies ReportWindowAnchor
+            }
+            // Re-anchoring, from today's own walked miles (#1133). The window
+            // orders them by how far back each one is; `passedPlaces` itself
+            // keeps sorting by mile, which is what its two other readers want.
+            //
+            // Each one is resolved against `pois` HERE rather than at pick time,
+            // so the picker only ever offers a place that can become a real
+            // anchor. Nothing is dropped by that in practice and the `flatMap`
+            // is not a filter in disguise: `passedPlacesToday` comes from
+            // `searchablePois`, which is `pois.map(...)` a few thousand lines
+            // up, so every id in this list is a `pois` id by construction. The
+            // empty arm exists because that fact lives in another `useMemo` and
+            // TypeScript cannot see it - not because a place might be missing.
+            passedPlaces={passedPlacesToday.flatMap((place) => {
+              const found = pois.find((poi) => poi.id === place.id)
+              return found === undefined || place.mile === undefined
+                ? []
+                : [
+                    {
+                      id: place.id,
+                      name: place.name,
+                      mile: place.mile,
+                      lat: found.lat,
+                      lon: found.lon,
+                    },
+                  ]
+            })}
+            {...(fix?.mile !== undefined ? { fixMile: fix.mile } : {})}
+            units={units}
+            onPickAnchor={(place) =>
+              setReporting({
+                step: 'window',
+                anchor: {
+                  poiId: place.id,
+                  lat: place.lat,
+                  lon: place.lon,
+                  mile: place.mile,
+                },
+              })
+            }
+            reporterType={signReportAs(preferences.reporter_type)}
+            onFile={handleFileFromWindow}
+            onUndo={handleUndoFromWindow}
+            // A closure leaves the report flow rather than continuing it: it is
+            // a different record with a different form (#832), and it is not a
+            // `ReportTypeId` at all.
+            onReportClosure={() => {
+              setReporting(null)
+              setReportingClosure(true)
+            }}
+            // And something unsafe leaves for the long form, keeping the anchor.
+            // Private to moderators, never a public pin, and never filed by a
+            // thumb brushing a tile.
+            onReportUnsafe={() =>
+              setReporting({
+                step: 'form',
+                type: 'bad_hikers',
+                ...(reporting.anchor !== undefined ? { anchor: reporting.anchor } : {}),
+              })
+            }
+            onClose={handleCloseWindow}
+          />
+        )}
     </>
   )
 }
 
 export default App
+
+/**
+ * The next resupply on this day's stretch, as a line - or null.
+ *
+ * A stop's own `resupply` flag, looked up rather than guessed. Null when
+ * none is marked, and then the card says nothing: "no resupply" would be a
+ * claim about the trail where the flag is a claim about the plan.
+ */
+function nextResupplyLine(at: HikeDayAt, units: UnitSystem): string | null {
+  const from = at.trip.plan.stops[at.index].mile
+  const next = at.trip.plan.stops.find(
+    (stop, index) => index > at.index && stop.resupply && stop.name !== undefined,
+  )
+  if (next === undefined) return null
+  return `Resupply: ${next.name}, ${formatDistance(Math.abs(next.mile - from), units)} on`
+}
+
+/**
+ * `Day 6 · Tue 8 Sep`, or `Tue 8 Sep` when the hike has no dated day to
+ * count from.
+ *
+ * The day number is the hike's, not the section's: a hiker four sections
+ * into the Appalachian Trail is on day 96 of their hike and day 3 of this
+ * trip, and the first is what they call it.
+ */
+function dayLabelFor(at: HikeDayAt, now: Date): string {
+  const date = at.trip.plan.days[at.index]?.date
+  const label =
+    date === undefined
+      ? now.toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        })
+      : new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'UTC',
+        })
+  return label
+}
+
+/** The facts every finish surface reads, from one derivation. */
+type FinishedFacts = {
+  hike: Hike
+  figures: ReturnType<typeof hikeFigures>
+  sections: readonly Trip[]
+  startedOn: string | null
+  finishedOn: string | null
+  directions: readonly ('NOBO' | 'SOBO' | null)[]
+}
+
+/** `14 Mar 2024 – 12 Aug 2026 · 2,198.4 mi · 0 mi to go`.
+ *
+ *  Zero rather than "unknown" for what is left, which is decision #7: miles
+ *  not yet walked read 0, and a finished hike has none. */
+function finishedHeader(facts: FinishedFacts, units: UnitSystem): string {
+  const dates = [facts.startedOn, facts.finishedOn]
+    .filter((date) => date !== null)
+    .map((date) => longDate(date))
+  return [
+    dates.length === 0 ? null : dates.join(' – '),
+    formatDistance(facts.figures.walkedMi, units),
+    `${formatDistance(facts.figures.leftMi, units)} to go`,
+  ]
+    .filter((part) => part !== null)
+    .join(' · ')
+}
+
+/** "You walked the whole Appalachian Trail, 14 Mar 2024 to 12 Aug 2026."
+ *
+ *  "the whole" only where nothing is left, because it is a claim: a hiker
+ *  who finished a section did not walk the whole trail and must not be told
+ *  they did. */
+function finishedSentence(facts: FinishedFacts, units: UnitSystem): string {
+  const trail = TRAILS[facts.hike.trailId]?.name ?? 'the trail'
+  const whole = facts.figures.leftMi < MIN_GAP_MI
+  // "the" on both branches: the registry publishes "Appalachian Trail" as a
+  // name, and "You walked Appalachian Trail" is not a sentence anybody says.
+  const what = whole ? `You walked the whole ${trail}` : `You walked part of the ${trail}`
+  const when =
+    facts.startedOn === null || facts.finishedOn === null
+      ? null
+      : `${longDate(facts.startedOn)} to ${longDate(facts.finishedOn)}`
+  return when === null
+    ? `${what}, ${formatDistance(facts.figures.walkedMi, units)}.`
+    : `${what}, ${when}.`
+}
+
+/** The sections list, newest first - the order a hiker looks for the one
+ *  they just walked. */
+function finishedSections(facts: FinishedFacts, units: UnitSystem) {
+  return [...facts.sections].reverse().map((trip) => {
+    const miles = trip.plan.stops.map((stop) => stop.mile)
+    const spanMi = miles.length < 2 ? 0 : Math.max(...miles) - Math.min(...miles)
+    const year = trip.plan.days.find((day) => day.date !== undefined)?.date?.slice(0, 4)
+    return {
+      id: trip.id,
+      name: trip.name,
+      figures: formatDistance(spanMi, units),
+      provenance: [
+        'walked',
+        year,
+        // A stretch recalled from memory is not a claim that anybody walked
+        // 300 miles in a day, and nothing may print it as one (Trip.recorded).
+        trip.recorded === true ? 'recorded from memory' : null,
+      ]
+        .filter((part) => part !== undefined && part !== null)
+        .join(' · '),
+    }
+  })
+}

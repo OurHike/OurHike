@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { POI_TYPES } from '../lib/config'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { WORKDAY_COLOR } from './workdayPin'
 import { SITE_ANCHOR_TYPES, SITE_MEMBER_TYPES } from './poiSites'
 import {
   badgeCenters,
@@ -170,6 +171,26 @@ describe('the palette', () => {
     },
   )
 
+  it('leaves the workday pin its own hue too, which this file used to not know', () => {
+    // THE DENOMINATOR BUG, pinned where the next person adding an accent will
+    // meet it. map/workdayPin.ts is a tenth colour on the same map and its own
+    // test already required 30 degrees of clearance from every accent here -
+    // but that assertion lives in workdayPin.test.ts, so a POI author reading
+    // THIS file saw a complete-looking set of bars and a hue table with a
+    // 97-degree gap in it that was not really there. #1197's first trailhead
+    // olive landed 10 degrees off the workday pin and was measured, carefully,
+    // against the wrong list.
+    //
+    // Duplicated on purpose rather than factored out: the point is that it is
+    // visible from here.
+    for (const [name, hex] of Object.entries(POI_COLORS)) {
+      expect(
+        hueDistance(hex, WORKDAY_COLOR),
+        `${name} (${hex}) is only ${Math.round(hueDistance(hex, WORKDAY_COLOR))}° off the workday pin`,
+      ).toBeGreaterThan(30)
+    }
+  })
+
   it('leaves the closure red to closures, and takes none of it for a POI', () => {
     // A pin that reads at a glance as "do not walk down there" is a worse
     // failure than a dull palette.
@@ -295,9 +316,10 @@ describe('the images themselves', () => {
   })
 
   it('draws a POI type it has never heard of rather than nothing at all', () => {
-    // A category added upstream should reach the map as a neutral pin, the
-    // same call waypointLanes.ts makes when it drops an unknown type into the
-    // ELSE lane. Silently drawing nothing would hide real data behind a client
+    // A category added upstream should reach the map as a neutral pin - the
+    // call the waypoint lanes used to make for an unknown type, kept after
+    // #1054 deleted waypointLanes.ts and turned the lanes into the next-up
+    // rail. Silently drawing nothing would hide real data behind a client
     // release.
     const unknown = buildPoiIcon('yurt', 'high')
 

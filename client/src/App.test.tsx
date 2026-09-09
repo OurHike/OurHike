@@ -1,14 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { FIT_PADDING } from './map/MapView'
+import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
+import { BLAZE_DOTTED_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set, setMany, update } from 'idb-keyval'
+import { get, getMany, set, setMany, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { loadMapEngine } from './map/mapEngineLoader'
 // The shared helper this file's own copy became (#331) - two other suites had
 // written the same wait by hand, and one of them had written it wrong.
 import { liveMap } from './test/liveMap'
+// This file keeps its own store/mock setup (it predates appHarness); the one
+// thing it borrows is the way to the map screen, which stopped being the
+// front door when Today became the home tab (#1054).
+import { openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { DEFAULT_PREFERENCES } from './lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { CORRIDOR_BACKGROUND_PACKAGE } from './lib/packages'
@@ -21,6 +29,7 @@ import type { ArchiveZooms } from './lib/archiveCoverage'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   // `trailData.ts` commits a release in ONE transaction since #657, so any
   // double that reaches that path needs this call - without it the whole
@@ -42,6 +51,7 @@ vi.mock('idb-keyval', () => ({
 const archiveHeader: { value: ArchiveZooms | null } = { value: null }
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve(archiveHeader.value),
+  readArchiveFootprint: () => Promise.resolve(null),
 }))
 
 const store = new Map<string, unknown>()
@@ -56,6 +66,12 @@ beforeEach(async () => {
   // the engine closes over the mock rather than the real library.
   await loadMapEngine()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
     return Promise.resolve()
@@ -133,7 +149,9 @@ function withDownloadedArchive() {
 async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
   await screen.findByText('What OurHike is')
   await user.click(screen.getByRole('button', { name: 'Continue' }))
-  await user.click(screen.getByRole('button', { name: 'Continue' }))
+  // The size step's own primary since #1054 - it also starts the download,
+  // which these shell tests let run into their stubbed fetch.
+  await user.click(screen.getByRole('button', { name: 'Keep going' }))
   await user.click(screen.getByRole('button', { name: /not now/i }))
 }
 
@@ -175,20 +193,60 @@ describe('App shell', () => {
     expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
   })
 
-  it('draws the map behind the first-run steps, rather than describing one', async () => {
+  it('builds nothing behind the first-run steps, because nothing is behind them (#1324)', async () => {
+    // THE REVERSAL, and worth stating rather than quietly editing. From #721
+    // this asserted the opposite - one live map behind the steps - on the
+    // argument that every step is a claim about the map and a claim is better
+    // shown than asserted. That argument was good and it stopped applying at
+    // #1054, which put a photograph of the trail in front of the map:
+    // `.onboarding__hero` is `inset: 0` over an opaque `--bg-chrome`, so what
+    // stands behind the steps is a wall.
+    //
+    // Measured on the built app 2026-09-09 in pixels: with every layer of the
+    // map screen painted magenta by injected CSS and first run rendered as it
+    // normally does, 0 of the frame's 329,160 pixels came back magenta -
+    // while the map screen and its canvas were both present. Building it cost
+    // 730-950 ms of MapLibre on the thread the Skip button was waiting for.
+    //
+    // THE SECOND HALF IS THE ORDERING PROOF and is not optional. An assertion
+    // that nothing has been built yet is also what a test that looked too
+    // early would say, and this file has no read-by-read settle helper to
+    // anchor on. So the same shell is driven on to where it DOES build one:
+    // zero while the steps are up and one when they are done is a fact about
+    // the shell, where zero on its own is a fact about the clock. It also
+    // covers the two structural halves the `inert` test used to hold - during
+    // first run there is no map screen to mark inert and no map region to
+    // announce, which is strictly stronger than marking them hidden.
+    //
+    // The COUNT of maps first run may build is priced in
+    // App.loadBudget.test.tsx with the rest of the launch's operations. This
+    // one is about what the shell puts on screen.
+    const user = userEvent.setup()
     render(<App />)
 
     await screen.findByText('What OurHike is')
+    // Not only about stray taps: MapView attaches a locate control, and
+    // reaching it would raise the OS location prompt before the step whose
+    // whole job is to explain why we are asking.
+    expect(document.querySelector('.map-screen')).toBe(null)
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
 
-    // Every step is a claim about the map. It is behind them from the first
-    // frame, so the claims are shown rather than only asserted.
-    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    await completeOnboarding(user)
+    await openMapTab()
+
+    await screen.findByRole('region', { name: /trail map/i })
   })
 
-  it('opens that map on the whole corridor, the same view the map screen opens on', async () => {
+  it('opens on the whole corridor once the steps are done, the map screen view', async () => {
+    // The camera assertion #721 made about the backdrop map, moved to the map
+    // a hiker now actually gets. `CORRIDOR_BOUNDS` unchanged: what first run
+    // opens on is still the whole trail, which is the claim the first step
+    // makes in words.
+    const user = userEvent.setup()
     render(<App />)
 
-    await screen.findByText('What OurHike is')
+    await completeOnboarding(user)
+    await openMapTab()
     const map = await liveMap()
 
     expect(map.options.bounds).toEqual([
@@ -197,89 +255,128 @@ describe('App shell', () => {
     ])
   })
 
-  it('keeps the first-run map inert, so nothing behind the steps can be reached', async () => {
-    render(<App />)
-
-    await screen.findByText('What OurHike is')
-    await liveMap()
-
-    // Not only about stray taps. MapView attaches a locate control, and
-    // reaching it would raise the OS location prompt before the step whose
-    // whole job is to explain why we are asking. `inert` also keeps the canvas
-    // out of the tab order and its region out of the accessibility tree.
-    // The map screen IS the backdrop now (#721) - there is no separate entry
-    // map to find, which is the whole point. What has to hold is what held
-    // before: nothing behind the steps is reachable or announced.
-    const backdrop = document.querySelector('.map-screen')
-    expect(backdrop).not.toBe(null)
-    expect(backdrop).toHaveClass('map-screen--entering')
-    expect(backdrop).toHaveAttribute('inert')
-    expect(backdrop).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
-  })
-
-  it('hands the map over cleanly when the steps finish - one map, not two', async () => {
+  it('never holds two live maps, before or after the steps finish', async () => {
     const user = userEvent.setup()
     render(<App />)
 
     await completeOnboarding(user)
-    await screen.findByRole('region', { name: /trail map/i })
 
-    // ONE MAP EVER CONSTRUCTED, which is #721 and is stronger than the live
-    // count this used to assert. Before, first run built a map behind the steps
-    // and threw it away when they finished, so `live` was 1 and `instances` was
-    // 2 - a whole WebGL context and a fresh set of tile reads, spent at the end
-    // of the flow whose job is the first impression. The map is the same object
-    // across the hand-over now, so the count that proves it is the total.
+    // WHAT #721 STILL GUARANTEES, RESTATED FOR THE TODAY HOME (#1054). The
+    // steps draw over the one real map screen - never a second copy beside it
+    // - and that half is unchanged. What changed is the landing: finishing
+    // first run goes to Today, which unmounts the backdrop map the way every
+    // trip to another tab always has. So "one map ever constructed" stopped
+    // being true by design - the honest invariant is that no two maps are
+    // ever alive at once, and that opening the Map tab builds exactly one.
+    await waitFor(() => expect(MockMap.live.length).toBeLessThanOrEqual(1))
+
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
     await waitFor(() => expect(MockMap.live).toHaveLength(1))
-    expect(MockMap.instances).toHaveLength(1)
   })
 
   it('does not show onboarding again once it has been completed', async () => {
     returningHiker()
     render(<App />)
 
-    expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    // A returning hiker opens on Today (#1054), not on the steps and not on
+    // the map - the map is one tap away and asserted reachable elsewhere.
+    expect(
+      await screen.findByRole('tab', { name: 'Today', selected: true }),
+    ).toBeInTheDocument()
     expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
   })
 
-  it('opens the download when onboarding finishes, over the map rather than instead of it', async () => {
-    // The choice just made is a download that has not started, so this is
-    // still what someone leaving onboarding needs. What changed on 2026-08-05
-    // is that it no longer costs them the first sight of the map to see it.
+  it('needs no re-fit on a phone, because the card never framed the map (#1296/#1324)', async () => {
+    // #1296's guarantee, held by construction instead of by correction. The
+    // map behind the steps was fitted with the card's padding - the whole
+    // trail squeezed into the top fifth of the screen - and being the same
+    // instance the map screen keeps, nothing ever re-framed it; the first map
+    // a hiker opened after first run was the corridor under the identity
+    // plate at 300 mi, which with #1292 read as an empty map. #1296 answered
+    // that with a re-fit when the steps end.
+    //
+    // A phone builds no map during the steps now (#1324), so it is never
+    // fitted around a card, so there is nothing to undo: the map is
+    // constructed with the plain FIT_PADDING and opens correctly framed. The
+    // hiker-visible guarantee is the same one; what changed is that it costs
+    // no second `fitBounds`.
+    //
+    // The effect #1296 added is not gone - a desktop still renders its map
+    // from launch and still gets the card's padding. The test below is that
+    // half.
     const user = userEvent.setup()
     render(<App />)
-
     await completeOnboarding(user)
+    await openMapTab()
+    const map = await liveMap()
 
-    expect(
-      await screen.findByRole('dialog', { name: /offline map/i }),
-    ).toBeInTheDocument()
-    expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    const fitOptions = map.options.fitBoundsOptions as { padding?: unknown } | undefined
+    expect(fitOptions?.padding).toBe(FIT_PADDING)
+    expect(map.cameraMoves.some((move) => 'fitBounds' in move)).toBe(false)
   })
 
-  it('leaves a desktop on the map instead, where the download buys nothing yet', async () => {
-    // WEBSITE.md §6: a laptop has signal, and the live sheet is the default
-    // background, so this browser already draws the whole trail. Opening a
-    // 314 MB decision over it is asking someone to spend a phone's worth of
-    // storage on a machine that is not going up a mountain.
+  it('still re-fits on a desktop, whose map IS built behind the steps (#1296)', async () => {
+    // The half of #1296 that survives #1324 intact. `mapNeededNow` is not
+    // conditioned on `entering` for a desktop - it renders the map from
+    // launch whatever screen is up - so a desktop's map is built during the
+    // steps, fitted with `entryFitPadding`, and needs the correction when
+    // they end. Deleting the effect as dead code would leave a laptop opening
+    // on the framing #1296 measured.
     onADesktop()
     const user = userEvent.setup()
     render(<App />)
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    const before = map.cameraMoves.length
 
     await completeOnboarding(user)
 
-    // Waiting on the preference write rather than on the absence of a dialog:
-    // it is the observable half of the same callback that would have opened
-    // the window, and it lands after it. A bare `queryByRole` here would pass
-    // just as readily against a window that was about to open.
+    await waitFor(() => {
+      const fit = map.cameraMoves.slice(before).find((move) => 'fitBounds' in move)
+      expect(fit).toBeDefined()
+      expect(fit?.fitBounds).toEqual(map.options.bounds)
+      expect(fit?.padding).toBe(FIT_PADDING)
+    })
+  })
+
+  it('never re-fits a returning hiker, whose map had no card to frame it', async () => {
+    // The re-fit is for a map built during the steps. A phone past them opens
+    // on the corridor already, or on the camera session storage put back -
+    // and a fit here would throw that camera away.
+    returningHiker()
+    render(<App />)
+    // Today is the home tab, so a returning hiker's map is built on the way
+    // to the map screen - fitted at construction, never by a later call.
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+
+    expect(map.cameraMoves.some((move) => 'fitBounds' in move)).toBe(false)
+  })
+
+  it('opens no window when the steps finish - the download already started on the step that asked', async () => {
+    // #1054: "Keep going" on the size step starts the transfer through the
+    // shell's own machinery, so the window that used to open here would be a
+    // takeover restating a decision already in motion. It is the manage
+    // surface now, reachable from the legend and from More - on a phone and
+    // a desktop alike, which is why the old desktop carve-out went with it.
+    const user = userEvent.setup()
+    render(<App />)
+
+    await completeOnboarding(user)
+
+    // The preference write is the observable half of the completion callback
+    // and lands after anything that would have opened a window - a bare
+    // queryByRole would pass just as readily against one about to open.
     await waitFor(() => {
       const saved = store.get(PREFERENCES_KEY) as
-        { onboarding_completed: boolean } | undefined
+        { onboarding_completed: boolean; download_choice_made: boolean } | undefined
       expect(saved?.onboarding_completed).toBe(true)
+      expect(saved?.download_choice_made).toBe(true)
     })
 
-    expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Today', selected: true })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: /offline map/i })).not.toBeInTheDocument()
   })
 
@@ -292,6 +389,7 @@ describe('App shell', () => {
     render(<App />)
 
     await completeOnboarding(user)
+    await openMapTab()
 
     await user.click(
       await screen.findByRole('button', { name: /choose what to download/i }),
@@ -351,12 +449,14 @@ describe('App shell', () => {
     returningHiker()
     render(<App />)
 
+    await openMapTab()
+
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
-    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    expect(await screen.findByRole('heading', { name: 'More' })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
 
@@ -372,13 +472,12 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
 
-    expect(
-      await screen.findByRole('tab', { name: 'Settings', selected: true }),
-    ).toBeVisible()
+    expect(await screen.findByRole('tab', { name: 'More', selected: true })).toBeVisible()
     expect(screen.queryByRole('region', { name: /trail map/i })).not.toBeInTheDocument()
   })
 
@@ -388,6 +487,7 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
@@ -409,6 +509,7 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     const map = await liveMap()
 
@@ -436,6 +537,7 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
@@ -450,6 +552,7 @@ describe('App shell', () => {
     returningHiker()
     withDownloadedArchive()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
@@ -469,6 +572,7 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await openDownloads(user)
@@ -480,13 +584,11 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
-    await user.click(await screen.findByRole('tab', { name: 'About' }))
-    await user.click(
-      await screen.findByRole('button', { name: /choose what to download/i }),
-    )
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
 
     expect(
       await screen.findByRole('dialog', { name: /offline map/i }),
@@ -494,17 +596,19 @@ describe('App shell', () => {
   })
 
   it('comes back to the view the hiker left, not to the whole trail, after another tab', async () => {
-    // The bug: the map screen unmounts whenever another tab is showing, so
-    // coming back builds a new map - and the new one was handed the opening
-    // corridor bounds again. Checking the download progress threw away where
-    // someone had zoomed to, every time, and the first-fix jump was a one-way
-    // latch that never brought them back.
-    //
-    // The download is a window now and no longer costs a rebuild at all, but
-    // More still does, and the camera has to survive that trip the same way.
+    // The bug, and then the bug behind it. First pass: the map screen
+    // unmounted whenever another tab was showing, so coming back built a new
+    // map - and the new one was handed the opening corridor bounds again,
+    // throwing away where someone had zoomed to. The fix then was to hand the
+    // REBUILT map the saved camera. #1081 removed the rebuild itself: a trip
+    // through another tab hides the map without unmounting it, so the same
+    // map survives with its camera untouched - the stronger form of the same
+    // promise, and what this test asserts now. If the shell ever goes back
+    // to a rebuild per tab switch, the identity check below is what fails.
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     const opening = await liveMap()
@@ -513,22 +617,25 @@ describe('App shell', () => {
     opening.zoom = 15
     act(() => opening.emit('moveend'))
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
-    await screen.findByRole('heading', { name: 'You' })
-    await user.click(screen.getByRole('tab', { name: 'Trail' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await screen.findByRole('heading', { name: 'More' })
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
-    const rebuilt = await liveMap()
-    expect(rebuilt).not.toBe(opening)
-    expect(rebuilt.options.center).toEqual([-78.4, 38.6])
-    expect(rebuilt.options.zoom).toBe(15)
-    // Bounds would re-fit the whole corridor and win over the centre.
-    expect(rebuilt.options.bounds).toBeUndefined()
+    // The same map, still up, still where the hiker put it - not a second
+    // build that was handed the camera back.
+    const survivor = await liveMap()
+    expect(survivor).toBe(opening)
+    expect(MockMap.instances).toHaveLength(1)
+    expect(survivor.center).toEqual({ lng: -78.4, lat: 38.6 })
+    expect(survivor.zoom).toBe(15)
   })
 
   it('opens on the whole corridor when there is no view to come back to', async () => {
     returningHiker()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // Before a fix or a pan the app genuinely does not know where the hiker
@@ -561,6 +668,7 @@ describe('App shell', () => {
     ])
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('button', { name: 'Search' }))
@@ -613,6 +721,7 @@ describe('App shell', () => {
     ])
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('button', { name: 'Search' }))
@@ -655,6 +764,7 @@ describe('App shell', () => {
     ])
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await user.click(screen.getByRole('button', { name: 'Search' }))
@@ -677,32 +787,49 @@ describe('App shell', () => {
     returningHiker()
     render(<App />)
 
+    await openMapTab()
+
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
 
     expect(
-      await screen.findByRole('heading', { name: 'Report a problem' }),
+      await screen.findByRole('dialog', { name: 'What did you find?' }),
     ).toBeInTheDocument()
+    // AND THE TAB BAR IS STILL THERE (#1133), which is the change: the old
+    // picker was a route that replaced the whole shell.
+    expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
   })
 
   it('backs out of the report flow without filing anything', async () => {
-    // The reporting flow replaces the whole shell, tab bar included, so the
-    // type picker was a screen with no exit: the only way off it was to pick a
-    // report type and then cancel the form behind it.
+    // THIS USED TO BE A TEST ABOUT AN EXIT EXISTING AT ALL (#1133). The old
+    // comment: "The reporting flow replaces the whole shell, tab bar included,
+    // so the type picker was a screen with no exit: the only way off it was to
+    // pick a report type and then cancel the form behind it."
+    //
+    // A window has an exit by construction, so what is worth holding now is
+    // the other half of that sentence - that leaving writes nothing, and that
+    // the screen underneath was never taken away in the first place.
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
 
-    await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
-    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-    await user.click(await screen.findByRole('button', { name: /^cancel$/i }))
+    await openMapTab()
 
-    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
-    expect(
-      screen.getByRole('tab', { name: 'Settings', selected: true }),
-    ).toBeInTheDocument()
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
+    await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+
+    // Still standing behind the window, rather than replaced by it.
+    expect(screen.getByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('report-close'))
+
+    expect(await screen.findByRole('heading', { name: 'Contribute' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'More', selected: true })).toBeInTheDocument()
+    expect(store.get('ourhike:outbox')).toBeUndefined()
   })
 
   it('saves a report to the outbox rather than asking to sign in first', async () => {
@@ -710,11 +837,16 @@ describe('App shell', () => {
     returningHiker()
     render(<App />)
 
+    await openMapTab()
+
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The tap files (#1133); this closes the window, which is when the
+    // account question is asked rather than during the receipt's undo.
+    await user.click(screen.getByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{ payload: { type: string } }>
@@ -731,11 +863,16 @@ describe('App shell', () => {
     returningHiker()
     render(<App />)
 
+    await openMapTab()
+
     await screen.findByRole('region', { name: /trail map/i })
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
-    await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+    // The tap files (#1133); this closes the window, which is when the
+    // account question is asked rather than during the receipt's undo.
+    await user.click(screen.getByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{
@@ -751,6 +888,8 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+
+    await openMapTab()
 
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
@@ -771,6 +910,8 @@ describe('App shell', () => {
     const user = userEvent.setup()
     returningHiker()
     render(<App />)
+
+    await openMapTab()
 
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
@@ -810,6 +951,8 @@ describe('App shell', () => {
     poisWithoutAUsableIndex()
     render(<App />)
 
+    await openMapTab()
+
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('button', { name: /search/i }))
     await user.type(
@@ -827,6 +970,8 @@ describe('App shell', () => {
     const user = userEvent.setup()
     poisWithoutAUsableIndex()
     render(<App />)
+
+    await openMapTab()
 
     await screen.findByRole('region', { name: /trail map/i })
     await user.click(screen.getByRole('button', { name: /search/i }))
@@ -850,6 +995,7 @@ describe('App shell', () => {
     try {
       poisWithoutAUsableIndex()
       render(<App />)
+      await openMapTab()
       await screen.findByRole('region', { name: /trail map/i })
       // Node reports an unhandled rejection only after the microtask queue
       // has drained and the promise is still handler-less, so this has to
@@ -889,6 +1035,7 @@ describe('App shell', () => {
     )
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
     const card = await hikingSheetCard()
@@ -913,6 +1060,7 @@ describe('App shell', () => {
     } as Response)
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await openDownloads(user)
     const card = await hikingSheetCard()
@@ -926,6 +1074,91 @@ describe('App shell', () => {
     // would be the one after it.
     const requested = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
     expect(requested.some((url) => url.includes('.pmtiles'))).toBe(false)
+  })
+})
+
+describe('taking a trail (#1306)', () => {
+  const AT_LINE = {
+    properties: {
+      id: 'centerline:chain:0',
+      source: 'centerline',
+      name: 'Appalachian National Scenic Trail',
+      blaze_color: 'White',
+    },
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [10, 400],
+        [200, 400],
+        [380, 400],
+      ],
+    },
+  }
+
+  it('takes nothing on first launch: the map is built with every line dotted', async () => {
+    returningHiker()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    const style = map.options.style as { layers: Array<{ id: string; filter?: unknown }> }
+    const dotted = style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)
+    // The dotted side's filter is the negation of an empty membership: every
+    // line, the A.T. included.
+    expect(JSON.stringify(dotted?.filter)).toContain('"literal",[]')
+  })
+
+  it('opens the hike picker from a tap on its badge, rather than taking it silently (#1352)', async () => {
+    returningHiker()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: {
+          ...AT_LINE.properties,
+          mark: 'trail-mark-AT',
+          chip: 'blaze-chip-White',
+        },
+        geometry: { type: 'Point', coordinates: [200, 400] },
+      },
+    ])
+
+    await act(async () => {
+      map.emit('click', { point: { x: 200, y: 400 }, lngLat: { lng: 200, lat: 400 } })
+    })
+
+    // Taking a trail from the map is the same door Plan's own set-up uses
+    // since #1352 - nothing is written directly, the sheet asks instead.
+    expect(
+      await screen.findByRole('dialog', { name: 'Which long hike?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens the hike picker from its legend row (#1352)', async () => {
+    returningHiker()
+    const user = userEvent.setup()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    // A settled frame with the A.T. across it, as map/trailsInView.ts reads
+    // one: identity projection, the line inside the viewport.
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
+    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [AT_LINE])
+    await act(async () => {
+      map.emit('idle')
+    })
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /Appalachian National Scenic Trail/ }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Which long hike?' }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -965,6 +1198,7 @@ describe('the map controls the shell asks for', () => {
     returningHiker()
 
     render(<App />)
+    await openMapTab()
     const nav = await navigationControl(await liveMap())
 
     expect(nav.options?.showZoom).toBe(true)
@@ -975,6 +1209,7 @@ describe('the map controls the shell asks for', () => {
     returningHiker()
 
     render(<App />)
+    await openMapTab()
     const nav = await navigationControl(await liveMap())
 
     expect(nav.options?.showZoom).toBe(false)
@@ -1003,6 +1238,7 @@ describe('Data Saver', () => {
     returningHiker()
     withDownloadedArchive()
     render(<App />)
+    await openMapTab()
 
     const sources = Object.keys(styleOf(await liveMap()).sources)
 
@@ -1018,6 +1254,7 @@ describe('Data Saver', () => {
     returningHiker()
     withDownloadedArchive()
     render(<App />)
+    await openMapTab()
 
     const sources = Object.keys(styleOf(await liveMap()).sources)
 
@@ -1029,6 +1266,7 @@ describe('Data Saver', () => {
     setSaveData(false)
     returningHiker()
     render(<App />)
+    await openMapTab()
 
     expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
   })
@@ -1043,6 +1281,7 @@ describe('Data Saver', () => {
     returningHiker()
     withDownloadedArchive()
     render(<App />)
+    await openMapTab()
     await liveMap()
 
     expect(screen.getByText(/data saver/i)).toBeInTheDocument()
@@ -1056,6 +1295,7 @@ describe('Data Saver', () => {
     setSaveData(true)
     returningHiker()
     render(<App />)
+    await openMapTab()
 
     expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
   })
@@ -1069,6 +1309,7 @@ describe('Data Saver', () => {
       download_choice_made: true,
     })
     render(<App />)
+    await openMapTab()
 
     expect(Object.keys(styleOf(await liveMap()).sources)).toContain('osm')
     expect(screen.getByText(/nothing downloaded yet/i)).toBeInTheDocument()
@@ -1086,6 +1327,7 @@ describe('Data Saver', () => {
     })
     withDownloadedArchive()
     render(<App />)
+    await openMapTab()
 
     expect(Object.keys(styleOf(await liveMap()).sources)).not.toContain('osm')
   })
@@ -1106,12 +1348,13 @@ describe('Data Saver', () => {
     })
 
     render(<App />)
+    await openMapTab()
 
     // Something is on screen, and it says which screen went.
     expect(await screen.findByRole('alert')).toHaveTextContent(/map stopped working/i)
     // And the way out is still there, which is the whole point.
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
-    expect(await screen.findByRole('heading', { name: 'You' })).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    expect(await screen.findByRole('heading', { name: 'More' })).toBeInTheDocument()
   })
 
   it('can still reach the download when the map has fallen over', async () => {
@@ -1127,13 +1370,11 @@ describe('Data Saver', () => {
     })
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('alert')
 
-    await user.click(screen.getByRole('tab', { name: 'Settings' }))
-    await user.click(await screen.findByRole('tab', { name: 'About' }))
-    await user.click(
-      await screen.findByRole('button', { name: /choose what to download/i }),
-    )
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(await screen.findByRole('button', { name: /download/i }))
 
     expect(
       await screen.findByRole('dialog', { name: /offline map/i }),
@@ -1191,6 +1432,7 @@ describe('an archive that does not reach the view', () => {
     archiveCovering(6)
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // MockMap does not fit bounds, so it starts at 0 - under any real floor,
@@ -1210,6 +1452,7 @@ describe('an archive that does not reach the view', () => {
     archiveCovering(6)
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await offlineMapSettledAt(5)
     await atZoom(3)
@@ -1228,6 +1471,7 @@ describe('an archive that does not reach the view', () => {
     archiveCovering(6)
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await offlineMapSettledAt(5)
     await atZoom(3)
@@ -1245,6 +1489,7 @@ describe('an archive that does not reach the view', () => {
     archiveCovering(6)
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await atZoom(3)
 
@@ -1263,6 +1508,7 @@ describe('an archive that does not reach the view', () => {
     })
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await atZoom(3)
 
@@ -1287,5 +1533,77 @@ describe('a storage read that fails', () => {
     render(<App />)
 
     expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
+  })
+})
+
+// --- The desktop planning station (#1054) ----------------------------------
+//
+// Above the breakpoint the Today tab stops being its own screen: the map
+// branch renders, with the journal docked beside the canvas and the mode
+// switch in the sidebar. What is asserted here is the wiring - which branch
+// renders, that both surfaces are present, and that the sidebar's switch
+// writes through to the same store the Today header's does. How the column
+// LOOKS is desktop.css, under test/desktopLayout.test.ts's contract.
+
+describe('the desktop planning station (#1054)', () => {
+  it('reads the journal beside the map on the Today tab', async () => {
+    onADesktop()
+    returningHiker()
+    const { container } = render(<App />)
+
+    // The map screen is what renders - Today is the active tab, not a
+    // separate screen replacing the canvas.
+    expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Today', selected: true })).toBeInTheDocument()
+    expect(container.querySelector('.map-screen__journal .today')).not.toBeNull()
+  })
+
+  it('keeps the journal off the Map tab, which is the map alone', async () => {
+    onADesktop()
+    returningHiker()
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
+    expect(screen.getByRole('region', { name: /trail map/i })).toBeInTheDocument()
+  })
+
+  it('keeps the phone as it was: Today is its own screen, no journal column', async () => {
+    returningHiker()
+    const { container } = render(<App />)
+
+    // The Today screen renders directly - no map region behind it.
+    expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+  })
+
+  it('offers the mode switch in the sidebar, writing through to the phone store', async () => {
+    onADesktop()
+    returningHiker()
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Scoped to the navigation: the journal's own (CSS-hidden) copy of the
+    // switch is still in the tree under jsdom, and the sidebar's is the one
+    // this test is about.
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    const group = within(nav).getByRole('radiogroup', { name: /today i/i })
+    await user.click(within(group).getByRole('radio', { name: 'Volunteer' }))
+
+    await waitFor(() => expect(store.get(HIKER_MODE_KEY)).toBe('volunteer'))
+  })
+
+  it('keeps the mode switch out of the phone bar, which has no room for it', async () => {
+    returningHiker()
+    render(<App />)
+    await screen.findByText(/location is off/i)
+
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByRole('radiogroup')).toBe(null)
   })
 })

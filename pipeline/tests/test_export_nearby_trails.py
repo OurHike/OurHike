@@ -7,8 +7,8 @@ from the real data it is stated as a comment and the fixture reproduces the
 SHAPE of it, not the volume - the point of a fixture here is that a reviewer
 can see the whole input on one screen.
 
-The asymmetry this suite is written around, and it is the same one
-wrongWay.test.ts states for its own module: for a map that draws somebody
+The asymmetry this suite is written around is the same shape CLAUDE.md's
+"Miss rather than cry wolf" names generally: for a map that draws somebody
 else's trails, DROPPING A REAL TRAIL IS THE EXPENSIVE FAILURE and drawing one
 line twice is the cheap one. A hiker who cannot see the trail they are
 standing on is worse off than one who sees a duplicate they can walk either
@@ -16,19 +16,25 @@ way. Several tests below exist only to pin that direction.
 """
 
 import json
+import re
+from pathlib import Path
 
 import pytest
+from pmtiles.reader import MmapSource, Reader
 from shapely.geometry import shape
 
 import export_nearby_trails as ex
 
-# Inside NYC_SOURCE_SURVEY.md §1's ring (Harriman-ish), and far enough from
-# any real data that nothing here can be confused for a measurement.
-IN_RING = [(-74.1, 41.25), (-74.09, 41.26)]
-# North of the ring's 42.55 cut - the Long Path's Albany end, in miniature.
-NORTH_OF_RING = [(-74.0, 43.1), (-73.99, 43.11)]
-# East of the ring's -73.4 edge.
-OUTSIDE_RING = [(-72.0, 41.2), (-71.99, 41.21)]
+# Harriman-ish, and far enough from any real data that nothing here can be
+# confused for a measurement. The default place a fixture feature sits.
+HARRIMAN = [(-74.1, 41.25), (-74.09, 41.26)]
+# Two places this export USED TO refuse to draw, kept as fixtures because the
+# refusal is what #1019 removed: north of the old ring's 42.55° cut (the Long
+# Path's Albany end, in miniature) and east of its -73.4° edge. Named for the
+# boundary rather than for the ground so the geography tests below read as the
+# inversion they are.
+PAST_THE_OLD_NORTH_CUT = [(-74.0, 43.1), (-73.99, 43.11)]
+PAST_THE_OLD_EAST_EDGE = [(-72.0, 41.2), (-71.99, 41.21)]
 
 
 def _feature(coords, properties, feature_id=1):
@@ -53,7 +59,6 @@ def _oprhp_source(**overrides):
         "name_field": "Name",
         "foot_field": "Foot",
         "status_field": "Status",
-        "unit_field": "Unit",
         "reaches_hikers": False,
     }
     source.update(overrides)
@@ -64,6 +69,85 @@ def _oprhp_properties(**overrides):
     properties = {"Name": "Ramapo-Dunderberg", "Blaze": "Red", "Foot": "Y", "Status": "Open", "Unit": "Palisades"}
     properties.update(overrides)
     return properties
+
+
+def _dec_source(**overrides):
+    """The shape of the real dec_hiking_trails entry, minus the prose.
+
+    Its own helper rather than an override of the OPRHP one because the two
+    differ in the three ways that matter to this suite: DEC spells its columns
+    in capitals, declares its own `foot_allowed`, and publishes no status
+    column at all.
+    """
+    source = {
+        "key": "dec_hiking_trails",
+        "title": "NYS DEC Hiking Trails",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/dec",
+        "steward": "New York State Department of Environmental Conservation",
+        "attribution": "NYS DEC",
+        "blaze_field": "MARKER",
+        "name_field": "NAME",
+        "foot_field": "FOOT",
+        "foot_allowed": ["Y", "M"],
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
+
+
+def _dec_properties(**overrides):
+    properties = {"NAME": "Escarpment Trail", "MARKER": "Blue", "FOOT": "Y", "UNIT": "CFP"}
+    properties.update(overrides)
+    return properties
+
+
+def _usfs_source(**overrides):
+    """The shape of the real usfs_trails entry, minus the prose.
+
+    The one source whose `foot_field` is not a foot column: USFS splits its
+    trails by MEDIUM (trail_type TERRA/SNOW/WATER) rather than by use, and
+    TERRA is exactly the walkable set. See sources.json's foot_allowed_comment
+    for why hiker_pedestrian_managed - the obvious candidate - cannot be used.
+    """
+    source = {
+        "key": "usfs_trails",
+        "title": "National Forest System Trails",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/usfs",
+        "steward": "USDA Forest Service",
+        "attribution": "USDA Forest Service",
+        "name_field": "trail_name",
+        "blaze_default": "Unknown",
+        "foot_field": "trail_type",
+        "foot_allowed": ["TERRA"],
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
+
+
+def _granit_source(**overrides):
+    """The shape of the real nh_granit_trails entry, minus the prose.
+
+    The only source using `excluded_when`: its PED column cannot be an
+    allowlist (blank means unrecorded, not no), so it filters on GRANIT's
+    positive motorized flags instead.
+    """
+    source = {
+        "key": "nh_granit_trails",
+        "title": "New Hampshire Trails",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/granit",
+        "steward": "NH GRANIT, Earth Systems Research Center, University of New Hampshire",
+        "attribution": "NH GRANIT, University of New Hampshire",
+        "blaze_field": "BLAZE",
+        "name_field": "TRAILNAME",
+        "excluded_when": {"SNOWMBL": ["1"], "ATV": ["1"]},
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
 
 
 def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None):
@@ -98,7 +182,7 @@ def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypat
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties())]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
@@ -112,6 +196,121 @@ def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypat
     }
 
 
+# --------------------------------------------------------------------------
+# The same lines as vector tiles (#1257). What a phone draws above the seam
+# since the GeoJSON outgrew it (#1254): read by byte range, so the archive's
+# weight is never the phone's problem.
+# --------------------------------------------------------------------------
+
+
+def _tiles_header(manifest):
+    with Path(manifest["tiles"]["path"]).open("rb") as f:
+        reader = Reader(MmapSource(f))
+        return reader.header(), reader.metadata()
+
+
+def test_the_lines_ship_as_vector_tiles_a_phone_reads_by_range(tmp_path, monkeypatch):
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    tiles = manifest["tiles"]
+    path = Path(tiles["path"])
+    # Beside the lines it was cut from, under the name publish.py uploads.
+    assert path.name == ex.TILES_ARTIFACT_NAME
+    assert path.parent == Path(manifest["path"]).parent
+    assert tiles["sha256"] == ex.sha256_file(path)
+
+    header, metadata = _tiles_header(manifest)
+    # Every tile the archive addresses is one the client can ask for: the
+    # header's range is the manifest's, and neither is empty.
+    assert (header["min_zoom"], header["max_zoom"]) == (tiles["min_zoom"], tiles["max_zoom"])
+    assert tiles["tile_count"] == header["addressed_tiles_count"] > 0
+    # One layer, named what map/networkTiles.ts asks for, carrying the same
+    # five properties the GeoJSON test above pins - the tiles are the same
+    # contract with map/style.ts, re-cut, not a second one.
+    (layer,) = metadata["vector_layers"]
+    assert layer["id"] == ex.TILES_LAYER == tiles["layer"]
+    assert {"id", "source", "name", "blaze_color", "trail_status"} <= set(layer["fields"])
+
+
+def test_the_tile_zooms_are_the_ones_the_client_is_built_for():
+    # The two ends of one contract. map/style.ts declares the source over
+    # these tiles with the client's constants; an archive cut to other zooms
+    # is asked for tiles it does not hold and draws nothing, silently.
+    config = (Path(__file__).parent.parent.parent / "client" / "src" / "lib" / "config.ts").read_text()
+
+    def declared(name):
+        match = re.search(rf"^export const {name} = (\d+)$", config, re.MULTILINE)
+        assert match is not None, f"client/src/lib/config.ts no longer declares {name}"
+        return int(match.group(1))
+
+    assert declared("NEARBY_TRAILS_TILES_MIN_ZOOM") == ex.TILES_MIN_ZOOM
+    assert declared("NEARBY_TRAILS_TILES_MAX_ZOOM") == ex.TILES_MAX_ZOOM
+
+
+def test_coordinates_are_cut_to_six_decimals_not_written_as_survey_noise(tmp_path, monkeypatch):
+    # The EPSG:5070 round trip inside simplify_records hands back doubles
+    # ~17 significant digits long, and this export writes its own JSON, so
+    # nothing capped them - 39.0 characters a coordinate pair against 22.8
+    # at six decimals (measured 2026-08-27; the NEARBY_COORDINATE_DECIMALS
+    # block carries the method). Six decimals is ~0.11 m of longitude here,
+    # an order finer than the 1 m the simplification is already allowed to
+    # move a vertex - the digits cut describe ground the artifact never held.
+    survey_noise = [(-74.123456789012345, 41.254321098765432), (-74.09, 41.26)]
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(survey_noise, _oprhp_properties())]},
+    )
+
+    (feature,) = body["features"]
+    geometry = feature["geometry"]
+    lines = geometry["coordinates"] if geometry["type"] == "MultiLineString" else [geometry["coordinates"]]
+    written = [pair for line in lines for pair in line]
+    for lon, lat in written:
+        assert lon == round(lon, 6)
+        assert lat == round(lat, 6)
+    # And the cut moved nothing it may not: every written vertex sits within
+    # the rounding step of a source vertex (the fixture is two points, so
+    # simplification removes none of them), not merely within the 1 m the
+    # simplification could have spent on top.
+    for (lon, lat), (src_lon, src_lat) in zip(written, survey_noise, strict=True):
+        assert abs(lon - src_lon) < 1.5e-6
+        assert abs(lat - src_lat) < 1.5e-6
+
+
+def test_a_line_the_cut_would_collapse_keeps_its_full_precision_vertices(tmp_path, monkeypatch):
+    # The review of the first cut caught this: every degenerate-geometry
+    # guard in the pipeline runs at full precision, so a line shorter than
+    # the rounding step in both axes - a closure sliver, or a source segment
+    # of a few centimetres - sailed through them all and was then written as
+    # two identical grid points. A zero-length LineString draws as nothing,
+    # while the run reports success; on a ':closed' record that is a closure
+    # marking rendered invisible. The fallback is simplify_records' own
+    # never-drop convention: such a feature keeps its full-precision
+    # vertices, a few dozen uncut characters against a safety marking that
+    # silently disappears.
+    a_few_centimetres = [(-74.1000002, 41.2500002), (-74.0999998, 41.2500002)]
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(a_few_centimetres, _oprhp_properties())]},
+    )
+
+    (feature,) = body["features"]
+    geometry = feature["geometry"]
+    lines = geometry["coordinates"] if geometry["type"] == "MultiLineString" else [geometry["coordinates"]]
+    for line in lines:
+        assert len({tuple(pair) for pair in line}) >= 2, f"zero-length line published: {line}"
+
+
 def test_the_source_key_is_the_registry_key_so_the_client_ghosts_it(tmp_path, monkeypatch):
     # map/nearbyTrails.ts ghosts every `source` outside CHOSEN_SYSTEM_SOURCES
     # (['centerline', 'side_trails']). Nothing in this export is in that list,
@@ -121,7 +320,7 @@ def test_the_source_key_is_the_registry_key_so_the_client_ghosts_it(tmp_path, mo
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties())]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
     )
 
     sources = {f["properties"]["source"] for f in body["features"]}
@@ -130,7 +329,7 @@ def test_the_source_key_is_the_registry_key_so_the_client_ghosts_it(tmp_path, mo
 
 
 # --------------------------------------------------------------------------
-# Filter 3: status.
+# Filter 2: status.
 # --------------------------------------------------------------------------
 
 
@@ -143,7 +342,7 @@ def test_a_long_term_closed_trail_ships_carrying_the_status_the_closure_band_rea
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Status="Closed"))]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Status="Closed"))]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
@@ -163,8 +362,8 @@ def test_a_status_that_is_not_open_or_closed_is_dropped_rather_than_assumed_walk
         [_oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(IN_RING, _oprhp_properties(Status="Open"), feature_id=1),
-                _feature(IN_RING, _oprhp_properties(Name="Not ground", Status=status), feature_id=2),
+                _feature(HARRIMAN, _oprhp_properties(Status="Open"), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Not ground", Status=status), feature_id=2),
             ]
         },
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
@@ -200,7 +399,7 @@ def test_a_source_with_no_status_column_ships_open_rather_than_inventing_a_closu
         tmp_path,
         monkeypatch,
         [_no_status_source()],
-        {"nynjtc_long_path": [_feature(IN_RING, {"Trail_Name": "Long Path", "Blaze": "aqua"})]},
+        {"nynjtc_long_path": [_feature(HARRIMAN, {"Trail_Name": "Long Path", "Blaze": "aqua"})]},
         mapping={"nynjtc_long_path": {"mapped": {"aqua": "Aqua"}}},
     )
 
@@ -221,8 +420,8 @@ def test_a_segment_that_does_not_allow_foot_travel_is_dropped(tmp_path, monkeypa
         [_oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(IN_RING, _oprhp_properties(), feature_id=1),
-                _feature(IN_RING, _oprhp_properties(Name="Horn Hill Bike Trail", Foot="N"), feature_id=2),
+                _feature(HARRIMAN, _oprhp_properties(), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Horn Hill Bike Trail", Foot="N"), feature_id=2),
             ]
         },
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
@@ -230,6 +429,55 @@ def test_a_segment_that_does_not_allow_foot_travel_is_dropped(tmp_path, monkeypa
 
     assert [f["properties"]["id"] for f in body["features"]] == ["oprhp_trails:1"]
     assert manifest["sources"]["oprhp_trails"]["dropped"] == {"not a foot trail: Foot='N'": 1}
+
+
+def test_a_source_declares_which_of_its_own_use_codes_mean_foot(tmp_path, monkeypatch):
+    # DEC's case, and the reason the allowed set is per-source rather than one
+    # constant (#1019). Its FOOT column is the same five-code CORRIDOR USE
+    # domain OPRHP's is, and its live values are not: measured 2026-08-25 over
+    # all 5,286 rows of DEC's own Hiking Trails layer, 4,050 read `Y` and
+    # 1,236 read `M` (DEC's code for MAINTAINED), and nothing reads N, U or
+    # -99. A hard-coded {"Y"} would drop 23% of a layer DEC publishes as
+    # hiking trails - a hiking-only filter deleting hiking trails.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_dec_source()],
+        {
+            "dec_hiking_trails": [
+                _feature(HARRIMAN, _dec_properties(NAME="Escarpment Trail"), feature_id=1),
+                _feature(HARRIMAN, _dec_properties(NAME="Bog Meadow Trail", FOOT="M"), feature_id=2),
+                _feature(HARRIMAN, _dec_properties(NAME="A snowmobile-only run", FOOT="N"), feature_id=3),
+            ]
+        },
+        mapping={"dec_hiking_trails": {"mapped": {"Blue": "Blue"}}},
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Escarpment Trail", "Bog Meadow Trail"]
+    assert manifest["sources"]["dec_hiking_trails"]["dropped"] == {"not a foot trail: FOOT='N'": 1}
+
+
+def test_a_source_that_declares_no_allowed_set_gets_the_default(tmp_path, monkeypatch):
+    # The other half of the same rule: OPRHP declares no `foot_allowed`, so
+    # `M` is NOT walkable for it. The per-source field must not become a
+    # global widening - OPRHP has never published an M (measured 2026-08-24,
+    # 16,641 rows: Y 16,441, N 200), so an M appearing there is a value
+    # nobody has reviewed and is dropped and counted rather than assumed.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(HARRIMAN, _oprhp_properties(), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Something new", Foot="M"), feature_id=2),
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    assert [f["properties"]["id"] for f in body["features"]] == ["oprhp_trails:1"]
+    assert manifest["sources"]["oprhp_trails"]["dropped"] == {"not a foot trail: Foot='M'": 1}
 
 
 def test_a_source_declaring_no_foot_field_keeps_every_row(tmp_path, monkeypatch):
@@ -240,7 +488,7 @@ def test_a_source_declaring_no_foot_field_keeps_every_row(tmp_path, monkeypatch)
         tmp_path,
         monkeypatch,
         [_no_status_source()],
-        {"nynjtc_long_path": [_feature(IN_RING, {"Trail_Name": "Long Path", "Blaze": "aqua"})]},
+        {"nynjtc_long_path": [_feature(HARRIMAN, {"Trail_Name": "Long Path", "Blaze": "aqua"})]},
         mapping={"nynjtc_long_path": {"mapped": {"aqua": "Aqua"}}},
     )
 
@@ -248,62 +496,77 @@ def test_a_source_declaring_no_foot_field_keeps_every_row(tmp_path, monkeypatch)
 
 
 # --------------------------------------------------------------------------
-# Filter 2: the ring.
+# No filter is geographic (#1019). The two tests below are the ring tests
+# they replace, inverted: the same coordinates, the opposite expectation.
+#
+# The maintainer's decision of 2026-08-25 - "There shouldnt be a ring around
+# NYC. Include all of DEC, NYNJTC & NYSP. Don't limit data from orgs based on
+# geography" - is the kind of thing a later refactor re-adds by accident,
+# because a bounding box is such an obvious way to keep an artifact small.
+# These two are what fails when somebody does.
 # --------------------------------------------------------------------------
 
 
-def test_a_trail_outside_the_ring_is_dropped_and_one_crossing_its_edge_is_kept_whole(tmp_path, monkeypatch):
-    # Kept if it INTERSECTS, and never cut at the boundary - export_trails.py's
-    # own corridor rule. Cutting would end a trail at a line nobody drew on
-    # the ground.
-    crossing = [(-73.5, 41.2), (-73.2, 41.2)]  # starts inside, ends east of -73.4
+def test_no_coordinate_drops_a_trail_wherever_the_organization_publishes_it(tmp_path, monkeypatch):
+    # Both fixtures sat outside the old ring and were dropped by it: one past
+    # the 42.55° northern cut (which cost the Long Path 10 of its 43 sections)
+    # and one past the -73.4° eastern edge. Nothing here is inside anything
+    # any more, and all three ship.
+    crossing = [(-73.5, 41.2), (-73.2, 41.2)]  # straddled the old eastern edge
     manifest, body = _run(
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(crossing, _oprhp_properties(Name="Crosses the edge"), feature_id=1),
-                _feature(OUTSIDE_RING, _oprhp_properties(Name="Wholly outside"), feature_id=2),
-                _feature(NORTH_OF_RING, _oprhp_properties(Name="North of the cut"), feature_id=3),
+                _feature(crossing, _oprhp_properties(Name="Crosses the old edge"), feature_id=1),
+                _feature(PAST_THE_OLD_EAST_EDGE, _oprhp_properties(Name="Wholly east of it"), feature_id=2),
+                _feature(PAST_THE_OLD_NORTH_CUT, _oprhp_properties(Name="North of the old cut"), feature_id=3),
             ]
         },
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
-    assert [f["properties"]["name"] for f in body["features"]] == ["Crosses the edge"]
-    assert manifest["sources"]["oprhp_trails"]["dropped"] == {"outside the ring": 2}
-    # Whole, not truncated at -73.4: both original endpoints survive.
+    assert [f["properties"]["name"] for f in body["features"]] == [
+        "Crosses the old edge",
+        "Wholly east of it",
+        "North of the old cut",
+    ]
+    assert manifest["sources"]["oprhp_trails"]["dropped"] == {}
+    # Whole, not truncated: the endpoints of the straddling line both survive,
+    # which is the guarantee the ring itself already made and this keeps.
     kept = shape(body["features"][0]["geometry"])
     assert kept.bounds[2] == pytest.approx(-73.2)
 
 
-def test_long_island_is_excluded_by_the_stewards_own_region_name(tmp_path, monkeypatch):
-    # NYC_SOURCE_SURVEY.md §1(a)'s open edge, resolved toward the survey's
-    # county list. Measured 2026-08-24 against the live layer: 1,951 of the
-    # 5,759 segments that pass every other filter are `Unit: Long Island`.
-    manifest, body = _run(
+def test_the_stewards_own_region_name_is_not_a_filter_either(tmp_path, monkeypatch):
+    # The other half of the removed clip. `Unit: Long Island` used to be
+    # dropped by name - 2,058 segments on the live layer, 1,951 of which pass
+    # every other filter (measured 2026-08-24). All three ship now, and
+    # `unit_field` is gone from the registry with the code that read it.
+    _, body = _run(
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(IN_RING, _oprhp_properties(Unit="Palisades"), feature_id=1),
-                _feature(IN_RING, _oprhp_properties(Name="Some LI path", Unit="Long Island"), feature_id=2),
-                _feature(IN_RING, _oprhp_properties(Name="A city park path", Unit="New York City"), feature_id=3),
+                _feature(HARRIMAN, _oprhp_properties(Unit="Palisades"), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Some LI path", Unit="Long Island"), feature_id=2),
+                _feature(HARRIMAN, _oprhp_properties(Name="A city park path", Unit="New York City"), feature_id=3),
             ]
         },
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
-    # New York City stays: §1 leaves Long Island open and says nothing about
-    # the close-in parks a subway rider reaches.
-    assert [f["properties"]["id"] for f in body["features"]] == ["oprhp_trails:1", "oprhp_trails:3"]
-    assert manifest["sources"]["oprhp_trails"]["dropped"] == {"excluded unit: Long Island": 1}
+    assert [f["properties"]["id"] for f in body["features"]] == [
+        "oprhp_trails:1",
+        "oprhp_trails:2",
+        "oprhp_trails:3",
+    ]
 
 
 # --------------------------------------------------------------------------
-# Filter 4: the route owner's line wins. The expensive-failure tests.
+# Filter 3: the route owner's line wins. The expensive-failure tests.
 # --------------------------------------------------------------------------
 
 
@@ -314,8 +577,8 @@ def test_the_landowners_copy_of_a_route_another_org_owns_is_suppressed(tmp_path,
         [_at_owner_source(), _oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(IN_RING, _oprhp_properties(Name="Appalachian Trail", Blaze="White"), feature_id=1),
-                _feature(IN_RING, _oprhp_properties(Name="Timp-Torne"), feature_id=2),
+                _feature(HARRIMAN, _oprhp_properties(Name="Appalachian Trail", Blaze="White"), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Timp-Torne"), feature_id=2),
             ]
         },
         mapping={"oprhp_trails": {"mapped": {"White": "White", "Red": "Red"}}},
@@ -344,7 +607,7 @@ def test_a_source_never_suppresses_its_own_route(tmp_path, monkeypatch):
         tmp_path,
         monkeypatch,
         [_no_status_source()],
-        {"nynjtc_long_path": [_feature(IN_RING, {"Trail_Name": "Long Path", "Blaze": "aqua"})]},
+        {"nynjtc_long_path": [_feature(HARRIMAN, {"Trail_Name": "Long Path", "Blaze": "aqua"})]},
         mapping={"nynjtc_long_path": {"mapped": {"aqua": "Aqua"}}},
     )
 
@@ -364,7 +627,7 @@ def test_a_distinct_trail_the_owned_route_runs_along_is_kept(tmp_path, monkeypat
         tmp_path,
         monkeypatch,
         [_at_owner_source(), _oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Name="1777 East Trail", Alt_Name="Appalachian Trail"))]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Name="1777 East Trail", Alt_Name="Appalachian Trail"))]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
@@ -382,8 +645,8 @@ def test_a_name_that_merely_starts_with_an_owned_route_is_kept(tmp_path, monkeyp
         [_at_owner_source(), _oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(IN_RING, _oprhp_properties(Name="Appalachian Trail Connector"), feature_id=1),
-                _feature(IN_RING, _oprhp_properties(Name="Appalachian Trail Bypass"), feature_id=2),
+                _feature(HARRIMAN, _oprhp_properties(Name="Appalachian Trail Connector"), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Appalachian Trail Bypass"), feature_id=2),
             ]
         },
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
@@ -407,8 +670,8 @@ def test_a_source_that_states_no_blaze_for_a_row_is_counted_not_warned_per_featu
         [_oprhp_source()],
         {
             "oprhp_trails": [
-                _feature(IN_RING, _oprhp_properties(Blaze=None), feature_id=1),
-                _feature(IN_RING, _oprhp_properties(Blaze="   "), feature_id=2),
+                _feature(HARRIMAN, _oprhp_properties(Blaze=None), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Blaze="   "), feature_id=2),
             ]
         },
     )
@@ -426,7 +689,7 @@ def test_a_value_nobody_has_reviewed_warns_loudly_per_feature(tmp_path, monkeypa
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Blaze="Chartreuse"))]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Blaze="Chartreuse"))]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
@@ -443,7 +706,7 @@ def test_a_deferred_value_renders_neutral_without_a_warning(tmp_path, monkeypatc
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Blaze="Pink"))]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Blaze="Pink"))]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}, "deferred": {"Pink": {"count": 171}}}},
     )
 
@@ -468,7 +731,7 @@ def test_a_source_with_no_blaze_field_takes_its_declared_default(tmp_path, monke
                 "reaches_hikers": False,
             }
         ],
-        {"nynjtc_highlands_trail": [_feature(IN_RING, {"Trail_Name": "Highlands"})]},
+        {"nynjtc_highlands_trail": [_feature(HARRIMAN, {"Trail_Name": "Highlands"})]},
     )
 
     assert body["features"][0]["properties"]["blaze_color"] == "Unknown"
@@ -503,7 +766,7 @@ def test_a_source_that_returns_nothing_fails_the_run_rather_than_shrinking_the_m
             tmp_path,
             monkeypatch,
             [_oprhp_source()],
-            {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Status="Proposed"))]},
+            {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Status="Proposed"))]},
         )
 
 
@@ -521,7 +784,7 @@ def test_a_source_whose_every_feature_is_suppressed_also_fails_the_run(tmp_path,
             tmp_path,
             monkeypatch,
             [_at_owner_source(), _oprhp_source()],
-            {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Name="Appalachian Trail", Blaze="White"))]},
+            {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Name="Appalachian Trail", Blaze="White"))]},
             mapping={"oprhp_trails": {"mapped": {"White": "White"}}},
         )
 
@@ -546,7 +809,7 @@ def test_the_manifest_carries_each_sources_steward_and_whether_it_ships(tmp_path
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties())]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
@@ -555,8 +818,37 @@ def test_the_manifest_carries_each_sources_steward_and_whether_it_ships(tmp_path
     assert entry["attribution"] == "NYS OPRHP"
     assert entry["reaches_hikers"] is False
     assert manifest["feature_count"] == 1
-    assert manifest["ring_bbox"] == list(ex.RING_BBOX)
     assert len(manifest["sha256"]) == 64
+
+
+def test_the_manifest_reports_the_ground_the_export_actually_covers(tmp_path, monkeypatch):
+    # `ring_bbox` - the box this export clipped to - became `bbox`, measured
+    # from what shipped (#1019). The distinction is the point: the old key
+    # answered "what did we decide to cover" and there is no such decision
+    # any more, so the honest neighbouring fact is the span of the lines
+    # themselves. Two features far apart, and the bbox is their union.
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(HARRIMAN, _oprhp_properties(), feature_id=1),
+                _feature(PAST_THE_OLD_NORTH_CUT, _oprhp_properties(Name="Albany end"), feature_id=2),
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    assert manifest["bbox"] == pytest.approx([-74.1, 41.25, -73.99, 43.11])
+    assert "ring_bbox" not in manifest
+
+
+def test_an_empty_export_reports_no_bbox_rather_than_an_invented_one(tmp_path, monkeypatch):
+    # The completeness gate refuses to let a real run reach here, but a caller
+    # reading `bbox` still has to handle the answer, so it is None rather than
+    # an empty list or a zero-area box at the origin.
+    assert ex.exported_bbox([]) is None
 
 
 # --------------------------------------------------------------------------
@@ -612,6 +904,11 @@ def test_a_trail_wholly_inside_a_closed_area_ships_closed(tmp_path, monkeypatch)
     assert feature["properties"]["trail_status"] == "closed"
     assert feature["properties"]["closure_kind"] == "area"
     assert "extreme rainfall" in feature["properties"]["closure_reason"]
+    # The closure LAYER's own key, shipped so the sheet can attribute the
+    # closure to the org that made it rather than to whoever drew the line it
+    # landed on (#1142). Set on every area record since #964; shipping it is
+    # the fix.
+    assert feature["properties"]["closure_source"] == "oprhp_trail_closures"
 
 
 def test_a_trail_only_partly_inside_is_split_rather_than_closed_whole(tmp_path, monkeypatch):
@@ -692,7 +989,7 @@ def test_an_empty_closures_layer_is_a_good_week_not_a_failure(tmp_path, monkeypa
         monkeypatch,
         [_oprhp_source(), _closure_source()],
         {
-            "oprhp_trails": [_feature(IN_RING, _oprhp_properties())],
+            "oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())],
             "oprhp_trail_closures": [],
         },
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
@@ -711,7 +1008,7 @@ def test_the_stewards_own_long_term_status_is_a_different_kind_of_closed(tmp_pat
         tmp_path,
         monkeypatch,
         [_oprhp_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties(Status="Closed"))]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties(Status="Closed"))]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
@@ -721,6 +1018,10 @@ def test_the_stewards_own_long_term_status_is_a_different_kind_of_closed(tmp_pat
     # No reason: OPRHP's status column gives none, and inventing one would be
     # the display outrunning its source.
     assert "closure_reason" not in feature["properties"]
+    # And no closure_source: a long-term status is the line steward's own
+    # claim on their own line, so the line's `source` already names the org
+    # and a second key would be the same fact twice (#1142).
+    assert "closure_source" not in feature["properties"]
 
 
 def test_a_closed_section_never_shares_an_id_with_its_open_half(tmp_path, monkeypatch):
@@ -750,9 +1051,350 @@ def test_a_closure_layer_that_was_never_fetched_leaves_every_trail_open(tmp_path
         tmp_path,
         monkeypatch,
         [_oprhp_source(), _closure_source()],
-        {"oprhp_trails": [_feature(IN_RING, _oprhp_properties())]},
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
         mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
     )
 
     assert body["features"][0]["properties"]["trail_status"] == "open"
     assert manifest["closures"]["areas"] == 0
+
+
+# --- which organizations the water build may measure against (#1016) --------
+
+
+def test_only_the_sources_that_reach_hikers_are_shipped_keys():
+    """The artifact deliberately holds every exported source so a reviewer can
+    see the map before a licence answer lands; the water build needs the
+    narrower set. One field decides both."""
+    registry = {
+        "sources": [
+            _oprhp_source(key="ships", reaches_hikers=True),
+            _oprhp_source(key="review_only", reaches_hikers=False),
+        ]
+    }
+
+    assert ex.shipped_line_source_keys(registry) == {"ships"}
+
+
+def test_a_source_with_no_blaze_marker_is_not_a_line_source():
+    """Facilities points and park polygons are registered and external and are
+    not trails - nothing should measure water against a park boundary."""
+    polygons = {k: v for k, v in _oprhp_source(key="polygons", reaches_hikers=True).items() if k != "blaze_field"}
+
+    assert ex.shipped_line_source_keys({"sources": [polygons]}) == set()
+
+
+# --------------------------------------------------------------------------
+# The corridor-view sketch (#1135). The opening camera draws the whole network
+# from this rather than from the 7.3 MB artifact, so what is pinned is the
+# contract that lets one set of paint serve both: the three properties, the
+# A.T. overview's own precision, and the manifest entry the publish gate reads.
+# --------------------------------------------------------------------------
+
+
+def _overview(tmp_path):
+    return json.loads((tmp_path / "processed" / ex.OVERVIEW_ARTIFACT_NAME).read_text())
+
+
+def test_the_overview_groups_by_the_three_properties_the_paint_and_tape_read(tmp_path, monkeypatch):
+    # One open and one closed segment of the same blaze must stay two features:
+    # folding them would draw closed ground open-looking at exactly the zooms
+    # where the full artifact's own tape does not draw.
+    _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(HARRIMAN, _oprhp_properties(), feature_id=1),
+                _feature(PAST_THE_OLD_NORTH_CUT, _oprhp_properties(Status="Closed"), feature_id=2),
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    features = _overview(tmp_path)["features"]
+    assert [f["properties"] for f in features] == [
+        {"source": "oprhp_trails", "blaze_color": "Red", "trail_status": "closed"},
+        {"source": "oprhp_trails", "blaze_color": "Red", "trail_status": "open"},
+    ]
+    assert all(f["geometry"]["type"] == "MultiLineString" for f in features)
+
+
+def test_overview_coordinates_carry_the_at_sketchs_own_four_decimals(tmp_path, monkeypatch):
+    # OVERVIEW_COORDINATE_DECIMALS, imported from export_trails.py rather than
+    # restated - four decimals is ~11 m of longitude, an order finer than the
+    # 100 m tolerance, and survey-noise digits are what the sketch exists to
+    # shed.
+    survey_noise = [(-74.123456789, 41.251234567), (-74.109876543, 41.267654321)]
+    _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(survey_noise, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = _overview(tmp_path)["features"]
+    (line,) = feature["geometry"]["coordinates"]
+    assert line[0] == [-74.1235, 41.2512]
+    assert line[-1] == [-74.1099, 41.2677]
+
+
+def test_the_overview_rides_the_manifest_the_publish_gate_reads(tmp_path, monkeypatch):
+    # publish.py ships network_overview.geojson from this entry, inside the
+    # same reaches_hikers branch as the artifact it sketches - so the entry's
+    # absence has to mean "an older export", never "a failed one".
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    overview = manifest["overview"]
+    assert overview["path"].endswith(ex.OVERVIEW_ARTIFACT_NAME)
+    assert len(overview["sha256"]) == 64
+    assert overview["feature_count"] == 1
+    assert overview["coordinate_count"] >= 2
+    assert overview["tolerance_m"] == 100.0
+
+
+# --- Naming a long-distance trail below the seam (#1307) --------------------
+
+
+def test_a_trail_that_clears_the_threshold_keeps_its_own_named_feature(tmp_path, monkeypatch):
+    # A straight run of latitude, not a real trail's geometry - about 55
+    # miles at ~69.0 miles per degree of latitude, the same "far enough from
+    # any real data" convention HARRIMAN's own comment states above.
+    # Comfortably over NAMED_TRAIL_THRESHOLD_MILES; the other two features
+    # are comfortably under it, one by a real name and one by none at all.
+    long_enough = [(-74.1, 40.5), (-74.1, 41.3)]
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(long_enough, _oprhp_properties(Name="Long Path"), feature_id=1),
+                _feature(HARRIMAN, _oprhp_properties(Name="Local Loop"), feature_id=2),
+                _feature(PAST_THE_OLD_EAST_EDGE, _oprhp_properties(Name=""), feature_id=3),
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    features = _overview(tmp_path)["features"]
+    by_name = {f["properties"].get("name"): f["properties"] for f in features}
+
+    assert by_name["Long Path"] == {
+        "source": "oprhp_trails",
+        "name": "Long Path",
+        "blaze_color": "Red",
+        "trail_status": "open",
+        "through_route": True,
+    }
+    # The sub-threshold "Local Loop" and the blank-name segment both fall
+    # back into the unnamed haze, merged into one feature exactly as they
+    # would have been before this trail existed - name and through_route
+    # both absent, this export's omit-rather-than-guess convention.
+    assert by_name[None] == {"source": "oprhp_trails", "blaze_color": "Red", "trail_status": "open"}
+    assert len(features) == 2
+    assert manifest["overview"]["feature_count"] == 2
+
+
+def test_the_threshold_sums_every_segment_of_the_same_name(tmp_path, monkeypatch):
+    # Three short pieces of one named trail, each under the threshold alone
+    # and ~55 miles summed - NYNJTC's own Long Path ships as 43 section
+    # records, not one (this module's docstring), so a real trail clearing
+    # NAMED_TRAIL_THRESHOLD_MILES has to do it a segment at a time.
+    pieces = [
+        [(-74.10, 40.50), (-74.10, 40.80)],  # ~20.7 mi
+        [(-74.10, 40.80), (-74.10, 41.10)],  # ~20.7 mi
+        [(-74.10, 41.10), (-74.10, 41.30)],  # ~13.8 mi
+    ]
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {
+            "oprhp_trails": [
+                _feature(piece, _oprhp_properties(Name="Long Path"), feature_id=index)
+                for index, piece in enumerate(pieces, start=1)
+            ]
+        },
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    (feature,) = _overview(tmp_path)["features"]
+    assert feature["properties"]["name"] == "Long Path"
+    assert feature["properties"]["through_route"] is True
+    assert len(feature["geometry"]["coordinates"]) == 3
+    assert manifest["overview"]["feature_count"] == 1
+
+
+def test_the_overview_manifest_records_the_naming_threshold(tmp_path, monkeypatch):
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    assert manifest["overview"]["named_trail_threshold_miles"] == ex.NAMED_TRAIL_THRESHOLD_MILES
+
+
+# --- The White Mountains sources (#1207) ------------------------------------
+
+
+def test_usfs_snow_and_water_corridors_are_dropped_and_terra_ships(tmp_path, monkeypatch):
+    # Measured nationwide 2026-09-02: trail_type reads TERRA on 78,101 rows,
+    # SNOW on 8,152 and WATER on 76. The non-TERRA rows are snowmobile and
+    # paddle corridors - the WMNF sample is HIX MTN RD SNOMO, BERRY FARM
+    # SNOMO, ROSEBROOK SNOMO - so TERRA is the walkable set.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_usfs_source()],
+        {
+            "usfs_trails": [
+                _feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1),
+                _feature(HARRIMAN, {"trail_name": "ROSEBROOK SNOMO", "trail_type": "SNOW"}, feature_id=2),
+                _feature(HARRIMAN, {"trail_name": "A PADDLE ROUTE", "trail_type": "WATER"}, feature_id=3),
+            ]
+        },
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["JEWELL"]
+    assert manifest["sources"]["usfs_trails"]["dropped"] == {
+        "not a foot trail: trail_type='SNOW'": 1,
+        "not a foot trail: trail_type='WATER'": 1,
+    }
+
+
+def test_a_usfs_trail_with_no_hiker_season_still_ships(tmp_path, monkeypatch):
+    # The trap this suite exists to pin, and the expensive-failure direction
+    # from the docstring. hiker_pedestrian_managed is NULL on 35,667 of the
+    # 78,101 live TERRA rows - 46% - because it is a season string a forest
+    # populates only where it made an affirmative management decision, not a
+    # prohibition flag. Requiring it would delete nearly half the Forest
+    # Service's terrestrial trail inventory.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_usfs_source()],
+        {
+            "usfs_trails": [
+                _feature(
+                    HARRIMAN,
+                    {"trail_name": "SEASONED", "trail_type": "TERRA", "hiker_pedestrian_managed": "01/01-12/31"},
+                    feature_id=1,
+                ),
+                _feature(HARRIMAN, {"trail_name": "UNRECORDED", "trail_type": "TERRA"}, feature_id=2),
+            ]
+        },
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["SEASONED", "UNRECORDED"]
+
+
+def test_granit_drops_motorized_corridors_on_a_positive_flag(tmp_path, monkeypatch):
+    # Measured in the Whites 2026-09-02: 1,209 blank-PED rows are flagged
+    # SNOWMBL '1' and 124 ATV '1'. Those are positive assertions about what a
+    # corridor is FOR, and acting on one is sound where acting on an absence
+    # is not.
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
+                _feature(HARRIMAN, {"TRAILNAME": "Camp 7 Snowmobile", "BLAZE": " ", "PED": " ", "SNOWMBL": "1"}, feature_id=2),
+                _feature(HARRIMAN, {"TRAILNAME": "An OHV run", "BLAZE": " ", "PED": " ", "ATV": "1"}, feature_id=3),
+            ]
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Air Line"]
+    assert manifest["sources"]["nh_granit_trails"]["dropped"] == {
+        "excluded use: SNOWMBL='1'": 1,
+        "excluded use: ATV='1'": 1,
+    }
+
+
+def test_a_granit_trail_with_blank_ped_and_no_other_flag_still_ships(tmp_path, monkeypatch):
+    # The counterpart, and the reason PED is not a foot_field. 2,541 of the
+    # 3,760 blank-PED rows in the Whites carry NO use flag of any kind and are
+    # ordinary hiking trails - one of them literally named "Appalachian Trail
+    # - road link". A PED allowlist would delete them.
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail - road link", "BLAZE": " ", "PED": " "}, feature_id=1),
+            ]
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
+    )
+
+    assert [f["properties"]["name"] for f in body["features"]] == ["Appalachian Trail - road link"]
+
+
+def test_an_unblazed_whites_trail_draws_as_unblazed_not_unknown(tmp_path, monkeypatch):
+    # The maintainer's correction of 2026-09-02: the Whites largely do not use
+    # paint blazes, so GRANIT's blank BLAZE - 7,574 of 7,643 rows - is the
+    # ground rather than a gap. reference/blaze_mapping.json keys the literal
+    # ' ' to "None", which the client renders as "Unblazed"; "Unknown" would
+    # print a hedge in place of a true fact. The A.T. is the one white line
+    # through the range (61 of the 62 White rows carry TRAILSYS 'Appalachian
+    # Trail').
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source()],
+        {
+            "nh_granit_trails": [
+                _feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1),
+                _feature(HARRIMAN, {"TRAILNAME": "Appalachian Trail", "BLAZE": "White", "PED": "1"}, feature_id=2),
+            ]
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None", "White": "White"}}},
+    )
+
+    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
+    assert blazes == {"Air Line": "None", "Appalachian Trail": "White"}
+
+
+def test_the_two_whites_sources_report_two_different_absences(tmp_path, monkeypatch):
+    """GRANIT's blank is "Unblazed"; USFS's silence is "Blaze not recorded".
+
+    Both cover the same White Mountains ground and neither paints most of it,
+    which makes it tempting to treat the two absences as one. They are not.
+    GRANIT records a blaze where one exists - the A.T.'s white - so its blank
+    is evidence that a trail is unblazed. USFS publishes no blaze column at
+    all, so it has said nothing. Collapsing them would tell a hiker the Forest
+    Service had checked.
+
+    Pinned together in one test because the distinction only exists in the
+    comparison, and a future simplification would erase it by making both
+    sources agree.
+    """
+    _, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_granit_source(), _usfs_source()],
+        {
+            "nh_granit_trails": [_feature(HARRIMAN, {"TRAILNAME": "Air Line", "BLAZE": " ", "PED": "1"}, feature_id=1)],
+            "usfs_trails": [_feature(HARRIMAN, {"trail_name": "JEWELL", "trail_type": "TERRA"}, feature_id=1)],
+        },
+        mapping={"nh_granit_trails": {"mapped": {" ": "None"}}},
+    )
+
+    blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
+    assert blazes == {"Air Line": "None", "JEWELL": "Unknown"}

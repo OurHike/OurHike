@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   computeLegendContents,
   legendDropSummary,
+  SAFETY_LAYERS,
   withEveryType,
+  withSafetyKey,
   type MapPoint,
 } from './legendContents'
 
@@ -138,9 +140,10 @@ describe('the "Verified?" filter', () => {
   it.each(['closure', 'serious-warning'])(
     'never filters a %s, however unverified it is',
     (type) => {
-      // "No off switch for a safety layer" has to mean every switch. A filter
-      // that happens to take a closure off the panel is the same failure as a
-      // button that does, and easier to ship without noticing.
+      // A filter that happens to take a closure off the panel is the same
+      // failure as a button that does, and easier to ship without noticing.
+      // Untouched by #1047: the Alerts switch is not a filter, is not stored,
+      // and never reaches this arithmetic.
       const rows = computeLegendContents(BBOX, [point({ type, confidence: 'low' })], true)
 
       expect(rows.find((r) => r.type === type)?.count).toBe(1)
@@ -298,9 +301,89 @@ describe('withEveryType', () => {
 
   it('cannot be made to build a switch for a safety layer', () => {
     // The guard is NEVER_HIDEABLE rather than the caller's list, so a caller
-    // handing this the wrong array gets a row it cannot toggle rather than an
-    // off switch for a closure.
+    // handing this the wrong array gets a row it cannot toggle rather than a
+    // stored, syncing switch for a closure - which is the one shape #1047
+    // still rules out.
     expect(withEveryType([], ['closure'])[0].hideable).toBe(false)
+  })
+})
+
+describe('withSafetyKey (#1051)', () => {
+  // The legend is the only key this app has, and until #1051 it had never named
+  // its two loudest symbols. These rows are a KEY rather than a tally - what
+  // every assertion here is really about is that they claim nothing about the
+  // viewport, because nothing in the app measures either layer.
+
+  const TYPES = ['water', 'privy', 'shelter']
+
+  it('names both safety layers on a grid that holds neither', () => {
+    expect(withSafetyKey([]).map((row) => row.type)).toEqual([...SAFETY_LAYERS])
+  })
+
+  it('gives them no count and no drawn figure, in any state', () => {
+    for (const row of withSafetyKey([])) {
+      expect(row.count).toBeUndefined()
+      expect(row.drawnCount).toBeUndefined()
+    }
+  })
+
+  it('leaves every other row exactly as it found it', () => {
+    const water = { type: 'water', count: 3, hideable: true, drawnCount: 2 }
+
+    const rows = withSafetyKey([water])
+
+    expect(rows[0]).toEqual(water)
+    expect(rows).toHaveLength(1 + SAFETY_LAYERS.length)
+  })
+
+  it('replaces a counted safety row rather than keeping its number', () => {
+    // Only chrome/Legend.test.tsx feeds a closure `MapPoint` today, and nothing
+    // in the shell can: a closure arrives as a mile-marker range. If something
+    // ever does, the row still may not print a number - a key entry that changes
+    // shape with what the shell happened to pass is two designs sharing a row.
+    const rows = withSafetyKey([{ type: 'closure', count: 2, hideable: false }])
+
+    expect(rows).toHaveLength(SAFETY_LAYERS.length)
+    expect(rows.find((row) => row.type === 'closure')?.count).toBeUndefined()
+  })
+
+  it('cannot hand a safety layer a switch', () => {
+    // The same structural guard as everywhere else: read from NEVER_HIDEABLE
+    // rather than written as `false`, so this can never become the place a
+    // closure quietly acquires a toggle (#530's rule).
+    for (const row of withSafetyKey([])) expect(row.hideable).toBe(false)
+  })
+
+  it('appends them after the padded grid, not among it', () => {
+    const rows = withSafetyKey(withEveryType([], TYPES))
+
+    expect(rows.slice(0, TYPES.length).map((row) => row.type)).toEqual(TYPES)
+    expect(rows.slice(TYPES.length).map((row) => row.type)).toEqual([...SAFETY_LAYERS])
+  })
+
+  it('stays out of the drop summary, which is the trap #1051 named', () => {
+    // Pushed into the arithmetic with `drawnCount: 0` against a real count, each
+    // row would have the panel announcing that none of the closures on screen
+    // fit - about the one category that is always drawn. Asserted through the
+    // padded grid, which is the shape chrome/Legend.tsx actually renders.
+    const rows = withSafetyKey([
+      { type: 'water', count: 4, hideable: true, drawnCount: 4 },
+    ])
+
+    expect(legendDropSummary(rows)).toBeNull()
+  })
+
+  it('is ignored by the summary even carrying a count, so the guard is the rule', () => {
+    // `withSafetyKey` gives these rows no count, so the case below cannot arise
+    // from this module. It is asserted anyway because the reason the summary
+    // must skip them is that nobody MEASURES those layers - not that they happen
+    // to arrive uncounted - and a hand-built row is the only way to say so.
+    const closure = { type: 'closure', count: 2, hideable: false }
+
+    expect(legendDropSummary([{ ...closure, drawnCount: 0 }, closure])).toEqual({
+      present: 2,
+      drawn: 0,
+    })
   })
 })
 

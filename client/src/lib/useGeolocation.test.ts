@@ -259,3 +259,197 @@ describe('the watch in the pack (#313)', () => {
     expect(watchPosition).not.toHaveBeenCalled()
   })
 })
+
+describe('a fix that says the phone has not moved (#1090)', () => {
+  // The state object IS the re-render. Every consumer of this hook reads
+  // `status` and `at` and nothing else, so an identical position arriving as a
+  // new object re-renders a ~5,100-line App component and recomputes every memo
+  // keyed on the fix, for an answer that has not moved. React bails out only
+  // when an updater hands back the state it was given, which is what `toBe`
+  // below is asserting and why `toEqual` would not do.
+
+  it('keeps the state it already had', () => {
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    const first = result.current
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 }, 60_000)
+
+    expect(result.current).toBe(first)
+  })
+
+  it('keeps it even when the accuracy and the clock have moved', () => {
+    // The position is what this hook is asked for, and it is the only thing a
+    // caller reads. A fix at the same coordinates with a better accuracy figure
+    // is the same answer about where somebody is - and `fixedAt` freezing with
+    // it is the documented cost of that, stated on the bail-out itself.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 40 })
+    const first = result.current
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 4 }, 90_000)
+
+    expect(result.current).toBe(first)
+  })
+
+  it('still moves on the smallest change to either coordinate', () => {
+    // The other half, and the half that matters for a hiker: this suppresses a
+    // repeat, never a movement. There is no threshold here on purpose -
+    // suppressing small moves would suppress the first feet of somebody
+    // starting to walk, and "lost" is the first of this app's four ways of
+    // hurting someone.
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    const first = result.current
+
+    reportFix({ longitude: -77, latitude: 39.000001, accuracy: 5 })
+    expect(result.current).not.toBe(first)
+
+    const second = result.current
+    reportFix({ longitude: -77.000001, latitude: 39.000001, accuracy: 5 })
+    expect(result.current).not.toBe(second)
+  })
+
+  it('reports the repeat as located after a lost signal, rather than staying unavailable', () => {
+    // The bail-out is gated on the CURRENT state being `located`, so a repeat
+    // arriving after a timeout is a real change and has to be taken. Missing
+    // that gate would leave a hiker on "Looking for GPS..." over a phone that
+    // is being told exactly where it is.
+    const { reportFix, reportFailure } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    reportFailure(3)
+    expect(result.current.status).toBe('unavailable')
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(result.current).toEqual({
+      status: 'located',
+      at: { lon: -77, lat: 39 },
+      accuracyFeet: 5 * 3.28084,
+      fixedAt: new Date(0),
+    })
+  })
+})
+
+describe('the seam the trace recorder taps (#1180)', () => {
+  // #106's walk has to bring back a measurement, and the thing being measured
+  // includes how often the platform actually answers. So the seam sees the
+  // watch, not the state - a recorder fed from the deduplicated state would
+  // be measuring #1090's optimisation instead of the GPS.
+
+  /** Hide or show the tab, the way a browser reports it. */
+  function setHidden(hidden: boolean) {
+    Object.defineProperty(document, 'hidden', { value: hidden, configurable: true })
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+  }
+
+  afterEach(() => {
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true })
+  })
+
+  it('hands every fix to onFix', () => {
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix }))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(onFix).toHaveBeenCalledTimes(1)
+  })
+
+  it('hands over a repeat the render bail-out drops', () => {
+    // THE WHOLE REASON THE SEAM IS WHERE IT IS. `maximumAge` lets the platform
+    // re-deliver an unchanged fix and #1090 stops that re-rendering the shell.
+    // A recorder that inherited that silence would report a gap in the fix
+    // cadence that the platform never had.
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true, { onFix }))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    const first = result.current
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(result.current).toBe(first)
+    expect(onFix).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports the fix exactly once per callback', () => {
+    // Called outside the setState updater on purpose: an updater may run more
+    // than once for a single update, and a recorder inside it would write the
+    // same fix twice - inventing a fix rate nobody observed.
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix }))
+
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+    reportFix({ longitude: -78, latitude: 40, accuracy: 5 })
+
+    expect(onFix).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not re-register the watch when the callback identity changes', () => {
+    // A caller passing an inline function would otherwise tear the watch down
+    // on every render, which on some platforms restarts acquisition entirely.
+    const gps = stubGeolocation()
+    const { rerender } = renderHook(({ fn }) => useGeolocation(true, { onFix: fn }), {
+      initialProps: { fn: () => {} },
+    })
+
+    rerender({ fn: () => {} })
+    rerender({ fn: () => {} })
+
+    expect(gps.watchPosition).toHaveBeenCalledTimes(1)
+  })
+
+  it('still releases the watch in the pocket when nothing asked to stay awake', () => {
+    const { clearWatch } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix: vi.fn() }))
+
+    setHidden(true)
+
+    expect(clearWatch).toHaveBeenCalled()
+  })
+
+  it('keeps the watch through a pocket while keepAwake is set', () => {
+    // A trace that stops when the phone pockets is missing the case #93 most
+    // needs. This is not a promise of fixes in a pocket - a hidden tab's JS is
+    // throttled regardless - only that this hook is not what ends them.
+    const { clearWatch } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix: vi.fn(), keepAwake: true }))
+
+    setHidden(true)
+
+    expect(clearWatch).not.toHaveBeenCalled()
+  })
+
+  it('goes on recording fixes while hidden and kept awake', () => {
+    const onFix = vi.fn()
+    const { reportFix } = stubGeolocation()
+    renderHook(() => useGeolocation(true, { onFix, keepAwake: true }))
+
+    setHidden(true)
+    reportFix({ longitude: -77, latitude: 39, accuracy: 5 })
+
+    expect(onFix).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves the ordinary path alone when nothing passes options', () => {
+    const gps = stubGeolocation()
+    renderHook(() => useGeolocation(true))
+
+    setHidden(true)
+
+    expect(gps.clearWatch).toHaveBeenCalled()
+  })
+})

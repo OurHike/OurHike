@@ -29,8 +29,34 @@
 // that is the correct picture rather than a missing feature. All three frames
 // are true; the camera does not care which one it gets.
 
+// Touched by #1008 so the camera re-takes the card it changed: the date
+// field, the gap rows, and the "Leave this with someone" primary all landed
+// on this screen (leave-with-someone.mjs photographs that sheet itself).
+//
+// Touched again by #1042, which adds the moving-time sentence to the note
+// under the figures. That sentence rides the THIRD state above, so a preview
+// without `trail_graph_elevation.json` photographs the first state and shows
+// none of it - correctly. Say so rather than reading the shot as a missing
+// feature: DayHikeCard.test.tsx is where that sentence is actually pinned,
+// and the camera is here for the states it can reach.
+// Touched again by #1115, whose whole subject is this card's leg list. Where
+// two organizations designate one piece of tread - the Long Path riding the
+// High Point Trail, 130 of that trail's 133 edges - the router used to hop
+// between the two published copies every few metres, so the list read a dozen
+// alternating rows all priced "0.0 mi". It now holds the designation it
+// entered on and merges, and the organization whose name was folded away
+// keeps its credit through `concurrent_sources`.
+//
+// The fixture's one leg carries that field, so the CREDIT LINE is what moves
+// in this frame: "Two organizations keep this loop walkable" over a single
+// merged leg, where before the same fixture read "One organization". The
+// fragmented list itself needs a real concurrency to photograph, which means
+// the live resolution over a published graph rather than a hand-written
+// fixture - so this shot shows the credit half and DayHikeCard.test.tsx and
+// trailGraph.test.ts pin the merge itself.
 export const caption = 'The finished day hike’s card'
-export const alt = 'A saved day hike’s card, opened from the Plan tab'
+export const alt =
+  'A saved day hike’s card, opened from the Plan tab, crediting both organizations whose designations share its tread'
 
 const DAY_HIKES = {
   hikes: [
@@ -50,8 +76,12 @@ const DAY_HIKES = {
           {
             name: 'Pine Meadow Trail',
             source: 'oprhp_trails',
-            blaze_color: 'blue',
+            blaze_color: 'Blue',
             miles: 6.4,
+            // Both organizations designate this tread; the leg wears one
+            // name and credits the other (#1115). Invented, like every
+            // other figure in this fixture - nobody's data.
+            concurrent_sources: ['nynjtc_long_path'],
           },
         ],
       },
@@ -86,6 +116,11 @@ export default async function drive(page) {
 
   await page.getByRole('tab', { name: 'Plan' }).click()
   await page.getByRole('button', { name: /Pine Meadow loop/ }).click()
-  // The card is up once its legs print - true in both of the states above.
-  await page.getByText('Legs').waitFor()
+  // The card is up once its legs heading prints - true in all three states
+  // above. The HEADING and not the bare text, which was this drive's own
+  // latent break: once the graph resolves, the figures line reads "6.4 mi ·
+  // 2 legs" and `getByText('Legs')` matches that AND the heading, which is a
+  // strict-mode violation rather than a wait. Nothing had reached that state
+  // to find out until #1041 drove this flow against a fixture data bucket.
+  await page.getByRole('heading', { name: 'Legs' }).waitFor()
 }

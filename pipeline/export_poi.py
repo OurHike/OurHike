@@ -232,6 +232,7 @@ wrong shelter's card, where before it was only a pin that went missing.
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import duckdb
@@ -244,8 +245,9 @@ from export_elevation import (
 )
 from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
+from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor, keep_within_corridor
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.photo_screen import gate_photos
 from lib.photo_screen import load_decisions as load_screen_decisions
 from lib.photo_store import photo_key
@@ -259,7 +261,14 @@ from lib.poi_description import (
     describe_water,
     nearby_parts,
 )
-from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, poi_output_name, unify_poi
+from lib.poi_schema import (
+    ALLOWED_EMPTY_POI_TYPES,
+    CONFIDENCE_HIGH,
+    CONFIDENCE_LOW,
+    POI_TYPES,
+    poi_output_name,
+    unify_poi,
+)
 from lib.poi_sites import ANCHOR_TYPES, NAME_MATCH_RADIUS_M, ROLE_ANCHOR, ROLE_MEMBER, group_sites, site_properties
 from lib.spurs import distance_m
 
@@ -295,6 +304,17 @@ TRAIL_WATER_PATH = RAW_DIR / "trail_water.json"
 # for the reason IMAGES_FILENAME below records: every test here redirects
 # RAW_DIR, and a module constant built from it at import time would not follow.
 OSM_WATER_REACH_FILENAME = "osm_water_reach.json"
+
+# export_nearby_trails.py's artifact - the other organizations' published lines,
+# which widen the corridor this export clips to (#1016). Under data/processed/
+# rather than data/raw/ because it is derived output rather than a fetch, and
+# absent on any run whose network export was skipped or held back, in which case
+# the corridor is the A.T.'s thirty miles exactly as it always was.
+#
+# NOT a filename-resolved-at-call-time like the constants above: nothing in this
+# module's tests redirects the processed directory, and build_corridor takes a
+# path rather than a name.
+NETWORK_LINES_PATH = OUT_DIR.parent / "nearby_trails.geojson"
 
 # Metres per foot, for the places the two units meet: a site member's
 # distance is measured in metres (the equirectangular gate that grouped it) and
@@ -417,6 +437,13 @@ TRAIL_ID = "AT"
 # write_poi_type reads POI_COLUMNS and never sees it.
 RAW_PROPERTIES_KEY = "_source_properties"
 
+# Set on a record that sits on another organization's trail rather than on the
+# A.T., carrying which organization (#1016). Read only by attach_miles, and
+# never exported - a leading underscore keeps it in the same class as
+# RAW_PROPERTIES_KEY above: working state on the way to the columns, not a
+# column. See mark_off_trail_records for why a mile has to be withheld.
+NOT_ON_AT_KEY = "_not_on_at"
+
 # ATC's free-text column on the shelter and campsite layers. Named `Comments`,
 # not `Descriptio` - see lib/atc_notes.py for why the field actually aliased
 # "Description" is unusable (it is the club acronym plus the feature's name).
@@ -503,8 +530,16 @@ NHD_STREAM_SOURCE = "nhd_stream"
 # A crossing's identity is WHERE it is, not which reach it belongs to: NHD
 # splits reaches at confluences, so one reach can cross the trail twice and
 # a reach id alone would collide. Five decimal places is about a metre -
-# finer than the geometry, coarse enough that the id is stable while the
-# snapshot is frozen (which is forever, per fetch_trail_water.py).
+# finer than the geometry, coarse enough that the id is stable while BOTH
+# lines that make the point hold still. The stream half does: the NHD
+# snapshot is frozen forever (fetch_trail_water.py). The trail half does not
+# - a re-measure of the centerline moves the meeting point, and #1028 found
+# the one such move the 2026-08-25 ledger recorded had re-minted an unnamed
+# crossing 24.7 m from its retired self, because a nameless point had no
+# other evidence to be carried on. That is why the stream's own id rides
+# RAW_PROPERTIES_KEY below: reconcile_poi_identity.py carries a moved
+# crossing on the half of the meeting that cannot have moved
+# (SCORE_STREAM_INTACT there).
 CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
@@ -1052,10 +1087,24 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": {
                 "crossing_id": f"{lat:.{CROSSING_ID_PRECISION}f},{lon:.{CROSSING_ID_PRECISION}f}",
+                # The stream the crossing is made of - NHD's permanent
+                # identifier where USGS saw it, the OSM way id otherwise. Not
+                # a column (write_poi_type never publishes it); it rides
+                # RAW_PROPERTIES_KEY so reconcile_poi_identity.py can carry a
+                # nameless crossing across a trail re-measure on the one half
+                # of the intersection that cannot have moved (#1028).
+                "stream_id": crossing.get("stream_id"),
                 "sources": crossing.get("sources"),
                 "name": crossing.get("name"),
                 "flow": crossing.get("flow"),
                 "flow_source": crossing.get("flow_source"),
+                # Which trail the stream crosses (#1016). Absent on every
+                # crossing derived before that landed, which is why this reads
+                # `.get` and why False is the right reading of absence here:
+                # the only trail this file held until then was the A.T.
+                "on_network_trail": bool(crossing.get("on_network")),
+                "network_source": crossing.get("network_source"),
+                "trail_name": crossing.get("trail_name"),
             },
         }
         record = unify_poi(
@@ -1079,6 +1128,9 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
                 # id stable: one reachable stream point per site by
                 # construction, so the site's own GlobalID names it.
                 "site_global_id": site["atc_global_id"],
+                # The same passport a crossing carries, for the same reader
+                # (#1028): a site's water point is derived from a stream too.
+                "stream_id": water.get("stream_id"),
                 "sources": water.get("sources"),
                 "name": water.get("name"),
                 "flow": water.get("flow"),
@@ -1138,6 +1190,64 @@ def load_osm_water_reach(path: Path | None = None) -> dict[str, bool] | None:
     return {str(record["osm_id"]): bool(record["reachable"]) for record in payload["points"]}
 
 
+def load_osm_water_network_anchors(path: Path | None = None) -> dict[str, str]:
+    """`osm_id -> the organization whose trail is this point's only walk`, for
+    the points build_osm_water_reach.py passed on a network line rather than on
+    anything of ATC's (#1016).
+
+    Read separately from load_osm_water_reach rather than folded into its map,
+    because the two answer different questions and only one of them gates: that
+    one decides whether a pin is drawn at all, this one decides whether the pin
+    may claim a position on the A.T. See mark_off_trail_records.
+    """
+    reach_path = (RAW_DIR / OSM_WATER_REACH_FILENAME) if path is None else path
+    if not reach_path.exists():
+        return {}
+    payload = json.loads(reach_path.read_text(encoding="utf-8"))
+    return {
+        str(record["osm_id"]): record["nearest_source"]
+        for record in payload["points"]
+        if record.get("nearest_source") and record.get("reachable")
+    }
+
+
+def mark_off_trail_records(records: list[dict], anchors: dict[str, str]) -> int:
+    """Mark every record that sits on another organization's trail rather than
+    on the A.T., so attach_miles withholds a mile from it. Returns how many.
+
+    WHY A MILE HAS TO BE WITHHELD RATHER THAN COMPUTED ANYWAY. `attach_miles`
+    projects onto the nearest point of the A.T. and always succeeds - there is
+    no distance at which it declines - so a spring on a Harriman trail four
+    miles off the A.T. would come out carrying a perfectly formed mile. That
+    number is not merely decorative on the phone: `client/src/lib/dayPlanner.ts`
+    treats every POI with a `mile` as a candidate stop between two points of an
+    A.T. day (`candidateStops`), and `cascade.ts` the same. A hiker planning
+    water around a spring that is a four-mile bushwhack off their route is the
+    confidently-wrong answer FEATURES.md ranks as more dangerous than an honest
+    unknown.
+
+    The client already reads an absent mile correctly - every consumer above
+    skips `poi.mile === undefined` - so withholding costs the pin nothing but
+    its place in an A.T. itinerary, which is a place it should never have had.
+    """
+    marked = 0
+    for record in records:
+        anchor = None
+        if record["poi_type"] == "water" and record["source"] == OSM_WATER_SOURCE:
+            anchor = anchors.get(str(record["source_feature_id"]))
+        elif record.get(RAW_PROPERTIES_KEY, {}).get("on_network_trail"):
+            # fetch_trail_water.py's own answer for a crossing: this stream
+            # crosses somebody else's trail, not the A.T. The fallback keeps
+            # the value a string in the one case the artifact carried the flag
+            # without a source key, so a caller counting by organization never
+            # has to handle a bool among the names.
+            anchor = record[RAW_PROPERTIES_KEY].get("network_source") or "an unnamed network source"
+        if anchor:
+            record[NOT_ON_AT_KEY] = anchor
+            marked += 1
+    return marked
+
+
 def gate_osm_water_reach(records: list[dict], verdicts: dict[str, bool] | None) -> list[dict]:
     """Drop every OSM water point a hiker could not walk to (#749).
 
@@ -1170,20 +1280,19 @@ def gate_osm_water_reach(records: list[dict], verdicts: dict[str, bool] | None) 
 
 
 def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> list[dict]:
-    """Keep only unified POIs whose point intersects the already-built
-    'corridor' table - the same clip spike_corridor.py proved on real
-    campsites/shelters, generalized to any unified POI list."""
+    """Keep only unified POIs the already-built corridor reaches - the same
+    clip spike_corridor.py proved on real campsites/shelters, generalized to
+    any unified POI list, and since #1311 asked of lib/corridor.py's
+    `keep_within_corridor` so the network ring is a join rather than a
+    polygon (that module's docstring has the measurement)."""
     if not unified:
         return []
 
     con.execute("CREATE OR REPLACE TABLE poi_points (id VARCHAR, lat DOUBLE, lon DOUBLE)")
     con.executemany("INSERT INTO poi_points VALUES (?, ?, ?)", [(r["id"], r["lat"], r["lon"]) for r in unified])
 
-    rows = con.execute("""
-        SELECT poi_points.id FROM poi_points, corridor
-        WHERE ST_Intersects(ST_Point(poi_points.lon, poi_points.lat), corridor.geom)
-    """).fetchall()
-    kept_ids = {row[0] for row in rows}
+    keep_within_corridor(con, "poi_points", "id", "lon", "lat")
+    kept_ids = {row[0] for row in con.execute("SELECT id FROM corridor_hits").fetchall()}
     return [r for r in unified if r["id"] in kept_ids]
 
 
@@ -1232,21 +1341,37 @@ def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline
 
     tree = STRtree([cal.line for cal in calibrated])
     points_meters = _reproject_points_to_meters(con, records)
+    positioned = 0
     for record, point in zip(records, points_meters):
+        # A POI on somebody else's trail gets no A.T. mile (#1016). This
+        # projection has no failure mode - it returns a number for a point in
+        # Ohio - so the refusal has to happen here, on a fact established
+        # upstream, rather than being inferred from the result. See
+        # mark_off_trail_records for what a wrong mile does on the phone.
+        if record.get(NOT_ON_AT_KEY):
+            continue
         index = int(tree.nearest(point))
         cal = calibrated[index]
         # Three decimals, matching elevation_profile.json's distance_mi - the
         # axis this is meant to be comparable against digit for digit.
         record["mile"] = round(cal.mile_at(cal.line.project(point)), 3)
-    return len(records)
+        positioned += 1
+    return positioned
 
 
 def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[dict]) -> dict:
     """Write one poi_type's unified+clipped records to GeoJSON + FlatGeobuf
-    under OUT_DIR, even when records is empty (e.g. `crossing`, pending NHD
-    ingestion - this deliberately ships an empty-but-present layer rather
-    than omitting the poi_type or inventing data). Returns this poi_type's
-    manifest entry: per-artifact path/sha256/feature_count."""
+    under OUT_DIR, even when records is empty - this deliberately ships an
+    empty-but-present layer rather than omitting the poi_type or inventing
+    data. Returns this poi_type's manifest entry: per-artifact
+    path/sha256/feature_count.
+
+    The example used to be `crossing, pending NHD ingestion`. That ingestion
+    landed: production release 2026-09-04 publishes 5,318 crossings (measured
+    off the live artifact, PR #1247). `trailhead` is the empty one now, at 0
+    features on that same release, for the reason #1218 gives - USFS's 7,358
+    trailheads ship as parking pins. The rule is unchanged; only which
+    poi_type is currently demonstrating it."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     columns = ", ".join(f"{name} {sql_type}" for name, sql_type in POI_COLUMNS)
@@ -1316,8 +1441,8 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     con.execute(f"COPY poi_geom TO '{fgb_path.as_posix()}' WITH (FORMAT GDAL, DRIVER 'FlatGeobuf')")
 
     return {
-        "geojson": {"path": str(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
-        "fgb": {"path": str(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
+        "geojson": {"path": to_manifest_path(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
+        "fgb": {"path": to_manifest_path(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
     }
 
 
@@ -1333,27 +1458,56 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     reimplementing it is what makes the preflight a real rehearsal - a check
     that read the sources its own way could pass while the export failed.
     """
-    print("Building 30-mile corridor from centerline...")
-    build_corridor(con, RAW_DIR / "centerline.geojson")
+    # Elapsed time on nearly every line below (#1331): read_sources() is
+    # the shared prefix build_enriched_records() caches, and it measured at
+    # 15-16s early in a publish run (before the network lines, OSM water and
+    # trail-water crossings exist on disk) against 19-22 minutes once they
+    # do (publish-vector-data.yml runs 93-96, 2026-09-08/09) - a single
+    # function, two wildly different costs depending on what has been
+    # fetched by the time it runs. These prints are what tells the NEXT slow
+    # run which of the steps below actually owns the difference, instead of
+    # guessing from source again.
+    t0 = time.perf_counter()
+    print("Building the corridor from the centerline...")
+    widened = build_corridor(con, RAW_DIR / "centerline.geojson", NETWORK_LINES_PATH)
+    # Network line COUNT, not corridor vertex count (#1311 superseded that
+    # metric): a synthetic benchmark run from here (this comment's own PR)
+    # measured clip_to_corridor's old ST_Intersects cost scaling with the
+    # CORRIDOR POLYGON's vertex count once it was widened by unioning every
+    # network line's buffer into it - up to 708s of a real run's 851s prefix,
+    # against a real corridor of 13,454,046 vertices. #1311 removed that
+    # scaling at its root rather than approximating around it: the polygon
+    # is the A.T.'s alone again, and the network lives beside it as an
+    # R-tree-indexed line table `keep_within_corridor` joins against - see
+    # lib/corridor.py's module docstring for that measurement. This print
+    # now watches the number that actually varies with the network's size.
+    network_lines = con.execute("SELECT count(*) FROM network_lines").fetchone()[0]
+    print(
+        f"  {'joined against the published network lines (#1016, #1311).' if widened else '30 miles around the A.T. alone.'}"
+        f" {network_lines:,} network line(s). ({time.perf_counter() - t0:.1f}s)"
+    )
 
+    t0 = time.perf_counter()
     print("Unifying POI sources...")
     skipped: list[str] = []
     unified = unify_all_sources(TRAIL_ID, skipped)
-    print(f"  {len(unified)} POIs unified across all sources (pre-clip).")
+    print(f"  {len(unified)} POIs unified across all sources (pre-clip). ({time.perf_counter() - t0:.1f}s)")
     if skipped:
         # Said out loud: a row upstream lost its geometry, and a count that
         # grows run over run is a source going wrong rather than one empty
         # record ATC has always had.
         print(f"  {len(skipped)} source row(s) had no geometry and were skipped: {', '.join(skipped[:5])}")
 
+    t0 = time.perf_counter()
     clipped = clip_to_corridor(con, unified)
-    print(f"  {len(clipped)}/{len(unified)} within the corridor.")
+    print(f"  {len(clipped)}/{len(unified)} within the corridor. ({time.perf_counter() - t0:.1f}s)")
 
     # #749's reachability gate. Refusing is deliberate and is the only safe
     # direction available: with osm_water.geojson present and no verdicts, the
     # alternatives are exporting every corridor point ungated - which is the bug
     # this gate exists to fix, and which would be invisible in the output - or
     # dropping the whole source silently. A half-run pipeline should stop.
+    t0 = time.perf_counter()
     reach = load_osm_water_reach()
     if reach is None and (RAW_DIR / OSM_WATER_FILENAME).exists():
         raise SystemExit(
@@ -1368,6 +1522,16 @@ def read_sources(con: duckdb.DuckDBPyConnection) -> list[dict]:
     deduped = dedupe_water(reached)
     if len(deduped) != len(reached):
         print(f"  {len(reached) - len(deduped)} OSM water twin(s) of opentrail points dropped (<= {WATER_DEDUP_RADIUS_M:.0f} m).")
+    print(f"  Reach-gate + dedupe done. ({time.perf_counter() - t0:.1f}s)")
+
+    t0 = time.perf_counter()
+    off_trail = mark_off_trail_records(deduped, load_osm_water_network_anchors())
+    if off_trail:
+        # #1016's whole subject, counted where a reader will see it: these are
+        # the safety POIs that reach a hiker on somebody else's trail, and the
+        # ones that must not carry an A.T. mile.
+        print(f"  {off_trail} POI(s) sit on a network trail rather than the A.T. - no A.T. mile for those.")
+    print(f"  Off-trail marking done. ({time.perf_counter() - t0:.1f}s)")
     return deduped
 
 
@@ -1400,6 +1564,157 @@ def apply_ledger_ids(records: list[dict], ledger_path: Path | None = None) -> in
     return changed
 
 
+# --- The shared, expensive prefix, cached across process invocations ------
+#
+# export_poi.main() and reconcile_poi_identity.published_records() both want
+# the identical enriched record set - published_records' own docstring says
+# why: "so the reconciled set and the published set cannot drift" - and until
+# now each recomputed it from scratch in its own `python` invocation.
+# MEASURED on publish-vector-data.yml runs 93-96 (2026-09-08/09, same commit):
+# "Check the POI identity ledger is current" (reconcile --check) and
+# "Export POIs" both land in 19-22 minutes, back to back in the same job,
+# while the same read_sources() call made earlier in that job - in the
+# "Check POI sources are exportable" preflight, before the network lines,
+# OSM water and trail-water crossings exist on disk - takes 15-16 seconds.
+# Two ~20-minute calls a run is close to half its ~70-minute build for
+# nothing: the second call reproduces the first bit for bit.
+#
+# Cached to CACHE_PATH, fingerprinted against every file this prefix reads
+# (_cache_input_paths) - a changed, added or removed file invalidates it
+# automatically, so a cache hit and a fresh computation are guaranteed to
+# agree; nothing here may serve a stale read silently (CLAUDE.md: "never let
+# a display outrun its source"). Deliberately NOT wired into any cross-run
+# persistence (unlike data/raw/'s own actions/cache) - the fingerprint only
+# defends against the DATA changing, never against the CODE that reads it
+# changing, and a cache surviving past the process that could invalidate it
+# on a code change would be the sharper version of the bug this exists to
+# avoid. Scoped to one job's runner is the safe lifetime; within it, the
+# inputs are fetched once early and do not change again before the job ends.
+CACHE_SCHEMA_VERSION = 1
+
+
+def _cache_path() -> Path:
+    """Resolved from OUT_DIR at call time, not a frozen constant - the same
+    convention TRAIL_WATER_PATH's comment explains, so a test redirecting
+    OUT_DIR (as every test in test_export_poi.py does) redirects this too."""
+    return OUT_DIR.parent / "poi_enriched_cache.json"
+
+
+def _cache_input_paths() -> list[Path]:
+    """Every file build_enriched_records' prefix reads, directly or through
+    read_sources()/apply_ledger_ids()/load_water_distances() - the complete
+    set the fingerprint below must cover. A path this list forgets is a path
+    that can change without invalidating the cache; if a future input joins
+    that prefix, it has to be added here in the same change."""
+    return [
+        RAW_DIR / "centerline.geojson",
+        NETWORK_LINES_PATH,
+        *(RAW_DIR / f"{stem}.geojson" for stem, _, _, _ in DIRECT_SOURCES),
+        RAW_DIR / "opentrail_at.geojson",
+        RAW_DIR / OSM_WATER_FILENAME,
+        RAW_DIR / OSM_WATER_REACH_FILENAME,
+        TRAIL_WATER_PATH,
+        WATER_DISTANCE_PATH,
+        LEDGER_PATH,
+    ]
+
+
+def _cache_fingerprint() -> list[list]:
+    """(path, size, mtime_ns) per input, or (path, None, None) when a file is
+    absent - absence is part of the fingerprint too, so a file appearing or
+    disappearing invalidates exactly like an edit would. Cheap on purpose:
+    stat() calls, never a content hash, because the thing this defends
+    against is a file changing within one job's runner, not a collision."""
+    fingerprint = []
+    for path in _cache_input_paths():
+        try:
+            stat = path.stat()
+            fingerprint.append([str(path), stat.st_size, stat.st_mtime_ns])
+        except FileNotFoundError:
+            fingerprint.append([str(path), None, None])
+    return fingerprint
+
+
+def _load_cache(fingerprint: list[list]) -> list[dict] | None:
+    path = _cache_path()
+    if not path.exists():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if document.get("schema_version") != CACHE_SCHEMA_VERSION or document.get("fingerprint") != fingerprint:
+        return None
+    return document["records"]
+
+
+def _write_cache(fingerprint: list[list], records: list[dict]) -> None:
+    path = _cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"schema_version": CACHE_SCHEMA_VERSION, "fingerprint": fingerprint, "records": records}),
+        encoding="utf-8",
+    )
+
+
+def build_enriched_records(con: duckdb.DuckDBPyConnection, use_cache: bool = True) -> list[dict]:
+    """read_sources() + apply_ledger_ids() + attach_sites() + the
+    water-distance attach and CSI synthesis (+ re-applying ledger ids for the
+    members synthesize_csi_water mints) - the expensive prefix main() and
+    reconcile_poi_identity.published_records() both need, cached across
+    process invocations. See the module-level comment above for the
+    measurement behind why this exists.
+
+    Every record returned is a fresh object, cache hit or not - a hit
+    round-trips through JSON rather than handing back a shared in-memory
+    list, so a caller that mutates its result (reconcile_poi_identity.py
+    adds `fingerprint`/`stream_id` per record) can never corrupt what a
+    later call - in this process or the next one - reads back.
+
+    `use_cache=False` forces a fresh computation, skipping both the read and
+    the write - for a caller that needs to prove the computation itself
+    still works, not merely that a cache round-trips it.
+    """
+    fingerprint = _cache_fingerprint()
+    if use_cache:
+        cached = _load_cache(fingerprint)
+        if cached is not None:
+            print(f"  Reusing this job's enriched POI records ({len(cached)}) from {_cache_path().name} - not recomputed.")
+            return cached
+
+    clipped = read_sources(con)
+
+    recarried = apply_ledger_ids(clipped)
+    if recarried:
+        print(f"  {recarried} POIs publish under a CARRIED ledger id (upstream re-keyed them; #671 held on).")
+
+    sites, folded = attach_sites(clipped)
+    print(f"  {folded} POIs fold into {sites} sites (a shelter with its privy and campsites - #523).")
+
+    # NOTE: this used to run before attach_sites, interleaved with the
+    # capacity attach that still lives in main() - moving it here (after
+    # sites, before capacity) changes only the ORDER two independent log
+    # lines print in, not any published value: attach_capacity depends on
+    # `record["id"]` already being ledger-resolved, which apply_ledger_ids
+    # above already guarantees, and capacity affects neither site grouping
+    # nor water synthesis.
+    water_distances = load_water_distances(WATER_DISTANCE_PATH)
+    if water_distances:
+        attached = attach_water_distance(clipped, water_distances)
+        print(f"  {attached} shelters and campsites carry a water distance (from {WATER_DISTANCE_PATH.name}).")
+        synthesized = synthesize_csi_water(clipped)
+        print(f"  {synthesized} water points synthesized onto those sites from the distances (#694).")
+        # The synthesized members mint atc_csi ids of their own; the ledger
+        # owns those too (#671). Idempotent for everything already mapped.
+        apply_ledger_ids(clipped)
+    else:
+        print(f"  No {WATER_DISTANCE_PATH.name} - exporting without water distances.")
+
+    if use_cache:
+        _write_cache(fingerprint, clipped)
+    return clipped
+
+
 def poi_counts(records: list[dict]) -> dict[str, int]:
     """How many records each declared poi_type has, including the zeroes.
 
@@ -1411,12 +1726,17 @@ def poi_counts(records: list[dict]) -> dict[str, int]:
 
 
 def fail_if_any_type_is_empty(counts: dict[str, int], label: str) -> None:
-    """Every poi_type must produce at least one feature - a genuinely broken
-    source (e.g. shelter silently returning 0 after an upstream schema
-    change) would otherwise be structurally indistinguishable from crossing's
-    expected, intentional emptiness (see module docstring) and ship silently.
-    crossing is the only poi_type allowed to be 0."""
-    fail_if_incomplete(count_problems(counts, minimums={"crossing": 0}), label=label)
+    """Every poi_type must produce at least one feature, bar the exceptions in
+    lib.poi_schema.ALLOWED_EMPTY_POI_TYPES.
+
+    A genuinely broken source (e.g. shelter silently returning 0 after an
+    upstream schema change) would otherwise be structurally indistinguishable
+    from an intentional emptiness and ship silently. The allowed-empty set is
+    a NAMED list with a reason per entry rather than a threshold, so adding a
+    type that legitimately has no A.T. source is a sentence somebody writes
+    rather than a gate somebody loosens.
+    """
+    fail_if_incomplete(count_problems(counts, minimums=ALLOWED_EMPTY_POI_TYPES), label=label)
 
 
 def check_sources() -> dict[str, int]:
@@ -1443,18 +1763,13 @@ def main() -> dict:
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
 
-    clipped = read_sources(con)
-
-    # Before attach_sites, which derives site_id from these ids - and again
-    # after synthesize_csi_water below, whose members mint their own.
-    # reconcile_poi_identity.py mirrors this same sequence; a change to the
-    # id-bearing steps here changes what that script must reproduce.
-    recarried = apply_ledger_ids(clipped)
-    if recarried:
-        print(f"  {recarried} POIs publish under a CARRIED ledger id (upstream re-keyed them; #671 held on).")
-
-    sites, folded = attach_sites(clipped)
-    print(f"  {folded} POIs fold into {sites} sites (a shelter with its privy and campsites - #523).")
+    # read_sources() + apply_ledger_ids() + attach_sites() + the water-distance
+    # attach and CSI synthesis - the prefix reconcile_poi_identity.py's
+    # published_records() also needs (its own docstring: "so the reconciled
+    # set and the published set cannot drift"), cached across the two
+    # process invocations rather than paid for twice - see the comment on
+    # build_enriched_records for the measurement.
+    clipped = build_enriched_records(con)
 
     # CAPACITY_PATH read here rather than defaulted in the signature, so that
     # redirecting the module constant - as the tests do - redirects the read.
@@ -1464,18 +1779,6 @@ def main() -> dict:
         print(f"  {attached} shelters carry a capacity (from {CAPACITY_PATH.name}).")
     else:
         print(f"  No {CAPACITY_PATH.name} - exporting without shelter capacities.")
-
-    water_distances = load_water_distances(WATER_DISTANCE_PATH)
-    if water_distances:
-        attached = attach_water_distance(clipped, water_distances)
-        print(f"  {attached} shelters and campsites carry a water distance (from {WATER_DISTANCE_PATH.name}).")
-        synthesized = synthesize_csi_water(clipped)
-        print(f"  {synthesized} water points synthesized onto those sites from the distances (#694).")
-        # The synthesized members mint atc_csi ids of their own; the ledger
-        # owns those too (#671). Idempotent for everything already mapped.
-        apply_ledger_ids(clipped)
-    else:
-        print(f"  No {WATER_DISTANCE_PATH.name} - exporting without water distances.")
 
     # After the capacity attach, not before: "sleeps 8" is a clause in the
     # composed sentence and that number is not on the feature ATC published.

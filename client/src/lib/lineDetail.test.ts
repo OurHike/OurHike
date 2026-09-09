@@ -8,6 +8,7 @@ import {
 } from './lineDetail'
 import { PRIMARY_TRAIL_SOURCES } from '../map/style'
 import { CHOSEN_SYSTEM_SOURCES as MAP_CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
+import { TRAILS } from './trails'
 import type { SpurRecord } from './spurDestination'
 import type { StoredPoi } from './trailData'
 
@@ -320,5 +321,128 @@ describe('a long-term closed trail', () => {
       const detail = buildLineDetail({ ...NEARBY_LINE, trailStatus: status }, {}, [])
       expect(detail.closureLine).toBe('Closed')
     }
+  })
+})
+
+describe('a temporarily closed area on a trail (#1142)', () => {
+  // What the exporter ships on an area-derived closed record: the closure
+  // LAYER's own registry key and the closing org's reason, verbatim -
+  // export_nearby_trails.apply_area_closures. The line itself can belong to
+  // a different organization entirely, which is the case that matters.
+  const AREA_CLOSED = {
+    ...NEARBY_LINE,
+    source: 'nynjtc_long_path',
+    name: 'Long Path',
+    trailStatus: 'closed',
+    closureKind: 'area',
+    closureReason: 'Closed Until 2027',
+    closureSource: 'oprhp_trail_closures',
+  }
+  const WITH_CLOSURE_LAYER: TrailSourceTable = {
+    ...SOURCES,
+    nynjtc_long_path: { attribution: 'New York–New Jersey Trail Conference' },
+    oprhp_trail_closures: {
+      attribution: 'New York State Office of Parks, Recreation and Historic Preservation',
+    },
+  }
+
+  it('speaks in the closing organization’s voice, not the line’s', () => {
+    const detail = buildLineDetail(
+      AREA_CLOSED,
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      WITH_CLOSURE_LAYER,
+    )
+    // NYNJTC drew this line; OPRHP closed the ground. The sentence is
+    // OPRHP's - reading it in NYNJTC's name is the misattribution #1142
+    // exists to prevent.
+    expect(detail.closureLine).toBe(
+      'Temporarily closed by New York State Office of Parks, Recreation and Historic Preservation · Closed Until 2027',
+    )
+  })
+
+  it('shows no date, because the closure layer publishes none per feature', () => {
+    // The trails LAYER's edit date is in the table (SOURCES carries one for
+    // oprhp_trails) and must not leak into this sentence: it is a fact about
+    // the wrong layer. apply_area_closures' own rule: nothing invented.
+    const detail = buildLineDetail(
+      { ...AREA_CLOSED, source: 'oprhp_trails' },
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      WITH_CLOSURE_LAYER,
+    )
+    expect(detail.closureLine).not.toContain('layer edited')
+  })
+
+  it('drops the by-clause rather than printing a registry key as an authority', () => {
+    // No table entry for the closure layer: the reason still shows - it is
+    // the safety payload - but "by oprhp_trail_closures" would read as a
+    // malfunction on the one line a hiker is meant to obey.
+    const detail = buildLineDetail(AREA_CLOSED, {}, [])
+    expect(detail.closureLine).toBe('Temporarily closed · Closed Until 2027')
+  })
+
+  it('stands alone when the closing organization gave no reason', () => {
+    const detail = buildLineDetail({ ...AREA_CLOSED, closureReason: null }, {}, [])
+    expect(detail.closureLine).toBe('Temporarily closed')
+  })
+
+  it('keeps the long-term voice for a record with no kind at all', () => {
+    // An artifact published before #964 split the feeds carries closed
+    // records with no closure_kind - and in that world the long-term voice
+    // was the only voice there was, so it is what that build meant.
+    const detail = buildLineDetail(
+      { ...NEARBY_LINE, trailStatus: 'Closed' },
+      {},
+      [],
+      'imperial',
+      'Appalachian Trail',
+      undefined,
+      SOURCES,
+    )
+    expect(detail.closureLine).toBe(
+      'Closed by New York State Office of Parks, Recreation and Historic Preservation · layer edited 4 Aug 2026',
+    )
+  })
+})
+
+// The trail's own mark (#1288): resolved by name from lib/trails.ts, and null
+// for every line that registry does not know - null rendered as nothing, never
+// a placeholder, the rule the header already keeps for its own trail logo.
+describe('the trail mark', () => {
+  it('is the Long Path’s on a nearby line NYNJTC names Long Path', () => {
+    const detail = buildLineDetail(
+      {
+        id: 'nynjtc_long_path:12',
+        source: 'nynjtc_long_path',
+        name: 'Long Path',
+        blazeColor: 'Aqua',
+      },
+      {},
+      [],
+    )
+    expect(detail.trailMark).toBe(TRAILS.LP.logo)
+    expect(detail.name).toBe('Long Path')
+  })
+
+  it('is the A.T.’s on the through-route, whose heading is the trail', () => {
+    const detail = buildLineDetail(
+      { id: 'centerline:chain:0', source: 'centerline', name: null, blazeColor: 'White' },
+      {},
+      [],
+    )
+    expect(detail.trailMark).toBe(TRAILS.AT.logo)
+    expect(detail.name).toBeNull()
+  })
+
+  it('is null for a trail the registry does not know, and for a spur', () => {
+    expect(buildLineDetail(NEARBY_LINE, {}, []).trailMark).toBeNull()
+    expect(buildLineDetail(SPUR_LINE, spur(), [ROCKY_RUN]).trailMark).toBeNull()
   })
 })

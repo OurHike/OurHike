@@ -31,6 +31,16 @@ export const POI_PRIORITY: readonly string[] = [
   // the pin a hiker looks for when the weather turns or an ankle goes, which
   // is the same argument water and shelter win on.
   'parking',
+  // A trailhead is the same argument again and one step further along it: it
+  // is where the way off the trail actually reaches a road (#1197). Below
+  // parking rather than above it only because a lot is where a car is, and a
+  // car is what a hiker in trouble is trying to reach.
+  //
+  // NOTE THIS IS NOT map/labelLadder.ts's ORDER, and the difference is
+  // deliberate on both sides. That ladder ranks LABELS for somebody choosing
+  // where to start, so a trailhead sits at its top rung. This ranks PINS for
+  // somebody already walking, where water and a roof outrank the way in.
+  'trailhead',
   'privy',
   'crossing',
   // Last, and the ordering earns its keep here for the first time. Vistas are

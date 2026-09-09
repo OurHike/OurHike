@@ -6,6 +6,7 @@
 // position rendered exactly like a live one. Silence would read as "this is
 // where you are" when the honest answer is "this is where you last were."
 
+import { useMemo } from 'react'
 import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -86,6 +87,23 @@ export interface StatusStripProps {
    */
   belowArchiveZoom?: boolean
   /**
+   * Whether the view is past the edge of everything downloaded (#557) - the
+   * horizontal twin of `belowArchiveZoom`, decided by
+   * lib/archiveCoverage.ts's `coverageAt` from the cells and archives on the
+   * phone, and only ever true when something IS downloaded and the view is
+   * outside all of it.
+   *
+   * Three words that name COVERAGE, never damage, and the distinction is the
+   * whole reason the flag exists rather than a new case of
+   * `backgroundProblem` (#352). A hiker who took the stretch they are walking
+   * and panned a few miles past it, with no signal, is looking at paper - and
+   * "Downloaded map not drawing" would send them to delete a download that is
+   * fine. The seam on the map says the same thing in the same words
+   * (map/coverageLayers.ts), and the legend's picker says where the next
+   * stretch comes from.
+   */
+  outsideDownload?: boolean
+  /**
    * Whether the map is drawing no trail line at all.
    *
    * A sibling of `backgroundProblem` rather than one of its cases, and the
@@ -100,6 +118,50 @@ export interface StatusStripProps {
    * window, which is also where the retry is.
    */
   trailLinesMissing?: boolean
+  /**
+   * Whether the hiker has taken the alert marks off the canvas (#1047).
+   *
+   * NOT a courtesy readout of a control's state, which is why it is on the
+   * strip that exists for the map to "admit what it doesn't know" rather than
+   * left to the legend that holds the switch. A map with the bands hidden and
+   * a map with no closure on it for forty miles are the SAME PICTURE, and the
+   * rule this whole codebase is built on is that absent means unknown and
+   * never zero. Three words here are what keep an empty screen from reading as
+   * a clear trail.
+   *
+   * The one flag here a hiker put there themselves, and it is worth saying
+   * that the others are conditions and this is a choice: the remedy is the
+   * legend's Alerts switch, and the app undoes it for them at the next open
+   * anyway (chrome/alertLayerPanel.ts).
+   */
+  alertsHidden?: boolean
+}
+
+/**
+ * The clock's formatter, built once (#1324).
+ *
+ * `time.toLocaleTimeString(...)` constructed a fresh `Intl.DateTimeFormat`
+ * on every render of this component, and this component re-renders on every
+ * render of the shell above it - which during a launch is many, none of them
+ * about the time. MEASURED 2026-09-09 on three cold first runs of
+ * client/scripts/measure-first-run.mjs against 659598a8: 87-124 ms of
+ * sampled self time in this function, third behind MapLibre itself, for a
+ * strip that first run hides in CSS and #1324 has now stopped mounting at
+ * all. The same defect #1304 took out of lib/passedToday.ts, in a second
+ * file.
+ *
+ * Constructed lazily rather than at module load: this file is in the eager
+ * closure that client/scripts/check-build-output.mjs bounds, and an `Intl`
+ * built at import time would be work in front of the first paint - the exact
+ * thing being removed. Kept as `Intl` rather than hand-rolled, which is where
+ * `passedToday` went: that one produces a storage key, this one produces a
+ * time a hiker reads to decide whether they beat the dark, and a bespoke
+ * 12-hour clock is not worth the microseconds.
+ */
+let clockFormat: Intl.DateTimeFormat | null = null
+function formatClock(time: Date): string {
+  clockFormat ??= new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
+  return clockFormat.format(time)
 }
 
 export function StatusStrip({
@@ -111,13 +173,18 @@ export function StatusStrip({
   backgroundProblem = null,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  outsideDownload = false,
   trailLinesMissing = false,
+  alertsHidden = false,
 }: StatusStripProps) {
+  // Keyed on the Date itself, which lib/useClock.ts replaces once a minute
+  // and never in between - so every other render of the shell reuses the
+  // string rather than re-running the formatter over an unchanged instant.
+  const clock = useMemo(() => formatClock(time), [time])
+
   return (
     <div className="status-strip">
-      <span className="status-strip__time">
-        {time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-      </span>
+      <span className="status-strip__time">{clock}</span>
 
       {/* Polite, not assertive: losing signal mid-walk is expected, and should
           never interrupt whatever the hiker is already reading. */}
@@ -135,6 +202,16 @@ export function StatusStrip({
             hiker told only "No live map" would reasonably conclude the trail
             is under it somewhere. */}
         {trailLinesMissing && <span className="status-strip__flag">No trail line</span>}
+        {/* Beside "No trail line" because they are the same kind of statement -
+            something a hiker would expect on the canvas is not on it - and
+            deliberately not folded into it: that one is the app failing to
+            draw what it has, this one is the app drawing exactly what it was
+            asked to. Never suppressed by any flag above, unlike the two
+            background readings that stand down for each other. Those are two
+            readings of one blank screen; this is a second thing missing from
+            it, and a hiker told only "No live map" would have no reason to
+            doubt an empty trail. */}
+        {alertsHidden && <span className="status-strip__flag">Alerts hidden</span>}
         {/* Silent when the closures are live, which is the ordinary case with
             a reachable backend. It appears exactly when there is something a
             hiker would want to know before trusting a clear header. */}
@@ -168,6 +245,15 @@ export function StatusStrip({
             repeatedly, while someone pinched. */}
         {belowArchiveZoom && (
           <span className="status-strip__flag">Zoomed out past your download</span>
+        )}
+        {/* The horizontal edge, beside the vertical one and for the same
+            reason: the choice is being honoured exactly, and this ground was
+            never in it (#557). Kept even beside a background problem, unlike
+            the 'nothing-downloaded' override above - lib/backgroundHealth.ts
+            already stands its two readings down when this one is true, so the
+            pair cannot both fire, and this is the one that names the fix. */}
+        {outsideDownload && (
+          <span className="status-strip__flag">Outside what you downloaded</span>
         )}
       </span>
 

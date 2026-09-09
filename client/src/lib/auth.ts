@@ -70,7 +70,7 @@ function failed(message: string): AuthOutcome {
 export async function signInWithProvider(
   provider: Exclude<AuthProvider, 'email'>,
 ): Promise<AuthOutcome> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signInWithOAuth({
@@ -96,7 +96,7 @@ export async function signInWithProvider(
  * requirement directly rather than by a second confirmation step.
  */
 export async function sendMagicLink(email: string): Promise<AuthOutcome> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signInWithOtp({
@@ -110,7 +110,7 @@ export async function signInWithEmail(
   email: string,
   password: string,
 ): Promise<AuthOutcome> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signInWithPassword({ email, password })
@@ -126,7 +126,7 @@ export async function signUpWithEmail(
   email: string,
   password: string,
 ): Promise<AuthOutcome> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signUp({
@@ -138,7 +138,7 @@ export async function signUpWithEmail(
 }
 
 export async function signOut(): Promise<AuthOutcome> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return NOT_CONFIGURED
 
   const { error } = await client.auth.signOut()
@@ -147,7 +147,7 @@ export async function signOut(): Promise<AuthOutcome> {
 
 /** The account restored from storage at startup, if any. */
 export async function currentAccount(): Promise<Account | null> {
-  const client = getAuthClient()
+  const client = await getAuthClient()
   if (client === null) return null
 
   const { data } = await client.auth.getSession()
@@ -163,13 +163,31 @@ export async function currentAccount(): Promise<Account | null> {
 export function subscribeToAccount(
   listener: (account: Account | null) => void,
 ): () => void {
-  const client = getAuthClient()
-  if (client === null) return () => {}
-
-  const {
-    data: { subscription },
-  } = client.auth.onAuthStateChange((_event, session) => {
-    listener(accountFromSession(session))
-  })
-  return () => subscription.unsubscribe()
+  // The client arrives asynchronously since #1302 (lib/supabase.ts), so the
+  // subscription is attached when it does and the unsubscribe handed back
+  // covers both moments: called before the client lands it cancels the
+  // attach, called after it detaches.
+  let live = true
+  let detach: (() => void) | null = null
+  void Promise.resolve(getAuthClient())
+    .then((client) => {
+      if (!live || client === null || client === undefined) return
+      const {
+        data: { subscription },
+      } = client.auth.onAuthStateChange((_event, session) => {
+        listener(accountFromSession(session))
+      })
+      detach = () => subscription.unsubscribe()
+    })
+    .catch(() => {
+      // The auth chunk did not arrive (lib/supabase.ts, which forgets the
+      // failure so a later ask retries). Signed out is the state this whole
+      // app is built to work in, so there is nothing to report and nobody to
+      // report it to - but the rejection has to be taken, or it surfaces as
+      // an unhandled rejection on every launch that hits it.
+    })
+  return () => {
+    live = false
+    detach?.()
+  }
 }

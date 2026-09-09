@@ -1,6 +1,6 @@
 # The workflows
 
-31 files, 40 jobs. Each file's header comment is the design record for that
+36 files, 49 jobs (counted 2026-09-09). Each file's header comment is the design record for that
 workflow and is the place to find out *why* it is the way it is — this file is
 the level above: what exists, what makes each one run, and the three or four
 facts that are dangerous to learn by discovering them.
@@ -78,6 +78,7 @@ whether it holds credentials, and whether a failure reaches anyone.
 | `pr-issue-link.yml` | required check `PR has a linked issue`; reports green on a queue entry without checking, deliberately |
 | `settings-manifest.yml` | required check `Manifest agrees with the workflows` |
 | `pr-preview.yml` | builds the pull request and deploys it to `pr-<n>.ourhike-preview.pages.dev` |
+| `build-shells.yml` | jobs `android` and `ios` — compiles the two native shells, which nothing did before #1193. Not a required check |
 
 `shard-seam-spike.yml` also triggers on `pull_request`, filtered to its own
 paths — it is a spike, and lives in the last family.
@@ -104,12 +105,20 @@ never interleave. All are dispatch-only except `publish-conditions.yml`.
 | `build-basemap.yml` | vector basemap → `build`, `publish` |
 | `build-dem.yml` | DEM archive → `build`, `publish` |
 | `build-raster.yml` | raster background → `disabled`, `compute-cells`, `render`, `assemble`, `publish` — **switched off for v2** (#855): the `disabled` job refuses every dispatch in seconds unless `run_despite_withdrawal` is ticked |
-| `publish-vector-data.yml` | trails, POIs and the manifest hikers download |
-| `publish-conditions.yml` | closures and warnings, on a daily schedule as well as dispatch |
+| `publish-vector-data.yml` | trails, POIs and the manifest hikers download → `build`, `publish` |
+| `publish-conditions.yml` | closures and warnings, on an hourly schedule as well as dispatch |
 
-`publish-vector-data.yml` and `migrate.yml`'s production job both run under the
-`production` environment, which is what makes RELEASING.md §12 — only the
-maintainer ships — a GitHub setting rather than a habit.
+`publish-vector-data.yml`'s `publish` job and `migrate.yml`'s production job
+both run under the `production` environment whenever they will actually
+write, which is what makes RELEASING.md §12 — only the maintainer ships — a
+GitHub setting rather than a habit. `publish-vector-data.yml`'s `publish`
+job does not run at all when nothing could be written — a dry run, or a
+ledger-regeneration run that never publishes (#1262) — since gating a run
+that structurally cannot ship anything is friction rather than safety.
+`build`/`publish` is its own split for the same reason `build-basemap.yml`
+and `build-dem.yml` already have one: publish.py no longer needs to be the
+runner that built its inputs (#1265), so only the (much shorter) `publish`
+job needs to hold `concurrency: publish-data` or wait on the reviewer.
 
 ### Watches a live system
 
@@ -120,9 +129,10 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 
 | | reports by | |
 |---|---|---|
-| `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 |
+| `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 — and ages the newest `conditions/*` stamp, which is what notices the hourly bake having stopped (#1129) |
 | `check-deployed-app.yml` | tracking issue | whether the deployed app draws a trail at all |
 | `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
+| `build-data-release.yml` | job summary | whether the week's upstream movement is worth dispatching a build for (#1314) - `check-upstream-freshness.yml`'s sibling, weekly rather than daily, and reporting to a summary because its answer is a recommendation rather than an alarm |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |
 | `check-pending-approvals.yml` | tracking issue | whether a run is sitting in `waiting` for an approval nobody was told about |
 | `check-auth-redirects.yml` | tracking issue | whether a sign-in can still come back to a declared origin (#488) |
@@ -204,16 +214,20 @@ gathered rather than restated.
 
 | When | | |
 |---|---|---|
-| `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the only one that is not daily or weekly, because its worst case is a production publish expiring unapproved at 30 days |
+| `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
+| `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
 | `10 8 * * *` | daily | `schema-drift.yml` |
-| `40 8 * * *` | daily | `publish-conditions.yml` |
+| `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |
+| `45 9 * * *` | daily | `check-launch-speed.yml` — the one slot shared with another job, and they do not contend: this one times a deployed page and that one reads an allow-list |
 | `40 9 * * 1` | Mondays | `smoke-published.yml` |
+| `40 9 * * 2` | Tuesdays | `check-note-anchors.yml` — the same minute as `smoke-published.yml`, a day later, which is what keeps them off each other |
+| `50 9 * * 3` | Wednesdays | `route-disputes.yml` — behind both of the above, so a bucket that is simply down is reported by them first |
 | `50 */20 * * *` | 00:50 and 20:50 | `supabase-keepalive.yml` |
 
 ## The shared actions

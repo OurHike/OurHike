@@ -1,0 +1,781 @@
+/* The Today screen (#1054): a pine chrome block over a paper journal column.
+ *
+ * Every colour is a semantic alias (tokens/colors.css) - the chrome reads the
+ * --*-chrome family, which is dark under both themes on purpose, and
+ * themeTokens.test.ts fails this file the moment it names a base colour. The
+ * three staleness dot colours are the deliberate exception, as literals: they
+ * are the SAME literals the lane pins (chrome.css) and the map paint
+ * (map/poiLayers.ts) already carry, three parallel implementations #256's
+ * review keeps in agreement - minting a token for two of the three homes
+ * would be a fourth home, not a cleanup.
+ */
+
+.today {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ---------- The pine chrome block ---------- */
+
+.today__chrome {
+  background: var(--bg-chrome);
+  padding: 0 18px 14px;
+  padding-left: max(18px, env(safe-area-inset-left, 0px));
+  padding-right: max(18px, env(safe-area-inset-right, 0px));
+}
+
+/* The status row is StatusStrip itself, restyled for pine - the same move
+   desktop.css already makes for the map screen's strip, so the flags keep one
+   component and one set of suppression rules wherever they appear. */
+.today__chrome .status-strip {
+  background: transparent;
+  color: var(--fg-chrome-3);
+  padding-left: 0;
+  padding-right: 0;
+  /* The top of the screen: the same notch inset .status-strip carries on the
+     map screen (#101), restated because the horizontal padding is reset. */
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+}
+
+/* The light theme's --danger is 2.2:1 on pine - the on-chrome danger is the
+   one the dark theme already uses for this job (tokens/colors.css). */
+.today__chrome .status-strip__flag {
+  color: var(--danger-on-chrome);
+}
+
+.today__eyebrow {
+  margin: 10px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  color: var(--fg-chrome-3);
+}
+
+.today__readout {
+  margin: 2px 0 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.today__mile {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-bold, 700);
+  font-size: 52px;
+  line-height: 0.92;
+  letter-spacing: var(--tracking-tight, -0.01em);
+  color: var(--fg-chrome-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.today__mile-unit {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-chrome-3);
+}
+
+/* The no-mile states, in the same slot at a size the sentences deserve -
+   "Location is off" at 52px would read as a headline about a failure. */
+.today__position-sentence {
+  margin: 6px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--fg-chrome-1);
+}
+
+.today__greeting {
+  margin: 10px 0 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+  text-wrap: pretty;
+}
+
+/* #851's provenance line, quiet mono under the sentence it qualifies. */
+.today__pace-line {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-chrome-3);
+}
+
+.today__chrome .mode-switch {
+  margin-top: 12px;
+}
+
+/* ---------- The paper journal column ---------- */
+
+.today__paper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--bg-page);
+  padding: 16px 16px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.today__section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* An empty slot costs no gap. */
+.today__section:empty {
+  display: none;
+}
+
+.today__rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.today__rule-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.today__rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-1);
+}
+
+.today__row {
+  display: flex;
+  gap: 10px;
+}
+
+.today__gutter {
+  flex: none;
+  width: 42px;
+  padding-top: 14px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+  text-align: right;
+}
+
+.today__card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.today__card--entry {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+/* The category chip: the pin's own accent at ~22% over the card, holding the
+   real silhouette (map/poiIcons.ts) at chip scale. The accent arrives as an
+   inline custom property from POI_COLORS - the registry the map itself
+   paints from - so the chip and the pin cannot disagree. */
+.today__chip {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-m, 8px);
+  background: color-mix(in srgb, var(--chip-accent) 22%, var(--surface-card));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.today__chip svg {
+  width: 22px;
+  height: 22px;
+  fill: var(--chip-accent);
+}
+
+.today__entry-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.today__entry-name {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 16px;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+.today__entry-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+/* The freshness dot: the lanes' three visible states at journal scale
+   (lib/stalenessDisplay.ts). Literals shared with chrome.css's lane block
+   and map/poiLayers.ts - see the head of this file. */
+.today__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill, 999px);
+}
+
+.today__dot--fresh {
+  background: #2e7d32;
+}
+
+.today__dot--stale {
+  background: transparent;
+  border: 1px dotted #757575;
+}
+
+.today__dot--no-word {
+  background: transparent;
+  border: 1px solid #1c6ea455;
+}
+
+/* ---------- Alert entries ---------- */
+
+.today__alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.today__card--closure {
+  border-color: var(--accent-blaze-orange);
+}
+
+.today__card--warning {
+  border-color: var(--danger-strong);
+}
+
+.today__card--advisory {
+  border-color: var(--border-2);
+}
+
+.today__alert-line {
+  margin: 0 0 10px;
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 15px;
+  line-height: 1.3;
+  color: var(--danger);
+}
+
+.today__card--advisory .today__alert-line {
+  color: var(--fg-2);
+  font-weight: var(--weight-regular, 400);
+  font-family: var(--font-body, sans-serif);
+  font-size: 13px;
+}
+
+.today__action {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 16px;
+  background: transparent;
+  color: var(--brand-primary);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  font-family: var(--font-body, sans-serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 13px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+/* ---------- The climb card ---------- */
+
+.today__card--climb {
+  margin-left: 52px;
+  padding: 12px 12px 4px;
+}
+
+.today__climb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.today__climb-figure {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent-blaze-orange);
+}
+
+/* The embedded ribbon keeps its own paints; only its band chrome goes. */
+.today__card--climb .elevation-ribbon {
+  border-bottom: 0;
+  background: transparent;
+}
+
+/* ---------- The volunteer card ---------- */
+
+.today__card--volunteer {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: var(--surface-chrome-raised);
+  border-color: var(--border-chrome);
+  box-shadow: var(--shadow-raised);
+  padding: 14px;
+}
+
+/* In volunteer mode the card leads and says so - emphasis, not new chrome. */
+.today__card--volunteer-lead {
+  outline: 2px solid var(--accent-chrome);
+  outline-offset: -2px;
+}
+
+/* The shelter thumb (#1054): 56px, clipped round like the pin chips above.
+   A fixed box the image covers, so a differently-cropped future photo cannot
+   reshape the card. */
+.today__volunteer-photo {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.today__volunteer-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.today__volunteer-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* The chrome's own foregrounds: legible on pine by day and on ink at night,
+   which is the whole point of the --*-chrome family. */
+.today__volunteer-eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--fg-chrome-3);
+}
+
+.today__volunteer-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 15px;
+  color: var(--fg-chrome-1);
+}
+
+.today__volunteer-meta {
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-chrome-2);
+}
+
+.today__volunteer-chevron {
+  flex: none;
+  font-size: 16px;
+  color: var(--fg-chrome-3);
+}
+
+/* ---------- Suggested hikes (#1284) ---------- */
+
+/* The shelf: a horizontal rail bleeding to the screen edges, with the same
+   chaining stop .next-up__cards carries (a flick off the end must not become
+   a page gesture) and the same 2px of bottom padding, so the cards may cast
+   their shadow without the row clipping it. The cards themselves are
+   chrome/suggestedHikeCard.css's .today__suggested-card, border-box stated. */
+.today__suggested-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  margin: 0 -16px;
+  padding: 2px 16px;
+}
+
+.today__suggested-rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* The way to the rest of them. One step stronger a border than a card
+   (--border-2 against --border-1), so it reads as a control rather than as
+   a fourth card. Both the label and the count are nowrap: at 358px of inner
+   width the label otherwise breaks to two lines and drops the chevron onto
+   its own. */
+.today__find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  box-sizing: border-box;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  background: var(--surface-card);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-card);
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    transform var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.today__find:active {
+  transform: scale(0.97);
+}
+
+.today__find-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--brand-primary);
+}
+
+.today__find-label {
+  flex: 1;
+  font-family: var(--font-body, sans-serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 14px;
+  color: var(--brand-primary);
+  white-space: nowrap;
+}
+
+.today__find-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+/* ---------- Notes, download card, footer ---------- */
+
+.today__note {
+  margin: 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+.today__card--download {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today__card--download .today__entry-name {
+  margin: 0;
+}
+
+.today__footer {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fg-3);
+  text-align: center;
+}
+
+/* The crew row (#1133): report a problem, and say thanks, at equal width.
+
+   `flex: 1` is applied to the Button component through its `style` prop,
+   which lands because Button.jsx spreads `style` LAST over its own variant
+   and size rules. The design handoff warned it did not work in the
+   prototype's copy of that component and asked for wrapper elements instead
+   - checked against this one rather than taken on trust, and it does, so the
+   row is two buttons rather than two buttons inside two divs.
+
+   `align-items: stretch` so the two match height as well as width when one
+   label wraps and the other does not. */
+.today__crew {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: stretch;
+}
+
+/* What is still in the outbox, and the way to it.
+
+   A button rather than the paragraph this used to be: it says something a
+   hiker might want to act on, and until now it said it with nowhere to go.
+   Grey rather than alert-coloured, for the reason More.tsx gives about the
+   same count - "waiting to send" is the ordinary state of an offline-first
+   outbox, not a fault, and painting it in alert orange would cry wolf on
+   every ridge. The dot carries the blaze accent because it is a mark nothing
+   sits on; the words stay readable ink. */
+.today__outbox {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  gap: var(--space-2, 6px);
+  min-height: 32px;
+  padding: 0 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.today__outbox-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--accent-blaze-orange);
+}
+
+.today__outbox-chevron {
+  font-size: 13px;
+  color: var(--fg-3);
+}
+
+/* ---------------------------------------------------------------------------
+   The long hike leading Today (#1317).
+
+   Two lines under the mile readout and above the mode switch: the hike's
+   name, and its two figures. Both on pine, so both take the chrome ink.
+*/
+
+.today__hike-name {
+  margin: 8px 0 0;
+  font-family: var(--font-display, serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fg-chrome-1);
+}
+
+/* The name as a control (#1344). Button chrome reset to nothing so it reads
+   as the same line it was before - what marks it is the ▾ and the pointer,
+   not a box. `text-align: left` because a button centres its label and this
+   one sits in a left-aligned column. */
+.today__hike-name--switch {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-family: var(--font-display, serif);
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.today__hike-figures {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}
+
+/* The card that leads the paper column. The 2px blaze border is
+   `.plan-home__open`'s precedent - "somewhere obvious to go back to" - and
+   it is the only card on this screen wearing one, which is what makes it
+   mean anything. */
+.today__card--hike {
+  border: 2px solid var(--accent-blaze-orange);
+}
+
+.today__hike-title {
+  margin: 4px 0 0;
+  font-family: var(--font-display, serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--fg-1);
+}
+
+/* The last of it: bigger, and that is the whole of the celebration here.
+   No countdown, no bar, no confetti. */
+.today__hike-title--last {
+  font-size: 18px;
+}
+
+.today__hike-line {
+  margin: 2px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* A DOOR, not a picture - see Today.tsx's note on why this is not the map's
+   own canvas. Sized like the thumbnail it stands in for so the card does not
+   change shape when it becomes one. */
+.today__hike-map {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  height: 104px;
+  margin-top: var(--space-3, 12px);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-m, 8px);
+  background: var(--bg-sunken);
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.today__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-3, 12px);
+}
+
+/* ---------------------------------------------------------------------------
+   A day inside a long hike (#1317).
+
+   The header is pine like the Plan band and reuses `.plan-band__word` for
+   its title, so the two screens a hiker moves between wear one typeface at
+   one size rather than two that nearly match.
+*/
+
+.hike-day {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+}
+
+.hike-day__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4, 16px);
+  background: var(--bg-chrome);
+  color: var(--fg-chrome-1);
+}
+
+.hike-day__sub {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}
+
+.hike-day__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+}
+
+/* The waypoint lane, in the ribbon's own 0-100 space and inset by the 36px
+   gutter the ribbon keeps for its min/max labels - so a pin sits under the
+   ground it belongs to rather than a gutter's width to the left of it. */
+.hike-day__lane {
+  position: relative;
+  height: 22px;
+  margin-left: 36px;
+}
+
+.hike-day__pin {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-s, 4px);
+}
+
+.hike-day__no-profile {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.hike-day__stops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.hike-day__note {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+
+/* A sentence that is also a door - the quiet offer under the welcome-back
+   card. Styled as text rather than as a button because it is an aside, and a
+   third pill beside "Move them" and "Leave it" would read as a third answer
+   to the same question when it is a different question. */
+.today__quiet-line {
+  margin-top: var(--space-3, 12px);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The one destructive action on the step-away sheet. Danger in the WORD,
+   never in a swipe - see chrome/StepAwaySheet.tsx. */
+.today__action--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* "paused 11 days · last at mi 1,407.2" - under the position line rather
+   than replacing it. The mile is still true; the hiker is simply not on this
+   hike's corridor, and overwriting a known position to say so would lose a
+   fact in order to state a different one. */
+.today__away-line {
+  margin: 4px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}

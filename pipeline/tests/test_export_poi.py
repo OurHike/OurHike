@@ -1404,6 +1404,12 @@ def test_check_reads_the_sources_and_writes_nothing(tmp_path, monkeypatch, con):
         "viewpoint": 1,
         "parking": 1,
         "privy": 1,
+        # Zero, and legitimately (#1197): ATC publishes no trailhead layer, so
+        # this export has no source for the ninth type. The 287 that ship are
+        # OPRHP's and travel in nearby_poi.geojson, which this export does not
+        # write. Asserted as a key rather than omitted, so a trailhead source
+        # arriving on the A.T. one day fails here and gets a decision.
+        "trailhead": 0,
     }
     assert not out_dir.exists()
 
@@ -1937,6 +1943,27 @@ def test_export_poi_publishes_trail_stream_crossings(tmp_path, monkeypatch, con)
     # Identity is WHERE it is: one reach can cross the trail twice, so the
     # reach id alone would collide.
     assert crossing["properties"]["id"] == "nhd_crossing:41.04000,-73.94500"
+    assert "stream_id" not in crossing["properties"], "the passport is for the ledger, not the phone"
+
+
+def test_load_trail_water_keeps_the_stream_for_the_ledger_and_publishes_nothing_new(tmp_path):
+    """The stream a crossing or a site's water point is made of rides
+    RAW_PROPERTIES_KEY for reconcile_poi_identity.py - the passport that
+    carries a nameless crossing across a trail re-measure (#1028) - and goes
+    nowhere else: it is not a POI_COLUMNS column, so no feature publishes it."""
+    trail_water = tmp_path / "trail_water.json"
+    _write_trail_water(
+        trail_water,
+        crossings=[{"sources": ["nhd"], "stream_id": "90662307", "flow": None, "name": None, "lat": 41.04, "lon": -73.945}],
+        sites=[_trail_water_site("site-1", 41.05, -73.95)],
+    )
+
+    crossing, site_water = export_poi.load_trail_water(trail_water)
+
+    assert crossing[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "90662307"
+    assert site_water[export_poi.RAW_PROPERTIES_KEY]["stream_id"] == "12"
+    assert "stream_id" not in crossing and "stream_id" not in site_water
+    assert "stream_id" not in {column for column, _ in export_poi.POI_COLUMNS}
 
 
 def test_export_poi_site_water_folds_onto_the_shelters_pin(tmp_path, monkeypatch, con):
@@ -2019,6 +2046,135 @@ def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monke
     manifest = export_poi.main()
 
     assert manifest["crossing"]["geojson"]["feature_count"] == 0
+
+
+# --- build_enriched_records caching (#1331) -----------------------------------
+#
+# read_sources()+attach_sites()+the water-distance attach measured at 19-22
+# minutes in production, paid for twice a run (export_poi.main() and
+# reconcile_poi_identity.published_records() each recomputed it from
+# scratch) - see build_enriched_records' own comment for the CI numbers.
+# These prove the cache actually avoids the second read_sources() call, that
+# a changed input still gets a fresh one, and that use_cache=False bypasses
+# the cache in both directions.
+
+
+def _counting_read_sources(monkeypatch):
+    """Wrap export_poi.read_sources to count calls, returning the list every
+    call appends to - a call recomputed is a call this list grows by one."""
+    calls = []
+    real_read_sources = export_poi.read_sources
+
+    def counting(con):
+        calls.append(1)
+        return real_read_sources(con)
+
+    monkeypatch.setattr(export_poi, "read_sources", counting)
+    return calls
+
+
+def test_build_enriched_records_reuses_the_cache_when_nothing_changed(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    calls = _counting_read_sources(monkeypatch)
+
+    first = export_poi.build_enriched_records(con)
+    second = export_poi.build_enriched_records(con)
+
+    assert len(calls) == 1, "unchanged inputs must not pay for read_sources() twice"
+    assert first == second
+
+
+def test_build_enriched_records_invalidates_the_cache_when_a_source_changes(tmp_path, monkeypatch, con):
+    """The fingerprint has to catch an edit to any file the prefix reads, or
+    a re-fetch between the two callers would silently publish under a stale
+    read - exactly the failure mode CLAUDE.md calls "a display outrunning
+    its source."."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    calls = _counting_read_sources(monkeypatch)
+
+    export_poi.build_enriched_records(con)
+
+    # A re-fetch that changed a name - same shape, different bytes, the same
+    # kind of edit ATC's own refresh makes (features/POI_IDENTITY.md).
+    _write_fc(
+        raw_dir / "shelters.geojson",
+        [
+            _point_feature(
+                1,
+                -73.95,
+                41.05,
+                {
+                    "GlobalID": "shelter-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Shelter (rebuilt)",
+                    "Stories": 2,
+                    "Exterior_M": "5",
+                    "Chimneys": 1,
+                    "Year_Built": 1954,
+                },
+            )
+        ],
+    )
+
+    export_poi.build_enriched_records(con)
+
+    assert len(calls) == 2, "a changed input must invalidate the cache rather than serve a stale read"
+
+
+def test_build_enriched_records_use_cache_false_always_recomputes(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    calls = _counting_read_sources(monkeypatch)
+
+    export_poi.build_enriched_records(con, use_cache=False)
+    export_poi.build_enriched_records(con, use_cache=False)
+
+    assert len(calls) == 2, "use_cache=False must skip the cache on both the read and the write side"
+
+
+def test_export_poi_main_and_published_records_publish_the_same_set(tmp_path, monkeypatch, con):
+    """The point of sharing build_enriched_records at all - published_records'
+    own docstring: "so the reconciled set and the published set cannot
+    drift." Checked against the real GeoJSON main() writes, not just another
+    in-memory call, with reconcile running SECOND so it reads the cache
+    main() just warmed - the order a real publish run uses."""
+    import reconcile_poi_identity
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    out_dir = tmp_path / "processed" / "poi"
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+    published = set()
+    for poi_type in POI_TYPES:
+        fc = json.loads((out_dir / f"{poi_type}.geojson").read_text())
+        for feature in fc["features"]:
+            published.add((feature["properties"]["source"], str(feature["properties"]["source_feature_id"])))
+
+    # str() on both sides: GDAL's GeoJSON driver re-expands a numeric-looking
+    # VARCHAR (opentrail's `dbid`) into a bare JSON number on the way out -
+    # the same class of quirk this module's own docstrings note for `photos`
+    # and `nearby` - so the on-disk and in-memory forms of one id can differ
+    # in JSON type without differing in identity. Not this change's quirk to
+    # fix; str() is what makes the comparison test identity rather than
+    # incidentally testing GDAL's type inference too.
+    reconciled = {(r["source"], str(r["source_feature_id"])) for r in reconcile_poi_identity.published_records()}
+
+    assert reconciled == published
 
 
 # --- attach_miles (#753, #652) ------------------------------------------------
@@ -2136,3 +2292,130 @@ def test_unify_poi_declares_the_mile_it_cannot_know():
     record = unify_poi(feature, "shelter", "atc_shelters", "AT", {"id_field": "GlobalID", "name_field": "Name"})
 
     assert record["mile"] is None
+
+
+# --- no A.T. mile for a POI that is not on the A.T. (#1016) -------------------
+#
+# THE FAILURE THESE PREVENT, and it is on the phone rather than in the data.
+# attach_miles projects onto the nearest point of the A.T. and always succeeds -
+# it would return a number for a point in Ohio. Widening the water build to
+# other organizations' trails put real POIs four miles and more off the A.T.
+# into this export for the first time, and client/src/lib/dayPlanner.ts treats
+# every POI carrying a `mile` as a candidate stop between two points of an A.T.
+# day (`candidateStops`); cascade.ts does the same. A hiker planning their
+# water around a spring that is a four-mile bushwhack off their route is the
+# confidently-wrong answer FEATURES.md ranks as worse than an honest unknown.
+#
+# The client already skips `poi.mile === undefined`, so withholding is free.
+
+
+def _osm_water_record(feature_id="1", **extra):
+    return {
+        "id": f"osm_water:{feature_id}",
+        "poi_type": "water",
+        "source": export_poi.OSM_WATER_SOURCE,
+        "source_feature_id": feature_id,
+        "lat": 40.5,
+        "lon": -74.1,
+        **extra,
+    }
+
+
+def test_a_spring_beside_a_network_trail_is_marked_off_trail():
+    records = [_osm_water_record("1")]
+
+    assert export_poi.mark_off_trail_records(records, {"1": "oprhp_trails"}) == 1
+    assert records[0][export_poi.NOT_ON_AT_KEY] == "oprhp_trails"
+
+
+def test_a_spring_beside_the_at_is_not_marked():
+    """The gate says which feature each point passed on, so this is read off a
+    fact rather than guessed from a distance - and a point that passed on ATC's
+    own centerline keeps the mile it has always had."""
+    records = [_osm_water_record("1")]
+
+    assert export_poi.mark_off_trail_records(records, {}) == 0
+    assert export_poi.NOT_ON_AT_KEY not in records[0]
+
+
+def test_a_crossing_on_somebody_elses_trail_is_marked():
+    """fetch_trail_water.py's own answer, carried through: this stream crosses
+    a network trail, so the crossing is not a point on the A.T."""
+    records = [
+        {
+            "id": "nhd:1",
+            "poi_type": "crossing",
+            "source": "nhd_stream",
+            "source_feature_id": "1",
+            export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": True, "network_source": "nynjtc_long_path"},
+        }
+    ]
+
+    assert export_poi.mark_off_trail_records(records, {}) == 1
+    assert records[0][export_poi.NOT_ON_AT_KEY] == "nynjtc_long_path"
+
+
+def test_an_at_crossing_keeps_its_mile():
+    records = [
+        {
+            "id": "nhd:1",
+            "poi_type": "crossing",
+            "source": "nhd_stream",
+            "source_feature_id": "1",
+            export_poi.RAW_PROPERTIES_KEY: {"on_network_trail": False},
+        }
+    ]
+
+    assert export_poi.mark_off_trail_records(records, {}) == 0
+
+
+def test_attach_miles_withholds_the_mile_from_an_off_trail_poi(tmp_path, con):
+    """The whole point. The projection would happily produce a mile for this
+    point - the test below proves it does for the same coordinates unmarked."""
+    centerline, markers, _ = _mile_fixture(tmp_path, con)
+    records = [{"id": "off", "lat": 40.5, "lon": -74.1, export_poi.NOT_ON_AT_KEY: "mohonk_trails"}]
+
+    attached = export_poi.attach_miles(con, records, centerline, markers)
+
+    assert attached == 0
+    assert "mile" not in records[0]
+
+
+def test_attach_miles_counts_only_what_it_positioned(tmp_path, con):
+    """One marked, one not, at the SAME coordinates - so the difference can
+    only be the mark, and the returned count is what a caller prints."""
+    centerline, markers, _ = _mile_fixture(tmp_path, con)
+    records = [
+        {"id": "on", "lat": 40.5, "lon": -74.1},
+        {"id": "off", "lat": 40.5, "lon": -74.1, export_poi.NOT_ON_AT_KEY: "oprhp_trails"},
+    ]
+
+    assert export_poi.attach_miles(con, records, centerline, markers) == 1
+    assert records[0]["mile"] == pytest.approx(69.1 / 2, rel=0.02)
+    assert "mile" not in records[1]
+
+
+def test_the_anchors_come_only_from_reachable_points(tmp_path):
+    """A point the gate refused is not published at all, so an anchor for it
+    would be an answer about a pin nobody draws - and reading one would be a
+    quiet way for an unreachable point's organization to end up in a count."""
+    path = tmp_path / "osm_water_reach.json"
+    path.write_text(
+        json.dumps(
+            {
+                "points": [
+                    {"osm_id": "1", "nearest_source": "oprhp_trails", "reachable": True},
+                    {"osm_id": "2", "nearest_source": "mohonk_trails", "reachable": False},
+                    {"osm_id": "3", "reachable": True},
+                ]
+            }
+        )
+    )
+
+    assert export_poi.load_osm_water_network_anchors(path) == {"1": "oprhp_trails"}
+
+
+def test_absent_verdicts_are_no_anchors_rather_than_an_error(tmp_path):
+    """The pre-#1016 file, and every run whose reach build has not happened -
+    which read_sources already refuses on for its own reasons."""
+    assert export_poi.load_osm_water_network_anchors(tmp_path / "nowhere.json") == {}

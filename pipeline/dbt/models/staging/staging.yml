@@ -111,3 +111,133 @@ models:
     columns:
       - name: source_id
         data_tests: [not_null, unique]
+
+  # --- Phase D: the non-A.T. organizations (#100) --------------------------
+  #
+  # Four providers, fourteen models, and the thing worth noticing is how
+  # little had to change to hold them: the column shape, the naming, the
+  # seed and the reconciliation tests all generalized as designed. What did
+  # NOT generalize is recorded in DBT.md's Phase D section.
+  - name: stg_dec__lean_tos
+    description: >
+      DEC lean-tos as `shelter` - the first non-A.T. rows in dim_pois.
+      poi_type, id, name and public flag are all sources.json's declared
+      fields for this entry rather than calls made in SQL. The model's own
+      comment carries the reasoning the other five DEC POI models refer to,
+      including why PUBLICUSE is carried rather than applied.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__primitive_campsites
+    description: >
+      DEC primitive campsites as `campsite`. 2,078 rows on the live layer
+      (counted 2026-08-27) - the largest single block of POIs Phase D adds.
+      One row is one backcountry tent site.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__scenic_vistas
+    description: >
+      DEC scenic vistas as `viewpoint`. One of three DEC services landing on
+      that type; they stay three models with three `source` values, and
+      cross-source dedup remains deferred as it was in Phase A.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__firetowers
+    description: >
+      DEC firetowers as `viewpoint`, and the one Phase D poi_type carrying an
+      @unvalidated caveat into the model: the layer publishes no open/closed
+      state, so a hiker who reaches a closed tower finds a locked cab. See
+      the model comment.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__viewing_areas
+    description: >
+      DEC viewing areas as `viewpoint`. Same shape as stg_dec__lean_tos.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__parking_areas
+    description: >
+      DEC parking areas as `parking`. The layer states no seasonal access -
+      seasonality lives in DEC's free-text NOTES, so no column here claims
+      it.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+      - name: poi_type
+        data_tests: [not_null]
+  - name: stg_dec__hiking_trails
+    description: >
+      DEC's statewide trail attributes - the non-A.T. twin of
+      stg_atc__centerline_segments, geometry left to the Python spatial
+      scripts. Carries both id columns because the stable one (GLOBALID) is
+      spelled where lib/feature_id.py does not look, so published ids fall
+      back to OBJECTID. No accepted_values on `marker`: 2,929 of 5,286 rows
+      are blank and one reads 'ORANGE AND RED', which DEC's own domain does
+      not declare.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_dec__backcountry_features
+    description: >
+      DEC's asset inventory, staged and NOT unioned - the same posture
+      stg_atc__bridges holds. The entry declares no poi_type because 68% of
+      the layer is things no hiker wants a pin for; what publishes from it
+      goes through export_nearby_poi.py's allowlist, which is not
+      reproduced here.
+    columns:
+      - name: source_id
+        data_tests: [not_null, unique]
+  - name: stg_nynjtc__long_path
+    description: >
+      The Long Path's per-segment attributes - the first trail in this
+      warehouse that is not the A.T. NO source_id column: sources.json
+      records no id field for this layer, and ST_Read's OGC_FID is GDAL's
+      row number rather than NYNJTC's identity. `blaze` is a plain string
+      ('aqua' on all 43 rows), passed through undecoded.
+  - name: stg_nynjtc__highlands_trail
+    description: >
+      The Highlands Trail's 12 sections. NO BLAZE COLUMN, because the layer
+      publishes no blaze field - a stated absence, not a gap to fill. No
+      source_id, for the same reason as its sibling.
+  - name: stg_mohonk__trails
+    description: >
+      Mohonk Preserve's 304 curated segments. `blaze` here IS a coded field,
+      unlike NYNJTC's two - three organizations, three different answers to
+      the same question. Still no accepted_values: 124 of 304 rows carry the
+      literal string 'N/A' and 7 carry no value at all.
+  - name: stg_oprhp__trails
+    description: >
+      NYS Parks' 16,641 statewide segments, the largest layer in the
+      warehouse. Two blaze columns rather than the three the layer has: only
+      `Blaze` and `Map_Blaze` were ever written down. `status` and
+      `public_flag` are staged and nothing filters on them, because what they
+      gate is unmeasured.
+  - name: stg_oprhp__trail_closures
+    description: >
+      OPRHP's temporary closure polygons - a safety surface, and the layer
+      whose freshness matters most of anything Phase D stages. TWO COLUMNS
+      ONLY: no full field list was ever measured, and a closure model with
+      invented columns is the worst place for one. No row-count floor test
+      either: an honest count of zero is the expected answer in a good week.
+  - name: stg_oprhp__facilities
+    description: >
+      NYS Parks' 8,823 facility points, staged and NOT unioned. The entry
+      declares no poi_type because typing it is a WATER change - `Sub_Asset`
+      holds 136 'Water Spigot' and 15 'Drinking Fountain' among its 158
+      values - needing export_poi.py's confidence and provenance treatment
+      rather than a point dump. Both public flags are staged; the obvious one
+      (`Public_`, Y on all 8,823) discriminates nothing.

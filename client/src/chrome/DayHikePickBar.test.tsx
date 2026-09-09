@@ -20,6 +20,18 @@ import { OFF_NETWORK_REFUSAL, type DayHikeDraft } from '../lib/dayHikeDraft'
 import type { DraftStatus } from '../lib/dayHikeDraft'
 import type { GraphRoute } from '../lib/trailGraph'
 import { DayHikePickBar, walkingTime } from './DayHikePickBar'
+import { paceEstimate, STANDARD_PACE, type PaceProfile } from '../lib/pace'
+
+/**
+ * An estimate for a walk that takes `minutes` at the standard pace.
+ *
+ * Priced through paceEstimate rather than written out, so what these tests
+ * pin is the real formatter's ≈ and five-minute step. The distance is a
+ * flat-ground one: at the standard 5 km/h it is exactly the minutes asked
+ * for, and no ascent means no second term to reason about.
+ */
+const flatWalk = (minutes: number, pace: PaceProfile = STANDARD_PACE) =>
+  paceEstimate({ distanceMi: (minutes / 60) * (5 / 1.609344), ascentFt: 0 }, pace)
 
 afterEach(() => {
   cleanup()
@@ -58,6 +70,15 @@ const ROUTE: GraphRoute = {
   ],
   miles: 4.8,
   edgeIndices: [0, 1, 2],
+  // One leg over all three edges. The bar never draws, so this only has to
+  // be a valid shape; lib/trailGraph.test.ts is where sections are exercised.
+  sections: [
+    {
+      edgeIndices: [0, 1, 2],
+      from: { edgeIndex: 0, fraction: 0, at: { lon: 0, lat: 0 }, offNetworkFeet: 0 },
+      to: { edgeIndex: 2, fraction: 1, at: { lon: 0, lat: 0 }, offNetworkFeet: 0 },
+    },
+  ],
   legsBySource: [
     { source: 'nynjtc_long_path', legs: 2 },
     { source: 'oprhp_trails', legs: 1 },
@@ -68,20 +89,48 @@ const ROUTE: GraphRoute = {
   climb: null,
 }
 
-const DRAFT: DayHikeDraft = { points: [], refusal: null, looped: false }
+const DRAFT: DayHikeDraft = {
+  segments: [[]],
+  refusal: null,
+  looped: false,
+  droppedMiles: 0,
+}
+
+/** One routed stretch, which is what a single-stretch walk now looks like to
+ *  the bar. The totals travel beside the stretches rather than inside one
+ *  combined route - see lib/dayHikeDraft.ts on why there is no such thing. */
+function routedFrom(route: GraphRoute, gapMiles = 0): DraftStatus {
+  return {
+    kind: 'routed',
+    stretches: [{ points: [], route }],
+    miles: route.miles,
+    legs: route.legs,
+    legsBySource: route.legsBySource,
+    climb: route.climb,
+    gapMiles,
+    // One gap carrying the whole figure, placed past this walk's only stretch.
+    // The bar prints the total and not the parts, so the shape is what matters
+    // here rather than the split.
+    gaps: gapMiles > 0 ? [{ afterLegs: route.legs.length, miles: gapMiles }] : [],
+  }
+}
 
 function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}) {
   const props = {
     draft: DRAFT,
-    status: { kind: 'routed', route: ROUTE } as DraftStatus,
+    status: routedFrom(ROUTE),
     units: 'imperial' as const,
     orgLabel,
-    walkingMinutes: 135,
+    walking: flatWalk(135),
     onUndo: vi.fn(),
     onCloseLoop: vi.fn(),
+    onStartStretch: vi.fn(),
     onDone: vi.fn(),
     onCancel: vi.fn(),
     canCloseLoop: true,
+    canStartNew: false,
+    drawing: false,
+    onToggleDraw: vi.fn(),
     ...overrides,
   }
   const view = render(<DayHikePickBar {...props} />)
@@ -105,7 +154,7 @@ describe('the running total', () => {
   it('says nothing about time at all when nothing can price the climb', () => {
     // No elevation profile means no honest Naismith figure. Omitting it beats
     // printing a number that prices every climb at zero.
-    renderBar({ walkingMinutes: null })
+    renderBar({ walking: null })
 
     expect(screen.queryByText(/walking/)).not.toBeInTheDocument()
     expect(screen.getByText(/3 legs/)).toBeInTheDocument()
@@ -113,14 +162,11 @@ describe('the running total', () => {
 
   it('says one leg rather than 1 legs', () => {
     renderBar({
-      status: {
-        kind: 'routed',
-        route: {
-          ...ROUTE,
-          legs: [ROUTE.legs[0]],
-          legsBySource: [{ source: 'oprhp_trails', legs: 1 }],
-        },
-      },
+      status: routedFrom({
+        ...ROUTE,
+        legs: [ROUTE.legs[0]],
+        legsBySource: [{ source: 'oprhp_trails', legs: 1 }],
+      }),
     })
 
     expect(screen.getByText(/1 leg ·/)).toBeInTheDocument()
@@ -137,10 +183,7 @@ describe('the live organization tally', () => {
 
   it('has something to say about a leg no organization is named on', () => {
     renderBar({
-      status: {
-        kind: 'routed',
-        route: { ...ROUTE, legsBySource: [{ source: null, legs: 1 }] },
-      },
+      status: routedFrom({ ...ROUTE, legsBySource: [{ source: null, legs: 1 }] }),
     })
 
     expect(screen.getByText(/Unattributed · 1 leg/)).toBeInTheDocument()
@@ -185,7 +228,7 @@ describe('the controls', () => {
   })
 
   it('undoes, closes the loop, finishes and cancels', () => {
-    const props = renderBar({ draft: { ...DRAFT, points: [{} as never] } })
+    const props = renderBar({ draft: { ...DRAFT, segments: [[{} as never]] } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     expect(props.onUndo).toHaveBeenCalledTimes(1)
@@ -210,13 +253,15 @@ describe('the controls', () => {
 })
 
 describe('roads and connectors', () => {
-  it('names the gap rather than omitting it', () => {
-    // #931. A missing capability the app is silent about reads as a bug; one
-    // the app names reads as a boundary.
+  it('says what is true rather than promising a feature that half ships', () => {
+    // #931's row used to read "Roads and connectors · LATER" over something
+    // that already shipped: map/liveTopo.ts draws roads, tracks and OSM paths
+    // on the live sheet. A LATER tag over a drawn road is the bar telling the
+    // hiker the opposite of what the map is showing them.
     renderBar()
 
-    expect(screen.getByText('Roads and connectors')).toBeInTheDocument()
-    expect(screen.getByText('LATER')).toBeInTheDocument()
+    expect(screen.getByText(/Roads are drawn, never routed on/)).toBeInTheDocument()
+    expect(screen.queryByText('LATER')).not.toBeInTheDocument()
   })
 
   it('gives it nothing to press', () => {
@@ -244,24 +289,130 @@ describe('what it must never print', () => {
 
 describe('walkingTime', () => {
   it('rounds to five minutes', () => {
-    expect(walkingTime(133)).toBe('≈2h 15m walking')
-    expect(walkingTime(137)).toBe('≈2h 15m walking')
-    // Delegates to lib/naismith.ts's formatNaismithMinutes, so the two
-    // builders cannot round or print the same minutes differently.
-    expect(walkingTime(63)).toBe('≈1h 5m walking')
+    expect(walkingTime(flatWalk(133))).toBe('≈2h 15m walking')
+    expect(walkingTime(flatWalk(137))).toBe('≈2h 15m walking')
+    // Delegates to lib/naismith.ts's formatNaismithMinutes through
+    // paceEstimate, so the two builders cannot round or print the same
+    // minutes differently.
+    expect(walkingTime(flatWalk(63))).toBe('≈1h 5m walking')
   })
 
   it('drops the hour when there is not one', () => {
-    expect(walkingTime(43)).toBe('≈45m walking')
+    expect(walkingTime(flatWalk(43))).toBe('≈45m walking')
   })
 
   it('drops the minutes when they round away', () => {
-    expect(walkingTime(119)).toBe('≈2h walking')
+    expect(walkingTime(flatWalk(119))).toBe('≈2h walking')
   })
 
   it('has nothing to say about a duration nothing computed', () => {
     expect(walkingTime(null)).toBeNull()
-    expect(walkingTime(0)).toBeNull()
-    expect(walkingTime(Number.NaN)).toBeNull()
+    expect(walkingTime({ minutes: 0, text: '', relativeLine: null })).toBeNull()
+    expect(walkingTime({ minutes: Number.NaN, text: '', relativeLine: null })).toBeNull()
+  })
+
+  // The half this bar did not have (#1040). It priced with naismithMinutes,
+  // so a hiker's own pace moved every A.T. screen and left this one alone.
+  it("prints the hiker's own pace, and says what it was adjusted from", () => {
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 2 }
+    const walk = flatWalk(120, slow)
+
+    // 120 standard minutes of flat ground at 2 mph rather than 3.107.
+    expect(walkingTime(walk)).toBe('≈3h 5m walking')
+    expect(walk.relativeLine).toBe('was ≈2h · 1.6× standard')
+  })
+})
+
+describe('several stretches (#935, #983)', () => {
+  it('prints the gap apart from the miles, and never inside them', () => {
+    // The assertion this whole model exists for. One figure is ground an
+    // organization maintains and measures; the other is ground the app
+    // declined to route. A single total would launder the second into the
+    // first.
+    renderBar({ status: routedFrom(ROUTE, 0.3), canStartNew: true })
+
+    expect(screen.getByText(/4\.8 mi/)).toBeInTheDocument()
+    expect(screen.getByText(/no trail under it/)).toBeInTheDocument()
+    expect(screen.getByText(/on your own/)).toBeInTheDocument()
+    expect(screen.queryByText(/5\.1 mi/)).not.toBeInTheDocument()
+  })
+
+  it('says nothing about a gap on a walk that has none', () => {
+    renderBar({ status: routedFrom(ROUTE, 0) })
+
+    expect(screen.queryByText(/no trail under it/)).not.toBeInTheDocument()
+  })
+
+  it('offers the new-stretch control only when a stretch is ready to end', () => {
+    // The no-dead-controls rule this bar already keeps: absent, not disabled.
+    renderBar({ canStartNew: false })
+    expect(
+      screen.queryByRole('button', { name: 'Start a new stretch' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('starts a new stretch when asked', () => {
+    const props = renderBar({ canStartNew: true })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start a new stretch' }))
+    expect(props.onStartStretch).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('drawing, and the gap a hiker takes on (#983)', () => {
+  it('changes what the bar asks for in draw mode', () => {
+    renderBar({ drawing: true })
+
+    expect(screen.getByText(/Drag to draw/)).toBeInTheDocument()
+    expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+  })
+
+  it('says what a drawn line lost, in the frame\u2019s own words', () => {
+    renderBar({ draft: { ...DRAFT, droppedMiles: 0.3 }, status: routedFrom(ROUTE) })
+
+    expect(screen.getByText(/had no trail under it/)).toBeInTheDocument()
+    expect(screen.getByText(/rather than guess a way across/)).toBeInTheDocument()
+  })
+
+  it('asks the hiker to take the crossing on before it saves', () => {
+    // The maintainer's decision of 2026-08-27, and the reason it is a step
+    // rather than a banner: the difference between reading that the app has
+    // not checked the ground and answering it.
+    const props = renderBar({
+      draft: { ...DRAFT, droppedMiles: 0.3 },
+      status: routedFrom(ROUTE, 0.3),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(props.onDone).not.toHaveBeenCalled()
+    expect(screen.getByText(/cannot say it is walkable/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /find my own way/ }))
+    expect(props.onDone).toHaveBeenCalledTimes(1)
+  })
+
+  it('lets the hiker go back to the map instead of taking it on', () => {
+    const props = renderBar({
+      draft: { ...DRAFT, droppedMiles: 0.3 },
+      status: routedFrom(ROUTE, 0.3),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the map' }))
+
+    expect(props.onDone).not.toHaveBeenCalled()
+    expect(screen.getByText(/3 legs/)).toBeInTheDocument()
+  })
+
+  it('does not ask about a walk with no gap in it', () => {
+    // A question with no consequence is one a hiker learns to dismiss, and
+    // this one has to keep its weight for the walks that do cross something.
+    const props = renderBar({ status: routedFrom(ROUTE, 0) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+
+    expect(props.onDone).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/cannot say it is walkable/)).not.toBeInTheDocument()
   })
 })

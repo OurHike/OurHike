@@ -14,9 +14,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from app.core.trip_sync import (
+    StoredHike,
     StoredTrip,
+    UploadedHike,
     UploadedTrip,
     name_for_copy,
+    resolve_hike_upload,
     resolve_upload,
 )
 
@@ -137,6 +140,63 @@ class TestTheRuleThatIsNotNegotiable:
         assert "four days" in writes[1].document["name"]
 
 
+class TestTheCopyIsItsOwnRecord:
+    """#1036: a copy that keeps the original's document id is not a copy.
+
+    The client stores a row's DOCUMENT, and the document carries its own
+    ``id`` (``tripsSync.tripFrom``). So a copy built as ``{**document}``
+    landed in the device's store under the very id it was created to sit
+    beside: edit-vs-edit gave two records sharing one id, and delete-vs-edit
+    lost the copy whenever the tombstone was applied last - an order nothing
+    in the exchange pins.
+    """
+
+    def test_the_copys_document_is_identified_as_the_copy(self):
+        stored = _stored(_doc("Grayson Highlands, four days"), updated_at=LATER)
+        uploaded = _upload(_doc("Grayson Highlands, three days"), base_updated_at=EARLIER)
+
+        writes = resolve_upload(uploaded, stored, NOW, _counter())
+
+        # Row id and document id are the same value, and neither is the
+        # original's - which is what makes it a second record rather than a
+        # second copy of the first one's name.
+        assert writes[0].id == "copy-1"
+        assert writes[0].document["id"] == "copy-1"
+        assert writes[0].document["id"] != "trip-1"
+
+    def test_the_delete_branch_re_identifies_its_copy_too(self):
+        # The branch where getting this wrong costs everything: the tombstone
+        # is keyed on the original id, so a copy still wearing that id is
+        # deleted by the very write it ships beside.
+        stored = _stored(_doc("Grayson Highlands, four days"), updated_at=LATER)
+
+        writes = resolve_upload(_upload(None, base_updated_at=EARLIER, deleted=True), stored, NOW, _counter())
+
+        tombstone, copy = writes
+        assert tombstone.id == "trip-1"
+        assert copy.document["id"] == copy.id
+        assert copy.document["id"] != tombstone.id
+
+    def test_only_the_identity_and_the_name_change(self):
+        # A copy that quietly dropped the plan would be worse than the
+        # collision it fixes. Edit-vs-edit keeps the UPLOADED document beside
+        # the stored one, so the copy carries what the losing device sent.
+        uploaded_doc = _doc("Three days", plan={"stops": ["damascus", "atkins"]})
+        writes = resolve_upload(
+            _upload(uploaded_doc, base_updated_at=EARLIER),
+            _stored(_doc("Four days"), updated_at=LATER),
+            NOW,
+            _counter(),
+        )
+
+        copy = writes[0].document
+        assert copy["plan"] == {"stops": ["damascus", "atkins"]}
+        assert copy["name"].startswith("Three days")
+        # Everything the upload had, plus an id it did not: name and id are
+        # the only two keys the copy is allowed to differ on.
+        assert set(copy) - set(uploaded_doc) == {"id"}
+
+
 class TestWhatIsNotAConflict:
     def test_the_same_delete_arriving_twice_does_not_resurrect_anything(self):
         # Deleted on both devices while neither had heard from the other.
@@ -186,3 +246,97 @@ class TestNothingIsEverDestroyed:
             overwrites = [w for w in writes if w.id == stale.id and w.document is not None]
 
             assert overwrites == [], f"{uploaded} overwrote a row it had not seen"
+
+
+# ---------------------------------------------------------------------------
+# Hikes (#1317). The same exchange, a deliberately different rule - and the
+# tests sit beside the trips ones so the difference is visible rather than
+# discovered.
+
+
+def _uploaded_hike(**over) -> UploadedHike:
+    base = {
+        "id": "hike-1",
+        "document": {"name": "Springer → Katahdin", "points": [{"mile": 0}, {"mile": 2197.4}]},
+        "base_updated_at": None,
+        "deleted": False,
+    }
+    return UploadedHike(**{**base, **over})
+
+
+def _stored_hike(**over) -> StoredHike:
+    base = {
+        "id": "hike-1",
+        "document": {"name": "Springer → Katahdin", "points": [{"mile": 0}, {"mile": 2197.4}]},
+        "updated_at": EARLIER,
+        "deleted_at": None,
+    }
+    return StoredHike(**{**base, **over})
+
+
+def test_a_hike_the_server_has_never_seen_is_written():
+    write = resolve_hike_upload(_uploaded_hike(), None)
+
+    assert write is not None
+    assert write.id == "hike-1"
+    assert write.deleted is False
+
+
+def test_forgetting_a_hike_the_server_never_saw_still_writes_the_tombstone():
+    """What stops another device re-uploading it for ever. The trips rule's
+    reasoning, unchanged."""
+    write = resolve_hike_upload(_uploaded_hike(document=None, deleted=True), None)
+
+    assert write is not None
+    assert write.deleted is True
+    assert write.document is None
+
+
+def test_a_device_that_had_seen_the_current_row_writes_its_edit():
+    edited = {"name": "The whole thing", "points": [{"mile": 0}, {"mile": 2197.4}]}
+    write = resolve_hike_upload(
+        _uploaded_hike(document=edited, base_updated_at=EARLIER),
+        _stored_hike(),
+    )
+
+    assert write is not None
+    assert write.document == edited
+
+
+def test_a_hike_does_not_keep_both_and_the_stale_device_loses():
+    """The decision `app/models/synced_hike.py` argues, asserted.
+
+    A trip that lost this race is kept beside the winner; a hike is not,
+    because its `tripIds` claim sections and a section belongs to exactly one
+    hike. Two hikes claiming the same sections is the one state the model
+    says cannot exist.
+    """
+    stale = resolve_hike_upload(
+        _uploaded_hike(
+            document={"name": "From the phone", "points": [{"mile": 0}, {"mile": 100}]},
+            base_updated_at=LATER,
+        ),
+        _stored_hike(),
+    )
+
+    # Nothing written: the stored answer stands and the device adopts it.
+    assert stale is None
+
+
+def test_forgetting_a_hike_twice_is_the_same_act_not_a_disagreement():
+    """Writing anything here would resurrect what the hiker forgot on both
+    devices."""
+    write = resolve_hike_upload(
+        _uploaded_hike(document=None, deleted=True, base_updated_at=LATER),
+        _stored_hike(document=None, deleted_at=EARLIER),
+    )
+
+    assert write is None
+
+
+def test_an_unchanged_re_upload_is_somebody_syncing_twice():
+    """Compared by content, because the stamp is exactly what is out of
+    date."""
+    write = resolve_hike_upload(_uploaded_hike(base_updated_at=LATER), _stored_hike())
+
+    assert write is None

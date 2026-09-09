@@ -7,6 +7,10 @@ models:
       surrogate of (source, source_id). 1:1 with int_pois_unioned - held to
       that by assert_dim_pois_matches_int_pois_unioned. poi_type is null
       exactly where the source code is documented-but-unmapped.
+
+      Three organizations as of Phase D (#100): ATC, opentrail and NYS DEC.
+      NOT AN EXPORT-READY TABLE - see `public_use` below and the model's own
+      comment.
     columns:
       - name: poi_key
         description: dbt_utils.generate_surrogate_key over (source, source_id).
@@ -15,6 +19,15 @@ models:
         data_tests: [not_null]
       - name: source_id
         data_tests: [not_null]
+      - name: public_use
+        description: >
+          The publishing organization's own public/internal flag, VERBATIM
+          and unapplied - DEC's PUBLICUSE where DEC publishes one, null where
+          the organization declares no such split (ATC, opentrail). Null
+          means "no flag published", never "not public"; an explicit 'N'
+          means the organization calls this an internal asset. No test
+          constrains its domain, because the domain is per-organization and
+          this column deliberately does not translate between them.
       - name: poi_type
         description: >
           Unified type, from lib/poi_schema.py's POI_TYPES vocabulary. The

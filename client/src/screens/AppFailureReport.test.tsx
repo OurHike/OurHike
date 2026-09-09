@@ -66,7 +66,7 @@ describe('AppFailureReport', () => {
     const { onSubmit } = renderForm()
 
     await user.type(what(), 'It stopped drawing my position.')
-    await user.click(screen.getByLabelText(/did not know where I was/i))
+    await user.click(screen.getByLabelText(/didn’t know where I was/i))
     await user.click(screen.getByLabelText(/ran out of water/i))
     await user.click(send())
 

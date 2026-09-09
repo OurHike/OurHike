@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   hikeBounds,
+  hikeEnds,
   hikeFigures,
   hikePieces,
   type Hike,
@@ -70,6 +71,7 @@ export function HikeZoom({
   const pieces = hikePieces(hike, trips, pois)
   const figures = hikeFigures(hike, trips, pois)
   const bounds = hikeBounds(hike, pois)
+  const ends = hikeEnds(hike, pois)
   const gapCount = pieces.filter((piece) => piece.kind === 'gap').length
 
   // The ribbon scrubs the rows: a tapped band brings its row into view and
@@ -93,8 +95,8 @@ export function HikeZoom({
       <TrailRibbon
         pieces={pieces}
         bounds={bounds}
-        startLabel={endLabel(hike.start.name, bounds.from)}
-        endLabel={endLabel(hike.end.name, bounds.to)}
+        startLabel={endLabel(ends.low?.name, bounds.from)}
+        endLabel={endLabel(ends.high?.name, bounds.to)}
         figures={`${formatDistance(figures.walkedMi, units)} walked · ${formatDistance(
           figures.leftMi,
           units,

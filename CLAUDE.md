@@ -22,11 +22,20 @@ prints. `trailPosition.ts` explains why `MAX_OFF_TRAIL_MILES` is 3 and not a rou
 number — it has to fit inside the bucket search — and then says what the alternative
 would be: "a worse thing to be than merely conservative."
 
-Against that, `staleness.ts` declares `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60`
-and says nothing at all about where either came from. WIREFRAMES.md §11 writes them as
-"≤ ~14 days" and "~14–60 days"; the tildes are the only hint that they are a mock-up's
-round numbers rather than anybody's finding, and the tildes did not survive into the
-code. Those two constants decide whether a hiker reads a water report as trustworthy.
+`staleness.ts` is the counter-example, and it is more useful now as a repair than it was
+as an offender. It declared `FRESH_MAX_DAYS = 14` and `AGEING_MAX_DAYS = 60` and said
+nothing at all about where either came from — while WIREFRAMES.md §11 writes them as
+"≤ ~14 days" and "~14–60 days", the tildes being the only hint that they are a mock-up's
+round numbers rather than anybody's finding, and the tildes had not survived into the
+code. Two constants deciding whether a hiker reads a water report as trustworthy, resting
+on nothing a reader could see.
+
+What it looks like fixed is worth reading, because the numbers did not move: #972 left
+both at 14 and 60 and added the eight lines saying they are `@unvalidated`, that the
+tildes are the whole provenance, and what would settle them — field-note data, "how fast
+a confirmation actually stops predicting what a hiker finds, which plausibly differs by
+POI type (a shelter does not dry up in August; a spring does)." The repair was never
+about finding better numbers. It was about a reader being able to tell that nobody had.
 
 Three grades. The words are not interchangeable and a claim that picks the wrong one is
 worse than a claim with no adjective at all:
@@ -38,10 +47,12 @@ worse than a claim with no adjective at all:
 - **Reasoned** — it follows from something already established here. Carry the
   derivation, not the conclusion, so a reader can find the step they disagree with.
 - **Unvalidated** — picked, and nobody has checked it. Tag it `@unvalidated` and finish
-  the sentence with what would settle it. `wrongWay.ts` is the model: its three
-  thresholds are flagged as "WIREFRAMES.md UI-mockup placeholders, not a validated
-  HIKER_SAFETY.md spec", pointing at the field-testing under tree canopy that
-  HIKER_SAFETY.md §5 declines to guess at.
+  the sentence with what would settle it. `trailGraph.ts`'s `MAX_OFF_NETWORK_FEET` is the
+  model: "a fingertip on a phone at a planning zoom, not a measurement," naming exactly
+  what would settle it — "the smallest value at which taps on a drawn line stop being
+  refused in a real hand on a real device, which nobody has tried." (`wrongWay.ts` was
+  this section's example until the feature it belonged to was removed, #93/#308 — the
+  tag outlives any one file.)
 
 The tag exists to be greppable. `grep -rn '@unvalidated'` should answer "what does this
 build not actually know" in one command, which is a question worth being able to ask
@@ -62,10 +73,12 @@ not on "returns the parsed manifest".
 
 **Lost, out of water, in front of something dangerous, or unable to get off the trail
 quickly.** Everything OurHike ships either touches one of those or it does not, and the
-standard above tightens on the code that does: `trailPosition.ts`, `wrongWay.ts` and its
-alert wiring, the water distances from `build_water_distance.py` through `export_poi.py`
+standard above tightens on the code that does: `trailPosition.ts` and the map layers it
+feeds, the water distances from `build_water_distance.py` through `export_poi.py`
 to the card, staleness and confidence, closures, serious warnings, and the elevation and
-pace estimates a hiker uses to decide whether they beat the dark.
+pace estimates a hiker uses to decide whether they beat the dark. (The wrong-way alert
+lived in this set until it was removed, #93/#308, having shipped fully built but never
+mounted — see features/HIKER_SAFETY.md §5.)
 
 On those paths, **an honest unknown outranks a confident answer**, and this is a
 commitment the project has already made rather than a new one: value #4 ("honesty about
@@ -77,9 +90,11 @@ What that means concretely is already visible in the code, and is the pattern to
 - **Omit rather than guess.** A shelter whose capacity nobody stands behind exports no
   capacity — "a hiker deciding whether to push on to the next shelter is better served
   by no answer than by a made-up one." Absent means unknown, never zero and never "none".
-- **Miss rather than cry wolf.** `wrongWay.test.ts` states the asymmetry outright:
-  "False negatives are acceptable; false positives are the failure this whole module
-  exists to prevent." A safety alert nobody trusts has already failed.
+- **Miss rather than cry wolf.** The wrong-way alert's own test suite (removed with the
+  feature, #93/#308) stated the asymmetry outright: "False negatives are acceptable;
+  false positives are the failure this whole module exists to prevent." A safety alert
+  nobody trusts has already failed — the principle outlives the file it was first
+  written for, and applies to any alert-shaped feature this codebase builds next.
 - **Round toward caution, and say which way you rounded.** Naismith gets no descent
   credit — a known weakness of the rule, left in place deliberately and documented so
   the next agent does not "improve" it into an optimistic number.
@@ -180,6 +195,20 @@ the pull request closes. That is the trade and it is deliberate: the picture
 lasts exactly as long as review does, and in exchange nothing permanent enters
 a public tree. Committing one costs 79,290 measured bytes that cannot be
 retracted, which is why the first version of this rule was replaced.
+
+## Be concise in chat, and never bury a question
+
+Chat replies default to short: answer, then stop — no restating context the user already
+has, no alternatives nobody asked for, no caveats a direct answer doesn't need.
+
+**A question for the user is not part of the prose.** If continuing needs an answer, ask
+with the poll tool (`AskUserQuestion`) rather than a sentence inside a paragraph — a
+question the reader has to notice and parse is a question that gets missed.
+
+This is about conversation, not the repository. The evidence grades, full issue titles,
+and the `## Screenshot` section above are still required in what gets written into the
+repo — a PR body is read later, by someone else, and earns its length; a chat reply is
+read now, by the person waiting on it, and doesn't.
 
 ## Claim the issue before you branch
 
@@ -282,6 +311,13 @@ notes, run the gate, open the pull request, create the GitHub release **as a dra
 Publishing the draft is a human action. [RELEASING.md](RELEASING.md) is the full
 process — §12 is this rule with its mechanism.
 
+The *order* to do all of that in is written once, as
+[`.claude/skills/release-train/SKILL.md`](.claude/skills/release-train/SKILL.md): when
+the maintainer asks for a release, run the train. It dispatches every job and hands the
+maintainer each approve, merge and publish click at the moment it is ready — the line
+above moves not an inch, the train just stops anyone having to remember what is on
+either side of it.
+
 ## Do not merge `main` in just to be current
 
 **Being behind `main` is not a defect, and catching up is not part of finishing the work.**
@@ -318,6 +354,56 @@ derived things go", so a 20,099-line derivation went in with a docstring explain
 belonged there. Every sentence of that explanation was about *reproducibility*, and none of
 it noticed that the file was a permanent publication of somebody else's data. The maintainer
 caught it in review. `.github/tests/test_no_committed_data.py` catches it now.
+
+## A pipeline change is not finished at the merge
+
+**The suites prove your change is correct. Nothing about the merge makes it what hikers
+download.** Publishing is never a side effect of a merge, deliberately — the publishing
+workflows run on dispatch (one on its own schedule), never on a push — so a pull
+request that changes what an exporter produces merges green and leaves the bucket
+describing the code before it, until somebody reruns the workflow that carries it. "Somebody" has repeatedly turned out to
+be nobody, because the session that knew a rerun was needed ended before the merge
+happened. That is the dropped handoff
+**[#1123 — The publish a merged change stales is dropped at the handoff, and the release
+order lives in nobody's file](https://github.com/OurHike/OurHike/issues/1123)** exists
+to end, and this section is the rule that ends it.
+
+On every pull request, before opening it:
+
+```
+scripts/pipelines.sh
+```
+
+It answers which publishing paths this branch stales — scopes derived from the
+workflow files themselves, imports chased, the same one-home argument as
+`scripts/test.sh` — and what each one needs. If everything is fresh, delete the pull
+request template's `## Data pipelines` section and move on. If anything is `STALE`,
+**the section carries the verdict**, so the handoff exists in the one place that
+survives the session: the pull request a reviewer and the next session will both read.
+
+Then follow through. Your session watches its own pull request, so the merge arrives
+as an event:
+
+- **Dispatch each staled dispatchable path with `data_environment: ua` and
+  `publish: true`.** A `ua` dispatch carries no environment gate (#1330) — nothing
+  for the maintainer to approve, so it runs as soon as the shared `publish-data`
+  concurrency group is free. Watch the run rather than announcing it, and re-dispatch
+  if it fails for an unrelated reason; do not shrug.
+- The script's other two answers need nothing: a path whose schedule reruns it from
+  `main`, and the withdrawn raster build (#855).
+- **Never `data_environment: production` from pull-request follow-up.** UA is what
+  keeps `main` testable; production is a promotion, and promotions belong to the
+  release train below. The same asymmetry as migrations: UA follows the merge
+  automatically, production waits for a deliberate act.
+
+If the session ends before the merge, the pull request section *is* the handoff — that
+is why it is written there and not said in chat.
+
+The publishes cost real money and hours, so this is one place the "when unsure, run
+it" rule deliberately inverts: `scripts/pipelines.sh` answers `unclaimed` for a file
+it cannot place rather than demanding five dispatches, and an unclaimed file is yours
+to decide and to say in the section. An honest unknown outranks a confident answer
+here exactly as it does on the safety paths.
 
 ## Run what CI runs, before pushing
 

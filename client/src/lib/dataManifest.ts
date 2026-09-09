@@ -41,14 +41,107 @@
 // verification is a gate on corruption, not a second thing to be offline
 // from.
 
-import { DATA_BASE_URL, dataUrl } from './config'
-
-/** publish.py's MANIFEST_KEY. */
-export const MANIFEST_KEY = 'latest.json'
+import { DATA_BASE_URL, releaseManifestUrl } from './config'
 
 interface DataManifest {
   version?: string
-  artifacts?: Record<string, { sha256?: unknown } | undefined>
+  previous_version?: unknown
+  artifacts?: Record<string, ArtifactEntry | undefined>
+}
+
+interface ArtifactEntry {
+  sha256?: unknown
+  size_bytes?: unknown
+  transfer_bytes?: unknown
+  change?: unknown
+}
+
+/**
+ * How one artifact changed, as `pipeline/lib/data_change.py` graded it (#919).
+ *
+ * Deliberately not re-derived here: the phone holds one side of the diff and
+ * would have to keep the other to work this out, which is twice the storage to
+ * answer a question the publisher already had both sides of.
+ */
+export interface ArtifactChange {
+  severity: 'routine' | 'consequential'
+  added: number
+  removed: number
+  moved: number
+  edited: number
+}
+
+/** The publisher's two grades, spelled as `data_change.py` spells them. */
+export const ROUTINE = 'routine'
+export const CONSEQUENTIAL = 'consequential'
+
+/**
+ * One read of `latest.json`, as everything a caller can learn from it.
+ *
+ * `publishedHashes` is this minus the parts only #919's refresh needs, and is
+ * kept because eight callers want exactly that and nothing more.
+ */
+export interface PublishedSnapshot {
+  /** The published version, or null where nothing could be read. */
+  version: string | null
+  /**
+   * The version every `change` below is relative to.
+   *
+   * A release describes exactly one hop. A phone further back than that is
+   * looking at a description of somebody else's transition, and this is what
+   * lets it know rather than being told a caveat it cannot check - see
+   * `dataRefresh.ts`, which refuses to describe a change when this does not
+   * match what the phone stored.
+   */
+  previousVersion: string | null
+  lookup: PublishedHashLookup
+  /** Every artifact's published hash, by key. */
+  hashes: Record<string, string>
+  /**
+   * What each artifact costs to fetch, in bytes on the wire, where the
+   * manifest carries a figure.
+   *
+   * `transfer_bytes` wherever the manifest carries one, because that is what
+   * publish.py measured on the wire. `size_bytes` is the DECODED size, and the
+   * text artifacts are served gzipped, so it is about 4x what a phone actually
+   * spends (the eleven first-launch artifacts are 21.5 MB served against 5.3 MB
+   * gzipped, measured 2026-08-15 in pipeline/lib/content_types.py). This number
+   * is shown to a hiker deciding whether to spend it on mobile data, so the
+   * decoded size is not a cautious version of it - it is a wrong one.
+   *
+   * FOR AN ARCHIVE THE BUCKET STORES UNCOMPRESSED, `size_bytes` IS THE SAME
+   * MEASUREMENT and is used where no `transfer_bytes` was published. That is
+   * not a guess: content_types.py leaves `.pmtiles` and `.fgb` out of
+   * COMPRESSIBLE_TYPES deliberately - they are read by byte range, and a stored
+   * Content-Encoding would make ranges refer to compressed offsets and break
+   * both the archive reader and a resumed download - so stored and served are
+   * the same bytes by construction.
+   *
+   * It matters because those are exactly the artifacts whose size a hiker is
+   * shown before the biggest download the app asks for, and `transfer_bytes`
+   * only exists on artifacts uploaded since #919: measured against UA on
+   * 2026-08-27, all 131 entries carried `size_bytes` and 6 carried
+   * `transfer_bytes`, none of them an archive. Without this the map archives
+   * would have kept reading their hand-kept constants forever.
+   *
+   * Still absent for a gzipped text artifact published before #919, and that
+   * omission is deliberate: there is no honest download figure for one, and the
+   * decoded size is the wrong answer rather than a rough one.
+   */
+  sizes: Record<string, number>
+  /**
+   * What each artifact occupies once fetched and decoded, where the manifest
+   * carries `size_bytes` - the question lib/artifactBudget.ts asks before a
+   * launch fetches something whole (#1254).
+   *
+   * Deliberately the OTHER number from `sizes`: that one is the wire cost a
+   * hiker is shown, this is the memory cost the phone pays, and for a gzipped
+   * text artifact they are about 4x apart. Neither is a cautious version of
+   * the other, which is why both are carried rather than one derived.
+   */
+  decodedSizes: Record<string, number>
+  /** Every artifact's change grade, where this release describes one. */
+  changes: Record<string, ArtifactChange>
 }
 
 /** What a manifest snapshot answers: the published hash for a key, or null
@@ -71,6 +164,199 @@ function lookupInto(manifest: DataManifest): PublishedHashLookup {
   }
 }
 
+/** Nothing readable - the snapshot equivalent of NOTHING_PUBLISHED. */
+const NOTHING_READABLE: PublishedSnapshot = {
+  version: null,
+  previousVersion: null,
+  lookup: NOTHING_PUBLISHED,
+  hashes: {},
+  sizes: {},
+  decodedSizes: {},
+  changes: {},
+}
+
+const isCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+/**
+ * One artifact's `change` block, or null where the manifest has none or it is
+ * not the shape `data_change.py` writes.
+ *
+ * Validated field by field rather than cast, for the reason `conditionsCache`
+ * gives about a stored document: a published document is no more trustworthy
+ * than a fetched one, and a malformed grade rendered into a prompt would be
+ * this app telling a hiker something nobody computed. An unreadable block is
+ * dropped, and `dataRefresh` treats a missing grade as one it cannot describe -
+ * never as `routine`.
+ */
+function changeIn(entry: ArtifactEntry | undefined): ArtifactChange | null {
+  const raw = entry?.change
+  if (typeof raw !== 'object' || raw === null) return null
+  const record = raw as Record<string, unknown>
+  const severity = record.severity
+  if (severity !== ROUTINE && severity !== CONSEQUENTIAL) return null
+  const counts = (['added', 'removed', 'moved', 'edited'] as const).map(
+    (field) => record[field],
+  )
+  if (!counts.every(isCount)) return null
+  const [added, removed, moved, edited] = counts as number[]
+  return { severity, added, removed, moved, edited }
+}
+
+/** The extensions publish.py uploads untouched - pipeline/lib/content_types.py's
+ *  BINARY_TYPES, which is defined as everything COMPRESSIBLE_TYPES is not. For
+ *  these, and only these, the stored size and the transferred size are the same
+ *  number. Kept as a literal rather than inferred, so adding a compressed type
+ *  cannot quietly start overstating a download by 4x. */
+const STORED_UNCOMPRESSED = ['.pmtiles', '.fgb']
+
+function snapshotInto(manifest: DataManifest): PublishedSnapshot {
+  const hashes: Record<string, string> = {}
+  const sizes: Record<string, number> = {}
+  const decodedSizes: Record<string, number> = {}
+  const changes: Record<string, ArtifactChange> = {}
+  const lookup = lookupInto(manifest)
+
+  for (const [key, entry] of Object.entries(manifest?.artifacts ?? {})) {
+    const hash = lookup(key)
+    if (hash !== null) hashes[key] = hash
+    if (isCount(entry?.size_bytes)) decodedSizes[key] = entry.size_bytes
+    if (isCount(entry?.transfer_bytes)) sizes[key] = entry.transfer_bytes
+    else if (
+      isCount(entry?.size_bytes) &&
+      STORED_UNCOMPRESSED.some((ext) => key.endsWith(ext))
+    )
+      sizes[key] = entry.size_bytes
+    const change = changeIn(entry)
+    if (change !== null) changes[key] = change
+  }
+
+  const version = manifest?.version
+  const previous = manifest?.previous_version
+  return {
+    version: typeof version === 'string' && version !== '' ? version : null,
+    previousVersion: typeof previous === 'string' && previous !== '' ? previous : null,
+    lookup,
+    hashes,
+    sizes,
+    decodedSizes,
+    changes,
+  }
+}
+
+/**
+ * The whole of one `latest.json` read.
+ *
+ * Never fatal, on exactly the terms {@link publishedHashes} is not: anything
+ * that cannot be read becomes a snapshot that knows nothing, and a caller that
+ * knows nothing offers no update rather than a wrong one.
+ */
+export async function publishedSnapshot({
+  signal,
+}: { signal?: AbortSignal } = {}): Promise<PublishedSnapshot> {
+  if (DATA_BASE_URL === '') return NOTHING_READABLE
+  if (signal?.aborted) throw abortError()
+
+  // ONE READ FOR EVERYONE ASKING AT ONCE (#1302). A launch with signal asked
+  // for this from six places - lib/useTrailData.ts's update check,
+  // lib/usePublishedSizes.ts, lib/nearbyTrailData.ts's network sketch,
+  // lib/trailData.ts, lib/trailGraphData.ts and map/networkTiles.ts - and
+  // `latest.json` is served `cache-control: no-cache`, so that was six round
+  // trips to the bucket on the connection the first frame was sharing. The
+  // fetch in flight is shared with every caller that arrives before it
+  // settles; a caller arriving after gets a fresh one, so nothing here ever
+  // serves a manifest older than the request it answers.
+  //
+  // THE SHARED FETCH CARRIES NO CALLER'S SIGNAL, because one caller's abort
+  // must not end the read the other five are waiting on. Each caller's own
+  // signal is honoured on its own promise below instead, and still rejects
+  // with AbortError exactly as the un-shared fetch did - what it no longer
+  // does is cancel the request, which is one small JSON file and the price of
+  // not cancelling somebody else's.
+  if (snapshotInFlight === null) {
+    snapshotInFlight = readSnapshot().finally(() => {
+      snapshotInFlight = null
+    })
+  }
+  const shared = snapshotInFlight
+  if (signal === undefined) return shared
+
+  return new Promise<PublishedSnapshot>((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    // Between the entry check above and this line, the shared read has already
+    // been STARTED - and a fetch that aborts the caller's controller
+    // synchronously (which is what an abort during a launch fetch looks like,
+    // and what lib/nearbyTrailData.test.ts drives) fires the event before
+    // there is a listener for it. Without this re-check that caller's promise
+    // settled neither way and simply hung, which is worse than the round trip
+    // the sharing saves.
+    if (signal.aborted) {
+      signal.removeEventListener('abort', onAbort)
+      reject(abortError())
+      return
+    }
+    shared.then(
+      (snapshot) => {
+        signal.removeEventListener('abort', onAbort)
+        if (signal.aborted) reject(abortError())
+        else resolve(snapshot)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+/** The rejection an aborted caller gets, spelled the way `fetch` spells it -
+ *  callers match on the NAME (lib/useTrailData.ts, lib/nearbyTrailData.ts),
+ *  because what a fetch rejects with on abort differs between browsers and
+ *  test environments. */
+function abortError(): DOMException {
+  return new DOMException('Aborted', 'AbortError')
+}
+
+let snapshotInFlight: Promise<PublishedSnapshot> | null = null
+
+/**
+ * How long the shared read may take before it is given up on.
+ *
+ * A shared read has one property an unshared one does not: while it is in
+ * flight, everyone else waits on it. A `fetch` with no deadline does not fail
+ * on a captive portal at a trailhead - it HANGS, for as long as the browser
+ * is willing to - so without this, one such read would hold the slot for the
+ * whole page and every later caller would join the wait rather than making
+ * its own attempt. That is the one way sharing can be worse than not sharing,
+ * and this is the bound that removes it.
+ *
+ * @unvalidated - picked, not measured. Twenty seconds is far longer than the
+ * manifest takes on any connection this app has been measured on (~50 KB,
+ * 0.45 s against production on 2026-09-09) and short enough that a hiker who
+ * walks back into signal is not still waiting on a request from the dead
+ * spot. What would settle it is what a real trailhead connection does to this
+ * request, which nothing has recorded.
+ */
+export const MANIFEST_READ_TIMEOUT_MS = 20_000
+
+/** The read itself. Never rejects: anything unreadable is a snapshot that
+ *  knows nothing, on {@link publishedSnapshot}'s own terms - and a read that
+ *  never answers becomes unreadable rather than eternal. */
+async function readSnapshot(): Promise<PublishedSnapshot> {
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(), MANIFEST_READ_TIMEOUT_MS)
+  try {
+    const response = await fetch(releaseManifestUrl(), { signal: controller.signal })
+    if (!response.ok) return NOTHING_READABLE
+    return snapshotInto((await response.json()) as DataManifest)
+  } catch {
+    return NOTHING_READABLE
+  } finally {
+    clearTimeout(deadline)
+  }
+}
+
 /**
  * One read of the manifest, as a lookup every artifact in this attempt shares.
  *
@@ -86,7 +372,7 @@ export async function publishedHashes({
   if (DATA_BASE_URL === '') return NOTHING_PUBLISHED
 
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal })
+    const response = await fetch(releaseManifestUrl(), { signal })
     if (!response.ok) return NOTHING_PUBLISHED
     return lookupInto((await response.json()) as DataManifest)
   } catch (error) {

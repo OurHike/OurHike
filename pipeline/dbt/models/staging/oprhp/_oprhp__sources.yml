@@ -1,0 +1,81 @@
+version: 2
+
+sources:
+  - name: oprhp
+    description: >
+      NYS OPRHP's Parks Explorer feature layers, fetched by
+      fetch_external_layers.py into data/raw/external/ and loaded untouched
+      by load_raw.py. Descriptions transcribed from sources.json's measured
+      notes.
+
+      WHAT THE LICENCE SAYS, because it is not the same answer for every
+      source here: oprhp_licence permits reuse with attribution. What keeps
+      most of these layers out of a published artifact today is that nothing
+      exports them, not a permissions question.
+    schema: raw
+    loaded_at_field: _loaded_at
+    freshness:
+      # load_raw.py's cadence, not OPRHP's - the fetcher owns real upstream
+      # change-detection via editingInfo.dataLastEditDate, verified live on
+      # all four of these layers 2026-08-18. @unvalidated threshold, same
+      # open question as _atc__sources.yml.
+      warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_oprhp__oprhp_trails
+        description: >
+          NYS Parks Trails, statewide Transportation layer (sources.json:
+          discovered 2026-08-18). 16,641 polyline segments, measured that
+          day; dataLastEditDate then read 2026-08-17, edited the day before
+          registration, so the layer is actively maintained. This is the
+          layer the Parks Explorer app syncs its offline data from.
+        columns:
+          - name: Blaze
+            description: >
+              One of "up to three Blaze colours plus Map_Blaze" the
+              registry's measurement records. Only this name and Map_Blaze
+              were written down; the other two are staged nowhere rather than
+              guessed at.
+      - name: raw_oprhp__oprhp_trail_closures
+        description: >
+          NYS Parks Temporary Trail Closures (sources.json: discovered
+          2026-08-18). TEMPORARY closure polygons - 4 features on 2026-08-18,
+          and an honest count of zero is the expected answer in a good week,
+          which is what the entry's `may_be_empty` records.
+
+          NO FULL FIELD LIST WAS EVER MEASURED for this layer. Two names are
+          evidenced, through the entry's `reason_field` (Name) and
+          `place_field` (Descript), and those two are all
+          stg_oprhp__trail_closures stages.
+      - name: raw_oprhp__oprhp_facilities
+        description: >
+          NYS Parks Facilities (sources.json: discovered 2026-08-18). 8,823
+          point features statewide. The layer's own display name is 'NY State
+          Parks Facilities (Internal)' although the service is public; what
+          that naming implies about the schema's intended audience is
+          unassessed. IT CARRIES WATER - see stg_oprhp__facilities for the
+          measurement and for why nothing types this layer yet.
+        columns:
+          - name: Sub_Asset
+            description: >
+              Free text, 158 distinct values measured live 2026-08-27,
+              including 136 'Water Spigot' and 15 'Drinking Fountain'. The
+              only readable type signal on the layer, because `Asset` is a
+              coded integer whose domain the service does not publish.
+          - name: ParksApp
+            description: >
+              5,822 Y / 3,000 N (measured 2026-08-27). Records what OPRHP's
+              own visitor app SHOWS, not what exists on the ground - which is
+              why export_nearby_poi.py reads the N side as low confidence
+              rather than dropping it.
+      - name: raw_oprhp__oprhp_park_polygons
+        description: >
+          NYS Park Polygons, unit boundaries (sources.json: discovered
+          2026-08-18). 858 park-unit boundary polygons, measured that day.
+
+          LOADED AND DELIBERATELY NOT STAGED, the only registered ArcGIS
+          layer in that position. sources.json records a count and a
+          last-edit date for it and NOT ONE FIELD NAME, so a staging model
+          would be a column list nobody has measured. The raw table is the
+          honest stopping point; DBT.md's Phase D section records the
+          exclusion and what would end it - one field-metadata read of the
+          service.

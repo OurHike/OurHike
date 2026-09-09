@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { DownloadCard } from './DownloadCard'
-import { hikingDetailOptions, rasterDetailOptions } from './DetailPicker'
+import { hikingDetailOptions, noDetailOptions, rasterDetailOptions } from './DetailPicker'
 
 // One download's card, in every state it can be in. These were the Downloads
 // screen's own tests until #192 lifted the body into a card of its own; the
@@ -54,9 +54,33 @@ describe('DownloadCard', () => {
   })
 
   it('greys out a level this sheet has none of, rather than dropping the row (#298)', () => {
-    // The hiking sheet is cut at z13 and z14 - there is no Light. Under a
-    // tab beside the raster's three, a two-row picker cannot say whether
-    // this map has no Light version or whether the app forgot to ask.
+    // Under a tab beside the raster's three, a two-row picker cannot say
+    // whether this map has no Light version or whether the app forgot to ask.
+    //
+    // Driven through noDetailOptions() rather than the hiking sheet, which
+    // used to be the live example and is not any more: its Light rung was
+    // greyed only because #1088 named an artifact nothing had built, and
+    // #1107 built it. A sheet nobody has wired a dial for is the case that
+    // remains, and the rule it is here to defend is the same one.
+    render(
+      <DownloadCard
+        {...PROPS}
+        title="Unwired sheet"
+        detail={{ ...PROPS.detail, options: noDetailOptions() }}
+      />,
+    )
+
+    const levels = screen.getAllByRole('radio')
+    expect(levels).toHaveLength(3)
+    for (const level of levels) expect(level).toBeDisabled()
+    expect(screen.getAllByText(/not offered/i)).toHaveLength(3)
+    expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
+  })
+
+  it('offers all three of the hiking sheet\u2019s rungs, now that Light is built', () => {
+    // The other half of the rule above, and the assertion that would have
+    // caught #1107 landing without its bytes: every rung the hiking sheet
+    // catalogues is choosable, because every one of them is in the bucket.
     render(
       <DownloadCard
         {...PROPS}
@@ -67,12 +91,8 @@ describe('DownloadCard', () => {
 
     const levels = screen.getAllByRole('radio')
     expect(levels).toHaveLength(3)
-    expect(screen.getByRole('radio', { name: /light/i })).toBeDisabled()
-    expect(screen.getByRole('radio', { name: /light/i })).not.toBeChecked()
-    expect(screen.getByRole('radio', { name: /standard/i })).toBeEnabled()
-    expect(screen.getByRole('radio', { name: /fine/i })).toBeEnabled()
-    expect(screen.getByText(/not offered/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /download/i })).toBeInTheDocument()
+    for (const level of levels) expect(level).toBeEnabled()
+    expect(screen.queryByText(/not offered/i)).toBeNull()
   })
 
   it('starts the download when asked', async () => {

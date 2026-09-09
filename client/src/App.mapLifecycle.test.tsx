@@ -27,11 +27,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import {
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -47,12 +48,14 @@ import { OSM_SOURCE_ID } from './map/liveTopo'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
 vi.mock('./map/archiveZooms', () => ({
   readArchiveZooms: () => Promise.resolve({ minZoom: 5, maxZoom: 14 }),
+  readArchiveFootprint: () => Promise.resolve(null),
 }))
 
 const app = appHarness()
@@ -82,6 +85,12 @@ beforeEach(() => {
           release: () => resolve(store.get(key as string)),
         })
       }),
+  )
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
   )
 })
 
@@ -132,7 +141,10 @@ function aPhoneThatHasBeenUsed(): void {
   store.set(POIS_KEY, [])
 }
 
-const isPreferences = (key: string) => key === PREFERENCES_KEY
+// The bootstrap gate reads two keys since #1054 - the preferences and the
+// "today I'm…" mode ride one Promise.all - so landing "the preferences"
+// means landing both, or the gate never opens and nothing renders.
+const isPreferences = (key: string) => key === PREFERENCES_KEY || key === HIKER_MODE_KEY
 
 /**
  * The download store's keys, taken from the package catalogue rather than
@@ -184,6 +196,7 @@ describe('what a cold start costs', () => {
     // Each of the last two used to be worth a whole map.
     await land(isPreferences)
     await land(isArchive)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     expect(MockMap.instances).toHaveLength(1)
 
@@ -199,18 +212,50 @@ describe('what a cold start costs', () => {
     expect(MockMap.live).toHaveLength(1)
   })
 
-  it('waits for the archive store before drawing anything at all', async () => {
+  it('paints the tab bar at once, and waits for the archive store before drawing a map', async () => {
     // The half of the fix that is not about counting. `statusFor` answers
     // "not downloaded" for a package it has not READ yet, which is the same
     // answer it gives for one that is genuinely absent - so the shell used to
     // conclude "no download, draw the live sheet" before the question had been
     // asked, and reverse itself a beat later.
+    //
+    // Since #1301 the wait is the MAP's alone: the tab bar is on screen before
+    // the store has answered anything (the launch mirror says this phone is
+    // past onboarding), and the map is still not built until it has.
     aPhoneThatHasBeenUsed()
     render(<App />)
+
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+    expect(MockMap.instances).toHaveLength(0)
 
     await land(isPreferences)
     expect(MockMap.instances).toHaveLength(0)
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+
+    await land(isArchive)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.instances).toHaveLength(1)
+  })
+
+  it('keeps the tab bar when the map tab is tapped before the store has answered', async () => {
+    // Since #1301 the shell paints before the archive markers are read, so a
+    // hiker can reach the tab bar and tap Map inside that window. The map
+    // subtree carries the map tab's own tab bar, and with no map to mount it
+    // rendered nothing at all - a blank screen with no way back, which is the
+    // failure TECHNICAL_ARCHITECTURE.md's boundary section exists to prevent
+    // and worse than the one it was written for, because nothing had thrown.
+    aPhoneThatHasBeenUsed()
+    render(<App />)
+
+    await land(isPreferences)
+    await openMapTab()
+
+    // No map yet - the store has not said which background it should be built
+    // around - and still a way off this screen.
+    expect(MockMap.instances).toHaveLength(0)
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
 
     await land(isArchive)
     await screen.findByRole('region', { name: /trail map/i })
@@ -234,6 +279,7 @@ describe('what a cold start costs', () => {
     await land(isPreferences)
     await land(isArchive)
     await landEverything()
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     expect(everySourceAskedFor()).not.toContain(OSM_SOURCE_ID)
@@ -250,6 +296,11 @@ describe('what a cold start costs', () => {
 
     await land(isPreferences)
     await land(isArchive)
+    // The home is Today (#1054), so the map only starts building once the
+    // hiker opens its tab - after the two reads the shell's render gate
+    // waits on, and before the trail data lands, which keeps the order this
+    // test is about: a map first, its lines after.
+    await openMapTab()
     const map = MockMap.live[0]
     expect(map).toBeDefined()
     const seeded = trailsSourceOf(map)
@@ -281,6 +332,7 @@ describe('what a cold start costs', () => {
     await land(isTrailData)
     await land(isArchive)
     await landEverything()
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     const map = MockMap.live[0]
@@ -291,16 +343,22 @@ describe('what a cold start costs', () => {
     expect(map.sourceData.has(TRAILS_SOURCE_ID)).toBe(false)
   })
 
-  it('still hands over exactly one map when a first run finishes onboarding', async () => {
-    // The one hand-over that IS worth a rebuild, kept honest: the first-run
-    // steps draw their own inert backdrop map, and the map screen builds its
-    // own when they finish. Two live maps would be two WebGL contexts; this
-    // asserts the backdrop is really torn down rather than left behind.
+  it('has no hand-over to get wrong, because first run builds no map (#1324)', async () => {
+    // This used to assert the opposite number for a real reason: the steps
+    // drew their own inert backdrop map, the map screen built its own when
+    // they finished, and two live maps would have been two WebGL contexts.
+    // Since #1324 the steps build nothing - an opaque photograph has stood
+    // over that map since #1054 - so the hand-over this was guarding is a
+    // thing that cannot happen rather than a thing that is handled.
+    //
+    // Kept as a cold-start context count, which is what this file is. The
+    // pair that says what happens instead, and what the Map tab then opens,
+    // is in `what the first-run steps cost` below.
     render(<App />)
     await landEverything()
 
     await screen.findByText('What OurHike is')
-    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.instances).toHaveLength(0)
   })
 })
 
@@ -349,52 +407,100 @@ describe('what the first-run steps cost', () => {
     ])
   }
 
-  /** Every read answered, in the order a phone answers them - the map built
-   *  first, so what reaches it afterwards is visible in `sourceData` rather
-   *  than hidden in the style it was seeded with. */
-  async function launch(): Promise<MockMap> {
+  /** Every read answered, in the order a phone answers them, with the steps
+   *  up. Returns nothing: since #1324 there is no map to return here, which
+   *  is what the first test below is about. */
+  async function launch(): Promise<void> {
     render(<App />)
     await land(isPreferences)
     await land(isArchive)
     await land(isTrailData)
     await landEverything()
     await screen.findByText('What OurHike is')
-
-    const map = MockMap.live[0]
-    expect(map).toBeDefined()
-    return map
   }
 
-  it('puts the trail line on the map behind them', async () => {
-    // The steps are a card over the map, not a page instead of one, and the
-    // line is what makes that worth doing. Held back with the rest, first run
-    // would be a card over an empty background.
+  /** The trail line on a map, from wherever it reached it - the style it was
+   *  seeded with, or a push into a map that was already up. */
+  function trailSource(map: MockMap): unknown {
+    const pushed = map.sourceData.get(TRAILS_SOURCE_ID)
+    if (pushed !== undefined) return pushed
+    const style = map.options.style as { sources: Record<string, { data?: unknown }> }
+    return style.sources[TRAILS_SOURCE_ID]?.data
+  }
+
+  /** Through the three steps, declining everything they offer - the cheapest
+   *  way out, and the one a hiker in a hurry takes. */
+  async function stepThrough(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    // Declined: this file counts maps and reads, not downloads (#1054).
+    await user.click(screen.getByRole('button', { name: 'Decide this later' }))
+    await user.click(screen.getByRole('button', { name: /not now/i }))
+    await landEverything()
+  }
+
+  it('builds no map at all while they are up (#1324)', async () => {
+    // THIS TEST REVERSES ITS PREDECESSOR, which asserted the trail line was on
+    // the map behind the steps. That map was real and so was the line; what
+    // was not real, from #1054 onward, was anybody seeing either.
+    // `.onboarding__hero` is `inset: 0` over an opaque `--bg-chrome`, so the
+    // steps stand on a wall rather than on the map - MEASURED 2026-09-09 in
+    // pixels on the built app: every layer of the map screen painted magenta
+    // by injected CSS, first run rendered normally, 0 of 329,160 pixels of
+    // the frame magenta with the map screen and its canvas both present. It
+    // cost 730-950 ms of MapLibre self time inside the window a hiker is
+    // tapping Skip.
+    //
+    // `landEverything` has answered every read the app asked for, so a shell
+    // that wanted a map would have had everything it needs to build one.
     aReleaseOnThePhone()
 
-    const map = await launch()
+    await launch()
 
-    expect(map.sourceData.get(TRAILS_SOURCE_ID)).toEqual(expect.stringContaining('blob:'))
+    expect(MockMap.instances).toHaveLength(0)
+    // And no pin rasterised for a map that does not exist. Every image rather
+    // than a count: `images` also holds the serious-warning pin
+    // (map/warningPin.ts), which is on its own clock and was never what the
+    // steps were paying for.
+    expect(buildPoiIcons().length).toBeGreaterThan(0)
   })
 
-  it('and nothing else - no waypoints, and no pins rasterised for them', async () => {
-    // `landEverything` above answers every read the app has asked for, so a
-    // shell that had asked for the waypoints would have them by here. This
-    // passes because it never asks.
+  it('warms one the moment they are done, and it is the one the Map tab opens', async () => {
+    // The other half, and the reason this is a move rather than a removal.
+    // #721's promise was that the map is warm when the steps finish; the
+    // promise is kept, at the moment the thread is free instead of the moment
+    // it is busiest. The idle callback is jsdom-shimmed to the next macrotask
+    // (test/setup.ts), so this asserts that it is REACHED and what it builds -
+    // not when a browser would reach it.
     aReleaseOnThePhone()
+    const user = userEvent.setup()
 
-    const map = await launch()
+    await launch()
+    await stepThrough(user)
 
-    // The empty collection IS written - the map screen wires its POI source up
-    // whether or not there is anything in it, and an empty write costs nothing.
-    // What must not have happened is any waypoint reaching it, or a single one
-    // of the 46 pin images being rasterised for them.
-    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(
-      expect.objectContaining({ features: [] }),
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    await waitFor(() => expect(MockMap.live).toHaveLength(1))
+    const warmed = MockMap.live[0]
+
+    // The trail line the steps read reaches it - held rather than dropped,
+    // which is what made reading it during the steps worth doing at all.
+    //
+    // Read from the seeded style OR from a later push, because #1324 moved
+    // which one it arrives by: with the map built after the line has landed,
+    // the line is in the style the map is constructed with rather than pushed
+    // into a map that already existed. Both are the line being there, and a
+    // test that insisted on the second would be pinning the build order
+    // rather than the outcome.
+    await waitFor(() =>
+      expect(trailSource(warmed)).toEqual(expect.stringContaining('blob:')),
     )
-    // Every pin image, rather than a count: `images` also holds the
-    // serious-warning pin (map/warningPin.ts), which is one image on its own
-    // clock and not what the steps were paying for.
-    for (const { id } of buildPoiIcons()) expect(map.images.has(id)).toBe(false)
+
+    // And the first Map open of the session is that same map, not a second
+    // construction - #1081's rule, which this changes the location of and not
+    // the count.
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.live[0]).toBe(warmed)
+    expect(MockMap.instances).toHaveLength(1)
   })
 
   it('fills the waypoints in as soon as the steps are done', async () => {
@@ -404,25 +510,196 @@ describe('what the first-run steps cost', () => {
     aReleaseOnThePhone()
     const user = userEvent.setup()
 
-    const map = await launch()
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
-    await user.click(screen.getByRole('button', { name: /not now/i }))
+    await launch()
+    await stepThrough(user)
+
+    // The proof the hold released is the map the hiker opens next: built
+    // already knowing the waypoint the steps went without. The read itself
+    // runs the moment the steps end, whichever tab is up.
+    await openMapTab()
     await landEverything()
 
-    await waitFor(() =>
-      expect(
-        (map.sourceData.get(POI_SOURCE_ID) as { features: unknown[] }).features,
-      ).toHaveLength(1),
-    )
-    expect(map.sourceData.get(POI_SOURCE_ID)).toEqual(
-      expect.objectContaining({
-        features: expect.arrayContaining([
-          expect.objectContaining({
-            properties: expect.objectContaining({ poi_id: 'atc_water:1' }),
-          }),
-        ]),
-      }),
-    )
+    await waitFor(() => {
+      const opened = MockMap.live[0]
+      expect(opened).toBeDefined()
+      const pushed = opened.sourceData.get(POI_SOURCE_ID) as
+        { features: Array<{ properties?: { poi_id?: string } }> } | undefined
+      const style = opened.options.style as {
+        sources: Record<
+          string,
+          { data?: { features?: Array<{ properties?: { poi_id?: string } }> } }
+        >
+      }
+      const features =
+        pushed?.features ?? style.sources[POI_SOURCE_ID]?.data?.features ?? []
+      expect(features).toHaveLength(1)
+      expect(features[0]?.properties?.poi_id).toBe('atc_water:1')
+    })
+  })
+
+  it('holds that map through a hiker who beats the idle callback to Map (#1081)', async () => {
+    // The most expensive teardown the shell ever performed, in the shape it
+    // takes after #1324. First run used to build a map to stand behind the
+    // steps and landing on Today (#1054) unmounted it, so the first Map tap
+    // rebuilt from scratch what had just been thrown away; the `mapKept` latch
+    // fixed that and still holds. What #1324 changes is which map the latch is
+    // holding - the warmed one rather than the backdrop.
+    //
+    // The race is the case this test exists for: a hiker who taps Map before
+    // the idle callback runs builds the map through `mapNeededNow`, and the
+    // callback must then find it and do nothing rather than build a second.
+    aReleaseOnThePhone()
+    const user = userEvent.setup()
+
+    await launch()
+    await stepThrough(user)
+
+    // Straight to Map without waiting for the warm-up. `openMapTab` resolves
+    // on the tap, so whichever of the two got there first, exactly one map
+    // exists at the end of it.
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    const opened = MockMap.live[0]
+    expect(opened).toBeDefined()
+
+    // Given the shim, the callback has certainly run by here - and it built
+    // nothing, because the latch was already set.
+    await landEverything()
+    expect(MockMap.live[0]).toBe(opened)
+    expect(MockMap.instances).toHaveLength(1)
+  })
+})
+
+describe('what the tab bar costs after the cold start (#1081)', () => {
+  // The regression the v1.1.0 report was about. #1054 moved the home to
+  // Today, and every trip back to the Map tab was a full teardown and
+  // rebuild - 2,353 ms of blocking work on the throttled-phone profile once
+  // the data is downloaded (the measured figures at the top of this file's
+  // sibling, App.loadBudget.test.tsx). Counted here the same way the cold
+  // start is: in maps constructed, which is the only place the cost shows
+  // against a mock.
+
+  it('keeps the one map across Today and More round trips', async () => {
+    aPhoneThatHasBeenUsed()
+    const user = userEvent.setup()
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await landEverything()
+    expect(MockMap.instances).toHaveLength(1)
+    const built = MockMap.live[0]
+
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    // The map screen is put away, not merely covered: out of the
+    // accessibility tree entirely while Today is up.
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await screen.findByRole('heading', { name: 'More' })
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+
+    // Two round trips, still the one construction, still the same map.
+    expect(MockMap.instances).toHaveLength(1)
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(built)
+  })
+
+  it('still builds nothing for a launch that stays on Today', async () => {
+    // The half of #1054's arrangement that was worth keeping, and the latch
+    // must not cost: a hiker who opens the app to read their journal and
+    // closes it again never pays for a map. `entering` is true on every
+    // launch until the preferences read lands, so a latch that counted it
+    // before `preferencesLoaded` would mount a map on exactly this launch -
+    // which is what this pins.
+    aPhoneThatHasBeenUsed()
+    render(<App />)
+    await landEverything()
+
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.instances).toHaveLength(0)
+  })
+
+  it('keeps the one map through a report opened from Today', async () => {
+    // The review of the first cut caught this: the full-screen flows were
+    // still early returns, so a report opened from Today silently destroyed
+    // the kept map and remounted it - hidden, at full build cost - the
+    // moment the flow closed. The flows render over the held map now, the
+    // way the tab screens do, and this pins it with the cheapest flow to
+    // drive: open reporting, change your mind.
+    //
+    // #1133 made this cheaper still and the test is kept rather than
+    // retired. Reporting is a WINDOW now, so it does not take the screen at
+    // all and the map is held by construction rather than by care. But the
+    // failure mode this guards is a rendering decision somebody could make
+    // again - the window is one line away from being assigned to
+    // `flowScreen`, which is what would destroy the map - and a test that
+    // costs one click is worth keeping against that.
+    aPhoneThatHasBeenUsed()
+    const user = userEvent.setup()
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await landEverything()
+    const built = MockMap.live[0]
+
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    // The window is over the screen rather than instead of it, and the map
+    // survives underneath both.
+    await screen.findByRole('dialog', { name: 'What did you find?' })
+    expect(MockMap.live).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(built)
+
+    await user.click(screen.getByTestId('report-close'))
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.instances).toHaveLength(1)
+    expect(MockMap.live[0]).toBe(built)
+  })
+
+  it('leaves a crashed map alone until the hiker comes back to it', async () => {
+    // The other review catch: with the map permanently mounted, a resetKey
+    // of `activeTab` cleared a caught map crash - and re-ran the whole
+    // multi-second build, hidden and inert - on every tab switch for the
+    // rest of the session. The reset is keyed to ARRIVALS at the map now,
+    // so a deterministic fault costs its retries where the hiker can see
+    // the result, and a trip through the other tabs costs none.
+    aPhoneThatHasBeenUsed()
+    const user = userEvent.setup()
+    // React announces every boundary catch through console.error. The
+    // crashes below are this test's subject, not failures to surface.
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<App />)
+    await land(isPreferences)
+    await land(isArchive)
+
+    MockMap.failConstruction = new Error('no WebGL context to be had')
+    await openMapTab()
+    await screen.findByRole('heading', { name: /the map stopped working/i })
+    const attemptsWhileCrashed = MockMap.constructionAttempts
+    expect(attemptsWhileCrashed).toBeGreaterThan(0)
+
+    // Away through the tabs that draw no map: not one hidden retry.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await screen.findByRole('heading', { name: 'More' })
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(MockMap.constructionAttempts).toBe(attemptsWhileCrashed)
+
+    // Coming back is the one retry, and this time the phone can: the fault
+    // has passed, and the arrival builds the session's map.
+    MockMap.failConstruction = null
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(MockMap.constructionAttempts).toBe(attemptsWhileCrashed + 1)
+    expect(MockMap.live).toHaveLength(1)
   })
 })

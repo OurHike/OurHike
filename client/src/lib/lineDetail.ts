@@ -27,7 +27,9 @@
 // - The round trip is ONE figure, not two legs - splitting it needs the
 //   spur's own elevation profile, which does not exist.
 
+import { blazeLabel } from './blaze'
 import { describeSpur, type SpurRecord } from './spurDestination'
+import { trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
 import { formatDistance } from './units'
@@ -59,6 +61,25 @@ export interface TappedLineFacts {
    *  not ship at all, so a value arriving here that is neither is a fact the
    *  sheet has nothing to say about rather than one it should paraphrase. */
   trailStatus?: string | null
+  /**
+   * Which kind of closed (#1142, NEARBY_TRAILS.md §3): `long_term` for a
+   * steward's own trail status, `area` for a stretch derived from a
+   * temporary closure polygon. `trail_status` alone cannot tell them apart -
+   * both ship as `closed` - and the two owe a hiker different sentences.
+   * Absent on an artifact published before #964 split the feeds, where the
+   * long-term voice was the only voice there was.
+   */
+  closureKind?: string | null
+  /** The closing organization's reason, verbatim, where they gave one -
+   *  OPRHP's "Closed Until 2027" is prose in this field, not a date field
+   *  the pipeline could parse, and it ships unparaphrased (§3). */
+  closureReason?: string | null
+  /** The registry key of the CLOSURE's own layer (`oprhp_trail_closures`) -
+   *  not the trail line's source, which is whoever drew the line the
+   *  closure landed on. The distinction is #1142's whole finding: a closure
+   *  polygon crossing another org's trail must not be read in that org's
+   *  name. */
+  closureSource?: string | null
 }
 
 export interface LineDetail {
@@ -82,17 +103,36 @@ export interface LineDetail {
    *  because they answer one question (what and where this trail is), and
    *  collapsing to whichever half is known when the other is not. */
   extentLine: string | null
-  /** "Closed by NYS OPRHP" - §3's long-term closure, kept in the SHEET rather
-   *  than in the line, which is where the whole distinction lives: the barred
-   *  band on the map says "do not walk this" for both kinds, and only the
-   *  sheet says which kind it is. Null for every trail that is not marked
-   *  closed long-term, including every temporary closure (ClosureSheet owns
-   *  those and says its reason and reporting date instead). */
+  /** §3's closure sentence, kept in the SHEET rather than in the line, which
+   *  is where the whole distinction lives: the taped band on the map says
+   *  "do not walk this" for both kinds, and only the sheet says which kind
+   *  it is. A long-term steward status reads "Closed by <steward> · layer
+   *  edited <day>"; a stretch inside a temporary closure area reads
+   *  "Temporarily closed by <closing org> · <their reason, verbatim>" with
+   *  no date, because the closure layer publishes none per feature and the
+   *  pipeline invents nothing (export_nearby_trails.apply_area_closures).
+   *  Null for every trail not marked closed. (This comment used to claim
+   *  temporary closures never reached this line at all - false since #964's
+   *  area-derived records, which is #1142.) */
   closureLine: string | null
   /** "Not the trail you chose. Switching happens in the picker." - §2's
    *  refusal, said rather than implied. Null on the chosen trail's own lines,
    *  where there is nothing to refuse. */
   switchNote: string | null
+  /**
+   * The trail's own mark, from the TRAILS registry (lib/trails.ts), where
+   * the line is one of the trails that registry knows by name - the A.T.'s
+   * through-route, the Long Path (#1288). Null for every other line, and
+   * null is rendered as NOTHING: a trail with no known mark gets no mark,
+   * not a placeholder pretending to be one, the same rule the header keeps
+   * for its own trail logo (chrome/Header.tsx).
+   *
+   * Resolved here rather than in the component for the reason every other
+   * field is: the sheet lays out what this file decided, and "which trail is
+   * this line" is decided once, by name, the only handle a nearby line
+   * carries.
+   */
+  trailMark: string | null
 }
 
 /**
@@ -101,7 +141,7 @@ export interface LineDetail {
  * TappedLineFacts is: this module must not pull the map style in. The two
  * lists are pinned to each other by lineDetail.test.ts.
  */
-export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
+export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path']
 
 /**
  * The sources making up the trail system a hiker chose - map/nearbyTrails.ts's
@@ -114,20 +154,6 @@ export const THROUGH_ROUTE_SOURCES: readonly string[] = ['centerline']
  * that tapping this trail will not switch to it.
  */
 export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_trails']
-
-/**
- * How each blaze_color is named. The pipeline's contract (lib/blaze.ts)
- * says "None" is CONFIRMED unblazed while "Unknown" is a value that failed
- * to decode - different claims, and the sheet keeps them apart: WIREFRAMES
- * requires saying plainly when the blaze is unknown, and "Unblazed" would
- * be a confident statement nobody made.
- */
-function blazeLabel(blazeColor: string | null): string {
-  if (blazeColor === null || blazeColor === 'Unknown') return 'Blaze not recorded'
-  if (blazeColor === 'None') return 'Unblazed'
-  if (blazeColor === 'Other') return 'Other blaze'
-  return `${blazeColor} blaze`
-}
 
 /**
  * One registered source's own words about itself, as the pipeline publishes
@@ -258,11 +284,26 @@ export function buildLineDetail(
   const nearbyTrail = line.source !== null && !CHOSEN_SYSTEM_SOURCES.includes(line.source)
   const spur = line.id !== null ? spurs[line.id] : undefined
 
-  // The kind, for the heading: the through-route is named as the trail it
-  // is; a side trail with a spur record is what SPUR_TRAILS.md calls a
-  // spur; the rest are side trails - Access approaches, alternate routes -
-  // that ATC classifies as something else.
-  const kind = throughRoute ? trailName : spur !== undefined ? 'spur' : 'side trail'
+  // A through-route the hiker has taken names itself as the app's own trail
+  // (trailName); every OTHER through-route - the Long Path, since #1307 -
+  // is still a through-route and still names itself, just from the data
+  // rather than the app's identity. Before #1307 these were the same
+  // source and this distinction did not exist: throughRoute alone was
+  // always the chosen one, because it was the only one there was.
+  const chosenThroughRoute = throughRoute && !nearbyTrail
+
+  // The kind, for the heading: a chosen through-route is named as the app's
+  // own trail; any other through-route is named as itself; a side trail
+  // with a spur record is what SPUR_TRAILS.md calls a spur; the rest are
+  // side trails - Access approaches, alternate routes - that ATC classifies
+  // as something else.
+  const kind = chosenThroughRoute
+    ? trailName
+    : throughRoute
+      ? (line.name ?? trailName)
+      : spur !== undefined
+        ? 'spur'
+        : 'side trail'
 
   const detail = describeSpur(spur, units, undefined, pace)
   const destination =
@@ -309,27 +350,69 @@ export function buildLineDetail(
       ? null
       : [lengthLabel, park].filter((part) => part !== null).join(' · ')
 
-  // §3: the long-term closure, named with its steward and the layer's own edit
-  // date. The steward's name comes from the same published attribution the
-  // provenance line uses, so the two cannot disagree about who said it; with
-  // no attribution published the sentence drops the "by" clause rather than
-  // inventing an authority for the claim.
+  // §3: the closure, in the voice of whoever actually closed it (#1142).
+  //
+  // Two kinds ship under one `trail_status` and they part ways here. A
+  // LONG-TERM closure is the trail steward's own status on their own line, so
+  // its sentence is theirs: their attribution, their layer's edit date. An
+  // AREA closure is a temporary polygon laid over ground - possibly over
+  // another organization's line - so its sentence belongs to the CLOSING org
+  // (`closure_source`), carries their reason verbatim, and shows no date at
+  // all: the closure layer publishes none per feature, the pipeline invents
+  // nothing, and the trail LINE's edit date - what this sentence used to show
+  // - is a fact about the wrong layer wearing a freshness it never had.
+  //
+  // Attribution comes from the same published table the provenance line
+  // uses, so the two cannot disagree about who said what. With no table
+  // entry the by-clause drops rather than inventing an authority - and
+  // unlike lineSourceLabel's raw-key fallback, a bare registry key is never
+  // printed in the authority slot of a safety sentence: "From
+  // oprhp_trails." names a dataset poorly; "Closed by oprhp_trail_closures"
+  // reads as a malfunction on the one line a hiker is meant to obey.
   const closureLine = (() => {
     if (!isLongTermClosed(line.trailStatus)) return null
+    const attributionOf = (key: string | null | undefined): string | null => {
+      const attribution =
+        key === null || key === undefined ? null : (sources[key]?.attribution ?? null)
+      return attribution !== null && attribution.trim() !== '' ? attribution : null
+    }
+
+    if (line.closureKind === 'area') {
+      const steward = attributionOf(line.closureSource)
+      const who =
+        steward === null ? 'Temporarily closed' : `Temporarily closed by ${steward}`
+      const reason =
+        typeof line.closureReason === 'string' && line.closureReason.trim() !== ''
+          ? line.closureReason.trim()
+          : null
+      return reason === null ? who : `${who} · ${reason}`
+    }
+
+    // `long_term`, and - the same sentence - a record with no kind at all:
+    // an artifact from before #964 split the feeds carried only this voice,
+    // and reading its closures in it is what that build meant.
     const record = line.source === null ? undefined : sources[line.source]
-    const steward = record?.attribution ?? null
+    const steward = attributionOf(line.source)
     const day = formatEditedDay(record?.edited)
-    const who =
-      steward !== null && steward.trim() !== '' ? `Closed by ${steward}` : 'Closed'
+    const who = steward === null ? 'Closed' : `Closed by ${steward}`
     return day === null ? who : `${who} · layer edited ${day}`
   })()
 
+  // The trail the line belongs to, by the name the sheet will show for it -
+  // the app's own name for the through-route it chose, the steward's own
+  // name for anything else, including a through-route it did not choose. A
+  // spur's record name is a spur's, never a trail's.
+  const trail = trailForName(chosenThroughRoute ? trailName : line.name)
+
   return {
     heading: `${blazeLabel(line.blazeColor)} · ${kind}`,
-    // The through-route's name is already the heading; repeating ATC's
-    // formal name under it ("Appalachian National Scenic Trail") would be
-    // the same fact twice in adjacent lines.
-    name: throughRoute ? null : (spur?.name ?? line.name),
+    // A CHOSEN through-route's name is already the heading (kind IS
+    // trailName); repeating ATC's formal name under it ("Appalachian
+    // National Scenic Trail") would be the same fact twice in adjacent
+    // lines. Any other through-route - the Long Path, since #1307 - keeps
+    // its name here: its heading is the data's own name, not a synonym for
+    // it, and #1288 is where a hiker was first shown one at all.
+    name: chosenThroughRoute ? null : (spur?.name ?? line.name),
     destinationLine,
     roundTripLine: detail.roundTripLabel,
     junctionLine,
@@ -348,5 +431,6 @@ export function buildLineDetail(
     switchNote: nearbyTrail
       ? 'Not the trail you chose. Switching happens in the picker.'
       : null,
+    trailMark: trail === undefined ? null : trail.logo,
   }
 }

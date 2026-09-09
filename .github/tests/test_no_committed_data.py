@@ -88,15 +88,42 @@ REFERENCE_DIR = "pipeline/reference/"
 
 #: And its ceiling, because the exception is what got abused. A reference
 #: file is reviewable only while a human can read the rows; past that it is
-#: derived data wearing a reviewed file's clothes. The largest legitimate one
-#: is water_distance.json at ~6,400 lines (512 sites, each carrying its join
-#: evidence and its refusal reason). The file that prompted this test was
-#: 20,099 - 1,125 crossing coordinates nobody would ever read - and it now
-#: lives in data/raw/ where it belongs.
+#: derived data wearing a reviewed file's clothes. The file that prompted this
+#: test was 20,099 lines - 1,125 crossing coordinates nobody would ever read -
+#: and it now lives in data/raw/ where it belongs.
 #:
 #: A file that trips this is not necessarily wrong. It is a file whose author
 #: has to say why a human should read that many rows, in review, out loud.
-MAX_REFERENCE_LINES = 8_000
+#: What follows is that being said out loud, on 2026-08-25, for the one file
+#: that has ever legitimately asked (#1026).
+#:
+#: RAISED FROM 8,000 TO 12,000. `poi_identity.json` went from 4,267 lines to
+#: 8,579 in a single publish run, and nothing about the file got looser: the
+#: app started publishing for a whole state instead of a ring around New York
+#: City (#1019), and water started being measured against every trail it draws
+#: rather than the A.T. alone (#1016/#1023). 4,312 of its rows are new OSM
+#: water points and NHD stream crossings, 4,311 of which sit on a network trail
+#: with no A.T. mile at all. The ledger is one row per line, so there is no
+#: formatting answer here - the line count IS the row count, which is exactly
+#: what this number is meant to measure.
+#:
+#: The maintainer's decision (2026-08-25) is to raise it rather than split the
+#: ledger, and to record what raising it costs: nobody reads 8,563 rows either.
+#: What keeps the review honest meanwhile is `data/identity_review/summary.txt`,
+#: which the regeneration run uploads beside the ledger and which states the
+#: diff in the terms a person can actually check - new, retired, carried by
+#: key, matched by evidence, with the evidence for each match.
+#:
+#: THE NEXT SOURCE BREAKS THIS AGAIN, and that is the honest reading of 12,000
+#: rather than a bigger number: NYC_SOURCE_SURVEY.md section 5's two NJ layers
+#: are 16,601 more trail segments, whose water would land in this same file. If
+#: this constant is being raised a second time, the answer is probably the
+#: split #1026 also proposes, not a third number.
+#:
+#: The other reference files are nowhere near it: water_distance.json is the
+#: largest of them at ~6,400 lines (512 sites, each carrying its join evidence
+#: and its refusal reason).
+MAX_REFERENCE_LINES = 12_000
 
 
 def tracked_files() -> list[str]:

@@ -14,8 +14,9 @@
 // reasoning is.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { DATA_CONFIGURED } from './config'
-import { buildTrailIndex, type TrailIndex } from './trailPosition'
+import { DATA_CONFIGURED, TRAILS_KEY } from './config'
+import type { TrailIndex } from './trailPosition'
+import { packPois, resolveTrailIndex } from './trailIndexBuild'
 import {
   downloadTrailData,
   haveTrailData,
@@ -26,14 +27,25 @@ import {
 } from './trailData'
 import { EMPTY_CLUB_SECTIONS, type ClubSections } from './clubSections'
 import { EMPTY_STEWARDS, type Stewards } from './stewards'
-import { fetchNearbyTrails } from './nearbyTrailData'
-import { fetchTrailGraph } from './trailGraphData'
-import type { TrailGraphIndex } from './trailGraph'
+import {
+  forgetNearbyTrails,
+  loadNetworkOverview,
+  type NearbyTrailsAnswer,
+} from './nearbyTrailData'
 import { fetchTrailOverview } from './trailOverview'
 import type { Highlight } from './highlights'
 import { NO_TOMBSTONES, type Tombstones } from './poiIdentity'
 import type { ElevationProfile } from './elevationProfile'
 import type { SpurRecord } from './spurDestination'
+import { publishedSnapshot } from './dataManifest'
+import {
+  availableRefresh,
+  dismissRelease,
+  dismissedRelease,
+  recallRelease,
+  warnsAboutData,
+  type AvailableRefresh,
+} from './dataRefresh'
 
 /**
  * What went wrong fetching the trail's own data, in the shape both fetch paths
@@ -50,6 +62,20 @@ import type { SpurRecord } from './spurDestination'
  * (#238). Typed at the moment the error still has a type - matching on message
  * text would break the day the sentence was reworded.
  */
+/**
+ * How far a waypoint's published mile may sit from where the index would
+ * place it before the console hears about it (#1192).
+ *
+ * @unvalidated - reasoned from one release, not measured against several.
+ * The largest backward step in the 2026-09-02 release's own vertex miles is
+ * 0.27 mi (pipeline/export_trails.py's manifest records it per release), so a
+ * waypoint beside such a step can honestly read a quarter-mile from its
+ * nearest vertex; anything past that has no explanation inside one release.
+ * What would settle it: the axisDrift the worker reports across the next few
+ * releases, which is exactly what this warning surfaces.
+ */
+export const AXIS_DRIFT_WARN_MILES = 0.3
+
 export interface TrailDataError {
   kind: 'hash-mismatch' | 'error'
   message: string
@@ -76,10 +102,42 @@ function emptyTrailsUrl(): string {
 }
 
 export interface TrailData {
+  /**
+   * The published release this phone does not have, or null (#919).
+   *
+   * Null is the answer for "nothing newer", "nothing downloaded yet" and
+   * "could not ask" alike - none of the three is something to put in front of
+   * anybody, and collapsing them here keeps the shell from having to know
+   * which it is looking at.
+   */
+  update: AvailableRefresh | null
+  /** Whether to caution about what taking it costs: not on wifi, and big
+   *  enough to matter. An unknown size counts as big - see warnsAboutData. */
+  updateWarnsAboutData: boolean
+  /** True while the bytes are coming, so the prompt can say so rather than
+   *  vanishing into a map that has not changed yet. */
+  applyingUpdate: boolean
+  /** Take it. Re-downloads the whole vector set, committed all-or-nothing. */
+  applyUpdate: () => Promise<void>
+  /** Not now, remembered against this version so the next release still asks. */
+  declineUpdate: () => Promise<void>
   /** The centerline index, or null when there is none to build one from - and
    *  null too when the file was there and unreadable, which is best-effort on
    *  purpose (see below). */
   trailIndex: TrailIndex | null
+  /**
+   * Where each of `pois` sits on `trailIndex`, one mile per waypoint in the
+   * same order, NaN where it has none - or null while the index is still
+   * being built, and after a build that failed (#1192).
+   *
+   * Beside the index rather than derived from it in a memo, because deriving
+   * it was the freeze: 16,949 nearest-vertex searches in one render. It is
+   * now answered where the index is built, off this thread, and on the
+   * pipeline's axis it is simply each waypoint's published mile. Null and
+   * NaN both read as "unknown" downstream, which is the honest state of a
+   * waypoint nobody has placed yet.
+   */
+  poiMiles: Float64Array | null
   pois: StoredPoi[]
   /** Spur detail keyed by trail id (pipeline/export_spurs.py). Empty until a
    *  release that publishes it is on the phone - the map draws every spur
@@ -106,37 +164,49 @@ export interface TrailData {
   retiredPois: Tombstones
   trailsUrl: string
   /**
-   * The corridor-view centerline to draw INSTEAD, while there is no real one
-   * (#869) - and null the moment there is, which is what makes it a stand-in
-   * rather than a second trail line.
+   * The corridor-view centerline, for the map to draw until its own copy of
+   * the real line is on screen (#869, #1291) - and to draw again for the
+   * same seconds on any map built later.
    *
-   * Null too on a phone that has the release already, because it never had a
-   * gap to fill: this is worth 51 KB of somebody's data only on the launch
-   * where the alternative is an empty map for five seconds.
+   * Null only where there is none: offline, or a bucket without the
+   * artifact. It used to be null the moment this hook held the real lines,
+   * on the theory that a phone holding the release "never had a gap to
+   * fill"; the gap is the map's parse of those lines, it runs on every
+   * launch, and the effect that fetches this carries the measurement. Which
+   * line the map is drawing is the map's own answer now - map/style.ts's
+   * attachTrailOverview, with `haveTrailLines` beside this as the other half
+   * of it.
    */
   overviewTrailsUrl: string | null
   /**
-   * The trail lines other organizations maintain, as an object URL, or null
-   * (#950, lib/nearbyTrailData.ts).
+   * The corridor-view sketch of that whole network, as an object URL, or null
+   * (#1135, lib/nearbyTrailData.ts's loadNetworkOverview).
    *
-   * Null is the ordinary answer today and is not a failure: publish.py holds
-   * that artifact back while NYS OPRHP's or NYNJTC's reuse terms are unstated
-   * (pipeline/sources.json), so the bucket does not have one to fetch.
+   * What the OPENING camera draws: below the pin seam the full network's
+   * layers do not draw at all (map/style.ts's minzoom on them), so without
+   * this the map's first screen shows the A.T. alone however many
+   * organizations' trails the phone holds. 255 KB gzipped for all of them,
+   * measured 2026-08-27 (pipeline/spike_network_overview.py).
    *
-   * Unlike `overviewTrailsUrl` above, this is never withdrawn once set. The
-   * overview is a stand-in for a line that is coming; these are lines of
-   * their own.
+   * Unlike `overviewTrailsUrl`: never withdrawn once set, because nothing
+   * better replaces it - it IS the below-seam network, not a stand-in for
+   * one. Null is ordinary: an older release, or a bucket holding the artifact
+   * back with its parent.
+   *
+   * THE ONLY NEARBY-NETWORK ARTIFACT HERE since #1257. The full lines above
+   * the seam are vector tiles the map reads for itself by byte range
+   * (map/networkTiles.ts), declared in the style rather than handed over as
+   * a URL - no hook could hand over a 228.8 MB file without parsing it, which
+   * is what crashed every phone on 2026-09-07 (#1254).
    */
-  nearbyTrailsUrl: string | null
-  /** The junction graph's routing half, indexed - or null while this phone
-   *  has not got one, which PlanKindSheet reads as "no day hikes yet". The
-   *  two heavy halves are NOT here: the edge vertices and the per-edge climb
-   *  (#1011) are fetched lazily when the builder opens
-   *  (lib/trailGraphData.fetchTrailGraphGeometry and
-   *  fetchTrailGraphElevation), because with the whole A.T. in the graph they
-   *  are far heavier than the routing half and a launch that never opens the
-   *  builder should not pay for either. */
-  graphIndex: TrailGraphIndex | null
+  networkOverviewUrl: string | null
+  /**
+   * Whether the trail line's own launch fetch has settled (#1117) - the gate
+   * the junction graph's cells wait behind with signal (lib/useTrailGraph.ts,
+   * which App.tsx feeds this). SETTLED, not "succeeded": see the launch
+   * effect's `finally`.
+   */
+  trailFetchSettled: boolean
   /** Whether the map has a real trail line on it, as against the empty
    *  collection the style is seeded with. */
   haveTrailLines: boolean
@@ -190,11 +260,104 @@ export interface TrailDataOptions {
   centerlineOnly?: boolean
 }
 
+/**
+ * One verified network artifact's state machine, shared by the nearby-trail
+ * network and its corridor-view sketch (#1082, #1135) so the two cannot
+ * drift - every guard below is load-bearing and was tuned on the first of
+ * them.
+ *
+ * One refresh attempt per online spell, cleared when signal drops. This is
+ * the loop guard the loaders' contract asks their caller for: every failed
+ * refresh answers `revalidated: false` so the asking can RESUME on the next
+ * real reconnection - a captive portal at a trailhead says "online" while
+ * carrying nothing, and treating its failure as final would hold yesterday's
+ * closures off the map all day - but re-asking within the same online spell
+ * would loop against a manifest that is simply down. And never again once an
+ * answer has actually been verified against the manifest.
+ *
+ * `ready` is the caller's sequencing gate (#1117), applied ONLINE ONLY: the
+ * offline path always falls through to the store read, so a phone with no
+ * signal draws its last verified copy on the first tick whatever the gate
+ * says. `load` must be module-stable - it is in the dependency list, and a
+ * closure would re-arm this on every render.
+ */
+function useVerifiedNetworkArtifact(
+  load: (online: boolean, signal?: AbortSignal) => Promise<NearbyTrailsAnswer | null>,
+  online: boolean,
+  ready: boolean,
+): NearbyTrailsAnswer | null {
+  const [answer, setAnswer] = useState<NearbyTrailsAnswer | null>(null)
+  const tried = useRef(false)
+  useEffect(() => {
+    if (!online) tried.current = false
+  }, [online])
+
+  useEffect(() => {
+    // The state is in the dependency list so that setting it re-runs this
+    // and takes one of the early returns.
+    if (!DATA_CONFIGURED) return
+    if (online && !ready) return
+    if (answer !== null && answer.revalidated) return
+    if (!online && answer !== null) return
+    if (online && tried.current) return
+    if (online) tried.current = true
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void load(online, controller.signal).then((fresh) => {
+      if (fresh === null) return
+      // An object URL nothing will draw is a blob the page holds until it is
+      // closed - the same reason the A.T. overview revokes an answer it no
+      // longer wants.
+      if (!wanted) {
+        URL.revokeObjectURL(fresh.url)
+        return
+      }
+      setAnswer((previous) => {
+        // Same bytes, by hash: keep the URL the map has already parsed and
+        // throw the new one away, carrying over only what the refresh
+        // learned. Swapping URLs here would make MapLibre re-fetch and
+        // re-tile megabytes of identical GeoJSON mid-hike for pixels that
+        // cannot change. Returning `previous` unchanged when nothing was
+        // learned lets React bail out entirely.
+        if (previous !== null && previous.hash === fresh.hash) {
+          URL.revokeObjectURL(fresh.url)
+          // OR, never overwrite: a verified answer stays verified even if a
+          // later attempt failed - which the guards above make unreachable,
+          // and cheap insurance against the day they move.
+          const revalidated = previous.revalidated || fresh.revalidated
+          return revalidated === previous.revalidated
+            ? previous
+            : { ...previous, revalidated }
+        }
+        // A new release arrived: the old URL is revoked - safe at this
+        // point: MapLibre reads a blob URL once, when `setData` hands it
+        // over, and a URL this state has held has either been read by now
+        // or is being replaced before any map mounted. Parsed tiles outlive
+        // the URL either way.
+        if (previous !== null) URL.revokeObjectURL(previous.url)
+        return fresh
+      })
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [load, online, answer, ready])
+
+  return answer
+}
+
 export function useTrailData(
   online: boolean,
   { centerlineOnly = false }: TrailDataOptions = {},
 ): TrailData {
   const [trailIndex, setTrailIndex] = useState<TrailIndex | null>(null)
+  const [poiMiles, setPoiMiles] = useState<Float64Array | null>(null)
+  /** Which read of the release is the current one - see readTheRest. */
+  const readToken = useRef(0)
   const [pois, setPois] = useState<StoredPoi[]>([])
   const [spurs, setSpurs] = useState<Record<string, SpurRecord>>({})
   const [elevation, setElevation] = useState<ElevationProfile | null>(null)
@@ -205,13 +368,33 @@ export function useTrailData(
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
-  const [nearbyTrailsUrl, setNearbyTrailsUrl] = useState<string | null>(null)
-  const [graphIndex, setGraphIndex] = useState<TrailGraphIndex | null>(null)
-  /** Whether the phone has been asked whether it holds trail lines yet.
-   *  Distinct from holding none: for the first tick of every launch those two
-   *  look the same, and one of them is a reason to spend a hiker's data. */
-  const [centerlineRead, setCenterlineRead] = useState(false)
   const [error, setError] = useState<TrailDataError | null>(null)
+  /**
+   * Whether the launch fetch has stopped competing for the pipe (#1117).
+   *
+   * The two background artifacts below - the other organizations' lines and
+   * the junction graph - used to start alongside `trails.geojson` and one of
+   * them is nearly twice its size. MEASURED on a cold first run against the
+   * published artifacts, Chromium throttled to 4,000 kbps / 100 ms and 4x CPU,
+   * two runs agreeing: `trail_graph.json` (1,176 KB) opened at 1,524 ms,
+   * `trails.geojson` (3,891 KB) at 1,830 ms, `nearby_trails.geojson`
+   * (7,524 KB) at 2,612 ms - and the trail line, the one thing every entry
+   * step is talking about, did not land until 20,267 ms of a 32,325 ms launch
+   * that moved 14.71 MB.
+   *
+   * Since #1257 the gate holds one artifact rather than two: the other
+   * organizations' lines are tiles the map reads per view (map/networkTiles.ts)
+   * and no longer a launch fetch at all, so only the junction graph waits here.
+   *
+   * SETTLED, not "succeeded". See the launch effect's `finally`.
+   *
+   * A warm launch releases this within milliseconds - `fetchOnce` returns
+   * after two small IndexedDB reads once the phone holds a release - so this
+   * costs a returning hiker nothing. It is only ever a wait on the cold run,
+   * which is the only run where those two artifacts have anything to compete
+   * with.
+   */
+  const [trailFetchSettled, setTrailFetchSettled] = useState(false)
 
   /**
    * Two counters, because the two halves of a release no longer land at the
@@ -242,10 +425,6 @@ export function useTrailData(
    */
   const drawCenterline = useCallback(async () => {
     const lines = await loadTrailLines()
-    // Answered either way, and before the early return: "no lines" is what
-    // sends the overview fetch below, and it is not the same answer as "not
-    // asked yet".
-    setCenterlineRead(true)
     if (lines === null) return
 
     setTrailsUrl(URL.createObjectURL(lines))
@@ -272,20 +451,52 @@ export function useTrailData(
     setHighlights(data.highlights)
     setRetiredPois(data.retiredPois)
 
+    // The index and the waypoints' miles, built off this thread (#1192,
+    // lib/trailIndexBuild.ts) - a worker where there is one, slices where
+    // there is not, and a per-release cache in front of both. The waypoints
+    // above are already in state, so the screen renders with every mile
+    // unknown and fills in when this answers, rather than freezing until it
+    // can claim to know: on a 4x-throttled phone profile the old synchronous
+    // build and placement held the thread for 13 s.
+    //
     // Best-effort, and separate from the POIs above on purpose. A shelter is
     // findable by name with no geometry at all, so a trails.geojson that
     // arrived truncated or malformed should cost the mile numbers decorating
-    // each row and nothing else.
+    // each row and nothing else. A throw anywhere in the build - JSON.parse
+    // on half a file is the likely one - lands here as "no index, no miles",
+    // never as an unhandled rejection out of the `void readTheRest()` below.
     //
-    // buildTrailIndex() guards the shape it is handed, but JSON.parse runs
-    // first and throws on the more likely symptom of a truncated download -
-    // half a file. Uncaught, that escaped through the `void readTheRest()`
-    // below as an unhandled rejection: no index, no message, and no search
-    // either, which is the failure this whole path was rebuilt to avoid.
+    // The token is for the second read a re-download triggers while the first
+    // is still building: whichever finished last would otherwise win, and the
+    // one that finished last is not reliably the newer release.
+    const token = (readToken.current += 1)
     try {
-      setTrailIndex(buildTrailIndex(JSON.parse(await data.trails.text())))
+      const release = await recallRelease()
+      const { index, poiMiles, axisDrift } = await resolveTrailIndex({
+        trails: data.trails,
+        trailMiles: data.trailMiles,
+        pois: packPois(data.pois),
+        trailsHash: release?.hashes[TRAILS_KEY] ?? null,
+      })
+      if (token !== readToken.current) return
+      // The consistency check the anchors used to be (#1192): said, never
+      // acted on. Only a maintainer reading a console will ever see it, and
+      // that is the right audience - a hiker cannot do anything with "the
+      // miles file disagrees with the lines file" except not trust the app.
+      if (axisDrift !== null && axisDrift.maxMiles > AXIS_DRIFT_WARN_MILES) {
+        console.warn(
+          `trail_miles.json and the placed waypoints disagree, over ` +
+            `${axisDrift.sampled} sampled waypoints, by up to ` +
+            `${axisDrift.maxMiles.toFixed(3)} (miles on the pipeline axis); ` +
+            `the two files may not be the pair they claim to be.`,
+        )
+      }
+      setTrailIndex(index)
+      setPoiMiles(poiMiles)
     } catch {
+      if (token !== readToken.current) return
       setTrailIndex(null)
+      setPoiMiles(null)
     }
   }, [])
 
@@ -338,6 +549,94 @@ export function useTrailData(
     attempt.then(clear, clear)
     return attempt
   }, [])
+
+  /**
+   * The published release this phone does not have, or null (#919).
+   *
+   * Null covers three different situations and deliberately renders as one:
+   * nothing downloaded yet, nothing newer published, and a manifest that could
+   * not be read. None of them is something to say to a hiker - the first is the
+   * launch fetch's job, the second is the normal state, and the third is not a
+   * claim about anything.
+   */
+  const [update, setUpdate] = useState<AvailableRefresh | null>(null)
+  const [applyingUpdate, setApplyingUpdate] = useState(false)
+
+  /**
+   * Ask the bucket whether this phone is current, on launch and when signal
+   * returns.
+   *
+   * Beside the `conditions/*` refresh that already works this way
+   * (useConditions.ts) - the maintainer's decision of 2026-08-21 was for this
+   * check to run there, and it costs one `latest.json` read, the same 3.5 KB
+   * the launch fetch pays anyway.
+   *
+   * `releaseAt` is in the deps so that accepting an update re-asks and clears
+   * the prompt from what is now true, rather than from what this code believes
+   * it just did.
+   */
+  useEffect(() => {
+    if (!DATA_CONFIGURED || !online) return
+
+    const controller = new AbortController()
+    let wanted = true
+
+    void (async () => {
+      const stored = await recallRelease()
+      if (stored === null) return
+      const snapshot = await publishedSnapshot({ signal: controller.signal })
+      const found = availableRefresh(stored, snapshot)
+      // A release the hiker has already declined. Silenced by version, so the
+      // next one asks again - see dismissRelease.
+      const declined = found === null ? null : await dismissedRelease()
+      if (!wanted) return
+      setUpdate(found !== null && declined === snapshot.version ? null : found)
+    })().catch(() => {
+      // Never fatal and never reported. A phone that could not ask is a phone
+      // with the data it already had, which is the state it was in a moment
+      // ago - and an error about a check nobody requested would be noise on
+      // top of a map that is working.
+    })
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [online, releaseAt])
+
+  /**
+   * Take the update, having been asked.
+   *
+   * Re-downloads the whole vector set rather than the changed artifacts alone,
+   * and that is a choice worth stating: it is 5.78 MB against about 0.67 MB for
+   * a POI-only release (measured 2026-08-21), and it buys the commit
+   * `downloadTrailData` already makes - every artifact verified and stored
+   * together, or none of them. Replacing files one at a time would mean a phone
+   * that could hold half of one release and half of another, which is a state
+   * nothing else in this app has to reason about and nothing should have to.
+   */
+  const applyUpdate = useCallback(async () => {
+    setApplyingUpdate(true)
+    setError(null)
+    try {
+      await downloadTrailData()
+      setReleaseAt((at) => at + 1)
+      setCenterlineAt((at) => at + 1)
+      setUpdate(null)
+    } catch (thrown) {
+      setError(describeTrailDataError(thrown))
+    } finally {
+      setApplyingUpdate(false)
+    }
+  }, [])
+
+  /** Not now. Remembered against the version declined, so this release stops
+   *  asking and the next one does not inherit the answer. */
+  const declineUpdate = useCallback(async () => {
+    const version = update?.version ?? null
+    setUpdate(null)
+    if (version !== null) await dismissRelease(version)
+  }, [update])
 
   // Reading what is already on the phone, and unconditionally. This has to stay
   // independent of the fetch below: an unconfigured build and a phone with no
@@ -397,15 +696,23 @@ export function useTrailData(
     // Deduplicated inside fetchOnce rather than by a flag here, so that a
     // download tapped while this is still running joins it instead of fetching
     // the same megabytes alongside it.
-    void fetchOnce().catch((thrown: unknown) => {
-      // Not reported if the effect was torn down under us: by then this is a
-      // fetch nobody is waiting on, and a notice about it would outlive the
-      // screen that could act on it. Nothing is stored either way -
-      // downloadTrailData commits all four files or none - so coming back into
-      // signal can simply try again.
-      if (cancelled) return
-      setError(describeTrailDataError(thrown))
-    })
+    void fetchOnce()
+      .catch((thrown: unknown) => {
+        // Not reported if the effect was torn down under us: by then this is a
+        // fetch nobody is waiting on, and a notice about it would outlive the
+        // screen that could act on it. Nothing is stored either way -
+        // downloadTrailData commits all four files or none - so coming back into
+        // signal can simply try again.
+        if (cancelled) return
+        setError(describeTrailDataError(thrown))
+      })
+      // EITHER WAY, which is the half that keeps this from being a trap: the
+      // two effects below wait on this flag, and a phone whose trail fetch
+      // failed must not be left holding them forever. A failed launch fetch
+      // releases the gate and they run exactly as they did before #1117.
+      .finally(() => {
+        if (!cancelled) setTrailFetchSettled(true)
+      })
 
     return () => {
       cancelled = true
@@ -422,38 +729,45 @@ export function useTrailData(
   useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
   /**
-   * The corridor-view sketch, fetched once and only while it would be the
-   * only trail line on the map (#869).
+   * The corridor-view sketch, fetched once per launch and handed to the map
+   * for the life of the app (#869, #1291).
    *
-   * Gated on what the phone turned out to hold rather than on "is this a
-   * first run", because that is the actual question: a phone with the release
-   * already on it draws the real line within a tick of launching and never has
-   * a gap for this to fill, so fetching it would be 51 KB of somebody's data
-   * spent on a frame nobody sees. On an empty phone the real line is seconds
-   * away and this is the map the entry steps are talking about.
+   * THE MAP DECIDES WHEN THE SKETCH IS DONE, NOT THIS HOOK. This used to
+   * withdraw the sketch the moment `haveTrailLines` flipped - "the real line
+   * winning is what ends the sketch" - and revoke its URL. But holding an
+   * object URL for trails.geojson is not the map having drawn it: MapLibre's
+   * worker still has to fetch that blob and parse and tile 11.5 MB of
+   * coordinates, and a map mounted after the flip was handed no sketch and
+   * drew nothing until its own copy landed. MEASURED 2026-09-08 on the built
+   * app in the sandbox, the blob already local: a map mounted 3.5 s after
+   * launch had no line 3.5 s after mounting and had one by 6.4 s. A phone is
+   * slower. The older comment here - that a phone holding the release "never
+   * has a gap for this to fill" - was never measured; the parse is the gap,
+   * and it runs on every launch.
    *
-   * Which is why it waits for `centerlineRead` and not merely for
-   * `haveTrailLines` to be false. Those two are indistinguishable for the
-   * first tick of EVERY launch - the IndexedDB read has not answered yet - and
-   * starting on that tick would fetch the sketch on every launch a returning
-   * hiker ever makes. The wait costs nothing: the bytes are already in the
-   * HTTP cache by then, preloaded from the document head (vite.config.ts), so
-   * what this runs is a cache read.
-   *
-   * The abort is what makes the race safe rather than lucky: the real line can
-   * land while this is in flight, and the cleanup below both cancels the
-   * request and throws away an answer that arrives anyway.
+   * So the sketch is fetched on every launch - the bytes are preloaded from
+   * the document head (vite.config.ts), so this is a cache read, and the
+   * wait on "has the phone answered whether it holds lines" that used to
+   * keep warm launches from fetching it went with the reason for it - handed
+   * over whatever this hook holds, and emptied by map/style.ts's
+   * attachTrailOverview once the MAP's own trails source reports loaded.
+   * Per map instance, so a map rebuilt later (a background switch, a lost
+   * WebGL context) gets the sketch again for the same seconds. The URL is
+   * never revoked: it has to outlive any one map, and this hook lives as
+   * long as the app does, so what would be leaked is 195 KB until the page
+   * closes, which is when the browser releases it anyway.
    */
   useEffect(() => {
-    if (!DATA_CONFIGURED || !online || !centerlineRead || haveTrailLines) return
+    if (!DATA_CONFIGURED || !online || overviewUrl !== null) return
 
     const controller = new AbortController()
     let wanted = true
 
     void fetchTrailOverview(controller.signal).then((url) => {
       if (url === null) return
-      // Revoked rather than kept: an object URL nothing draws is a blob the
-      // page holds until it is closed, and by here the real line has won.
+      // Cancelled underneath - the hook unmounted, or `online` moved while
+      // this was in flight - and an object URL nothing will draw is a blob
+      // the page holds until it is closed.
       if (!wanted) {
         URL.revokeObjectURL(url)
         return
@@ -465,82 +779,35 @@ export function useTrailData(
       wanted = false
       controller.abort()
     }
-  }, [online, centerlineRead, haveTrailLines])
+  }, [online, overviewUrl])
 
-  // Dropped as soon as there is a real line, and revoked with it. Both halves
-  // matter: the sketch is only true below the pin seam, and a blob URL that
-  // outlives its layer is a leak with nothing pointing at it.
+  // The whole-file copy of the other organizations' lines that releases
+  // before #1257 stored (lib/nearbyTrailData.ts) - up to 228.8 MB of it, on a
+  // phone that fetched 2026-09-07's artifact before #1254's budget existed.
+  // Nothing draws from it any more; the lines are tiles the map reads for
+  // itself. Deleted once per launch rather than on a version check, because
+  // the store carries no version and deleting nothing is free.
   useEffect(() => {
-    if (!haveTrailLines || overviewUrl === null) return
-    URL.revokeObjectURL(overviewUrl)
-    setOverviewUrl(null)
-  }, [haveTrailLines, overviewUrl])
+    void forgetNearbyTrails()
+  }, [])
 
   /**
-   * The other organizations' trails (#950), fetched once per launch.
-   *
-   * NOT GATED ON WHAT THE PHONE HOLDS, unlike the overview above, because
-   * there is nothing on the phone for this to race: lib/nearbyTrailData.ts
-   * stores nothing, so a returning hiker has no more of this than a first-run
-   * one does. That is a gap rather than a design, and its home is
-   * **#552 — Decide the unit of offline coverage, and write it down** - see
-   * that module's header for why guessing at a store now would be the wrong
-   * shape to unpick later.
-   *
-   * Runs only when online, and gives up quietly on every failure. Today the
-   * usual outcome is a 404 and a null, which is the licence gate working
-   * rather than anything being wrong.
+   * The corridor-view sketch of that network (#1135), through the same state
+   * machine and deliberately NOT behind #1117's gate: this is what the
+   * OPENING camera draws - below the pin seam the full network's layers do
+   * not draw at all - and at 255 KB gzipped (measured 2026-08-27,
+   * pipeline/spike_network_overview.py) it is the A.T. sketch's kind of
+   * fetch, not the 7.5 MB kind that gate exists to sequence. Ungated, the
+   * first screen's lines arrive in the overview class of seconds; gated,
+   * they would wait ~30 s behind a fetch they do not need.
    */
-  useEffect(() => {
-    // Once, not once per reconnection. `online` flips whenever the phone
-    // loses and regains signal, which on a trail is often, and without this
-    // guard each flip would spend another 1.7 MB re-fetching lines already on
-    // the map AND drop the previous object URL without revoking it - a leak
-    // the map cannot even see, because MapLibre is still drawing the blob it
-    // was handed. The state itself is the guard, and it is in the dependency
-    // list so that setting it re-runs this and takes the early return.
-    if (!DATA_CONFIGURED || !online || nearbyTrailsUrl !== null) return
+  const networkOverview = useVerifiedNetworkArtifact(loadNetworkOverview, online, true)
 
-    const controller = new AbortController()
-    let wanted = true
-
-    void fetchNearbyTrails(controller.signal).then((url) => {
-      if (url === null) return
-      // An object URL nothing will draw is a blob the page holds until it is
-      // closed - the same reason the overview revokes an answer it no longer
-      // wants.
-      if (!wanted) {
-        URL.revokeObjectURL(url)
-        return
-      }
-      setNearbyTrailsUrl(url)
-    })
-
-    return () => {
-      wanted = false
-      controller.abort()
-    }
-  }, [online, nearbyTrailsUrl])
-
-  // The junction graph's routing half, on the nearby-lines pattern above -
-  // once, not once per reconnection, with the state itself as the guard. No
-  // object URL to revoke: fetchTrailGraph returns a parsed index.
-  useEffect(() => {
-    if (!DATA_CONFIGURED || !online || graphIndex !== null) return
-
-    const controller = new AbortController()
-    let wanted = true
-
-    void fetchTrailGraph(controller.signal).then((index) => {
-      if (index === null || !wanted) return
-      setGraphIndex(index)
-    })
-
-    return () => {
-      wanted = false
-      controller.abort()
-    }
-  }, [online, graphIndex])
+  // The junction graph is no longer loaded here (#1257 stage 3): it is cells
+  // now, and which cells is a question about where the hiker is planning,
+  // which this hook does not know. lib/useTrailGraph.ts loads them, behind
+  // `trailFetchSettled` below with signal - the same #1117 gate the whole
+  // graph waited behind.
 
   const ensure = useCallback(async () => {
     setError(null)
@@ -557,7 +824,20 @@ export function useTrailData(
   }, [fetchOnce])
 
   return {
+    /** The published release this phone does not have, or null (#919). Null is
+     *  the answer for "nothing newer", "nothing downloaded yet" and "could not
+     *  ask" alike - none of the three is something to put in front of anybody. */
+    update,
+    /** Whether to caution about what taking it costs: not on wifi, and big
+     *  enough to matter. An unknown size counts as big - see warnsAboutData. */
+    updateWarnsAboutData: update !== null && warnsAboutData(update),
+    /** True while the bytes are coming. The prompt stays up and says so rather
+     *  than vanishing into a map that has not changed yet. */
+    applyingUpdate,
+    applyUpdate,
+    declineUpdate,
     trailIndex,
+    poiMiles,
     pois,
     spurs,
     elevation,
@@ -565,12 +845,17 @@ export function useTrailData(
     stewards,
     highlights,
     retiredPois,
-    // Never both. The real line winning is what ends the sketch, and saying so
-    // here rather than in the shell means one place decides which line the map
-    // is drawing.
-    overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
-    nearbyTrailsUrl,
-    graphIndex,
+    // Handed over whatever this hook holds. Which line the map is drawing is
+    // the MAP's answer (map/style.ts's attachTrailOverview, #1291): it is the
+    // only party that knows when its own copy of the real line is on screen,
+    // and the sketch is useful in exactly that window. `haveTrailLines`
+    // beside it says whether there is a real line to wait for at all.
+    overviewTrailsUrl: overviewUrl,
+    // The url alone: whether it was revalidated is this hook's business (the
+    // effect above), not a consumer's - the map draws a stored copy and a
+    // fresh one identically.
+    networkOverviewUrl: networkOverview?.url ?? null,
+    trailFetchSettled,
     trailsUrl,
     haveTrailLines,
     error,

@@ -22,7 +22,7 @@ The checklists this file used to carry are gone, for a reason worth recording: b
 
 ## Feature design docs
 
-Thirty-five docs in [features/](features/) — thirty-three features and two consolidated references. Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. The table below is six rows short of the directory: CONDITIONS_DELIVERY.md, CORRIDOR_VIEW.md, MAP_STYLE_SPEC.md, POI_PHOTOS.md, POI_SITES.md and POI_VISIBILITY.md are written and unlisted — a count this paragraph had let drift to "three" while three more docs landed unindexed, corrected 2026-08-13 in the change that added a row. ATC_TRAIL_UPDATES.md was the fourth until 2026-08-12, and it is worth naming what that cost: the feature carried `v1-mvp` labels on three issues while neither of the two documents a person reads to learn what v1 *is* mentioned it at all. ELEVATION_PROFILE.md below records the same gap ending the same way, which is twice.
+Forty-five docs in [features/](features/). Design is written before code here; that convention is the reason most issues can link to a doc instead of restating it. **The table below is thirteen rows short of the directory, and this paragraph has now been wrong about that twice** — it read "thirty-five docs… six rows short" until 2026-08-28, having drifted from "three" before that. (The "rows short" figure and the eleven-name list below are answering two different questions and always have: two docs are mentioned elsewhere in this file without earning a table row.) Measured on 2026-08-28, the docs this file does not mention anywhere are APP_FAILURE_REPORTS.md, CONDITIONS_DELIVERY.md, CORRIDOR_VIEW.md, DATA_REFRESH.md, MAP_CHROME.md, MAP_STYLE_SPEC.md, MORE_TAB.md, ORG_NOTICES.md, POI_SITES.md, POI_VISIBILITY.md and ROUTE_OWNERSHIP.md. Adding those rows is not this change's to do, but the drift is worth naming rather than re-lowering: a count corrected only when somebody happens to add a row is a count that is wrong most of the time. ATC_TRAIL_UPDATES.md was the fourth until 2026-08-12, and it is worth naming what that cost: the feature carried `v1-mvp` labels on three issues while neither of the two documents a person reads to learn what v1 *is* mentioned it at all. ELEVATION_PROFILE.md below records the same gap ending the same way, which is twice.
 
 A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Report a Problem**, Map Options' **closures**, and Hiker Safety's **warnings and wrong-way alert** into the v1 MVP — see TECHNICAL_ARCHITECTURE.md's revised Backend section. The scope column reflects that revision, not the scope each doc originally launched with.
 
@@ -32,7 +32,7 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [REPORT_A_PROBLEM.md](features/REPORT_A_PROBLEM.md) | **v1 MVP.** Hiker-submitted condition reports, with "bad hikers" routed internal-only. Closures and safety warnings reuse this exact moderation mechanism. |
 | [SAYING_THANKS.md](features/SAYING_THANKS.md) | **v1 MVP.** A thanks is a comment about a specific place — a report type sharing every field, diverging in visibility and in skipping the moderation queue. Resolved WIREFRAMES.md's Known Deviations #2. |
 | [TRAIL_BLAZE_COLORS.md](features/TRAIL_BLAZE_COLORS.md) | **v1 MVP.** Render the trail in its real painted blaze colour, neutral fallback when unknown. A correctness detail, not a flourish. |
-| [HIKER_SAFETY.md](features/HIKER_SAFETY.md) | **Split.** Warning pins and the wrong-way alert are v1 MVP; the anonymity window and the NWS weather relay are Post-MVP. |
+| [HIKER_SAFETY.md](features/HIKER_SAFETY.md) | **Split.** Warning pins are v1 MVP; the anonymity window and the NWS weather relay are Post-MVP. The wrong-way alert was v1 MVP too, until it was removed unmounted and unvalidated (#93, #308). |
 | [MAP_OPTIONS.md](features/MAP_OPTIONS.md) | **Split.** Trail closures and the map-chrome spec (legend/scale/locate/zoom) are v1 MVP. Background tile options were Post-MVP but shipped early 2026-08-03 — the downloaded raster was bad in ways no pipeline work fixes, so the live vector topo sheet went in instead. Roads/sidewalks and snap-to-segment stay Post-MVP. |
 | [ATC_TRAIL_UPDATES.md](features/ATC_TRAIL_UPDATES.md) | **v1 MVP.** The ATC publishes closures, detours and hazards on their website in NOBO miles from Springer — the same number `start_mile_marker` already is — so placing one is a join against data the build already holds, not a geocoding problem. Shipped as the ATC's own word rather than OurHike's: their name on the claim, their date, and a link to their page. The registration, the bake and the rendering are built; the rows are a reviewed file a person fills in, because a regex deciding what a safety surface says is the one thing this design refuses. |
 | [ONBOARDING.md](features/ONBOARDING.md) | **Split.** The minimal first-run flow is v1 MVP; trail names, settings mention and tips wait on Authentication and UX Customization. |
@@ -54,6 +54,8 @@ A cross-feature alignment review on 2026-07-28 moved **Authentication**, **Repor
 | [POI_IDENTITY.md](features/POI_IDENTITY.md) | **v2, sixth feature — platform, not a screen.** A POI's published id is minted at first sight and owned for life: upstream keys become matching evidence rather than identity, a checked-in ledger reconciles the ATC's annual refresh — by key where keys survive, by evidence where they don't, by retiring into a tombstone where the place is gone — and a human reviews the ledger's diff on the release PR, never every point. What keeps photos, comments and saved plans anchored across the years. |
 | [POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) | **v2, seventh feature — platform, not a screen.** What happens when two sources describe one place: proximity proposes and evidence decides, precedence runs per field rather than per record so a merge combines instead of discarding, the decision is written as a `superseded_by` edge in POI_IDENTITY.md's ledger rather than a second one, and the duplicate check runs at submission time where the hiker who is standing there can answer it. Measured: 48 same-type pairs sit within 25 m of each other on the corridor and 35 of them are two real places, so the radius proposes and the name decides. |
 | [ACCOUNT_SYNC.md](features/ACCOUNT_SYNC.md) | **v2, ninth feature — designed, not started.** A hiker's own content follows their account between the web and their phone: what syncs and at what grain, why the device holds the truth while it is offline, why a conflict keeps both plans rather than picking one, and why sharing a photo and syncing one must never become the same act. Measured: 23 device storage keys sorted into the hiker's and the device's, and two finished endpoints nothing has ever called. |
+| [OFFLINE_COVERAGE.md](features/OFFLINE_COVERAGE.md) | **v2, tenth feature — built for the basemap; the terrain, per-level cells and named pieces still to come.** What a hiker can have offline that is less than the whole trail: a 1°×1° cell as the unit that is built, versioned and resumed, gathered into a named piece scoped by org and by state, with the whole trail still one tap. Argues trail-derived stretches down (they cannot describe two orgs in one scheme) and on-demand caching down (what you never looked at in town is missing on the ridge). Measured: 62 basemap cells on UA at 419.1 MB together; the phone reads them, prices the stretch under a planned hike against what it lacks, and draws a dashed line where the download ends. The 88 stretch archives built to the superseded unit are still live on production at 942.9 MB, and no client code reads any of them. |
+| [INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md) | **v3, first feature — designed, not started.** What happens to an invasive species sighting after it is filed: a trained surveyor's structured walk over an assigned segment (which can record *absence*, the thing an opportunistic sighting never can), a club-granted credential that is species-scoped and dated rather than a boolean, a fourth `Role.invasives` gating a second moderation queue for the different question a species ID asks, and an export to the scientific record NYNJTC already keeps. The first feature that sends a hiker's contribution out of OurHike to a third party. |
 | [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) | Post-MVP. How an outside organization registers its own map layers and a contact to notify. Registration is a form; the build input stays a reviewed file, so nothing self-service can change a hiker's map without a merge. |
 | [DATA_NUDGES.md](features/DATA_NUDGES.md) | Post-MVP. Non-gamified prompts to keep POI data fresh — no notifications, just map prominence for stale data, self-limiting the moment anyone contributes. |
 | [COMMUNITY_BUILDING.md](features/COMMUNITY_BUILDING.md) | Post-MVP. Tramily formation, check-ins, mentions. The project's sharpest privacy-vs-connection tension, resolved as a scoped exception rather than a loosened stance. |
@@ -77,13 +79,13 @@ The design and the findings behind all of it live in [TECHNICAL_ARCHITECTURE.md]
 
 ## Phase 2 — Client app & backend
 
-**Built.** Every MVP screen was wireframed in [WIREFRAMES.md](WIREFRAMES.md) and then built: the map with offline PMTiles, blaze-coloured trail line and map chrome; the resumable whole-corridor download with its Light/Standard/Fine detail choice; POI search; the elevation ribbon with Naismith estimates; onboarding; reporting with its offline outbox; closures as barred bands along the closed miles, with a header banner for the one being walked into; serious-warning pins, with a count of those on the route; settings. The backend covers reports, closures, moderation, hikes, preferences, wrong-way and profiles on FastAPI + SQLAlchemy with Supabase JWT auth.
+**Built.** Every MVP screen was wireframed in [WIREFRAMES.md](WIREFRAMES.md) and then built: the map with offline PMTiles, blaze-coloured trail line and map chrome; the resumable whole-corridor download with its Light/Standard/Fine detail choice; POI search; the elevation ribbon with Naismith estimates; onboarding; reporting with its offline outbox; closures as barrier tape along the closed miles, with a header banner for the one being walked into; serious-warning pins, with a count of those on the route; settings. The backend covers reports, closures, moderation, hikes, preferences, wrong-way and profiles on FastAPI + SQLAlchemy with Supabase JWT auth.
 
-This line used to include **the wrong-way cue**, and it was wrong to. Every component in the list existed, which is presumably how it came to be written ([#232](https://github.com/OurHike/OurHike/issues/232)) — but a hiker on trail saw no closure, no warning pin and no wrong-way cue, because nothing mounted any of them and nothing fetched the data behind two of the three. The closures and the warning pins are real now. The wrong-way cue is still built and unmounted, deliberately: its thresholds are placeholders ([#93](https://github.com/OurHike/OurHike/issues/93)), and it is the only notification this app sends, so false alarms would spend the trust budget that single alert was designed around. The detail sheets came right too, each by a decision per field rather than a sync: the closure sheet's fields got real columns a maintainer can set (#245, closed 2026-08-08), and the serious-warning sheet was cut down to say only what the backend can stand behind (#292, closed 2026-08-13).
+This line used to include **the wrong-way cue**, and it was wrong to. Every component in the list existed, which is presumably how it came to be written ([#232](https://github.com/OurHike/OurHike/issues/232)) — but a hiker on trail saw no closure, no warning pin and no wrong-way cue, because nothing mounted any of them and nothing fetched the data behind two of the three. The closures and the warning pins are real now. The wrong-way cue never got there: its thresholds were never field-validated, and — found only later — its "wrong direction" detection mode was never actually implemented, since nothing in the client ever computed a GPS movement bearing; only the off-trail-by-distance mode existed. Rather than keep carrying unmounted, partially-implemented safety code, it has been removed, and `push.ts` — its sender, and the app's only one — goes with it: OurHike does not send push notifications ([#93](https://github.com/OurHike/OurHike/issues/93), [#308](https://github.com/OurHike/OurHike/issues/308)). The detail sheets came right too, each by a decision per field rather than a sync: the closure sheet's fields got real columns a maintainer can set (#245, closed 2026-08-08), and the serious-warning sheet was cut down to say only what the backend can stand behind (#292, closed 2026-08-13).
 
 Browsing stays account-free. Only the contribution paths need a live backend — see TECHNICAL_ARCHITECTURE.md's Backend section for why the line falls where it does.
 
-**Still open** (reconciled against the tracker 2026-08-17, #601 — the photo picker #89, unmapped POIs #90, ascent over-count #91 and published-artifact smoke test #94 on the previous version of this list are all done; #91's remaining half, validating the ascent threshold against published section figures, lives in [#133](https://github.com/OurHike/OurHike/issues/133)): [#93](https://github.com/OurHike/OurHike/issues/93) wrong-way thresholds are placeholders · [#105](https://github.com/OurHike/OurHike/issues/105) outdoor usability pass · [#133](https://github.com/OurHike/OurHike/issues/133) validate the ascent threshold. Verification gaps: [#92](https://github.com/OurHike/OurHike/issues/92) real OAuth · [#95](https://github.com/OurHike/OurHike/issues/95) real Postgres outside CI.
+**Still open** (reconciled against the tracker 2026-08-17, #601 — the photo picker #89, unmapped POIs #90, ascent over-count #91 and published-artifact smoke test #94 on the previous version of this list are all done; #91's remaining half, validating the ascent threshold against published section figures, lives in [#133](https://github.com/OurHike/OurHike/issues/133); #93's wrong-way thresholds closed with the feature's removal rather than with a validated number): [#105](https://github.com/OurHike/OurHike/issues/105) outdoor usability pass · [#133](https://github.com/OurHike/OurHike/issues/133) validate the ascent threshold. Verification gaps: [#92](https://github.com/OurHike/OurHike/issues/92) real OAuth · [#95](https://github.com/OurHike/OurHike/issues/95) real Postgres outside CI.
 
 Feature gating was listed in this phase originally; it is Post-MVP — [#110](https://github.com/OurHike/OurHike/issues/110).
 
@@ -106,7 +108,7 @@ Feature gating was listed in this phase originally; it is Post-MVP — [#110](ht
 Less a phase than a set of designs waiting for evidence. Two have a reason to be built early:
 
 - **Feature gating** ([#110](https://github.com/OurHike/OurHike/issues/110)) — recommended first, because every feature built afterwards gets real evidence instead of a guess.
-- **The dbt transform layer** ([#100](https://github.com/OurHike/OurHike/issues/100)) — timing-driven rather than sequence-driven. NYNJTC's own non-AT network is expected on a near-term timeline, and this is what makes onboarding it "new rows and new staging models" rather than a second parallel pipeline. Distinct from the soft launch in Phase 4, which is NYNJTC members using the AT app. [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) is where the rows come from once the organization supplying them isn't ATC.
+- **The dbt transform layer** ([#100](https://github.com/OurHike/OurHike/issues/100)) — timing-driven rather than sequence-driven. NYNJTC's own non-AT network is expected on a near-term timeline, and this is what makes onboarding it "new rows and new staging models" rather than a second parallel pipeline. Distinct from the soft launch in Phase 4, which is NYNJTC members using OurHike — a sentence that read "the AT app" until 2026-08-27, by which point NYNJTC's own Long Path and Highlands Trail were among the lines it draws. [SOURCE_REGISTRY.md](features/SOURCE_REGISTRY.md) is where the rows come from once the organization supplying them isn't ATC.
 
 Everything else — trail magic, multi-club tooling, weather, segments, trip planning, community building, data nudges, water reliability prediction, land ownership, personalised pace, data portability — stays described in [FEATURES.md](FEATURES.md) and [features/](features/) rather than filed as tasks. It is intended state, not open work, and filing thirty vague epics would leave the tracker exactly as trustworthy as the checklists this document used to carry.
 
@@ -228,9 +230,22 @@ tap (switching stays in the picker), safety POIs that ignore the choice, the clo
 treatment reused for long-term-closed trails, the route owner's line wherever two orgs
 draw the same trail, and a governed extension of the blaze palette (the Long Path's aqua
 is real paint). What "the org" means on a jointly-owned route is
-[#780](https://github.com/OurHike/OurHike/issues/780)'s research. The licence posture is
-the project's standing one: the maintainer is talking to OPRHP and NYNJTC directly, and
-until an answer is recorded in `sources.json`, everything here is fetch-and-review only.
+[#780](https://github.com/OurHike/OurHike/issues/780)'s research.
+
+**Where the licence posture actually stands, 2026-08-25** — the sentence here used to say
+"fetch-and-review only, nothing publishes to hikers", and that stopped being true on
+2026-08-24. OPRHP's terms turned out to be stated all along (a truncated read had hidden
+them); NYNJTC's, Mohonk Preserve's and now NYS DEC's are genuinely unstated, and those
+three ship on the maintainer's authorisation recorded in `sources.json` — the same footing
+ATC's own data uses. Every ask is still open, and DEC's is the live one
+([#1019](https://github.com/OurHike/OurHike/issues/1019)).
+
+**And there is no ring.** The survey drew one as a proposal with two edges left to the
+maintainer; the maintainer removed the whole thing on 2026-08-25 — *"Include all of DEC,
+NYNJTC & NYSP. Don't limit data from orgs based on geography"* — so what ships is every
+line those organizations publish, statewide, and DEC (the Catskills, and the Adirondacks
+with them) is registered rather than absent. The map went from 4,002 trail lines to 21,805
+that day.
 
 ## v2 — the same account on two devices
 
@@ -261,6 +276,49 @@ letting the later write silently eat a fortnight of planning. Private photo sync
 and never touches the store shared photos live in — sharing grants a licence that cannot be
 taken back, and syncing grants nothing.
 
+## v2 — offline coverage in pieces
+
+**Scoped 2026-08-25 as v2's tenth feature, by a maintainer decision on the tracker rather
+than a doc: [features/OFFLINE_COVERAGE.md](features/OFFLINE_COVERAGE.md), tracked as
+[#551](https://github.com/OurHike/OurHike/issues/551) — *v2: offline coverage in pieces —
+stop asking for a gigabyte at once*.** Every feature above puts something new on a hiker's
+phone. This is the one about what the phone can hold.
+
+The hiking sheet is offered whole or not at all: measured on the published bucket
+2026-08-28, **Light 257.7 MB, Standard 458.4 MB, Fine 809.5 MB**, each of them one
+basemap object plus one DEM covering Georgia to Maine. A hiker walking a week in Virginia
+takes Maine with them or takes nothing, and
+[#547](https://github.com/OurHike/OurHike/issues/547) made a phone that cannot hold the
+biggest rung say so honestly rather than making the rung obtainable. The other half —
+**taking less than the whole trail** — exists since #557/#558 as the stretch under the hike
+a hiker has already set, for the basemap: derived from two numbers they gave, never picked
+off a list, priced against the pieces not yet held, with a dashed line on the map where it
+ends. Named pieces, the terrain in cells, and cells at more than one detail level are the
+part still to come.
+
+**The unit is a 1°×1° cell, gathered into a named piece** — scoped by org, and by state for
+something as long as the A.T. A hiker taps *Virginia* or *Harriman*; the app fetches the
+cells underneath. Two layers, and keeping them apart is the whole of it: the cell is what
+gets built, versioned, downloaded and resumed, and nobody ever sees one. Trail-derived
+stretches lost because they cannot describe two orgs' trails in one scheme, and
+[#768](https://github.com/OurHike/OurHike/issues/768) has already put two on the same map.
+
+Three things it turned up that are worth knowing even if the build slips:
+
+- **The grid already exists and is already shared.** `pipeline/lib/corridor_grid.py`'s
+  `CELL_DEGREES = 1.0` grids the corridor into the same 51 cells the raster build fans out
+  over, factored out precisely so two callers can never disagree about a boundary.
+- **Context zooms are where this could defeat itself.** Every package ships its source tiles
+  through z9 as orientation, 6.3 MB duplicated by construction — which at 51 cells would be
+  ~321 MB of the same bytes, spent on duplication, to solve a problem about size. Context is
+  one shared artifact, and the cut #556 built already solved it.
+- **A seam takes away the ground, never the hazard.** Water, closures and warnings ship with
+  the trail wherever the hiker is; only the basemap and terrain are piece-scoped. Two docs
+  disagreed about this and neither had noticed.
+
+**One tap still means the trail**, and that is the sentence protecting everything
+WIREFRAMES.md Known Deviations #1 was right about when it retired the per-section list.
+
 ## v2 — knowing whether any of it works
 
 **Scoped 2026-08-09: [features/EVENTING.md](features/EVENTING.md).** Not a fifth feature — the thing the other four are measured with. v1 records nothing at all, which was the right call for a launch and is not a position that survives a second release: four v2 features are about to be built against guesses, and [FEATURE_GATING.md](features/FEATURE_GATING.md) has been recommended as the first post-launch work precisely so that stops being true.
@@ -274,3 +332,77 @@ Three things it settled that reach beyond it:
 - **A/B tests at club scale can find big effects and cannot find small ones** — ~260 devices per arm to detect 20%→30%, ~25,600 to detect a 5% relative lift. So staged rollout watched against guardrails is the default and experiments are for genuine disagreements, and the aggregate shape that follows leaves GrowthBook's *analysis* half unused while its flagging half stands.
 
 It also states the thing this project has to keep saying to itself: an app committed to being used *less* cannot treat engagement as a goal, so every engagement number is read next to a task-success number or not at all.
+
+---
+
+## v3 — the sighting that leaves the app
+
+**Named here for the first time, 2026-08-28.** The `v3` label already existed and carried one
+issue — [#838](https://github.com/OurHike/OurHike/issues/838) — *v3: shipping anything takes
+thirty workflows and a maintainer who remembers all of them* — which is a scoping issue about
+the project's own machinery rather than about hikers. This is the first v3 entry that is a
+feature.
+
+**Scoped 2026-08-28 as v3's first feature: [features/INVASIVE_SPECIES.md](features/INVASIVE_SPECIES.md).**
+v1 answers *where am I*; v2 answers *where am I going* and *what can I give back*. This
+answers a question none of them do: **what happens to a hiker's observation after the app has
+finished with it.** Every contribution OurHike currently accepts ends at a pin on OurHike's
+own map. This is the first feature that sends one out of the building.
+
+The occasion is that NYNJTC already runs the programme. Trained volunteers walk assigned
+two-mile trail sections recording a short list of target invasives, and the findings reach
+iNaturalist and iMapInvasives. `invasive_species` has been a real report type here since
+2026-07-30 — tile, outbox, backend model, moderation queue — and has never had anywhere to go.
+
+Four things the design settled that reach beyond it:
+
+- **Absence is data, and only one kind of reporter can produce it.** A trained surveyor who
+  walks a segment and finds no tree of heaven has established a negative; a passer-by's
+  silence establishes nothing. That single asymmetry is why the design keeps structured
+  surveys and opportunistic sightings apart all the way through rather than pouring both into
+  one bucket — which would make an unsurveyed mile indistinguishable from a clean one.
+- **The moderation permission model is one constant, and it does not subdivide.**
+  `MODERATOR_ROLES` deliberately couples "can act on the queue" with "can see who filed it" —
+  its own comment says a model that separates them "only looks like one" — and it gates
+  thirteen endpoints plus the `privileged` flag on reports and field notes. A fourth role
+  (`Role.invasives`, the maintainer's call on 2026-08-28) therefore cannot join it: an
+  invasives coordinator would inherit the closure queue, the photo queue, and `reporter_id` on
+  `bad_hikers` reports about people being followed. It gets its own gate, which makes it the
+  first *scoped* moderation role in the codebase — and surfaced that `profile.role` is
+  single-valued, so a club admin who also coordinates invasives would have had to pick one.
+  **`Role` becomes multi-valued as a result** (maintainer, 2026-08-28), chosen over the
+  two-role gate the doc proposed: a permission model that cannot express a true thing about
+  the organisation using it gets worked around, and the workaround is what stops being
+  visible.
+- **A third party's rules can be load-bearing on our design.** iNaturalist permits posting
+  somebody else's observation only with their permission, a description saying so, and a
+  submitter willing to field questions about it. That last clause is what rules out an
+  automated identification reaching a submitted field, and it is a stronger constraint than
+  anything OurHike would have imposed on itself.
+- **The most valuable half needs no write access at all.** iNaturalist's API is public for
+  reads, so once the community identifies an observation the app can tell the person who
+  reported it what they actually found — the only reward this repository's anti-gamification
+  guardrails permit, because it is a fact about a plant rather than a point.
+
+Like planning a hike and trails within reach of NYC, it starts with a question that cannot be
+answered from inside a session: whether NYNJTC's bottleneck is submitting to iNaturalist or
+transcribing paper field sheets. The two answers make different halves of the feature the one
+worth building first, and the doc says so rather than picking.
+
+**Its first phase turned out not to belong to it, which is worth knowing before anyone picks
+it up (2026-08-28).** Four decisions the design took — multi-valued roles, a role-granting
+mechanism, `RoleInvite`, and renaming the self-declared `ReporterType.maintainer` — are
+identity and permissions platform work with nothing invasive about them, and they are the four
+carrying migrations. The doc recommends splitting them out as **A0**, with invasive species as
+their first consumer rather than their owner, on the same argument that made
+[POI_IDENTITY.md](features/POI_IDENTITY.md) and
+[POI_DEDUPLICATION.md](features/POI_DEDUPLICATION.md) *"platform, not a screen"*. It also
+unblocks differently: everything else in the feature waits on the NYNJTC question, and A0
+waits on nothing.
+
+*Two of the doc's eight open questions closed on research the same day. **iMapInvasives is not
+a second export target** — it runs a New York project on iNaturalist and ingests from there
+after its own QC, so the state database is reached through iNat rather than alongside it. And
+the **iNaturalist App ID gate is real**: registering an OAuth application needs an account two
+months old with ten improving identifications in the last month, which gates a person rather
+than the project, and which the CSV path avoids entirely.*

@@ -19,6 +19,7 @@ const FULL: LineDetail = {
   extentLine: null,
   closureLine: null,
   switchNote: null,
+  trailMark: null,
 }
 
 /** A nearby trail: somebody else's network, with the three lines an A.T. spur
@@ -34,6 +35,7 @@ const NEARBY: LineDetail = {
   extentLine: '24.0 mi · Harriman State Park',
   closureLine: null,
   switchNote: 'Not the trail you chose. Switching happens in the picker.',
+  trailMark: null,
 }
 
 afterEach(cleanup)
@@ -65,6 +67,7 @@ describe('the line-detail sheet', () => {
           extentLine: null,
           closureLine: null,
           switchNote: null,
+          trailMark: null,
         }}
         onClose={vi.fn()}
       />,
@@ -125,5 +128,77 @@ describe('the line-detail sheet', () => {
     screen.getByRole('button', { name: /close/i }).click()
 
     expect(onClose).toHaveBeenCalled()
+  })
+})
+
+describe('adding a point to a day hike (#979)', () => {
+  it('offers nothing when the shell did not pass a handler', () => {
+    // This sheet's own rule, and the one five other modules cite by name: a
+    // sentence, never a dead button. The shell knows whether the router could
+    // use the tap; the sheet does not guess.
+    render(<LineSheet detail={FULL} onClose={vi.fn()} />)
+
+    expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
+  })
+
+  it('offers the action when it can genuinely be taken', () => {
+    const onAdd = vi.fn()
+    render(<LineSheet detail={FULL} onClose={vi.fn()} onAddToDayHike={onAdd} />)
+
+    screen.getByRole('button', { name: /Add this point to a day hike/ }).click()
+    expect(onAdd).toHaveBeenCalledTimes(1)
+  })
+
+  it('says POINT rather than trail, because that is what it adds', () => {
+    // The draft cannot express a whole named trail: two endpoints plus a
+    // shortest path is not the trail, and on a network the shortest way
+    // between a trail's ends frequently leaves it. The copy does not promise
+    // what the model cannot do.
+    render(<LineSheet detail={FULL} onClose={vi.fn()} onAddToDayHike={vi.fn()} />)
+
+    const label = screen.getByRole('button', { name: /day hike/i }).textContent ?? ''
+    expect(label).toContain('point')
+    expect(label).not.toMatch(/add this trail/i)
+  })
+
+  it('never offers it over a trail marked closed', () => {
+    // The closure line sits directly above this button. Offering a hiker a
+    // walk down a trail the router will then decline to route is the app
+    // promising with one sentence what it refuses with the next - worse than
+    // offering nothing.
+    render(
+      <LineSheet
+        detail={{ ...FULL, closureLine: 'Closed by NYS OPRHP' }}
+        onClose={vi.fn()}
+        onAddToDayHike={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Closed by NYS OPRHP')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /day hike/i })).not.toBeInTheDocument()
+  })
+})
+
+describe('the trail mark', () => {
+  it('draws the mark beside the name where the detail carries one, decoratively', () => {
+    const { container } = render(
+      <LineSheet
+        detail={{ ...NEARBY, name: 'Long Path', trailMark: 'blob:lp-logo' }}
+        onClose={() => {}}
+      />,
+    )
+    const mark = container.querySelector('img.line-sheet__trail-mark')
+    expect(mark).not.toBeNull()
+    expect(mark?.getAttribute('src')).toBe('blob:lp-logo')
+    // The name is the words; the mark is the same fact drawn, so a screen
+    // reader hears it once.
+    expect(mark?.getAttribute('alt')).toBe('')
+    expect(mark?.getAttribute('aria-hidden')).toBe('true')
+    expect(screen.getByText('Long Path')).toBeInTheDocument()
+  })
+
+  it('draws no mark at all - not a placeholder - where the detail has none', () => {
+    const { container } = render(<LineSheet detail={NEARBY} onClose={() => {}} />)
+    expect(container.querySelector('img')).toBeNull()
   })
 })

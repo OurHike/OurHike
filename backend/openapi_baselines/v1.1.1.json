@@ -1,0 +1,5561 @@
+{
+  "components": {
+    "schemas": {
+      "AppFailureAck": {
+        "description": "What comes back: that it landed, and nothing else.\n\nDeliberately not the stored row. There is nothing here the sender does\nnot already have, and a response that echoed `contact` back would be\nthis table's first opportunity to serve a contact detail to a caller -\nthe thing app/models/app_failure.py's docstring exists to keep\nunavailable.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "received_at"
+        ],
+        "title": "AppFailureAck",
+        "type": "object"
+      },
+      "AppFailureCreate": {
+        "description": "What the client sends.\n\nNo `reporter_id`, no `received_at`, no `answered_at` - all server-owned,\nand silently ignored if a client sends them (pydantic's default).",
+        "properties": {
+          "authored_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authored At"
+          },
+          "build": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact"
+          },
+          "harms": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Harm"
+            },
+            "title": "Harms",
+            "type": "array"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "was_offline": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Was Offline"
+          },
+          "what_happened": {
+            "title": "What Happened",
+            "type": "string"
+          },
+          "whereabouts": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Whereabouts"
+          }
+        },
+        "required": [
+          "what_happened"
+        ],
+        "title": "AppFailureCreate",
+        "type": "object"
+      },
+      "BackgroundSource": {
+        "description": "Mirrors client/src/lib/userPreferences.ts `BACKGROUND_SOURCES`\nexactly - both values are implemented backgrounds, so a value that\nnothing can render is also a value that nothing can sync.\n\nTwo names this enum used to carry, `usgs_topo_live` and\n`osm_styled_live`, were removed rather than kept as aliases: neither\nwas ever built, and accepting a value no client can render would mean\nstoring a preference that comes back as a map with no background on\nit. A phone that still has one saved drops it on read (see that\nmodule's `loadPreferences`) and syncs the default instead, so the 422\nthis now produces is only reachable by a client that skipped that\npath.\n\nRows in `user_preferences` were written while those names were valid,\nthough, and a stored blob is not a client that can be asked to re-sync\nfirst - GET /preferences/me reads it straight into PreferencesOut. So\nthe read side repairs rather than trusts, the same move\n`loadPreferences` makes: see `repair_stored_background`.",
+        "enum": [
+          "hiking_topo_live",
+          "usgs_topo_offline"
+        ],
+        "title": "BackgroundSource",
+        "type": "string"
+      },
+      "ClosureCreate": {
+        "description": "The client-submitted shape of a new closure report.\n\nNo `moderation_status`, `verified_by`, or `verified_at` - all\nserver-assigned, matching ReportCreate's \"server-controlled fields have\nno field at all\" pattern (see app/schemas/report.py).",
+        "properties": {
+          "end_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Lat"
+          },
+          "end_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Lon"
+          },
+          "end_mile_marker": {
+            "title": "End Mile Marker",
+            "type": "number"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason_type": {
+            "$ref": "#/components/schemas/ReasonType"
+          },
+          "reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported At"
+          },
+          "start_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Lat"
+          },
+          "start_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Lon"
+          },
+          "start_mile_marker": {
+            "title": "Start Mile Marker",
+            "type": "number"
+          }
+        },
+        "required": [
+          "reason_type",
+          "start_mile_marker",
+          "end_mile_marker"
+        ],
+        "title": "ClosureCreate",
+        "type": "object"
+      },
+      "ClosureModerationOut": {
+        "description": "`ClosureOut` plus the audit trail - for moderators only.\n\n`ClosureOut`'s docstring promises its withheld identity fields \"only\nstop being handed to anonymous HTTP callers\", and until #658 that was\nfalse: the moderation queue and the verify/dismiss actions answered\nwith plain `ClosureOut` too, so the one audience the audit trail exists\nfor could not see it. Reports never had this gap - `ReportOut.for_viewer`\nhands a moderator the whole record - and this is closures catching up.\n\nOnly ever returned from `MODERATOR_ROLES`-gated endpoints; the public\n`/closures` list keeps answering with `ClosureOut`.",
+        "properties": {
+          "closed_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Since"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "dismissed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed By"
+          },
+          "end_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Lat"
+          },
+          "end_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Lon"
+          },
+          "end_mile_marker": {
+            "title": "End Mile Marker",
+            "type": "number"
+          },
+          "expected_reopen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Reopen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "moderation_status": {
+            "$ref": "#/components/schemas/ModerationStatus"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason_type": {
+            "$ref": "#/components/schemas/ReasonType"
+          },
+          "reported_at": {
+            "format": "date-time",
+            "title": "Reported At",
+            "type": "string"
+          },
+          "reported_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported By"
+          },
+          "reroute_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reroute Url"
+          },
+          "start_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Lat"
+          },
+          "start_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Lon"
+          },
+          "start_mile_marker": {
+            "title": "Start Mile Marker",
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClosureStatus"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "verified_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified By"
+          }
+        },
+        "required": [
+          "id",
+          "reported_at",
+          "trail_id",
+          "start_mile_marker",
+          "end_mile_marker",
+          "start_lat",
+          "start_lon",
+          "end_lat",
+          "end_lon",
+          "reason_type",
+          "note",
+          "status",
+          "moderation_status",
+          "verified_at",
+          "closed_since",
+          "expected_reopen",
+          "reroute_url",
+          "reported_by",
+          "verified_by",
+          "dismissed_by",
+          "dismissed_at"
+        ],
+        "title": "ClosureModerationOut",
+        "type": "object"
+      },
+      "ClosureOut": {
+        "description": "What `/closures` answers with.\n\n**`reported_by` and `verified_by` are deliberately absent (#430).** They\nare profile ids - which are Supabase auth user ids - and `GET /closures`\nneeds no account, so every one of them was readable by anybody. Joined\nacross closures they say which maintainer verifies which stretch of trail\nand how often, which is the fact `features/SAYING_THANKS.md` declines to\npublish without consent and the reason `maintainer_assignments` withholds\na display name behind `publicly_creditable` rather than filtering it\ndownstream.\n\nNothing read them. `ClosureSheet.tsx` used to render \"Marked by <name>\"\nfrom exactly these two and that field was deleted before this, on the\ngrounds that it was \"a fact about a person, and the app has not settled\nwhen it shows those\"; `ClosureDetail` has never carried either.\n\n**The columns stay.** This is the wire, not the record - `closures.py`\nstill stamps `reported_by` on create and `moderation.py` still stamps\n`verified_by` on verify, so the audit trail is intact in the database and\nonly stops being handed to anonymous HTTP callers. Since #658 that\nsentence is true rather than aspirational: the moderation surface\nanswers with `ClosureModerationOut` (schemas/moderation.py), which is\nthis shape plus the trail, for exactly the role-gated audience the\ntrail exists for.\n\nIf attribution is ever wanted on the closure sheet, the mechanism already\nexists and is not a new field here: `publicly_creditable` plus\n`display_name`, opt-in and revocable, as `routers/maintainer_assignments.py`\nalready does it.",
+        "properties": {
+          "closed_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Since"
+          },
+          "end_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Lat"
+          },
+          "end_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Lon"
+          },
+          "end_mile_marker": {
+            "title": "End Mile Marker",
+            "type": "number"
+          },
+          "expected_reopen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Reopen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "moderation_status": {
+            "$ref": "#/components/schemas/ModerationStatus"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason_type": {
+            "$ref": "#/components/schemas/ReasonType"
+          },
+          "reported_at": {
+            "format": "date-time",
+            "title": "Reported At",
+            "type": "string"
+          },
+          "reroute_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reroute Url"
+          },
+          "start_lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Lat"
+          },
+          "start_lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Lon"
+          },
+          "start_mile_marker": {
+            "title": "Start Mile Marker",
+            "type": "number"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClosureStatus"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "id",
+          "reported_at",
+          "trail_id",
+          "start_mile_marker",
+          "end_mile_marker",
+          "start_lat",
+          "start_lon",
+          "end_lat",
+          "end_lon",
+          "reason_type",
+          "note",
+          "status",
+          "moderation_status",
+          "verified_at",
+          "closed_since",
+          "expected_reopen",
+          "reroute_url"
+        ],
+        "title": "ClosureOut",
+        "type": "object"
+      },
+      "ClosureStatus": {
+        "enum": [
+          "open",
+          "closed",
+          "reroute_available"
+        ],
+        "title": "ClosureStatus",
+        "type": "string"
+      },
+      "ClosureUpdate": {
+        "description": "Fields a maintainer/club_admin can change via PATCH.\n\nAll optional so a caller can update just the piece that changed (e.g.\nonly `status`, without resending reason/note).\n\n**Omitted and explicitly null mean different things** (#245 established\nit for the three detail fields; #255 made it the convention for every\nnullable field here). A field's value legitimately goes back to unknown:\na reopening date slips or is withdrawn, a club takes its reroute notice\ndown, a stale note is cleared rather than overwritten. With `None` read\nas \"absent\" there would be no way to express any of that. So the router\nconsults `model_fields_set`, and `{\"note\": null}` clears while `{}`\nleaves it alone.\n\n`status` and `reason_type` are `nullable=False`, so there is no null\nstate for an explicit null to mean - it is a 422 naming the field, per\nthe shared convention in app/schemas/partial.py (#255). Before that it\nwas silently dropped, which read as success and did nothing.",
+        "properties": {
+          "closed_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Since"
+          },
+          "expected_reopen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Reopen"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReasonType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reroute_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reroute Url"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClosureStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ClosureUpdate",
+        "type": "object"
+      },
+      "ClosureVerify": {
+        "description": "What a moderator may settle in the same breath as verifying.\n\nOptional, and the endpoint accepts no body at all - because for the\nordinary closure there is nothing to settle. A closure is born `closed`\n(#246), so \"yes, this is real\" needs no second thought about status.\n\nThe case this exists for is the reroute. A moderator who has confirmed\nboth that the trail is shut AND that there is a marked way round is\nmaking one judgment, and without this they would have to follow the\nverify with a separate `PATCH /closures/{id}` that nothing in the flow\ntells them about - which is the same trap #246 was, one size smaller.\n\n`reason_type` and `note` are deliberately NOT here. Correcting what a\nreporter wrote is editing their report, not verifying it, and PATCH is\nwhere that belongs.",
+        "properties": {
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClosureStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ClosureVerify",
+        "type": "object"
+      },
+      "DayHikeOut": {
+        "description": "One day hike as the server holds it now.",
+        "properties": {
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "document",
+          "updated_at",
+          "deleted_at"
+        ],
+        "title": "DayHikeOut",
+        "type": "object"
+      },
+      "DayHikeSyncIn": {
+        "additionalProperties": false,
+        "description": "A device's whole side of the exchange.",
+        "properties": {
+          "day_hikes": {
+            "items": {
+              "$ref": "#/components/schemas/DayHikeUpload"
+            },
+            "maxItems": 500,
+            "title": "Day Hikes",
+            "type": "array"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          }
+        },
+        "title": "DayHikeSyncIn",
+        "type": "object"
+      },
+      "DayHikeSyncOut": {
+        "description": "Everything that changed elsewhere, plus the next watermark.\n\n`now` is taken after the uploads have landed, so a row written by a third\ndevice in between comes back on the NEXT sync rather than being skipped -\na watermark that could skip a row is a watermark that silently loses a\nday hike.",
+        "properties": {
+          "conflicts": {
+            "title": "Conflicts",
+            "type": "integer"
+          },
+          "day_hikes": {
+            "items": {
+              "$ref": "#/components/schemas/DayHikeOut"
+            },
+            "title": "Day Hikes",
+            "type": "array"
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          }
+        },
+        "required": [
+          "now",
+          "day_hikes",
+          "conflicts"
+        ],
+        "title": "DayHikeSyncOut",
+        "type": "object"
+      },
+      "DayHikeUpload": {
+        "additionalProperties": false,
+        "description": "One day hike a device is offering.",
+        "properties": {
+          "base_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Updated At"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "DayHikeUpload",
+        "type": "object"
+      },
+      "DeletionReceipt": {
+        "description": "What `DELETE /profiles/me` actually did, counted.\n\nTwo halves and they are not the same claim. The `*_deleted` counts are\nrows that no longer exist. `kept` is the half a hiker is more likely to\nbe surprised by: the contributions that outlive the account, keyed by\nthe words the deletion screen used for them so the receipt and the\nwarning cannot drift into describing different things.\n\n`kept` omits its zeroes rather than listing them - \"closures you\nreported: 0\" is noise on the receipt of somebody who never reported one,\nand an empty object is the readable way to say \"nothing of yours stayed\".",
+        "properties": {
+          "app_failure_reports_unlinked": {
+            "title": "App Failure Reports Unlinked",
+            "type": "integer"
+          },
+          "assignments_released": {
+            "title": "Assignments Released",
+            "type": "integer"
+          },
+          "day_hikes_deleted": {
+            "title": "Day Hikes Deleted",
+            "type": "integer"
+          },
+          "hikes_deleted": {
+            "title": "Hikes Deleted",
+            "type": "integer"
+          },
+          "hours_deleted": {
+            "title": "Hours Deleted",
+            "type": "integer"
+          },
+          "kept": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Kept",
+            "type": "object"
+          },
+          "planned_hikes_deleted": {
+            "title": "Planned Hikes Deleted",
+            "type": "integer"
+          },
+          "preferences_deleted": {
+            "title": "Preferences Deleted",
+            "type": "integer"
+          },
+          "trips_deleted": {
+            "title": "Trips Deleted",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "trips_deleted",
+          "day_hikes_deleted",
+          "planned_hikes_deleted",
+          "hikes_deleted",
+          "preferences_deleted",
+          "assignments_released",
+          "hours_deleted",
+          "app_failure_reports_unlinked",
+          "kept"
+        ],
+        "title": "DeletionReceipt",
+        "type": "object"
+      },
+      "DisputeOut": {
+        "description": "One place, reported missing.",
+        "properties": {
+          "accounts": {
+            "title": "Accounts",
+            "type": "integer"
+          },
+          "latest_at": {
+            "format": "date-time",
+            "title": "Latest At",
+            "type": "string"
+          },
+          "maintainer_said": {
+            "title": "Maintainer Said",
+            "type": "boolean"
+          },
+          "poi_id": {
+            "title": "Poi Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "poi_id",
+          "accounts",
+          "latest_at",
+          "maintainer_said"
+        ],
+        "title": "DisputeOut",
+        "type": "object"
+      },
+      "FieldNoteCreate": {
+        "description": "The client-submitted shape of a new field note.\n\nThe same three sanctioned client claims `ReportCreate` documents, for\nthe same offline-first reasons: `id` is an idempotency key (the outbox\nmints one per item, so a resend is recognisably the same note),\n`observed_at` is the moment of writing rather than of sending (bounded\nat the future end, deliberately unbounded into the past), and `mile` is\nknowable on the phone and nowhere else. `posted_at`, `reporter_id` and\nthe hidden pair are all server-assigned and have no fields here.\n\nA note with only a tag is fine, and a note with only text is fine\n(FIELD_NOTES.md \u00a71) - but a note with neither says nothing to the next\nhiker and is refused as the empty submission it is.",
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mile"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "photo_flagged": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nudity",
+                  "faces"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Flagged"
+          },
+          "poi_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poi Id"
+          },
+          "reporter_type": {
+            "$ref": "#/components/schemas/ReporterType"
+          }
+        },
+        "required": [
+          "reporter_type"
+        ],
+        "title": "FieldNoteCreate",
+        "type": "object"
+      },
+      "FieldNoteOut": {
+        "description": "One note, as much of it as the caller is entitled to.\n\nBuilt with `for_viewer`, never by returning the ORM row - ReportOut's\nposture, kept for the same reason. Two fields are withheld from anyone\nwho is neither the author nor a moderator, and the second matters more\nhere than on reports: many dated notes along a corridor from one\nidentifier reconstruct a hike (FIELD_NOTES.md \u00a76, and #252 for what\nremoving that pair from reports cost). `reporter_type` is the public\nattribution by design - it informs without identifying.\n\n`hidden_at` is deliberately absent even for moderators: the moderation\nsurface has its own shape below, and the public one must not grow a\nfield whose null means \"not for you\" on one row and \"not hidden\" on\nanother.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mile"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Observation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "photo_held": {
+            "default": false,
+            "title": "Photo Held",
+            "type": "boolean"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "poi_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poi Id"
+          },
+          "posted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted At"
+          },
+          "reporter_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reporter Id"
+          },
+          "reporter_type": {
+            "$ref": "#/components/schemas/ReporterType"
+          }
+        },
+        "required": [
+          "id",
+          "poi_id",
+          "lat",
+          "lon",
+          "mile",
+          "observation",
+          "note",
+          "observed_at",
+          "reporter_type"
+        ],
+        "title": "FieldNoteOut",
+        "type": "object"
+      },
+      "FlaggedNoteOut": {
+        "description": "One queue entry for the moderation surface: the note, how many people\nflagged it, what they said, and whether it is currently hidden.\n\nModerator-only by construction (the router gates the endpoint), so the\nnote rides along whole - including `reporter_id`, which the queue needs\nfor exactly the reason reports' queue gets it: a pattern of abuse is a\npattern across one account's notes.",
+        "properties": {
+          "flag_count": {
+            "title": "Flag Count",
+            "type": "integer"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "note": {
+            "$ref": "#/components/schemas/FieldNoteOut"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "note",
+          "flag_count",
+          "reasons",
+          "hidden"
+        ],
+        "title": "FlaggedNoteOut",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Harm": {
+        "description": "The four ways ../../../CLAUDE.md says this app can hurt somebody.\n\nWritten down as a vocabulary rather than left to free text because it is\nthe only part of this report a maintainer can sort a morning's inbox by.\nThe words are CLAUDE.md's, narrowed to one token each: \"Lost, out of\nwater, in front of something dangerous, or unable to get off the trail\nquickly.\"\n\nStored as a JSON list on the row rather than as one column each, because\nthey arrive together, are read together, and nothing filters on a single\none - the same reasoning app/models/preferences.py gives for its own\nJSON column.\n\n**A report naming none of these is ordinary, not incomplete.** The form\nasks; it does not require. Somebody who writes \"the map went blank at\nthe Fontana ford\" and ticks nothing has told us the important half.",
+        "enum": [
+          "lost",
+          "water",
+          "hazard",
+          "stranded"
+        ],
+        "title": "Harm",
+        "type": "string"
+      },
+      "HikeCreate": {
+        "properties": {
+          "overall_end_reference": {
+            "title": "Overall End Reference",
+            "type": "number"
+          },
+          "overall_start_reference": {
+            "title": "Overall Start Reference",
+            "type": "number"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "trail_id": {
+            "default": "AT",
+            "title": "Trail Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "overall_start_reference",
+          "overall_end_reference"
+        ],
+        "title": "HikeCreate",
+        "type": "object"
+      },
+      "HikeDirectionOut": {
+        "properties": {
+          "direction": {
+            "title": "Direction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "direction"
+        ],
+        "title": "HikeDirectionOut",
+        "type": "object"
+      },
+      "HikeOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "overall_end_reference": {
+            "title": "Overall End Reference",
+            "type": "number"
+          },
+          "overall_start_reference": {
+            "title": "Overall Start Reference",
+            "type": "number"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "trail_id": {
+            "title": "Trail Id",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "trail_id",
+          "overall_start_reference",
+          "overall_end_reference",
+          "planned_start_date",
+          "created_at"
+        ],
+        "title": "HikeOut",
+        "type": "object"
+      },
+      "HikeUpdate": {
+        "description": "All fields optional - a PATCH only changes what it includes.\n\n`exclude_unset=True` at the call site (app/routers/hikes.py) is what\nmakes \"included but null\" and \"omitted entirely\" behave differently,\nsame as any partial-update schema.\n\nThe three fields backed by `nullable=False` columns (app/models/hike.py)\nreject an explicit null as a 422 rather than letting it through to die as\nan IntegrityError 500 (#255). `planned_start_date` is the nullable one,\nso `{\"planned_start_date\": null}` is a deliberate clear and works.",
+        "properties": {
+          "overall_end_reference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall End Reference"
+          },
+          "overall_start_reference": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Start Reference"
+          },
+          "planned_start_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planned Start Date"
+          },
+          "trail_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trail Id"
+          }
+        },
+        "title": "HikeUpdate",
+        "type": "object"
+      },
+      "HikingDetailLevel": {
+        "description": "The hiking sheet's download level (#276) - which basemap cut the\ndefault background fetches: the z13 Standard package or the full z14\nFine one. Mirrors client/src/lib/userPreferences.ts\n`HIKING_DETAIL_LEVELS` exactly, like every enum in this module.\n\nDefaulted, unlike `max_background_zoom`, because Standard has a\ndocumented recommendation behind it: it is the level a hiker who never\nmade the choice should get - the sheet that fits the storage envelope -\nand it is what pre-#276 blobs, which have no such key, must read back\nas.",
+        "enum": [
+          "standard",
+          "fine"
+        ],
+        "title": "HikingDetailLevel",
+        "type": "string"
+      },
+      "HoursActivity": {
+        "enum": [
+          "maintenance",
+          "cleanup",
+          "monitoring",
+          "education",
+          "admin",
+          "other"
+        ],
+        "title": "HoursActivity",
+        "type": "string"
+      },
+      "HoursState": {
+        "enum": [
+          "claimed",
+          "confirmed",
+          "disputed"
+        ],
+        "title": "HoursState",
+        "type": "string"
+      },
+      "LayerDetailLevel": {
+        "enum": [
+          "minimal",
+          "standard",
+          "full"
+        ],
+        "title": "LayerDetailLevel",
+        "type": "string"
+      },
+      "MaintainerAssignmentOut": {
+        "properties": {
+          "club_id": {
+            "title": "Club Id",
+            "type": "string"
+          },
+          "club_name": {
+            "title": "Club Name",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "effective_from": {
+            "format": "date",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "effective_to": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective To"
+          },
+          "end_mile": {
+            "title": "End Mile",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "start_mile": {
+            "title": "Start Mile",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "club_id",
+          "club_name",
+          "display_name",
+          "start_mile",
+          "end_mile",
+          "effective_from",
+          "effective_to"
+        ],
+        "title": "MaintainerAssignmentOut",
+        "type": "object"
+      },
+      "MapStyle": {
+        "description": "Which of the live sheet's palettes the map is drawn in\n(MAP_STYLE_SPEC.md). Mirrors client/src/lib/userPreferences.ts\n`MAP_STYLE_VALUES` exactly, like every enum in this module - all five\nvalues are implemented palettes (map/liveTopo.ts's SHEET_VARIANTS), so a\nvalue nothing can render is also a value nothing can sync.",
+        "enum": [
+          "quiet_pine",
+          "field",
+          "night_hike",
+          "parchment",
+          "ridgeline"
+        ],
+        "title": "MapStyle",
+        "type": "string"
+      },
+      "MaxBackgroundZoom": {
+        "description": "One of 11 | 12 | 13 - not an arbitrary int, per\nIDENTITY_AND_PRIVACY.md.",
+        "enum": [
+          11,
+          12,
+          13
+        ],
+        "title": "MaxBackgroundZoom",
+        "type": "integer"
+      },
+      "ModerationQueue": {
+        "description": "Everything awaiting a moderator, in one response.\n\nOne combined object rather than a `pending=true` flag on each public\nlist, because this is one queue: REPORT_A_PROBLEM.md has closures and\nwarning escalation reusing \"this exact moderation-queue mechanism...\nnot building a second review workflow\", and MAP_OPTIONS.md says the same\nfrom the closures side. Two shapes come back because a closure really is\na different shape - a line along the trail, not a pin - which is a fact\nabout the data, not a reason to make a moderator ask twice.\n\nReusing `ReportOut`/`ClosureOut` rather than defining leaner queue rows:\na moderator deciding whether a bear sighting is real needs the note, the\nlocation, the reporter type and the authored time, which is very nearly\nthe whole record already.",
+        "properties": {
+          "closures": {
+            "items": {
+              "$ref": "#/components/schemas/ClosureModerationOut"
+            },
+            "title": "Closures",
+            "type": "array"
+          },
+          "reports": {
+            "items": {
+              "$ref": "#/components/schemas/ReportOut"
+            },
+            "title": "Reports",
+            "type": "array"
+          }
+        },
+        "required": [
+          "reports",
+          "closures"
+        ],
+        "title": "ModerationQueue",
+        "type": "object"
+      },
+      "ModerationStatus": {
+        "enum": [
+          "submitted",
+          "verified",
+          "dismissed"
+        ],
+        "title": "ModerationStatus",
+        "type": "string"
+      },
+      "NoteFlagCreate": {
+        "description": "A reader asking for a moderator's eyes. The reason is optional -\n\"this is wrong\" with no essay is a complete flag.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "NoteFlagCreate",
+        "type": "object"
+      },
+      "Observation": {
+        "description": "The one-tap tags, all POI types' values in one enum.\n\nFIELD_NOTES.md scopes them by poi_type - water gets flowing/trickling/\ndry, shelters and campsites fine/damaged/full, resupply open/limited/\nclosed, and `not_found` is the dispute value every type shares. They\nlive in ONE enum because this backend cannot police the pairing: a POI's\ntype is a fact of the published artifact, not of any table here, so a\nper-type check would need data the server does not hold. The client's\npicker only offers the right values; a hand-built request that files\n\"dry\" on a shelter produces a nonsense note the next hiker's note\nsupersedes, which is the same self-correction the whole surface leans on.\n\n`not_found` is deliberately accepted at the wire even though tonight's\nclient never sends it: it is FIELD_NOTES.md \u00a74's dispute value, one\nobservation among the others rather than a second model, and refusing it\nhere would force a schema change the moment the dispute rendering lands.",
+        "enum": [
+          "flowing",
+          "trickling",
+          "dry",
+          "fine",
+          "damaged",
+          "full",
+          "open",
+          "limited",
+          "closed",
+          "not_found"
+        ],
+        "title": "Observation",
+        "type": "string"
+      },
+      "PlannedHikeOut": {
+        "properties": {
+          "end_mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Mile"
+          },
+          "start_mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Mile"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start_mile",
+          "end_mile",
+          "updated_at"
+        ],
+        "title": "PlannedHikeOut",
+        "type": "object"
+      },
+      "PlannedHikeSync": {
+        "additionalProperties": false,
+        "description": "The two numbers, with the stamp that orders them.\n\nBoth miles null is the hiker having CLEARED their planned hike - a\ndecision with a date on it. The whole object being null is a device\nsaying nothing about it, which is a different claim and is why this is\nnullable at the envelope rather than defaulted here.",
+        "properties": {
+          "base_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Updated At"
+          },
+          "end_mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Mile"
+          },
+          "start_mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Mile"
+          }
+        },
+        "title": "PlannedHikeSync",
+        "type": "object"
+      },
+      "PoiPhotoModerationOut": {
+        "description": "A queue row: the public shape plus what a moderator's decision needs.\n\nThe trail name stays masked here exactly as it is on the card - the\nqueue mockup shows the withheld state to the moderator rather than the\nname, and a moderator judges the photograph, not the photographer. What\nis added is the machinery: when it was offered, what the phone flagged,\nwhether it is held from the gallery, and what a hiker reported.",
+        "properties": {
+          "attribution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
+          },
+          "flagged": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flagged"
+          },
+          "held": {
+            "title": "Held",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "masked_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Masked Until"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "poi_id": {
+            "title": "Poi Id",
+            "type": "string"
+          },
+          "reported_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported At"
+          },
+          "reported_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Reason"
+          },
+          "shared_at": {
+            "format": "date-time",
+            "title": "Shared At",
+            "type": "string"
+          },
+          "taken_month": {
+            "title": "Taken Month",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "poi_id",
+          "url",
+          "taken_month",
+          "attribution",
+          "license",
+          "pinned",
+          "shared_at",
+          "masked_until",
+          "flagged",
+          "held",
+          "reported_reason",
+          "reported_at"
+        ],
+        "title": "PoiPhotoModerationOut",
+        "type": "object"
+      },
+      "PoiPhotoOut": {
+        "description": "One gallery entry, as the card renders it.",
+        "properties": {
+          "attribution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attribution"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "license": {
+            "title": "License",
+            "type": "string"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "poi_id": {
+            "title": "Poi Id",
+            "type": "string"
+          },
+          "taken_month": {
+            "title": "Taken Month",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "poi_id",
+          "url",
+          "taken_month",
+          "attribution",
+          "license",
+          "pinned"
+        ],
+        "title": "PoiPhotoOut",
+        "type": "object"
+      },
+      "PoiPhotoReport": {
+        "description": "Why a hiker reported a photo (#579's report-this-photo path).\n\nThree reasons, from the report sheet: it is not this place; somebody in\nit did not agree to this ('person' - sorts to the top of the queue); it\nshould not be public for any other reason.",
+        "properties": {
+          "reason": {
+            "enum": [
+              "wrong_place",
+              "person",
+              "other"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "PoiPhotoReport",
+        "type": "object"
+      },
+      "PoiPhotoShare": {
+        "description": "What a share carries besides the bytes: the capture-date claim, and\nwhat the on-device check found.\n\nNothing else is the client's to say. Attribution comes from the\nsharer's profile, the licence from the design, the timestamps from the\nserver - a share that could name its own attribution would be a share\nsheet able to sign someone else's name.\n\n`flagged` is the phone's own claim about its own photo (#837), and it\ncan only make things MORE reviewed, never less: 'faces' sorts the queue,\n'nudity' holds the photo for one human glance. A client lying \"nothing\nfound\" gets exactly the report-driven posture every photo has anyway.",
+        "properties": {
+          "flagged": {
+            "anyOf": [
+              {
+                "enum": [
+                  "nudity",
+                  "faces"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Flagged"
+          },
+          "taken": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Taken"
+          }
+        },
+        "title": "PoiPhotoShare",
+        "type": "object"
+      },
+      "PreferencesIn": {
+        "additionalProperties": false,
+        "description": "What a client PUTs to `/preferences/me` - a full replace of the\nsynced blob, not a partial patch (see the router's upsert docstring).",
+        "properties": {
+          "anonymity_window_days": {
+            "title": "Anonymity Window Days",
+            "type": "integer"
+          },
+          "auto_rotate_enabled": {
+            "default": false,
+            "title": "Auto Rotate Enabled",
+            "type": "boolean"
+          },
+          "background_source": {
+            "$ref": "#/components/schemas/BackgroundSource"
+          },
+          "contribute_conditions": {
+            "default": false,
+            "title": "Contribute Conditions",
+            "type": "boolean"
+          },
+          "download_choice_made": {
+            "default": false,
+            "title": "Download Choice Made",
+            "type": "boolean"
+          },
+          "drought_layer_shown": {
+            "default": false,
+            "title": "Drought Layer Shown",
+            "type": "boolean"
+          },
+          "hiking_detail_level": {
+            "$ref": "#/components/schemas/HikingDetailLevel",
+            "default": "standard"
+          },
+          "layer_detail_level": {
+            "$ref": "#/components/schemas/LayerDetailLevel"
+          },
+          "location_permission_requested": {
+            "default": false,
+            "title": "Location Permission Requested",
+            "type": "boolean"
+          },
+          "map_style": {
+            "$ref": "#/components/schemas/MapStyle",
+            "default": "field"
+          },
+          "max_background_zoom": {
+            "$ref": "#/components/schemas/MaxBackgroundZoom"
+          },
+          "onboarding_completed": {
+            "default": false,
+            "title": "Onboarding Completed",
+            "type": "boolean"
+          },
+          "red_light_enabled": {
+            "default": false,
+            "title": "Red Light Enabled",
+            "type": "boolean"
+          },
+          "reporter_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReporterType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "show_roads": {
+            "default": false,
+            "title": "Show Roads",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/Theme",
+            "default": "auto"
+          },
+          "trail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trail Name"
+          },
+          "unit_system": {
+            "$ref": "#/components/schemas/UnitSystem",
+            "default": "imperial"
+          },
+          "waypoint_types_shown": {
+            "default": [
+              "shelter",
+              "water",
+              "campsite",
+              "privy"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Waypoint Types Shown",
+            "type": "array"
+          },
+          "wrong_way_alert_enabled": {
+            "default": true,
+            "title": "Wrong Way Alert Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "background_source",
+          "max_background_zoom",
+          "layer_detail_level",
+          "anonymity_window_days"
+        ],
+        "title": "PreferencesIn",
+        "type": "object"
+      },
+      "PreferencesOut": {
+        "additionalProperties": false,
+        "description": "`PreferencesIn` plus the server-assigned sync timestamp.",
+        "properties": {
+          "anonymity_window_days": {
+            "title": "Anonymity Window Days",
+            "type": "integer"
+          },
+          "auto_rotate_enabled": {
+            "default": false,
+            "title": "Auto Rotate Enabled",
+            "type": "boolean"
+          },
+          "background_source": {
+            "$ref": "#/components/schemas/BackgroundSource"
+          },
+          "contribute_conditions": {
+            "default": false,
+            "title": "Contribute Conditions",
+            "type": "boolean"
+          },
+          "download_choice_made": {
+            "default": false,
+            "title": "Download Choice Made",
+            "type": "boolean"
+          },
+          "drought_layer_shown": {
+            "default": false,
+            "title": "Drought Layer Shown",
+            "type": "boolean"
+          },
+          "hiking_detail_level": {
+            "$ref": "#/components/schemas/HikingDetailLevel",
+            "default": "standard"
+          },
+          "layer_detail_level": {
+            "$ref": "#/components/schemas/LayerDetailLevel"
+          },
+          "location_permission_requested": {
+            "default": false,
+            "title": "Location Permission Requested",
+            "type": "boolean"
+          },
+          "map_style": {
+            "$ref": "#/components/schemas/MapStyle",
+            "default": "field"
+          },
+          "max_background_zoom": {
+            "$ref": "#/components/schemas/MaxBackgroundZoom"
+          },
+          "onboarding_completed": {
+            "default": false,
+            "title": "Onboarding Completed",
+            "type": "boolean"
+          },
+          "red_light_enabled": {
+            "default": false,
+            "title": "Red Light Enabled",
+            "type": "boolean"
+          },
+          "reporter_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReporterType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "show_roads": {
+            "default": false,
+            "title": "Show Roads",
+            "type": "boolean"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/Theme",
+            "default": "auto"
+          },
+          "trail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trail Name"
+          },
+          "unit_system": {
+            "$ref": "#/components/schemas/UnitSystem",
+            "default": "imperial"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "waypoint_types_shown": {
+            "default": [
+              "shelter",
+              "water",
+              "campsite",
+              "privy"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "title": "Waypoint Types Shown",
+            "type": "array"
+          },
+          "wrong_way_alert_enabled": {
+            "default": true,
+            "title": "Wrong Way Alert Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "background_source",
+          "max_background_zoom",
+          "layer_detail_level",
+          "anonymity_window_days",
+          "updated_at"
+        ],
+        "title": "PreferencesOut",
+        "type": "object"
+      },
+      "ProfileOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "display_name",
+          "created_at"
+        ],
+        "title": "ProfileOut",
+        "type": "object"
+      },
+      "QueueScope": {
+        "description": "What the moderation list covers - see read_note_queue.",
+        "enum": [
+          "flagged",
+          "hidden",
+          "all"
+        ],
+        "title": "QueueScope",
+        "type": "string"
+      },
+      "ReasonType": {
+        "enum": [
+          "storm_damage",
+          "flooding",
+          "maintenance",
+          "relocation",
+          "other"
+        ],
+        "title": "ReasonType",
+        "type": "string"
+      },
+      "ReportCreate": {
+        "description": "The client-submitted shape of a new report.\n\nDeliberately has no `visibility` and no `severity` field - both are\nserver-controlled (see app/models/report.py's module docstring) and\nare silently ignored if a client sends them anyway (pydantic's default\n\"ignore unknown fields\" behavior), rather than being accepted and then\noverridden after the fact. Likewise no `timestamp`, `status`,\n`received_at` or `reporter_id` - all server-assigned.\n\n`id` is the second sanctioned exception, and it is an idempotency key\nrather than a convenience (#243). On trail-side signal the classic\nfailure is a request that commits here and whose 201 never arrives: the\nclient's send throws, the item stays in its outbox, and the next flush\nfiles the same report again. The outbox already mints a UUID per item\nand documents it as \"stable across retries, so a resend is recognisably\nthe same report\" - it just had nowhere to send it. Accepting it here is\nwhat makes that sentence true.\n\n`authored_at` is the one sanctioned exception, and it exists because\nOurHike is offline-first: a report written on the trail and synced days\nlater has to keep the time it was WRITTEN (WIREFRAMES.md's \"the moment\nof writing, not of sending\", and `9c`'s outbox syncing \"with their\noriginal timestamps\"). Recording the sync time instead would tell a\nmaintainer a three-day-old blowdown is fresh.\n\nIt is a claim rather than a fact, so it is bounded: the server keeps its\nown `received_at` alongside, and a future-dated value is refused. The\npast is deliberately NOT bounded - being off-grid for two weeks is\nordinary on a thru hike, not suspicious.",
+        "properties": {
+          "authored_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authored At"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "maintainer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintainer Id"
+          },
+          "mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mile"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "poi_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poi Id"
+          },
+          "reporter_type": {
+            "$ref": "#/components/schemas/ReporterType"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ReportType"
+          }
+        },
+        "required": [
+          "type",
+          "reporter_type"
+        ],
+        "title": "ReportCreate",
+        "type": "object"
+      },
+      "ReportOut": {
+        "description": "One report, as much of it as the caller is entitled to (#252).\n\n**Build these with `for_viewer`, never by returning the ORM row.** Four\nfields are withheld from anyone who is neither the reporter nor a\nmoderator, and the withholding happens at construction so a caller cannot\nleak them by forgetting to check - the same posture\napp/routers/maintainer_assignments.py takes with `display_name`.\n\nNothing structural stops `return report` from a handler, and it is worth\nbeing honest about that rather than claiming otherwise. Dropping\n`from_attributes` looks like it would - `ReportOut.model_validate(row)`\nthen raises - but FastAPI validates response models with\n`validate_python(value, from_attributes=True)` passed explicitly\n(fastapi/_compat/v2.py), so `response_model=ReportOut` would go on\nserialising the whole ORM row regardless. A comment claiming the leak is\nimpossible would be worse than no comment. The guard is\ntests/test_routers_reports.py's route-table check, which walks the real\napp and fails on any handler returning a report by another path.",
+        "properties": {
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "follow_up": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "maintainer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maintainer Id"
+          },
+          "mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mile"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Photo Url"
+          },
+          "poi_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Poi Id"
+          },
+          "received_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Received At"
+          },
+          "reporter_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reporter Id"
+          },
+          "reporter_type": {
+            "$ref": "#/components/schemas/ReporterType"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReportStatus"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "title": "Timestamp",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ReportType"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "poi_id",
+          "lat",
+          "lon",
+          "mile",
+          "reporter_type",
+          "timestamp",
+          "note",
+          "photo_url",
+          "follow_up",
+          "status",
+          "visibility",
+          "severity"
+        ],
+        "title": "ReportOut",
+        "type": "object"
+      },
+      "ReportPhotoLink": {
+        "description": "A short-lived URL that fetches one report's photo (#385).\n\nThe answer from `GET /reports/{id}/photo/link`, for the caller that\ncannot follow the redirect form: an `<img>` carries no `Authorization`\nheader, so the token goes on this JSON call and the URL goes in `src`.\n\n**This body is a bearer capability, not a description of one.** Whoever\nholds the string can fetch that object until it expires, with no further\ncheck - so it is never stored, never logged, and the response is\n`no-store`. app/core/photos.py's header is the full trade.\n\nNo `photo_url`, deliberately: the object KEY is a stored field the client\nalready has from the queue, and repeating it here would invite a client\nto build its own URL from it. The signed URL is the only spelling that\nwas authorised.",
+        "properties": {
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expires_in"
+        ],
+        "title": "ReportPhotoLink",
+        "type": "object"
+      },
+      "ReportStatus": {
+        "enum": [
+          "submitted",
+          "verified",
+          "resolved",
+          "dismissed"
+        ],
+        "title": "ReportStatus",
+        "type": "string"
+      },
+      "ReportType": {
+        "enum": [
+          "blowdown",
+          "trash",
+          "bad_hikers",
+          "flooding",
+          "shelter_repair",
+          "animals",
+          "invasive_species",
+          "thanks"
+        ],
+        "title": "ReportType",
+        "type": "string"
+      },
+      "ReportVerifyRequest": {
+        "description": "`severity` is optional, and omitting it LEAVES IT ALONE.\n\nThis docstring used to say that and the code did the opposite: the field\ndefaulted to `normal` and `verify_report` assigned it unconditionally, so\nthe parenthetical excuse - \"normal, since there's no path to set it\nbefore this action exists\" - was false the moment anybody used this same\naction a second time (#251).\n\nWhat that cost: moderator A escalates a `bad_hikers` report to `serious`,\nwhich is what makes the 44px warning pin exist on every phone\n(features/HIKER_SAFETY.md \u00a71, client/src/map/warningPin.ts). Moderator B\nre-verifies it with `{}` - or with a client that simply does not send the\nfield - and the pin disappears from the map. No error, no record, and the\ndisappearance looks exactly like the warning having been withdrawn on\npurpose.\n\n`None` rather than a default value is what makes \"omitted\" and\n\"explicitly normal\" different requests. They mean different things: one\nis a moderator saying nothing about severity, the other is a moderator\nde-escalating, and only the second should change anything.",
+        "properties": {
+          "severity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Severity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "ReportVerifyRequest",
+        "type": "object"
+      },
+      "ReporterType": {
+        "enum": [
+          "thru",
+          "section",
+          "day",
+          "maintainer"
+        ],
+        "title": "ReporterType",
+        "type": "string"
+      },
+      "Role": {
+        "enum": [
+          "hiker",
+          "maintainer",
+          "club_admin"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "normal",
+          "serious"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "Theme": {
+        "enum": [
+          "light",
+          "dark",
+          "auto"
+        ],
+        "title": "Theme",
+        "type": "string"
+      },
+      "TripOut": {
+        "description": "One trip as the server holds it now.",
+        "properties": {
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "document",
+          "updated_at",
+          "deleted_at"
+        ],
+        "title": "TripOut",
+        "type": "object"
+      },
+      "TripSyncIn": {
+        "additionalProperties": false,
+        "description": "A device's whole side of the exchange.",
+        "properties": {
+          "hike": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedHikeSync"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/TripUpload"
+            },
+            "maxItems": 500,
+            "title": "Trips",
+            "type": "array"
+          }
+        },
+        "title": "TripSyncIn",
+        "type": "object"
+      },
+      "TripSyncOut": {
+        "description": "Everything that changed elsewhere, plus the next watermark.\n\n`now` is taken by the server after the uploads have landed and before\nthe read, so a row written by a third device in between comes back on the\nNEXT sync rather than being skipped. A watermark that could skip a row is\na watermark that silently loses a trip.",
+        "properties": {
+          "conflicts": {
+            "title": "Conflicts",
+            "type": "integer"
+          },
+          "hike": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlannedHikeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "now": {
+            "format": "date-time",
+            "title": "Now",
+            "type": "string"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/TripOut"
+            },
+            "title": "Trips",
+            "type": "array"
+          }
+        },
+        "required": [
+          "now",
+          "trips",
+          "hike",
+          "conflicts"
+        ],
+        "title": "TripSyncOut",
+        "type": "object"
+      },
+      "TripUpload": {
+        "additionalProperties": false,
+        "description": "One trip a device is offering.",
+        "properties": {
+          "base_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Updated At"
+          },
+          "deleted": {
+            "default": false,
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "document": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "TripUpload",
+        "type": "object"
+      },
+      "UnitSystem": {
+        "enum": [
+          "imperial",
+          "metric"
+        ],
+        "title": "UnitSystem",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Visibility": {
+        "enum": [
+          "public",
+          "internal_only",
+          "club_only"
+        ],
+        "title": "Visibility",
+        "type": "string"
+      },
+      "VolunteerHoursCreate": {
+        "description": "What a volunteer files. `state`, `confirmed_by/at` and `recorded_at`\nare server-controlled and have no fields here; `id` is the outbox's\nidempotency key, exactly as on reports and field notes.",
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/HoursActivity"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mile"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "work_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Project Id"
+          },
+          "worked_on": {
+            "format": "date",
+            "title": "Worked On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "worked_on",
+          "hours",
+          "activity"
+        ],
+        "title": "VolunteerHoursCreate",
+        "type": "object"
+      },
+      "VolunteerHoursOut": {
+        "description": "One record, whole. No `for_viewer` split, because there is no\nanonymous audience: every read of this resource is the volunteer reading\ntheir own logbook or a club admin deciding whether to stand behind a\nrow, and both are entitled to all of it. There is deliberately no public\nlist at all - a private record is the entire design (#761).",
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/HoursActivity"
+          },
+          "club_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Club Id"
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At"
+          },
+          "hours": {
+            "title": "Hours",
+            "type": "number"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lat": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "mile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mile"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HoursState"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          },
+          "work_project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Project Id"
+          },
+          "worked_on": {
+            "format": "date",
+            "title": "Worked On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "user_id",
+          "club_id",
+          "worked_on",
+          "hours",
+          "work_project_id",
+          "activity",
+          "note",
+          "mile",
+          "lat",
+          "lon",
+          "state",
+          "confirmed_at",
+          "recorded_at"
+        ],
+        "title": "VolunteerHoursOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "OurHike backend",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/app-failures": {
+      "post": {
+        "description": "File a report that the app failed on the trail.\n\n**Idempotent on `id`**, the same way `POST /reports` is and for the same\ntrail-side reason: the request that commits here and whose response never\narrives is the ordinary failure on one bar of signal, and the outbox will\nresend. A resend returns the stored row with `200` rather than filing a\nsecond copy.\n\nUnlike reports, a resend under an id that belongs to somebody ELSE is not\nrefused - it is treated as already filed and acknowledged. There is\nnothing to leak by doing so: the acknowledgement carries only the id the\ncaller already sent and an arrival time, never the stored report. Refusing\ninstead would hand a hiker a 409, which their outbox reads as permanent\nand which would lose a real report to a UUID collision.",
+        "operationId": "create_app_failure_app_failures_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppFailureCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppFailureAck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create App Failure",
+        "tags": [
+          "app-failures"
+        ]
+      }
+    },
+    "/closures": {
+      "get": {
+        "description": "List closures visible to anyone: verified only. No auth required -\nbrowsing needs no account, and closures are never hideable once\nverified (MAP_OPTIONS.md - `show_closures` isn't a setting anywhere).",
+        "operationId": "list_closures_closures_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ClosureOut"
+                  },
+                  "title": "Response List Closures Closures Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Closures",
+        "tags": [
+          "closures"
+        ]
+      },
+      "post": {
+        "description": "Report a new closure. `moderation_status` always starts at\n`submitted` - never accepted from the client, matching Report's\n`visibility`/`severity` server-controlled pattern.\n\nThe real-world `status` is server-controlled too, and starts at `closed`:\nsomebody filing this is telling us the trail is shut. See the column's\nown comment in app/models/closure.py for why that default is the whole of\n#246, and why a REPORTER never picks this field - reopening a trail, or\nconfirming a reroute exists, is a maintainer's judgment (PATCH, or the\nverify call in app/routers/moderation.py).\n\n**Idempotent on `id`, and dated by the client (#832).** Both arrived with\nthis app's closure form, and both are the offline path showing through: a\nclosure is authored at the washout with no signal, so the request that\ncommits here and loses its response on the way back is the ordinary case\nrather than the unlucky one, and the day it was written is not the day it\narrives. `201` still means newly created; a resend gets `200` and the\nstored row.",
+        "operationId": "create_closure_closures_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClosureCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Closure",
+        "tags": [
+          "closures"
+        ]
+      }
+    },
+    "/closures/{closure_id}": {
+      "patch": {
+        "description": "Update a closure's real-world status/reason/note. Role-gated -\nmodifying a closure (as opposed to reporting one) is a moderator\naction.",
+        "operationId": "update_closure_closures__closure_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "closure_id",
+            "required": true,
+            "schema": {
+              "title": "Closure Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClosureUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Closure",
+        "tags": [
+          "closures"
+        ]
+      }
+    },
+    "/closures/{closure_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_closure_closures__closure_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "closure_id",
+            "required": true,
+            "schema": {
+              "title": "Closure Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureModerationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Closure",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/closures/{closure_id}/verify": {
+      "post": {
+        "description": "Publish a closure to every hiker on the trail.\n\nThe body is optional and usually absent. A closure is born `closed`\n(app/models/closure.py), so verifying one says everything that needs\nsaying - the band and the banner appear because the record was already\ntrue, not because this call fixed it up.\n\nPassing `status` covers the one judgment that genuinely happens here:\nconfirming a reroute. See ClosureVerify.",
+        "operationId": "verify_closure_closures__closure_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "closure_id",
+            "required": true,
+            "schema": {
+              "title": "Closure Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ClosureVerify"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClosureModerationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify Closure",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/day-hikes/sync": {
+      "post": {
+        "operationId": "sync_day_hikes_day_hikes_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DayHikeSyncIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayHikeSyncOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sync Day Hikes",
+        "tags": [
+          "day-hikes"
+        ]
+      }
+    },
+    "/disputes": {
+      "get": {
+        "description": "Places the field says are not there (#876, FIELD_NOTES.md \u00a74).\n\nNo auth, like every other browsing read: a hiker deciding whether to\ncount on a spring needs this most when they have no account and no\nsignal to make one.\n\n**Only corroborated disputes are served.** A single uncorroborated\n\"it is gone\" is already public as a NOTE - it is in the feed, on the\ncard, in the hiker's own words - and that is the right weight for one\nperson's observation. What this endpoint answers is the stronger claim\nthe pin and the headline make, and one claim must never be able to\nmake it: `core/disputes.py` is where that line sits.\n\nThe identities never leave this process. `reporter_id` is what makes\ncorroboration mean anything and is exactly what FieldNoteOut withholds\n(\u00a76, #252) - so the rule runs here and a verdict goes out.",
+        "operationId": "list_disputes_disputes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DisputeOut"
+                  },
+                  "title": "Response List Disputes Disputes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Disputes",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/field-notes": {
+      "get": {
+        "description": "Visible notes, newest observation first.\n\nWith `poi_id`: that place's recent story, for the card. Without: the\nmap's working set - every place's most recent few inside the window,\nwhich is what the client rolls `last_confirmed_at` up from at render\ntime (derive-don't-duplicate, FIELD_NOTES.md \u00a73).\n\nHidden notes are excluded for every caller, the author included. Unlike\na submitted report - which has a \"waiting\" state its author watches - a\nhidden note has been removed by a person, and continuing to render it to\nits author would show them a map nobody else is seeing. Moderators read\nhidden notes through their own queue below, where hiding is reviewable\nand reversible.\n\nOrdering by `observed_at` leaks nothing the rows don't already say -\nevery row carries it - which is why this list may be meaningfully\nordered where `GET /reports` deliberately is not (see its comment on\narray order as a covert clock).",
+        "operationId": "list_field_notes_field_notes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "poi_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Poi Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FieldNoteOut"
+                  },
+                  "title": "Response List Field Notes Field Notes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Field Notes",
+        "tags": [
+          "field-notes"
+        ]
+      },
+      "post": {
+        "description": "File a note. Visible to every reader the moment this returns - the\npublish-now decision FIELD_NOTES.md \u00a75 argues, not an oversight.\n\nIdempotent on `id`, exactly as `POST /reports` is (#243): re-sending a\nnote that already arrived returns the stored one with `200` instead of\nfiling a second copy, because the outbox's ordinary path is a send whose\nresponse never came back.",
+        "operationId": "create_field_note_field_notes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldNoteCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Field Note",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/field-notes/{note_id}/flag": {
+      "post": {
+        "description": "Ask for a moderator's eyes on a note.\n\nAuth required - a flag is testimony too, and an anonymous flood of them\nwould be the cheapest way to get every note on a stretch pulled into the\nqueue. One flag per account per note: flagging twice returns 200 and\nchanges nothing, because the queue counts people, not taps.\n\n404 for a hidden note the same as for a missing one - it is already in\nfront of a moderator, and distinguishing the two would confirm a removal\nto whoever caused it.",
+        "operationId": "flag_field_note_field_notes__note_id__flag_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteFlagCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Flag Field Note Field Notes  Note Id  Flag Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Flag Field Note",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/field-notes/{note_id}/hide": {
+      "post": {
+        "description": "Remove a note from every public read and from the next bake.\n\nLatest-wins on the trail columns, the dismissal convention (#658): \"who\ntook this down\" means the operative removal. The row is kept - see the\nmodel. The bake clears it from the published baseline within a day,\nwhich is the honest cost CONDITIONS_DELIVERY.md already accepts.",
+        "operationId": "hide_field_note_field_notes__note_id__hide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlaggedNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Hide Field Note",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/field-notes/{note_id}/photo": {
+      "put": {
+        "description": "Land the bytes for a note's photo (#879).\n\nThe second half of the same two-phase flush every photo in this app uses\n(#369): the row, then the bytes, each retry-safe on its own. The row is\nwhat carries the observation, so a photo that never lands costs the\npicture and never the sentence.\n\n**The author only.** A note's photo is a claim about what THEY saw, and a\nsecond person's bytes under it would be a fabrication with a real\nperson's reporter_type on it. Refused as 403 rather than 404: the note is\npublic, so pretending it does not exist would be a lie about a row the\ncaller can already read.\n\nThe same checks the report and waypoint uploads run, for #379's reasons:\nthe body is capped as it streams, and JPEG is decided by the bytes' own\nmagic rather than by a header the client writes.",
+        "operationId": "upload_note_photo_field_notes__note_id__photo_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Note Photo",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/field-notes/{note_id}/photo/review": {
+      "post": {
+        "description": "One human looked, and the photo is fine where it is.\n\nThe glance a nudity hold is waiting for, and the whole reason the hold is\ndefensible: #837 decided the on-device check flags and never decides, so\n\"held\" has to mean \"held until somebody looks\" rather than \"refused by a\nmodel\". Same verb and same meaning as the waypoint queue's `review`.\n\nSet once. Who FIRST cleared it is the fact an audit needs, and a second\ncall is a no-op rather than a rewrite - moderation.py's rule for every\ngrant in this codebase.\n\nDeliberately NOT a takedown: a photo that should come down comes down\nwith its note, through `hide`, because a note whose photo was the problem\nis a note somebody wrote to carry that photo.",
+        "operationId": "review_note_photo_field_notes__note_id__photo_review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Note Photo",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/field-notes/{note_id}/unhide": {
+      "post": {
+        "description": "Put a wrongly-removed note back - the recoverability \u00a75 promises.\n\nThe flags stay: they are the record of why somebody looked, and a note\nunhidden over them reads in the queue as reviewed rather than as never\nquestioned.",
+        "operationId": "unhide_field_note_field_notes__note_id__unhide_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "note_id",
+            "required": true,
+            "schema": {
+              "title": "Note Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlaggedNoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unhide Field Note",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/hikes": {
+      "get": {
+        "description": "Return only the caller's own hikes, never another user's.",
+        "operationId": "list_hikes_hikes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HikeOut"
+                  },
+                  "title": "Response List Hikes Hikes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Hikes",
+        "tags": [
+          "hikes"
+        ]
+      },
+      "post": {
+        "operationId": "create_hike_hikes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HikeCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HikeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Hike",
+        "tags": [
+          "hikes"
+        ]
+      }
+    },
+    "/hikes/{hike_id}": {
+      "delete": {
+        "operationId": "delete_hike_hikes__hike_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hike_id",
+            "required": true,
+            "schema": {
+              "title": "Hike Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Hike",
+        "tags": [
+          "hikes"
+        ]
+      },
+      "get": {
+        "operationId": "get_hike_hikes__hike_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hike_id",
+            "required": true,
+            "schema": {
+              "title": "Hike Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HikeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Hike",
+        "tags": [
+          "hikes"
+        ]
+      },
+      "patch": {
+        "operationId": "update_hike_hikes__hike_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hike_id",
+            "required": true,
+            "schema": {
+              "title": "Hike Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HikeUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HikeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Hike",
+        "tags": [
+          "hikes"
+        ]
+      }
+    },
+    "/hikes/{hike_id}/direction": {
+      "get": {
+        "description": "The wrong-way alert's dependency: NOBO/SOBO, derived, never stored.",
+        "operationId": "get_hike_direction_hikes__hike_id__direction_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "hike_id",
+            "required": true,
+            "schema": {
+              "title": "Hike Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HikeDirectionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Hike Direction",
+        "tags": [
+          "hikes"
+        ]
+      }
+    },
+    "/maintainer-assignments": {
+      "get": {
+        "description": "Every assignment covering `mile` on `as_of`.\n\nReturns zero or more, never exactly one: stretches overlap at\nboundaries, hand off mid-season, and go unassigned when a volunteer\nsteps back. Zero is a normal answer - the caller falls back to the club\nor simply keeps the location.\n\n**The query itself moved to app/core/assignments.py** (#249), because\nreceiving a thanks and delivering one now ask the same question. This is\nthe only caller allowed to default `as_of` to today - see that module.",
+        "operationId": "resolve_assignments_maintainer_assignments_get",
+        "parameters": [
+          {
+            "description": "Position along the centerline, in miles.",
+            "in": "query",
+            "name": "mile",
+            "required": true,
+            "schema": {
+              "description": "Position along the centerline, in miles.",
+              "title": "Mile",
+              "type": "number"
+            }
+          },
+          {
+            "description": "Resolve against this date rather than today - pass a report's authored date.",
+            "in": "query",
+            "name": "as_of",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resolve against this date rather than today - pass a report's authored date.",
+              "title": "As Of"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MaintainerAssignmentOut"
+                  },
+                  "title": "Response Resolve Assignments Maintainer Assignments Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Assignments",
+        "tags": [
+          "maintainer-assignments"
+        ]
+      }
+    },
+    "/moderation/field-notes": {
+      "get": {
+        "description": "The notes needing or bearing a decision: flagged ones, and hidden ones.\n\nFlagged-and-visible is the work; hidden is the record, listed so a wrong\nremoval is findable and reversible (\u00a75: \"a flagged note is hidden, never\ndeleted, so a wrong removal is recoverable\"). Most-flagged first within\neach, because three people saying so outranks one.",
+        "operationId": "read_note_queue_moderation_field_notes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/QueueScope",
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FlaggedNoteOut"
+                  },
+                  "title": "Response Read Note Queue Moderation Field Notes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Note Queue",
+        "tags": [
+          "field-notes"
+        ]
+      }
+    },
+    "/moderation/poi-photos": {
+      "get": {
+        "description": "Every live, uploaded community photo, most decision-worthy first.\n\nModerators see the queue regardless of the public gallery's cooling-off\nwindow - a pin decision two hours early is fine because the PIN action\nis what publishes, and it never fires inside somebody's undo window\n(the gallery filter holds for pins too). The trail name stays masked\nhere exactly as on the card: the queue judges photographs, not\nphotographers.\n\nEmpty where storage is unconfigured - a queue of unsignable URLs is a\nwall of broken images, not a queue.",
+        "operationId": "read_photo_queue_moderation_poi_photos_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PoiPhotoModerationOut"
+                  },
+                  "title": "Response Read Photo Queue Moderation Poi Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Photo Queue",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/moderation/poi-photos/{photo_id}/dismiss": {
+      "post": {
+        "description": "The takedown - what makes #576's withdrawal promise two-sided: the\nphotographer can always withdraw, and now a person with standing can\ntake a photo down that its photographer would not.\n\nThe row stays as the moderation trail (#658's who-took-this-down, on\nthe resource where a photo of a person is the stakes); the OBJECT is\ndeleted, because the bytes of a refused photograph are risk, not\nrecord. Latest-wins on the trail columns, same as every dismissal.",
+        "operationId": "dismiss_photo_moderation_poi_photos__photo_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "title": "Photo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPhotoModerationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Photo",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/moderation/poi-photos/{photo_id}/pin": {
+      "post": {
+        "description": "Make this one of the place's pinned three - rung 2's editorial pick.\n\nRefused at the cap with the collision the queue mockup draws: pinning a\nfourth means choosing which of the three comes down first, and that\nchoice belongs to the person, not to recency. Pinning is also the human\nglance - it clears any hold or report, because a moderator who chose to\nput a photo on the card has looked at it as hard as this queue ever\nasks anyone to.",
+        "operationId": "pin_photo_moderation_poi_photos__photo_id__pin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "title": "Photo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPhotoModerationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pin Photo",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/moderation/poi-photos/{photo_id}/review": {
+      "post": {
+        "description": "The queue's \"leave it in the twelve\": one human looked and the photo\nis fine where it is. Clears a nudity hold (the photo then serves once\nits cooling-off window ends) and answers a report without acting on it.\nLatest-look-wins, so re-reviewing after a fresh report is ordinary.",
+        "operationId": "review_photo_moderation_poi_photos__photo_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "title": "Photo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPhotoModerationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Review Photo",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/moderation/poi-photos/{photo_id}/unpin": {
+      "post": {
+        "description": "Take a pin down. The photo itself is untouched - it rejoins the\nrolling twelve and ages out by recency like any other, which is the\ndifference between unpinning and refusing.",
+        "operationId": "unpin_photo_moderation_poi_photos__photo_id__unpin_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "title": "Photo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPhotoModerationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unpin Photo",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/moderation/queue": {
+      "get": {
+        "description": "Everything waiting on a moderator: submitted reports and submitted\nclosures.\n\nUntil this existed the queue could be acted on but not read. Every\nendpoint below takes an id, and the only two list endpoints are scoped to\nthe public - `/reports` to what has already been moderated, `/closures`\nto `moderation_status == verified`, i.e. precisely the ones already done.\nNothing returned the ids of the items waiting.\n\n**The sharp end of that was `bad_hikers`.** Those are forced to\n`visibility = internal_only` on create (app/routers/reports.py), and\n`internal_only` appeared in exactly one query in this codebase - the\npublic list, which excludes it. So a report about being followed on trail\ncould be filed and then read by nobody but its own author.\nREPORT_A_PROBLEM.md chose that visibility to mean \"route it privately to\nclub maintainers/moderators as an incident note\"; half of that was built\n(it is not a public pin) and the half that delivers it was not. Hence no\nvisibility filter here: this endpoint is the audience `internal_only`\nalways named.\n\n`thanks` is excluded because `verify_report` below refuses it outright -\ngratitude has nothing to verify (SAYING_THANKS.md), and listing it here\nwould put items in the queue whose only available action is a 409, in the\nqueue closures and serious warnings share.\n\n**Not answered here, and both are real:** REPORT_A_PROBLEM.md's own open\nquestions ask whether a `bad_hikers` report should route to the nearest\nclub, a general inbox, or both, and HIKER_SAFETY.md \u00a71 leaves the\ncorroboration bar for escalating a dangerous-person report as \"real\nmoderation policy, not a data-model question\". This lists everything\npending to any maintainer, which is enough for one club and is not\nenough to ship to thirty.",
+        "operationId": "read_moderation_queue_moderation_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModerationQueue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Moderation Queue",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/preferences/me": {
+      "get": {
+        "description": "Return the current user's last-synced preferences.\n\n404 until the client's first PUT establishes a row - there is nothing to\nsync down before that.",
+        "operationId": "get_my_preferences_preferences_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get My Preferences",
+        "tags": [
+          "preferences"
+        ]
+      },
+      "put": {
+        "description": "Upsert the current user's preferences.\n\nA full replace of the stored blob (not a merge/patch) - creates the row\non the first call, replaces its contents on every later call, matching a\nclient syncing its whole local `UserPreferences` state wholesale.",
+        "operationId": "put_my_preferences_preferences_me_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put My Preferences",
+        "tags": [
+          "preferences"
+        ]
+      }
+    },
+    "/profiles/me": {
+      "delete": {
+        "description": "Delete the account: the private rows go, the published ones stay.\n\nWhat that sentence means table by table is app/core/account_deletion.py,\nwhich is where a reviewer should disagree with it. This layer owns two\nthings only: the transaction, and the receipt.\n\nTHE TRANSACTION IS THE POINT OF THIS FUNCTION EXISTING\n\n`delete_account` deliberately does not commit. Six deletes and a scrub\nthat half-landed is the one outcome nothing can put right afterwards -\nthere is no undo for this and no second copy to reconcile against - so\nthe commit is one call, here, after every statement has been issued, and\na failure anywhere rolls the lot back and answers 500 with the account\nintact. That is the safe direction: a hiker who has to press the button\ntwice is inconvenienced, and a hiker whose trips went while their\naccount stayed has been half-deleted with no way to say so.\n\nTHE RECEIPT\n\nA hiker is owed the numbers rather than the word \"done\", and\nspecifically is owed the count of what STAYED - the closures and photos\nthat outlive the account. The screen says that before the button is\npressed (client/src/screens/Settings.tsx); this says it again afterwards,\nagainst the real rows, because the screen's version is a promise and\nthis one is a fact.\n\n204 was considered and refused for exactly that: an empty body is the\nhonest answer only if there is nothing the hiker needs to know, and here\nthere is.",
+        "operationId": "delete_my_account_profiles_me_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete My Account",
+        "tags": [
+          "profiles"
+        ]
+      },
+      "get": {
+        "description": "Return the current authenticated user's own profile.",
+        "operationId": "get_my_profile_profiles_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get My Profile",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/profiles/me/export": {
+      "get": {
+        "description": "Everything this backend holds about the caller, as plain JSON.\n\nDeliberately NOT `response_model`-typed. A pydantic model here would be a\nhand-maintained field list in front of an archive whose entire point is\nthat it cannot omit anything - and FastAPI filters the response to the\ndeclared model, so the first column somebody adds to a table would be\nsilently dropped from every hiker's export with nothing failing.\napp/core/account_export.py argues the whole shape.\n\nA GET rather than a POST because it changes nothing, and because a hiker\nwho wants to look before they leap should be able to.",
+        "operationId": "export_my_account_profiles_me_export_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Export My Account Profiles Me Export Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Export My Account",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/reports": {
+      "get": {
+        "description": "List reports the caller may see: public and moderated, plus their own\nat any status.\n\nNo auth required - browsing needs no account, and an anonymous caller\ngets the public set. A token is read when one is sent, which is what\nlets a reporter see their own report waiting in the queue rather than it\nvanishing from the app between submitting and being verified.",
+        "operationId": "list_reports_reports_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportOut"
+                  },
+                  "title": "Response List Reports Reports Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Reports",
+        "tags": [
+          "reports"
+        ]
+      },
+      "post": {
+        "description": "Submit a new report. `visibility` and `severity` are never taken\nfrom the request - `visibility` is derived from `type` here, and\n`severity` stays at the model's `normal` default until a later verify\naction (built elsewhere) can raise it.\n\n`timestamp` is the moment the report was WRITTEN, which for an\noffline-first app is not the moment it arrived: the client supplies\n`authored_at` when flushing its outbox, and the server falls back to now\nonly when it is absent. `received_at` is always server truth.\n\n**Idempotent on `id` (#243).** Re-sending a report that already arrived\nreturns the stored one with `200` instead of filing a second copy, so the\nlost-response case - committed here, connection dropped before the 201,\nclient retries - costs a duplicate request rather than a duplicate\nreport. `201` still means newly created, which is what lets a test tell\nthe two apart; a client only needs to see a 2xx either way.\n\nA resend is only ever *the same reporter's*. An id that belongs to\nsomebody else is refused outright rather than returned, because handing\nback another person's report would turn a guessed UUID into a way to\nread one - and for `bad_hikers`, into a way to read an incident note\nabout a named individual.",
+        "operationId": "create_report_reports_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Report",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/thanks": {
+      "get": {
+        "description": "Every thanks meant for the caller. **The reader `club_only` never had.**\n\nA thanks is forced to `visibility = club_only` on create, and that value\nappeared in no query anywhere (#249): the public list excludes it, the\nmoderation queue excludes `thanks` deliberately (verify refuses one -\ngratitude has nothing to verify), and nothing else read it. So a thanks\nwas readable by exactly one person forever - its own author - which is\nthe whole feature not happening. `models/report.py` says `club_only`\n\"goes to the club and the maintainer\"; this is the half that delivers.\n\n**Three ways to be a recipient, and the third is the one that matters.**\n\n1. Named directly. A hiker who knew the name tagged it.\n2. Addressed to a club the caller CURRENTLY holds an assignment for.\n   Club-level is SAYING_THANKS.md's default, and the common case - the\n   hiker knew the stretch, not the person. \"Currently\" is load-bearing\n   (#642): this clause used to match every club the caller had EVER held\n   an assignment for, which delivered club mail to people years out of\n   the club. Leaving the club ends the subscription; a thanks for the\n   caller's own work still arrives through 1 and 3, which do not expire.\n3. Written at a mile inside one of the caller's own assignments, on a\n   date that assignment was effective.\n\nThree exists because resolution \"returns zero or more, never exactly\none\". Where two stretches overlap, `report.maintainer_id` is null - one\nforeign key cannot name two people - and delivery by that column alone\nwould silently drop both recipients in exactly the case the design calls\nnormal. Re-asking the question at read time reaches both.\n\n**The assignment's own dates, against the report's AUTHORED time.** A\nthanks written in June about a stretch reassigned in July belongs to\nJune's maintainer even when it syncs in August, so a maintainer who took\nthe section over in July does not inherit it - and the one who did the\nwork still sees it after handing off. Same rule as resolution, from the\nother end.\n\nAuth required and no role gate: holding an assignment is what makes\nsomebody a recipient, and a `club_admin` with no assignment is not one.\nA hiker with no assignments gets an empty list, which is the true answer\nrather than a 403 about a resource that concerns them not at all.",
+        "operationId": "list_my_thanks_reports_thanks_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ReportOut"
+                  },
+                  "title": "Response List My Thanks Reports Thanks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Thanks",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}": {
+      "get": {
+        "description": "Return a single report, with the same visibility filtering as the\nlist endpoint - except the reporter can always see their own report.",
+        "operationId": "get_report_reports__report_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Report",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_report_reports__report_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dismiss Report",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/reports/{report_id}/photo": {
+      "get": {
+        "description": "Serve a report's photo, behind the report's own visibility (#234).\n\n**The photo inherits the report's audience, and that is the whole reason\nthis endpoint exists rather than a public bucket URL.** `bad_hikers` is\n`internal_only` and those are photos of people; `thanks` is `club_only`;\nand every type is attached at create time, before a moderator has looked -\nwhich #229 established is not publicly visible. A world-readable object\nwould publish the image while the report stayed private, undoing the\nrouting one layer down. So the answer comes from `_visible_to`, the same\nfunction `GET /{report_id}` uses, rather than a second copy of the rule -\nreached through `_authorised_photo_url`, which the link endpoint above\nshares so there is one check and not two.\n\n**A redirect, not the bytes.** R2 serves the object directly from a signed\nURL that lasts minutes, so the image never crosses this backend - egress\nstays free, which is the reason R2 was chosen (#234). app/core/photos.py\nhas the full trade, including what a bearer URL costs and why #234's\nCloudflare Worker is not what got built.\n\n**Still here, and still the default.** The link form above was added for\nthe one caller that cannot follow a hop while carrying a token (#385);\nanything that can follow one should use this, which is every `<img>`\npointed at a public report and every `curl -L`.",
+        "operationId": "get_report_photo_reports__report_id__photo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to a short-lived signed URL for the image."
+          },
+          "404": {
+            "description": "No such report, no photo on it, or not one you may see."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "This deployment has no photo bucket configured."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Fetch a report's photo, if you may see the report",
+        "tags": [
+          "reports"
+        ]
+      },
+      "put": {
+        "description": "Store the photo for an existing report and record its key (#234).\n\n**After the report, not before, and that ordering is the design.** The key\nis derived from the report id, so an upload could in principle happen\nfirst - but nothing could then check who is allowed to make it, or whether\nthe id belongs to a report at all. Requiring the row means every upload is\nattributable and every stored object has a reason to exist. The client's\noutbox already flushes in order, and `POST /reports` is idempotent on the\nsame id (#243), so a retry of either half is safe.\n\n**Owner only.** A photo is evidence attached to somebody's account, and\n`bad_hikers` photos are photos of people - letting a second account attach\none to a report it did not file would put an image under a stranger's name\nin a queue that treats attribution as meaningful.\n\nThe body is the image itself rather than a multipart form: the client has\nbytes in hand after downscaling and stripping EXIF, and a form part would\nbe a wrapper around the same bytes with a filename nobody reads.\n\nReturns the report, with `photo_url` now holding the object KEY - not a\nURL. See app/core/photos.py for why, and for why the object is private:\nthe bucket answers nobody directly, and reading a photo goes through\n`GET /reports/{id}/photo` below, which checks the report's own visibility\nand status first. Nothing here makes a photo reachable.",
+        "operationId": "upload_report_photo_reports__report_id__photo_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Attach a photo to a report you filed",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}/photo/link": {
+      "get": {
+        "description": "The same photo as below, handed back as a URL instead of a redirect (#385).\n\n**This exists because an `<img>` cannot carry a token.** The endpoint\nbelow uses optional auth, so an anonymous `<img src>` gets the *public*\nanswer - which is a 404 for an `internal_only` `bad_hikers` photo, and a\n404 renders as a broken image indistinguishable from a report with no\nphoto at all. A moderator deciding whether to escalate an incident note\nabout a person could not tell \"there is no evidence\" from \"there is\nevidence and you are not being shown it\".\n\nSo the token travels on this call, where a `fetch` can put it, and the\nURL it answers with goes straight into `<img src>`. Images are exempt\nfrom CORS, so the private photo bucket needs no CORS policy - the\nproperty LAUNCH_CHECKLIST 1.7 built it with. Fetching the bytes\ncross-origin instead would have needed one, on the one bucket whose whole\ndesign is that nothing reaches it without a check.\n\n**A separate path rather than `Accept: application/json` on the one\nbelow**, which was the open question in #385. Content negotiation has to\npick a default for `*/*`, and the default has to stay the redirect -\nwhich leaves the form the moderation screen depends on reachable only by\na client that sets the header exactly, and silently wrong for any proxy\nthat normalises it. Two paths are also two lines in a log that say which\none happened. The cost is that one resource has two URLs; that is the\ncheaper of the two mistakes.\n\n**The TTL is unchanged, and that is the decision rather than an\noversight** (#385 asked). A queue left open for an hour outlives a\nfive-minute URL, and the fix for that is the client asking again - which\ncosts one request against a check that has to run every time anyway - not\na longer-lived bearer token for a photo of a person. `expires_in` is\nreturned so the client can re-ask on a number from here rather than one\nit hardcoded.\n\nEverything else - who may see it, what it refuses, and how uniformly -\nis `_authorised_photo_url` above, shared with the redirect.",
+        "operationId": "get_report_photo_link_reports__report_id__photo_link_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPhotoLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "No such report, no photo on it, or not one you may see."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "description": "This deployment has no photo bucket configured."
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ask for a report's photo URL, if you may see the report",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/reports/{report_id}/resolve": {
+      "post": {
+        "description": "Mark a verified hazard as fixed - the action that makes\n`ReportStatus.resolved` reachable (#658).\n\nThe status has been load-bearing and unreachable since #257: the public\ncontract keeps resolved reports visible, the client renders them as\n\"Fixed\" (lib/reportStatus.ts), and no endpoint could set it - so a\ncleared blowdown could only be vanished by dismissal, which reads as\n\"this was never real\" rather than \"this was real and someone fixed it\".\n\nOnly from `verified`. Resolving a `submitted` report would skip the\nmoderation gate (\"fixed\" implies \"was real\", and only verify says that);\nresolving a `dismissed` one would resurrect a report a moderator\nremoved. Resolving an already-resolved report is a no-op 200 - retries\nare normal and there is nothing further to record.",
+        "operationId": "resolve_report_reports__report_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Report",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/reports/{report_id}/verify": {
+      "post": {
+        "operationId": "verify_report_reports__report_id__verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify Report",
+        "tags": [
+          "moderation"
+        ]
+      }
+    },
+    "/trips/sync": {
+      "post": {
+        "operationId": "sync_trips_trips_sync_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TripSyncIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripSyncOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sync Trips",
+        "tags": [
+          "trips"
+        ]
+      }
+    },
+    "/volunteer-hours": {
+      "post": {
+        "description": "File a day's work. Born `claimed` - immediately real to the volunteer,\nprovisional to everyone else until a club confirms it (VOLUNTEERING.md).\n\nIdempotent on `id` for the outbox's sake: hours are logged at camp, and\ncamp has no signal.",
+        "operationId": "log_hours_volunteer_hours_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolunteerHoursCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteerHoursOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Log Hours",
+        "tags": [
+          "volunteer-hours"
+        ]
+      }
+    },
+    "/volunteer-hours/mine": {
+      "get": {
+        "description": "The caller's own logbook, newest work first - every state included,\nbecause a disputed record is still theirs to see and re-raise with the\nclub. Totals are the CLIENT's to compute and label: which states count\nis a display rule (the 2026-08-20 decision), not a second endpoint.",
+        "operationId": "list_my_hours_volunteer_hours_mine_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VolunteerHoursOut"
+                  },
+                  "title": "Response List My Hours Volunteer Hours Mine Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List My Hours",
+        "tags": [
+          "volunteer-hours"
+        ]
+      }
+    },
+    "/volunteer-hours/queue": {
+      "get": {
+        "description": "Everything still waiting on a club's word, oldest work first - the\nconfirmation surface Phase D's attendance pre-fill will feed. Listed for\nevery moderator rather than per club, the same one-club honesty\nmoderation.py's queue records: enough for one club, not for thirty.",
+        "operationId": "list_claimed_hours_volunteer_hours_queue_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VolunteerHoursOut"
+                  },
+                  "title": "Response List Claimed Hours Volunteer Hours Queue Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Claimed Hours",
+        "tags": [
+          "volunteer-hours"
+        ]
+      }
+    },
+    "/volunteer-hours/{record_id}/confirm": {
+      "post": {
+        "description": "A club admin stands behind the number - the 'grant' that makes an\nhour reportable upward with the club's name on it. Set once, never\noverwritten: who FIRST granted it is the fact an audit needs\n(moderation.py's verify rule).",
+        "operationId": "confirm_hours_volunteer_hours__record_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteerHoursOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Hours",
+        "tags": [
+          "volunteer-hours"
+        ]
+      }
+    },
+    "/volunteer-hours/{record_id}/dispute": {
+      "post": {
+        "description": "A club declines to stand behind the number. This is the removal\naction under the 2026-08-20 decision - a disputed record drops out of\nevery total - so the audit pair is latest-wins, like every dismissal:\n'who took this out' means the operative refusal. The record stays, and\nstays visible to its volunteer: a dispute is a disagreement to be taken\nup with the club, not an erasure.",
+        "operationId": "dispute_hours_volunteer_hours__record_id__dispute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolunteerHoursOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dispute Hours",
+        "tags": [
+          "volunteer-hours"
+        ]
+      }
+    },
+    "/waypoints/{poi_id}/photos": {
+      "get": {
+        "description": "This waypoint's gallery, in the order the card shows it.\n\nThe club's pins first (their own order of pinning - an editorial\njudgement, not a queue position), then the newest ROLLING_WINDOW\ncommunity photos by the same recency the card prints. Anonymous by\ndesign, like every browsing endpoint: a shared photo is published, and\nthe anonymity window is honoured by masking the credit, not by hiding\nthe photograph.\n\nTwo things a live upload can still be excluded for, both temporary:\nthe cooling-off window (COOLING_OFF_HOURS - inside it a withdrawal is\na true undo, so nothing is public yet), and a nudity hold waiting on a\nmoderator's glance (#837). Both apply to the pinned branch too - a pin\ninside a photographer's cooling-off window would publish early and\nbreak the undo the sheet promised.\n\nAn unconfigured deployment serves an empty gallery rather than URLs\nthat cannot be signed - offline and not-configured land on the same\nhonest answer the card already has, which is falling through the\nladder.",
+        "operationId": "list_photos_waypoints__poi_id__photos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poi_id",
+            "required": true,
+            "schema": {
+              "title": "Poi Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PoiPhotoOut"
+                  },
+                  "title": "Response List Photos Waypoints  Poi Id  Photos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Photos",
+        "tags": [
+          "poi-photos"
+        ]
+      },
+      "post": {
+        "description": "Share (or replace) the caller's photo of this waypoint.\n\nOne per person per POI is the row's identity, so a second share by the\nsame hiker REPLACES their first rather than being refused - the design's\nself-healing rule, free here because the upsert and the overwriting\nobject key are the same fact. Replacement clears any pin: a pin is a\nclub's judgement about one photograph, and this is a different\nphotograph.\n\nRefused without a trail name, because there is nothing to attribute:\nCC BY-SA's condition of use is the credit, and \"usable, uncredited\" is\nnot a state the store admits. The sheet asks for the trail name before\nit offers the share, so an ordinary client never sees this.",
+        "operationId": "share_photo_waypoints__poi_id__photos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poi_id",
+            "required": true,
+            "schema": {
+              "title": "Poi Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoiPhotoShare"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPhotoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Share Photo",
+        "tags": [
+          "poi-photos"
+        ]
+      }
+    },
+    "/waypoints/{poi_id}/photos/mine": {
+      "delete": {
+        "description": "Stop showing, and stop holding, the caller's photo of this waypoint.\n\nThe product promise POI_PHOTOS.md splits from the licence: OurHike will\nstop showing the photo when asked - that half is kept here, by deleting\nthe row and the object - while the CC BY-SA grant on copies already made\nis the half nobody can undo, and the share sheet said so before the\nphoto was ever shared (#577).\n\nA hard delete, not a status: a withdrawal is the contributor's own act,\nand keeping a copy \"for the record\" of a photo someone asked us to stop\nholding would be the archive by another name. Idempotent - withdrawing\na photo that is not there is a wish already granted, and the retrying\noutbox must be able to say it twice.",
+        "operationId": "withdraw_photo_waypoints__poi_id__photos_mine_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poi_id",
+            "required": true,
+            "schema": {
+              "title": "Poi Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Withdraw Photo",
+        "tags": [
+          "poi-photos"
+        ]
+      },
+      "put": {
+        "description": "Land the bytes for the caller's share of this waypoint.\n\nThe same checks the report-photo upload runs, for the same reasons\n(#379): the body is capped as it streams, and JPEG is decided by the\nbytes' own magic rather than a header the client writes. The client\nre-encodes to 640px before upload (lib/poiPhotos.ts CARD_PHOTO_EDGE),\nso a body near the cap is a client that skipped the resize.\n\nCompleting an upload is when the rolling window is enforced: beyond the\nnewest ROLLING_WINDOW unpinned photos, the oldest are withdrawn from\nthe gallery and the store - the self-healing eviction POI_PHOTOS.md\nchose over refusing the thirteenth share.",
+        "operationId": "upload_shared_photo_waypoints__poi_id__photos_mine_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poi_id",
+            "required": true,
+            "schema": {
+              "title": "Poi Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoiPhotoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Shared Photo",
+        "tags": [
+          "poi-photos"
+        ]
+      }
+    },
+    "/waypoints/{poi_id}/photos/{photo_id}/report": {
+      "post": {
+        "description": "Flag a photo for the maintaining club (#579's report-this-photo path).\n\nThis is the mechanism that makes the rolling twelve safe without\npre-approval: the twelve go straight up, and they come down when\nsomebody reports one and a moderator agrees. The photo STAYS on the\ncard until that human look - the report sheet says so to the reporter's\nface, because promising it comes down sooner is a promise volunteer\nclubs cannot keep.\n\nLatest report wins and re-surfaces the row: a photo reviewed last month\nand reported again today is back in front of a person, because the\nsecond reporter may have seen what the first look missed. Requires an\naccount, like every write - a report against somebody's photograph\nneeds a reporter to weigh it by.",
+        "operationId": "report_photo_waypoints__poi_id__photos__photo_id__report_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poi_id",
+            "required": true,
+            "schema": {
+              "title": "Poi Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "photo_id",
+            "required": true,
+            "schema": {
+              "title": "Photo Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoiPhotoReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Report Photo",
+        "tags": [
+          "poi-photos"
+        ]
+      }
+    }
+  }
+}

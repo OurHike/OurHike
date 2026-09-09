@@ -33,6 +33,22 @@
 // miles - which is the ground the maintainer scoped the dash rule to on
 // 2026-08-19.
 //
+// NO MARKS, SINCE 2026-09-08 (#1292)
+//
+// This module used to add two circle layers under the seam: a neutral ringed
+// tick at every club boundary, and the highlight marks (#858) in the
+// selection colour, the one thing down here a hiker was meant to tap. On the
+// whole-corridor camera, with the line itself late to arrive (#1291), the two
+// read as a chain of dots along the trail - indistinguishable from the
+// waypoints #1135 took off this view - and the maintainer's call was that
+// the opening camera shows trail lines only. So the corridor draws the grey
+// runs and nothing else. The boundary and highlight FEATURES are still built
+// into the source, the highlight sheet and the tap path (highlightIdAt,
+// which asks whether the layer exists before querying it) are left in place,
+// and their constants below stay with them: whether highlights get a band
+// above the seam, or are retired with their sheet, is the maintainer's call
+// and is not made here.
+//
 // WHY THE GREY CARRIES ITS OWN CASING
 //
 // It is drawn OVER the blaze, so a dashed grey line alone would show the white
@@ -140,9 +156,6 @@ export const HIGHLIGHT_RADIUS = 5
  */
 export interface CorridorTrailPaint {
   casingColor: string
-  /** What a selected or reachable thing is drawn in - the sheet's own blaze
-   *  orange. Passed in for the reason the casing is: style.ts builds these. */
-  selectionColor: string
   /** The blaze layer's width for the through-route. */
   blazeWidth: number
   /** The casing under it, already including its overhang. */
@@ -296,7 +309,6 @@ const isKind = (kind: string): FilterSpecification => [
  */
 export function buildCorridorLayers({
   casingColor,
-  selectionColor,
   blazeWidth,
   casingWidth,
 }: CorridorTrailPaint): LayerSpecification[] {
@@ -328,49 +340,6 @@ export function buildCorridorLayers({
         'line-color': NEUTRAL_BLAZE_COLOR,
         'line-width': blazeWidth,
         'line-dasharray': [...UNATTRIBUTED_DASH],
-      },
-    },
-    {
-      id: CORRIDOR_BOUNDARY_LAYER_ID,
-      type: 'circle' as const,
-      source: CORRIDOR_SOURCE_ID,
-      maxzoom: CORRIDOR_MAX_ZOOM,
-      filter: isKind(BOUNDARY_KIND),
-      paint: {
-        // Ringed rather than plain, so one mark reads on the pale sheet and on
-        // ink without being two marks. The ring is the casing colour and the
-        // fill is the blaze's, which keeps this inside the two colours the
-        // corridor view is allowed.
-        'circle-radius': BOUNDARY_RADIUS,
-        'circle-color': NEUTRAL_BLAZE_COLOR,
-        'circle-stroke-color': casingColor,
-        'circle-stroke-width': 1,
-      },
-    },
-    // LAST, over the boundary ticks - because at these zooms the two collide
-    // often, not rarely. Reasoned from the projection and the club count
-    // rather than measured off a render: at z5 Web Mercator gives 29.7 px per
-    // degree of latitude at 40 degrees N, so a pixel is ~2.3 straight-line
-    // miles, and the A.T.'s 2,197 miles fit inside ~780 straight-line ones -
-    // call it 6 trail miles to the pixel. HIGHLIGHT_RADIUS is 5 px, so a mark
-    // covers tens of trail miles, against an average gap between club
-    // boundaries of 2,197 / ~30 = ~73 miles. Drawn the other way round a
-    // neutral tick punches a hole through the one thing on this map a hiker is
-    // meant to tap.
-    {
-      id: CORRIDOR_HIGHLIGHT_LAYER_ID,
-      type: 'circle' as const,
-      source: CORRIDOR_SOURCE_ID,
-      maxzoom: CORRIDOR_MAX_ZOOM,
-      filter: isKind(HIGHLIGHT_KIND),
-      paint: {
-        // The selection colour, which is the one hue this view has beyond the
-        // blaze and the neutral - and it is spent here because a highlight is
-        // the thing on this map a hiker is meant to reach for.
-        'circle-radius': HIGHLIGHT_RADIUS,
-        'circle-color': selectionColor,
-        'circle-stroke-color': casingColor,
-        'circle-stroke-width': 1.5,
       },
     },
   ]

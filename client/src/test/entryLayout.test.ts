@@ -3,20 +3,23 @@
 // jsdom does no layout, so - as with appShellLayout.test.ts and
 // siteLayout.test.ts - this asserts the contract rather than the pixels.
 //
-// The contract: the map stays visible behind the entry steps, and nothing else
-// on the map screen does. Every one of the three steps is a claim about the map
-// ("the whole trail's topo map lives on your phone", "pick how much detail",
-// and the location step, which WIREFRAMES.md §5 specified as an overlay over the
-// map so the reason for asking is visible). A stylesheet that covered the map
-// would turn all three back into prose about a thing nobody has seen - which is
-// exactly what the opaque full-page onboarding screen was, and the regression a
-// later `min-height: 100svh` or a page background would quietly reintroduce.
+// Rewritten twice, and the second rewrite reversed the first's premise, so
+// both are worth the history. #721 made the map screen itself the backdrop
+// (one map, hidden down to its canvas by `.map-screen--entering`), on the
+// argument that every step is a claim about the map and covering it would
+// turn the steps into prose about a thing nobody has seen. #1054 put a
+// photograph of the trail in front of that map - the maintainer's own pick,
+// 2026-08-26 - on the counter-argument onboarding.css's header carries: what
+// first run sells is the trail, and an empty corridor map is a weaker
+// picture of it than a white blaze in the woods. The #721 machinery is
+// untouched and still asserted below, because it is what has the map warm
+// and waiting one tap behind the photo.
 //
-// Rewritten for #721. This used to assert `.app__entry` and `.app__entry-map` -
-// a frame holding a SECOND MapView. There is one map now: the map screen itself
-// is the backdrop, hidden down to its canvas by `.map-screen--entering`, with
-// the steps overlaid on top. The guarantees are the same ones; where they live
-// is not.
+// So the contract now: the inert map backdrop keeps its shape (the steps'
+// exit lands on a ready map), the photo is a child of the overlay rather
+// than a page background (so nothing here repaints the frame), and the card
+// stays capped short of the viewport (so the hero band above it survives on
+// any phone).
 //
 // Resolved from the Vitest root (client/), which vite.config.ts pins.
 
@@ -29,6 +32,17 @@ const chromeCss = readFileSync(resolve(process.cwd(), 'src/chrome/chrome.css'), 
 const onboardingCss = readFileSync(
   resolve(process.cwd(), 'src/screens/onboarding.css'),
   'utf8',
+)
+const desktopCss = readFileSync(resolve(process.cwd(), 'src/desktop.css'), 'utf8')
+
+/** desktop.css is one big `@media (min-width: 900px)` block plus a short tail
+ *  of pointer-keyed rules, so a selector found anywhere in it is a
+ *  desktop-only rule - which is the guarantee that file's own header makes
+ *  structural. Sliced from the media query's opening brace so the tail
+ *  cannot answer for it. */
+const desktopBlock = desktopCss.slice(
+  desktopCss.indexOf('@media (min-width: 900px)'),
+  desktopCss.indexOf('/* ---------- Input: what a mouse and a keyboard get'),
 )
 
 function ruleFor(css: string, selector: string): string {
@@ -99,9 +113,91 @@ describe('first-run layout contract', () => {
 
   it('never paints a page background over the map', () => {
     // The steps' own container was an opaque `background: var(--bg-page)`
-    // full-page screen, which is the thing that hid the map. Only the card
-    // inside it is allowed to be paper.
+    // full-page screen once, and that is still the regression this guards:
+    // what stands behind the steps is a deliberate child (the hero photo
+    // since #1054, the bare map before it), never a coat of paint on the
+    // overlay itself.
     expect(ruleFor(onboardingCss, '.onboarding')).not.toMatch(/background:/)
+  })
+
+  it('keeps the hero photo out of the pointer’s way and inside the frame', () => {
+    // The photo replaced the map as the backdrop (#1054 - the header carries
+    // the reversal); what it must not replace is the overlay's behaviour. It
+    // takes no taps, and it covers by cropping rather than by stretching -
+    // a squashed ridge line is the kind of wrong nobody files a bug about.
+    expect(ruleFor(onboardingCss, '.onboarding__hero')).toMatch(/pointer-events:\s*none/)
+    expect(ruleFor(onboardingCss, '.onboarding__hero-image')).toMatch(
+      /object-fit:\s*cover/,
+    )
+  })
+
+  it('draws the photo as a band on a phone, never a full-bleed fill', () => {
+    // The pool is landscape frames on a portrait screen: full-bleed cover
+    // scaled each ~2.4x and showed a blurred vertical sliver of its middle -
+    // the maintainer's "doesn't look great on mobile", 2026-08-26. Half a
+    // screen tall they render near-native and keep their compositions, so
+    // the regression to catch is a well-meaning `height: 100%` coming back.
+    //
+    // A PHONE claim, and only a phone claim (#1084). Turned sideways the
+    // same band keeps 37.5% of a 3:2 frame at 1920x1080, so desktop.css
+    // overrides it - which is the test below, and the reason this one reads
+    // the unguarded stylesheet rather than either file's whole text.
+    const image = ruleFor(onboardingCss, '.onboarding__hero-image')
+    expect(image).not.toMatch(/height:\s*100%/)
+    expect(image).toMatch(/height:\s*min\(/)
+    // The band's foot dissolves into the pine ground instead of ending on a
+    // hard line the card may or may not reach, step to step.
+    expect(image).toMatch(/mask-image:\s*linear-gradient/)
+    expect(ruleFor(onboardingCss, '.onboarding__hero')).toMatch(
+      /background:\s*var\(--bg-chrome\)/,
+    )
+  })
+
+  it('lets the photo fill a desktop window, where the band was the wrong crop', () => {
+    // #1084's whole point, and the pair of declarations that carry it: the
+    // height cap comes off and the foot fade goes with it, because there is
+    // no pine below the photo any more for it to fade into.
+    const image = ruleFor(desktopBlock, '.onboarding__hero-image')
+
+    expect(image).toMatch(/height:\s*100%/)
+    expect(image).toMatch(/mask-image:\s*none/)
+    // Both spellings, or WebKit keeps fading a photo nothing is behind.
+    expect(image).toMatch(/-webkit-mask-image:\s*none/)
+  })
+
+  it('docks the desktop card to one side, off the middle of the composition', () => {
+    // The card is 400px of opaque paper. Centred on a photograph it sat on
+    // the subject - the Jefferson Rock signpost, the hiker's head - which is
+    // half of what "the photos are getting cut off" meant. `.onboarding` is
+    // a column, so the horizontal axis is `align-items`, and getting that
+    // wrong moves the card to the BOTTOM instead of the side while still
+    // looking plausible in the source.
+    const rule = ruleFor(desktopBlock, '.onboarding')
+
+    expect(rule).toMatch(/align-items:\s*flex-end/)
+    expect(rule).toMatch(/justify-content:\s*center/)
+  })
+
+  it('dims the photograph from inside the hero, where the dim can be seen', () => {
+    // THE test in this pair, and the reason it is pinned rather than left to
+    // review. The rule this replaced was `.onboarding::before`: a generated
+    // box first in `.onboarding`'s box tree, under `.onboarding__hero` -
+    // opaque pine at `inset: 0`, painted after it. It dimmed nothing, and
+    // nothing said so, in every desktop build since #1054. Checked by
+    // setting it to `rgb(255 0 0 / 90%)` and photographing the frame: no red
+    // pixel anywhere (2026-08-27).
+    //
+    // So the scrim has to be a child of the hero, after the image. Anything
+    // that moves it back onto `.onboarding` is invisible again, and looks
+    // exactly as correct in a diff as this does.
+    expect(desktopBlock).toMatch(/\.onboarding__hero::after\s*\{/)
+    expect(desktopBlock).not.toMatch(/\.onboarding::before\s*\{/)
+
+    const scrim = ruleFor(desktopBlock, '.onboarding__hero::after')
+    expect(scrim).toMatch(/position:\s*absolute/)
+    expect(scrim).toMatch(/inset:\s*0/)
+    // It sits over the whole photo, so it must never take a tap.
+    expect(scrim).toMatch(/pointer-events:\s*none/)
   })
 
   it('caps the card short of the screen, so the map shows above it at any height', () => {

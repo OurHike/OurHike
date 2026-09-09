@@ -1,6 +1,15 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
-import { MapIcon } from './MapIcon'
+import { MapIcon, TrailLineSwatch } from './MapIcon'
+import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
+import { NEARBY_TRAIL_DASHARRAY, NEARBY_TRAIL_OPACITY } from './nearbyTrails'
+import {
+  CASING_OVERHANG,
+  PRIMARY_TRAIL_WIDTH,
+  RED_LIGHT_BLAZE_COLOR,
+  SIDE_TRAIL_WIDTH,
+  trailCasingColor,
+} from './style'
 import {
   glyphPath,
   pinGeometry,
@@ -15,10 +24,10 @@ import {
 import { WARNING_GLYPH } from './warningPin'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_BAR_RHYTHM,
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
-  CLOSURE_LINE_WIDTH,
+  CLOSURE_STRIPE_EDGE,
+  CLOSURE_TAPE_CADENCE,
 } from '../lib/closureStyle'
 
 // The map's pins, drawn in the DOM for the legend (#572).
@@ -187,34 +196,166 @@ describe('MapIcon: a serious warning', () => {
 })
 
 describe('MapIcon: a closure', () => {
-  it('is the barred band the map draws, not a pin', () => {
+  it('is the barrier tape the map draws, not a pin', () => {
     const svg = draw(<MapIcon type="closure" />)
 
     expect(part(svg, 'map-icon__closure-band').getAttribute('stroke')).toBe(CLOSURE_COLOR)
-    expect(part(svg, 'map-icon__closure-casing').getAttribute('fill')).toBe(
+    expect(part(svg, 'map-icon__closure-casing').getAttribute('stroke')).toBe(
       CLOSURE_CASING_COLOR,
     )
     expect(svg.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('bars it to the map’s own rhythm, converted out of line-width units', () => {
-    // MapLibre's dasharray is in line-width units and SVG's is in user units.
-    // The viewBox is drawn in line-width units so the conversion happens once.
+  it('draws the stripes at the map’s own cadence, in the map’s own units', () => {
+    // The swatch's viewBox is in CSS pixels at the tape's width, so every
+    // number here is the number map/closureTape.ts rasterises - no conversion,
+    // and nothing for the legend to drift from the map by.
     const svg = draw(<MapIcon type="closure" />)
-    const dashes = (
-      part(svg, 'map-icon__closure-band').getAttribute('stroke-dasharray') ?? ''
-    )
-      .split(' ')
-      .map(Number)
+    const band = svg.querySelectorAll('.map-icon__closure-band')
 
-    expect(dashes).toEqual(CLOSURE_BAR_RHYTHM.map((unit) => unit * CLOSURE_LINE_WIDTH))
+    expect(band.length).toBeGreaterThan(1)
+    expect(band[0]?.getAttribute('stroke-width')).toBe(
+      String(CLOSURE_TAPE_CADENCE.stripe),
+    )
   })
 
-  it('keeps the casing continuous, so the bars’ gaps show it through', () => {
-    // The band is dashed and the casing is not - which is what makes this read
-    // as barrier tape rather than as a dashed red trail line.
+  it('edges each stripe rather than laying a casing behind them all', () => {
+    // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
+    // legend drew a filled casing rect with a dashed band over it - which was
+    // honest, because that is what the map drew, and both were a near-black
+    // line with red ticks in it. There is no rect now, and the casing is a
+    // stroke wider than the stripe it outlines.
+    const svg = draw(<MapIcon type="closure" />)
+    const edge = Number(
+      part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
+    )
+
+    expect(svg.querySelector('rect')).toBeNull()
+    expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
+  })
+
+  it('leaves the ground between the stripes alone', () => {
+    // What the map does, restated in the legend: the tape's gaps are
+    // transparent, so nothing here may paint them either. A fill anywhere in
+    // this swatch would be a legend claiming the map hides the trail.
     const svg = draw(<MapIcon type="closure" />)
 
-    expect(part(svg, 'map-icon__closure-casing')).not.toHaveAttribute('stroke-dasharray')
+    for (const node of svg.querySelectorAll('*')) {
+      expect(node.getAttribute('fill')).toBeNull()
+    }
+  })
+})
+
+describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
+  // Same rule as the pins above: fidelity, not appearance. Every number is
+  // checked against the constants the map's own layers are built from.
+
+  function swatch(props: Partial<Parameters<typeof TrailLineSwatch>[0]> = {}) {
+    return draw(
+      <TrailLineSwatch
+        blazeColor="Blue"
+        throughRoute={false}
+        chosen={false}
+        {...props}
+      />,
+    )
+  }
+
+  it('draws a side trail at the side-trail width over a casing one overhang wider', () => {
+    const svg = swatch({ chosen: true })
+    expect(num(part(svg, 'map-icon__trail-blaze'), 'stroke-width')).toBe(SIDE_TRAIL_WIDTH)
+    expect(num(part(svg, 'map-icon__trail-casing'), 'stroke-width')).toBe(
+      SIDE_TRAIL_WIDTH + CASING_OVERHANG * 2,
+    )
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('Blue'),
+    )
+    expect(part(svg, 'map-icon__trail-casing').getAttribute('stroke')).toBe(
+      trailCasingColor({ theme: 'light' }),
+    )
+  })
+
+  it('draws a through-route at the through-route width', () => {
+    const svg = swatch({ throughRoute: true, chosen: true })
+    expect(num(part(svg, 'map-icon__trail-blaze'), 'stroke-width')).toBe(
+      PRIMARY_TRAIL_WIDTH,
+    )
+  })
+
+  it('draws the chosen system solid and everything else as the map’s dot rhythm', () => {
+    const solid = swatch({ chosen: true })
+    expect(
+      part(solid, 'map-icon__trail-blaze').getAttribute('stroke-dasharray'),
+    ).toBeNull()
+    expect(solid.getAttribute('data-drawn')).toBe('solid')
+
+    const dotted = swatch({ chosen: false })
+    // Zero-length dashes, NEARBY_TRAIL_DASHARRAY[1] line widths apart - and
+    // the casing at the same absolute pitch, so its dots sit under the
+    // blaze's.
+    const pitch = `0 ${NEARBY_TRAIL_DASHARRAY[1] * SIDE_TRAIL_WIDTH}`
+    expect(part(dotted, 'map-icon__trail-blaze').getAttribute('stroke-dasharray')).toBe(
+      pitch,
+    )
+    expect(part(dotted, 'map-icon__trail-casing').getAttribute('stroke-dasharray')).toBe(
+      pitch,
+    )
+    expect(dotted.getAttribute('data-drawn')).toBe('dotted')
+  })
+
+  it('ghosts a line outside the chosen system by the map’s own opacity', () => {
+    const dotted = swatch({ chosen: false })
+    expect(num(part(dotted, 'map-icon__trail-blaze'), 'stroke-opacity')).toBe(
+      NEARBY_TRAIL_OPACITY,
+    )
+    expect(
+      num(
+        swatch({ chosen: true }).querySelector('.map-icon__trail-blaze')!,
+        'stroke-opacity',
+      ),
+    ).toBe(1)
+  })
+
+  it('inks a DOTTED White blaze in the casing colour with no casing on a day sheet, and keeps both on a dark one', () => {
+    // `chosen: false` since #1306: the dark ink is the dotted line's rule,
+    // and the swatch follows the map's own DARK_INKED_BLAZE_LAYER_IDS.
+    const day = swatch({ blazeColor: 'White', throughRoute: true, chosen: false })
+    expect(day.querySelector('.map-icon__trail-casing')).toBeNull()
+    expect(part(day, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      trailCasingColor({ theme: 'light' }),
+    )
+
+    // Taken, on the same day sheet, it is the white blaze with its casing -
+    // the swatch saying what the canvas beside it is drawing.
+    const taken = swatch({ blazeColor: 'White', throughRoute: true, chosen: true })
+    expect(taken.querySelector('.map-icon__trail-casing')).not.toBeNull()
+    expect(part(taken, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('White'),
+    )
+
+    const night = swatch({
+      blazeColor: 'White',
+      throughRoute: true,
+      chosen: false,
+      appearance: { theme: 'dark' },
+    })
+    expect(night.querySelector('.map-icon__trail-casing')).not.toBeNull()
+    expect(part(night, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('White'),
+    )
+  })
+
+  it('takes red light’s one hue, like the line', () => {
+    const svg = swatch({ appearance: { mapStyle: 'night_hike', redLight: true } })
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      RED_LIGHT_BLAZE_COLOR,
+    )
+  })
+
+  it('falls back to the neutral grey for a line with no blaze', () => {
+    const svg = swatch({ blazeColor: null })
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      NEUTRAL_BLAZE_COLOR,
+    )
   })
 })

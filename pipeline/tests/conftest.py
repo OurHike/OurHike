@@ -13,6 +13,7 @@ import duckdb
 import pytest
 
 import export_poi
+import publish
 from lib import fetch_receipts
 
 
@@ -61,6 +62,36 @@ def no_real_trail_water(tmp_path, monkeypatch):
     reaches further than its own suite.
     """
     monkeypatch.setattr(export_poi, "TRAIL_WATER_PATH", tmp_path / "no-trail-water.json")
+
+
+@pytest.fixture(autouse=True)
+def no_real_sidecars(tmp_path, monkeypatch):
+    """Keep the real data/ tree's sidecars out of every publish test.
+
+    `publish.publish()` falls back to `collect_sidecars()` when no `sidecars`
+    argument is given, and that globs the real PROCESSED_DIR and RAW_DIR. 54
+    of the 84 publish() calls in this suite take the fallback, so on any
+    machine where the pipeline has actually been built - or where an earlier
+    test left a file behind - those tests publish whichever of the six
+    SIDECARS happen to be on disk. Measured 2026-08-27: a single stray
+    `data/raw/osm_water_reach.json` fails
+    test_releases_layout.py::test_publishing_writes_a_release_folder_and_lists_it
+    and ::test_a_release_folder_is_complete_even_when_one_artifact_changed,
+    because both assert on the exact set of keys a release folder holds.
+
+    CI never sees it - pipeline-tests.yml caches pip and nothing else, so
+    data/raw/ is empty on a runner. That is what makes this worth an autouse
+    fixture rather than a note: the suite is green where it is watched and
+    fails where somebody is actually working, which is the way round that
+    teaches people the failure is noise.
+
+    Same shape and same reasoning as `no_real_trail_water` above. The
+    directories are pointed at an empty tmp dir rather than
+    `collect_sidecars` being stubbed out, so the real function still runs and
+    a bug in it can still fail a test.
+    """
+    monkeypatch.setattr(publish, "PROCESSED_DIR", tmp_path / "no-sidecars" / "processed")
+    monkeypatch.setattr(publish, "RAW_DIR", tmp_path / "no-sidecars" / "raw")
 
 
 def spatial_connection() -> "duckdb.DuckDBPyConnection":

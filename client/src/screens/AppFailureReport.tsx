@@ -57,10 +57,10 @@ import './reporting.css'
  * answer it. Ticking none is a complete report.
  */
 const HARMS: readonly { id: AppFailureHarm; label: string }[] = [
-  { id: 'lost', label: 'I did not know where I was' },
+  { id: 'lost', label: 'I didn’t know where I was' },
   { id: 'water', label: 'I ran out of water, or nearly did' },
   { id: 'hazard', label: 'I was in front of something dangerous' },
-  { id: 'stranded', label: 'I could not get off the trail quickly' },
+  { id: 'stranded', label: 'I couldn’t get off the trail quickly' },
 ]
 
 export interface AppFailureReportProps {
@@ -157,7 +157,7 @@ export function AppFailureReport({
         <p className="reporting__queued">
           {filed.withContact
             ? 'Somebody will get back to you using what you left. It may take a few days.'
-            : 'You did not leave a way to reach you, so nobody can reply. The report still helps — it is the part we cannot get any other way.'}
+            : 'You didn’t leave a way to reach you, so nobody can reply. The report still helps — it’s the part we can’t get any other way.'}
         </p>
 
         <div className="reporting__actions">

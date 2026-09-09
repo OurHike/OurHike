@@ -28,15 +28,15 @@
 // the path arithmetic for nothing: the SVG is a shape, and a shape has no
 // units.
 
+import { useMemo } from 'react'
 import { naismithTime } from '../lib/naismith'
+import { pctAlong, ribbonGeometry, VIEW_H, VIEW_W } from '../lib/ribbonGeometry'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
-
-const VIEW_W = 100
-const VIEW_H = 40
 
 /** Written out one per line, so each has to be read as the claim it is. */
 const SUBJECT_LABELS: Record<RibbonSubject, string> = {
   ahead: 'Elevation profile ahead',
+  'todays-walk': 'Elevation profile of your whole walk today',
   'planned-stretch': 'Elevation profile of the stretch being planned',
   'map-view': 'Elevation profile of the trail shown on the map',
   'whole-trail': 'Elevation profile of the whole trail',
@@ -45,6 +45,30 @@ const SUBJECT_LABELS: Record<RibbonSubject, string> = {
 export interface ElevationSample {
   mile: number
   elevationFt: number
+  /**
+   * The first sample after ground this ribbon has no shape for, so the drawn
+   * line BREAKS here instead of sloping across it.
+   *
+   * The name and the convention are `lib/elevationGain.ts`'s `ProfileSample.
+   * partStart`, deliberately, rather than a second marker meaning the same
+   * thing: that field already tells `cumulativeGainOverProfile` where a seam
+   * in the trail is rather than a slope, and `pipeline/export_network_profile.
+   * py` names both sides of the language boundary as the documented way to
+   * flatten a route without inventing climb across a join.
+   *
+   * WHAT IT MARKS HERE IS A STRETCH BOUNDARY, NOT AN EDGE BOUNDARY, and the
+   * difference is the whole reason this is safe to draw at all. A day hike
+   * built from several stretches (#983) has ground between them that OurHike
+   * will not route - a road walk, most often - and a line sloping across it
+   * would be a picture of terrain nobody measured. A junction between two
+   * edges INSIDE a stretch is not marked: this ribbon prices nothing, so the
+   * vertical step an endpoint weld can leave (up to 19.06 m of horizontal
+   * separation, measured by export_network_profile.py) is a step in a drawing
+   * rather than climbing in a total, and it is sub-pixel on a 54 px band. A
+   * route crosses a median 23 of those junctions, so marking them all would
+   * render the ribbon as dots.
+   */
+  partStart?: boolean
 }
 
 export interface UpcomingClimb {
@@ -58,7 +82,8 @@ export interface UpcomingClimb {
  * accessible name. lib/ribbonView.ts decides which, and its `source` IS this
  * type - one value, not a field here and a field there that can drift apart.
  */
-export type RibbonSubject = 'ahead' | 'planned-stretch' | 'map-view' | 'whole-trail'
+export type RibbonSubject =
+  'ahead' | 'todays-walk' | 'planned-stretch' | 'map-view' | 'whole-trail'
 
 /** One map-framing button under the ribbon (#910 review). The screen decides
  *  WHICH exist - they depend on what the ribbon is currently showing - so this
@@ -126,11 +151,6 @@ export interface ElevationRibbonProps {
   units?: UnitSystem
 }
 
-function pctAlong(mile: number, startMile: number, endMile: number): number {
-  const span = endMile - startMile
-  return span === 0 ? 0 : ((mile - startMile) / span) * 100
-}
-
 export function ElevationRibbon({
   samples,
   currentMile,
@@ -143,35 +163,16 @@ export function ElevationRibbon({
   const startMile = domain?.startMile ?? samples[0]?.mile ?? 0
   const endMile = domain?.endMile ?? samples[samples.length - 1]?.mile ?? 0
 
-  const elevations = samples.map((s) => s.elevationFt)
-  const minFt = Math.min(...elevations)
-  const maxFt = Math.max(...elevations)
-
-  // A flat window makes max === min. Dividing by that range would put NaN into
-  // the path, which renders as nothing at all - so a flat profile is drawn as
-  // a flat line down the middle instead.
-  const range = maxFt - minFt
-  const yFor = (ft: number) =>
-    range === 0 ? VIEW_H / 2 : VIEW_H - ((ft - minFt) / range) * VIEW_H
-
-  const pointsPath = samples
-    .map((s, i) => {
-      const x = pctAlong(s.mile, startMile, endMile)
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${yFor(s.elevationFt).toFixed(2)}`
-    })
-    .join(' ')
-
-  // Closing back along the baseline is what makes this a shaded area rather
-  // than a bare line. It closes under the LINE's own ends rather than under
-  // the ribbon's: with no domain given those are the same two x values, and
-  // where a domain leaves the samples short of an edge, shading out to it
-  // would fill ground the DEM never covered.
-  const firstX = samples.length === 0 ? 0 : pctAlong(samples[0].mile, startMile, endMile)
-  const lastX =
-    samples.length === 0
-      ? VIEW_W
-      : pctAlong(samples[samples.length - 1].mile, startMile, endMile)
-  const areaPath = `${pointsPath} L${lastX.toFixed(2)},${VIEW_H} L${firstX.toFixed(2)},${VIEW_H} Z`
+  // The one expensive part of this render - the min/max scan and the two
+  // ~640-point path strings (lib/ribbonGeometry.ts). Memoized because the
+  // shell re-renders once per GPS callback while a phone sits still (#1100),
+  // reaching here with these three props unchanged (#1111): the mile rule and
+  // the labels may move without the drawn ground changing, and the ground is
+  // all this computes.
+  const { minFt, maxFt, pointsPath, areaPath } = useMemo(
+    () => ribbonGeometry(samples, startMile, endMile),
+    [samples, startMile, endMile],
+  )
 
   // Only where the fix genuinely falls inside what is drawn. Outside it the
   // rule would be clamped to an edge by the SVG viewport and read as "you are

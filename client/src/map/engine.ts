@@ -15,11 +15,24 @@
 // sentences on it.
 //
 // Breaking that needs EVERY static path from `main.tsx` to `maplibre-gl`
-// broken, not just the obvious one, which is what this module is for: six
-// modules import the library for its values (`Map`, `addProtocol`,
-// `setWorkerUrl`, the three controls), and a static import of any one of them
-// pulls the whole library into the eager chunk. They are all imported here,
-// and `MapView` reaches this through `import()`.
+// broken, not just the obvious one, which is what this module is for: the
+// modules that import the library for its values (`Map`, `setWorkerUrl`, the
+// three controls, the contour protocol) are all imported here, and `MapView`
+// reaches this through `import()`.
+//
+// AND IT BROKE ANYWAY, WHICH IS WHY `addProtocol` IS PASSED DOWN (#1300).
+// map/protocol.ts, map/basemap.ts and map/networkTiles.ts each imported
+// `addProtocol` for the one call that registers their handler - and each is
+// also imported by `App.tsx` for something that needs no library at all: a
+// string (`CORRIDOR_ARCHIVE_URL`) and two setters (`setBasemapCells`,
+// `setNetworkCells`). Rollup did the only thing it could and put the engine
+// in a chunk both the shell and this module reach, which Vite then
+// modulepreloaded from the document head: 406 KB of `maplibre-gl-shared.mjs`
+// parsed on every launch, including the Today launch that mounts no map. The
+// first of those imports landed in the same commit as this seam. So the three
+// modules now take `addProtocol` as an argument, this file hands it over, and
+// scripts/check-build-output.mjs fails the build if any chunk the document
+// loads eagerly carries MapLibre - the guard that was missing the first time.
 //
 // THE TRADE, WHICH IS REAL AND WAS CHOSEN
 //
@@ -39,10 +52,11 @@
 // keeps every test that renders a map and reaches straight for it working
 // unchanged, once something has primed the engine.
 
-import { Map as MapLibreMap } from 'maplibre-gl'
+import { addProtocol, Map as MapLibreMap } from 'maplibre-gl'
 import { attachContourUnits, registerTerrain } from './contours'
 import { attachMapChrome } from './mapChrome'
 import { registerBasemapProtocol } from './basemap'
+import { registerNetworkProtocol } from './networkTiles'
 import { registerMapWorker } from './mapWorker'
 import { registerPMTilesProtocol } from './protocol'
 
@@ -52,8 +66,11 @@ import { registerPMTilesProtocol } from './protocol'
 export interface MapEngine {
   createMap(options: ConstructorParameters<typeof MapLibreMap>[0]): MapLibreMap
   registerMapWorker: typeof registerMapWorker
-  registerPMTilesProtocol: typeof registerPMTilesProtocol
-  registerBasemapProtocol: typeof registerBasemapProtocol
+  /** Each registers its scheme with MapLibre's `addProtocol`, which this seam
+   *  supplies - the callers never touch the library (#1300). */
+  registerPMTilesProtocol: () => ReturnType<typeof registerPMTilesProtocol>
+  registerBasemapProtocol: () => void
+  registerNetworkProtocol: () => void
   registerTerrain: typeof registerTerrain
   attachMapChrome: typeof attachMapChrome
   attachContourUnits: typeof attachContourUnits
@@ -74,8 +91,9 @@ export function mapEngine(): MapEngine {
   return {
     createMap: (options) => new MapLibreMap(options),
     registerMapWorker: (...args) => registerMapWorker(...args),
-    registerPMTilesProtocol: (...args) => registerPMTilesProtocol(...args),
-    registerBasemapProtocol: (...args) => registerBasemapProtocol(...args),
+    registerPMTilesProtocol: () => registerPMTilesProtocol(addProtocol),
+    registerBasemapProtocol: () => registerBasemapProtocol(addProtocol),
+    registerNetworkProtocol: () => registerNetworkProtocol(addProtocol),
     registerTerrain: (...args) => registerTerrain(...args),
     attachMapChrome: (...args) => attachMapChrome(...args),
     attachContourUnits: (...args) => attachContourUnits(...args),

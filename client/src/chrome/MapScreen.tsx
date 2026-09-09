@@ -14,7 +14,15 @@
 // can see - which background is drawn, and whether the raster archive it may
 // be drawn over is actually on the phone.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react'
 import { StatusStrip } from './StatusStrip'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
@@ -33,7 +41,10 @@ import {
   type ChartFocusHandle,
   type StretchRuns,
 } from '../map/chartFocusLayers'
-import { WaypointLanes, type WaypointLanesProps } from './WaypointLanes'
+import { NextUpRail } from './NextUpRail'
+import type { Waypoint } from '../lib/ribbonView'
+import type { StalenessTreatment } from '../lib/stalenessDisplay'
+import type { HikeDirection } from './Header'
 import { PoiCard, type PoiDetail } from './PoiCard'
 import type { FieldNoteContext } from './FieldNoteSection'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -51,8 +62,10 @@ import type { WarningPoint } from '../map/warningLayers'
 import type { SourceReport } from '../map/liveSourceHealth'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
 import type { BackgroundOverride } from '../lib/dataSaver'
-import type { DownloadActivity } from '../lib/downloadActivity'
+import { downloadFillPercent, type DownloadActivity } from '../lib/downloadActivity'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import type { ArchiveZooms } from '../lib/archiveCoverage'
+import type { SeamEdge } from '../lib/coverageCells'
 import { mapCredits } from '../map/credits'
 import { MapAttribution } from './MapAttribution'
 
@@ -62,6 +75,7 @@ import { MapAttribution } from './MapAttribution'
  *  band's ends off the very frame edge. */
 const CHART_FIT_PADDING = 48
 import type { ResolvedTheme } from '../lib/theme'
+import type { TrailInView, ViewInsets } from '../map/trailsInView'
 import type {
   BackgroundSource,
   LayerDetailLevel,
@@ -76,19 +90,43 @@ import {
   type MapPoint,
 } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
+import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
 import './chrome.css'
 
 export interface MapScreenProps {
+  /**
+   * The Today journal, docked beside the map as the desktop's planning
+   * station (#1054). A slot rather than this screen knowing Today's props:
+   * the shell owns both screens and passes the very element the phone's
+   * Today tab renders, so the two layouts cannot drift apart. Passed ONLY
+   * above the breakpoint and only while the Today tab is active - on a phone
+   * this is always undefined and nothing here changes, which is WEBSITE.md
+   * §8's constraint made structural.
+   */
+  journal?: ReactNode
+  /** The sidebar's "today I'm…" control, handed through to the TabBar this
+   *  screen renders - see TabBarProps.modeSwitch for the contract. */
+  modeSwitch?: ReactNode
+  /** The hike a hiker is on, as a control - passed straight through to the
+   *  sidebar for the same reason (#1344). See TabBarProps.hikeSwitch. */
+  hikeSwitch?: ReactNode
+  /** The hike this phone is on, named on the plate, and the door to a
+   *  different one beside it (#1367). Both undefined off a long hike. */
+  hikeName?: string
+  onSwitchHike?: () => void
   topoArchiveUrl: string
   trailsUrl: string
-  /** The corridor-view centerline, while there is no real one to draw (#869).
-   *  Passed straight through - which line the map is drawing is decided in
-   *  lib/useTrailData.ts, and a screen that second-guessed it could put both
-   *  on at once. */
+  /** The corridor-view centerline, drawn until the map has the real line on
+   *  screen (#869, #1291). Passed straight through with `haveTrailLines`
+   *  below - which line the map is drawing is the canvas's own call, made
+   *  off its trails source, and a screen that second-guessed it could put
+   *  both on at once or neither. */
   overviewTrailsUrl?: string | null
-  /** The trails other organizations maintain (#950), forwarded to MapView -
-   *  see its own prop for what null means and why it is the usual answer. */
-  nearbyTrailsUrl?: string | null
+  /** Whether `trailsUrl` is the real line rather than the seeded placeholder
+   *  (#1291) - the other half of the sketch's contract, passed through. */
+  haveTrailLines?: boolean
+  /** The network's corridor-view sketch, forwarded to the canvas (#1135). */
+  networkOverviewUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
    *  credit, since the live sheet brings two more licences with it. */
   background?: BackgroundSource
@@ -201,43 +239,153 @@ export interface MapScreenProps {
    */
   routeDrawing?: RouteDrawing | null
   dayHikeDrawing?: DayHikeDrawing | null
-  onRouteTap?: (at: { lon: number; lat: number }) => void
+  /** Passed straight through to the map - see MapViewProps for both. */
+  dayHikeTicks?: ComponentProps<typeof MapView>['dayHikeTicks']
+  mapLabels?: ComponentProps<typeof MapView>['mapLabels']
+  onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
+  /** A drawn line, in the day-hike builder's draw mode (#983). Replaces the
+   *  tap handler while set - see MapViewProps.onRouteStroke. */
+  onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void
+  /** Press and hold on bare map (#1137) - see MapViewProps.onLongPress. */
+  onLongPress?: (
+    at: { lon: number; lat: number },
+    point: { x: number; y: number },
+  ) => void
+  /** True while the press plate is up - see MapViewProps.pressPlateOpen
+   *  for what it suppresses and why. */
+  pressPlateOpen?: boolean
   routeSheet?: ReactNode
   /**
-   * How many ATC notices the app is holding, for the Legend row that opens
-   * all of them (#687 - it used to be a permanent button on this screen; see
-   * `newAtcAlertCount` below for what replaced it here). Zero, or the shell
-   * not passing it, renders no row.
+   * The day-hike builder's panel (#1194) - the left rail on a desktop, the
+   * collapsible top panel on a phone.
+   *
+   * IN THE FLOW, NOT OVER THE MAP, which is the whole of the fix it carries.
+   * Every other slot on this screen is an overlay, and that is what made the
+   * builder's map too small: `.day-hike-bar` covers up to 60% of the canvas.
+   * This one is a SIBLING of `.map-screen__canvas`, so it takes its room
+   * rather than borrowing the map's - a row on a desktop (desktop.css already
+   * turns `.map-screen__body` into one) and a band above the map on a phone.
+   *
+   * A slot for the same reason `routeSheet` is: what a day hike knows is the
+   * shell's, and a map screen that learned about them would be the fourth
+   * feature to move into it (#937).
+   */
+  builderPanel?: ReactNode
+  /** The press-and-hold plate (#1137). A slot for the same reason as the
+   *  sheets above - but unlike them it DOES anchor to a point on the
+   *  canvas, so it positions itself and this screen only gives it the
+   *  layer to sit in. */
+  pressPlate?: ReactNode
+  /**
+   * The band a followed day hike puts directly UNDER the header (#1041,
+   * frame `D11`) - today only "you are not on your route".
+   *
+   * A slot rather than a prop this screen understands, like `routeSheet` and
+   * the sheets below it: what a followed hike knows is the shell's, and a map
+   * screen that learned about day hikes would be the fourth feature to move
+   * into it (#937).
+   *
+   * Under the header, not in `.map-screen__alerts` above it, and
+   * chrome/OffRouteCard.tsx holds the reasoning: that strip is the trail's
+   * condition ahead, true for everyone on that ground, and this is one
+   * hiker's own route.
+   */
+  followBand?: ReactNode
+  /**
+   * One sentence about the followed walk, for the polite line below - not for
+   * the eye, which reads {@link followBand}.
+   *
+   * A STRING RATHER THAN A NODE, and that is the whole point (#1055). The
+   * band is a node this screen renders without reading; an announcement has
+   * to be something this screen can put INSIDE its one live region, because
+   * the alternative is the band carrying its own live role and re-announcing
+   * a distance on every fix. Keep it free of numbers: the value here should
+   * change when the hiker crosses a threshold, never when a fix wobbles.
+   */
+  followAnnouncement?: string | null
+  /**
+   * How many trail notices the app is holding, from every organization, for
+   * the Legend row that opens all of them (#687 - it used to be a permanent
+   * button on this screen; see `newNoticeCount` below for what replaced it
+   * here). Zero, or the shell not passing it, renders no row.
    *
    * A COUNT RATHER THAN THE NOTICES. This component does not need to read one,
-   * and handing it the array would make it the second place that knows how an
-   * ATC update is rendered - which is how the banner and the sheet would come
-   * to disagree. The list itself arrives as `atcNoticeList` below, already
-   * built, exactly as `atcUpdateSheet` does.
+   * and handing it the array would make it the second place that knows how a
+   * notice is rendered - which is how the banner and the sheet would come to
+   * disagree. The list itself arrives as `noticeList` below, already built,
+   * exactly as `atcUpdateSheet` does.
    */
-  atcNoticeCount?: number
+  noticeCount?: number
   /** Opens that list - from the Legend row and from the bottom banner below,
    *  both of which are simply "a hiker asked to see it". */
-  onOpenAtcNotices?: () => void
-  /** The full list of ATC notices, or null when it is closed. */
-  atcNoticeList?: ReactNode
+  onOpenNotices?: () => void
+  /** The full list of notices, or null when it is closed. */
+  noticeList?: ReactNode
   /**
-   * How many ATC notices this screen is holding that ATC touched in the last
-   * 72 hours and the hiker has not already silenced (lib/atcAlertsBanner.ts,
+   * How many notices this screen is holding that their publisher touched in
+   * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
    * #687). Zero, or the shell not passing it, renders no banner.
    *
-   * Deliberately not derived from `atcNoticeCount` above - that is every
-   * notice the app holds, drawn or not, and this is the much narrower
-   * "something changed recently" question the bottom banner exists to
-   * answer. The two can and usually do disagree: most visits hold several
-   * notices and none of them new.
+   * Deliberately not derived from `noticeCount` above - that is every notice
+   * the app holds, drawn or not, and this is the much narrower "something
+   * changed recently" question the bottom banner exists to answer. The two can
+   * and usually do disagree: most visits hold several notices and none of them
+   * new.
+   *
+   * ONE BANNER ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 calls
+   * the banner "a scarce surface rather than a record"; a second one is more
+   * chrome this screen doesn't have room for. So the count merges and every
+   * row survives in the list.
    */
-  newAtcAlertCount?: number
+  newNoticeCount?: number
+  /**
+   * What that banner says, built by the shell.
+   *
+   * A STRING RATHER THAN A COUNT AND A LIST OF ORGANIZATIONS, because naming
+   * an organization means resolving its `source_key` through the published
+   * registry, and features/ORG_NOTICES.md §6 puts that everywhere except a
+   * component: "a string in a component is how the app ends up telling a hiker
+   * that NYNJTC's closure is ATC's word." This screen renders the sentence and
+   * does not compose it.
+   */
+  newNoticeLabel?: string
   /** Silences the bottom banner without opening the list - the quick "not
-   *  now" beside `onOpenAtcNotices`'s "show me". Omitted, no silence control
+   *  now" beside `onOpenNotices`'s "show me". Omitted, no silence control
    *  is drawn. */
-  onSilenceNewAtcAlerts?: () => void
+  onSilenceNewNotices?: () => void
+  /**
+   * The published trail data this phone does not have, and the two answers to
+   * it (#919). Undefined renders nothing, which is the state on every launch
+   * where the map is current - see chrome/TrailDataUpdate.tsx.
+   */
+  trailDataUpdate?: TrailDataUpdateProps
   warnings?: readonly WarningPoint[]
+
+  /**
+   * Whether the alert marks are drawn at all (#1047).
+   *
+   * One flag over `closures`, `atcUpdates`, `atcUpdatePoints` and `warnings` -
+   * chrome/alertLayerPanel.ts has why those four are one control and why the
+   * flag it comes from is never stored.
+   *
+   * IT WITHHOLDS AT ONE PLACE, the `<MapView>` call site, and that is the
+   * property worth keeping rather than a detail of where the ternaries went.
+   * Two other things read it and neither takes anything away: the status strip
+   * SAYS the marks are off, and the legend DISPLAYS the switch's own state.
+   * `closureAhead`, `advisoryAhead` and `warningsAhead` arrive here as
+   * finished sentences on their own props, so this flag has no route to them
+   * at all: a hiker who takes the bands off the canvas is still told what is
+   * in front of them, and that stays true by construction rather than by
+   * anyone remembering it.
+   *
+   * Defaults to drawn. A MapScreen rendered without a shell to hold the flag
+   * shows every alert it was given, which is the only default a safety layer
+   * may have.
+   */
+  alertsShown?: boolean
+  /** Flips it. Omitted, the legend draws no alert control - a switch that
+   *  goes nowhere is worse than no switch. */
+  onToggleAlerts?: () => void
 
   activeTab: TabId
   onSelectTab: (id: TabId) => void
@@ -264,6 +412,19 @@ export interface MapScreenProps {
   /** Passed straight through to the Legend (#783) - MapScreen decides nothing
    *  about it. */
   ghostedTrailsDrawn?: boolean
+  /** The named trails on screen (#1283), passed straight through to the
+   *  Legend's "Trails in view" block; and the map's report of them, passed
+   *  straight through to MapView. MapScreen decides nothing about either. */
+  trailsInView?: readonly TrailInView[]
+  onTrailsInView?: (trails: readonly TrailInView[]) => void
+  /** The taken trail (#1306), for the canvas's line splits and the legend's
+   *  rows - the active long hike's trail (lib/trips.ts), passed through
+   *  since #1352. */
+  chosenTrailId?: string | null
+  /** Takes a trail from its legend row (#1306). The rows are plain without
+   *  it, per the legend's rule that a control is drawn only where it goes
+   *  somewhere. */
+  onTakeTrail?: (trail: TrailInView) => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -382,10 +543,40 @@ export interface MapScreenProps {
   /**
    * `onSelectPoi` omitted deliberately, the way `units` is left off the ribbon
    * above: this screen already holds the handler a pin tap goes through, so it
-   * supplies that one rather than letting the shell pass a second. A ribbon pill
-   * and a map pin opening different cards is the disagreement one prop prevents.
+   * supplies that one rather than letting the shell pass a second. A rail card
+   * and a map pin opening different cards is the disagreement one prop
+   * prevents. The shape is lib/ribbonView.ts's RibbonLanes plus the staleness
+   * lookup - the same window the ribbon settled on (#913), walked as cards
+   * instead of plotted as lanes since #1054.
    */
-  waypoints?: Omit<WaypointLanesProps, 'onSelectPoi'>
+  waypoints?: {
+    points: Waypoint[]
+    startMile: number
+    endMile: number
+    stalenessFor?: (
+      poiId: string,
+      poiType: string,
+    ) => { treatment: StalenessTreatment; words: string } | null
+  }
+  /**
+   * The settled walking direction, or undefined while the tracker has not
+   * committed - which is exactly when the rail's heading must not say
+   * "NEXT UP" (chrome/NextUpRail.tsx). The position line already embeds it
+   * as text; the rail needs it as data.
+   */
+  direction?: HikeDirection
+  /**
+   * The hiker's own mile on the centerline, or undefined where there is not
+   * one (#953).
+   *
+   * The waypoint card is the only thing that reads it, and it is a number here
+   * rather than a string for the reason #953 names: what crossed this boundary
+   * before was `positionLine`'s finished sentence, so by the time a card
+   * existed the figure had already been spent. Undefined covers every state
+   * that module has its own wording for - and the card's answer to all of them
+   * is the same silence, so they arrive here as one absence rather than six.
+   */
+  hikerMile?: number
 
   showZoomButtons?: boolean
   /**
@@ -494,6 +685,16 @@ export interface MapScreenProps {
    * disagree.
    */
   belowArchiveZoom?: boolean
+  /**
+   * Whether the view is past the edge of everything downloaded (#557) - the
+   * horizontal twin of `belowArchiveZoom`, and reported by the shell for
+   * the same reason: the strip, the legend's picker and the download window
+   * all say it, and one reading of one condition is what keeps them agreeing.
+   */
+  outsideDownload?: boolean
+  /** The outer edges of the held cells, for the dashed line the canvas draws
+   *  where the download ends (#557). Passed straight through to MapView. */
+  coverageSeams?: readonly SeamEdge[]
   /** How many waypoints of each `type::confidence` the map actually drew, and
    *  whether the camera is below the zoom pins are drawn at (#528). Passed
    *  straight to the legend, which is where both are said. */
@@ -544,11 +745,22 @@ export interface MapScreenProps {
   entering?: boolean
 }
 
+/** chrome.css's `--map-control-size`: the zoom buttons at the foot of the
+ *  canvas. Restated, since a stylesheet token cannot be read from here
+ *  before layout; src/test/mapChromeContrast.test.ts is where the CSS is
+ *  pinned. */
+const MAP_CONTROL_SIZE_PX = 42
+/** MapLibre's own `.maplibregl-ctrl` margin (maplibre-gl.css). */
+const MAP_CONTROL_MARGIN_PX = 10
+/** Breathing room under the float column before a badge may anchor. */
+const CHROME_CLEARANCE_PX = 8
+
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
   overviewTrailsUrl = null,
-  nearbyTrailsUrl = null,
+  haveTrailLines = false,
+  networkOverviewUrl = null,
   background = 'hiking_topo_live',
   trailName,
   trailLogo,
@@ -579,16 +791,34 @@ export function MapScreen({
   lineSheet,
   routeDrawing = null,
   dayHikeDrawing = null,
+  dayHikeTicks,
+  mapLabels,
   onRouteTap,
+  onRouteStroke,
+  onLongPress,
+  pressPlateOpen,
   routeSheet,
-  atcNoticeCount = 0,
-  onOpenAtcNotices,
-  atcNoticeList,
-  newAtcAlertCount = 0,
-  onSilenceNewAtcAlerts,
+  builderPanel,
+  pressPlate,
+  followBand,
+  followAnnouncement = null,
+  noticeCount = 0,
+  onOpenNotices,
+  noticeList,
+  newNoticeCount = 0,
+  newNoticeLabel,
+  onSilenceNewNotices,
+  trailDataUpdate,
   warnings,
+  alertsShown = true,
+  onToggleAlerts,
   activeTab,
   onSelectTab,
+  journal,
+  modeSwitch,
+  hikeSwitch,
+  hikeName,
+  onSwitchHike,
   onOpenLegend,
   onOpenSearch,
   legendOpen,
@@ -600,6 +830,10 @@ export function MapScreen({
   bbox,
   viewportPoints,
   ghostedTrailsDrawn,
+  trailsInView,
+  onTrailsInView,
+  chosenTrailId = null,
+  onTakeTrail,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -620,6 +854,8 @@ export function MapScreen({
   onRibbonBackToMe,
   chart,
   waypoints,
+  direction,
+  hikerMile,
   position,
   locationEnabled = false,
   showZoomButtons = false,
@@ -646,6 +882,8 @@ export function MapScreen({
   backgroundProblem = null,
   onLiveSourceHealth,
   belowArchiveZoom = false,
+  outsideDownload = false,
+  coverageSeams,
   drawnCounts,
   belowPoiZoom = false,
   trailLinesMissing = false,
@@ -659,11 +897,85 @@ export function MapScreen({
   // tells a screen reader it is.
   const isDesktop = useDesktop()
 
+  // How much of the canvas the floating chrome covers (#1283), for the
+  // through-route badge's anchor. The top band is MEASURED off the float
+  // column - the identity plate plus whatever stacks under it, which grows
+  // with the flags and the alerts - because the second preview frame put
+  // the A.T.'s badge exactly there, under the plate, where MapLibre could
+  // not know a plate was. The foot is reasoned rather than measured: the
+  // zoom control is `--map-control-size` (42 px, chrome.css) inside
+  // MapLibre's own 10 px control margin, and the count chip and the scale
+  // bar sit within that band. `@unvalidated` only in the sense that nobody
+  // has watched a badge land beside the zoom buttons; what would settle it
+  // is a frame where one does.
+  const floatRef = useRef<HTMLDivElement | null>(null)
+  const [floatBottom, setFloatBottom] = useState(0)
+  useEffect(() => {
+    const float = floatRef.current
+    if (float === null) return
+    const measure = () => setFloatBottom(float.offsetTop + float.offsetHeight)
+    measure()
+    // jsdom has no ResizeObserver and no layout to observe; the one
+    // measurement above is what it gets, and it is zero there.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(float)
+    return () => observer.disconnect()
+  }, [])
+  const chromeInsets = useMemo<ViewInsets>(
+    () => ({
+      top: floatBottom + CHROME_CLEARANCE_PX,
+      right: 0,
+      bottom: MAP_CONTROL_SIZE_PX + MAP_CONTROL_MARGIN_PX * 2,
+      left: 0,
+    }),
+    [floatBottom],
+  )
+
+  /**
+   * Whether the day-hike builder owns this screen (#1194).
+   *
+   * WHAT IT SUPPRESSES, AND WHY EACH ONE. The complaint behind the builder's
+   * redesign was that its map was too small, and adding the rail alone made
+   * that WORSE on a wide screen rather than better: measured on this pull
+   * request's own preview at 1280x800, the tab sidebar (208px), the rail
+   * (348px) and the persistent legend (290px) left the map 434px, with the
+   * elevation chart taking another 200px of height under it. A rail that
+   * buys the map room by taking it from the map is not the fix anybody asked
+   * for.
+   *
+   * So while a walk is being built, two surfaces stand down:
+   *
+   *  - THE ELEVATION PROFILE, on both breakpoints. It draws the A.T.'s
+   *    whole-corridor silhouette (mi 0.0-2,197.9), and a hiker laying out a
+   *    loop in Harriman is not walking the A.T. It is not merely in the way,
+   *    it is about a different trail - see chrome/DayHikePanel.tsx for why
+   *    the walk being built has no profile of its own to put there.
+   *  - THE PERSISTENT LEGEND, on a desktop. Its filters decide which PINS
+   *    the map draws, and the builder has its own row deciding which LABELS
+   *    it draws; two panels of map controls flanking a 434px map is the
+   *    thing being fixed. The legend is one tap away the moment the builder
+   *    closes, and Cancel is always on screen.
+   *
+   * THE ATTRIBUTION LINE STAYS. ODbL is a licence condition rather than
+   * chrome, and MapAttribution's own note says the credit may not depend on
+   * whether a profile happened to download - so it may not depend on this
+   * either.
+   */
+  const buildingDayHike = builderPanel !== undefined && builderPanel !== null
+
   // The live map, kept here as well as reported upward, because the waypoint
   // card anchors to a pin by projecting its coordinates through the map - and
   // the shell above owns the POI data, not the canvas. Tee'd rather than
   // intercepted: the owner's `onMapReady` still sees every hand-over.
   const [liveMap, setLiveMap] = useState<MapLibreMap | null>(null)
+
+  // This screen's own root element, for the share sheet's portal: the sheet
+  // must land inside the subtree App.tsx hides and inerts when another
+  // screen covers the held map (#1081), and the root is the highest box
+  // that is - see PoiShareSheet.tsx's header. State rather than a plain
+  // ref so the card re-renders with the element once it exists.
+  const [screenRoot, setScreenRoot] = useState<HTMLDivElement | null>(null)
   const handleMapReady = useCallback(
     (map: MapLibreMap | null) => {
       setLiveMap(map)
@@ -837,10 +1149,56 @@ export function MapScreen({
   // (#528). `verifiedOnly` and `hiddenTypes` are passed for exactly that reason:
   // with either filter on, the legend counts fewer points, and a canvas figure
   // computed without them would contradict the panel it is standing next to.
+  //
+  // And `drawnCounts` is withheld below the seam for the same reason the
+  // legend withholds it (#1135): with both waypoint ranks floored there,
+  // "drawn" measures the floor rather than the collision engine, and this
+  // chip read "0 of 387 waypoints fit" over the opening view - the floor
+  // described as crowding, on the canvas itself. Withheld, the summary is
+  // null and the chip does not render; the legend's below-seam sentence is
+  // where the absence is explained.
   const droppedSummary = legendDropSummary(
-    computeLegendContents(bbox, viewportPoints, verifiedOnly, drawnCounts),
+    computeLegendContents(
+      bbox,
+      viewportPoints,
+      verifiedOnly,
+      belowPoiZoom ? undefined : drawnCounts,
+    ),
     hiddenTypes,
   )
+
+  // THE FOUR ALERT COLLECTIONS, AND THE ONLY PLACE #1047'S FLAG TAKES ANYTHING
+  // AWAY. (Two places below read it to describe what is happening - the status
+  // strip's "Alerts hidden" and the legend's own switch - and neither of those
+  // can withhold a mark.)
+  //
+  // Kept together here rather than as four ternaries down in the JSX, so that
+  // "what the Alerts switch withholds" is a list somebody can check against
+  // the map's own layer modules in one glance - and so that a fifth alert
+  // layer added later is a line in this block rather than a prop somewhere in
+  // a hundred-line element that nobody notices is ungated.
+  //
+  // `undefined` rather than a `[]` written here: MapView keeps a stable empty
+  // for each of these (NO_CLOSURES and friends) precisely so a fresh array per
+  // render cannot re-push a source every frame, and handing the prop away uses
+  // those rather than making a second set that behaves the same until it does
+  // not.
+  //
+  // WITHHOLDING THE DATA RATHER THAN HIDING THE LAYERS is the decision. An
+  // emptied source cannot be hit by `queryRenderedFeatures`, so a tap where a
+  // band used to be opens nothing at all - where a layer set to `visibility:
+  // none` would still answer taps and put a closure sheet over a map drawing
+  // no closure.
+  //
+  // Nothing in this block can reach `closureAhead`, `advisoryAhead` or
+  // `warningsAhead`: those arrive as finished sentences on their own props and
+  // are rendered above the map untouched. That is the guarantee the whole
+  // control rests on, and it is structural here rather than a rule anybody has
+  // to keep.
+  const drawnClosures = alertsShown ? closures : undefined
+  const drawnAtcUpdates = alertsShown ? atcUpdates : undefined
+  const drawnAtcUpdatePoints = alertsShown ? atcUpdatePoints : undefined
+  const drawnWarnings = alertsShown ? warnings : undefined
 
   return (
     // `inert` is what makes hiding the chrome safe rather than cosmetic: it
@@ -850,6 +1208,7 @@ export function MapScreen({
     // which would put the OS location prompt on screen ahead of the step whose
     // entire job is to explain why we are asking.
     <div
+      ref={setScreenRoot}
       className={entering ? 'map-screen map-screen--entering' : 'map-screen'}
       inert={entering || undefined}
       // Paired with `inert` rather than standing in for it. `inert` is what
@@ -859,131 +1218,47 @@ export function MapScreen({
       // over focusable content would otherwise be the classic trap.
       aria-hidden={entering || undefined}
     >
+      {/* The desktop's journal column (#1054): the Today screen the shell
+          hands over, reading beside the map instead of over it. Before
+          __main in the row, so it sits between the sidebar and the map -
+          src/desktop.css sizes and re-inks it. Never rendered on a phone,
+          because the shell never passes it there. */}
+      {journal !== undefined && <div className="map-screen__journal">{journal}</div>}
+
       {/* Everything that is not the navigation. On a phone this is a plain
           column and changes nothing; on a desktop the tab bar becomes a
           sidebar beside it (src/desktop.css). */}
       <div className="map-screen__main">
-        <StatusStrip
-          time={time}
-          online={online}
-          hasGpsFix={hasGpsFix}
-          lastSyncedAt={lastSyncedAt}
-          conditionsAge={conditionsAge}
-          backgroundProblem={backgroundProblem}
-          backgroundOverride={backgroundOverride}
-          belowArchiveZoom={belowArchiveZoom}
-          trailLinesMissing={trailLinesMissing}
-        />
-
-        {/* Between the status strip and the header, and that placement is the
-            decision rather than a layout accident (#232).
-
-            Above the map because a hiker who is walking has not opened
-            anything - a closure that only appears on tapping a red band is a
-            closure they walk into. Below the sync age because these two are
-            read together: the age is what says whether this line is current,
-            and an empty space here means "clear" only as far as that age.
-
-            NO LIVE ROLE ON THE VISIBLE BAND (#315), which is a correction
-            rather than a downgrade. It carried `role="alert"`, and the text
-            inside it ends in a distance - "Trail closed 2.1 mi ahead" - that
-            App.tsx recomputes on every `fix.mile` change. A live region
-            re-announces on any mutation inside it, so GPS jitter meant an
-            ASSERTIVE interruption every time the tenths ticked: the one
-            treatment that cuts off whatever a screen reader was mid-sentence
-            through, fired by a number that had not meaningfully changed.
-            That is the cry-wolf failure HIKER_SAFETY.md's own asymmetry
-            argues against, arriving through the accessibility layer.
-
-            What is announced instead is the visually-hidden line below,
-            which says only WHETHER each lane has something in it. That text
-            changes when a closure appears or clears and not when the hiker
-            drifts three metres, so it announces once per event. The detail
-            stays here, on screen and reachable by navigating to it - a
-            distance is worth reading, and it is not worth being interrupted
-            for forty times an hour. */}
         {/* One line, polite, and stable across jitter.
-   
+
             `aria-live="polite"` rather than `role="status"`, which is the
-            convention this screen already keeps and the ATC banner's own
+            convention this screen already keeps and the notices banner's own
             test spells out: StatusStrip.tsx owns `role="status"` here, and a
             second region claiming it makes "the status region" ambiguous to a
             screen reader and to a role query alike. Polite rather than
             assertive because this is announced once when something appears,
             and queueing behind whatever is being read is the right trade for
-            somebody who is walking rather than reading. */}
+            somebody who is walking rather than reading. (#315 is why the
+            visible cards below carry no live role: their text ends in a
+            distance App.tsx recomputes per fix, and a live region there
+            re-announced on every tick of the tenths.) */}
         <p className="visually-hidden" aria-live="polite">
           {[
             closureAhead !== null ? 'Trail closure ahead.' : '',
             warningsAhead !== null ? 'Serious warning ahead.' : '',
             advisoryAhead !== null ? 'An advisory covers where you are.' : '',
+            // The hiker's OWN route, last, because the three above are the
+            // ground itself and true for everyone on it (#1055). One region
+            // rather than a second one beside it, for the reason the comment
+            // above gives about `role="status"`: two live regions on one
+            // screen is two things that can interrupt each other.
+            followAnnouncement ?? '',
           ]
             .filter((sentence) => sentence !== '')
             .join(' ')}
         </p>
 
-        {(closureAhead !== null || advisoryAhead !== null || warningsAhead !== null) && (
-          <div className="map-screen__alerts">
-            {closureAhead !== null && (
-              <p className="map-screen__alert map-screen__alert--closure">
-                {closureAhead}
-              </p>
-            )}
-            {warningsAhead !== null && (
-              <p className="map-screen__alert map-screen__alert--warning">
-                {warningsAhead}
-              </p>
-            )}
-            {/* Last, and quieter than both, because it is the only one of the
-                three that is not about the next few miles (#485). A hiker inside
-                ATC's Helene advisory is inside it for 398 miles; whatever is
-                three miles ahead has to be read first. Still inside the same
-                alert region rather than demoted to the status strip - that strip
-                is narrow flags about connectivity, GPS and data age, and a
-                warning about the trail is not app status. */}
-            {advisoryAhead !== null && (
-              <p className="map-screen__alert map-screen__alert--advisory">
-                {advisoryAhead}
-              </p>
-            )}
-          </div>
-        )}
-
-        <Header
-          trailName={trailName}
-          trailLogo={trailLogo}
-          state={state}
-          position={position}
-          onOpenLegend={onOpenLegend}
-          onOpenSearch={onOpenSearch}
-        />
-
-        {/* `units` last, so the screen's answer wins over anything the shell
-            put in the ribbon's own props. The canvas below and the ribbon over
-            it read the same preference, and a map in metres under a profile in
-            feet is exactly the disagreement one prop exists to prevent.
-
-            Phone only: above the breakpoint the full chart (rendered after
-            the body, across the bottom - WEBSITE.md §6) replaces this whole
-            block - including while a route is being planned, where the chart
-            already bands the draft's stretch and the phone now draws it (#910).
-
-            The LANES go with the ribbon rather than riding the chart,
-            deliberately: they position pins in the ribbon's window-percentage
-            space, and pins re-anchored onto the chart's own zoomable axis is
-            work #135 defers - drawing them misaligned would be worse than
-            not drawing them (the exact trap that issue names). */}
-        {!isDesktop && elevation && (
-          <ElevationRibbon
-            {...elevation}
-            subject={elevation.source}
-            units={units}
-            controls={ribbonControls}
-          />
-        )}
-        {!isDesktop && waypoints && (
-          <WaypointLanes {...waypoints} onSelectPoi={onSelectPoi} />
-        )}
+        {followBand}
 
         {/* The map and the legend. Separated from the chrome above so the two
             can sit side by side on a desktop, where the legend is a panel
@@ -992,12 +1267,135 @@ export function MapScreen({
             viewport, and reparenting it under a positioned ancestor would move
             it - the one thing WEBSITE.md §8 rules out. */}
         <div className="map-screen__body">
+          {/* Before the canvas so it is the rail on the left of a desktop and
+              the band above the map on a phone, and so a keyboard reaches the
+              route being built before the map it is being built on. */}
+          {builderPanel}
           <div className="map-screen__canvas">
+            {/* The floating chrome (#1054): the identity plate and whatever
+                stacks under it, in one column so a taller plate pushes the
+                alerts down rather than overlapping them. Inside the canvas
+                so the .map-screen--entering rules hide all of it during
+                first run without a list of names (chrome.css). */}
+            <div className="map-screen__float" ref={floatRef}>
+              <Header
+                trailName={trailName}
+                trailLogo={trailLogo}
+                state={state}
+                position={position}
+                hikeName={hikeName}
+                onSwitchHike={onSwitchHike}
+                onOpenLegend={onOpenLegend}
+                onOpenSearch={onOpenSearch}
+                strip={
+                  <StatusStrip
+                    time={time}
+                    online={online}
+                    hasGpsFix={hasGpsFix}
+                    lastSyncedAt={lastSyncedAt}
+                    conditionsAge={conditionsAge}
+                    backgroundProblem={backgroundProblem}
+                    backgroundOverride={backgroundOverride}
+                    belowArchiveZoom={belowArchiveZoom}
+                    outsideDownload={outsideDownload}
+                    trailLinesMissing={trailLinesMissing}
+                    alertsHidden={!alertsShown}
+                  />
+                }
+              />
+
+              {/* Under the plate, and that placement is still #232's
+                  decision in the new shape: above the map because a hiker
+                  who is walking has not opened anything - a closure that
+                  only appears on tapping a red band is a closure they walk
+                  into - and directly under the strip's sync age, because the
+                  two are read together: the age is what says whether this
+                  line is current. No live role on the visible cards (#315);
+                  the visually-hidden line above announces once per event. */}
+              {(closureAhead !== null ||
+                advisoryAhead !== null ||
+                warningsAhead !== null) && (
+                <div className="map-screen__alerts">
+                  {closureAhead !== null && (
+                    <p className="map-screen__alert map-screen__alert--closure">
+                      {closureAhead}
+                    </p>
+                  )}
+                  {warningsAhead !== null && (
+                    <p className="map-screen__alert map-screen__alert--warning">
+                      {warningsAhead}
+                    </p>
+                  )}
+                  {/* Last, and quieter than both, because it is the only one
+                      of the three that is not about the next few miles
+                      (#485). */}
+                  {advisoryAhead !== null && (
+                    <p className="map-screen__alert map-screen__alert--advisory">
+                      {advisoryAhead}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* The hour a download spends arriving, admitted where its
+                  thinner map is felt (#1103). Below the alerts on purpose:
+                  those are the ground itself, this is housekeeping. A
+                  button because the window is where the detail lives - the
+                  per-asset list this card deliberately does not carry. No
+                  live role, like the visible alert cards above (#315): the
+                  figures change too often to announce. Absent the moment
+                  nothing is arriving, which is the DownloadsLink's rule and
+                  most of the year. */}
+              {downloadActivity !== null && (
+                <button
+                  type="button"
+                  className="map-screen__download-note"
+                  onClick={onOpenDownloads}
+                >
+                  <span className="map-screen__download-title">Map still arriving</span>
+                  {downloadActivity.kind === 'preparing' ? (
+                    // The canary step: four fetches of unannounced size, so
+                    // the honest figure is no figure (lib/downloadActivity.ts).
+                    <span className="map-screen__download-figures">
+                      Getting trail data first
+                    </span>
+                  ) : (
+                    <>
+                      <span className="map-screen__download-bar">
+                        <span
+                          className="map-screen__download-fill"
+                          style={{
+                            width: `${downloadFillPercent(
+                              downloadActivity.doneBytes,
+                              downloadActivity.totalBytes,
+                            )}%`,
+                          }}
+                        ></span>
+                      </span>
+                      {/* The same words and figures the window's card prints
+                          (DownloadCard.tsx), so the two surfaces can never
+                          disagree about one transfer. */}
+                      <span className="map-screen__download-figures">
+                        {`${downloadActivity.kind === 'downloading' ? 'Downloading' : 'Checking'} · ${formatBytesLive(
+                          downloadActivity.doneBytes,
+                        )} of ${formatBytes(downloadActivity.totalBytes)}`}
+                      </span>
+                      <span className="map-screen__download-line">
+                        Drawing live tiles meanwhile — some detail is missing until this
+                        lands.
+                      </span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
             <MapView
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
-              nearbyTrailsUrl={nearbyTrailsUrl}
+              haveTrailLines={haveTrailLines}
+              networkOverviewUrl={networkOverviewUrl}
               background={background}
               pois={viewportPoints}
               pinCondition={pinCondition}
@@ -1005,19 +1403,25 @@ export function MapScreen({
               verifiedOnly={verifiedOnly}
               drought={drought}
               showDrought={droughtShown}
-              closures={closures}
+              coverageSeams={coverageSeams}
+              closures={drawnClosures}
               corridor={corridor}
               onSelectHighlight={onSelectHighlight}
-              atcUpdates={atcUpdates}
-              atcUpdatePoints={atcUpdatePoints}
+              atcUpdates={drawnAtcUpdates}
+              atcUpdatePoints={drawnAtcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
               disputes={disputes}
-              warnings={warnings}
+              warnings={drawnWarnings}
               routeDrawing={routeDrawing}
               dayHikeDrawing={dayHikeDrawing}
+              dayHikeTicks={dayHikeTicks}
+              mapLabels={mapLabels}
               onRouteTap={onRouteTap}
+              onRouteStroke={onRouteStroke}
+              onLongPress={onLongPress}
+              pressPlateOpen={pressPlateOpen}
               onSelectPoi={onSelectPoi}
               onSelectLine={onSelectLine}
               showZoomButtons={showZoomButtons}
@@ -1034,6 +1438,9 @@ export function MapScreen({
               archiveZooms={archiveZooms}
               boundsPadding={boundsPadding}
               onViewportChange={onViewportChange}
+              onTrailsInView={onTrailsInView}
+              chromeInsets={chromeInsets}
+              chosenTrailId={chosenTrailId}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
             />
@@ -1053,11 +1460,20 @@ export function MapScreen({
 
             {/* Inline above the desktop breakpoint, where the whole list fits
                 on one line - the same `isDesktop` the legend uses, so the two
-                cannot disagree about how much room this layout has. */}
-            <MapAttribution
-              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
-              inline={isDesktop}
-            />
+                cannot disagree about how much room this layout has.
+
+                ON A PHONE THE CREDIT LIVES IN THE RAIL below since #1054 -
+                except during first run, when the rail is hidden with the rest
+                of the chrome and this canvas copy is what keeps a drawn map
+                credited (the .map-screen--entering rules exempt
+                .map-attribution by name for exactly this - chrome.css). One
+                instance renders at a time. */}
+            {(isDesktop || entering) && (
+              <MapAttribution
+                credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
+                inline={isDesktop}
+              />
+            )}
 
             {/* Inside the canvas, and not one wrapper further out: the card
                 positions itself in canvas pixels (poiCardPlacement.ts), so it
@@ -1070,7 +1486,10 @@ export function MapScreen({
                 map={liveMap}
                 units={units}
                 noteContext={noteContext}
+                {...(hikerMile === undefined ? {} : { hikerMile })}
+                {...(direction === undefined ? {} : { direction })}
                 onClose={onClosePoi}
+                sheetContainer={screenRoot}
               />
             )}
 
@@ -1100,11 +1519,16 @@ export function MapScreen({
                 on the canvas. Both can be open at once and the list is
                 rendered second, so it lands on top; that is the right way
                 round, since the list is what a hiker just asked for. */}
-            {atcNoticeList}
+            {noticeList}
 
             {/* The route builder's card, in the same slot family: it is about
                 a route, which anchors to nothing on the canvas either. */}
             {routeSheet}
+
+            {/* Last of the overlays, so a plate opened over an open sheet
+                lands on top - the hiker pressed the map after the sheet
+                was already there, and the newer intent wins. */}
+            {pressPlate}
 
             <Search
               open={searchOpen}
@@ -1115,11 +1539,26 @@ export function MapScreen({
           </div>
 
           <Legend
-            open={legendOpen}
-            persistent={isDesktop}
+            // Stood down while the builder owns the screen - see
+            // `buildingDayHike`.
+            //
+            // BOTH PROPS, and the second is the one that does the work here.
+            // Legend.tsx renders unless `!open && !persistent`, so a
+            // persistent legend ignores `open` entirely - gating `open` alone
+            // left the panel on screen and the map at 380px, which the
+            // preview photographed. Neither prop is state, so this is a mode
+            // rather than a dismissal: cancel the builder and the panel is
+            // back, still holding whatever the hiker had set in it.
+            open={legendOpen && !buildingDayHike}
+            persistent={isDesktop && !buildingDayHike}
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
+            trailsInView={trailsInView}
+            onTakeTrail={onTakeTrail}
+            // The sheet the canvas beside it is drawn in, so each row's swatch
+            // inks its line the way the map does (#1283).
+            sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}
@@ -1127,6 +1566,8 @@ export function MapScreen({
             typesShown={typesShown}
             verifiedOnly={verifiedOnly}
             onToggleVerifiedOnly={onToggleVerifiedOnly}
+            alertsShown={alertsShown}
+            onToggleAlerts={onToggleAlerts}
             droughtShown={droughtShown}
             onToggleDrought={onToggleDrought}
             units={units}
@@ -1144,22 +1585,68 @@ export function MapScreen({
             onChangeBackground={onChangeBackground}
             backgroundOverride={backgroundOverride}
             belowArchiveZoom={belowArchiveZoom}
+            outsideDownload={outsideDownload}
             offlineBackgroundAvailable={offlineBackgroundAvailable}
             drawnCounts={drawnCounts}
             belowPoiZoom={belowPoiZoom}
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
-            atcNoticeCount={atcNoticeCount}
-            onOpenAtcNotices={onOpenAtcNotices}
+            noticeCount={noticeCount}
+            onOpenNotices={onOpenNotices}
           />
         </div>
+
+        {/* The next-up rail (#1054): the phone's band between the map and
+            the tab bar, replacing the ribbon-and-lanes strip that used to
+            sit ABOVE the canvas. Cards first, then the ribbon as a bordered
+            card, then the attribution line - which stays on screen because
+            ODbL is a licence condition, not chrome. `units` last on the
+            ribbon, so the screen's answer wins, exactly as before.
+
+            Phone only: above the breakpoint the full chart below replaces
+            the ribbon, and the rail's cards would double the chart's own
+            annotations. Hidden during first run by the entering rules like
+            the rest of the chrome; the canvas then renders the credit
+            itself (see MapAttribution above). */}
+        {!isDesktop && (
+          // Unconditional on a phone - with no ribbon and no cards to draw,
+          // the band is the attribution line alone, because the credit may
+          // not depend on whether a profile happened to download.
+          <div className="next-up-band">
+            {!buildingDayHike && waypoints !== undefined && elevation !== undefined && (
+              <NextUpRail
+                points={waypoints.points}
+                subject={elevation.source}
+                currentMile={elevation.currentMile}
+                direction={direction}
+                onSelectPoi={(id) => onSelectPoi(id)}
+                units={units}
+                stalenessFor={waypoints.stalenessFor}
+              />
+            )}
+            {!buildingDayHike && elevation !== undefined && (
+              <div className="next-up__ribbon-card">
+                <ElevationRibbon
+                  {...elevation}
+                  subject={elevation.source}
+                  units={units}
+                  controls={ribbonControls}
+                />
+              </div>
+            )}
+            <MapAttribution
+              credits={mapCredits({ background, hasRasterArchive, hasNearbyTrails })}
+              inline={false}
+            />
+          </div>
+        )}
 
         {/* The full chart, across the bottom of the frame (#135): the desk's
             answer to the ribbon, needing no fix. Rendered below the body so
             the map and the legend keep their whole height until the profile
             exists to draw. `units` last, exactly as on the ribbon above. */}
-        {isDesktop && chart !== undefined && (
+        {isDesktop && !buildingDayHike && chart !== undefined && (
           <ElevationChart
             profile={chart.profile}
             currentMile={chart.currentMile}
@@ -1183,7 +1670,7 @@ export function MapScreen({
             answers only the first, and answers it far less often: it renders
             solely while ATC has touched a live notice in the last 72 hours
             and the hiker has not already silenced it
-            (lib/atcAlertsBanner.ts).
+            (lib/notices.ts).
 
             At the FOOT of the main column instead - `aria-live="polite"`
             rather than `role="alert"` (assertive) or `role="status"`: the
@@ -1198,24 +1685,29 @@ export function MapScreen({
             the credit strip sharing that corner, by hand-tuned offsets that
             drift the moment either changes size. A row in flow needs none of
             that, on a phone or the desktop sidebar layout alike. */}
-        {newAtcAlertCount > 0 && onOpenAtcNotices !== undefined && (
+        {/* Beneath the alert row rather than above it, on the one occasion
+            both are up: an organization's closure changes what a hiker does
+            next, and newer waypoint data does not. The order is the ranking. */}
+        {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
+        {newNoticeCount > 0 && onOpenNotices !== undefined && (
           <div className="map-screen__new-alerts" aria-live="polite">
             <button
               type="button"
               className="map-screen__new-alerts-button"
-              onClick={onOpenAtcNotices}
+              onClick={onOpenNotices}
             >
-              {newAtcAlertCount === 1
-                ? 'ATC · New alert issued'
-                : `ATC · ${newAtcAlertCount} new alerts issued`}
+              {newNoticeLabel ??
+                (newNoticeCount === 1
+                  ? 'New trail notice issued'
+                  : `${newNoticeCount} new trail notices issued`)}
             </button>
-            {onSilenceNewAtcAlerts !== undefined && (
+            {onSilenceNewNotices !== undefined && (
               <button
                 type="button"
                 className="map-screen__new-alerts-silence"
-                onClick={onSilenceNewAtcAlerts}
+                onClick={onSilenceNewNotices}
               >
-                <span className="visually-hidden">Silence new ATC alerts</span>
+                <span className="visually-hidden">Silence new trail notices</span>
                 <span aria-hidden="true">×</span>
               </button>
             )}
@@ -1223,7 +1715,12 @@ export function MapScreen({
         )}
       </div>
 
-      <TabBar active={activeTab} onSelect={onSelectTab} />
+      <TabBar
+        active={activeTab}
+        onSelect={onSelectTab}
+        modeSwitch={modeSwitch}
+        hikeSwitch={hikeSwitch}
+      />
     </div>
   )
 }

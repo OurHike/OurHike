@@ -47,24 +47,9 @@ from datetime import datetime, timedelta, timezone
 import requests
 
 from lib.http_retry import request_with_retry
+from lib.user_agent import USER_AGENT
 
 LISTING_URL = "https://appalachiantrail.org/trail-updates/"
-
-#: WHO WE SAY WE ARE, and this is load-bearing rather than courtesy. ATC's
-#: host refuses the literal `python-requests/*` User-Agent with 403 and
-#: answers 200 to anything else - measured 2026-08-24, the same URL, the same
-#: second:
-#:
-#:     python-requests/2.32.3   403
-#:     curl/8.5.0               200
-#:     (this string)            200
-#:
-#: So a fetcher that does not set one gets nothing, and every request here
-#: goes through `atc_session()` for that reason. It names the project and
-#: links to it rather than impersonating a browser: the block is on the
-#: default, not on robots, and an operator who wants to throttle or contact us
-#: should be able to see who this is from one line of their log.
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 
 #: How long a cached copy of one update's page is trusted before it is asked
 #: for again. A day, so that an edit ATC makes to an old notice is picked up
@@ -101,6 +86,12 @@ _CHIP = re.compile(r"^\s*((?:[A-Z]{2})(?:,\s*[A-Z]{2})*)\s*\|\s*([A-Za-z][A-Za-z
 
 def atc_session(session: requests.Session | None = None) -> requests.Session:
     """A session that identifies itself, because the default one is refused.
+
+    ATC answers `python-requests/*` with 403 and anything else with 200 -
+    lib/user_agent.py carries that measurement, and the string, now that six
+    other files turned out to be spelling the same literal without it
+    (#1295). This host is the one where sending it is mandatory rather than
+    polite, which is why every request in this module goes through here.
 
     Assignment rather than `setdefault`: a fresh `requests.Session` already
     carries `User-Agent: python-requests/...`, so setting it only-if-absent

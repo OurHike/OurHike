@@ -1,9 +1,22 @@
-# Mirrors .gitignore, plus dev-only files the image never needs -
-# Dockerfile only COPYs app/, alembic/, alembic.ini, and requirements.txt
-# explicitly, so most of this is belt-and-suspenders against a future
-# broader COPY, not currently load-bearing.
+# Mirrors .gitignore, plus dev-only files the image never needs.
+#
+# THE PATTERNS ARE NOT .gitignore PATTERNS, and one of them was silently
+# doing nothing because of it (#1358). Docker matches each line against the
+# whole context-relative path rather than against every path segment, so a
+# bare `__pycache__/` excludes only `backend/__pycache__` and lets
+# `app/core/__pycache__` straight through. `COPY app/ ./app/` and
+# `COPY alembic/ ./alembic/` are recursive, so that is not hypothetical:
+# measured 2026-09-09, a local build shipped 81 `.pyc` files in 8
+# directories into the image - bytecode compiled on whoever ran the build,
+# inside the artifact that gets deployed. A clean CI checkout has no
+# `__pycache__` to copy, which is exactly why this went unseen.
+#
+# The rest genuinely is belt-and-suspenders against a future broader COPY:
+# `.venv/`, the cache directories and `tests/` only ever exist at the top
+# level, where a bare pattern does match. `**/` is used only where nesting
+# is real, rather than sprayed everywhere to look thorough.
 .venv/
-__pycache__/
+**/__pycache__/
 .pytest_cache/
 .ruff_cache/
 .coverage

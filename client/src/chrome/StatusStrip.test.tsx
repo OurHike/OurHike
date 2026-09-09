@@ -48,6 +48,24 @@ describe('StatusStrip', () => {
     expect(screen.getByText(/no gps/i)).toBeInTheDocument()
   })
 
+  it('says the view is past the edge of the download, in the words of coverage (#557)', () => {
+    render(<StatusStrip {...PROPS} outsideDownload />)
+
+    const flag = screen.getByText(/outside what you downloaded/i)
+    expect(flag).toBeInTheDocument()
+    // Never damage. A hiker past the edge of the stretch they took is
+    // looking at paper because the ground was never taken, and the wording
+    // #352 had to walk back would send them to delete a download that is
+    // fine.
+    expect(flag.textContent).not.toMatch(/damaged|corrupt|incomplete|not drawing/i)
+  })
+
+  it('says nothing about the edge on a phone that has not crossed one', () => {
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/outside what you downloaded/i)).not.toBeInTheDocument()
+  })
+
   it('reports how long ago the data last synced', () => {
     render(<StatusStrip {...PROPS} />)
 
@@ -232,5 +250,45 @@ describe('how old the closures are', () => {
     render(<StatusStrip {...PROPS} conditionsAge="Trail conditions unavailable" />)
 
     expect(screen.getByText('Trail conditions unavailable')).toBeTruthy()
+  })
+})
+
+describe('the alerts a hiker has taken off the map (#1047)', () => {
+  // A map with the bands hidden and a map with no closure for forty miles are
+  // the same picture, and this strip's whole job is to keep those two apart.
+  // The legend holds the switch; the legend is shut while somebody is walking.
+
+  it('says so while they are hidden', () => {
+    render(<StatusStrip {...PROPS} alertsHidden />)
+
+    expect(screen.getByText('Alerts hidden')).toBeInTheDocument()
+  })
+
+  it('says nothing while they are drawn', () => {
+    // The ordinary state, and by far the common one. A flag that is always
+    // there is a flag nobody reads, which would cost the other eight on this
+    // strip their meaning too.
+    render(<StatusStrip {...PROPS} />)
+
+    expect(screen.queryByText(/alerts hidden/i)).not.toBeInTheDocument()
+  })
+
+  it('keeps saying so with the map in trouble around it', () => {
+    // Never stood down for another flag, unlike the two background readings
+    // that defer to each other. Those are two readings of one blank screen;
+    // this is a second thing missing from it, and a hiker told only "No live
+    // map" would have no reason to doubt an empty trail.
+    render(
+      <StatusStrip
+        {...PROPS}
+        online={false}
+        alertsHidden
+        backgroundProblem="live-unreachable"
+        trailLinesMissing
+      />,
+    )
+
+    expect(screen.getByText('Alerts hidden')).toBeInTheDocument()
+    expect(screen.getByText('No live map')).toBeInTheDocument()
   })
 })

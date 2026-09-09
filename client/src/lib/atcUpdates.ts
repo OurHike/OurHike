@@ -27,6 +27,7 @@
 // its absence is rendered as no ATC layer rather than as a clear trail.
 
 import type { Closure, HikeDirection } from './closureBanner'
+import { ATC_SOURCE_KEY } from './notices'
 import { isBroadAdvisory } from './closureSpan'
 import { formatDistance, type UnitSystem } from './units'
 
@@ -151,12 +152,25 @@ export function obstructsTheTrail(update: AtcUpdate): boolean {
   return update.obstructs_trail
 }
 
-/** How a band's id says which update it is, and that it is ATC's.
+/** How a band's id says which update it is, and which organization published
+ *  it.
  *
  *  Prefixed rather than bare so it can never collide with a closure's UUID in
  *  a shared id space, and so a tap that produces one of these is recognisably
- *  an ATC tap rather than an ambiguous string. */
-export const ATC_BAND_ID_PREFIX = 'atc:'
+ *  a notice tap rather than an ambiguous string.
+ *
+ *  THE PREFIX IS NOW THE REGISTRY KEY rather than the abbreviation `atc:` it
+ *  was until #1083. The change is a generalization of something already here:
+ *  `pipeline/export_nynjtc_alerts.py` namespaces its own ids as
+ *  `<source key>:<slug>`, which is the same scheme one vocabulary further
+ *  along - and unlike `atc:`, a registry key is a thing `lib/stewards.ts` can
+ *  resolve to an organization's own name. lib/notices.ts holds the general
+ *  form; this constant is kept so the ATC path reads the same as it did.
+ *
+ *  A hiker's phone can hold a band id minted by an older build. Nothing
+ *  persists one - `selectedBandId` is component state and `drawnIds` is
+ *  recomputed every render - so the change needs no migration. */
+export const ATC_BAND_ID_PREFIX = `${ATC_SOURCE_KEY}:`
 
 export function atcBandId(update: AtcUpdate): string {
   return `${ATC_BAND_ID_PREFIX}${update.atc_id}`
@@ -284,10 +298,24 @@ function unchecked(update: AtcUpdate): string {
   return isReviewedByAPerson(update) ? '' : ' · not checked by OurHike'
 }
 
+/**
+ * The header's one line for a notice, or null when there is nothing to say.
+ *
+ * `org` is the publisher's SHORT name and it is passed in rather than written
+ * here (#1083, features/ORG_NOTICES.md §6). It used to be the literal `ATC`.
+ * The registry's `provider` field is the short form the shell reads off
+ * `lib/stewards.ts`'s `orgProviderFrom` - so the abbreviation on a hiker's
+ * header is the organization's own, not one this module shortened.
+ *
+ * Still ATC-only in practice, and that is a fact about the data rather than a
+ * limit of this function: the sentence says how far ahead something is, and
+ * only an `at_miles` notice carries a mile.
+ */
 export function atcUpdateBanner(
   update: AtcUpdate,
   currentMile: number,
   direction: HikeDirection | undefined,
+  org: string,
   units: UnitSystem = 'imperial',
 ): string | null {
   const { start_mile_marker: start, end_mile_marker: end } = update
@@ -305,7 +333,7 @@ export function atcUpdateBanner(
       ? `along ${formatDistance(Math.abs(end - start), units, 'whole')} of trail`
       : 'here'
 
-    return `ATC · ${update.category} ${where} · ${update.title} · ${range}${unchecked(update)}`
+    return `${org} · ${update.category} ${where} · ${update.title} · ${range}${unchecked(update)}`
   }
 
   if (direction === undefined) return null
@@ -315,7 +343,7 @@ export function atcUpdateBanner(
     direction === 'NOBO' ? nearEdge - currentMile : currentMile - nearEdge
   if (distanceAhead < 0) return null
 
-  return `ATC · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}${unchecked(update)}`
+  return `${org} · ${update.category} ${formatDistance(distanceAhead, units)} ahead · ${update.title} · ${range}${unchecked(update)}`
 }
 
 /**

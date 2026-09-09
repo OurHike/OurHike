@@ -31,8 +31,14 @@
 //                                       painting day one untrustworthy.
 //
 // And only the types the ask is scoped to wear any of it - water, shelter,
-// campsite, resupply (lib/fieldNotes.ts's NOTE_SCOPED_TYPES). A viewpoint
-// has no condition to be stale about.
+// campsite, resupply and, since #1122, parking (lib/fieldNotes.ts's
+// NOTE_SCOPED_TYPES). A viewpoint has no condition to be stale about.
+//
+// This file does not decide that list and must not grow its own copy of it:
+// a type the card asks a question about and the map draws as timeless would
+// be two surfaces disagreeing about whether the answer mattered. Reading
+// `isNoteScopedType` is what makes parking's arrival here a consequence
+// rather than a second decision somebody had to remember to make.
 
 import { stalenessTier, type StalenessTier } from './staleness'
 import { isNoteScopedType } from './fieldNotes'

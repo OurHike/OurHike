@@ -2,7 +2,7 @@
 
 Companion to [../TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), [../FEATURES.md](../FEATURES.md) and [../OurHikeValues.md](../OurHikeValues.md). Extends [../pipeline/DATA_RELEASES.md](../pipeline/DATA_RELEASES.md) (a registration proposes; only a merged pull request releases), [../pipeline/DBT.md](../pipeline/DBT.md) (a registered source is a row; a source that needs real reshaping is a staging model), [AUTHENTICATION.md](AUTHENTICATION.md) (who signs in to register) and [VOLUNTEERING.md](VOLUNTEERING.md) (`Club`, and the `MaintainerAssignment` that answers "who looks after this mile").
 
-The A.T. is maintained by thirty clubs — ATC's own `trail_club_sections` layer has one polygon each — plus the National Park Service, the Forest Service, and a long tail of state agencies and land trusts. Everything OurHike ships today comes from **one** of them: twelve ArcGIS layers under a single ATC-run org, found by a script that walks a public web map nobody published for that purpose. Every other organization holding trail data has no way to reach this project except by knowing someone.
+The A.T. is maintained by thirty clubs — ATC's own `trail_club_sections` layer has one polygon each — plus the National Park Service, the Forest Service, and a long tail of state agencies and land trusts. This document was written when everything OurHike shipped came from **one** of them: twelve ArcGIS layers under a single ATC-run org, found by a script that walks a public web map nobody published for that purpose. That sentence read in the present tense until 2026-08-27 and is no longer true — [../pipeline/sources.json](../pipeline/sources.json) now registers 33 sources across nine organizations, five of which publish trail lines a hiker sees: ATC, NYNJTC, NYS OPRHP, NYS DEC and Mohonk Preserve (counted from the registry, 2026-08-27). What has **not** changed is the paragraph's point. Each of the four that joined ATC arrived because a maintainer went looking and read their terms by hand, which is still knowing someone rather than a way in; every other organization holding trail data still has no way in at all.
 
 This is the mechanism for the rest of them: an organization registers where its data lives and who to tell when it breaks, and that data reaches hikers through the same reviewed, versioned path everything else does.
 
@@ -143,7 +143,7 @@ Three tiers, deliberately unequal:
 
 **Volume is capped structurally, not by good intentions.** One tracking issue per source, **updated in place** — DATA_RELEASES.md's existing rule ("never a second issue, never a comment per day"), applied to a second producer. At most one email per source per week no matter how many times a nightly job fails. A weekly build that fails five times sends one message.
 
-And to be explicit, because this project guards it hard: these are emails to organizations. The wrong-way alert remains the only push notification OurHike sends to a hiker.
+And to be explicit, because this project guards it hard: these are emails to organizations. OurHike sends no push notification of any kind to a hiker - the wrong-way alert, which would have been the exception, was removed ([HIKER_SAFETY.md](HIKER_SAFETY.md) §5).
 
 ### When nobody answers: quarantine, not deletion
 

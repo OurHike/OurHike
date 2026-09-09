@@ -14,12 +14,16 @@ import subprocess
 from pathlib import Path
 
 import pytest
+import requests
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
+from shapely.geometry import box
 
 import export_basemap
 from export_basemap import (
     AT_STATES,
+    BUILD_LANGUAGES,
+    UNRENDERED_LAYERS,
     fetch_states,
     osmium_extract_cmd,
     osmium_merge_cmd,
@@ -27,6 +31,7 @@ from export_basemap import (
     report_archive,
     state_urls,
 )
+from lib import http_retry
 
 
 def test_the_default_state_list_is_the_fourteen_at_states_with_no_duplicates():
@@ -76,6 +81,101 @@ def test_layer_stats_are_asked_for_only_when_wanted():
     assert "--output-layerstats" in asked
 
 
+def test_the_command_builder_asks_for_nothing_it_was_not_given():
+    """Neutral by default on both, so a caller that has not thought about the
+    exclusion does not silently inherit one. spike_shard_seam.py is that
+    caller: it builds to compare two shards, and its recorded drift rate was
+    measured across the whole schema."""
+    bare = planetiler_cmd(Path("p.jar"), Path("in.pbf"), Path("out.pmtiles"), 14, None, Path("tmp"))
+    assert not any(arg.startswith("--exclude-layers") for arg in bare)
+    assert not any(arg.startswith("--languages") for arg in bare)
+
+
+def test_the_exclusion_is_one_comma_joined_argument():
+    """The profile's own syntax (`--exclude-layers=poi,housenumber,...`).
+    Passing them as separate flags silently keeps only the last, which would
+    ship six of the seven layers and look exactly like a working build."""
+    cmd = planetiler_cmd(
+        Path("p.jar"),
+        Path("in.pbf"),
+        Path("out.pmtiles"),
+        14,
+        None,
+        Path("tmp"),
+        exclude_layers=["poi", "building"],
+        languages="en",
+    )
+    assert [arg for arg in cmd if arg.startswith("--exclude-layers")] == ["--exclude-layers=poi,building"]
+    assert "--languages=en" in cmd
+
+
+def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, monkeypatch):
+    """#1116, asserted on what main() actually runs rather than on a default.
+
+    The saving is 12.4% of the z13 package and 34.6% of the z14 one, measured;
+    what this pins is that the build asks for it at all, and that it names
+    every layer no `source-layer` in client/src/map/liveTopo.ts does.
+    """
+    monkeypatch.setattr(export_basemap, "load_corridor_4326", lambda: box(-75, 40, -74, 41))
+    monkeypatch.setattr(export_basemap, "write_shapes", lambda _corridor: None)
+    monkeypatch.setattr(export_basemap, "fetch_states", lambda *a, **k: [tmp_path / "s.osm.pbf"])
+    monkeypatch.setattr(export_basemap, "report_archive", lambda _path: {})
+    monkeypatch.setattr(export_basemap, "OSM_RAW_DIR", tmp_path)
+    monkeypatch.setattr(export_basemap, "CLIP_POLY_PATH", tmp_path / "clip.poly")
+
+    (tmp_path / "s.osm.pbf").write_bytes(b"pbf")
+
+    ran: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        # osmium is stubbed out, so nothing writes the files main() then stats
+        # to print its size table. Creating whatever `-o` names keeps the run
+        # going to the step this test is about.
+        ran.append(cmd)
+        if "-o" in cmd:
+            Path(cmd[cmd.index("-o") + 1]).write_bytes(b"clipped")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    export_basemap.main(
+        argparse.Namespace(
+            no_clip=False,
+            states=["vermont"],
+            planetiler_jar=Path("p.jar"),
+            refetch=False,
+            max_zoom=14,
+            out=tmp_path / "out.pmtiles",
+        )
+    )
+
+    planetiler = next(cmd for cmd in ran if cmd[0] == "java")
+    excluded = [arg for arg in planetiler if arg.startswith("--exclude-layers=")]
+    assert len(excluded) == 1
+    named = set(excluded[0].removeprefix("--exclude-layers=").split(","))
+    assert named == set(UNRENDERED_LAYERS)
+    # The nine the style DOES name. Listed rather than derived so that deleting
+    # a layer from the style cannot silently widen the exclusion without
+    # somebody editing this line and thinking about the archive it changes.
+    assert named.isdisjoint(
+        {
+            "landcover",
+            "park",
+            "water",
+            "waterway",
+            "transportation",
+            "boundary",
+            "mountain_peak",
+            "water_name",
+            "place",
+        }
+    )
+    # Planetiler's default is ~80 languages (onthegomap/planetiler#1043), which
+    # is how a town on the A.T. ends up carrying name:tok. Worth 0.7% on top of
+    # the layer exclusion, measured - small, and kept because it is free and
+    # stops being small the moment this builds outside the United States.
+    assert f"--languages={BUILD_LANGUAGES}" in planetiler
+
+
 def test_fetch_states_skips_files_already_present(tmp_path, requests_mock):
     (tmp_path / "georgia-latest.osm.pbf").write_bytes(b"already here")
     requests_mock.get(
@@ -89,6 +189,32 @@ def test_fetch_states_skips_files_already_present(tmp_path, requests_mock):
     assert (tmp_path / "georgia-latest.osm.pbf").read_bytes() == b"already here"
     assert (tmp_path / "maine-latest.osm.pbf").read_bytes() == b"maine bytes"
     assert requests_mock.call_count == 1, "the present file must not be re-fetched"
+
+
+def test_fetch_states_survives_the_timeout_that_killed_a_publish(tmp_path, requests_mock, monkeypatch):
+    """#1063: one read timeout from Geofabrik used to end the whole publish.
+
+    The retry unit is ONE STATE, which is what keeps this affordable - the
+    state that flaked is re-pulled and the ones already on disk are not
+    touched. Sleeps are stubbed out so the ladder is not actually waited.
+    """
+    monkeypatch.setattr(http_retry.time, "sleep", lambda _: None)
+    (tmp_path / "georgia-latest.osm.pbf").write_bytes(b"already here")
+    requests_mock.get(
+        "https://download.geofabrik.de/north-america/us/maine-latest.osm.pbf",
+        [
+            {"exc": requests.exceptions.ReadTimeout},
+            {"content": b"maine bytes"},
+        ],
+    )
+
+    paths = fetch_states(["georgia", "maine"], tmp_path)
+
+    assert [p.name for p in paths] == ["georgia-latest.osm.pbf", "maine-latest.osm.pbf"]
+    assert (tmp_path / "maine-latest.osm.pbf").read_bytes() == b"maine bytes"
+    # The state already on disk was never asked for, flake or no flake.
+    assert (tmp_path / "georgia-latest.osm.pbf").read_bytes() == b"already here"
+    assert list(tmp_path.glob("*.part")) == []
 
 
 def test_report_archive_counts_tiles_and_bytes_per_zoom(tmp_path, capsys):

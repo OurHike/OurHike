@@ -2,6 +2,11 @@ import { describe, it, expect, afterEach, vi } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import { ElevationRibbon } from './ElevationRibbon'
 import { naismithTime } from '../lib/naismith'
+import { ribbonGeometry } from '../lib/ribbonGeometry'
+
+// Spied rather than replaced: every test below still exercises the real
+// geometry; the spy exists so the memo test can count how often it runs.
+vi.mock('../lib/ribbonGeometry', { spy: true })
 
 // WIREFRAMES.md §1.3. The geometry values are specified exactly - viewBox
 // "0 0 100 40" with preserveAspectRatio="none" so the profile stretches to
@@ -220,6 +225,50 @@ describe('ElevationRibbon', () => {
     expect(screen.queryByRole('img', { name: /ahead/i })).not.toBeInTheDocument()
   })
 
+  it('calls a followed walk "your whole walk today" and not "ahead"', () => {
+    // #1045. "Ahead" is the strongest claim these five labels make and it is
+    // about the A.T.; a screen reader saying it over a Harriman loop has told
+    // a hiker something false about where they are going.
+    render(<ElevationRibbon samples={SAMPLES} currentMile={null} subject="todays-walk" />)
+
+    expect(screen.getByRole('img', { name: /whole walk today/i })).toBeInTheDocument()
+    expect(screen.queryByRole('img', { name: /ahead/i })).not.toBeInTheDocument()
+  })
+
+  it('breaks the line at ground it has no shape for, rather than sloping across it', () => {
+    // #1045, #983: a day hike built from two stretches has ground between
+    // them OurHike will not route - a road walk, most often. A line drawn
+    // across it would be a picture of terrain nobody measured.
+    render(
+      <ElevationRibbon
+        samples={[
+          { mile: 0, elevationFt: 1000 },
+          { mile: 1, elevationFt: 1400 },
+          { mile: 1, elevationFt: 900, partStart: true },
+          { mile: 2, elevationFt: 1100 },
+        ]}
+        currentMile={null}
+        subject="todays-walk"
+      />,
+    )
+
+    // Two subpaths, so nothing is stroked between the two `M`s.
+    const line = screen.getByTestId('profile-area').getAttribute('d') ?? ''
+    expect(line.match(/M/g)).toHaveLength(2)
+    // And two closed areas, so the shading does not fill the gap either.
+    expect(line.match(/Z/g)).toHaveLength(2)
+  })
+
+  it('draws one unbroken path when nothing is marked, exactly as it always did', () => {
+    // Every ribbon that existed before #1045 carries no marker at all, and
+    // this is what says the marker costs them nothing.
+    render(<ElevationRibbon {...PROPS} />)
+
+    const line = screen.getByTestId('profile-area').getAttribute('d') ?? ''
+    expect(line.match(/M/g)).toHaveLength(1)
+    expect(line.match(/Z/g)).toHaveLength(1)
+  })
+
   it('draws the framing buttons the screen hands it, and none of its own', () => {
     const zoom = vi.fn()
     render(
@@ -259,5 +308,27 @@ describe('ElevationRibbon', () => {
     expect(screen.getByTestId('profile-area').getAttribute('d')).not.toMatch(/NaN/)
     expect(screen.getByText(/980 ft/)).toBeInTheDocument()
     expect(screen.getByText(/2,100 ft/)).toBeInTheDocument()
+  })
+
+  it('rebuilds the path only when the samples or the domain change (#1111)', () => {
+    // The shell re-renders once per GPS callback while a phone sits still
+    // (#1100), and reaches here with the samples' identity held now that the
+    // upstream memos key on the mile. This is the other half of that change:
+    // a re-render with the same ground must not rebuild the ~640-point path.
+    const { rerender } = render(<ElevationRibbon samples={SAMPLES} currentMile={1405} />)
+    const built = () => vi.mocked(ribbonGeometry).mock.calls.length
+    const before = built()
+
+    rerender(<ElevationRibbon samples={SAMPLES} currentMile={1405} />)
+    expect(built()).toBe(before)
+
+    // The rule and the callout may move without the drawn ground changing -
+    // the mile is not part of the geometry's key.
+    rerender(<ElevationRibbon samples={SAMPLES} currentMile={1406} />)
+    expect(built()).toBe(before)
+
+    // A new samples array is a new picture, whatever it holds.
+    rerender(<ElevationRibbon samples={[...SAMPLES]} currentMile={1406} />)
+    expect(built()).toBe(before + 1)
   })
 })

@@ -128,17 +128,22 @@ export const BLAZE_MEMBERS = Object.keys(BLAZE_COLORS)
 /**
  * One palette member's hex, by name.
  *
- * NO PRODUCTION CALLER SINCE 2026-08-25, and that is worth knowing before
- * reading this as live rendering code. The map has never painted through it -
- * `BLAZE_MATCH_EXPRESSION` below is what `map/style.ts` hands MapLibre - and
- * its one caller was the legend's blaze swatch, removed with those rows
- * (chrome/Legend.tsx's header has the decision).
+ * THE MAP HAS NEVER PAINTED THROUGH IT, and that is worth knowing before
+ * reading this as the line-rendering path: `BLAZE_MATCH_EXPRESSION` below is
+ * what `map/style.ts` hands MapLibre.
  *
- * It stays because `BLAZE_COLORS` is not exported, so this is the only way to
- * read a member's hex, and `lib/blazeGovernance.test.ts` reads every member
- * through it to hold #782's admission bar - the ΔE separation and the day and
- * night contrast ratios. Deleting it would mean opening the table up to
- * exactly the sprawl that issue closed off.
+ * It had no production caller at all between 2026-08-25 and 2026-08-27 - the
+ * legend's blaze swatch was the only one, and went when those rows came off
+ * that panel (chrome/Legend.tsx's header has that decision). The day hike
+ * card's legs paint a swatch through it again (#1112), which is why the two
+ * agree with the map by construction rather than by a second table somebody
+ * keeps in step.
+ *
+ * It would stay either way, because `BLAZE_COLORS` is not exported, so this
+ * is the only way to read a member's hex, and `lib/blazeGovernance.test.ts`
+ * reads every member through it to hold #782's admission bar - the ΔE
+ * separation and the day and night contrast ratios. Deleting it would mean
+ * opening the table up to exactly the sprawl that issue closed off.
  */
 export function blazePaintColor(blazeColor: string): string {
   if (typeof blazeColor === 'string' && blazeColor in BLAZE_COLORS) {
@@ -163,3 +168,25 @@ export const BLAZE_MATCH_EXPRESSION = [
   NEUTRAL_FALLBACK,
   NEUTRAL_FALLBACK, // fallback for anything else (Unknown, Gold, etc.)
 ] as const
+
+/**
+ * How each `blaze_color` is NAMED, wherever a surface says one out loud.
+ *
+ * The pipeline's contract above is what makes this more than a capitalisation
+ * helper: "None" is a CONFIRMED unblazed trail while "Unknown" is a value
+ * that failed to decode, and the two are different claims. WIREFRAMES.md §3
+ * requires saying plainly when a blaze is unknown, and "Unblazed" in that
+ * slot would be a confident statement nobody made.
+ *
+ * Lifted here from lib/lineDetail.ts when the turn card (#1041) became the
+ * second surface naming a blaze. It is the same rule in both places by
+ * construction now: a hiker who reads "Blaze not recorded" on a tapped line
+ * and "Unblazed" at the junction it leads to has been told two different
+ * things about one piece of tread.
+ */
+export function blazeLabel(blazeColor: string | null): string {
+  if (blazeColor === null || blazeColor === 'Unknown') return 'Blaze not recorded'
+  if (blazeColor === 'None') return 'Unblazed'
+  if (blazeColor === 'Other') return 'Other blaze'
+  return `${blazeColor} blaze`
+}

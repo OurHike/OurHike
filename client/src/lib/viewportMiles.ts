@@ -14,12 +14,15 @@
 // mile is on screen that the profile does not cover.
 //
 // Cost, because this runs on every settled map move: the search is over the
-// index's own latitude buckets rather than all ~600,000 centerline vertices, so
-// a phone-sized viewport touches the handful of 0.05-degree bands it spans -
-// the same structure and the same reasoning as locateOnTrail's.
+// index's own cells rather than all ~600,000 centerline vertices, so a
+// phone-sized viewport touches the handful of cells it spans - the same
+// structure and the same reasoning as locateOnTrail's (#1192 made the cells
+// two-dimensional; before that a band was a latitude slice of the whole
+// continent, and every vertex in it was tested against the box's east and
+// west edges).
 
 import type { BoundingBox } from './legendContents'
-import type { TrailIndex } from './trailPosition'
+import { cellsInBox, type TrailIndex } from './trailPosition'
 
 /** A span of the CLIENT index's mile axis. Callers carry it onto the
  *  pipeline's axis with lib/route.ts's anchors before comparing it to
@@ -29,12 +32,6 @@ export interface MileSpan {
   startMile: number
   endMile: number
 }
-
-/** Matches the bucketing in lib/trailPosition.ts. Restated rather than
- *  exported from there because it is that module's private business, and a
- *  shared constant would imply the two must always agree - they need only
- *  agree while this reads that index, which the test asserts. */
-const BUCKET_DEGREES = 0.05
 
 /**
  * The centerline's mile span inside `bbox`, or null when no centerline vertex
@@ -47,8 +44,7 @@ const BUCKET_DEGREES = 0.05
  * a case this app cannot reach.
  */
 export function viewportMiles(index: TrailIndex, bbox: BoundingBox): MileSpan | null {
-  const { lons, lats, miles, buckets } = index
-
+  const { lons, lats, miles } = index
   const south = Math.min(bbox.south, bbox.north)
   const north = Math.max(bbox.south, bbox.north)
   const west = Math.min(bbox.west, bbox.east)
@@ -57,15 +53,11 @@ export function viewportMiles(index: TrailIndex, bbox: BoundingBox): MileSpan | 
   let low = Infinity
   let high = -Infinity
 
-  const first = Math.floor(south / BUCKET_DEGREES)
-  const last = Math.floor(north / BUCKET_DEGREES)
-
-  for (let key = first; key <= last; key += 1) {
-    const bucket = buckets.get(key)
-    if (bucket === undefined) continue
-    // The band is a latitude slice, so its vertices still have to be tested
-    // against the box's own edges - all four of them.
-    for (const i of bucket.indices) {
+  for (const cell of cellsInBox(index, south, north, west, east)) {
+    // A cell is a superset of the box - up to four miles across - so its
+    // vertices still have to be tested against the box's own edges, all four.
+    for (let c = 0; c < cell.length; c += 1) {
+      const i = cell[c]
       const lat = lats[i]
       if (lat < south || lat > north) continue
       const lon = lons[i]

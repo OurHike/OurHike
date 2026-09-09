@@ -10,15 +10,21 @@ import {
   clipSpans,
   gapSpans,
   hikeBounds,
+  hikeEnds,
+  hikeNameFromEnds,
   hikeFigures,
+  hikeLegMiles,
+  hikeLegs,
   hikePieces,
   recordedPlan,
   hikeFromTrips,
   hikeOfTrip,
+  isUsableHike,
   mergeSpans,
   resolvePlace,
   spanFraction,
   spanLength,
+  trailHasMileAxis,
   tripSpan,
   validateHike,
   walkedSpans,
@@ -105,23 +111,162 @@ describe('validateHike', () => {
     id: 'h1',
     name: 'Appalachian Trail',
     type: 'thru',
-    start: { poiId: 'damascus', mile: 470.8 },
-    end: { mile: 2197.4 },
+    trailId: 'AT',
+    points: [{ poiId: 'damascus', mile: 470.8 }, { mile: 2197.4 }],
+    status: 'walking',
     tripIds: ['a'],
   }
 
-  it('accepts a hike, keeping both ends', () => {
+  it('accepts a hike, keeping every point', () => {
     const validated = validateHike(good)
-    expect(validated?.start.poiId).toBe('damascus')
-    expect(validated?.end.mile).toBe(2197.4)
+    expect(validated?.points[0].poiId).toBe('damascus')
+    expect(validated?.points[1].mile).toBe(2197.4)
   })
 
   it('refuses what cannot be a hike', () => {
     expect(validateHike(null)).toBeNull()
     expect(validateHike({ ...good, type: 'expedition' })).toBeNull()
-    expect(validateHike({ ...good, start: { mile: -3 } })).toBeNull()
-    expect(validateHike({ ...good, end: undefined })).toBeNull()
+    expect(validateHike({ ...good, points: undefined })).toBeNull()
     expect(validateHike({ ...good, id: '' })).toBeNull()
+  })
+
+  it('refuses the hike rather than quietly walking a shorter route', () => {
+    // A point that cannot be read is not a point that can be dropped: the
+    // list IS the route, so losing the middle of Springer → Harpers Ferry →
+    // Katahdin would leave a valid, plausible hike describing ground the
+    // hiker never entered. Every section stays in the store either way.
+    const flipFlop: Hike = {
+      ...good,
+      points: [{ mile: 1023.4 }, { mile: 2197.4 }, { mile: 0 }],
+    }
+    expect(validateHike(flipFlop)?.points).toHaveLength(3)
+    expect(
+      validateHike({
+        ...flipFlop,
+        points: [flipFlop.points[0], { mile: -3 }, { mile: 0 }],
+      }),
+    ).toBeNull()
+  })
+
+  it('keeps a hike with no points at all, and refuses to walk it', () => {
+    // Zero points is unambiguous - nobody has said where - so the hike
+    // survives as the grouping it is, and only `isUsableHike` says no.
+    const empty = validateHike({ ...good, points: [] })
+    expect(empty?.points).toEqual([])
+    expect(empty === null ? null : isUsableHike(empty)).toBe(false)
+    expect(isUsableHike(good)).toBe(true)
+  })
+
+  it('migrates the two-ended shape a shipped build wrote (#788)', () => {
+    // start/end in that order ARE the point list, and the reference on
+    // each survives - which is the whole reason this shape is worth
+    // migrating rather than re-entering.
+    const legacy = validateHike({
+      id: 'h1',
+      name: 'Virginia, over a few years',
+      type: 'section',
+      start: { poiId: 'damascus', name: 'Damascus', mile: 470.8 },
+      end: { poiId: 'atkins', name: 'Atkins', mile: 503.3 },
+      tripIds: ['a'],
+    })
+
+    expect(legacy?.points.map((point) => point.poiId)).toEqual(['damascus', 'atkins'])
+    expect(legacy?.trailId).toBe('AT')
+    // Not 'planning': such a hike exists because the hiker grouped sections
+    // they already had, and neither dated state could be guessed.
+    expect(legacy?.status).toBe('walking')
+    expect(legacy?.pausedOn).toBeUndefined()
+    expect(legacy?.finishedOn).toBeUndefined()
+  })
+
+  it('keeps a trailId this build has never heard of', () => {
+    // Rewriting it to the default would move somebody's hike onto a trail
+    // they did not choose, which is worse than being unable to measure it.
+    expect(validateHike({ ...good, trailId: 'PNT' })?.trailId).toBe('PNT')
+    expect(trailHasMileAxis('AT')).toBe(true)
+    expect(trailHasMileAxis('PNT')).toBe(false)
+  })
+})
+
+describe('legs - direction belongs to the leg, never to the hike', () => {
+  const flipFlop: Hike = {
+    id: 'ff',
+    name: 'Harpers Ferry both ways',
+    type: 'thru',
+    trailId: 'AT',
+    // The classic flip-flop: start in the middle, walk north to the end,
+    // come back to the middle and walk south to the other end.
+    points: [{ mile: 1023.4 }, { mile: 2197.4 }, { mile: 0 }],
+    status: 'walking',
+    tripIds: [],
+  }
+
+  it('reads northbound on one leg and southbound on the next', () => {
+    const legs = hikeLegs(flipFlop, [])
+
+    expect(legs.map((leg) => leg.direction)).toEqual(['NOBO', 'SOBO'])
+    expect(legs[0].distanceMi).toBeCloseTo(1174)
+    expect(legs[1].distanceMi).toBeCloseTo(2197.4)
+    expect(legs.map((leg) => leg.index)).toEqual([0, 1])
+  })
+
+  it('reports no direction for a leg that covers no ground', () => {
+    // Two points at one mile is not a southbound leg and not a northbound
+    // one. Printing either would be inventing a fact about ground nobody
+    // covers.
+    const stalled: Hike = { ...flipFlop, points: [{ mile: 30 }, { mile: 30 }] }
+    expect(hikeLegs(stalled, [])[0].direction).toBeNull()
+  })
+
+  it('compares the leg’s own miles, resolved, not the stored hints', () => {
+    // Damascus published as 470.8 when this was written and publishes as
+    // 471.2 now. The leg is measured against today's download, exactly as
+    // the ends always were.
+    const hike: Hike = {
+      ...flipFlop,
+      points: [
+        { poiId: 'atkins', mile: 503.3 },
+        { poiId: 'damascus', mile: 470.8 },
+      ],
+    }
+    const [leg] = hikeLegs(hike, POIS)
+
+    expect(leg.direction).toBe('SOBO')
+    expect(leg.distanceMi).toBeCloseTo(32.1)
+  })
+
+  it('separates how far you walk from how much trail that covers', () => {
+    // A there-and-back walks the same ground twice. Both numbers are true
+    // of it and they are not interchangeable: the set-up screen totals the
+    // walking, "what's left" counts the ground.
+    const thereAndBack: Hike = {
+      ...flipFlop,
+      points: [{ mile: 0 }, { mile: 1023.4 }, { mile: 0 }],
+    }
+
+    expect(hikeLegMiles(thereAndBack, [])).toBeCloseTo(2046.8)
+    expect(hikeBounds(thereAndBack, [])).toEqual({ from: 0, to: 1023.4 })
+    expect(hikeFigures(thereAndBack, [], []).totalMi).toBeCloseTo(1023.4)
+  })
+
+  it('takes its ends from the outermost points, not the first and last', () => {
+    // A flip-flop starts and finishes inside its own extent, so points[0]
+    // is not the southern end and labelling a ribbon with it would name
+    // the wrong place.
+    const ends = hikeEnds(flipFlop, [])
+
+    expect(ends.low?.mile).toBe(0)
+    expect(ends.high?.mile).toBe(2197.4)
+    expect(hikeBounds(flipFlop, [])).toEqual({ from: 0, to: 2197.4 })
+  })
+
+  it('has no legs, no ends and no length when nobody has said where', () => {
+    const bare: Hike = { ...flipFlop, points: [] }
+
+    expect(hikeLegs(bare, [])).toEqual([])
+    expect(hikeLegMiles(bare, [])).toBe(0)
+    expect(hikeEnds(bare, [])).toEqual({ low: null, high: null })
+    expect(hikeBounds(bare, [])).toEqual({ from: 0, to: 0 })
   })
 })
 
@@ -181,8 +326,9 @@ describe('hikeFigures', () => {
     id: 'h1',
     name: 'Virginia',
     type: 'section',
-    start: { mile: 0 },
-    end: { mile: 100 },
+    trailId: 'AT',
+    points: [{ mile: 0 }, { mile: 100 }],
+    status: 'walking',
     tripIds: ['a', 'b'],
   }
 
@@ -216,7 +362,10 @@ describe('hikeFigures', () => {
   })
 
   it('flags figures resting on a reference this download has lost', () => {
-    const stranded: Hike = { ...hike, start: { poiId: 'demolished', mile: 0 } }
+    const stranded: Hike = {
+      ...hike,
+      points: [{ poiId: 'demolished', mile: 0 }, hike.points[1]],
+    }
     expect(hikeFigures(stranded, [], POIS).uncertain).toBe(true)
     expect(hikeFigures(hike, [], POIS).uncertain).toBe(false)
   })
@@ -224,8 +373,12 @@ describe('hikeFigures', () => {
   it('moves with the reference, so a relocation does not silently resize a hike', () => {
     const anchored: Hike = {
       ...hike,
-      start: { poiId: 'damascus', mile: 470.8 },
-      end: { poiId: 'atkins', mile: 503.3 },
+      trailId: 'AT',
+      points: [
+        { poiId: 'damascus', mile: 470.8 },
+        { poiId: 'atkins', mile: 503.3 },
+      ],
+      status: 'walking',
       tripIds: [],
     }
     // 471.2 → 503.3 today, not the 32.5 the stored hints would have given.
@@ -251,9 +404,9 @@ describe('hikeFromTrips', () => {
   it('spans the outermost stops, carrying their references across', () => {
     const hike = hikeFromTrips([trip('a', 470.8, 503.3), trip('b', 520, 560)], 'Virginia')
 
-    expect(hike?.start.mile).toBe(470.8)
-    expect(hike?.start.poiId).toBe('damascus')
-    expect(hike?.end.mile).toBe(560)
+    expect(hike?.points[0].mile).toBe(470.8)
+    expect(hike?.points[0].poiId).toBe('damascus')
+    expect(hike?.points[1].mile).toBe(560)
     expect(hike?.tripIds).toEqual(['a', 'b'])
     expect(hike?.type).toBe('section')
   })
@@ -270,8 +423,9 @@ describe('hikeOfTrip', () => {
         id: 'h1',
         name: 'One',
         type: 'section',
-        start: { mile: 0 },
-        end: { mile: 10 },
+        trailId: 'AT',
+        points: [{ mile: 0 }, { mile: 10 }],
+        status: 'walking',
         tripIds: ['a'],
       },
     ]
@@ -345,8 +499,9 @@ describe('recordedPlan - ground already walked (#789)', () => {
       id: 'h',
       name: 'Overlapping',
       type: 'section',
-      start: { mile: 0 },
-      end: { mile: 200 },
+      trailId: 'AT',
+      points: [{ mile: 0 }, { mile: 200 }],
+      status: 'walking',
       tripIds: ['r', 'w'],
     }
     const figures = hikeFigures(
@@ -377,8 +532,9 @@ describe('gapSpans - what is left, and where (#790)', () => {
     id: 'h1',
     name: 'Virginia',
     type: 'section',
-    start: { mile: 0 },
-    end: { mile: 100 },
+    trailId: 'AT',
+    points: [{ mile: 0 }, { mile: 100 }],
+    status: 'walking',
     tripIds: ['a', 'b'],
   }
 
@@ -438,8 +594,12 @@ describe('gapSpans - what is left, and where (#790)', () => {
   it('follows the references, so a relocation moves the gap with the hike', () => {
     const anchored: Hike = {
       ...hike,
-      start: { poiId: 'damascus', mile: 470.8 },
-      end: { poiId: 'atkins', mile: 503.3 },
+      trailId: 'AT',
+      points: [
+        { poiId: 'damascus', mile: 470.8 },
+        { poiId: 'atkins', mile: 503.3 },
+      ],
+      status: 'walking',
       tripIds: [],
     }
     // Damascus publishes at 471.2 today, not the 470.8 that was cached.
@@ -501,11 +661,55 @@ describe('hikeBounds', () => {
       id: 'h',
       name: 'Backwards',
       type: 'section',
-      start: { poiId: 'atkins', mile: 503.3 },
-      end: { poiId: 'damascus', mile: 470.8 },
+      trailId: 'AT',
+      points: [
+        { poiId: 'atkins', mile: 503.3 },
+        { poiId: 'damascus', mile: 470.8 },
+      ],
+      status: 'walking',
       tripIds: [],
     }
     expect(hikeBounds(hike, POIS)).toEqual({ from: 471.2, to: 503.3 })
+  })
+})
+
+describe('hikeNameFromEnds - what a cleared name falls back to (#1344)', () => {
+  const twoEnds = (over: Partial<Hike> = {}): Hike => ({
+    id: 'h',
+    name: '',
+    type: 'section',
+    trailId: 'AT',
+    points: [
+      { poiId: 'damascus', mile: 470.8 },
+      { poiId: 'atkins', mile: 503.3 },
+    ],
+    status: 'walking',
+    tripIds: [],
+    ...over,
+  })
+
+  it('names it by its own two ends, low to high', () => {
+    // `renameTrip`'s rule at the hike's grain: an empty name is not stored
+    // as an empty name. Set-up carries a name field since #1344 and a field
+    // can be cleared - and a blank would show as a blank heading on Today,
+    // in the Plan band, in the sidebar and on the pick sheet at once.
+    expect(hikeNameFromEnds(twoEnds(), POIS)).toBe('Damascus → Atkins')
+  })
+
+  it('falls back again where the ends cannot be placed at all', () => {
+    // A hike whose points this download has never heard of still needs
+    // something to be called.
+    expect(hikeNameFromEnds(twoEnds({ points: [] }), POIS)).toBe('A long hike')
+  })
+
+  it('uses the mile as a MARKER for an end with no name', () => {
+    // #986: a mile is a place's name here, never a distance - so it is not
+    // run through a units formatter on the way into a hike's own name.
+    const named = hikeNameFromEnds(
+      twoEnds({ points: [{ mile: 12 }, { mile: 40.5 }] }),
+      [],
+    )
+    expect(named).toBe('mi 12.0 → mi 40.5')
   })
 })
 
@@ -526,8 +730,12 @@ describe('hikePieces - a hike’s contents in trail order (#790)', () => {
     id: 'h1',
     name: 'Virginia',
     type: 'section',
-    start: { name: 'Damascus', mile: 0 },
-    end: { name: 'Rockfish Gap', mile: 100 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 0 },
+      { name: 'Rockfish Gap', mile: 100 },
+    ],
+    status: 'walking',
     tripIds: ['a', 'b'],
   }
 
@@ -565,7 +773,7 @@ describe('hikePieces - a hike’s contents in trail order (#790)', () => {
   })
 
   it('leaves a boundary nobody named as a bare mile rather than inventing a place', () => {
-    const unnamed: Hike = { ...hike, start: { mile: 0 }, end: { mile: 100 } }
+    const unnamed: Hike = { ...hike, points: [{ mile: 0 }, { mile: 100 }] }
     const plan = buildPlan(
       [
         { mile: 10, resupply: false },

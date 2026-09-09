@@ -430,7 +430,15 @@ and hiker reports as the only eventual answer to "is it flowing".
    own two gates to this source: within **100 ft** of the nearest of the
    centerline, any side trail, any shelter or any campsite (a union of three,
    the maintainer's decision of 2026-08-17), and under a **15% grade** from
-   3DEP elevations at both ends. Measured the same day, against 7,593 nodes
+   3DEP elevations at both ends.
+   *Amended 2026-08-25 (#1016): a union of four.* The trails other
+   organizations maintain joined it — `nearby_trails.geojson`, the same
+   artifact the map draws — because until they did, an OSM spring fifty feet
+   off a Harriman trail was fetched, clipped into the corridor, and then
+   refused for being far from the A.T. The radius did not move; what it is
+   measured from did. **The counts below predate that widening** and are the
+   A.T.-only figures: nobody has re-run this census against the wider union,
+   and the first real publish prints the per-organization counts in its log. Measured the same day, against 7,593 nodes
    across the fourteen states:
 
    | | |

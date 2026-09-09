@@ -1,0 +1,135 @@
+// What vector trail data is actually on this phone, measured off the store
+// itself (#1103).
+//
+// The sheets have a catalog with published byte counts; the trail data has
+// nothing of the kind - artifacts of unannounced size that arrive on
+// their own with signal, and until now their whole account was the word
+// "Getting trail data". This module is the detailed half of the answer: it
+// reads what lib/trailData.ts and lib/nearbyTrailData.ts actually stored and
+// reports it as it is - a measured byte count where the store holds bytes, a
+// count where it holds records, presence alone where it holds neither. No
+// figure here is ever an estimate: absent stays "not here yet", never a size
+// somebody expects it to be.
+//
+// Its own module rather than a function on either store, because it reads
+// BOTH and the two must not import each other (nearbyTrailData already
+// imports trailData's hash; a return import is a cycle).
+
+import { get } from 'idb-keyval'
+import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './trailData'
+import { NETWORK_OVERVIEW_STORE_KEY } from './nearbyTrailData'
+import { storedGraphBytes } from './trailGraphStore'
+
+export interface TrailDataAsset {
+  id: 'trail-line' | 'waypoints' | 'elevation' | 'network-overview' | 'day-hike-routing'
+  /** Measured bytes of what is stored, or null where the stored shape has
+   *  no byte size to measure (a parsed record is not its wire bytes, and
+   *  inventing one would be a figure nobody stands behind). */
+  bytes: number | null
+  /** Measured record count, or null where counting is not the shape. */
+  count: number | null
+  present: boolean
+}
+
+async function read(key: string): Promise<unknown> {
+  try {
+    return await get(key)
+  } catch {
+    // An unreadable store answers like an empty one: the list says "not
+    // here yet", which is also what the map can draw from it.
+    return undefined
+  }
+}
+
+/**
+ * Every trail-data artifact, present or not - the caller renders the whole
+ * list so an absence is a stated fact rather than a missing row. Read fresh
+ * each call: this is for the downloads window, which mounts at exactly the
+ * moment the answer is worth having.
+ */
+export async function storedTrailData(): Promise<TrailDataAsset[]> {
+  const [trails, pois, elevation, overview, graph] = await Promise.all([
+    read(TRAILS_BLOB_KEY),
+    read(POIS_KEY),
+    read(ELEVATION_STORE_KEY),
+    read(NETWORK_OVERVIEW_STORE_KEY),
+    storedGraphBytes(),
+  ])
+
+  // Every graph cell half this phone holds as ONE row (#1257 stage 3 - four
+  // halves per 1° cell, lib/trailGraphStore.ts), because they are one
+  // capability to a hiker: either day hikes work without a signal or they
+  // do not, and a row per file would be dozens of numbers answering a
+  // question nobody asked. Summed rather than counted for the same reason -
+  // what a hiker wants to know is what it is costing them.
+  const graphBytes = Object.values(graph).reduce((sum, bytes) => sum + bytes, 0)
+
+  // lib/nearbyTrailData.ts's record shape (`{ bytes: Blob, hash: string }`),
+  // shape-checked because every past version of that module wrote it and a
+  // stale record from one of them must read as absent, not throw.
+  const storedBytes = (record: unknown): number | null =>
+    record !== undefined &&
+    record !== null &&
+    (record as { bytes?: unknown }).bytes instanceof Blob
+      ? (record as { bytes: Blob }).bytes.size
+      : null
+
+  const overviewBytes = storedBytes(overview)
+
+  const elevationSamples =
+    elevation !== undefined &&
+    elevation !== null &&
+    Array.isArray((elevation as { samples?: unknown }).samples)
+      ? ((elevation as { samples: unknown[] }).samples.length as number)
+      : null
+
+  return [
+    {
+      id: 'trail-line',
+      bytes: trails instanceof Blob ? trails.size : null,
+      count: null,
+      present: trails instanceof Blob,
+    },
+    {
+      id: 'waypoints',
+      bytes: null,
+      count: Array.isArray(pois) ? pois.length : null,
+      present: Array.isArray(pois) && pois.length > 0,
+    },
+    {
+      id: 'elevation',
+      bytes: null,
+      count: elevationSamples,
+      present: elevation !== undefined && elevation !== null,
+    },
+    {
+      id: 'day-hike-routing',
+      bytes: graphBytes > 0 ? graphBytes : null,
+      count: null,
+      present: graphBytes > 0,
+    },
+    // The other organizations' network as the corridor-view sketch the
+    // opening camera draws (#1135) - and since #1257 the only part of that
+    // network that arrives on its own, which is what this list is. Above the
+    // seam the lines are vector tiles read off the bucket per view
+    // (map/networkTiles.ts) and kept nowhere, so there is no row for them
+    // here; the part of them a phone DOES keep is the stretch it took - 1°
+    // cells of those tiles, chosen and priced with the basemap's on the
+    // hiking sheet's stretch card (screens/StretchCard.tsx, #1257 stage 2),
+    // which is where a chosen download is accounted for, not in a list of
+    // things that arrive with signal. The whole-file copy earlier releases
+    // stored is deleted at launch (lib/nearbyTrailData.ts's
+    // forgetNearbyTrails), and a row that said "gone" would be a row about
+    // nothing.
+    //
+    // The sketch was in no row at all until #1103, which is the defect this
+    // module exists to prevent: an artifact holding bytes while appearing
+    // nowhere is the one answer the window must not give.
+    {
+      id: 'network-overview',
+      bytes: overviewBytes,
+      count: null,
+      present: overviewBytes !== null,
+    },
+  ]
+}

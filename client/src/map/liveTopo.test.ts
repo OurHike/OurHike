@@ -5,11 +5,14 @@ import {
   latest,
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
-import { buildMapStyle, TOPO_LAYER_ID, BACKDROP_LAYER_ID } from './style'
+import {
+  buildMapStyle,
+  TOPO_LAYER_ID,
+  BACKDROP_LAYER_ID,
+  SIDE_TRAIL_WIDTH,
+} from './style'
 import { OSM_CREDIT } from './credits'
 import {
-  CORRIDOR_BOUNDARY_LAYER_ID,
-  CORRIDOR_HIGHLIGHT_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_LAYER_ID,
 } from './corridorLayers'
@@ -48,21 +51,14 @@ import {
   ELEVATION_ATTRIBUTION,
 } from './terrain'
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLayers'
+import { POI_LABEL_LAYER_ID } from './poiLabels'
+import { DAY_HIKE_TICK_LABEL_LAYER_ID } from './dayHikeLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
-import {
-  ATC_UPDATE_CASING_LAYER_ID,
-  ATC_UPDATE_HALO_LAYER_ID,
-  ATC_UPDATE_LAYER_ID,
-  ATC_UPDATE_POINT_LAYER_ID,
-} from '../lib/atcUpdateStyle'
-import {
-  CLOSURE_CASING_LAYER_ID,
-  CLOSURE_LAYER_ID,
-  LONG_TERM_CLOSURE_CASING_LAYER_ID,
-  LONG_TERM_CLOSURE_LAYER_ID,
-} from '../lib/closureStyle'
+import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
+import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
+import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import {
   ROUTE_CASING_LAYER_ID,
   ROUTE_LINE_LAYER_ID,
@@ -275,7 +271,7 @@ describe('the live topographic background', () => {
     // SYMBOL layers, not all of them, and the distinction is the whole
     // mechanism rather than a narrowing of the test. Placement only ever ranks
     // symbols against symbols - a `circle` or a `line` takes no part in it, so
-    // the ATC's dots and bands sit above these two in the style (that is
+    // the ATC's bands sit above these two in the style (that is
     // src/test/atcAlertProminence.test.ts's subject) and cannot suppress a
     // water pin no matter where they are drawn. Asserting on the raw tail
     // would say the opposite: that appending any non-symbol layer costs the
@@ -285,7 +281,7 @@ describe('the live topographic background', () => {
       .layers.filter((layer) => layer.type === 'symbol')
       .map((layer) => layer.id)
 
-    expect(symbols.slice(-4)).toEqual([
+    expect(symbols.slice(-5)).toEqual([
       POI_LAYER_ID,
       // The dispute mark (#876) sits directly on the pin it annotates, so it
       // joins this group between the waypoints and the workdays. It never
@@ -295,6 +291,15 @@ describe('the live topographic background', () => {
       DISPUTE_LAYER_ID,
       WORKDAY_LAYER_ID,
       WARNING_LAYER_ID,
+      // AND THE ATC'S POINT NOTICE, which joined this list rather than being
+      // added to it (#1071). It was a `circle` and took no part in placement at
+      // all; drawing the burst needs an image, so it is a symbol now and it
+      // ranks against these four. Last, which is the only place it may be: it
+      // already sits over every one of them in the style, and a notice that
+      // could be decluttered away by a workday pin would be a notice nobody was
+      // shown. `icon-allow-overlap` is the belt to this braces - the layer
+      // cannot be suppressed even if a later edit moved it up this list.
+      ATC_UPDATE_POINT_LAYER_ID,
     ])
   })
 
@@ -611,6 +616,25 @@ describe('the offline-only background', () => {
       // is a visibility flip, not an add and remove, so it is in the stack
       // whether or not it is drawn.
       DROUGHT_LAYER_ID,
+      // The edge of the download (#557): over the ground it is an edge of,
+      // under every trail line, closure and pin - a seam takes away the
+      // sheet, never the hazard (features/OFFLINE_COVERAGE.md §8). Empty
+      // unless the phone holds cells, and in the stack either way for the
+      // drought wash's reason above; an offline phone holding a stretch is
+      // exactly the one that has to be shown where its map stops.
+      COVERAGE_SEAM_LAYER_ID,
+      COVERAGE_SEAM_LABEL_LAYER_ID,
+      // The network's corridor-view sketch and its tape (#1135), below the
+      // A.T.'s own sketch as everywhere: an offline phone is exactly the one
+      // whose opening camera has to draw the network from the stored
+      // overview, and the tape is the safety half - closed ground stays
+      // closed-looking below the seam with no signal at all.
+      // Its dotted half under its solid half (#1283): every line outside
+      // the chosen system is a dot rhythm, on a layer of its own beneath
+      // the one the taken trail draws solid on.
+      'network-overview-line-dotted',
+      'network-overview-line',
+      'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
       // a duller reason than the others: it is empty unless the shell has a
       // sketch to put in it, and the shell only has one when the phone has no
@@ -624,6 +648,10 @@ describe('the offline-only background', () => {
       // for the route layers' reason below - planning tomorrow's loop at a
       // trailhead with no signal is a normal use, not an edge case - and for
       // the sketch's duller one: empty until a hiker starts tapping.
+      // #1194's dark fringe, under the green band and under every trail line
+      // - the contrast that made the selection legible without repainting a
+      // blaze. See map/dayHikeLayers.ts for why "over" was not available.
+      'day-hike-route-outer-casing',
       'day-hike-route-casing',
       // The trails other organizations maintain (#950), and they survive the
       // subtraction for the same duller reason the sketch above does: the
@@ -637,14 +665,20 @@ describe('the offline-only background', () => {
       // that matters: ghosting says which system a line belongs to, but where
       // two lines are coincident the last-drawn one owns the pixels whatever
       // its opacity, and it must not be the nearby one.
+      //
+      // Four since #1283: the dotted pair under the solid pair, the same
+      // split the chosen trail's own source gets below.
+      'nearby-trail-casing-dotted',
+      'nearby-trail-blaze-dotted',
       'nearby-trail-casing',
       'nearby-trail-blaze',
-      // A nearby trail closed long-term gets the same barred band the A.T.'s
+      // A nearby trail closed long-term gets the same barrier tape the A.T.'s
       // closures get (features/NEARBY_TRAILS.md §3: one mark for "do not walk
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
-      'nearby-long-term-closure-casing',
       'nearby-long-term-closure-band',
+      'trail-casing-dotted',
+      'trail-blaze-dotted',
       'trail-casing',
       'trail-blaze',
       // Trail names (#930) directly over the lines they name, and — the half
@@ -656,19 +690,21 @@ describe('the offline-only background', () => {
       // cannot be placed, the name of the trail the map is about survives.
       'nearby-trail-label',
       'trail-label',
+      // The through-route badge (#1283), after both label layers and before
+      // every pin - so it beats an along-line name for a contested spot and
+      // loses to anything a hiker acts on. Empty until map/trailsInView.ts
+      // has measured a frame, and in the stack either way.
+      'trail-badge',
       // The corridor view's attribution, over the blaze it covers and under
       // everything a hiker acts on (#598). It survives the subtraction for
       // the plainest reason of all: club_sections.json is ON THE PHONE, so
       // there is nothing about drawing it that needs signal, and the person
       // most likely to be reading the whole trail at once is the person
       // planning rather than walking.
+      // The runs only: the boundary ticks and the highlight marks came off
+      // the canvas with every other point mark below the seam (#1292).
       CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
       CORRIDOR_UNATTRIBUTED_LAYER_ID,
-      CORRIDOR_BOUNDARY_LAYER_ID,
-      // The highlight marks, over the runs and the ticks they sit on (#858).
-      // corridorLayers.test.ts holds that ordering as a property; this case
-      // only has to agree with it.
-      CORRIDOR_HIGHLIGHT_LAYER_ID,
       // The route being built survives the subtraction too (#755): planning
       // an evening's next stretch at a shelter with no signal is a normal
       // use of it, not an edge case.
@@ -679,20 +715,29 @@ describe('the offline-only background', () => {
       // The day hike's tapped points (#978), above the lines like every
       // marker - only its casing lives below the trail stacks. Same offline
       // reasoning as the route layers directly above.
+      //
+      // The gap (#983) rides with them rather than with the casing, because
+      // the casing goes UNDER the trail lines so a blaze is never recoloured
+      // and there is no trail line under a gap to go under.
+      'day-hike-route-gap',
       'day-hike-route-points',
       'day-hike-route-point-labels',
-      CLOSURE_CASING_LAYER_ID,
       CLOSURE_LAYER_ID,
       // The long-term closures a steward marks on the trail line itself
       // (#783, features/NEARBY_TRAILS.md §3). Same treatment as the two
       // above, different feed - and it belongs in this list for the reason
       // the comment at the top gives: it is a safety layer, so a hiker on the
       // offline background is exactly who must keep it.
-      LONG_TERM_CLOSURE_CASING_LAYER_ID,
       LONG_TERM_CLOSURE_LAYER_ID,
       // All three waypoint ranks (#597, and the staleness rings with #759),
       // dots under rings under pins - a waypoint that wins its collision
       // hides its own dot, and one that loses still leaves it.
+      // Waypoint names and the walk's mile marks (#1194), and note WHERE:
+      // before the pins, for the same reason the trail labels above are early
+      // - placement runs top-down and a label at the end of this list would
+      // suppress a pin to print a name.
+      POI_LABEL_LAYER_ID,
+      DAY_HIKE_TICK_LABEL_LAYER_ID,
       POI_DOT_LAYER_ID,
       POI_STALENESS_LAYER_ID,
       POI_LAYER_ID,
@@ -718,8 +763,6 @@ describe('the offline-only background', () => {
       // organisation that maintains it, underneath OurHike's own pin for that
       // shelter, is not a picture anybody wants. src/test/atcAlertProminence.test.ts
       // holds that ordering as a property; this case only has to agree with it.
-      ATC_UPDATE_HALO_LAYER_ID,
-      ATC_UPDATE_CASING_LAYER_ID,
       ATC_UPDATE_LAYER_ID,
       // And the dots, which is what most ATC notices actually are - five of
       // the six reviewed on 2026-08-12 name a single mile marker.
@@ -885,6 +928,154 @@ describe('attachElevationLabelUnits', () => {
       peakLabelTextField('metric'),
     )
     expect(m.layoutProperties.size).toBe(1)
+  })
+})
+
+describe('the ground network stays behind the trail', () => {
+  // The two ceilings #1074 put on the road and other-trail layers, asserted
+  // rather than commented, because the widths they replaced were nobody's
+  // decision - they were a road-basemap default that survived precisely
+  // because no test disagreed with it. A major road's casing had reached
+  // 7.00px at z16, against the 6.50px the A.T. occupies with its own casing,
+  // and `path` was inked the 2nd loudest of the eight ground inks on eight of
+  // the ten sheets.
+  //
+  // Both are swept over every variant, not just the default sheet, for the
+  // reason the park-wash sweep already is: a palette added later meets the
+  // same bar without anyone remembering to come back here.
+
+  const GROUND_LAYERS = [
+    LIVE_TOPO_LAYER_IDS.roadMajor,
+    LIVE_TOPO_LAYER_IDS.roadMinor,
+    LIVE_TOPO_LAYER_IDS.track,
+    LIVE_TOPO_LAYER_IDS.path,
+  ]
+
+  const VARIANTS = [
+    ...MAP_STYLE_VALUES.flatMap((style) => [
+      { label: `${style}/day`, variant: SHEET_VARIANTS[style].day },
+      { label: `${style}/night`, variant: SHEET_VARIANTS[style].night },
+    ]),
+    { label: 'night_hike/red', variant: SHEET_VARIANT_RED },
+  ]
+
+  /** `line-width` as MapLibre will really compute it, through its own engine
+   *  rather than by re-implementing interpolation here. */
+  function widthAt(layer: LayerSpecification, zoom: number): number {
+    const value = (layer.paint as Record<string, unknown> | undefined)?.['line-width']
+    const compiled = createExpression(
+      value as never,
+      latest.paint_line['line-width'] as never,
+    )
+    if (compiled.result === 'error') {
+      throw new Error(`${layer.id}'s line-width is not a valid expression`)
+    }
+    return compiled.value.evaluate({ zoom } as never) as number
+  }
+
+  /** WCAG contrast ratio - a symmetric "how far apart are these two inks". */
+  function contrast(a: string, b: string): number {
+    const channel = (c: number) => {
+      const s = c / 255
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+    }
+    const luminance = (hex: string) => {
+      const [r, g, blue] = hexChannels(hex).map(channel)
+      return 0.2126 * r + 0.7152 * g + 0.0722 * blue
+    }
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+    return (high + 0.05) / (low + 0.05)
+  }
+
+  it('draws no road wider than the narrowest trail line, at any zoom', () => {
+    // The regression that let 7.00px happen. SIDE_TRAIL_WIDTH is the thinnest
+    // line style.ts will draw a trail with, so it is the ceiling every ground
+    // line has to clear - a road that reaches it has stopped being context.
+    // Swept across the whole zoom range the sheet is drawn at rather than at
+    // its endpoints, because the old ramp was legal at z8 and wrong at z16.
+    const layers = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' })
+
+    for (const id of GROUND_LAYERS) {
+      const layer = layers.find((candidate) => candidate.id === id)
+      if (layer === undefined) throw new Error(`no ${id} layer in the live sheet`)
+
+      for (let zoom = 8; zoom <= 16; zoom += 0.5) {
+        expect(widthAt(layer, zoom), `${id} at z${zoom}`).toBeLessThan(SIDE_TRAIL_WIDTH)
+      }
+    }
+  })
+
+  it('carries no casing on any road, so none of them can be a ribbon again', () => {
+    // The width ceiling alone would pass a casing-plus-fill pair that each
+    // sat under it while together drawing a 4px band, which is the shape the
+    // fix was actually about. One stroke per road class, and no layer id
+    // carrying a casing, is the structural half of that.
+    const built = liveTopoLayers({ terrain: TERRAIN, units: 'imperial' }).map((l) => l.id)
+
+    expect(built.filter((id) => id.startsWith('topo-road')).sort()).toEqual(
+      [
+        LIVE_TOPO_LAYER_IDS.roadMajor,
+        LIVE_TOPO_LAYER_IDS.roadMinor,
+        // A SYMBOL LAYER, not a stroke (#1194) - road names, tier 1 of
+        // map/labelLadder.ts. It shares the `topo-road` prefix this filter
+        // reads and draws no line at all, so it cannot be half of the
+        // casing-plus-fill pair this test exists to forbid. The real guard
+        // against that is the assertion below and the width ceiling above,
+        // both untouched.
+        LIVE_TOPO_LAYER_IDS.roadLabel,
+      ].sort(),
+    )
+    expect(Object.keys(LIVE_TOPO_LAYER_IDS)).not.toContain('roadMajorCasing')
+  })
+
+  it('keeps other trails out of the three loudest inks on the ground, on every sheet', () => {
+    // `path` is every trail that is NOT the A.T. It is hiker signal and must
+    // stay drawn (mapDetail.ts keeps it at every level), but it may not be
+    // among the loudest things on the ground - which is exactly what it was.
+    // Measured against each sheet's own woodland fill it ranked 2nd of the
+    // ground inks on eight of the ten sheets, 1st on night_hike and 3rd on
+    // field/night; it now ranks 6th or 7th of seven on every one of them.
+    //
+    // A rank rather than a ratio, because the sheets differ by more than a
+    // stop in overall contrast - red light has a fifth of field/day's range -
+    // so any single ratio that fits one sheet is meaningless on another.
+    const GROUND_INKS = [
+      'path',
+      'track',
+      'roadMinor',
+      'roadMajor',
+      'contour',
+      'contourIndex',
+      'waterway',
+    ] as const
+
+    for (const { label, variant } of VARIANTS) {
+      const wood = variant.palette.wood
+      const loudestFirst = [...GROUND_INKS].sort(
+        (a, b) => contrast(variant.palette[b], wood) - contrast(variant.palette[a], wood),
+      )
+
+      expect(
+        loudestFirst.indexOf('path') + 1,
+        `${label}: loudest first, ${loudestFirst.join(' > ')}`,
+      ).toBeGreaterThan(3)
+    }
+  })
+
+  it('leaves a major road easier to find than the paper it crosses, on every sheet', () => {
+    // The other half of the trade, and the one that stops "quieter" turning
+    // into "gone": these are bail-out routes, and a 1.8px stroke only works
+    // if its ink carries it. The floor is the loudest OTHER trail on the same
+    // sheet - a road a hiker cannot pick out from a side trail has lost the
+    // distinction that matters when they need to walk out.
+    for (const { label, variant } of VARIANTS) {
+      const { roadMajor, path, wood } = variant.palette
+
+      expect(
+        contrast(roadMajor, wood),
+        `${label}: roadMajor ${roadMajor} against wood ${wood}`,
+      ).toBeGreaterThan(contrast(path, wood))
+    }
   })
 })
 

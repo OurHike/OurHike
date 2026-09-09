@@ -3,7 +3,12 @@ import type { Feature } from 'geojson'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { buildTrailIndex, trailPointAtMile } from '../lib/trailPosition'
 import { closureBands } from './closureLayers'
-import { atcBandCandidates, atcPointNotices, type AtcUpdate } from '../lib/atcUpdates'
+import {
+  atcBandCandidates,
+  atcBandId,
+  atcPointNotices,
+  type AtcUpdate,
+} from '../lib/atcUpdates'
 import { MAX_BAND_MILES } from '../lib/closureSpan'
 import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import {
@@ -99,7 +104,10 @@ describe('the bands', () => {
     const bands = closureBands(atcBandCandidates([update()]), straightTrail(20))
 
     expect(bands).toHaveLength(1)
-    expect(bands[0].id).toBe('atc:va-creeper-trail-closure-detour')
+    // Derived rather than typed out. #1083 moved the prefix from the
+    // abbreviation `atc:` to the registry key, and a literal here is a second
+    // copy of a format only lib/atcUpdates.ts should own.
+    expect(bands[0].id).toBe(atcBandId(update()))
     expect(bands[0].lines[0].length).toBeGreaterThan(1)
   })
 
@@ -137,9 +145,7 @@ describe('the bands', () => {
     const data = map.sourceData.get(ATC_UPDATE_SOURCE_ID) as {
       features: Array<{ properties: Record<string, string> }>
     }
-    expect(data.features[0].properties[ATC_UPDATE_ID_PROPERTY]).toBe(
-      'atc:va-creeper-trail-closure-detour',
-    )
+    expect(data.features[0].properties[ATC_UPDATE_ID_PROPERTY]).toBe(atcBandId(update()))
   })
 
   it('still lands them when the style is busy at the moment they arrive', () => {
@@ -244,7 +250,7 @@ describe('points, which is most of what ATC publishes', () => {
     const points = atcUpdatePoints([shelter], index)
 
     expect(points).toHaveLength(1)
-    expect(points[0].id).toBe('atc:va-creeper-trail-closure-detour')
+    expect(points[0].id).toBe(atcBandId(shelter))
     // Bracketed rather than compared against a flat-earth constant: the index
     // measures real distances, so its Nth vertex is not exactly at mile N.
     // What matters is that mile 6 lands between the vertices either side of

@@ -42,6 +42,44 @@ describe('backgroundProblem', () => {
     expect(backgroundProblem(WELL)).toBeNull()
   })
 
+  describe('past the edge of the download (#557)', () => {
+    // A phone holding a stretch rather than the whole sheet, panned off it.
+    // The basemap source errors on every tile - correctly, the ground was
+    // never taken - and the strip's own "Outside what you downloaded" is the
+    // sentence. The two readings this module has for a failing source are
+    // both false of that phone, and both stand down.
+    const PAST_THE_EDGE: BackgroundHealthInputs = {
+      ...WELL,
+      sources: failing('basemap'),
+      hikingSheetDownloaded: true,
+      outsideDownload: true,
+    }
+
+    it('does not call a download that will not draw beyond its own edge damaged', () => {
+      // #352's mistake, one mechanism over: a hiker past the edge of their
+      // package told their download was corrupt.
+      expect(backgroundProblem({ ...PAST_THE_EDGE, online: false })).not.toBe(
+        'download-not-drawing',
+      )
+    })
+
+    it('does not say there is no downloaded map on a phone with a stretch on it', () => {
+      expect(backgroundProblem({ ...PAST_THE_EDGE, online: false })).toBeNull()
+    })
+
+    it('still names a live sheet that is not answering while online', () => {
+      // True, and useful: with signal the ground past the stretch should be
+      // drawing live, and this is the only line that says why it is not.
+      expect(backgroundProblem(PAST_THE_EDGE)).toBe('live-unreachable')
+    })
+
+    it('keeps the damaged reading inside the download, where it is true', () => {
+      expect(backgroundProblem({ ...PAST_THE_EDGE, outsideDownload: false })).toBe(
+        'download-not-drawing',
+      )
+    })
+  })
+
   it('is silent about the archive source on a phone with no archive', () => {
     // The case that makes this module necessary rather than a rename of the
     // source flag. map/style.ts declares the raster source under BOTH

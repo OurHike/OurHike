@@ -20,6 +20,7 @@ import json
 import pytest
 
 import fetch_club_pdfs
+from lib import http_retry
 
 
 class FakeResponse:
@@ -62,14 +63,22 @@ PARSEABLE_PAGES = ["Mile Point Source Name Distance Off AT\n1.6 Davis Creek On-T
 
 
 def stub_http(monkeypatch, responses):
-    """queue of FakeResponses; records the headers each call sent."""
+    """queue of FakeResponses; records the headers each call sent.
+
+    Patches the module's `request_with_retry` rather than `requests.get`,
+    which is where the fetch moved at #1295. Stubbing above the retry is
+    deliberate: what these tests are about is the conditional-request and
+    parse behaviour, and the ladder itself is `test_http_retry.py`'s subject.
+    The one thing that needs saying here is that the fetcher retries at all,
+    which is its own test below rather than a property of this helper.
+    """
     calls = []
 
-    def fake_get(url, headers=None, timeout=None):
+    def fake_request(url, headers=None, timeout=None, label=None, **kwargs):
         calls.append({"url": url, "headers": headers or {}})
         return responses.pop(0)
 
-    monkeypatch.setattr(fetch_club_pdfs.requests, "get", fake_get)
+    monkeypatch.setattr(fetch_club_pdfs, "request_with_retry", fake_request)
     return calls
 
 
@@ -198,3 +207,27 @@ def test_one_broken_club_does_not_stop_anothers_fetch(sandbox, monkeypatch):
     manifest = json.loads((sandbox["out_dir"] / "manifest.json").read_text())
     assert manifest["other_club_list"]["rows"] is None
     assert "gatc_water_sources" not in manifest
+
+
+def test_a_transient_failure_is_absorbed_rather_than_losing_the_club(sandbox, monkeypatch, requests_mock):
+    """Wired through the real helper rather than through `stub_http`.
+
+    `stub_http` replaces `request_with_retry` outright, which is right for
+    the conditional-request and parse behaviour it exists to pin but means
+    none of those tests would notice the retry being removed again. This one
+    goes through it: a club's host flaking once must not look like that
+    club's PDF being unreachable (#1295).
+    """
+    monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(fetch_club_pdfs, "extract_page_texts", lambda body: PARSEABLE_PAGES)
+    sandbox["out_dir"].mkdir(parents=True)
+    requests_mock.get(
+        GATC_ENTRY["url"],
+        [{"status_code": 503}, {"content": b"%PDF-fake", "headers": {"ETag": '"v1"'}}],
+    )
+
+    state, changed = fetch_club_pdfs.fetch_entry(GATC_ENTRY, {})
+
+    assert changed is True
+    assert state["etag"] == '"v1"'
+    assert requests_mock.call_count == 2

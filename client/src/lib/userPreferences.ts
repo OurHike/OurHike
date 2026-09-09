@@ -4,12 +4,22 @@
 // account is linked, so the field names here match that contract exactly - a
 // key this file invents becomes a 422 the moment someone signs in.
 //
-// There is deliberately NO key for hiding closures or serious warnings. They
-// are always shown, with no switch here or anywhere (features/MAP_OPTIONS.md,
-// features/HIKER_SAFETY.md). Keeping the invariant at the schema level rather
-// than at the settings screen is what makes it hold: a control nobody can
-// build is stronger than a control nobody has built yet. The backend guards
-// the same line with `extra="forbid"`.
+// There is deliberately NO key for hiding closures or serious warnings, and
+// #1047 is the sharpest argument for that absence rather than a reason to
+// revisit it. The legend now carries an Alerts switch (chrome/Legend.tsx),
+// so the old sentence here - "always shown, with no switch here or anywhere"
+// - is no longer true. What is true, and is the part this file decides, is
+// that the switch is not a PREFERENCE: this object syncs, so a key here
+// would mean a hiker who cleared the bands once in Virginia opening a new
+// phone in Maine with them already gone. The flag is a `useState` in
+// chrome/alertLayerPanel.ts, is written nowhere, and is back on at the next
+// open.
+//
+// Keeping the invariant at the schema level rather than at the settings
+// screen is what makes it hold: a control nobody can build is stronger than
+// a control nobody has built yet, and a control that exists elsewhere cannot
+// creep into this object by accident. The backend guards the same line with
+// `extra="forbid"` (features/MAP_OPTIONS.md, features/IDENTITY_AND_PRIVACY.md).
 
 import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
 
@@ -77,14 +87,25 @@ export const MAX_BACKGROUND_ZOOM_VALUES = [
 ] as const satisfies readonly MaxBackgroundZoom[]
 export type LayerDetailLevel = 'minimal' | 'standard' | 'full'
 /**
- * The hiking sheet's download level (#276): which basemap cut the default
- * background fetches - the z13 Standard package or the full z14 Fine one.
+ * The hiking sheet's download level (#276): which pair of archives the default
+ * background fetches. Standard and Fine differ in the basemap cut - the z13
+ * package or the full z14 one - and, since #1088, Light differs in the DEM:
+ * its terrain corridor tapers harder, narrowing with depth rather than
+ * stopping at a shallower zoom.
+ *
  * Its own key rather than an overload of `max_background_zoom`, which is the
  * USGS raster's tier choice with its own zoom range; the two sheets'
  * decisions must not share one dial. The backend's `HikingDetailLevel`
  * mirrors this exactly.
+ *
+ * A VALUE HERE IS NOT AN OFFER. This enum says what a stored preference may
+ * hold; whether a level can be CHOSEN is hikingDetail.ts's `published`, which
+ * is gated on its artifacts actually being in the bucket. Light is storable
+ * and unofferable today, and the order matters: the enum has to accept the
+ * value before any build can publish behind it, or the first phone to store
+ * one would fail its own preference guard.
  */
-export const HIKING_DETAIL_LEVEL_VALUES = ['standard', 'fine'] as const
+export const HIKING_DETAIL_LEVEL_VALUES = ['light', 'standard', 'fine'] as const
 export type HikingDetailLevel = (typeof HIKING_DETAIL_LEVEL_VALUES)[number]
 
 /**
@@ -171,9 +192,24 @@ export interface UserPreferences {
    */
   auto_rotate_enabled: boolean
 
-  // Safety / privacy. The wrong-way alert is a NOTIFICATION preference - it
-  // governs whether the one push OurHike sends is delivered, not whether
-  // hazards appear on the map. Defaulted on, so the safety path is opt-out.
+  // Safety / privacy.
+  //
+  // Legacy: `wrong_way_alert_enabled` governed the wrong-way alert, removed
+  // (#93, #308) after shipping fully built but never mounted - see
+  // features/HIKER_SAFETY.md section 5's history note. No code reads this
+  // today. Kept rather than dropped for the same reason as
+  // `auto_rotate_enabled` above: it is in the backend's `extra="forbid"`
+  // schema and part of three released clients' API contracts, so removing it
+  // is a coordinated expand/contract change across supported releases
+  // (RELEASING.md section 8c), not a same-PR deletion.
+  //
+  // #1352 DELETED a third key, `chosen_trail_id`, from both sides at once,
+  // and that is not this rule being broken. The rule turns on a released
+  // client still sending the field; that one never reached a release. It was
+  // added 2026-09-09T01:51Z (8e137dcd, #1306) and v1.2.2 - the newest tag -
+  // was cut 2026-09-08T14:30Z, so no shipped build has ever sent it and the
+  // `extra="forbid"` schema had nobody to 422. Check the dates the same way
+  // before dropping a fourth; the answer is usually no.
   wrong_way_alert_enabled: boolean
   anonymity_window_days: number
 
@@ -183,10 +219,31 @@ export interface UserPreferences {
    * card, and the places-you-passed list. Off by default, because the
    * passive surface interrupts nobody and the assertive one is only
    * legitimate when it was asked for. NOT a notification consent of any
-   * kind: nothing behind this toggle ever interrupts anyone, and the
-   * wrong-way alert above stays the only notification this app sends.
+   * kind: nothing behind this toggle ever interrupts anyone, and OurHike
+   * sends no push notification of any kind today.
    */
   contribute_conditions: boolean
+
+  /**
+   * Whether the Volunteer tab draws "What you've put back" (#969,
+   * features/VOLUNTEERING.md §5).
+   *
+   * ON by default, which is the opposite way round from `contribute_conditions`
+   * above and for a reason worth stating: that one governs whether the app ASKS
+   * a hiker for something, and an ask nobody wanted is an interruption. This
+   * governs whether the app shows a hiker their own logbook back. Every number
+   * in it is one they typed in themselves, nothing about it leaves the phone,
+   * and defaulting it off would mean a record kept in secret from the person
+   * keeping it.
+   *
+   * A DISPLAY SWITCH AND NOT A RETENTION ONE. Off hides the summary and keeps
+   * every record: the list, the totals line and the CSV export are all
+   * untouched. #969's reason for the switch existing at all is that it makes
+   * "this is memory, not a scoreboard" a claim the hiker can check rather than
+   * one the app makes about itself - and a switch that silently deleted the
+   * logbook would be a worse answer than no switch.
+   */
+  impact_panel_shown: boolean
 
   // Onboarding progress
   onboarding_completed: boolean
@@ -230,6 +287,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   anonymity_window_days: 0,
 
   contribute_conditions: false,
+  impact_panel_shown: true,
 
   onboarding_completed: false,
   download_choice_made: false,

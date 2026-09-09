@@ -16,6 +16,7 @@ asks, daily, and no test can answer it from a checkout.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 import requests
@@ -770,3 +771,264 @@ class TestTheAdvertisedSizesAreCheckedDaily:
         """A release that has not published the archives yet must not report
         three failures about objects nobody claimed exist."""
         assert check_deployment.check_advertised_sizes(BASE, []) == []
+
+
+class TestTheHourlyBakeIsStillRunning:
+    """#1129: on 2026-08-27 the conditions bake fired twice against sixteen
+    scheduled slots, and the fourteen misses left no trace at all - no
+    cancelled runs, no failures, nothing in the run listing. Nothing in this
+    repository asked whether it had run, and the published copy the offline
+    sync and the freshness display read was eleven hours old."""
+
+    NOW = datetime(2026, 8, 27, 15, 42, tzinfo=timezone.utc)
+
+    def _conditions(self, requests_mock, stamps):
+        for key, stamp in stamps.items():
+            requests_mock.get(f"{BASE}/{key}", json={"generated_at": stamp, "closures": []})
+
+    def test_a_bake_that_stopped_firing_is_caught(self, requests_mock):
+        """The measured shape: 04:02Z was the last one to publish, and by
+        15:42Z eleven hours had passed with nothing noticing."""
+        self._conditions(
+            requests_mock,
+            {
+                "conditions/closures.json": "2026-08-27T04:02:11.101010Z",
+                "conditions/notes.json": "2026-08-27T04:02:11.101010Z",
+            },
+        )
+
+        report = check_deployment.check_conditions_freshness(
+            BASE, ["conditions/closures.json", "conditions/notes.json", "trails.geojson"], now=self.NOW
+        )
+
+        assert report["state"] == FAILED
+        assert "11.7 hours old" in report["detail"]
+        # The sentence a human reads at 6am has to say what is actually broken.
+        # Closures still serve live from the backend (RELEASING.md section 11);
+        # it is the published copy that is stale.
+        assert "published copy" in report["detail"]
+
+    def test_an_ordinary_hour_passes(self, requests_mock):
+        """Forty minutes past the hour plus GitHub's ordinary lateness. The
+        run that fires late is not the run that never fires."""
+        self._conditions(requests_mock, {"conditions/closures.json": "2026-08-27T14:40:00Z"})
+
+        report = check_deployment.check_conditions_freshness(BASE, ["conditions/closures.json"], now=self.NOW)
+
+        assert report["state"] == OK
+
+    def test_one_dropped_firing_is_not_an_alarm(self, requests_mock):
+        """13:40 missed entirely, 14:40 twenty-two minutes late - the jitter
+        #1129 measured. Two hours and twenty minutes old, and a monitor that
+        fired here is a monitor somebody mutes."""
+        self._conditions(requests_mock, {"conditions/closures.json": "2026-08-27T13:22:00Z"})
+
+        report = check_deployment.check_conditions_freshness(BASE, ["conditions/closures.json"], now=self.NOW)
+
+        assert report["state"] == OK
+        assert "2.3 hours old" in report["detail"]
+
+    def test_the_newest_file_decides_rather_than_the_oldest(self, requests_mock):
+        """`drought.json` carries a weekly product and is legitimately hours
+        behind its siblings on a healthy bucket - measured at 15 hours old on
+        2026-09-04 while the other seven were minutes old. Ageing the oldest
+        would report an outage every single day."""
+        self._conditions(
+            requests_mock,
+            {
+                "conditions/drought.json": "2026-08-26T21:55:22Z",
+                "conditions/closures.json": "2026-08-27T14:40:00Z",
+            },
+        )
+
+        report = check_deployment.check_conditions_freshness(
+            BASE, ["conditions/closures.json", "conditions/drought.json"], now=self.NOW
+        )
+
+        assert report["state"] == OK
+        assert "conditions/closures.json" in report["detail"]
+
+    def test_a_bucket_that_cannot_be_read_is_unreachable_not_stale(self, requests_mock):
+        """#431's rule: a flaky third party must not be able to declare an
+        outage. A file nobody could fetch says nothing about when the bake
+        ran, and reporting it as infinitely old would be inventing a verdict."""
+        requests_mock.get(f"{BASE}/conditions/closures.json", status_code=503)
+
+        report = check_deployment.check_conditions_freshness(BASE, ["conditions/closures.json"], now=self.NOW)
+
+        assert report["state"] == UNREACHABLE
+
+    def test_a_file_with_no_readable_stamp_is_left_out_rather_than_aged(self, requests_mock):
+        """One unreadable file among several is not a verdict either - it drops
+        out of the comparison and the count is reported, so a set quietly
+        shrinking to one file cannot read as a clean bill of health."""
+        requests_mock.get(f"{BASE}/conditions/notes.json", json={"notes": []})
+        requests_mock.get(f"{BASE}/conditions/closures.json", json={"generated_at": "2026-08-27T14:40:00Z"})
+
+        report = check_deployment.check_conditions_freshness(
+            BASE, ["conditions/closures.json", "conditions/notes.json"], now=self.NOW
+        )
+
+        assert report["state"] == OK
+        assert "1 of 2 could not be read" in report["detail"]
+
+    def test_a_bucket_with_no_conditions_at_all_says_so_rather_than_going_quiet(self):
+        """A check that emits no report reads exactly like one that passed, and
+        this whole class exists because a silence was mistaken for health."""
+        report = check_deployment.check_conditions_freshness(BASE, ["trails.geojson"], now=self.NOW)
+
+        assert report["state"] == OK
+        assert "no conditions/* artifact" in report["detail"]
+
+    def test_it_does_not_claim_a_hiker_cannot_download_the_map(self, requests_mock):
+        """The tracking issue leads with "**A hiker cannot download the map**"
+        for a hiker-facing failure, and that is the wrong headline for this:
+        the map downloads, one layer inside it is stale."""
+        self._conditions(requests_mock, {"conditions/closures.json": "2026-08-27T04:02:11Z"})
+        manifest = load_manifest()
+
+        report = check_deployment.check_conditions_freshness(BASE, ["conditions/closures.json"], now=self.NOW)
+
+        assert report["state"] == FAILED
+        assert hiker_facing_failures([report], manifest) == []
+
+
+class TestBackendHealth:
+    """The backend probe (#1359).
+
+    The service does not exist yet, so every one of these is about what the
+    check CONCLUDES rather than about a real deployment - which is the same
+    footing as the rest of this file. The two that matter most are the two
+    that keep the check readable when it eventually watches something real:
+    an unset base is not a failure, and a request that never completed is not
+    an outage.
+    """
+
+    API = "https://backend.example.org"
+    HEALTH = f"{API}/health"
+
+    def test_an_unset_base_is_skipped_rather_than_failed(self):
+        """`API_BASE_URL` is unset on every build today, and .github/expected-settings.yml
+        says that is supported rather than broken. Red daily for a service
+        nobody has deployed is how a check stops being read."""
+        report = check_deployment.check_backend_health(None)
+
+        assert report["state"] == check_deployment.SKIPPED
+        assert report["state"] not in (FAILED, UNREACHABLE)
+
+    def test_a_skipped_backend_is_not_counted_as_a_failure_anywhere(self):
+        """The verdict document is what the workflow renders and what decides
+        whether the tracking issue opens, so `skipped` has to be invisible to
+        both lists rather than merely spelled differently."""
+        report = check_deployment.check_backend_health(None)
+        document = verdict_document(BASE, [report], load_manifest(), published=True)
+
+        assert document["failed"] == []
+        assert document["unreachable"] == []
+        assert document["hiker_facing_failures"] == []
+
+    def test_a_healthy_backend_passes(self, requests_mock):
+        requests_mock.get(self.HEALTH, json={"status": "ok"})
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == OK
+
+    def test_a_trailing_slash_does_not_double_up(self, requests_mock):
+        requests_mock.get(self.HEALTH, json={"status": "ok"})
+
+        report = check_deployment.check_backend_health(f"{self.API}/")
+
+        assert report["state"] == OK
+        assert report["key"] == self.HEALTH
+
+    def test_a_non_200_is_a_failure(self, requests_mock):
+        requests_mock.get(self.HEALTH, status_code=502)
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+        assert "502" in report["detail"]
+
+    def test_a_200_that_is_not_json_is_a_failure(self, requests_mock):
+        """A parked domain, a proxy error page and a host's own placeholder all
+        answer 200 cheerfully. Checking the status alone would call any of them
+        a healthy backend."""
+        requests_mock.get(self.HEALTH, text="<html>Application deployed</html>")
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+        assert "not JSON" in report["detail"]
+
+    def test_a_200_with_the_wrong_body_is_a_failure(self, requests_mock):
+        requests_mock.get(self.HEALTH, json={"status": "degraded"})
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+
+    def test_a_200_with_json_that_is_not_an_object_does_not_crash_the_run(self, requests_mock):
+        """Valid JSON is not necessarily a dict, and `[].get` is an
+        AttributeError. Every check in this file returns a verdict rather than
+        raising, because one bad response must not cost the other twelve their
+        report."""
+        requests_mock.get(self.HEALTH, json=[])
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+
+    def test_a_request_that_never_completed_is_unreachable_not_failed(self, requests_mock):
+        """#431's rule, applied one service along: a flaky third party must not
+        be able to declare an outage. A free tier that overran even the
+        cold-start budget is exactly that."""
+        requests_mock.get(self.HEALTH, exc=requests.exceptions.ConnectTimeout)
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == UNREACHABLE
+        assert report["state"] != FAILED
+
+    def test_a_failing_backend_does_not_claim_a_hiker_cannot_download_the_map(self, requests_mock):
+        """features/CONDITIONS_DELIVERY.md moved the safety read to R2, so the
+        map and the closures survive this service being down. Reports waiting
+        in the outbox is real and is not the outage headline."""
+        requests_mock.get(self.HEALTH, status_code=500)
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+        assert hiker_facing_failures([report], load_manifest()) == []
+
+    def test_the_timeout_outlasts_the_documented_cold_start(self):
+        """backend/HOSTING.md budgets 30-60s for the first request after idle,
+        and this check runs daily, so it meets a slept instance nearly every
+        time. Reusing HTTP_TIMEOUT (30) would report a healthy backend as
+        unreachable most mornings - the constant's derivation, as a test rather
+        than only as a comment."""
+        assert check_deployment.BACKEND_COLD_START_TIMEOUT > 60
+        assert check_deployment.BACKEND_COLD_START_TIMEOUT > check_deployment.HTTP_TIMEOUT
+
+    def test_main_reads_the_environment_and_reports_the_backend(self, mock, monkeypatch, capsys):
+        """End to end through main(), because the wiring is the part that can
+        be wrong while every unit above passes."""
+        _healthy_bucket(mock)
+        monkeypatch.setenv("DATA_BASE_URL", BASE)
+        monkeypatch.setenv("API_BASE_URL", self.API)
+        mock.get(self.HEALTH, json={"status": "ok"})
+
+        check_deployment.main(["--exit-zero"])
+
+        assert "backend" in capsys.readouterr().out
+
+    def test_main_without_the_variable_still_reports_the_backend_line(self, mock, monkeypatch, capsys):
+        """The skipped line is the point: a reader learns the backend was not
+        asked, rather than the check silently having no opinion."""
+        _healthy_bucket(mock)
+        monkeypatch.setenv("DATA_BASE_URL", BASE)
+        monkeypatch.delenv("API_BASE_URL", raising=False)
+
+        check_deployment.main(["--exit-zero"])
+
+        assert "SKIPPED" in capsys.readouterr().out

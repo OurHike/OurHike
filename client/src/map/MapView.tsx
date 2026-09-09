@@ -8,7 +8,7 @@
 // surface exactly that, so the effect below is written to survive it: build
 // once per effect run, and fully undo the build on cleanup.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 // MapLibre's own stylesheet, and not optional. Everything the map puts on
 // itself - compass, locate, the scale bar, the zoom buttons - is positioned by
@@ -25,9 +25,10 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { readTrailsMerged } from '../lib/trailShape'
 import {
+  attachChosenTrail,
   attachMapAppearance,
+  attachNetworkOverview,
   attachTrailData,
-  attachNearbyTrails,
   attachTrailOverview,
   buildMapStyle,
 } from './style'
@@ -41,11 +42,13 @@ import { loadMapEngine, loadedMapEngine } from './mapEngineLoader'
 import type { ResolvedTheme } from '../lib/theme'
 import { attachPoiData, attachPoiFilter, attachPoiIcons } from './poiLayers'
 import {
+  attachAtcNoticeIcon,
   attachAtcUpdateData,
   attachAtcUpdateTaps,
   type AtcUpdatePoint,
 } from './atcUpdateLayers'
 import { attachClosureData, type ClosureBand } from './closureLayers'
+import { attachClosureTape } from './closureTape'
 import {
   attachCorridorData,
   attachHighlightTaps,
@@ -53,6 +56,8 @@ import {
   type CorridorFeatureCollection,
 } from './corridorLayers'
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
+import { attachCoverageSeams } from './coverageLayers'
+import type { SeamEdge } from '../lib/coverageCells'
 import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
 import {
   attachWorkdayData,
@@ -62,9 +67,25 @@ import {
 } from './workdayLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
+import { chosenSystemSources } from './nearbyTrails'
+import { attachTrailBadgeImages } from './trailBadges'
+import { attachTrailsInView, type TrailInView, type ViewInsets } from './trailsInView'
 import { attachPoiTaps } from './poiTaps'
-import { attachDayHikeData, type DayHikeDrawing } from './dayHikeLayers'
-import { attachRouteData, attachRouteTaps, type RouteDrawing } from './routeLayers'
+import {
+  attachDayHikeData,
+  attachDayHikeTicks,
+  type DayHikeDrawing,
+} from './dayHikeLayers'
+import { attachPoiLabels } from './poiLabels'
+import { attachLabelVisibility } from './labelVisibility'
+import type { MileTick } from '../lib/dayHikeCourse'
+import {
+  attachRouteData,
+  attachRouteStroke,
+  attachRouteTaps,
+  type RouteDrawing,
+} from './routeLayers'
+import { attachLongPress } from './longPress'
 import type { BoundingBox, MapPoint } from '../lib/legendContents'
 import type {
   BackgroundSource,
@@ -87,26 +108,45 @@ export interface MapViewProps {
    */
   trailsUrl: string
   /**
-   * The corridor-view centerline, while there is no real one (#869).
+   * The corridor-view centerline, drawn until this map has the real line on
+   * screen (#869, #1291).
    *
-   * Null once the shell has the real line - or has decided there is no sketch
-   * to draw - and clearing it is the point rather than an edge case: this is
-   * a line that is only true at the zooms it is drawn at, and it stops being
-   * drawn the moment something better arrives. lib/config.ts's
+   * Handed over for as long as the shell has one; null only where there is
+   * none. Clearing it is this component's own call, made per map instance
+   * off the trails source's loaded state (map/style.ts's attachTrailOverview),
+   * because the shell holding the real line is not the map having drawn it.
+   * It is a line that is only true at the zooms it is drawn at, and it stops
+   * being drawn the moment something better is on screen - lib/config.ts's
    * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
    */
   overviewTrailsUrl?: string | null
   /**
-   * The trail lines other organizations maintain, as an object URL (#950,
-   * features/NEARBY_TRAILS.md).
-   *
-   * Drawn ghosted and under the chosen trail, by the same expressions that
-   * draw the chosen trail - see map/style.ts's buildTrailLineLayers. Null is
-   * the ordinary state today, because publish.py holds that artifact back
-   * while NYS OPRHP's and NYNJTC's reuse terms are unstated, and it renders
-   * as the A.T.-only map this app has always drawn.
+   * Whether `trailsUrl` is the real line rather than the empty placeholder
+   * the style is seeded with (#1291). The sketch above waits on the trails
+   * source loading only when this is true: the placeholder loads instantly,
+   * and counting it would clear the sketch before the real line was even
+   * requested.
    */
-  nearbyTrailsUrl?: string | null
+  haveTrailLines?: boolean
+  /**
+   * The corridor-view sketch of that whole network, as an object URL (#1135,
+   * lib/config.ts's NETWORK_OVERVIEW_KEY).
+   *
+   * Drawn only below the pin seam - the zooms where the lines above do not
+   * draw - through the same expressions, so the opening camera shows every
+   * organization's trails for 255 KB instead of an A.T.-only map. Null
+   * renders exactly that older map: a release without the artifact, or a
+   * bucket holding it back with its parent.
+   */
+  networkOverviewUrl?: string | null
+  /**
+   * The taken trail, by lib/trails.ts registry id, or null for nothing taken
+   * (#1306) - the active long hike's `trailId` (lib/trips.ts), App.tsx's
+   * `chosenTrailId`, since #1352. Built into the style and re-pointed in
+   * place when it changes (map/style.ts's attachChosenTrail), never a
+   * rebuild. Null is first launch: every line dotted, nothing ghosted.
+   */
+  chosenTrailId?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -169,6 +209,17 @@ export interface MapViewProps {
    *  the switch moves whenever somebody taps it. */
   showDrought?: boolean
   /**
+   * The outer edges of the cells this phone holds, already computed by the
+   * shell (lib/coverageCells.ts's `seamEdges`), drawn dashed and named as
+   * the edge of the download (#557, map/coverageLayers.ts).
+   *
+   * Edges rather than cells, for the reason `closures` arrives as coordinates
+   * rather than mile markers: which cells are held is a fact about IndexedDB
+   * the shell holds, and this component draws. Empty is the ordinary state -
+   * nothing held, or the whole sheet held, neither of which has an edge.
+   */
+  coverageSeams?: readonly SeamEdge[]
+  /**
    * The ATC's own trail updates, in the same coordinates and drawn at the
    * same weight - a second band source rather than more features in
    * `closures`, because the two carry different rhythms and a tap has to be
@@ -216,13 +267,65 @@ export interface MapViewProps {
   /** The day hike being built (#978), drawn as a casing UNDER the trail
    *  lines - dayHikeLayers.ts owns the argument. Null clears it. */
   dayHikeDrawing?: DayHikeDrawing | null
+  /** A mark at every whole mile of the walk being built (#1194). */
+  dayHikeTicks?: readonly MileTick[]
+  /**
+   * The builder's label controls (#1194): whether waypoint names draw at all,
+   * which classes are switched off, and which stops are the hiker's own.
+   *
+   * ONE PROP RATHER THAN THREE because the three change together - every one
+   * of them is a consequence of the same panel - and three effects reading
+   * three props would re-push the label layer three times for one toggle.
+   */
+  mapLabels?: {
+    poiLabelsShown: boolean
+    hiddenPoiLabelTypes: readonly string[]
+    chosenStopIds: readonly string[]
+    shownLabelLayerIds: readonly string[]
+    hiddenLabelLayerIds: readonly string[]
+  }
   /**
    * When set, the map is in route-building mode: a tap anywhere reports its
    * raw coordinate here, and the POI tap handler is NOT attached - one
    * interpreter per touch (see routeLayers.ts's attachRouteTaps). Must be
    * stable across renders (useCallback), like `onSelectPoi`.
    */
-  onRouteTap?: (at: { lon: number; lat: number }) => void
+  onRouteTap?: (at: { lon: number; lat: number }, point: { x: number; y: number }) => void
+  /**
+   * A drawn line, when the builder is in draw mode (#983, frame `1k`).
+   *
+   * Attached INSTEAD of `onRouteTap`, never alongside it, for the rule
+   * routeLayers.ts states about taps: one interpreter per touch. A drag and a
+   * tap are the same gesture until the finger moves, so two handlers watching
+   * for both is the same race one level up.
+   */
+  onRouteStroke?: (stroke: Array<{ lon: number; lat: number }>) => void
+  /**
+   * Press and hold a spot on bare map (#1137) - the third way into a report,
+   * and the only one that can name a place the app has no name for.
+   *
+   * Suppressed in route and draw mode with every other tap handler, for the
+   * one-interpreter rule: while a route is being built, holding a finger down
+   * means "I am about to drag a point", not "open a plate here".
+   */
+  onLongPress?: (
+    at: { lon: number; lat: number },
+    point: { x: number; y: number },
+  ) => void
+  /**
+   * True while the press plate is open over the map.
+   *
+   * WHAT THIS PROP IS FOR is the click that arrives when the finger lifts.
+   * The press fires on a timer while the finger is still down, so the release
+   * still produces a `click` - which `attachPoiTaps` would read as "select
+   * whatever is here" and `attachLineTaps` as "open this trail's facts",
+   * putting a card under the plate the hiker just opened. A module cannot
+   * honestly swallow another module's listener, so the suppression lives here
+   * instead, exactly as route mode's does: while the plate is up, those
+   * handlers are not attached at all. A finger held for half a second lifts
+   * long after this render.
+   */
+  pressPlateOpen?: boolean
   /** Initial centre only - later camera moves go through the map imperatively. */
   center?: [number, number]
   /** Initial zoom only. */
@@ -320,6 +423,23 @@ export interface MapViewProps {
    */
   onViewportChange?: (bbox: BoundingBox, fromGesture: boolean) => void
   /**
+   * The named trails the map is drawing, for the legend's block (#1283,
+   * map/trailsInView.ts) - measured off the settled frame and reported on
+   * change. Must be stable across renders, like `onViewportChange`. The
+   * badge source is kept current on the same pass whether or not a shell
+   * listens.
+   */
+  onTrailsInView?: (trails: readonly TrailInView[]) => void
+  /**
+   * How much of each edge of the canvas the shell's chrome covers, in CSS
+   * px, so a through-route's badge is anchored where a hiker can see it
+   * (map/trailsInView.ts's header has the frame that taught this). Must be
+   * stable across renders (useMemo) - a fresh object would re-attach the
+   * badge listeners on every render of the parent. Omitted, the whole
+   * canvas counts as clear.
+   */
+  chromeInsets?: ViewInsets
+  /**
    * The live map, handed over on build and `null` on teardown, so the shell
    * can move the camera imperatively. `center` cannot do that job - it seeds
    * the opening view only, and the first GPS fix usually lands after it.
@@ -346,8 +466,10 @@ const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
 /** Breathing room around a fitted box, on every side, when the caller asks for
- *  nothing more specific. */
-const FIT_PADDING = 24
+ *  nothing more specific. Exported for the shell's re-fit of the corridor
+ *  once the entry steps end (#1296), so the map a hiker opens after first
+ *  run is framed exactly as a returning hiker's is. */
+export const FIT_PADDING = 24
 
 // Module-level, so the default is the SAME value on every render. A `= []`
 // default parameter would hand over a fresh identity each time and re-run the
@@ -357,18 +479,24 @@ const NO_POIS: readonly MapPoint[] = []
 const NOTHING_HIDDEN: ReadonlySet<string> = new Set()
 const NO_CLOSURES: readonly ClosureBand[] = []
 const NO_DROUGHT: readonly DroughtBand[] = []
+const NO_SEAMS: readonly SeamEdge[] = []
 const NO_ATC_UPDATES: readonly ClosureBand[] = []
 const NO_ATC_POINTS: readonly AtcUpdatePoint[] = []
 const NO_WARNINGS: readonly WarningPoint[] = []
 const NO_WORKDAYS: readonly WorkdayPoint[] = []
 const NO_DISPUTES: readonly DisputePoint[] = []
+/** Same reasoning as NO_POIS above: a stable identity so an absent prop does
+ *  not re-run the tick effect on every render with a fresh array. */
+const EMPTY_TICKS: readonly MileTick[] = []
 
 export function MapView({
   topoArchiveUrl,
   trailsUrl,
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
-  nearbyTrailsUrl = null,
+  haveTrailLines = false,
+  networkOverviewUrl = null,
+  chosenTrailId = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -381,6 +509,7 @@ export function MapView({
   onSelectHighlight,
   drought = NO_DROUGHT,
   showDrought = false,
+  coverageSeams = NO_SEAMS,
   atcUpdates = NO_ATC_UPDATES,
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
@@ -390,7 +519,12 @@ export function MapView({
   onSelectWorkday,
   routeDrawing = null,
   dayHikeDrawing = null,
+  dayHikeTicks = EMPTY_TICKS,
+  mapLabels,
   onRouteTap,
+  onRouteStroke,
+  onLongPress,
+  pressPlateOpen = false,
   onSelectPoi,
   onSelectLine,
   center,
@@ -407,10 +541,16 @@ export function MapView({
   redLight = false,
   detail = 'standard',
   onViewportChange,
+  onTrailsInView,
+  chromeInsets,
   onMapReady,
   onLiveSourceHealth,
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  /** Whether the current map instance opened on `bounds` - see the note at
+   *  construction, and the zoom-floor effect that reads it. Cleared by the
+   *  first gesture, after which the camera is the hiker's. */
+  const openedOnBounds = useRef(false)
   const [map, setMap] = useState<MapLibreMap | null>(null)
 
   /**
@@ -471,6 +611,15 @@ export function MapView({
       // so there is no behind-the-back request to guard against.
       engine.registerBasemapProtocol()
 
+      // And network:// URLs - the other organizations' trail lines, out of
+      // their published PMTiles archive by byte range (networkTiles.ts,
+      // #1257). No prop carries these lines any more: the style declares the
+      // source and the handler reads the bucket per tile. Registered
+      // unconditionally for the basemap scheme's reason - it reaches the
+      // network only as tiles of a source the style declares, and never
+      // before latest.json has said the archive exists.
+      engine.registerNetworkProtocol()
+
       // Same contract for the DEM and contour protocols, with one difference
       // worth being deliberate about: this one reaches the network, so it is
       // only set up when a background that uses it was actually asked for.
@@ -504,6 +653,7 @@ export function MapView({
         style: buildMapStyle({
           topoArchiveUrl,
           trailsUrl,
+          chosenTrailId,
           background,
           terrain,
           units,
@@ -533,6 +683,14 @@ export function MapView({
       // change. Cleared on teardown so the next map is seeded and recorded
       // together, and a rebuild can never inherit the previous map's answer.
       drawnTrailsUrl.current = trailsUrl
+      // Whether THIS map opened on the shell's fitted box - latched at
+      // construction because the prop does not stay: the initial camera
+      // report below hands the shell a camera, and from the next render on
+      // it passes centre and zoom instead of bounds. The zoom-floor effect
+      // reads this latch rather than the live prop, or the report racing
+      // the archive header's read decides whether the clamp ever fires -
+      // which is #1062's CI failure, not a hypothesis.
+      openedOnBounds.current = bounds !== undefined
       built = created
       setMap(created)
     }
@@ -605,16 +763,24 @@ export function MapView({
   // (Harpers Ferry was removed for precisely that), and moving the scale in
   // without moving the centre claims nothing new.
   //
-  // Gated on `bounds`, which the shell supplies only for the very first view -
-  // once there is a remembered camera it passes centre and zoom instead. So
-  // this cannot fight a hiker who has deliberately zoomed out to look at the
+  // Gated on the LATCH, not the live `bounds` prop, and the difference is a
+  // race this shipped with and CI caught (#1062). The shell supplies bounds
+  // only while it has no camera - but the initial viewport report below
+  // HANDS it one, so by the time a slow archive-header read resolved, the
+  // prop this effect used to check was already gone and the clamp never
+  // fired: the map sat at the fitted zoom under a "Zoomed out past your
+  // download" flag. The latch records the fact that actually matters - this
+  // map instance OPENED on the shell's box - and survives the prop swap.
+  // The first gesture clears it (the report handler below), so this still
+  // cannot fight a hiker who has deliberately zoomed out to look at the
   // whole trail; it only decides where they start.
   useEffect(() => {
-    if (map === null || bounds === undefined || background !== 'usgs_topo_offline') return
+    if (map === null || !openedOnBounds.current || background !== 'usgs_topo_offline')
+      return
 
     const floor = openingZoomFloor(archiveZooms, map.getZoom())
     if (floor !== null) map.setZoom(floor)
-  }, [map, bounds, background, archiveZooms])
+  }, [map, background, archiveZooms])
 
   // Chrome lives in its own effect so that a preference which only affects the
   // controls - the scale bar's units, the zoom buttons - re-attaches three
@@ -680,19 +846,22 @@ export function MapView({
   // same seam as the lines above: a GeoJSON source takes a URL in place, and
   // takes an empty collection to say it is done. Its own effect because it
   // moves on a different clock from the real line - it is set once early and
-  // cleared once, where the real one is set once and stays.
+  // cleared once THIS map has drawn the real one (#1291), where the real one
+  // is set once and stays. Declared after the trail-lines effect above on
+  // purpose: when the shell's lines land, the source is re-pointed first and
+  // is mid-load by the time this asks whether it is drawn.
   useEffect(() => {
     if (map === null) return
-    return attachTrailOverview(map, overviewTrailsUrl)
-  }, [map, overviewTrailsUrl])
+    return attachTrailOverview(map, overviewTrailsUrl, haveTrailLines)
+  }, [map, overviewTrailsUrl, haveTrailLines])
 
-  // Its own effect rather than a branch inside the one above, because the two
-  // move on different clocks: the overview is set once early and cleared once,
-  // and this arrives whenever the network answers and then stays.
+  // The network's own sketch (#1135), on the nearby lines' clock rather than
+  // the A.T. sketch's: it arrives once and stays, because nothing better
+  // replaces it below the seam.
   useEffect(() => {
     if (map === null) return
-    return attachNearbyTrails(map, nearbyTrailsUrl)
-  }, [map, nearbyTrailsUrl])
+    return attachNetworkOverview(map, networkOverviewUrl)
+  }, [map, networkOverviewUrl])
 
   // Three separate effects rather than one, because they change on different
   // clocks: the pin images are built once and never again, while the source and
@@ -744,15 +913,86 @@ export function MapView({
   // network on their own schedules and refuse independently (App.tsx). Folding
   // them together would mean a closures read that came back re-rasterising a
   // 88px pin, and either read failing would hold the other off the map.
+  //
+  // ONCE THERE IS A WARNING TO DRAW, AND NOT BEFORE (#1304). The image is one
+  // pass of map/poiIcons.ts's scanline rasteriser - the same arithmetic the 46
+  // POI pins were moved to a worker for (#857) - and it ran on every map build
+  // whether or not this map would ever show a warning. On first run that is
+  // the map behind the entry card, where nothing is drawn and the thread is
+  // the one the Skip button is waiting for: measured 2026-09-09, 111-140 ms of
+  // main-thread self time in map/poiIcons.ts across the steps, which is this
+  // pin and the workday pin below.
+  //
+  // THE ORDERING IS THE SAFETY ARGUMENT, and it is kept rather than assumed: a
+  // symbol layer whose `icon-image` names an image the map has not been given
+  // draws NOTHING, and a serious warning that does not draw is the failure
+  // this app cannot have. This effect is declared before the data effect, so
+  // in the commit where the first warning arrives React runs it first, and
+  // both take the same `whenStyleReady` queue in that order. The image is
+  // never removed once added, so a warning list that empties and refills
+  // cannot leave the layer without one.
+  const haveWarnings = warnings.length > 0
+  useEffect(() => {
+    if (map === null || !haveWarnings) return
+    return attachWarningIcon(map)
+  }, [map, haveWarnings])
+
+  // The barrier tape, which every closure layer and the ATC's own band point
+  // at by name. Registered off `map` alone, like the pin images above and
+  // unlike the data effects below: the tape is a function of constants, so
+  // re-rasterising it when a closure arrives would be work nobody asked for -
+  // and a band whose `line-pattern` names an image the map has not been given
+  // draws nothing at all, which is the one failure this must not have.
   useEffect(() => {
     if (map === null) return
-    return attachWarningIcon(map)
+    return attachClosureTape(map)
+  }, [map])
+
+  // The ATC point-notice mark, on the same reasoning as the warning pin above
+  // and NOT gated on there being any notices (#1071). The image is one 80px
+  // rasterise whatever arrives, and a mark registered only once data lands
+  // would leave the first render of a notice drawing nothing at all - which is
+  // the one failure this layer must never have.
+  useEffect(() => {
+    if (map === null) return
+    return attachAtcNoticeIcon(map)
   }, [map])
 
   useEffect(() => {
     if (map === null) return
     return attachClosureData(map, closures)
   }, [map, closures])
+
+  // The through-route badge's images (#1283) - two plates, the blaze chips,
+  // the registry marks - registered off `map` alone, like the tape above:
+  // constants and assets, never data, so nothing here re-runs on a tap.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailBadgeImages(map)
+  }, [map])
+
+  /** The sources the taken trail draws solid, for the rows and badges to
+   *  mark `chosen` by (#1306) - memoised so the attach below does not re-run
+   *  on every render for an equal list. */
+  const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+
+  // And the badges' points, plus the legend's list, off the same pass over
+  // the settled frame (map/trailsInView.ts). Its own effect on the map's
+  // clock and the callback's: a shell that starts listening does not cost a
+  // WebGL context.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailsInView(map, onTrailsInView, chromeInsets, chosenSources)
+  }, [map, onTrailsInView, chromeInsets, chosenSources])
+
+  // The taken trail (#1306), re-pointed in place: every split's filters, the
+  // ghosting, the labels' priority and the badge. Its own effect on its own
+  // clock - a preference write - and never a rebuild, per the lifecycle
+  // regression the appearance effect cites.
+  useEffect(() => {
+    if (map === null) return
+    return attachChosenTrail(map, chosenTrailId)
+  }, [map, chosenTrailId])
 
   // Its own effect rather than folded into the closures above: the two arrive
   // on completely different schedules - closures from the network whenever
@@ -788,6 +1028,15 @@ export function MapView({
     return setDroughtVisible(map, showDrought)
   }, [map, showDrought])
 
+  // The edge of the download (#557), on the drought bands' pattern: the
+  // shell hands over a few line segments whenever the held cells change,
+  // which is a download landing or a delete, and nothing else on this
+  // screen re-pushes them.
+  useEffect(() => {
+    if (map === null) return
+    return attachCoverageSeams(map, coverageSeams)
+  }, [map, coverageSeams])
+
   useEffect(() => {
     if (map === null) return
     return attachAtcUpdateData(map, atcUpdates, atcUpdatePoints)
@@ -801,10 +1050,11 @@ export function MapView({
   // The workday pins (#760): the image once, the data whenever the shell's
   // window or staleness verdict changes, and the tap. Same three-effect shape
   // as the warnings above.
+  const haveWorkdays = workdays.length > 0
   useEffect(() => {
-    if (map === null) return
+    if (map === null || !haveWorkdays) return
     return attachWorkdayIcon(map)
-  }, [map])
+  }, [map, haveWorkdays])
 
   useEffect(() => {
     if (map === null) return
@@ -846,6 +1096,36 @@ export function MapView({
     return attachDayHikeData(map, dayHikeDrawing)
   }, [map, dayHikeDrawing])
 
+  // The mile marks, their own effect and their own source: they change when
+  // the ROUTE changes, which the drawing above already knows about, but they
+  // are points on that line rather than the line - one source holding both
+  // would re-serialise every tick whenever the drawing moved.
+  useEffect(() => {
+    if (map === null) return
+    return attachDayHikeTicks(map, dayHikeTicks)
+  }, [map, dayHikeTicks])
+
+  // The label controls, on map/mapDetail.ts's rule: pure layer properties on
+  // a live map, never a style rebuild - a rebuild drops the WebGL context a
+  // hiker is holding.
+  useEffect(() => {
+    if (map === null || mapLabels === undefined) return
+    return attachPoiLabels(map, {
+      shown: mapLabels.poiLabelsShown,
+      hiddenTypes: mapLabels.hiddenPoiLabelTypes,
+      chosenStopIds: mapLabels.chosenStopIds,
+    })
+  }, [map, mapLabels])
+
+  useEffect(() => {
+    if (map === null || mapLabels === undefined) return
+    return attachLabelVisibility(
+      map,
+      mapLabels.shownLabelLayerIds,
+      mapLabels.hiddenLabelLayerIds,
+    )
+  }, [map, mapLabels])
+
   // Taps are their own effect for the same reason: this one re-binds when the
   // shell hands over a different handler, which has nothing to do with the
   // pins themselves and must not re-push the POI source to do it.
@@ -857,13 +1137,32 @@ export function MapView({
   // taps have exactly one interpreter.
   useEffect(() => {
     if (map === null || onSelectPoi === undefined || onRouteTap !== undefined) return
+    // The press plate's own release-click - see `pressPlateOpen`.
+    if (pressPlateOpen) return
     return attachPoiTaps(map, onSelectPoi)
-  }, [map, onSelectPoi, onRouteTap])
+  }, [map, onSelectPoi, onRouteTap, pressPlateOpen])
 
   useEffect(() => {
-    if (map === null || onRouteTap === undefined) return
+    if (map === null || onRouteTap === undefined || onRouteStroke !== undefined) return
     return attachRouteTaps(map, onRouteTap)
-  }, [map, onRouteTap])
+  }, [map, onRouteTap, onRouteStroke])
+
+  useEffect(() => {
+    if (map === null || onRouteStroke === undefined) return
+    return attachRouteStroke(map, onRouteStroke)
+  }, [map, onRouteStroke])
+
+  // Press and hold (#1137), suppressed in route and draw mode like every
+  // other handler here. Not suppressed while its own plate is open: pressing
+  // a second spot with the first plate up is a hiker correcting their aim,
+  // and re-anchoring is exactly what they mean by it.
+  useEffect(() => {
+    if (map === null || onLongPress === undefined) return
+    if (onRouteTap !== undefined || onRouteStroke !== undefined) return
+    return attachLongPress(map, (at, point) =>
+      onLongPress({ lon: at.lon, lat: at.lat }, point),
+    )
+  }, [map, onLongPress, onRouteTap, onRouteStroke])
 
   // The line taps (#134), suppressed in route mode like every other tap
   // handler. Attached separately from the POI taps because their yields
@@ -872,8 +1171,9 @@ export function MapView({
   // two effects knowing about each other.
   useEffect(() => {
     if (map === null || onSelectLine === undefined || onRouteTap !== undefined) return
+    if (pressPlateOpen) return
     return attachLineTaps(map, onSelectLine)
-  }, [map, onSelectLine, onRouteTap])
+  }, [map, onSelectLine, onRouteTap, pressPlateOpen])
 
   // Suppressed in route mode for the same one-interpreter rule as the POI
   // taps above: a point dropped near an ATC notice must not also open its
@@ -881,8 +1181,9 @@ export function MapView({
   useEffect(() => {
     if (map === null || onSelectAtcUpdate === undefined || onRouteTap !== undefined)
       return
+    if (pressPlateOpen) return
     return attachAtcUpdateTaps(map, onSelectAtcUpdate)
-  }, [map, onSelectAtcUpdate, onRouteTap])
+  }, [map, onSelectAtcUpdate, onRouteTap, pressPlateOpen])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return
@@ -894,6 +1195,10 @@ export function MapView({
     // Whites should retune the ribbon, while the shell re-framing the camera
     // after a download should not take the ribbon off the hiker.
     const report = (event?: { originalEvent?: unknown }) => {
+      // A gesture ends the opening: from here the camera is the hiker's, and
+      // the zoom-floor effect above must not move it under them.
+      if (event?.originalEvent != null) openedOnBounds.current = false
+
       const bounds = map.getBounds()
       onViewportChange(
         {

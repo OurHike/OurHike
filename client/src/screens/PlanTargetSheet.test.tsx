@@ -10,6 +10,7 @@ import { PlanTargetSheet } from './PlanTargetSheet'
 import type { ElevationProfile } from '../lib/elevationProfile'
 import type { HikePlan } from '../lib/plan'
 import type { StoredPoi } from '../lib/trailData'
+import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 
 const poi = (id: string, type: string, mile?: number): StoredPoi => ({
   id,
@@ -34,6 +35,17 @@ function flatProfile(): ElevationProfile {
   return {
     distanceMi: Float32Array.from(miles),
     elevationFt: Float32Array.from(miles.map(() => 2000)),
+  }
+}
+
+/** The same profile with miles 10-14 never measured by the DEM. */
+function holedProfile(): ElevationProfile {
+  const whole = flatProfile()
+  return {
+    ...whole,
+    elevationFt: Float32Array.from(whole.elevationFt, (feet, at) =>
+      whole.distanceMi[at] >= 10 && whole.distanceMi[at] <= 14 ? NaN : feet,
+    ),
   }
 }
 
@@ -87,6 +99,96 @@ describe('the target and its unit', () => {
       'true',
     )
     expect(screen.getByText(/needs the elevation profile/)).toBeInTheDocument()
+  })
+
+  it('will not plan by hours over ground the DEM never measured (#1039)', () => {
+    // The same refusal as no profile at all, for the same reason stated one
+    // stretch down: a hole prices that stretch's climb at zero, so an hours
+    // target understates the effort of any day crossing it - and the planner
+    // answers by making those days LONGER. Wrong direction, on the one
+    // control whose job is keeping a day walkable, and invisible if allowed.
+    render(<PlanTargetSheet {...PROPS} elevation={holedProfile()} />)
+
+    expect(screen.getByRole('button', { name: 'Walking hours' })).toBeDisabled()
+    expect(screen.getByText(/no elevation measured/)).toBeInTheDocument()
+    // And it is a different sentence from the no-profile one, because it is
+    // a different fact about a different thing.
+    expect(screen.queryByText(/needs the elevation profile/)).toBeNull()
+  })
+
+  it('still plans by hours over a wholly measured route', () => {
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    expect(screen.getByRole('button', { name: 'Walking hours' })).not.toBeDisabled()
+    expect(screen.queryByText(/no elevation measured/)).toBeNull()
+  })
+})
+
+describe("the hiker's own pace, on a sheet that is already open", () => {
+  it('re-plans when the pace changes under it (#1040)', () => {
+    // The stale closure this pins: `preview` read `pace` from its enclosing
+    // scope and did not list it as a dependency, so a hiker who changed
+    // their pace with this sheet mounted kept planning at the old one -
+    // silently, on the control whose whole job is to keep a day walkable.
+    //
+    // A rerender rather than a fresh render is the whole point: a remount
+    // would rebuild the memo and pass whether or not the dependency was
+    // ever declared.
+    const slow: PaceProfile = { ...STANDARD_PACE, flatPaceMph: 1.5 }
+    // ONE profile object across both renders, and that is load-bearing.
+    // Written as `elevation={flatProfile()}` this test passed against the
+    // defect: a fresh object per render changes `elevation`'s identity, so the
+    // memo re-ran for that reason and the missing `pace` never showed.
+    const profile = flatProfile()
+    const { rerender } = render(
+      <PlanTargetSheet {...PROPS} elevation={profile} pace={STANDARD_PACE} />,
+    )
+
+    const dayCount = () =>
+      Number(
+        /Lay out (\d+) days?/.exec(
+          screen.getByRole('button', { name: /Lay out \d+ days?/ }).textContent ?? '',
+        )?.[1],
+      )
+
+    const atStandard = dayCount()
+    rerender(<PlanTargetSheet {...PROPS} elevation={profile} pace={slow} />)
+    const atSlow = dayCount()
+
+    // Same ground, same target in HOURS, half the speed - so more days.
+    expect(atSlow).toBeGreaterThan(atStandard)
+  })
+
+  it('answers for a target the same however the hiker got there', () => {
+    // The cache `effort` keeps. It prices each stretch by mile pair so a
+    // slider step does not re-walk the profile - measured at 1,242 ms for
+    // ten steps over a full-trail route before, 147 ms after, same plan.
+    //
+    // What a cache can break is that "same plan": a key that collided
+    // across pairs, or one that outlived what it was priced from, would
+    // move day boundaries depending on which targets the hiker dragged
+    // through first. So the answer at nine hours has to be the answer at
+    // nine hours, whether it is asked cold or after a detour through five.
+    const hoursSlider = () => screen.getByLabelText('Walking hours per day')
+    const dayCount = () =>
+      Number(
+        /Lay out (\d+) days?/.exec(
+          screen.getByRole('button', { name: /Lay out \d+ days?/ }).textContent ?? '',
+        )?.[1],
+      )
+
+    const cold = render(
+      <PlanTargetSheet {...PROPS} elevation={flatProfile()} pace={STANDARD_PACE} />,
+    )
+    fireEvent.change(hoursSlider(), { target: { value: '9' } })
+    const asked = dayCount()
+    cold.unmount()
+
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} pace={STANDARD_PACE} />)
+    for (const value of ['5', '11', '6', '9']) {
+      fireEvent.change(hoursSlider(), { target: { value } })
+    }
+    expect(dayCount()).toBe(asked)
   })
 })
 
@@ -216,6 +318,49 @@ describe('the rest rhythm (#798)', () => {
     expect(plan.rhythm).toEqual({ everyDays: 1, kind: 'zero' })
     // The rhythm is real days, not just a label: zeros are in the plan.
     expect(plan.days.filter((day) => day.rest === true).length).toBeGreaterThan(0)
+  })
+
+  it('counts the rest days it is about to insert (#1040)', () => {
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+
+    // Two walking days over this fixture's 30 flat miles, and the button
+    // says so while no rest is asked for.
+    expect(screen.getByRole('button', { name: /^Lay out/ })).toHaveTextContent(
+      'Lay out 2 days',
+    )
+
+    fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
+      target: { value: '1' },
+    })
+
+    // A rest after the first walking day is a third day in the plan. The
+    // button used to keep saying 2: it counted the generator's boundaries,
+    // and applyRhythm ran afterwards inside the handler - so the only figure
+    // on the sheet described a stage rather than the plan.
+    expect(screen.getByRole('button', { name: /^Lay out/ })).toHaveTextContent(
+      'Lay out 3 days',
+    )
+  })
+
+  it('lays out exactly the number of days it promised', async () => {
+    // The invariant behind the count, rather than a second literal: whatever
+    // the button says, the plan handed over has that many days.
+    const user = userEvent.setup()
+    const onLayOut = vi.fn()
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} onLayOut={onLayOut} />)
+    fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
+      target: { value: '1' },
+    })
+
+    const promised = Number(
+      /Lay out (\d+)/.exec(
+        screen.getByRole('button', { name: /^Lay out/ }).textContent ?? '',
+      )?.[1],
+    )
+    await user.click(screen.getByRole('button', { name: /^Lay out/ }))
+
+    expect(onLayOut).toHaveBeenCalledTimes(1)
+    expect(onLayOut.mock.calls[0][0].days).toHaveLength(promised)
   })
 
   it('offers the two kinds of rest, and says what a nearo is', async () => {

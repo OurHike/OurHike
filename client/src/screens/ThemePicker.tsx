@@ -41,7 +41,7 @@ const OPTIONS: ReadonlyArray<{ value: Theme; label: string; hint: string }> = [
 const DESCRIPTIONS: Record<Theme, string> = {
   light:
     'The paper map. What the app was designed in, and the easier one to read in daylight.',
-  dark: 'Ink instead of paper, for reading in the dark without losing your night vision. It does not help with glare in bright sun — light does that better.',
+  dark: 'Ink instead of paper, for reading in the dark without losing your night vision. It doesn’t help with glare in bright sun — light does that better.',
   auto: 'Follows your phone, so the app turns dark when the rest of it does.',
 }
 

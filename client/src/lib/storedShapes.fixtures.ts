@@ -20,10 +20,14 @@
 // widened type. Adding a NEW entry for a new key is the one edit that is
 // always right.
 //
-// N = 1, and honestly so: `git tag -l` is empty and releases/ holds only a
-// README, so there is no shipped release to capture. This records the shape
-// as of the baseline below, which is what the release process attaches to
-// going forward. Each release adds a map; none of them replaces this one.
+// The baseline below was recorded before any release was tagged - `git tag
+// -l` was empty and releases/ held only a README - so N was 1 and this file
+// said so. Five tags exist now, v1.0.0 through v1.2.1, and for two of those
+// releases the notes flagged that no entry had been captured and nothing
+// carried the gap forward (#1253). RELEASE_SHAPES at the foot of this file is
+// the per-release ledger §8c asked for: what each shipped build wrote, where
+// it differs from the entry before it, read off the writers at the tag. Each
+// release adds a map; none of them replaces this one.
 //
 // **Entries here are kept indefinitely, and that is deliberately NOT the
 // backend's rule.** RELEASING.md §8c bounds API support at three releases
@@ -35,7 +39,8 @@
 // because the app deliberately stopped supporting an upgrade path, and that
 // is a decision with a release note attached rather than a tidy-up.
 
-/** What the entries below describe. Not a git tag - none exists yet. */
+/** What the entries below describe. Recorded before any tag existed; the
+ *  tagged releases are RELEASE_SHAPES at the foot of this file. */
 export const BASELINE_LABEL = 'pre-1.0 baseline, recorded 2026-08-08'
 
 /** Deep-freezes so a test cannot mutate the record it is checking against and
@@ -578,3 +583,710 @@ export const STORED_GROUPED_AND_RESTED_TRIPS: Readonly<Record<string, unknown>> 
   })
 
 export const STORED_ARCHIVE_BYTES = SEGMENT_BYTES.flat().length
+
+// --- What each shipped release wrote (#1253) --------------------------------
+//
+// RELEASING.md §8c: "a fixture of each supported release's stored shapes,
+// written at release time, kept afterwards". Three releases shipped without
+// one. v1.1.1's own notes said so - "no v1.0.0 entry was ever captured… the
+// upgrade path is therefore tested against a pre-1.0 snapshot rather than
+// against what v1.0.0 actually wrote to a phone" - and v1.2.0 and v1.2.1
+// repeated the gap without repeating the sentence. This is the ledger.
+//
+// RECONSTRUCTED FROM THE WRITERS, NOT CAPTURED FROM A PHONE, and that is the
+// weaker of the two claims #1253 allowed. Each entry was read off the code at
+// its tag in a worktree (`git worktree add /tmp/x <tag>`): the interface the
+// writer serialises, the literal it stores, the defaults it fills in. What a
+// real device would add is the accidents - a key a build wrote once and
+// nothing documents - and those are exactly what a reconstruction cannot
+// see. A capture from an installed phone would supersede the matching entry
+// here, not join it.
+//
+// EACH ENTRY IS A DELTA. It holds every key whose written shape differs from
+// the entry before it - the previous release's, or STORED_SHAPES above for
+// the first - plus every key the release introduced. `phoneOn(tag)` composes
+// a whole phone by laying the entries over the baseline, oldest first, which
+// is the same order a phone that installed early and updated every time
+// would have been written in.
+//
+// WHAT IS DELIBERATELY NOT HERE: the artifact caches. `ourhike:trail-graph`
+// and its three index-aligned halves, `ourhike:nearby-trails`,
+// `ourhike:network-overview` and `ourhike:trail-index` hold published bytes
+// or something rebuilt from them, each behind a manifest hash; a reader that
+// cannot make sense of one drops it and fetches again (lib/trailGraphData.ts,
+// lib/nearbyTrailData.ts). That costs signal, not a hiker's own work, which
+// is the line §8c draws. Everything a hiker wrote, chose, walked or
+// downloaded is below.
+
+export interface ReleaseShapes {
+  /** The git tag, verbatim, so the reading can be repeated. */
+  tag: string
+  /** The commit the tag points at. */
+  commit: string
+  /** When it shipped, from releases/. */
+  published: string
+  /** IndexedDB keys, as idb-keyval holds them. */
+  indexedDb: Readonly<Record<string, unknown>>
+  /** localStorage keys, as strings, because that is all localStorage holds. */
+  localStorage: Readonly<Record<string, string>>
+}
+
+/** A few bytes standing in for a 640 px JPEG. */
+const OWN_PHOTO_BYTES = new Blob([new Uint8Array([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10])], {
+  type: 'image/jpeg',
+})
+
+/**
+ * The preferences blob as v1.1.1 wrote it: every key its `UserPreferences`
+ * declared, none it did not. `impact_panel_shown` arrived with v1.2.0 and is
+ * absent here on purpose; `hiking_detail_level` could hold `standard` or
+ * `fine` and nothing else, because the Light rung was v1.2.0's too. Every
+ * value is one a hiker could have chosen on that release's Settings screen.
+ */
+const PREFERENCES_V1_1_1 = {
+  trail_name: 'Sprocket',
+  reporter_type: 'section',
+  theme: 'dark',
+  unit_system: 'metric',
+  background_source: 'usgs_topo_offline',
+  max_background_zoom: 13,
+  hiking_detail_level: 'fine',
+  map_style: 'night_hike',
+  red_light_enabled: true,
+  show_roads: true,
+  drought_layer_shown: true,
+  waypoint_types_shown: ['shelter', 'water', 'campsite', 'privy'],
+  layer_detail_level: 'full',
+  auto_rotate_enabled: false,
+  wrong_way_alert_enabled: true,
+  anonymity_window_days: 7,
+  contribute_conditions: true,
+  onboarding_completed: true,
+  download_choice_made: true,
+  location_permission_requested: true,
+}
+
+/**
+ * A shelter as v1.1.1's `readPois` stored one from a full-featured release:
+ * capacity and water distance (both absent-not-zero when unknown), the site
+ * grouping of #523, the structured `nearby` parts of #614, and a photo with
+ * its credit plus a two-entry gallery. Every optional field is present so a
+ * reader that drops one is caught; the baseline's two POIs above cover the
+ * sparse end.
+ */
+const SHELTER_V1_1_1 = {
+  id: 'atc_shelter_0512',
+  type: 'shelter',
+  name: 'Fingerboard Shelter',
+  lat: 41.2503,
+  lon: -74.0961,
+  confidence: 'high',
+  mile: 1407.9,
+  source: 'atc_shelters',
+  capacity: 8,
+  waterDistanceFt: 350,
+  description:
+    'Stone shelter on the ridge; the spring is down the blue-blazed side trail.',
+  siteId: 'site_0512',
+  siteRole: 'anchor',
+  siteName: 'Fingerboard Shelter',
+  nearby: [{ phrase: 'privy', distance_ft: 140 }],
+  photoUrl: 'https://data.ourhike.org/photos/atc_shelter_0512.jpg',
+  photoPage: 'https://commons.wikimedia.org/wiki/File:Fingerboard_Shelter.jpg',
+  photoAuthor: 'A. Hiker',
+  photoLicense: 'CC BY-SA 4.0',
+  photoTaken: '2024-10-03',
+  photos: [
+    {
+      url: 'https://data.ourhike.org/photos/atc_shelter_0512.jpg',
+      page: 'https://commons.wikimedia.org/wiki/File:Fingerboard_Shelter.jpg',
+      author: 'A. Hiker',
+      license: 'CC BY-SA 4.0',
+      taken: '2024-10-03',
+    },
+    { url: 'https://data.ourhike.org/photos/atc_shelter_0512_2.jpg' },
+  ],
+}
+
+/** The privy that shares the shelter's pin - a site MEMBER, not an anchor. */
+const PRIVY_V1_1_1 = {
+  id: 'atc_privy_0512',
+  type: 'privy',
+  name: 'Fingerboard Shelter Privy',
+  lat: 41.2507,
+  lon: -74.0958,
+  confidence: 'high',
+  mile: 1407.9,
+  source: 'atc_privies',
+  siteId: 'site_0512',
+  siteRole: 'member',
+  siteName: 'Fingerboard Shelter',
+}
+
+/** The outbox as a v1.1.1 phone could hold it: the baseline's four reports
+ *  (a queue is rewritten whole, so older items ride along unchanged) plus one
+ *  of each other cargo that release could queue. */
+const OUTBOX_V1_1_1 = [
+  ...(STORED_SHAPES['ourhike:outbox'] as readonly unknown[]),
+  {
+    id: 'd4e5f607-2839-4a4b-8c5d-6e7f80912a3b',
+    authoredAt: '2026-08-26T16:20:00.000Z',
+    action: {
+      kind: 'poi_photo_share',
+      poiId: 'atc_shelter_0512',
+      taken: '2026-08-26',
+      flagged: null,
+    },
+    photo: OWN_PHOTO_BYTES,
+  },
+  {
+    id: 'e5f60718-394a-4b5c-9d6e-7f8091a2b3c4',
+    authoredAt: '2026-08-26T16:25:00.000Z',
+    action: { kind: 'poi_photo_withdraw', poiId: 'atc_shelter_0421' },
+  },
+  {
+    id: 'f6071829-4a5b-4c6d-ae7f-8091a2b3c4d5',
+    authoredAt: '2026-08-26T17:02:00.000Z',
+    action: {
+      kind: 'poi_photo_report',
+      poiId: 'atc_shelter_0421',
+      photoId: 'photo_9f3a',
+      reason: 'wrong_place',
+    },
+  },
+  {
+    id: '0718293a-5b6c-4d7e-bf80-91a2b3c4d5e6',
+    authoredAt: '2026-08-26T19:41:00.000Z',
+    appFailure: {
+      what_happened:
+        'The mile readout froze at 1407.2 for twenty minutes under the trees.',
+      whereabouts: 'Just south of Fingerboard Shelter',
+      contact: 'sprocket@example.org',
+      harms: ['lost'],
+      build: 'v1.1.1 (31c80c2e)',
+      was_offline: true,
+    },
+  },
+  {
+    id: '18293a4b-6c7d-4e8f-8091-a2b3c4d5e6f7',
+    authoredAt: '2026-08-27T07:15:00.000Z',
+    fieldNote: {
+      poi_id: 'opentrail_water_1188',
+      lat: 35.6104,
+      lon: -83.4402,
+      mile: 1405.9,
+      observation: 'trickling',
+      note: 'Enough to fill a bottle in a minute or two.',
+      reporter_type: 'section',
+    },
+  },
+  {
+    id: '293a4b5c-7d8e-4f90-91a2-b3c4d5e6f708',
+    authoredAt: '2026-08-23T21:00:00.000Z',
+    volunteerHours: {
+      worked_on: '2026-08-23',
+      hours: 3.5,
+      activity: 'maintenance',
+      note: 'Cleared two blowdowns north of the shelter.',
+      club_id: 'nynjtc',
+      mile: 1401.2,
+    },
+  },
+  {
+    id: '3a4b5c6d-8e9f-4001-a2b3-c4d5e6f70819',
+    authoredAt: '2026-08-24T12:30:00.000Z',
+    closure: {
+      reason_type: 'storm_damage',
+      note: 'Bridge out at the brook; ford is knee-deep.',
+      start_mile_marker: 1403.0,
+      end_mile_marker: 1403.4,
+      start_lat: 41.2311,
+      start_lon: -74.1102,
+    },
+  },
+]
+
+/** A day hike as v1.2.0 wrote a new one: a `note`, the climb it priced, and
+ *  the concurrent organizations a merged leg folded in (#1115, #982). */
+const DAY_HIKE_0003_V1_2_0 = {
+  id: 'day-hike-0003',
+  name: 'Fingerboard and back',
+  date: '2026-08-30',
+  segments: [
+    [
+      { coord: [-74.1052, 41.2411], poiId: null },
+      { coord: [-74.0961, 41.2503], poiId: null },
+    ],
+  ],
+  figures: {
+    miles: 2.6,
+    legs: [
+      {
+        name: 'Appalachian Trail',
+        source: 'nynjtc',
+        blaze_color: 'white',
+        miles: 2.6,
+        concurrent_sources: ['oprhp_trails'],
+      },
+    ],
+    climb: { gainFt: 640, lossFt: 610 },
+  },
+  looped: true,
+  recorded: 'planned',
+  note: '',
+}
+
+/** A walk the graph could not price: `climb` written as null, which is a
+ *  different fact from the key being absent (see dayHikes.ts). */
+const DAY_HIKE_0004_V1_2_0 = {
+  id: 'day-hike-0004',
+  name: '',
+  date: null,
+  segments: [
+    [
+      { coord: [-74.011355, 41.242191], poiId: null },
+      { coord: [-74.003508, 41.25029], poiId: null },
+    ],
+  ],
+  figures: {
+    miles: 1.1,
+    legs: [{ name: null, source: null, blaze_color: null, miles: 1.1 }],
+    climb: null,
+  },
+  looped: false,
+  recorded: 'walked',
+  note: 'Wet rocks past the brook.',
+}
+
+/** A hash-shaped string for the fixtures that carry one. */
+const SOME_SHA256 = '9b74c9897bac770ffc029102a200c5de9e5b0c6aa6b3a2c5b8f3f2a1c0d1e2f3'
+
+/** A sample as v1.2.1's GPS trace recorder writes one (lib/gpsTrace.ts). */
+function traceSample(timestampMs: number, lat: number, lon: number, mile: number) {
+  return {
+    timestampMs,
+    lat,
+    lon,
+    accuracyM: 12.5,
+    altitudeM: 412.0,
+    altitudeAccuracyM: 8.0,
+    speedMps: 1.1,
+    headingDeg: 210,
+    mile,
+    offTrailFt: 18,
+    offTreadFt: 6,
+    marker: 'walking',
+    fixSource: 'native',
+    accuracyConfidence: 68,
+    simulated: false,
+    wakeLock: 'screen',
+    visible: true,
+    blockedMs: 0,
+    worstTaskMs: 14,
+    shell: 'android',
+    deviceOs: 'android',
+  }
+}
+
+export const RELEASE_SHAPES: readonly ReleaseShapes[] = deepFreeze<
+  readonly ReleaseShapes[]
+>([
+  {
+    tag: 'v1.1.1',
+    commit: '31c80c2e',
+    published: '2026-08-27',
+    // The first release hikers installed, and so the first phone whose whole
+    // store had to be readable by the next build. Most of this entry is not a
+    // shape that MOVED but a key the baseline never held: the release wrote
+    // twenty-nine of them, and thirteen had no entry above.
+    indexedDb: {
+      'ourhike:preferences': PREFERENCES_V1_1_1,
+      // The three sync ledgers and the switch (features/IDENTITY_AND_PRIVACY.md).
+      // A trip dirty here and deleted there is the state a phone is in between
+      // a road crossing and the next one.
+      'ourhike:preferences:sync': { dirty: true, syncedAt: '2026-08-26T21:14:03.512Z' },
+      'ourhike:sync:enabled': false,
+      'ourhike:trips:sync': {
+        dirty: ['trip-0001'],
+        deleted: ['trip-0009'],
+        seen: { 'trip-0001': '2026-08-26T21:14:03.512Z' },
+        since: '2026-08-26T21:14:03.512Z',
+        hikeDirty: true,
+        hikeSeen: '2026-08-26T21:14:03.512Z',
+      },
+      'ourhike:day-hikes:sync': {
+        dirty: ['day-hike-0002'],
+        deleted: [],
+        seen: { 'day-hike-0001': '2026-08-26T21:14:03.512Z' },
+        since: '2026-08-26T21:14:03.512Z',
+      },
+      // THE WORD THIS RELEASE USED FOR THE MIDDLE MODE. #1127 renamed it to
+      // `long` in v1.2.0, and a phone that chose Thru-hike on this release
+      // still holds this string. The reader maps it forward; falling back to
+      // the default would overwrite an explicit choice.
+      'ourhike:hiker-mode': 'thru',
+      'ourhike:outbox': OUTBOX_V1_1_1,
+      // The download's own record (#1059): which manifest the artifacts came
+      // from and when, so an update prompt can say how old the data is.
+      'ourhike:trail-data-release': {
+        version: '2026-08-26',
+        hashes: {
+          'trails.geojson': SOME_SHA256,
+          'poi_shelter.geojson':
+            '3f2a1c0d1e2f39b74c9897bac770ffc029102a200c5de9e5b0c6aa6b3a2c5b8f',
+        },
+        at: 1756251000000,
+      },
+      'ourhike:trail-data-update-dismissed': '2026-08-27',
+      // The four side stores loadTrailData reads beside the waypoints, each
+      // in the DOMAIN shape the release stored (a club's pieces are `runs`
+      // here and `stretches` in the artifact - clubSections.ts says why that
+      // distinction once cost a test run).
+      'ourhike:club-sections': {
+        clubs: [
+          {
+            acronym: 'NYNJTC',
+            name: 'New York-New Jersey Trail Conference',
+            region: 'Mid-Atlantic',
+            runs: [{ startMile: 1360.1, endMile: 1448.6 }],
+            miles: 88.5,
+          },
+          {
+            acronym: 'GATC',
+            name: 'Georgia Appalachian Trail Club',
+            region: 'Deep South',
+            runs: [
+              { startMile: 0, endMile: 30.2 },
+              { startMile: 31.4, endMile: 78.5 },
+            ],
+            miles: 77.3,
+          },
+        ],
+        unattributed: [{ startMile: 30.2, endMile: 31.4 }],
+        sources: {
+          attribution: 'ATC Trail Clubs polygon layer',
+          names: 'ATC Trail Club roster',
+          miles: 'ATC Trail Clubs polygon layer',
+        },
+        sourceEdited: { 'Trail Clubs': '2026-08-14' },
+      },
+      'ourhike:stewards': [
+        {
+          provider: 'ATC',
+          name: 'Appalachian Trail Conservancy',
+          trust: 'authoritative',
+          licence: 'ATC data use terms',
+          attribution: 'Data © Appalachian Trail Conservancy',
+          layers: ['Centerline', 'Shelters'],
+          keys: ['atc_shelters', 'centerline'],
+        },
+        {
+          provider: 'NYS OPRHP',
+          name: 'New York State Office of Parks, Recreation and Historic Preservation',
+          trust: null,
+          licence: null,
+          attribution: null,
+          layers: ['State Park Trails'],
+          keys: ['oprhp_trails'],
+        },
+      ],
+      'ourhike:highlights': [
+        {
+          id: 'mahoosuc-arm',
+          name: 'Mahoosuc Arm',
+          bases: ['atc_viewpoint'],
+          citations: {
+            atc_viewpoint: {
+              by: 'Appalachian Trail Conservancy',
+              note: '',
+              reviewed: '2026-08-19',
+            },
+          },
+          legs: [{ trail: 'AT', startMile: 1925.0, endMile: 1930.5 }],
+          club: 'MATC',
+          caution: '',
+        },
+      ],
+      'ourhike:retired-poi': {
+        atc_shelter_0100: {
+          id: 'atc_shelter_0100',
+          poiType: 'shelter',
+          source: 'atc_shelters',
+          retired: '2026-08-26',
+          lon: -83.1044,
+          lat: 35.7112,
+          name: 'Old Gap Shelter',
+          supersededBy: 'atc_shelter_0421',
+        },
+        opentrail_water_0002: {
+          id: 'opentrail_water_0002',
+          poiType: 'water',
+          source: 'opentrail',
+          retired: '2026-08-26',
+          lon: -83.2001,
+          lat: 35.6902,
+        },
+      },
+      'ourhike:pois': [
+        ...(STORED_SHAPES['ourhike:pois'] as readonly unknown[]),
+        SHELTER_V1_1_1,
+        PRIVY_V1_1_1,
+      ],
+      // The hiker's own photos of a place (#573): the 640 px rendering is the
+      // only bytes kept, one of the two has been shared, and one is chosen.
+      'ourhike:my-photos:atc_shelter_0512': {
+        photos: [
+          {
+            id: 'photo-0001',
+            blob: OWN_PHOTO_BYTES,
+            taken: '2026-08-20',
+            added: '2026-08-20',
+            source: 'camera',
+          },
+          {
+            id: 'photo-0002',
+            blob: OWN_PHOTO_BYTES,
+            taken: null,
+            added: '2026-08-22',
+            source: 'library',
+            shared: '2026-08-22T15:01:00.000Z',
+          },
+        ],
+        chosenId: 'photo-0002',
+      },
+    },
+    localStorage: {
+      // The ground walked, normalised (start below end) as writeWalked stores
+      // it, and today's slice of it. The day here is the one the tests read
+      // it back on; on any other day the reader correctly returns nothing.
+      'ourhike:walked-miles':
+        '[{"startMile":1405.2,"endMile":1409.8},{"startMile":1411,"endMile":1412.4}]',
+      'ourhike:passed-today':
+        '{"day":"2026-08-27","ranges":[{"startMile":1405.2,"endMile":1409.8}]}',
+      // A pace the hiker set, inside every clamp pace.ts applies.
+      'ourhike:pace':
+        '{"flatPaceMph":2.4,"ascentMetersPerHour":420,"descentMinutesPer1000m":8}',
+      // Storage the phone gave back and the browser had not yet reclaimed
+      // (#554), and the marker that an archive finished here.
+      'ourhike:released-bytes':
+        '{"bytes":314572800,"usageAfter":903000000,"at":1756250000000}',
+      'ourhike:corridor-archive:completed': '2026-08-26T02:10:00.000Z',
+      // The ATC alerts watermark under the name this release wrote it by.
+      // notices.ts moved every organization onto its own key in v1.2.0 and
+      // kept reading this one for the ATC, so a hiker who dismissed the
+      // banner on this release does not get it back on the next.
+      'ourhike:atc-alerts-silenced-through': '2026-08-20T00:00:00.000Z',
+      'ourhike:trails-merged-chains': 'true',
+    },
+  },
+  {
+    tag: 'v1.2.0',
+    commit: 'e8b02638',
+    published: '2026-08-28',
+    indexedDb: {
+      // Two moves in one blob: the Light rung became storable (and stays
+      // unofferable - a value here is not an offer, userPreferences.ts) and
+      // `impact_panel_shown` arrived, defaulting on and here switched off.
+      'ourhike:preferences': {
+        ...PREFERENCES_V1_1_1,
+        hiking_detail_level: 'light',
+        impact_panel_shown: false,
+      },
+      'ourhike:hiker-mode': 'long',
+      // A report inside its Undo window (#1133): queued, complete, and held
+      // back by `holdUntil`. Every item before it has no such key.
+      'ourhike:outbox': [
+        ...OUTBOX_V1_1_1,
+        {
+          id: '4b5c6d7e-9f00-4112-b3c4-d5e6f708192a',
+          authoredAt: '2026-08-28T14:00:00.000Z',
+          payload: {
+            type: 'blowdown',
+            reporter_type: 'day',
+            note: 'Across the trail at the switchback.',
+            mile: 1406.4,
+          },
+          holdUntil: '2026-08-28T14:00:08.000Z',
+        },
+      ],
+      // The first hike is the baseline's, untouched: a record saved on an
+      // earlier build and never re-saved has no `note` and no `climb` key at
+      // all, and both absences have to keep meaning what they mean.
+      'ourhike:day-hikes': {
+        openId: 'day-hike-0003',
+        hikes: [
+          (STORED_SHAPES['ourhike:day-hikes'] as { hikes: readonly unknown[] }).hikes[0],
+          DAY_HIKE_0003_V1_2_0,
+          DAY_HIKE_0004_V1_2_0,
+        ],
+      },
+      // The other organizations' waypoints joined the same array (#1097). A
+      // DEC lean-to is a shelter with a DEC source and NO mile - it is not on
+      // the A.T.'s axis, and readPois omits the field rather than writing
+      // null. The types are the release's eight; `trailhead` is v1.2.1's.
+      'ourhike:pois': [
+        ...(STORED_SHAPES['ourhike:pois'] as readonly unknown[]),
+        SHELTER_V1_1_1,
+        PRIVY_V1_1_1,
+        {
+          id: 'dec_lean_tos:1234',
+          type: 'shelter',
+          name: 'Slide Mountain Lean-to',
+          lat: 42.0192,
+          lon: -74.3927,
+          confidence: 'high',
+          source: 'dec_lean_tos',
+          capacity: 8,
+        },
+        {
+          id: 'dec_parking_areas:77',
+          type: 'parking',
+          name: 'Woodland Valley',
+          lat: 42.0431,
+          lon: -74.3608,
+          confidence: 'high',
+          source: 'dec_parking_areas',
+        },
+        {
+          id: 'dec_firetowers:5',
+          type: 'viewpoint',
+          name: 'Hunter Mountain Fire Tower',
+          lat: 42.1776,
+          lon: -74.2223,
+          confidence: 'high',
+          source: 'dec_firetowers',
+        },
+      ],
+    },
+    localStorage: {},
+  },
+  {
+    tag: 'v1.2.1',
+    commit: '23204349',
+    published: '2026-09-07',
+    indexedDb: {
+      // Stops on a day hike (#1194): the shelter, not its position - mile and
+      // off-course distance are facts about the route and are re-derived.
+      'ourhike:day-hikes': {
+        openId: 'day-hike-0003',
+        hikes: [
+          (STORED_SHAPES['ourhike:day-hikes'] as { hikes: readonly unknown[] }).hikes[0],
+          {
+            ...DAY_HIKE_0003_V1_2_0,
+            stops: [
+              { poiId: 'atc_shelter_0512', type: 'shelter', name: 'Fingerboard Shelter' },
+            ],
+          },
+          DAY_HIKE_0004_V1_2_0,
+        ],
+      },
+      // The ninth waypoint type, from OPRHP's facilities layer (#1197).
+      'ourhike:pois': [
+        ...(STORED_SHAPES['ourhike:pois'] as readonly unknown[]),
+        SHELTER_V1_1_1,
+        PRIVY_V1_1_1,
+        {
+          id: 'oprhp_facilities:8812',
+          type: 'trailhead',
+          name: 'Reeves Meadow Trailhead',
+          lat: 41.2352,
+          lon: -74.1583,
+          confidence: 'high',
+          source: 'oprhp_facilities',
+        },
+      ],
+      // The per-vertex miles beside the lines (#1192): the verified bytes as
+      // a Blob, whose front names the trails.geojson it was measured on.
+      'ourhike:trail-miles': new Blob(
+        [
+          `{"format":1,"trails_sha256":"${SOME_SHA256}","axis":"export_elevation.calibrated_trail_axis","decimals":4,"feature_count":1,"vertex_count":3,"miles":{"centerline:chain:0":[1405.0,1405.5,1406.0]}}`,
+        ],
+        { type: 'application/json' },
+      ),
+      // A GPS trace mid-walk (#1182): the recorder's state and its first
+      // chunk. Recording deliberately survives a reload, so a reader that
+      // cannot resume this hands back a truncated trace that looks complete.
+      'ourhike:gps-trace:state': {
+        recording: true,
+        startedAt: 1757230800000,
+        marker: 'walking',
+        chunks: 1,
+        samples: 2,
+        lastSampleAt: 1757230811000,
+        lastAccuracyM: 12.5,
+        lastAccuracyConfidence: 68,
+      },
+      'ourhike:gps-trace:c0': [
+        traceSample(1757230805000, 41.2411, -74.1052, 1406.1),
+        traceSample(1757230811000, 41.2415, -74.1047, 1406.15),
+      ],
+      // Offline coverage in one-degree cells (#1229): the index as fetched,
+      // with the hash the manifest named, and one held cell plus the context
+      // sketch under the archive store's segment scheme.
+      'ourhike:basemap-cells-index': {
+        index: {
+          cell_degrees: 1,
+          seam_margin_km: 3,
+          context_zoom: 9,
+          context: 'basemap_context.pmtiles',
+          cells: [
+            {
+              name: 'n41w074',
+              key: 'basemap_cell_n41w074.pmtiles',
+              bounds: [-74, 41, -73, 42],
+            },
+          ],
+        },
+        hash: SOME_SHA256,
+      },
+      'ourhike:basemap-cell:n41w074:g0:0': new Blob([new Uint8Array(SEGMENT_BYTES[0])]),
+      'ourhike:basemap-cell:n41w074:complete': {
+        generation: 0,
+        segments: 1,
+        totalBytes: SEGMENT_BYTES[0].length,
+      },
+      'ourhike:basemap-context:g0:0': new Blob([new Uint8Array(SEGMENT_BYTES[1])]),
+      'ourhike:basemap-context:complete': {
+        generation: 0,
+        segments: 1,
+        totalBytes: SEGMENT_BYTES[1].length,
+      },
+    },
+    localStorage: {
+      'ourhike:basemap-cell:n41w074:completed': '2026-09-07T13:30:00.000Z',
+    },
+  },
+])
+
+/**
+ * The phone a hiker who installed early and updated at every release holds
+ * on `tag`: the baseline, then each release's entry laid over it in order.
+ *
+ * Fresh objects per call, the way the Blob and Float32Array builders above
+ * are, because a test that overlays its own case onto the result must not
+ * be editing the fixture the next test reads.
+ */
+export function phoneOn(tag: string): {
+  indexedDb: Record<string, unknown>
+  localStorage: Record<string, string>
+} {
+  const upTo = RELEASE_SHAPES.findIndex((release) => release.tag === tag)
+  if (upTo === -1) throw new Error(`no release fixture is tagged ${tag}`)
+  const indexedDb: Record<string, unknown> = { ...STORED_SHAPES }
+  const localStorage: Record<string, string> = {}
+  for (const release of RELEASE_SHAPES.slice(0, upTo + 1)) {
+    Object.assign(indexedDb, release.indexedDb)
+    Object.assign(localStorage, release.localStorage)
+  }
+  return { indexedDb, localStorage }
+}
+
+/**
+ * A download that died between the centerline and the waypoints (#1084): the
+ * lines are stored and the partial marker says the rest never landed. A
+ * reader must answer "no trail data" so the launch fetch finishes the job,
+ * rather than drawing a trail whose search and legend are silently empty.
+ */
+export function storedInterruptedRelease(): Record<string, unknown> {
+  return { 'ourhike:trail-data-partial': true }
+}

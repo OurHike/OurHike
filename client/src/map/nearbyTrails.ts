@@ -13,15 +13,32 @@
 // width alone leads by 2 px in a forty-line park.
 //
 // This module adds the third channel NEARBY_TRAILS.md §1 specifies - OPACITY -
-// and nothing else. Every existing rule survives unchanged: lines stay solid
-// (no dash rhythms), the chosen trail stays widest and last-drawn, and hue
-// still comes from the reviewed blaze mapping. Ghosting is deliberately an
-// opacity fact rather than a hue fact, and that is the argument that beat the
+// and, since #1283, the FOURTH: a dot rhythm for every line that is not the
+// chosen system's. The chosen trail stays widest and last-drawn, and hue still
+// comes from the reviewed blaze mapping. Ghosting is deliberately an opacity
+// fact rather than a hue fact, and that is the argument that beat the
 // alternatives: under red-light mode every blaze collapses to one hue
 // (MAP_STYLE_SPEC.md), so a halo or a hue shift would have erased the
 // distinction in exactly the light where a hiker most needs it. An opacity
 // difference survives red light, greyscale (WIREFRAMES.md `9d`), glare and
 // colour vision deficiency alike.
+//
+// THE DOT RHYTHM IS A FOURTH CHANNEL, NOT A REPLACEMENT FOR THE THIRD. "Lines
+// stay solid (no dash rhythms)" was this header's own sentence until #1283,
+// and the reason it changed is the opening camera: at z4 over the whole
+// country every published trail was a solid 0.8 px thread in its blaze hue,
+// and opacity alone could not say which of them the map was about. The
+// maintainer's design handoff (2026-09-08, chosen from six drawn directions)
+// makes the taken trail the ONLY solid line and everything else a dot
+// rhythm. Opacity is unaffected and still applies to both halves of the
+// split - the ghosting argument above survives a dash pattern untouched.
+//
+// WHY IT IS A LAYER SPLIT AND NOT A PAINT PROPERTY: `line-dasharray` is not
+// data-driven. It takes zoom expressions only, so `['case', isNearby, [0, 2],
+// ...]` is not something MapLibre will honour per feature. So the rule is two
+// FILTERS, built here from CHOSEN_SYSTEM_SOURCES so that admitting a source
+// cannot leave one of them behind, and map/style.ts draws each side of the
+// split with the same builder and a different dasharray.
 //
 // WHY THIS FILE OWNS THE SOURCE LIST AND style.ts IMPORTS IT
 //
@@ -50,6 +67,8 @@
  * on this canvas so it can be argued with, not a value these frames decide."
  * Treat a number arrived at here as a starting point a reviewer may move.
  */
+import { TRAILS } from '../lib/trails'
+
 export const NEARBY_TRAIL_OPACITY = 0.45
 
 /** What the chosen trail draws at. Full strength, stated rather than implied,
@@ -88,12 +107,32 @@ export const CHOSEN_TRAIL_OPACITY = 1
  * settle it is the same #105 pass the opacity constant waits on - whether a
  * hiker reads two full-strength widths as one system or as two trails.
  *
- * This list is static today because a hiker cannot yet choose a different
- * trail; **#558 — Let a hiker take the stretch they are walking, without
- * picking it off a list** is where the choice arrives, and this becomes a
- * lookup against the chosen system rather than a constant when it does.
+ * This list used to be static because a hiker could not choose a trail. Since
+ * #1306 the choice exists - a trail is TAKEN from its badge or its legend
+ * row, or nothing is, which is first launch - and chosenSystemSources() below
+ * is the lookup; this list is what it answers for the A.T., the one trail
+ * with a system today. **#558 — Let a hiker take the stretch they are
+ * walking, without picking it off a list** is still where a second trail's
+ * choice arrives.
  */
 export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_trails']
+
+/**
+ * The sources drawn as the chosen system for one taken trail, or none
+ * (#1306 - the handoff's `chosenSystemSources`, "was a constant").
+ *
+ * Null - nothing taken, which is first launch - answers an EMPTY list, and
+ * that is the all-dotted state: no line passes chosenSystemFilter(), every
+ * line falls to the dotted side, and nothing is ghosted, because ghosting
+ * says which system a line belongs to and there is no system to belong to.
+ * Reasoned from the prototype rather than measured on a phone: it draws
+ * every line at 0.92 with nothing taken against 0.82 once one is. The A.T.
+ * is the only trail with a system today; a second entry here is a second
+ * registry trail with sources of its own (#1307).
+ */
+export function chosenSystemSources(chosenTrailId: string | null): readonly string[] {
+  return chosenTrailId === TRAILS.AT.id ? CHOSEN_SYSTEM_SOURCES : []
+}
 
 /**
  * Whether one line is ghosted, from the `source` attribute the pipeline
@@ -114,9 +153,15 @@ export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_tra
  * default in style.ts, where an unknown source takes the side-trail width
  * rather than claiming the through-route tier.
  */
-export function isNearbyTrail(source: string | null | undefined): boolean {
+export function isNearbyTrail(
+  source: string | null | undefined,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): boolean {
   if (source === null || source === undefined || source === '') return false
-  return !CHOSEN_SYSTEM_SOURCES.includes(source)
+  // Nothing taken, nothing nearby: "nearby" is relative to a chosen system,
+  // and with none every line is simply a line (#1306).
+  if (chosen.length === 0) return false
+  return !chosen.includes(source)
 }
 
 /**
@@ -131,8 +176,11 @@ export function isNearbyTrail(source: string | null | undefined): boolean {
  * worst an over-prominent line, and it is visible - which is how it gets
  * fixed.
  */
-export function nearbyTrailOpacity(source: string | null | undefined): number {
-  return isNearbyTrail(source) ? NEARBY_TRAIL_OPACITY : CHOSEN_TRAIL_OPACITY
+export function nearbyTrailOpacity(
+  source: string | null | undefined,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): number {
+  return isNearbyTrail(source, chosen) ? NEARBY_TRAIL_OPACITY : CHOSEN_TRAIL_OPACITY
 }
 
 /**
@@ -164,36 +212,78 @@ export function nearbyTrailOpacity(source: string | null | undefined): number {
  * case collapse into one comparison instead of needing a `has` guard that
  * would still let a null-valued property through.
  */
-export function nearbyTrailOpacityExpression(): unknown[] {
+export function nearbyTrailOpacityExpression(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown {
+  // Nothing taken: full strength everywhere, as a plain number rather than
+  // an expression that would ghost every sourced line against an empty
+  // system (#1306, and isNearbyTrail above for why that is the right way
+  // round).
+  if (chosen.length === 0) return CHOSEN_TRAIL_OPACITY
   const source = ['to-string', ['get', 'source']]
   return [
     'case',
-    [
-      'all',
-      ['!=', source, ''],
-      ['!', ['in', source, ['literal', [...CHOSEN_SYSTEM_SOURCES]]]],
-    ],
+    ['all', ['!=', source, ''], ['!', ['in', source, ['literal', [...chosen]]]]],
     NEARBY_TRAIL_OPACITY,
     CHOSEN_TRAIL_OPACITY,
   ]
 }
 
-// LABELS: THE ONE PART OF §1 THIS DOES NOT BUILD, SAID PLAINLY
+/**
+ * Dot rhythm for a line that is not the chosen system's (#1283).
+ *
+ * DASH UNITS, so this is 2x the line's own width whatever that width is, and
+ * `line-cap: round` turns the zero-length dash into a round dot: dots of the
+ * line's diameter at a pitch of two diameters. That is the prototype's
+ * `stroke-dasharray: 0 <2.2 x width>` to within the rounding MapLibre's dash
+ * atlas does anyway.
+ *
+ * The casing under a dotted line takes a DIFFERENT dasharray for the same
+ * pitch - see map/style.ts's NEARBY_TRAIL_CASING_DASHARRAY - because dash
+ * units scale with each layer's own width and the casing is wider.
+ */
+export const NEARBY_TRAIL_DASHARRAY: readonly number[] = [0, 2]
+
+/**
+ * The two filters the layer split needs, built from CHOSEN_SYSTEM_SOURCES so
+ * admitting a source cannot leave one of them behind.
+ *
+ * `chosenSystemFilter` matches a feature whose `source` is in the chosen
+ * system; `nearbyTrailFilter` is its exact negation, so every feature lands in
+ * exactly one of the two layers and none in both or neither -
+ * nearbyTrails.test.ts holds the pair as complements over the same inputs.
+ *
+ * A feature with NO source goes to the DOTTED side, and that is the one place
+ * this split rounds differently from `nearbyTrailOpacity()` above, where a
+ * source-less feature draws at full strength. The two are not in conflict:
+ * opacity is the channel a fault must not quietly dim, and it still does not
+ * - the dotted layer paints the same `nearbyTrailOpacityExpression()`, so a
+ * source-less line draws dotted AND full-strength, which is visible, which is
+ * how it gets fixed. What the dotted side must never do is claim a line is the
+ * chosen trail, and a line nobody can source has not earned that.
+ */
+export function chosenSystemFilter(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown[] {
+  // An empty list matches nothing, so with nothing taken every line is on
+  // the dotted side - the all-dotted first launch (#1306) falls out of the
+  // same two filters rather than needing a third state.
+  return ['in', ['to-string', ['get', 'source']], ['literal', [...chosen]]]
+}
+
+export function nearbyTrailFilter(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown[] {
+  return ['!', chosenSystemFilter(chosen)]
+}
+
+// LABELS DIM WITH THEIR LINES, AND THE EXPRESSION IS SHARED, NOT COPIED
 //
 // NEARBY_TRAILS.md §1 also requires "Labels dim with their lines — a
-// full-strength name on a ghosted line points at the wrong thing", and the v2
-// export draws exactly that in frame `1f` ("A.T.", "Long Path", "Kakiat Tr."
-// beside their lines).
-//
-// Nothing here implements it, because there is no trail-name label layer in
-// this client to dim. Checked 2026-08-23: `text-field` appears in map/ only in
-// liveTopo.ts, on contour labels, peak labels and the OSM basemap's own name
-// layers - none of which read the trails source. Per-trail names have never
-// been drawn on this map.
-//
-// So the rule has nothing to bind to yet, and an expression exported for a
-// layer that does not exist would read as "labels are handled" to the next
-// person who greps for it. When a trail-label layer is built, it takes
-// `nearbyTrailOpacityExpression()` for its `text-opacity` unchanged - the rule
-// is the line's own, and one expression for both is what keeps a label from
-// drifting away from the line it names.
+// full-strength name on a ghosted line points at the wrong thing". This
+// header used to say nothing here built it, because no trail-name layer
+// existed to bind it to (checked 2026-08-23). map/trailLabels.ts is that
+// layer since #930, and map/trailBadges.ts the through-route's badge since
+// #1283; both paint `nearbyTrailOpacityExpression()` for their text and icon
+// opacity unchanged. The rule is the line's own, and one expression for all
+// of them is what keeps a name from drifting away from the line it names.

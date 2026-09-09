@@ -14,3 +14,9 @@ opentrail,w,water source,water,high
 opentrail,t,town,,
 opentrail,r,NOT resupply - road or gap by the look of the names (#806),,
 opentrail,a,unknown (single occurrence),,
+dec,dec_lean_tos,NYS DEC Lean-tos (statewide),shelter,high
+dec,dec_primitive_campsites,NYS DEC Primitive Campsites (statewide),campsite,high
+dec,dec_scenic_vistas,NYS DEC Scenic Vistas (statewide),viewpoint,high
+dec,dec_firetowers,NYS DEC Firetowers (statewide),viewpoint,high
+dec,dec_viewing_areas,NYS DEC Viewing Areas (statewide),viewpoint,high
+dec,dec_parking_areas,NYS DEC Parking (statewide),parking,high

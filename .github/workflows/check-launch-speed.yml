@@ -1,0 +1,227 @@
+# Times a launch of the deployed app every morning, against the budget the
+# project wrote down.
+#
+# The fourth of the scheduled health checks, and the one about SPEED rather
+# than correctness:
+#
+#   check-deployment.yml     daily   can a browser REACH the data
+#   check-deployed-app.yml   daily   does the APP draw a trail with it
+#   smoke-published.yml      weekly  is what is published CORRECT
+#   this                     daily   does a launch still fit its budget
+#
+# WHY IT EXISTS (#1299). features/LAUNCH_BUDGET.md was written on 2026-09-09
+# after the maintainer reported the app taking about six seconds to open. The
+# measurement behind it was a person running client/scripts/measure-first-run.mjs
+# by hand against production - which is the only honest instrument this project
+# has, and which nobody runs on a morning when nothing seems wrong. Every
+# regression the doc names got in the same way: #1300's map engine came back
+# into the eager chunk on 2026-08-27 and was found thirteen days later, with
+# every test green the whole time. This job is the thing that would have said
+# so the next morning.
+#
+# IT IS ONE RUNNER'S MILLISECONDS, and the script says so at length: a shared
+# CI core is not a phone, and its own speed moves between mornings. The
+# thresholds in client/scripts/check-launch-speed.mjs are the loose end of
+# §3 for exactly that reason - what they catch is the size of regression
+# #1300 and #1301 fixed, never a ten-per-cent drift. The phone's own number
+# comes from the readout in Settings -> About this build (also #1299), not
+# from here.
+#
+# IT DOES NOT FAIL THE RUN, for the reason its three siblings record: GitHub
+# emails on every scheduled failure, so a regression that took a week to fix
+# would send seven identical emails. The tracking issue is the signal - opened
+# green->red, closed red->green.
+#
+# IT HOLDS NO CREDENTIALS. A public HTTPS read of the deployed site and the
+# public bucket, in a browser, exactly as a hiker's phone does it.
+
+name: Check launch speed
+
+on:
+  schedule:
+    # 09:45 UTC daily - after tier 1 at 09:15 and tier 2 at 09:30, so a bucket
+    # that is refusing browsers or an app that cannot draw has already said so
+    # and this job's report is about speed rather than a second alarm for the
+    # same fault.
+    - cron: "45 9 * * *"
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "App URL to time. Defaults to the GitHub Pages deployment."
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: check-launch-speed
+  cancel-in-progress: false
+
+env:
+  ISSUE_TITLE: "A launch of the deployed app is over its budget"
+  ISSUE_LABEL: deployment-health
+  DEFAULT_URL: https://ourhike.org/app/
+
+jobs:
+  time-it:
+    runs-on: ubuntu-latest
+    # Longer than its siblings, and deliberately: a `--returning` run takes a
+    # whole release onto the phone first (about 14 MB over a throttled
+    # connection) before it measures anything, because the launch the budget
+    # is mostly about is the one every day after the first.
+    timeout-minutes: 45
+
+    steps:
+      - name: Is there a deployment to time
+        id: can
+        env:
+          OVERRIDE: ${{ inputs.url }}
+          CONFIGURED: ${{ vars.DATA_BASE_URL }}
+        run: |
+          if [ -z "${CONFIGURED}" ]; then
+            echo "::warning::No DATA_BASE_URL is set, so the deployed app has no data source and a launch has nothing to be slow about. See LAUNCH_CHECKLIST.md step 2."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+            echo "url=${OVERRIDE:-$DEFAULT_URL}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.can.outputs.go == 'true'
+
+      - uses: actions/setup-node@v7
+        if: steps.can.outputs.go == 'true'
+        with:
+          # 24, like every other client job (#660) - a check built on a
+          # different Node than the app ships from can disagree with it.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        if: steps.can.outputs.go == 'true'
+        working-directory: client
+        run: npm ci
+
+      # `install-deps` separately and non-fatally, never `--with-deps`
+      # (#1361). The flag has Playwright run apt itself and abort the whole
+      # install when any repository preinstalled on the runner image has a
+      # bad index - one this project never uses can then stop the check.
+      # Splitting it means the system libraries are installed when apt is
+      # healthy and skipped when it is not, while the DOWNLOAD, which touches
+      # no apt repository, is what this job depends on. pr-preview.yml holds
+      # the measured case; the pattern is that pull request's, adopted here
+      # because these two calls have the same exposure and it did not reach
+      # them.
+      - name: Install Chromium
+        if: steps.can.outputs.go == 'true'
+        working-directory: client
+        run: |
+          npx playwright install-deps chromium || true
+          npx playwright install chromium
+
+      # The same instrument a person runs by hand, in the same mode, writing a
+      # second rendering of the same numbers as JSON. `--stub-tiles` because a
+      # runner timing the launch has no business pulling basemap tiles from
+      # somebody else's CDN every morning, and the tiles are behind the card
+      # and the tab bar either way.
+      - name: Time a returning hiker's launch
+        if: steps.can.outputs.go == 'true'
+        working-directory: client
+        env:
+          APP_URL: ${{ steps.can.outputs.url }}
+        # `shell: bash` rather than the default, for its `-o pipefail`: this
+        # step has no findings to report and nothing to soften, so a stopwatch
+        # that cannot run at all should take the step down with it rather than
+        # hand `tee`'s zero to the next one (#514).
+        shell: bash
+        run: |
+          node scripts/measure-first-run.mjs "$APP_URL" \
+            --returning --stub-tiles --json=launch.json | tee launch.txt
+
+      - name: Compare it against the budget
+        if: steps.can.outputs.go == 'true'
+        working-directory: client
+        # `--exit-zero` because being over budget is REPORTED here, through
+        # the tracking issue below - a scheduled run that failed for it would
+        # email every morning until somebody filtered it. The flag reserves
+        # non-zero for the checker crashing, and PIPESTATUS is what sees that
+        # past `tee` (#514).
+        run: |
+          set +e
+          node scripts/check-launch-speed.mjs \
+            --measured=launch.json --json=launch-verdict.json --exit-zero | tee launch-verdict.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error::check-launch-speed.mjs exited $status, which --exit-zero reserves for a crash."
+            exit "$status"
+          fi
+
+      - name: Write the job summary
+        if: always() && steps.can.outputs.go == 'true'
+        working-directory: client
+        run: |
+          {
+            echo "## Launch speed"
+            echo
+            if [ -f launch-verdict.txt ]; then
+              echo '```'
+              cat launch-verdict.txt
+              echo '```'
+            else
+              echo "The check produced no verdict. See the step log above."
+            fi
+            if [ -f launch.txt ]; then
+              echo
+              echo "<details><summary>The whole run</summary>"
+              echo
+              echo '```'
+              cat launch.txt
+              echo '```'
+              echo
+              echo "</details>"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Its own issue title, sharing the label with the other health checks:
+      # they can be red for unrelated reasons and would otherwise overwrite
+      # each other's findings, while the shared label keeps them findable at
+      # once.
+      - name: Open, update, or close the tracking issue
+        if: steps.can.outputs.go == 'true'
+        uses: actions/github-script@v9
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const fs = require('fs')
+            const trackingIssue = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/tracking-issue.js`)
+            const verdict = JSON.parse(fs.readFileSync('client/launch-verdict.json', 'utf8'))
+
+            const failed = verdict.failed ?? []
+
+            await trackingIssue({github, context, core}, {
+              label: process.env.ISSUE_LABEL,
+              title: process.env.ISSUE_TITLE,
+              checkedAt: verdict.checked_at,
+              keys: failed.map(row => row.check),
+              healthy: failed.length === 0,
+              allClear: `Every row of the launch budget is inside it again, as of ${verdict.checked_at}. Closing.`,
+              render: (firstSeen, cell) => [
+                `**A launch of ${verdict.url} is over the budget \`features/LAUNCH_BUDGET.md\` §3 wrote down.** ${failed.length} row(s).`,
+                '',
+                'This is one CI runner\'s milliseconds against thresholds set at the loose end of that table, so what it has noticed is a regression of the size #1300 and #1301 fixed rather than a drift. A row reading `never reached` is the launch not getting there at all, which is worse than a slow one.',
+                '',
+                '| what | first seen | measured | budget |',
+                '|---|---|---|---|',
+                ...failed.map(row => `| ${cell(row.what)} | ${firstSeen[row.check]} | ${row.measured_ms === null ? '**never reached**' : `${row.measured_ms} ms`} | ${row.limit_ms} ms |`),
+                '',
+                `Timed as a returning hiker's launch, ${verdict.mode} mode, tiles stubbed. Last checked ${verdict.checked_at} · [run](${process.env.RUN_URL})`,
+                '',
+                '---',
+                '_Generated by [Claude Code](https://claude.ai/code)_',
+              ].join('\n'),
+            })

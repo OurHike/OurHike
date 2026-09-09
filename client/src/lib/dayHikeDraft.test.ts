@@ -16,16 +16,21 @@ import { describe, expect, it } from 'vitest'
 
 import {
   canCloseLoop,
+  canStartStretch,
   clearDraft,
-  draftRoute,
+  draftPoints,
   draftStatus,
   EMPTY_DRAFT,
   loopDraft,
+  NETWORK_STILL_ARRIVING,
   OFF_NETWORK_REFUSAL,
+  startStretch,
+  stretchRoute,
   tapAt,
+  removeTap,
   undoTap,
 } from './dayHikeDraft'
-import { buildGraphIndex, type TrailGraph } from './trailGraph'
+import { buildGraphIndex, type RouteLeg, type TrailGraph } from './trailGraph'
 
 //   3 (-74.09, 41.26)  Seven Hills Trail, NYNJTC
 //   |  1112 m
@@ -80,7 +85,28 @@ const GRAPH: TrailGraph = {
   ],
 }
 
-const index = buildGraphIndex(GRAPH)
+/**
+ * The fixture with each edge's vertex list filled in, which is what every
+ * published graph actually carries (`build_trail_graph.py` writes one per
+ * edge, always). Every trail here is straight, so an edge's vertices are its
+ * two nodes and no assertion below moves.
+ *
+ * Not cosmetic: since #1093 `nearestPointOnGraph` will not snap a tap to an
+ * edge with no vertices, because the only line such an edge offers is the
+ * chord between its junctions and the map is drawing the published one. A
+ * fixture without geometry is a phone mid-download, not a network.
+ */
+function published(graph: TrailGraph): TrailGraph {
+  return {
+    nodes: graph.nodes,
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      geometry: [graph.nodes[edge.from], graph.nodes[edge.to]],
+    })),
+  }
+}
+
+const index = buildGraphIndex(published(GRAPH))
 
 /** On Pine Meadow, halfway along its first edge. */
 const ON_TRAIL = { lon: -74.095, lat: 41.25 }
@@ -88,6 +114,8 @@ const ON_TRAIL = { lon: -74.095, lat: 41.25 }
 const FURTHER = { lon: -74.085, lat: 41.25 }
 /** Up Seven Hills. */
 const UP_SEVEN_HILLS = { lon: -74.09, lat: 41.255 }
+/** Node 3, the far end of Seven Hills - a second stretch's finish. */
+const SEVEN_HILLS_END = { lon: -74.09, lat: 41.26 }
 /** On the Kakiat island, which nothing connects to. */
 const OTHER_ISLAND = { lon: -73.995, lat: 41.3 }
 /** Nowhere near a trail. */
@@ -97,22 +125,47 @@ describe('tapping', () => {
   it('places a point on a trail', () => {
     const draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
 
-    expect(draft.points).toHaveLength(1)
+    expect(draftPoints(draft)).toHaveLength(1)
     expect(draft.refusal).toBeNull()
   })
 
   it('refuses a tap off the network and places nothing', () => {
     const draft = tapAt(index, EMPTY_DRAFT, OFF_TRAIL)
 
-    expect(draft.points).toHaveLength(0)
+    expect(draftPoints(draft)).toHaveLength(0)
     expect(draft.refusal).toBe(OFF_NETWORK_REFUSAL)
+  })
+
+  it('does not call a tap off-network when it is the LINES that are missing', () => {
+    // #1093. `trail_graph.json` lands at launch and carries no vertices;
+    // `trail_graph_geometry.json` is fetched only when this builder opens.
+    // In between, a tap dead on the drawn trail cannot be answered at all -
+    // and the sentence a hiker gets must not be the one that says their aim
+    // was wrong, because it was not.
+    const arriving = buildGraphIndex(GRAPH)
+    const draft = tapAt(arriving, EMPTY_DRAFT, ON_TRAIL)
+
+    expect(draftPoints(draft)).toHaveLength(0)
+    expect(draft.refusal).toBe(NETWORK_STILL_ARRIVING)
+    expect(draft.refusal).not.toBe(OFF_NETWORK_REFUSAL)
+  })
+
+  it('says the same thing whether the tap was on a trail or off one, in that window', () => {
+    // The distinction it CANNOT draw, stated so nobody adds it back. With no
+    // vertices the app does not know where any trail runs, so it cannot know
+    // which of the two happened - and guessing would put it back to telling
+    // some hikers their aim was wrong on no evidence.
+    const arriving = buildGraphIndex(GRAPH)
+
+    expect(tapAt(arriving, EMPTY_DRAFT, ON_TRAIL).refusal).toBe(NETWORK_STILL_ARRIVING)
+    expect(tapAt(arriving, EMPTY_DRAFT, OFF_TRAIL).refusal).toBe(NETWORK_STILL_ARRIVING)
   })
 
   it('keeps the points it already had when one tap is refused', () => {
     const started = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
     const refused = tapAt(index, started, OFF_TRAIL)
 
-    expect(refused.points).toEqual(started.points)
+    expect(draftPoints(refused)).toEqual(draftPoints(started))
     expect(refused.refusal).toBe(OFF_NETWORK_REFUSAL)
   })
 
@@ -138,7 +191,7 @@ describe('undo', () => {
   it('takes back the last tap', () => {
     const two = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
 
-    expect(undoTap(two).points).toHaveLength(1)
+    expect(draftPoints(undoTap(two))).toHaveLength(1)
   })
 
   it('clears a refusal before it takes back anything', () => {
@@ -149,7 +202,7 @@ describe('undo', () => {
     const undone = undoTap(refused)
 
     expect(undone.refusal).toBeNull()
-    expect(undone.points).toHaveLength(1)
+    expect(draftPoints(undone)).toHaveLength(1)
   })
 
   it('is harmless on an empty draft', () => {
@@ -172,7 +225,7 @@ describe('what the bar should be saying', () => {
 
     expect(status.kind).toBe('routed')
     if (status.kind !== 'routed') throw new Error('unreachable')
-    expect(status.route.legs.map((leg) => leg.name)).toEqual([
+    expect(status.legs.map((leg: RouteLeg) => leg.name)).toEqual([
       'Pine Meadow Trail',
       'Seven Hills Trail',
     ])
@@ -185,7 +238,7 @@ describe('what the bar should be saying', () => {
     const across = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), OTHER_ISLAND)
 
     expect(draftStatus(index, across).kind).toBe('unroutable')
-    expect(draftRoute(index, across)).toBeNull()
+    expect(stretchRoute(index, draftPoints(across), false)).toBeNull()
   })
 })
 
@@ -206,8 +259,8 @@ describe('closing the loop', () => {
 
   it('walks back to the first tap', () => {
     const two = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
-    const out = draftRoute(index, two)
-    const loop = draftRoute(index, loopDraft(two))
+    const out = stretchRoute(index, draftPoints(two), false)
+    const loop = stretchRoute(index, draftPoints(two), true)
 
     expect(out).not.toBeNull()
     expect(loop).not.toBeNull()
@@ -221,7 +274,7 @@ describe('closing the loop', () => {
     const undone = undoTap(loopDraft(two))
 
     expect(undone.looped).toBe(false)
-    expect(undone.points).toHaveLength(2)
+    expect(draftPoints(undone)).toHaveLength(2)
   })
 
   it('reopens when the hiker taps again, rather than appending after the return leg', () => {
@@ -229,12 +282,230 @@ describe('closing the loop', () => {
     const reopened = tapAt(index, looped, UP_SEVEN_HILLS)
 
     expect(reopened.looped).toBe(false)
-    expect(reopened.points).toHaveLength(3)
+    expect(draftPoints(reopened)).toHaveLength(3)
   })
 })
 
 describe('clearing', () => {
   it('goes back to empty', () => {
     expect(clearDraft()).toEqual(EMPTY_DRAFT)
+  })
+})
+
+describe('several stretches, and the gap between them (#935, #983)', () => {
+  // The whole model in one fixture: walk a bit of Pine Meadow, bushwhack, pick
+  // Seven Hills up on the far side.
+  function twoStretches() {
+    const first = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    return tapAt(
+      index,
+      tapAt(index, startStretch(first), UP_SEVEN_HILLS),
+      SEVEN_HILLS_END,
+    )
+  }
+
+  it('is not offered until the stretch in hand is already a walk', () => {
+    // A stretch of one tap is a start with no finish, and a draft holding two
+    // of those is a pair of pins rather than a hike.
+    expect(canStartStretch(EMPTY_DRAFT)).toBe(false)
+    expect(canStartStretch(tapAt(index, EMPTY_DRAFT, ON_TRAIL))).toBe(false)
+    expect(
+      canStartStretch(tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)),
+    ).toBe(true)
+  })
+
+  it('routes each stretch on its own and never across the gap', () => {
+    const status = draftStatus(index, twoStretches())
+
+    expect(status.kind).toBe('routed')
+    if (status.kind !== 'routed') return
+    // TWO sets of geometry, which is what makes drawing across the gap
+    // impossible rather than merely discouraged: there is no combined
+    // `sections` anywhere for a caller to reach for.
+    expect(status.stretches).toHaveLength(2)
+    expect(status.miles).toBeCloseTo(
+      status.stretches[0].route.miles + status.stretches[1].route.miles,
+      6,
+    )
+  })
+
+  it('keeps the gap out of the trail miles and reports it separately', () => {
+    const status = draftStatus(index, twoStretches())
+
+    if (status.kind !== 'routed') throw new Error('expected a routed draft')
+    expect(status.gapMiles).toBeGreaterThan(0)
+    // The load-bearing assertion, and the reason this test exists: a change
+    // that folded the gap into the total would make the app claim ground no
+    // organization maintains and nobody has walked for us.
+    expect(status.miles).toBeLessThan(status.miles + status.gapMiles)
+    expect(status.stretches.every((stretch) => stretch.route.miles > 0)).toBe(true)
+  })
+
+  it('places each gap in the walk, and reports the total as their sum', () => {
+    // #1220 needs to know WHERE a gap falls, not just how far it is, so the
+    // numbered route list can cross it in the right place. `gapMiles` stays
+    // the sum of exactly these, so the bar and the plan text keep printing the
+    // figure they always did rather than a second one measured elsewhere.
+    const status = draftStatus(index, twoStretches())
+
+    if (status.kind !== 'routed') throw new Error('expected a routed draft')
+    expect(status.gaps).toHaveLength(1)
+    expect(status.gaps[0].miles).toBeCloseTo(status.gapMiles, 10)
+    // Positioned at the end of the first stretch's legs, so the list crosses
+    // it after the last trail of that stretch and before the first of the next.
+    expect(status.gaps[0].afterLegs).toBe(status.stretches[0].route.legs.length)
+    expect(status.gaps[0].afterLegs).toBeGreaterThan(0)
+    expect(status.gaps[0].afterLegs).toBeLessThan(status.legs.length)
+  })
+
+  it('reports no gaps at all for a single-stretch walk', () => {
+    const status = draftStatus(
+      index,
+      tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER),
+    )
+
+    if (status.kind !== 'routed') throw new Error('expected a routed draft')
+    expect(status.gaps).toEqual([])
+    expect(status.gapMiles).toBe(0)
+  })
+
+  it('is unroutable when a LATER stretch cannot be routed, rather than dropping it', () => {
+    // Dropping it would turn the walk the hiker described into a shorter one
+    // they did not, with totals that are right about a different walk.
+    const first = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    const stranded = tapAt(
+      index,
+      tapAt(index, startStretch(first), OTHER_ISLAND),
+      ON_TRAIL,
+    )
+
+    expect(draftStatus(index, stranded).kind).toBe('unroutable')
+  })
+
+  it('undo takes back the new stretch before it takes back a tap', () => {
+    const started = startStretch(
+      tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER),
+    )
+    const undone = undoTap(started)
+
+    expect(undone.segments).toHaveLength(1)
+    expect(draftPoints(undone)).toHaveLength(2)
+  })
+
+  it('will not close a loop across a gap', () => {
+    // lib/dayHikeCard.ts refuses to resolve a multi-segment looped hike, so
+    // offering this would let a hiker save a walk that can never be
+    // re-resolved and falls back to its cache for ever.
+    expect(canStartStretch(twoStretches())).toBe(true)
+    expect(canCloseLoop(twoStretches())).toBe(false)
+  })
+})
+
+describe('removing one tap', () => {
+  // #1194's per-row delete. `undoTap` takes back the last EDIT - which is why
+  // it un-loops and un-starts-a-stretch before touching a tap at all - and
+  // this takes back a POINT OF THE WALK, wherever it sits. With five taps
+  // down, undo can only reach the fifth.
+
+  it('drops a middle tap and re-routes around it', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, FURTHER)
+    expect(draftPoints(draft)).toHaveLength(3)
+
+    const without = removeTap(draft, 1)
+
+    expect(draftPoints(without)).toHaveLength(2)
+    // The walk still routes - the point of re-routing rather than leaving a
+    // hole where the tap was.
+    expect(draftStatus(index, without).kind).toBe('routed')
+  })
+
+  it('drops the first tap as readily as the last', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, FURTHER)
+
+    expect(draftPoints(removeTap(draft, 0))).toHaveLength(2)
+    expect(draftPoints(removeTap(draft, 2))).toHaveLength(2)
+  })
+
+  it('counts across stretches, because that is the numbering the panel shows', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = startStretch(draft)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, SEVEN_HILLS_END)
+    expect(draftPoints(draft)).toHaveLength(4)
+
+    // Ordinal 2 is the first tap of the SECOND stretch.
+    const without = removeTap(draft, 2)
+
+    expect(draftPoints(without)).toHaveLength(3)
+    expect(without.segments[1]).toHaveLength(1)
+  })
+
+  it('drops an emptied stretch rather than leaving a gap to nothing', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = startStretch(draft)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    expect(draft.segments).toHaveLength(2)
+
+    const without = removeTap(draft, 2)
+
+    expect(without.segments).toHaveLength(1)
+    expect(draftPoints(without)).toHaveLength(2)
+  })
+
+  it('keeps the invariant that there is always a last stretch', () => {
+    // EMPTY_DRAFT is `[[]]`, never `[]` - `tapAt` never has to create one.
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = removeTap(draft, 0)
+
+    expect(draft.segments).toHaveLength(1)
+    expect(draft.segments[0]).toEqual([])
+    // And the draft still takes a tap without throwing.
+    expect(draftPoints(tapAt(index, draft, ON_TRAIL))).toHaveLength(1)
+  })
+
+  it('keeps a closed loop closed when a via-point goes', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, UP_SEVEN_HILLS)
+    draft = tapAt(index, draft, FURTHER)
+    draft = loopDraft(draft)
+    expect(draft.looped).toBe(true)
+
+    expect(removeTap(draft, 1).looped).toBe(true)
+  })
+
+  it('takes the loop with it when the walk stops being a walk', () => {
+    // canCloseLoop's rule one level on: a loop from one point is not a walk,
+    // and leaving the flag set would have the router close a loop onto a
+    // single tap.
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = loopDraft(draft)
+
+    expect(removeTap(draft, 0).looped).toBe(false)
+  })
+
+  it('clears a refusal, like every other edit does', () => {
+    let draft = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    draft = tapAt(index, draft, FURTHER)
+    draft = tapAt(index, draft, OFF_TRAIL)
+    expect(draft.refusal).not.toBeNull()
+
+    expect(removeTap(draft, 0).refusal).toBeNull()
+  })
+
+  it('returns the draft untouched for an ordinal it does not hold', () => {
+    // The list and the draft render from one state, but a row tapped in the
+    // frame before a re-route lands must not crash the builder.
+    const draft = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+
+    expect(removeTap(draft, 9)).toBe(draft)
+    expect(removeTap(draft, -1)).toBe(draft)
+    expect(removeTap(draft, 1.5)).toBe(draft)
   })
 })

@@ -17,7 +17,7 @@
 // every key added after today, and a passing run would mean less each week.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 
 import { OUTBOX_KEY, listQueued } from './outbox'
 import { PREFERENCES_KEY, loadPreferences } from './preferences'
@@ -65,6 +65,7 @@ import {
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -85,6 +86,12 @@ function phoneStore(): Record<string, unknown> {
 beforeEach(() => {
   const store = phoneStore()
   mockedGet.mockImplementation(async (key: IDBValidKey) => store[key as string])
+  // `getMany` follows whatever `get` is doing right now (#1303's one
+  // transaction in lib/trailData.ts), so a test that re-points `get`
+  // mid-file does not have to re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
 
   // cameraMemory reads sessionStorage, not IndexedDB.
   window.sessionStorage.setItem(
@@ -292,7 +299,7 @@ describe('a stored phone from the baseline release', () => {
         },
       ]
 
-      const resolved = resolvePlace(store.hikes[0].start, pois)
+      const resolved = resolvePlace(store.hikes[0].points[0], pois)
       expect(resolved.mile).toBe(471.2)
       expect(resolved.from).toBe('reference')
       expect(resolved.movedMi).toBeCloseTo(0.4)
@@ -523,6 +530,11 @@ describe('the fixture itself', () => {
     // arrived here - so the guard reported success about the one release that
     // changed the layout. The archive entries below are derived from
     // archiveStore.ts's own builders for that reason.
+    //
+    // This list is the BASELINE's. The keys the tagged releases added - the
+    // sync ledgers, the hiker mode, the side stores, the GPS trace, the
+    // coverage cells - have the same guard in storedShapes.releases.test.ts,
+    // against RELEASE_SHAPES (#1253).
     const packageKeys = MAP_PACKAGES.map((mapPackage) => mapPackage.idbKey)
     const required = [
       OUTBOX_KEY,

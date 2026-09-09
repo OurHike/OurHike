@@ -1,0 +1,56 @@
+version: 2
+
+sources:
+  - name: nynjtc
+    description: >
+      NYNJTC's two trail extracts on their own ArcGIS org - the Long Path and
+      the Highlands Trail - fetched by fetch_external_layers.py into
+      data/raw/external/ and loaded untouched by load_raw.py. These are the
+      first non-A.T. TRAILS the warehouse has ever held, which is the whole
+      point of Phase D (#100): a second trail's sources become new rows in
+      the registry and new staging models here, not a parallel pipeline.
+      Descriptions below are transcribed from sources.json's own measured
+      notes, not authored here.
+    schema: raw
+    loaded_at_field: _loaded_at
+    freshness:
+      # Measures "how recently did load_raw.py run", NOT upstream NYNJTC
+      # staleness - the fetcher owns real upstream change-detection via
+      # editingInfo.dataLastEditDate. @unvalidated: 7 days is inherited from
+      # the atc source's threshold and nobody has measured what load cadence
+      # actually makes a warehouse stale here. What would settle it is one
+      # bake cadence being decided; see _atc__sources.yml for the same tag.
+      warn_after: {count: 7, period: day}
+    tables:
+      - name: raw_nynjtc__nynjtc_long_path
+        description: >
+          NYNJTC Long Path (sources.json: discovered 2026-08-24). 43 polyline
+          segments, measured live that day - the same count and field list
+          the 2026-08-18 survey read. All 43 rows read Trail_Name 'Long
+          Path', Maintainer 'NYNJTC' and Source 'NYNJTC'. NYNJTC updates the
+          same service in place each season (the layer inside is named
+          Long_Path_2025Sep), which is the property a registry URL wants.
+        columns:
+          - name: Blaze
+            description: >
+              A PLAIN STRING WITH NO CODED DOMAIN, reading the lowercase
+              'aqua' on all 43 rows (measured 2026-08-24). No accepted_values
+              test: the value is passed to reference/blaze_mapping.json's
+              reviewed table rather than decoded, and a one-value domain test
+              would break the first time NYNJTC blazes a second trail here.
+          - name: Trail_Name
+            description: The route name; 'Long Path' on all 43 rows.
+      - name: raw_nynjtc__nynjtc_highlands_trail
+        description: >
+          NYNJTC Highlands Trail, NY and NJ sections (sources.json:
+          discovered 2026-08-24). 12 section features, measured live that
+          day. Section_Name is a per-section label ('NJ 2'..'NJ 9' among the
+          sampled twelve). Its dataLastEditDate read 2025-12-04, eight months
+          older than the Long Path's - which is what the survey meant by
+          calling this layer thinner.
+
+          THIS LAYER PUBLISHES NO BLAZE FIELD AT ALL. That absence is stated
+          rather than filled: see stg_nynjtc__highlands_trail.
+        columns:
+          - name: Trail_Name
+            description: "'Highlands' on all 12 rows."

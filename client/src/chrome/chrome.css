@@ -66,51 +66,113 @@
   margin-left: auto;
 }
 
-/* ---------- Header (read-only zone) ---------- */
+/* ---------- The floating chrome (#1054) ---------- */
 
-.map-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4, 16px);
-  padding: var(--space-2, 8px) var(--space-4, 16px);
+/* One column over the canvas's top-left, holding the identity plate and the
+   alert cards under it - a taller plate pushes the alerts down instead of
+   overlapping them. `pointer-events: none` on the column, restored on its
+   children, so the map underneath still pans where nothing is drawn. The
+   right inset leaves the two icon buttons their corner. */
+.map-screen__float {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  right: 12px;
   /* Landscape on a notched phone, same reasoning as .status-strip above. */
-  padding-left: max(var(--space-4, 16px), env(safe-area-inset-left, 0px));
-  padding-right: max(var(--space-4, 16px), env(safe-area-inset-right, 0px));
-  background: var(--bg-page);
-  border-bottom: 1px solid var(--border-1);
+  top: max(12px, env(safe-area-inset-top, 0px));
+  left: max(12px, env(safe-area-inset-left, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
 }
 
-.map-header__identity {
+.map-screen__float > * {
+  pointer-events: auto;
+}
+
+/* The identity plate: the map's chrome colour at 94%, so a hairline of
+   terrain reads through and the plate stays a plate rather than a band. */
+.map-plate {
+  max-width: calc(100% - 2 * var(--header-button-size) - 20px);
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--bg-chrome) 94%, transparent);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-raised);
+}
+
+.map-plate__identity {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
-.map-header__eyebrow {
+.map-plate__eyebrow {
   margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-chrome-3);
 }
 
-.map-header__trail-logo {
-  width: 36px;
-  height: 36px;
+.map-plate__trail-logo {
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
 }
 
-.map-header__position {
+/* A trail's mark beside its name on the line sheet (#1288) - the same 20px
+   the plate gives the chosen trail's, inline with the words it stands for. */
+.line-sheet__trail-mark {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 17px;
-  font-weight: 600;
-  color: var(--fg-1);
+  font-size: 19px;
+  font-weight: 500;
+  color: var(--fg-chrome-1);
+}
+
+/* The strip inside the plate: same component, same flags, same role - the
+   plate is just where it renders on the map screen now (#1054). Compact and
+   on chrome colours; the flags take the on-chrome danger for the contrast
+   reason tokens/colors.css documents. */
+.map-plate .status-strip {
+  background: transparent;
+  color: var(--fg-chrome-3);
+  padding: 2px 0 0;
+  font-size: 10px;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+
+.map-plate .status-strip__conditions {
+  flex-wrap: wrap;
+  flex: 0 1 auto;
+}
+
+.map-plate .status-strip__flag {
+  color: var(--danger-on-chrome);
+}
+
+.map-plate .status-strip__sync {
+  margin-left: 0;
 }
 
 .map-header__actions {
+  position: absolute;
+  top: 0;
+  right: 0;
   display: flex;
   /* WIREFRAMES.md: two 38px icon buttons, gap 7px. */
   gap: 7px;
@@ -128,6 +190,9 @@
   background: var(--bg-surface);
   border: 1px solid var(--border-1);
   border-radius: 10px;
+  /* Floating over terrain since #1054, so the edge needs help the band
+     never did. */
+  box-shadow: var(--shadow-card);
   cursor: pointer;
   /* Design-system rule: fades and colour transitions only, 120-200ms. */
   transition:
@@ -574,81 +639,180 @@
   border-radius: 4px;
 }
 
-/* ---------- Waypoint lanes ---------- */
+/* ---------- The next-up rail (#1054) ---------- */
 
-.waypoint-lanes {
+/* The phone's band between the map and the tab bar: the cards, then the
+   ribbon as a bordered card, then the attribution line. It replaced the
+   ribbon-and-lanes strip that used to sit ABOVE the canvas, which is most of
+   how the map got its viewport back. */
+.next-up-band {
   background: var(--bg-page);
+  border-top: 1px solid var(--border-1);
+  padding: 10px 14px 0;
+  padding-left: max(14px, env(safe-area-inset-left, 0px));
+  padding-right: max(14px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-/* WIREFRAMES.md: 19px per lane, dashed top rule, mono 7.5px gutter label. */
-.waypoint-lane {
-  position: relative;
-  height: 19px;
-  padding-left: 36px;
-  border-top: 1px dashed var(--border-2);
+/* The attribution keeps its own strip styling; inside the band its top rule
+   would double the band's own. */
+.next-up-band .map-attribution {
+  border-top: 0;
+  margin: 0 -14px;
 }
 
-.waypoint-lane__label {
-  position: absolute;
-  left: 4px;
-  top: 50%;
-  transform: translateY(-50%);
+.next-up__rule {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.next-up__label {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 7.5px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  letter-spacing: 0.12em;
   color: var(--fg-3);
+  white-space: nowrap;
 }
 
-.waypoint-lane__track {
-  position: relative;
-  height: 100%;
+.next-up__rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-1);
+  order: 1;
 }
 
-.waypoint-pin {
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+.next-up__count {
+  order: 2;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-3);
+  white-space: nowrap;
+}
+
+.next-up__cards {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  /* The same chaining stop the legend carries: a flick off the end of the
+     cards must not become a page gesture. */
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* Cards may cast their shadow without the row clipping it. */
+  padding-bottom: 2px;
+}
+
+/* border-box, STATED: the prototype authored these as content-box and they
+   overflowed their own rail. That bug is the reason this line exists. */
+.next-up__card {
+  box-sizing: border-box;
+  flex: 0 0 150px;
+  padding: 10px 12px;
+  text-align: left;
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.next-up__card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.next-up__chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--chip-accent) 22%, var(--surface-card));
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 3px;
-  font-size: 9px;
-  line-height: 1;
-  color: var(--fg-1);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-2);
+  justify-content: center;
 }
 
-/* The lane's copy of the staleness treatments (lib/stalenessDisplay.ts,
-   #759): the same three rings the map pins wear, at lane-pin scale. The
-   neutral state adds no class at all, so most pins are untouched. */
-.waypoint-pin--fresh {
+.next-up__chip svg {
+  width: 14px;
+  height: 14px;
+  fill: var(--chip-accent);
+}
+
+.next-up__card-name {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.25;
+  color: var(--fg-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-up__card-meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+/* A closure or serious warning card wears the alert border, so the one card
+   a hiker must not skim past is the one that does not look like the rest. */
+.next-up__card--danger {
+  border-color: var(--accent-blaze-orange);
+}
+
+.next-up__card--danger .next-up__card-name {
+  color: var(--danger);
+}
+
+/* The rail's copy of the staleness treatments (lib/stalenessDisplay.ts,
+   #759) - the same three states the lane pins wore and the map pins wear,
+   at card scale, same literals as map/poiLayers.ts. The neutral state adds
+   no class at all, so most cards are untouched. */
+.next-up__card--fresh {
   border-color: #2e7d32;
   box-shadow: 0 0 0 1px #2e7d3255;
 }
 
-.waypoint-pin--stale {
+.next-up__card--stale {
   border-style: dotted;
   border-color: #757575;
 }
 
-.waypoint-pin--faded {
+.next-up__card--faded {
   opacity: 0.55;
 }
 
-.waypoint-pin--no-word {
+.next-up__card--no-word {
   /* Water's day-one invite (#256): the category's own accent, worn faintly. */
   box-shadow: 0 0 0 1px #1c6ea455;
-  border-radius: 9px;
-  cursor: pointer;
 }
 
-.waypoint-pin__count {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 8px;
-  font-weight: 700;
+/* The ribbon, boxed: the same instrument, in a card so the band reads as a
+   list of things rather than a second chrome strip. */
+.next-up__ribbon-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.next-up__ribbon-card .elevation-ribbon {
+  background: transparent;
+  border-bottom: 0;
+}
+
+.next-up__ribbon-card .elevation-ribbon-controls {
+  background: transparent;
+  border-bottom: 0;
+  border-top: 1px solid var(--border-1);
 }
 
 /* ---------- Legend sheet ---------- */
@@ -698,6 +862,7 @@
 }
 
 .legend__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 15px;
 }
@@ -841,8 +1006,43 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--bg-raised) 82%, transparent);
   color: var(--fg-2);
-  font-size: 11px;
+  font-size: 12px;
   pointer-events: none;
+}
+
+/* The "Trails in view" block (#1283), above the pin grid: one row per named
+   trail on screen, the line drawn as the map draws it (map/MapIcon.tsx's
+   TrailLineSwatch), the name, and `taken` where the row is the trail the map
+   is about. Same row geometry as the pin rows - the 24px slot, the 44px
+   touch floor, the mono slot on the right - because to a hiker they are the
+   same kind of row about a different kind of thing. One column, never two:
+   a trail name is longer than a category name and `Ramapo-Dunderberg Trail`
+   beside `Suffern-Bear Mountain Trail` at 150px each is two ellipses. */
+.legend__trails {
+  margin: var(--space-3, 12px) 0 0;
+}
+
+.legend__trail-rows {
+  margin: var(--space-2, 8px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend__trail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  font-size: 13px;
+}
+
+/* The line, in the same 24px slot the pins fill. Reintroduced with the block
+   - the old blaze rows' swatch went with them on 2026-08-25, and this one is
+   the map's own line rather than a painted bar. */
+.legend__swatch {
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 
 /* features/NEARBY_TRAILS.md §1's sentence of state, above the blaze rows it
@@ -957,8 +1157,10 @@
 }
 
 .legend__drought-detail {
-  font-size: 11px;
-  color: var(--text-2);
+  /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
+     --text-2 was never declared, so the line inherited body colour. */
+  font-size: 12px;
+  color: var(--fg-2);
 }
 
 .legend__verified {
@@ -978,9 +1180,44 @@
   flex: 1;
 }
 
+/* The alerts switch (#1047, Legend.tsx). Shaped exactly like .legend__drought
+   above, down to the second line of smaller text, because it is the same kind
+   of thing and a hiker should not have to work out that it is: a map overlay,
+   named, with a sentence under the name and a checkbox at the end. The one
+   place it deliberately differs is the sentence itself, which on the drought
+   row carries numbers and here carries what the switch does NOT take away. */
+.legend__alerts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.legend__alerts-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legend__alerts-detail {
+  /* 12px: the #1054 floor under sun-read prose. --fg-2: #1057's fix -
+     --text-2 was never declared, so the line inherited body colour. */
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
 /* A safety row spans the grid rather than sitting in one column of it.
-   It carries everything an ordinary row does plus the "Always shown" tag, and
-   in a ~116px column beside a desktop map that tag was clipped mid-word - the
+   It carries everything an ordinary row does plus its tag ("Always shown"
+   where nothing can hide these marks, "Alerts"/"Alerts off" where the switch
+   below the grid can - #1047), and in a ~116px column beside a desktop map
+   that tag was clipped mid-word - the
    one row on the panel that must not look like a rendering accident. Spanning
    also reads correctly: these are not two of the categories, they are the two
    that are different. There are rarely more than a couple in view. */
@@ -1080,7 +1317,7 @@
 }
 
 .legend__always {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--fg-3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1155,6 +1392,7 @@
 }
 
 .search__result-name {
+  font-family: var(--font-display, Georgia, serif);
   font-size: 15px;
   color: var(--fg-1);
 }
@@ -1530,6 +1768,16 @@
   color: var(--fg-2);
 }
 
+/* This leg's own baseline (#851/#1040), under the figures it qualifies. The
+   ratio is a property of the walk, not of the hiker, so each leg carries its
+   own - and none carries anything at the standard pace. */
+.route-stops__leg--baseline {
+  padding-top: 0;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
 .route-stops__add {
   display: flex;
   justify-content: space-between;
@@ -1619,6 +1867,17 @@
   color: var(--fg-2);
 }
 
+/* The route total's baseline, in the bar's voice rather than the note's:
+   provenance, not a warning (#851/#1040). */
+.route-stops-bar__baseline {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
 .route-stops-bar__row {
   display: flex;
   justify-content: space-between;
@@ -1677,6 +1936,7 @@
 }
 
 .stop-picker__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 15px;
   font-weight: 600;
@@ -1890,6 +2150,7 @@
 }
 
 .atc-notices__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 14px;
   font-weight: 600;
@@ -1916,6 +2177,56 @@
 .atc-notices__empty {
   margin: 0;
   font-size: 14px;
+  color: var(--fg-2);
+}
+
+/* "Show N more, elsewhere on the trail" - the one control that reveals what
+   the extent scoped out (#1083). It shipped with no rule at all, so it drew
+   as the platform's default grey button in the middle of a sheet with no
+   other chrome in it - the one element on the screen that looked like it
+   belonged to a different app.
+
+   A text control rather than a filled one, on the same argument the list
+   itself makes: the notices are the thing to read, and a button competing
+   with them for weight is a button that gets pressed by accident. Full-width
+   with the touch-target floor for .stop-picker__result-button's reason - what
+   is DRAWN can be quiet, what can be HIT cannot be smaller than 44px. */
+.atc-notices__show-all {
+  display: block;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-3, 12px);
+  padding: var(--space-2, 8px) 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--link);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The `.atc-notices__section` heading that used to sit here is gone. It was
+   written for a list split in two on whether a notice had a mile, and #1083
+   shipped one ordered list instead - a notice with no mile says so on its own
+   row (.atc-notices__offmap) rather than being filed under a heading. Nothing
+   has referenced the class since that commit (3e1dcd62), so the rule was
+   dead the day it landed.
+
+   Weight and not hue below, for the same reason .atc-notices__offmap gives:
+   this line carries an honesty the rows it sits with would otherwise repeat
+   one by one, and a caveat dimmed to look like an aside is a caveat nobody
+   reads at arm's length in direct sun.
+
+   It is a footer rather than a heading, which is why the name reads oddly:
+   NoticeList renders it under the widened list, after the "show everything"
+   button has been pressed, to say the list is no longer scoped to the stretch
+   on screen. */
+.atc-notices__section-note {
+  margin: 2px 0 var(--space-2, 8px);
+  font-size: 13px;
+  font-weight: 600;
   color: var(--fg-2);
 }
 
@@ -2375,6 +2686,7 @@ a.poi-card__credit::after {
 }
 
 .poi-card__name {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 15px;
   color: var(--fg-1);
@@ -2556,6 +2868,7 @@ a.poi-card__credit::after {
 .poi-card__mile,
 .poi-card__chip-distance,
 .poi-card__part-distance,
+.poi-card__distance,
 .poi-card__coords {
   font-family: var(--font-mono, ui-monospace, monospace);
 }
@@ -2668,7 +2981,7 @@ a.poi-card__credit::after {
 }
 
 .poi-card__note-when {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -2737,6 +3050,53 @@ a.poi-card__credit::after {
   color: var(--fg-1);
 }
 
+/* THE TWO ENDS OF THE SCALE, TINTED (#1122).
+
+   The ask is a thumbs up / thumbs down with words on it, and until now the
+   four answers were four identical pills - so which one was the good one was
+   readable only by reading, at 13px, in whatever light a hiker is standing
+   in. These are the app's own semantic status tokens rather than new ink, so
+   they re-point with the theme like everything else.
+
+   THE WORDS STILL CARRY THE MEANING. WIREFRAMES.md §11's rule is that the
+   visual channel never carries it alone, and nothing here is the only signal
+   for anything: the label says "Problem", the tint says it a second time.
+   That is also what makes this safe for a hiker who cannot tell the two hues
+   apart.
+
+   8%, AND THE NUMBER IS MEASURED RATHER THAN EYEBALLED. A wash of a hue under
+   text of the same hue eats the contrast that hue was picked for. Measured
+   2026-08-27 against tokens/colors.css's own values, the tinted label holds
+   AA at 8% in every combination - the binding case is `--success` on its own
+   wash under the DARK theme at 4.52:1, which falls to 4.41 at 10% and stops
+   clearing AA. Raising it needs a different colour, not a different opacity.
+
+   Only the ends. The middle answers stay neutral, because a scale with three
+   coloured rungs is a scale that has to be learned. */
+.poi-card__observation--good {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--success) 50%, transparent);
+}
+
+.poi-card__observation--good:hover {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border-color: var(--success);
+}
+
+.poi-card__observation--problem {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
+.poi-card__observation--problem:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border-color: var(--danger);
+}
+
 .poi-card__noted {
   margin-top: var(--space-2, 8px);
   font-size: 12px;
@@ -2747,8 +3107,11 @@ a.poi-card__credit::after {
   margin: 0;
 }
 
-.poi-card__escalate,
-.poi-card__report-here {
+/* The escalation keeps the quiet pill it has always had. It appears only
+   after a problem-shaped tap, in a card that has just acknowledged one, so it
+   is already the thing a hiker is looking at - it does not have to compete
+   for the eye the way the entry below does. */
+.poi-card__escalate {
   display: block;
   margin-top: var(--space-2, 8px);
   min-height: var(--min-touch-target, 44px);
@@ -2759,6 +3122,139 @@ a.poi-card__credit::after {
   border: 1px solid var(--bg-sunken);
   border-radius: var(--radius-pill, 999px);
   cursor: pointer;
+}
+
+/* THE REPORT ENTRY, AT A CONTROL'S WEIGHT (#1122).
+
+   It was the same 12px hairline pill as the escalation above, which is how a
+   card ends up with an escape hatch nobody uses: the four answers beside it
+   are 13px semibold pills with real borders, so the one control for
+   everything the four answers cannot say was also the quietest thing in the
+   section.
+
+   Full width and two lines, because it is doing two jobs - asking a question
+   a hiker can answer standing there, and naming the feature it lands on so
+   the screen behind it ("Report a problem") is not a surprise. The flag is
+   `aria-hidden` and decorative; both lines are real text.
+
+   Danger-tinted, at the same measured 8% as the problem answer above and for
+   the same reason - it is the same kind of thing. */
+.poi-card__report-here {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  /* Stated rather than left to the two lines of text to reach on their own -
+     they land at about 46px here, which happens to clear it and would stop
+     doing so the moment the hint got shorter or the type scale moved. */
+  min-height: var(--min-touch-target, 44px);
+  margin-top: var(--space-3, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  text-align: left;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.poi-card__report-here:hover {
+  border-color: var(--danger);
+}
+
+.poi-card__report-flag {
+  flex: 0 0 auto;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--danger);
+}
+
+/* `min-width: 0` so the hint wraps inside the column rather than pushing the
+   button wider than the 264px card. */
+.poi-card__report-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.poi-card__report-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.poi-card__report-hint {
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+/* The thanks plate (#1133): the report plate's construction, its accent
+   swapped from `--danger` to `--success`, stacked directly under it.
+
+   THE TINT IS 8% AND NOT MORE, which is the same figure the report plate
+   above carries and is measured here rather than matched. `--success` on
+   `color-mix(in srgb, var(--success) 8%, var(--bg-surface))`, both themes,
+   measured 2026-08-27:
+
+     tint    light    dark
+      6%     4.79     4.65
+      8%     4.67     4.53   <- shipped
+     10%     4.55     4.40
+     12%     4.43     4.28
+
+   The 13px title is normal text, so the floor is AA's 4.5:1 and the dark
+   theme is the half that sets it: 10% already fails there while the light
+   theme is still passing, and 12% fails both. Neither has much room, which
+   is the point of writing the table down - the next person who wants a
+   stronger wash is one step from an unreadable one.
+
+   WHAT THIS DOES NOT FIX, said rather than left for somebody to find: the
+   40% border resolves to 1.83:1 against its own wash in dark and 1.70:1 in
+   light, well under 1.4.11's 3:1 for a component boundary. The report plate
+   above has exactly the same property with `--danger`, so this is a matched
+   pre-existing shortfall rather than a new one - and in both plates the
+   control is identified by its title text, which passes, not by its edge.
+   Worth a pass over both together; not worth diverging one from the other
+   here. @unvalidated that a hiker in low light finds the edge at all - that
+   is a field question, not an arithmetic one. */
+.poi-card__thank-here {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  /* Half the report plate's 12px, because these two are a pair and a full gap
+     between them would read as two unrelated controls that happen to be
+     adjacent. The 12px above the pair still separates it from the card. */
+  margin-top: var(--space-1, 6px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  text-align: left;
+  color: var(--fg-1);
+  background: color-mix(in srgb, var(--success) 8%, var(--bg-surface));
+  border: 1px solid color-mix(in srgb, var(--success) 40%, transparent);
+  border-radius: var(--radius-m, 8px);
+  cursor: pointer;
+}
+
+.poi-card__thank-here:hover {
+  border-color: var(--success);
+}
+
+/* 16px against the flag's 15px: a stroked outline reads a shade smaller than
+   a solid glyph at the same nominal size, and these two sit one above the
+   other where any difference is visible. */
+.poi-card__thank-mark {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--success);
+}
+
+.poi-card__thank-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--success);
 }
 
 /* Now a span on the coordinates' own line rather than a paragraph under it
@@ -2824,7 +3320,7 @@ a.poi-card__credit::after {
 
 .poi-card__own-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--fg-2);
 }
@@ -2879,7 +3375,7 @@ a.poi-card__credit::after {
 
 .poi-card__photo-note {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.4;
   color: var(--fg-2);
 }
@@ -2940,6 +3436,7 @@ a.poi-card__credit::after {
 }
 
 .share-sheet__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 16px;
   color: var(--fg-1);
@@ -3051,7 +3548,7 @@ a.poi-card__credit::after {
 
 .share-sheet__footnote {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--fg-3);
 }
@@ -3128,57 +3625,6 @@ a.poi-card__credit::after {
   color: var(--fg-1);
 }
 
-/* ---------- Wrong-way cue ---------- */
-
-.wrong-way-cue {
-  position: absolute;
-  left: var(--space-2, 8px);
-  right: var(--space-2, 8px);
-  bottom: calc(var(--space-2, 8px) + 56px);
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2, 8px);
-  padding: var(--space-4, 16px);
-  background: var(--bg-surface);
-  border: 2px solid var(--accent-blaze-orange);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgb(0 0 0 / 18%);
-}
-
-.wrong-way-cue__text {
-  margin: 0;
-  font-size: 15px;
-  color: var(--fg-1);
-}
-
-.wrong-way-cue__actions {
-  display: flex;
-  gap: var(--space-2, 8px);
-}
-
-.wrong-way-cue__primary,
-.wrong-way-cue__secondary {
-  flex: 1;
-  min-height: var(--min-touch-target);
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.wrong-way-cue__primary {
-  color: var(--fg-on-brand);
-  background: var(--brand-secondary);
-  border: 0;
-}
-
-.wrong-way-cue__secondary {
-  color: var(--fg-1);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-2);
-}
-
 /* The fallback a broken screen leaves behind (chrome/ErrorBoundary.tsx).
    Sized and coloured like the rest of the app rather than like an error page:
    what happened is worth saying plainly, not worth alarming someone about
@@ -3193,6 +3639,7 @@ a.poi-card__credit::after {
 }
 
 .screen-failed__title {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
@@ -3298,7 +3745,7 @@ a.poi-card__credit::after {
 }
 
 .bg-picker__hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -3422,19 +3869,75 @@ a.poi-card__credit::after {
  * Same --danger treatment as .settings__locked and .more__stuck, for the same
  * reason - a second visual language for "this changes what you do next" is a
  * second thing to learn. */
+/* Floating with the plate since #1054 - a card rather than a band, because
+   the bands are gone, but the same tint family and the same ordering (#485)
+   so nothing about how it reads changed. */
 .map-screen__alerts {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: var(--space-2, 8px) var(--space-3, 12px);
-  background: color-mix(in srgb, var(--danger) 10%, transparent);
-  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--surface-card));
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-m, 8px);
+  box-shadow: var(--shadow-card);
 }
 .map-screen__alert {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--danger);
+}
+
+/* The download note in the float column (#1103): the housekeeping card under
+   the safety strip, in the plate's own pine so it reads as chrome rather
+   than as an alert - a download is not danger, and dressing it in the
+   alerts' red would spend the one colour that must keep meaning trouble.
+   A button, edge to edge of the float column: the tap opens the downloads
+   window, where the per-asset detail lives. Rendered only while something
+   is arriving, which is the DownloadsLink's own absent-is-silence rule. */
+.map-screen__download-note {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg-chrome) 94%, transparent);
+  border: 0;
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-raised);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.map-screen__download-title {
+  font-family: var(--font-display, Georgia, serif);
+  font-weight: var(--weight-semibold, 600);
+  font-size: 14px;
+  color: var(--fg-chrome-1);
+}
+.map-screen__download-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg-chrome-2) 22%, transparent);
+  overflow: hidden;
+}
+.map-screen__download-fill {
+  display: block;
+  height: 100%;
+  background: var(--moss-400, #6b9463);
+}
+.map-screen__download-figures {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}
+.map-screen__download-line {
+  font-family: var(--font-body, sans-serif);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-chrome-2);
+  text-wrap: pretty;
 }
 
 /* The advisory row, subordinate to the two above it (#485).
@@ -3545,7 +4048,7 @@ a.poi-card__credit::after {
 
 .poi-card__note-photo-status {
   margin: var(--space-1, 4px) 0 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--fg-3);
 }
 
@@ -3641,6 +4144,7 @@ a.poi-card__credit::after {
 }
 
 .removed-poi__name {
+  font-family: var(--font-display, Georgia, serif);
   margin: 0;
   /* Room for the close button, which overlaps this line. */
   padding-right: 32px;
@@ -3694,4 +4198,398 @@ a.poi-card__credit::after {
   color: var(--fg-2);
   font-size: 13px;
   cursor: pointer;
+}
+
+/* The ask before a hiker's map is replaced (#919, chrome/TrailDataUpdate.tsx).
+ *
+ * Sits at the foot of the main column beside the ATC new-alerts row and
+ * borrows its geometry deliberately - same padding, same top rule, same
+ * full-width buttons - because they are the same kind of thing: a quiet row
+ * that appears when there is something to say and is otherwise absent.
+ *
+ * The neutral palette is the difference, and it is the point. New data is not
+ * a hazard, so this does not borrow the alert row's --danger. The serious
+ * modifier below is what raises its voice, and only for a release that removed
+ * or moved something a hiker may have been walking to. */
+.trail-data-update {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-2, rgb(0 0 0 / 4%));
+  border-top: 1px solid var(--border, rgb(0 0 0 / 12%));
+}
+
+/* Removed or moved - something a hiker had, that is no longer where it was.
+ * A left rule rather than a fill: enough to separate it from a routine
+ * release at a glance, not enough to read as an emergency, which it is not. */
+.trail-data-update--serious {
+  border-left: 3px solid var(--warning, #b26a00);
+}
+
+.trail-data-update__what {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fg-1);
+}
+
+.trail-data-update__cost {
+  margin: var(--space-1, 4px) 0 0;
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.trail-data-update__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+
+/* Both are real touch targets rather than text links. A cold thumb on a ridge
+ * is the same argument .legend__close makes, and this one decides whether
+ * several megabytes leave somebody's allowance. */
+.trail-data-update__apply {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  border: none;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trail-data-update__apply:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.trail-data-update__decline {
+  min-width: var(--min-touch-target, 44px);
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-strong, rgb(0 0 0 / 30%));
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.trail-data-update__decline:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* Following a day hike (#1041, frames D9-D11).
+ *
+ * Three surfaces, two slots. The band sits in the chrome stack directly under
+ * the header - chrome/OffRouteCard.tsx's own note says why it is not in
+ * .map-screen__alerts above it - and the two cards ride MapScreen's
+ * routeSheet slot, positioning themselves against the canvas the way every
+ * other occupant of that slot does.
+ *
+ * z-index 2 throughout, matching .hikes-here and the waypoint card: 3 is for
+ * surfaces that cover the map outright, and a hiker mid-walk must be able to
+ * tap a spring on the map without the turn card swallowing it. */
+.next-turn,
+.turn-card,
+.off-route {
+  position: absolute;
+  right: var(--space-2, 8px);
+  /* Clear of the credit strip AND of the map's own controls.
+   *
+   * The strip is the last in-flow row of the canvas, ~17px
+   * (features/MAP_CHROME.md §1). ODbL attribution is a licence condition
+   * rather than a nicety, and .map-attribution's own note above records what
+   * happens when a control lands on top of it: the condition is met only
+   * where the text happens not to be covered. A card on screen for a whole
+   * walk would cover it for the whole walk.
+   *
+   * The controls are the second half, and were missed first time round
+   * (#1044 review): MapLibre stacks locate and compass bottom-right and the
+   * scale bar bottom-left, in the same band a full-width card at 25px sits
+   * in. Losing the locate button for a whole walk is losing the one control
+   * that answers "where am I" on the screen that exists to answer it. Same
+   * arithmetic .hikes-here--closed already uses, so the two sheets clear the
+   * same stack by the same amount rather than by two guesses. */
+  bottom: calc(15px + 104px + 7px);
+  left: var(--space-2, 8px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  max-height: 70%;
+  overflow-y: auto;
+  padding: var(--space-3, 12px);
+  color: var(--fg-1);
+  background: var(--surface-over-map);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgb(20 19 15 / 14%);
+}
+
+/* The whole lead is the tap target for the junction behind it, so it is a
+   button rather than text with a link after it: a gloved hand in sun reaching
+   for a 15px "›" is the mis-tap #105 measured the touch floor against. */
+/* The same condition `showZoomButtons` is passed under
+   (lib/useFinePointer.ts is this exact query), so the cards rise by exactly
+   the two buttons that appear with it - 188px of stack plus the 15px strip.
+   Copied from .hikes-here--closed deliberately: two surfaces clearing one
+   control stack should clear it by one number. */
+@media (pointer: fine) {
+  .next-turn,
+  .turn-card,
+  .off-route {
+    bottom: calc(15px + 188px + 7px);
+  }
+}
+
+.next-turn__lead {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: baseline;
+  width: 100%;
+  min-height: var(--min-touch-target);
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.next-turn__distance {
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.next-turn__instruction {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.next-turn__none {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.next-turn__foot {
+  display: flex;
+  gap: var(--space-2, 8px);
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+}
+
+.next-turn__on {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--fg-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-turn__link {
+  flex: 0 0 auto;
+  min-height: var(--min-touch-target);
+  padding: 0 var(--space-2, 8px);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.next-turn__link--stop {
+  color: var(--fg-3);
+}
+
+.turn-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.turn-card__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.turn-card__close {
+  min-width: var(--min-touch-target);
+  min-height: var(--min-touch-target);
+  font-size: 20px;
+  line-height: 1;
+  color: var(--fg-2);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.turn-card__lead {
+  display: flex;
+  gap: var(--space-3, 12px);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.turn-card__instruction {
+  flex: 1;
+  min-width: 0;
+}
+
+.turn-card__heading {
+  font-family: var(--font-display, Georgia, serif);
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.turn-card__blaze {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.turn-card__arms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2, 8px) 0 0;
+  margin: 0;
+  list-style: none;
+  border-top: 1px solid var(--border-1);
+}
+
+.turn-card__arm {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.turn-card__check {
+  padding: var(--space-2, 8px);
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+  background: var(--bg-page);
+  border-radius: 8px;
+}
+
+/* Straight rays at real bearings, rotated so travel points up. NOT a map -
+   chrome/JunctionDiagram.tsx says so at length, and the stroke widths here
+   deliberately do not encode anything: a thicker route arm would read as a
+   wider trail. */
+.junction-diagram {
+  flex: 0 0 auto;
+}
+
+.junction-diagram__arm {
+  stroke: var(--border-2);
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.junction-diagram__arm--route {
+  stroke: var(--brand-primary);
+}
+
+.junction-diagram__you {
+  fill: var(--fg-1);
+}
+
+/* The off-route band, in the chrome stack under the header. Amber rather than
+   the alerts strip's danger colour, and quieter than a closure deliberately:
+   a closure is the trail being shut and this is one hiker having wandered,
+   which is recoverable and extremely common on a network. */
+.off-route-band {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--surface-warning);
+  border-bottom: 1px solid var(--danger);
+}
+
+.off-route-band__head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.off-route-band__body {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.off-route {
+  border-color: var(--danger);
+}
+
+.off-route__lead {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.off-route__refusal {
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-page);
+  border-radius: 8px;
+}
+
+.off-route__refusal-head {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.off-route__refusal-body {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+.off-route__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+.off-route__primary,
+.off-route__secondary {
+  flex: 1;
+  min-height: var(--min-touch-target);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 10px;
+}
+
+.off-route__primary {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+}
+
+.off-route__secondary {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
 }

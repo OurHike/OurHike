@@ -55,7 +55,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -81,6 +83,48 @@ FAILED = "failed"
 # must not be able to declare an outage. These are reported and, unlike a real
 # refusal, do not on their own open the tracking issue.
 UNREACHABLE = "unreachable"
+# Not "it passed" and not "it failed" - "there was nothing to ask" (#1359).
+# The backend probe below is the only user: `API_BASE_URL` is unset on every
+# build today because the service does not exist yet, and a check that goes
+# red daily for that is one nobody reads by the time it matters.
+SKIPPED = "skipped"
+
+# The backend's own liveness endpoint (backend/app/main.py), and how long it
+# may take to answer.
+#
+# REASONED from backend/HOSTING.md's own decision rather than picked. That
+# document chose a free tier that sleeps after 15 minutes idle and costs
+# "30-60 seconds on the first request after idle", accepted deliberately
+# because nothing a hiker reads on the trail comes from this service. This
+# check runs daily, so it will meet a sleeping instance nearly every time -
+# the cold start IS the normal path here, not the exception. HTTP_TIMEOUT is
+# 30, which is inside that documented window, so reusing it would report a
+# healthy backend as unreachable most mornings. 90 is the documented worst
+# case plus the same margin again, and it is a timeout rather than a promise:
+# a service that is genuinely down still fails fast on a refused connection.
+BACKEND_HEALTH_PATH = "/health"
+BACKEND_COLD_START_TIMEOUT = 90
+
+# The prefix the hourly bake writes under, and how old its newest file may be
+# before this says so (#1129).
+#
+# REASONED, from the schedule and from measured jitter, not picked. The bake is
+# `publish-conditions.yml` at `40 * * * *` - hourly - so a healthy bucket's
+# newest conditions file is under an hour old plus however late GitHub starts
+# the run. #1129 measured that lateness at +20 and +22 minutes on the two
+# firings it caught, which is ordinary schedule jitter rather than a fault.
+#
+# Three hours is therefore TWO consecutive missed firings: one missed slot puts
+# the newest file at 2h00 plus jitter, about 2h22, comfortably under. GitHub
+# drops a scheduled event now and then and nobody should hear about it. What
+# this is for is the pattern #1129 recorded - fourteen of sixteen slots
+# producing nothing, and the published copy eleven hours old with no trace in
+# the run listing at all.
+#
+# It is deliberately not tighter. A monitor that fires on one dropped firing is
+# a monitor somebody mutes, and a muted monitor has already stopped watching.
+CONDITIONS_PREFIX = "conditions/"
+CONDITIONS_MAX_AGE_HOURS = 3
 
 
 def load_manifest(path: Path | None = None) -> dict:
@@ -569,8 +613,142 @@ def check_all(base: str, manifest: dict | None = None, session: requests.Session
     reports.append(check_if_range(base, rangeable or MANIFEST_KEY, session))
 
     reports.extend(check_advertised_sizes(base, artifacts, session))
+    reports.append(check_conditions_freshness(base, artifacts, session))
 
     return reports
+
+
+def check_conditions_freshness(
+    base: str,
+    artifacts: list[str],
+    session: requests.Session | None = None,
+    now: datetime | None = None,
+) -> dict:
+    """Is the hourly conditions bake still actually running? (#1129)
+
+    WATCHES THE OUTCOME, NOT THE SCHEDULER, which is the whole choice. Asking
+    GitHub whether `publish-conditions.yml` fired needs credentials this job
+    deliberately does not hold, and would answer only one of the ways the bake
+    can stop. Asking the bucket how old its newest conditions file is catches
+    every way at once - a dropped schedule event, a disabled workflow, a run
+    that succeeds and publishes nothing, a permissions change on the upload.
+
+    WHY IT IS WORTH WATCHING AT ALL. On 2026-08-27 the bake fired twice against
+    sixteen scheduled slots, and the fourteen misses left no trace: no
+    cancelled runs, no failures, nothing in the listing. The live closure path
+    is unaffected - RELEASING.md section 11, closures serve from Postgres
+    through the backend - but the PUBLISHED copies are what the offline sync
+    and the freshness display read, and section 8b names the freshness display
+    in the safety-critical set. An eleven-hour quiet gap meant a hiker's copy
+    was genuinely stale and nothing said so.
+
+    THE NEWEST FILE, not each of them. The question is whether the bake ran,
+    and one report answers it; per-file ages would be noise, because they are
+    legitimately different - `drought.json` carries a weekly product and sat at
+    15 hours old on a bucket whose other seven files were minutes old.
+
+    Not `hiker_facing`. That flag means "a hiker cannot download the map", and
+    this is not that - the map downloads fine and every artifact check above
+    still speaks for it. What is stale is one layer inside it, and calling that
+    an outage would put "**A hiker cannot download the map**" at the top of a
+    tracking issue about something else. The detail below carries the weight
+    instead.
+    """
+    keys = [key for key in artifacts if key.startswith(CONDITIONS_PREFIX)]
+    if not keys:
+        # Asked, and there was nothing to age. Said out loud rather than
+        # skipped: a check that emits no report reads exactly like one that
+        # passed, and this monitor exists because a silence was mistaken for
+        # health once already.
+        return {
+            "check": "conditions-freshness",
+            "key": CONDITIONS_PREFIX,
+            "state": OK,
+            "hiker_facing": False,
+            "detail": f"this manifest names no {CONDITIONS_PREFIX}* artifact, so there is no bake to age",
+        }
+
+    stamps: dict[str, datetime] = {}
+    unreadable: list[str] = []
+    for key in keys:
+        stamp = _generated_at(base, key, session)
+        if stamp is None:
+            unreadable.append(key)
+        else:
+            stamps[key] = stamp
+
+    if not stamps:
+        # Every one of them unreadable is the bucket or the network, not a
+        # verdict about the bake - the same reasoning UNREACHABLE carries for
+        # the CORS checks above, and #431's rule that a flaky third party must
+        # not be able to declare an outage.
+        return {
+            "check": "conditions-freshness",
+            "key": CONDITIONS_PREFIX,
+            "state": UNREACHABLE,
+            "hiker_facing": False,
+            "detail": (
+                f"none of the {len(keys)} {CONDITIONS_PREFIX}* artifact(s) could be read for a "
+                "`generated_at`, so nothing here says whether the bake ran"
+            ),
+        }
+
+    newest_key = max(stamps, key=lambda key: stamps[key])
+    newest = stamps[newest_key]
+    age = ((now or datetime.now(timezone.utc)) - newest).total_seconds() / 3600
+    missing = f" ({len(unreadable)} of {len(keys)} could not be read)" if unreadable else ""
+    where = f"the newest is {newest_key} at {newest.isoformat().replace('+00:00', 'Z')}"
+
+    if age > CONDITIONS_MAX_AGE_HOURS:
+        return {
+            "check": "conditions-freshness",
+            "key": CONDITIONS_PREFIX,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": (
+                f"{where}, {age:.1f} hours old against a {CONDITIONS_MAX_AGE_HOURS}-hour ceiling{missing}. "
+                "The hourly bake has missed at least two firings. Closures and warnings still serve live "
+                "from the backend; what is stale is the published copy the offline sync and the freshness "
+                "display read."
+            ),
+        }
+    return {
+        "check": "conditions-freshness",
+        "key": CONDITIONS_PREFIX,
+        "state": OK,
+        "hiker_facing": False,
+        "detail": f"{where}, {age:.1f} hours old{missing}",
+    }
+
+
+def _generated_at(base: str, key: str, session: requests.Session | None = None) -> datetime | None:
+    """The `generated_at` a conditions file stamps itself with, as an aware UTC
+    datetime, or None where it cannot be read.
+
+    None for every reason at once - the request failed, the body is not JSON,
+    the field is absent or unparseable - because the caller does the same thing
+    with all of them: leaves that file out of the comparison rather than
+    treating it as infinitely old. A file this cannot read says nothing about
+    when the bake last ran.
+
+    `generated_at` rather than the object's `Last-Modified` because it is the
+    figure that reaches a hiker: `dataRefresh.ts` and the freshness display
+    read this field, so ageing it is ageing what the screen actually shows.
+    """
+    try:
+        response = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT)
+        if response.status_code != 200:
+            return None
+        stamp = response.json().get("generated_at")
+    except (requests.RequestException, ValueError, AttributeError):
+        return None
+    if not isinstance(stamp, str):
+        return None
+    try:
+        when = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return when if when.tzinfo else when.replace(tzinfo=timezone.utc)
 
 
 def check_advertised_sizes(base: str, artifacts: list[str], session: requests.Session | None = None) -> list[dict]:
@@ -615,6 +793,99 @@ def check_advertised_sizes(base: str, artifacts: list[str], session: requests.Se
             }
         )
     return reports
+
+
+def check_backend_health(api_base: str | None, session: requests.Session | None = None) -> dict:
+    """Is the backend answering - the one service nothing else here asks about (#1359).
+
+    Deliberately not part of `check_all`: everything there is one bucket's, and
+    this is a different service on a different host. It is assembled beside
+    those reports rather than inside them.
+
+    Three properties, each of which is the difference between a check somebody
+    reads and a check somebody mutes:
+
+    **Unset is `skipped`, never `failed`.** `.github/expected-settings.yml`
+    records that `API_BASE_URL` is optional and that unset "is what every build
+    currently produces" - the backend is not deployed anywhere yet (#600). A
+    check that goes red daily for a service nobody has created yet teaches the
+    reader to ignore the run, and this file's whole subject is a green check
+    that meant nothing.
+
+    **A cold start is not an outage.** backend/HOSTING.md chose a free tier that
+    sleeps after 15 minutes idle and pays 30-60 seconds on the next request, and
+    that is a documented cost rather than a fault. `HTTP_TIMEOUT` is 30, so
+    reusing it would report a healthy service as down roughly whenever it had
+    been quiet - which is the same muting, arrived at from the other direction.
+
+    **Not hiker-facing.** features/CONDITIONS_DELIVERY.md moved the safety read
+    off this service: closures reach a phone from R2, and the app is built to
+    work with no backend at all. So this being down means reports wait in the
+    outbox and moderation waits with them - real, and not a hiker on a ridge
+    without a map, which is the distinction `hiker_facing_failures` exists to
+    keep.
+    """
+    if not api_base:
+        return {
+            "check": "backend",
+            "key": "API_BASE_URL",
+            "state": SKIPPED,
+            "hiker_facing": False,
+            "detail": "unset, so there is no backend to ask - reports queue in the outbox by design (#600)",
+        }
+
+    url = f"{api_base.rstrip('/')}{BACKEND_HEALTH_PATH}"
+    try:
+        response = (session or requests).get(url, timeout=BACKEND_COLD_START_TIMEOUT)
+    except requests.RequestException as exc:
+        # Same reasoning as UNREACHABLE everywhere else in this file: a request
+        # that never completed says nothing about the service. A slept instance
+        # taking longer than even the cold-start budget lands here, and that is
+        # the honest answer rather than a declared outage.
+        return {
+            "check": "backend",
+            "key": url,
+            "state": UNREACHABLE,
+            "hiker_facing": False,
+            "detail": f"could not ask: {exc.__class__.__name__}",
+        }
+
+    if response.status_code != 200:
+        return {
+            "check": "backend",
+            "key": url,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"{BACKEND_HEALTH_PATH} answered {response.status_code}",
+        }
+
+    # A 200 is not the whole question. A sleeping free-tier instance, a proxy
+    # error page or a parked domain can all answer 200 with something that is
+    # not this service, so the body has to say it is.
+    try:
+        body = response.json()
+    except ValueError:
+        return {
+            "check": "backend",
+            "key": url,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"{BACKEND_HEALTH_PATH} answered 200 but not JSON, so something other than the backend replied",
+        }
+
+    # `isinstance` rather than a bare `.get`: valid JSON is not necessarily an
+    # object, and `[].get` is an AttributeError that would take the whole run
+    # down - the one thing every check in this file is built not to do.
+    if not isinstance(body, dict) or body.get("status") != "ok":
+        return {
+            "check": "backend",
+            "key": url,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"{BACKEND_HEALTH_PATH} answered 200 with {body!r}",
+        }
+
+    return {"check": "backend", "key": url, "state": OK, "hiker_facing": False, "detail": "answering"}
 
 
 def hiker_facing_failures(reports: list[dict], manifest: dict) -> list[dict]:
@@ -670,6 +941,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=data_env.ENVIRONMENTS,
         help="Check this environment's data rather than the base as given (features/DATA_ENVIRONMENTS.md).",
     )
+    parser.add_argument(
+        "--api-base",
+        metavar="URL",
+        help="Backend base to ask for /health. Defaults to $API_BASE_URL; skipped when neither is set.",
+    )
     parser.add_argument("--json", metavar="OUT", type=Path, help="Also write the verdict to OUT as JSON.")
     parser.add_argument(
         "--origins",
@@ -705,6 +981,11 @@ def main(argv: list[str] | None = None) -> int:
 
     reports = check_all(base, manifest)
     published = any(report["check"] == "artifact" for report in reports)
+
+    # Appended rather than folded into check_all, which is the bucket's alone.
+    # This asks a different service on a different host, and its report is
+    # `skipped` until somebody deploys one (#1359).
+    reports.append(check_backend_health(args.api_base or os.environ.get("API_BASE_URL")))
 
     for report in reports:
         subject = report.get("origin") or report.get("key") or ""

@@ -53,6 +53,11 @@ export interface TappedLineInput {
   units: UnitSystem
   trailName: string
   pace: PaceProfile
+  /** Per-source attribution from the published stewards artifact (§6,
+   *  #1142), so a closure's sentence can name the org that closed it in
+   *  their own words. Empty until stewards load, which reads exactly as the
+   *  sheet always read: sentences without a by-clause, never a made-up one. */
+  trailSources: Readonly<Record<string, { attribution: string | null }>>
   walked: readonly MileRange[]
   /** The centerline, or null before it has loaded. */
   trailIndex: TrailIndex | null
@@ -67,6 +72,15 @@ export interface TappedLineInput {
   elevation: ElevationProfile | null
   /** Closes the legend, which any tap that opens a sheet does. */
   onCloseLegend: () => void
+  /**
+   * Start a day hike from a tapped point on a trail (#979), or undefined when
+   * this phone cannot - no junction graph, or no trail lines yet.
+   *
+   * Undefined rather than a no-op, so the sheet renders no control at all:
+   * chrome/LineSheet.tsx's rule is a sentence, never a dead button, and this
+   * hook is the layer that knows whether the router could use the tap.
+   */
+  onStartDayHikeAt?: (at: { lon: number; lat: number }) => void
 }
 
 export function useTappedLinePanel({
@@ -75,6 +89,7 @@ export function useTappedLinePanel({
   units,
   trailName,
   pace,
+  trailSources,
   walked,
   trailIndex,
   belowSeam,
@@ -83,6 +98,7 @@ export function useTappedLinePanel({
   highlights,
   elevation,
   onCloseLegend,
+  onStartDayHikeAt,
 }: TappedLineInput): TappedLinePanel {
   /** The tapped trail line's published facts, or null (#134). The map
    *  reports them (map/lineTaps.ts); what they mean - the spur record, the
@@ -97,8 +113,16 @@ export function useTappedLinePanel({
    */
   const lineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
-    return buildLineDetail(selectedLine, spurs, pois, units, trailName, pace)
-  }, [selectedLine, spurs, pois, units, trailName, pace])
+    return buildLineDetail(
+      selectedLine,
+      spurs,
+      pois,
+      units,
+      trailName,
+      pace,
+      trailSources,
+    )
+  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources])
 
   const clubDetail: ClubDetail | null = useMemo(() => {
     if (!belowSeam || selectedLine === null || trailIndex === null) return null
@@ -172,10 +196,35 @@ export function useTappedLinePanel({
         clubDetail !== null ? (
           <ClubSheet detail={clubDetail} onClose={() => setSelectedLine(null)} />
         ) : lineDetail === null ? null : (
-          <LineSheet detail={lineDetail} onClose={() => setSelectedLine(null)} />
+          <LineSheet
+            detail={lineDetail}
+            onClose={() => setSelectedLine(null)}
+            // The tapped point is already snapped to the line by
+            // map/lineTaps.ts, so what goes to the builder is a place on a
+            // trail rather than wherever the thumb landed.
+            onAddToDayHike={
+              onStartDayHikeAt !== undefined && selectedLine !== null
+                ? () => {
+                    onStartDayHikeAt({
+                      lon: selectedLine.at[0],
+                      lat: selectedLine.at[1],
+                    })
+                    setSelectedLine(null)
+                  }
+                : undefined
+            }
+          />
         ),
     }),
-    [handleSelectLine, handleSelectHighlight, highlightDetail, clubDetail, lineDetail],
+    [
+      handleSelectLine,
+      handleSelectHighlight,
+      highlightDetail,
+      clubDetail,
+      lineDetail,
+      selectedLine,
+      onStartDayHikeAt,
+    ],
   )
 
   return { mapScreen }

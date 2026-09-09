@@ -34,7 +34,14 @@
 // exactly as before; this is a reconciliation on top, and an offline device,
 // an unconfigured build and a signed-out hiker are all silent no-ops.
 
-import { syncTrips, type SyncedTripRow, type TripUpload } from './api'
+import {
+  syncTrips,
+  type LongHikeUpload,
+  type SyncedLongHikeRow,
+  type SyncedTripRow,
+  type TripUpload,
+} from './api'
+import { validateHike, type Hike } from './hikes'
 import { adoptPlannedHike, loadPlannedHike, type PlannedHike } from './plannedHike'
 import {
   forgetTripSync,
@@ -44,6 +51,7 @@ import {
 } from './tripSyncState'
 import {
   adoptTrips,
+  setActiveHike,
   loadTrips,
   validateTripStore,
   type Trip,
@@ -110,13 +118,119 @@ export function uploadsFor(store: TripStore, state: TripSyncState): TripUpload[]
   return [...edits, ...tombstones]
 }
 
-/** A row the server sent, as a `Trip` this build can hold - or null when it
- *  cannot. A trip written by a newer build is dropped rather than rendered:
- *  `validateTripStore` refuses per trip for exactly this reason, so one
- *  unreadable trip is not every trip. */
+/**
+ * The long hikes this device has to offer (#1317).
+ *
+ * `uploadsFor`'s twin, and it shares the one rule worth restating: a hike
+ * marked dirty with nothing behind it in the store is NOT sent as a
+ * deletion. An upload with no document reads as a forget the hiker never
+ * performed, and the ledger and the store can legitimately disagree after a
+ * half-written save.
+ */
+export function hikeUploadsFor(store: TripStore, state: TripSyncState): LongHikeUpload[] {
+  const byId = new Map(store.hikes.map((hike) => [hike.id, hike]))
+  const forgotten = new Set(state.hikesDeleted)
+
+  const edits = state.hikesDirty
+    // Dirty and forgotten is a hike the hiker edited and then binned. The
+    // forget is the later act and the one that travels.
+    .filter((id) => !forgotten.has(id))
+    .flatMap((id) => {
+      const hike = byId.get(id)
+      if (hike === undefined) return []
+      return [
+        {
+          id,
+          document: hike as unknown,
+          base_updated_at: state.hikesSeen[id] ?? null,
+          deleted: false,
+        },
+      ]
+    })
+
+  const tombstones = state.hikesDeleted.map((id) => ({
+    id,
+    document: null,
+    base_updated_at: state.hikesSeen[id] ?? null,
+    deleted: true,
+  }))
+
+  return [...edits, ...tombstones]
+}
+
+/** The long hike a server row carries, identified by the ROW - `tripFrom`'s
+ *  rule, for the reason that function's header gives at length. A hike whose
+ *  document this build cannot read is skipped rather than dropping the
+ *  store. */
+function hikeFrom(row: SyncedLongHikeRow): Hike | null {
+  const hike = validateHike(row.document)
+  if (hike === null) return null
+  return hike.id === row.id ? hike : { ...hike, id: row.id }
+}
+
+/**
+ * Fold the long hikes the server sent into the store this device holds.
+ *
+ * `mergeServerTrips`' three rules exactly - tombstone removes, unknown row
+ * is added, known row is replaced - with one addition this collection needs
+ * and trips do not: **a pointer at a hike that just went away is released.**
+ * Leaving it would put the app in a long-hike state naming a hike the hiker
+ * forgot on their other device, which is `removeHike`'s own guarantee
+ * arriving from somewhere else.
+ */
+export function mergeServerHikes(
+  store: TripStore,
+  rows: readonly SyncedLongHikeRow[],
+): TripStore {
+  let hikes = store.hikes
+
+  for (const row of rows) {
+    if (row.deleted_at !== null) {
+      hikes = hikes.filter((hike) => hike.id !== row.id)
+      continue
+    }
+    const incoming = hikeFrom(row)
+    if (incoming === null) continue
+
+    const at = hikes.findIndex((hike) => hike.id === row.id)
+    hikes =
+      at === -1 ? [...hikes, incoming] : hikes.map((h, i) => (i === at ? incoming : h))
+  }
+
+  if (hikes === store.hikes) return store
+
+  const live = new Set(hikes.map((hike) => hike.id))
+  return {
+    ...store,
+    hikes,
+    activeHikeId:
+      store.activeHikeId !== null && live.has(store.activeHikeId)
+        ? store.activeHikeId
+        : null,
+  }
+}
+
+/**
+ * The record a server row carries, identified by the ROW.
+ *
+ * The document carries its own `id` and normally the two agree - an upload
+ * sends `{id, document}` minted together on the phone. They disagree in
+ * exactly one case, and it is the case that matters: a conflict copy, which
+ * the server writes under a fresh row id to keep beside the record it lost
+ * to. A copy whose document still said the original's id landed on top of
+ * the very trip it was created to preserve (#1036).
+ *
+ * The server is the one that mints a copy's identity, so it is fixed there
+ * too - `trip_sync.document_for_copy` now sets both. This is the belt: a
+ * phone talking to a server that has not been redeployed yet still keeps
+ * both records rather than silently collapsing them, and the row id is the
+ * identity the server files the record under either way.
+ */
 function tripFrom(row: SyncedTripRow): Trip | null {
   const store = validateTripStore({ trips: [row.document], openId: null })
-  return store?.trips[0] ?? null
+  const record = store?.trips[0]
+  if (record === undefined) return null
+  return record.id === row.id ? record : { ...record, id: row.id }
 }
 
 /**
@@ -225,9 +339,26 @@ export async function syncTripsWithAccount(): Promise<TripStore | null> {
     const state = await tripSyncState()
     const hike = await loadPlannedHike()
 
+    const uploads = uploadsFor(store, state)
+    const hikeUploads = hikeUploadsFor(store, state)
+
     const response = await syncTrips({
       since: state.since,
-      trips: uploadsFor(store, state),
+      trips: uploads,
+      // Omitted when there is nothing to say, which keeps the request
+      // identical to a pre-#1317 build's for a device with no long hikes.
+      ...(hikeUploads.length === 0 ? {} : { hikes: hikeUploads }),
+      // Sent only when this device changed it, so a device that has never
+      // been in a long hike cannot clear the one the hiker is on elsewhere.
+      // Omission and a null `hike_id` are different claims.
+      ...(state.activeHikeDirty
+        ? {
+            active_hike: {
+              hike_id: store.activeHikeId,
+              base_updated_at: state.activeHikeSeen,
+            },
+          }
+        : {}),
       // Sent only when this device has something to say, so a device that
       // has never had a planned hike cannot wipe the one the hiker set on
       // another. Omission and "both miles null" are different claims.
@@ -252,17 +383,85 @@ export async function syncTripsWithAccount(): Promise<TripStore | null> {
       response.now,
       stampsAfter(state, response.trips),
       response.hike?.updated_at ?? null,
+      // Only what actually went out (#1040). The hiker keeps using the app
+      // while the request is in the air, and anything they changed since
+      // this snapshot has not been sent by anybody.
+      {
+        dirty: uploads.filter((upload) => !upload.deleted).map((upload) => upload.id),
+        deleted: uploads.filter((upload) => upload.deleted).map((upload) => upload.id),
+        hikesDirty: hikeUploads
+          .filter((upload) => !upload.deleted)
+          .map((upload) => upload.id),
+        hikesDeleted: hikeUploads
+          .filter((upload) => upload.deleted)
+          .map((upload) => upload.id),
+      },
+      {
+        seen: hikeStampsAfter(state, response.hikes ?? []),
+        activeHikeSeen: response.active_hike?.updated_at ?? null,
+        activeHikeSent: state.activeHikeDirty,
+      },
     )
     await applyHike(response.hike)
 
-    const merged = mergeServerTrips(store, response.trips)
-    if (merged === store) return null
+    // RE-READ, rather than merging into the snapshot taken before the
+    // request (#1040). `store` is what this device held when the request
+    // left; writing a merge built on it back to disk discarded every edit
+    // made while it was in the air. Measured: with any row at all coming
+    // back, a trip renamed mid-flight reverted to its old name and the
+    // rename was gone from the device as well as from the account.
+    const current = await loadTrips()
+    const withTrips = mergeServerTrips(current, response.trips)
+    const withHikes = mergeServerHikes(withTrips, response.hikes ?? [])
+    // The pointer LAST, so it is applied against the hikes this exchange
+    // just merged rather than the ones that were here before them - a
+    // pointer at a hike arriving in the same response would otherwise be
+    // refused for naming a hike the store did not yet have.
+    const merged = applyActiveHike(withHikes, response.active_hike ?? null)
+    if (merged === current) return null
     await adoptTrips(merged)
     return merged
   } catch (error) {
     if (!isOrdinarySilence(error)) reportSyncFailure(error)
     return null
   }
+}
+
+/**
+ * The pointer the account holds, applied to the store.
+ *
+ * Refused rather than corrected when it names a hike this device does not
+ * have or cannot walk, which is `setActiveHike`'s rule reached from the
+ * other direction: the app must not enter a long hike naming something it
+ * cannot show. The next sync brings the hike, and the pointer lands then.
+ */
+export function applyActiveHike(
+  store: TripStore,
+  active: { hike_id: string | null } | null,
+): TripStore {
+  // A server that predates #1317, or an account nobody has ever set this on.
+  // Saying nothing is not the same as saying null, so nothing changes.
+  if (active === null) return store
+  if (active.hike_id === null) {
+    return store.activeHikeId === null ? store : { ...store, activeHikeId: null }
+  }
+  const next = setActiveHike(store, active.hike_id)
+  return next.activeHikeId === store.activeHikeId ? store : next
+}
+
+/** `stampsAfter` for the long hikes. Same rule: a stamp for a hike that is
+ *  gone everywhere is a row this ledger would carry for ever. */
+export function hikeStampsAfter(
+  state: TripSyncState,
+  rows: readonly SyncedLongHikeRow[],
+): Record<string, string> {
+  const seen = { ...state.hikesSeen }
+  for (const row of rows) {
+    if (row.deleted_at !== null) delete seen[row.id]
+    else seen[row.id] = row.updated_at
+  }
+  for (const id of state.hikesDeleted) delete seen[id]
+  return seen
 }
 
 export type { PlannedHike }

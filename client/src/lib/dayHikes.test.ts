@@ -26,12 +26,18 @@ vi.mock('idb-keyval', () => {
 import * as idb from 'idb-keyval'
 import {
   DAY_HIKES_KEY,
+  distinctLegSources,
   EMPTY_DAY_HIKES,
   adoptDayHikes,
   clearDayHikes,
   loadDayHikes,
+  logWalk,
+  MAX_NOTE_CHARS,
+  MAX_WALKS,
   saveDayHikes,
+  savedFromSource,
   validateDayHikeStore,
+  walkedDates,
   type DayHike,
   type DayHikeStore,
 } from './dayHikes'
@@ -59,6 +65,7 @@ function hike(id = 'hike-1', over: Partial<DayHike> = {}): DayHike {
     },
     looped: false,
     recorded: 'planned',
+    note: '',
     ...over,
   }
 }
@@ -225,6 +232,124 @@ describe('validateDayHikeStore', () => {
     expect(validated?.hikes[0].segments).toEqual(gapped.segments)
   })
 
+  describe('the cached climb (#1045, 2026-08-27)', () => {
+    it('tells "never asked" from "asked and could not price"', () => {
+      // The distinction the optional field exists for. A hike saved before
+      // the field existed has no key; one the graph could not price has an
+      // explicit null. A screen that showed both as "no climb data" would be
+      // reporting a limit of the artifact where the truth is a limit of the
+      // record - and only one of the two is fixed by re-resolving.
+      const never = validateDayHikeStore({
+        hikes: [hike('older', { figures: { miles: 3, legs: [] } })],
+        openId: null,
+      })
+      const unpriceable = validateDayHikeStore({
+        hikes: [hike('unpriced', { figures: { miles: 3, legs: [], climb: null } })],
+        openId: null,
+      })
+
+      expect(never?.hikes[0].figures).not.toHaveProperty('climb')
+      expect(unpriceable?.hikes[0].figures.climb).toBeNull()
+    })
+
+    it('keeps a climb it can trust', () => {
+      const validated = validateDayHikeStore({
+        hikes: [
+          hike('priced', {
+            figures: { miles: 3, legs: [], climb: { gainFt: 1240, lossFt: 1240 } },
+          }),
+        ],
+        openId: null,
+      })
+
+      expect(validated?.hikes[0].figures.climb).toEqual({ gainFt: 1240, lossFt: 1240 })
+    })
+
+    it('reads a junk climb as never-asked, and keeps the hike', () => {
+      // Sanitise rather than refuse, per this module's rule: a climb carries
+      // no invariant the rest of the record's arithmetic depends on, so junk
+      // costs the field and never the walk. Reading it as `undefined` rather
+      // than `null` is the weaker of the two true statements - the record
+      // does not tell us, rather than the graph could not say.
+      const junk: unknown[] = [
+        { gainFt: 'lots' },
+        { gainFt: -5, lossFt: 2 },
+        'up',
+        12,
+        NaN,
+      ]
+      for (const climb of junk) {
+        // Cast at the boundary rather than in the fixture helper: what
+        // arrives here really is unknown - it came off a disk or a sync row -
+        // and typing the input would be testing the compiler's opinion of the
+        // shape instead of the validator's handling of a bad one.
+        const validated = validateDayHikeStore({
+          hikes: [{ ...hike('junk'), figures: { miles: 3, legs: [], climb } }],
+          openId: null,
+        })
+
+        expect(validated?.hikes[0].figures.miles).toBe(3)
+        expect(validated?.hikes[0].figures).not.toHaveProperty('climb')
+      }
+    })
+  })
+
+  it('drops a stretch of one end rather than leaving the hike unresolvable', () => {
+    // The lesser of two bad answers. lib/dayHikeCard.ts needs two ends to
+    // route anything, so keeping a one-end stretch would make the whole hike
+    // print its cache for ever with no re-download able to fix it. Losing a
+    // stretch that describes a place rather than a walk is the cheaper loss.
+    const validated = validateDayHikeStore({
+      hikes: [
+        hike('stranded', {
+          segments: [
+            [
+              { coord: [-73.98, 41.31], poiId: null },
+              { coord: [-73.97, 41.32], poiId: null },
+            ],
+            [{ coord: [-73.95, 41.33], poiId: null }],
+          ],
+        }),
+      ],
+      openId: null,
+    })
+
+    expect(validated?.hikes[0].segments).toHaveLength(1)
+    expect(validated?.hikes[0].segments[0]).toHaveLength(2)
+  })
+
+  it('drops the hike when every stretch of it is one end', () => {
+    const validated = validateDayHikeStore({
+      hikes: [
+        hike('nothing-walkable', {
+          segments: [[{ coord: [-73.95, 41.33], poiId: null }]],
+        }),
+      ],
+      openId: null,
+    })
+
+    expect(validated?.hikes).toHaveLength(0)
+  })
+
+  it("keeps the hiker's own line, and caps it rather than refusing it (#982)", () => {
+    // Trimmed because this record syncs, and a field with no cap is a field
+    // somebody can paste a book into. Junk reads as the empty note, per this
+    // module's sanitise-rather-refuse rule.
+    const long = 'x'.repeat(900)
+    const validated = validateDayHikeStore({
+      hikes: [
+        { ...hike('with-a-note'), note: 'Blueberries on the open rock.' },
+        { ...hike('too-long'), note: long },
+        { ...hike('junk-note'), note: { not: 'a string' } },
+      ],
+      openId: null,
+    })
+
+    expect(validated?.hikes[0].note).toBe('Blueberries on the open rock.')
+    expect(validated?.hikes[1].note).toHaveLength(MAX_NOTE_CHARS)
+    expect(validated?.hikes[2].note).toBe('')
+  })
+
   it('drops a junk figures leg, and only that leg', () => {
     const validated = validateDayHikeStore({
       hikes: [
@@ -265,6 +390,43 @@ describe('validateDayHikeStore', () => {
     })
 
     expect(validated?.hikes[0].figures).toEqual({ miles: 3.4, legs: [] })
+  })
+
+  it('keeps a leg’s concurrent organizations, dropping only the junk entries (#1115)', () => {
+    const validated = validateDayHikeStore({
+      hikes: [
+        {
+          ...hike('concurrent'),
+          figures: {
+            miles: 3,
+            legs: [
+              {
+                name: 'Long Path',
+                source: 'nynjtc_long_path',
+                blaze_color: 'aqua',
+                miles: 3,
+                concurrent_sources: ['oprhp_trails', 42, null],
+              },
+              // Absent stays absent - a record from before the field existed
+              // round-trips as the object it went in as, like `climb`.
+              {
+                name: 'Kakiat Trail',
+                source: 'oprhp_trails',
+                blaze_color: null,
+                miles: 1,
+              },
+            ],
+          },
+        },
+      ],
+      openId: null,
+    })
+    const legs = validated?.hikes[0].figures.legs
+
+    expect(legs?.[0].concurrent_sources).toEqual(['oprhp_trails'])
+    expect(legs?.[1]).not.toHaveProperty('concurrent_sources')
+    // And the credit helper reads them: one walk, both organizations.
+    expect(distinctLegSources(legs ?? [])).toEqual(['nynjtc_long_path', 'oprhp_trails'])
   })
 
   it('repairs an openId pointing at a vanished hike to null, not to another hike', () => {
@@ -339,6 +501,33 @@ describe('the ledger a save writes, and the one it must never touch', () => {
     expect(state.dirty).not.toContain('b')
   })
 
+  it('never tombstones a hike this build simply could not read (#1040)', async () => {
+    // The failure this pins is total and silent: loadDayHikes drops a record
+    // a newer build wrote, the save diffed that against the RAW document,
+    // and the difference travelled as a delete - taking somebody's walk off
+    // the account and every other device. Nobody performed a delete; an
+    // older phone just could not parse one.
+    const future = {
+      id: 'from-a-newer-build',
+      name: 'Someone else’s walk',
+      date: null,
+      // A segment shape this build has no reader for.
+      segments: [[{ waypointRef: 'atlas:7', poiId: null }]],
+      figures: { miles: 9.1, legs: [] },
+      looped: false,
+      recorded: 'planned',
+      note: '',
+    }
+    await idb.set(DAY_HIKES_KEY, { hikes: [hike('a'), future], openId: null })
+
+    // Any ordinary save, by a hiker who never touched the unreadable one.
+    await saveDayHikes(storeWith(hike('a')))
+
+    const state = await dayHikeSyncState()
+    expect(state.deleted).toEqual([])
+    expect(state.deleted).not.toContain('from-a-newer-build')
+  })
+
   it('never records a deletion off a read that came back empty', async () => {
     // The store was never written, so there is no before - and an absent
     // document must not read as "everything was deleted".
@@ -376,5 +565,124 @@ describe('clearDayHikes', () => {
     expect(store.get(DAY_HIKES_KEY)).toBeUndefined()
     expect(await loadDayHikes()).toEqual(EMPTY_DAY_HIKES)
     expect((await dayHikeSyncState()).deleted).toEqual(['a', 'b'])
+  })
+})
+
+describe('one record, many walked dates (#1290)', () => {
+  const walked = (walks: unknown): DayHike =>
+    validateDayHikeStore({ hikes: [{ ...hike('w'), walks }], openId: null })!.hikes[0]
+
+  it('keeps every readable walk, newest first', () => {
+    const saved = walked([
+      { date: '2026-03-14', note: 'mud to the knees' },
+      { date: '2026-08-02', note: '' },
+      { date: '2026-05-20', note: '' },
+    ])
+
+    expect(walkedDates(saved)).toEqual(['2026-08-02', '2026-05-20', '2026-03-14'])
+    expect(saved.walks![2].note).toBe('mud to the knees')
+  })
+
+  it('drops an unreadable walk and keeps the rest, because eleven outings must not become none', () => {
+    const saved = walked([
+      { date: '2026-03-14' },
+      { date: 'last Tuesday' },
+      { note: 'no date at all' },
+      null,
+      { date: '2026-05-20' },
+    ])
+
+    expect(walkedDates(saved)).toEqual(['2026-05-20', '2026-03-14'])
+  })
+
+  it('reads no walks as the field being absent, never as an empty list', () => {
+    expect(walked([])).not.toHaveProperty('walks')
+    expect(walked('every Sunday')).not.toHaveProperty('walks')
+  })
+
+  it('keeps one walk per date, because two logs of one day is a double tap', () => {
+    const saved = walked([
+      { date: '2026-03-14', note: 'first' },
+      { date: '2026-03-14', note: 'second' },
+    ])
+
+    expect(saved.walks).toHaveLength(1)
+    expect(saved.walks![0].note).toBe('first')
+  })
+
+  it('caps the list from the old end, so the recent walks are the ones kept', () => {
+    const many = Array.from({ length: MAX_WALKS + 20 }, (_, i) => ({
+      date: `${2000 + Math.floor(i / 300)}-01-${String((i % 28) + 1).padStart(2, '0')}`,
+      note: '',
+    }))
+    const saved = walked(many)
+
+    expect(saved.walks!.length).toBeLessThanOrEqual(MAX_WALKS)
+    expect(saved.walks![0].date > saved.walks!.at(-1)!.date).toBe(true)
+  })
+
+  it('caps a walk note the same way the record own note is capped', () => {
+    const saved = walked([{ date: '2026-03-14', note: 'x'.repeat(MAX_NOTE_CHARS + 50) }])
+
+    expect(saved.walks![0].note).toHaveLength(MAX_NOTE_CHARS)
+  })
+
+  it('logs a walk onto a hike, and a second tap on the same date changes nothing', () => {
+    const once = logWalk(hike('l'), '2026-03-14', 'good day')
+    const twice = logWalk(once, '2026-03-14', 'again')
+
+    expect(walkedDates(once)).toEqual(['2026-03-14'])
+    expect(twice.walks).toEqual(once.walks)
+  })
+
+  it('refuses to log a date it cannot read, rather than inventing one', () => {
+    const bare = hike('r')
+
+    expect(logWalk(bare, 'yesterday')).toBe(bare)
+  })
+
+  it('leaves recorded alone, because a plan walked twice is still a plan', () => {
+    const saved = logWalk(hike('p', { recorded: 'planned' }), '2026-03-14')
+
+    expect(saved.recorded).toBe('planned')
+    expect(walkedDates(saved)).toEqual(['2026-03-14'])
+  })
+
+  it('round-trips a record that predates the field, byte for byte', () => {
+    const before = hike('old')
+    const after = validateDayHikeStore({ hikes: [before], openId: null })!.hikes[0]
+
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before))
+  })
+})
+
+describe('finding the hike a published route was already saved as (#1290)', () => {
+  const saved = (sourceId: unknown): DayHike =>
+    validateDayHikeStore({ hikes: [{ ...hike('s'), sourceId }], openId: null })!.hikes[0]
+
+  it('keeps a source id and finds the record by it', () => {
+    const one = saved('nynjtc_favorite_hikes:hike-vista-loop-trail')
+
+    expect(one.sourceId).toBe('nynjtc_favorite_hikes:hike-vista-loop-trail')
+    expect(savedFromSource([one], 'nynjtc_favorite_hikes:hike-vista-loop-trail')).toBe(
+      one,
+    )
+  })
+
+  it('finds nothing for a route never saved, so the caller saves a new one', () => {
+    expect(
+      savedFromSource([saved('nynjtc_favorite_hikes:a')], 'nynjtc_favorite_hikes:b'),
+    ).toBeUndefined()
+  })
+
+  it('leaves the field absent on a hike the hiker built themselves', () => {
+    expect(saved(undefined)).not.toHaveProperty('sourceId')
+    expect(saved('')).not.toHaveProperty('sourceId')
+  })
+
+  it('matches on the source id alone, never on a name the hiker may have changed', () => {
+    const renamed = { ...saved('nynjtc_favorite_hikes:x'), name: 'My Saturday loop' }
+
+    expect(savedFromSource([renamed], 'nynjtc_favorite_hikes:x')).toBe(renamed)
   })
 })

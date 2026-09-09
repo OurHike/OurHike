@@ -155,13 +155,28 @@ describe('offering only what is actually published', () => {
     expect(offeredPackages(USGS_SHEET)).toContain(CORRIDOR_BACKGROUND_PACKAGE)
   })
 
-  it('gives every offered package a size, with no null to branch on', () => {
-    // The point of OfferedPackage: a package that can be downloaded always
-    // has a measured size, so nothing downstream needs a "size unknown" path
-    // it could get wrong.
+  it('gives every offered package a size once the manifest has landed', () => {
+    // The invariant this test used to assert - every offered package always
+    // has a size, no null to branch on - stopped being true at #1167 and was
+    // worth losing. The hiking sheet's constants had drifted up to 34.7%, so
+    // "always has a number" was only ever "always has A number".
+    //
+    // What replaces it is the same guarantee conditioned on the one source
+    // that can honour it: given the bucket's own measurements, nothing is
+    // unpriced. Every offered package resolves, so a phone with signal still
+    // needs no "size unknown" path.
+    const published = Object.fromEntries(
+      offeredSheets().flatMap((sheet) =>
+        offeredPackages(sheet).map((pkg) => [
+          packageArtifactKey(pkg, 'standard', 'fine'),
+          4_096,
+        ]),
+      ),
+    )
+
     for (const sheet of offeredSheets()) {
       for (const pkg of offeredPackages(sheet)) {
-        expect(packageSizeBytes(pkg, 'standard', 'fine')).toBeGreaterThan(0)
+        expect(packageSizeBytes(pkg, 'standard', 'fine', published)).toBeGreaterThan(0)
       }
     }
   })
@@ -270,22 +285,97 @@ describe('what a sheet will cost', () => {
     expect(packageSizeBytes(PUBLISHED_ELSEWHERE, 'standard', 'standard')).toBe(12_345)
   })
 
-  it('follows the hiking level for the leveled basemap, exactly as published', () => {
-    for (const level of ['standard', 'fine'] as const) {
+  it('answers null for a leveled package the manifest has not priced (#1167)', () => {
+    // The hiking sheet carries no constants any more, so with no manifest
+    // there is genuinely nothing to say. Null rather than a stale literal is
+    // the whole change: the figure a hiker weighs against their storage is
+    // either measured or withheld.
+    for (const level of ['light', 'standard', 'fine'] as const) {
       expect(packageSizeBytes(BASEMAP_PACKAGE as OfferedPackage, 'light', level)).toBe(
-        getHikingDetail(level).basemapSizeBytes,
+        null,
       )
     }
   })
 
+  it('answers the manifest’s figure for a leveled package wherever it has one', () => {
+    // And the other half: given the bucket's own measurement, that is what
+    // comes back. This is the path a phone with signal always takes.
+    const level = 'standard' as const
+    const key = packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'light', level)
+
+    expect(
+      packageSizeBytes(BASEMAP_PACKAGE as OfferedPackage, 'light', level, {
+        [key]: 123_456_789,
+      }),
+    ).toBe(123_456_789)
+  })
+
   it('composes the hiking sheet’s total per level (#276)', () => {
-    // What the sheet's picker shows: the level's basemap cut plus the DEM,
-    // which never changes across levels.
-    for (const level of ['standard', 'fine'] as const) {
-      expect(hikingSheetSizeBytes(level)).toBe(
-        getHikingDetail(level).basemapSizeBytes + 607_265_661,
+    // What the sheet's picker shows: the level's basemap cut plus its DEM.
+    // The DEM became per-level with #1088 - the corridor tapers harder at
+    // Light - so this sums the level's own two artifacts rather than adding a
+    // constant, which is the thing that would silently stop being true.
+    //
+    // Light is in this loop since #1107 and is the level that would catch the
+    // regression: it is the only one whose basemap AND DEM both differ from
+    // every other rung's, so a resolver that fell back to Standard's pair
+    // would still look right on Fine.
+    for (const level of ['light', 'standard', 'fine'] as const) {
+      const detail = getHikingDetail(level)
+      const published = {
+        [packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'light', level)]: 1_000,
+        [packageArtifactKey(DEM_PACKAGE as OfferedPackage, 'light', level)]: 20_000,
+      }
+
+      // Priced from the manifest, which is the only source since #1167 - and
+      // keyed per level, so a resolver that fell back to Standard's pair
+      // would read the wrong key rather than the wrong constant.
+      expect(hikingSheetSizeBytes(level, published)).toBe(21_000)
+      expect(detail.artifact).toBeTruthy()
+    }
+  })
+
+  it('withholds the sheet total when any one archive is unpriced', () => {
+    // All or nothing. A total that quietly omitted the archive nobody had
+    // measured would understate it, which is the direction that strands
+    // somebody who freed exactly enough room.
+    const level = 'standard' as const
+    const onlyBasemap = {
+      [packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'light', level)]: 1_000,
+    }
+
+    expect(hikingSheetSizeBytes(level, onlyBasemap)).toBe(null)
+  })
+
+  it('resolves each leveled package to its own artifact, not the other one', () => {
+    // The 'of' discriminant earns its place here: both packages are leveled
+    // now, so a resolver that keyed off the kind alone would hand the DEM's
+    // download the basemap's key - the right hash against the wrong bytes.
+    for (const level of ['light', 'standard', 'fine'] as const) {
+      const detail = getHikingDetail(level)
+      expect(
+        packageArtifactKey(BASEMAP_PACKAGE as OfferedPackage, 'standard', level),
+      ).toBe(detail.artifact)
+      expect(packageArtifactKey(DEM_PACKAGE as OfferedPackage, 'standard', level)).toBe(
+        detail.demArtifact,
       )
     }
+  })
+
+  it('refuses to price a level whose artifact nobody has published', () => {
+    // packages.ts's own memory: "the app was offering a Light tier that did
+    // not exist". A level with no published size has no honest cost, and a NaN
+    // in the remaining-storage sum is exactly the silent wrong number that
+    // rule exists to prevent.
+    //
+    // WAS a throw, and is now a null (#1167). The old test blanked a level's
+    // size to prove `packageSizeBytes` refused to invent one; there is no
+    // size to blank any more, and refusing loudly was only ever right when a
+    // missing figure meant a catalog bug. Unpriced is now an ordinary state -
+    // no manifest yet - so the answer is null and the picker says so.
+    expect(packageSizeBytes(DEM_PACKAGE as OfferedPackage, 'standard', 'light')).toBe(
+      null,
+    )
   })
 
   it('sums every archive the sheet is made of', () => {

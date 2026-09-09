@@ -140,7 +140,10 @@ const PREPARING_NOTE =
   'would stop the map too, and finding that out here costs no data worth ' +
   'counting. The map starts the moment it lands.'
 
-function formatDay(date: Date): string {
+/** Exported for More's storage card, which reports the same completion the
+ *  cards here do - one formatter, so the two can never date one download two
+ *  ways. */
+export function formatDay(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
 }
 

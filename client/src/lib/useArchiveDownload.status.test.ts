@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, renderHook, waitFor } from '@testing-library/react'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 import { useArchiveDownload } from './useArchiveDownload'
 import { recordCompleted } from './storageHealth'
 import {
@@ -30,6 +30,7 @@ import { CORRIDOR_ARCHIVE_KEY } from '../map/pmtilesSource'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -234,6 +235,12 @@ describe('useArchiveDownload running a download', () => {
       Promise.resolve(
         key === CORRIDOR_ARCHIVE_KEY ? new Blob(['y'.repeat(64)]) : undefined,
       ),
+    )
+    // `getMany` follows whatever `get` is doing right now, so #1303's one
+    // transaction in lib/trailData.ts reads this file's store like every other
+    // read, and a test that re-points `get` need not re-point both.
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
     )
     await act(async () => {
       await result.current.start()

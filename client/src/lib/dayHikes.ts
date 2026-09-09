@@ -38,6 +38,7 @@
 
 import { del, get, set } from 'idb-keyval'
 import { recordDayHikeEdits } from './dayHikeSyncState'
+import type { RouteClimb } from './trailGraph'
 
 export const DAY_HIKES_KEY = 'ourhike:day-hikes'
 
@@ -75,6 +76,31 @@ export interface DayHikeLeg {
   source: string | null
   blaze_color: string | null
   miles: number
+  /**
+   * RouteLeg's `concurrent_sources`, cached for the same reason the rest of
+   * the leg is: the credit surfaces may only have this record to read, and a
+   * leg that folded a second organization's designation into one row (#1115)
+   * still owes that organization its place in the count. Omitted when empty,
+   * like `climb` below, so older records round-trip unchanged.
+   */
+  concurrent_sources?: string[]
+}
+
+/**
+ * Every organization a set of legs stands on, for the credit surfaces: each
+ * leg's own source plus the concurrent ones a merged designation folded in
+ * (#1115). Works on live RouteLegs and cached DayHikeLegs alike - the two
+ * spell these fields the same way.
+ */
+export function distinctLegSources(
+  legs: Array<{ source: string | null; concurrent_sources?: string[] }>,
+): string[] {
+  const sources = new Set<string>()
+  for (const leg of legs) {
+    if (leg.source !== null) sources.add(leg.source)
+    for (const source of leg.concurrent_sources ?? []) sources.add(source)
+  }
+  return [...sources]
 }
 
 /**
@@ -89,7 +115,83 @@ export interface DayHikeLeg {
 export interface DayHikeFigures {
   miles: number
   legs: DayHikeLeg[]
+  /**
+   * The climb, or null when this walk has an edge nobody measured.
+   *
+   * ADDED 2026-08-27, on the maintainer's decision, and it is a stored-shape
+   * change rather than a nicety. features/HIKE_PLANNING.md had it as an open
+   * question: #1011 gave the network its climb without giving it to THIS
+   * record, so the two surfaces that may only read the cache - the day-hike
+   * list and the trailhead door - had miles and no ascent, and could not
+   * price a walk at all. The storyboard's "fits my time" sort needs the same
+   * field.
+   *
+   * NULL IS ALL OR NOTHING, exactly as {@link RouteClimb} is on the live
+   * resolution: a walk with one unmeasured edge caches no climb, because
+   * pricing that edge at zero ascent is a flat-ground claim about real ground
+   * and pricing only the measured edges understates by the same amount with a
+   * number attached. Both fail SHORT, which is the direction that gets
+   * somebody caught by the dark.
+   *
+   * ABSENT IS NOT NULL, and the difference is why this is optional rather
+   * than `RouteClimb | null`. A hike saved before this field existed has
+   * `undefined` here - the app never knew - while `null` means the app asked
+   * and the graph had no answer. A surface that showed "no climb data" for
+   * the first would be reporting a limit of the artifact when the truth is a
+   * limit of the record, and a re-resolution against a live graph fixes one
+   * and not the other.
+   */
+  climb?: RouteClimb | null
 }
+
+/** A stop as it is stored - see {@link DayHike.stops} for why so little. */
+export interface DayHikeStopRef {
+  poiId: string
+  /** `shelter` or `campsite` - lib/dayHikeStops.ts's STOPPABLE_TYPES. */
+  type: string
+  /** The name as it read when the hike was saved. */
+  name: string
+}
+
+/**
+ * One time the hiker actually walked this route (#1290).
+ *
+ * WHY A LIST RATHER THAN A SECOND RECORD, which is what the app did before
+ * and what the maintainer asked to change: "We need 1 record, with the
+ * ability to log multiple dates." Walking the same ground every few weeks is
+ * ordinary - it is what a local day-hiker mostly does - and the old shape
+ * had only `date`, singular, so a repeat walk was either a duplicate record
+ * with the same name or an overwrite that erased the previous one. Neither
+ * is what happened on the ground.
+ *
+ * A WALK IS NOT A RATING AND NOTHING COUNTS THEM. No surface totals them,
+ * compares them between hikers, or congratulates anybody on a number. #982
+ * settled that a screen about a walk somebody already finished is exactly
+ * where prescriptive gamification creeps in, and value #1 forbids it. The
+ * list exists so a hiker can look back at when they went, and so the app
+ * stops pretending the third walk was the first.
+ */
+export interface DayHikeWalk {
+  /** YYYY-MM-DD. Required, unlike a plan's date: a walk that happened
+   *  happened on a day, and an undated one would be indistinguishable from
+   *  the plan it sits under. */
+  date: string
+  /** The hiker's own line about THIS walk, or empty. Same rules and cap as
+   *  {@link DayHike.note} - which stays the record's own line, about the
+   *  route rather than about any one outing. */
+  note: string
+}
+
+/**
+ * How many walks one record keeps.
+ *
+ * Reasoned rather than measured, and generous on purpose: a hiker walking a
+ * local loop weekly reaches this after nine years. It exists only because
+ * the list rides the sync document, where an unbounded field is a slow leak
+ * rather than a bug anybody notices - the same reason `note` is capped. What
+ * would settle a smaller number: somebody actually filling one.
+ */
+export const MAX_WALKS = 500
 
 export interface DayHike {
   /** Client-minted uuid (crypto.randomUUID), like a trip's - the id the sync
@@ -100,11 +202,99 @@ export interface DayHike {
   date: string | null
   segments: DayHikeSegment[]
   figures: DayHikeFigures
+  /**
+   * The shelters and campsites the hiker picked as stops (#1194).
+   *
+   * OPTIONAL, AND ABSENT MEANS NONE WERE PICKED - not that the record
+   * predates stops, and the difference does not matter to anything that
+   * reads it: both come out as a walk with no stop rows. A hike stored
+   * before this field existed round-trips unchanged, which is the same
+   * degradation `concurrent_sources` on a leg already relies on.
+   *
+   * WHAT IS STORED IS THE STOP, NOT ITS POSITION. `mile` and
+   * `offCourseFeet` are derived from the walk (lib/dayHikeStops.ts) and are
+   * deliberately NOT cached here: they are facts about a route, and a route
+   * that is re-resolved against a newer data release should re-derive them
+   * rather than print last release's answer. The `poiId` is the record; the
+   * name rides along so a hike whose waypoint has since been retired can
+   * still say what the hiker planned around, the same reason a leg caches
+   * its trail name.
+   */
+  stops?: DayHikeStopRef[]
   /** Whether the hiker asked to walk back to the first tap. */
   looped: boolean
   /** Planned ahead, or recorded from a walk - provenance that changes what a
    *  screen may say, exactly as a trip's `recorded` flag does. */
   recorded: 'planned' | 'walked'
+  /**
+   * The one line the hiker writes themselves about a walk they did (#982).
+   *
+   * Empty string rather than null for an absent one, because there is no
+   * meaningful difference between "wrote nothing" and "has not written yet"
+   * on a note - and a nullable string would put that distinction in front of
+   * every reader for no gain.
+   *
+   * WHAT IT IS NOT. Not a field the app ever fills, suggests or completes,
+   * and not something any surface counts, scores or compares. #982 says
+   * plainly that a screen about a walk somebody already finished is exactly
+   * where prescriptive gamification would creep in, and value #1 forbids it.
+   * This is the hiker's sentence and the app's only job is to keep it.
+   */
+  note: string
+  /**
+   * Every time this route was walked, newest first (#1290).
+   *
+   * OPTIONAL, AND ABSENT MEANS NONE WERE LOGGED - never "never walked".
+   * A record saved before this field existed round-trips unchanged, the same
+   * degradation `stops` already relies on, and a hiker who simply does not
+   * log walks is not making a claim about what they have done.
+   *
+   * IT DOES NOT DUPLICATE `recorded`, and the two answer different
+   * questions. `recorded` is what this record IS - laid out as a plan, or
+   * written up afterwards - set once by the door the hiker came through.
+   * This is when they walked it, which a plan accumulates without ever
+   * ceasing to be a plan. That is the whole point for a route somebody
+   * walks again next month: it stays on the to-walk shelf and gains a date.
+   */
+  walks?: DayHikeWalk[]
+  /**
+   * The published route this was saved from - `<source key>:<slug>`, the id
+   * `suggested_hikes.json` carries (#1290).
+   *
+   * ABSENT ON A HIKE THE HIKER BUILT THEMSELVES, which is most of them, and
+   * that absence is the honest state rather than a gap.
+   *
+   * WHAT IT IS FOR: saving the same published route twice must find the
+   * record already there rather than mint a second uuid, which is what the
+   * builder does and what produced two identical rows. Identity has to be
+   * the PUBLISHER'S route rather than the walk's shape - two outings over
+   * mostly the same ground are genuinely different walks and a
+   * geometry comparison would merge them wrongly.
+   */
+  sourceId?: string
+  /**
+   * Who published that route, as their credit line read when it was saved
+   * (#1290) - "New York-New Jersey Trail Conference", "Guidebook route ·
+   * L. Adkins".
+   *
+   * ABSENT ON A HIKE THE HIKER BUILT, and always present beside a
+   * `sourceId`: a published route landing in somebody's own list with no
+   * publisher on it would be the app quietly presenting another
+   * organisation's work as the hiker's. Captured at save time rather than
+   * looked up on display, because the published document is a download that
+   * may be replaced, and a route withdrawn from it must not take its own
+   * credit off a record the hiker already holds.
+   *
+   * THE COMPOSED LINE RATHER THAN `{kind, name}`, and the trade is worth
+   * naming: `lib/suggestedHikes.ts`'s `authorLine` decides the wording, so a
+   * record saved today keeps today's wording if that function is ever
+   * reworded. The alternative was for this module - which the shell loads on
+   * every start - to depend on `suggestedHikes.ts` at RUNTIME for its author
+   * kinds, dragging the finder's whole module graph in behind it. Stale
+   * phrasing of a correct attribution is the smaller cost, and the name
+   * inside it, which is the part that matters, cannot go stale at all.
+   */
+  sourceAuthor?: string
 }
 
 export interface DayHikeStore {
@@ -118,6 +308,18 @@ export const EMPTY_DAY_HIKES: DayHikeStore = { hikes: [], openId: null }
 
 /** plan.ts's own date shape - dates are stored the same way everywhere. */
 const DATE_SHAPE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * How long the hiker's own line about a walk may be.
+ *
+ * @unvalidated - a ceiling, not a measurement, and it is about the STORE
+ * rather than about the writing: this record syncs, and a field with no cap
+ * is a field somebody can paste a book into. 500 characters is comfortably
+ * more than the one or two sentences #982 describes and comfortably less than
+ * anything that would make the document awkward. What would settle it is
+ * somebody actually filling one in.
+ */
+export const MAX_NOTE_CHARS = 500
 
 /**
  * An end, or null. Rebuilt field by field rather than passed through, which
@@ -146,8 +348,12 @@ function validEnd(candidate: unknown): DayHikeEnd | null {
  * reason is what the figures claim: a hike with an end silently dropped is a
  * DIFFERENT walk still wearing the old cached miles - a display outrunning
  * its source. Refusing the hike is honest; quietly rerouting it is not.
+ *
+ * Exported for lib/suggestedHikesData.ts, which reads a published route's
+ * ends through the same gate - so the CRITICAL rule above (no edgeIndex
+ * survives a load) has one home rather than a copy per record type.
  */
-function validSegments(candidate: unknown): DayHikeSegment[] | null {
+export function validSegments(candidate: unknown): DayHikeSegment[] | null {
   if (!Array.isArray(candidate) || candidate.length === 0) return null
   const segments: DayHikeSegment[] = []
   for (const entry of candidate) {
@@ -158,8 +364,18 @@ function validSegments(candidate: unknown): DayHikeSegment[] | null {
       if (end === null) return null
       ends.push(end)
     }
+    // A STRETCH OF ONE END IS NOT A STRETCH, and dropping it is the lesser of
+    // two bad answers rather than an obvious one. `lib/dayHikeCard.ts` needs
+    // two ends to route anything, so keeping a one-end stretch would leave the
+    // whole hike permanently unresolvable - it would print its cache for ever
+    // and no re-download could fix it, which is a worse outcome for the hiker
+    // than losing a stretch that describes a place rather than a walk. The
+    // builder cannot produce one (App.tsx filters on save), so this is about a
+    // record arriving over sync from some other client.
+    if (ends.length < 2) continue
     segments.push(ends)
   }
+  if (segments.length === 0) return null
   return segments
 }
 
@@ -187,15 +403,87 @@ function validFigures(candidate: unknown): DayHikeFigures | null {
       if (typeof legMiles !== 'number' || !Number.isFinite(legMiles) || legMiles < 0) {
         continue
       }
+      const concurrent = Array.isArray(leg.concurrent_sources)
+        ? leg.concurrent_sources.filter(
+            (source): source is string => typeof source === 'string',
+          )
+        : []
       legs.push({
         name: typeof leg.name === 'string' ? leg.name : null,
         source: typeof leg.source === 'string' ? leg.source : null,
         blaze_color: typeof leg.blaze_color === 'string' ? leg.blaze_color : null,
         miles: legMiles,
+        // Omitted when empty, like `climb` below and for the same round-trip
+        // reason.
+        ...(concurrent.length > 0 ? { concurrent_sources: concurrent } : {}),
       })
     }
   }
-  return { miles, legs }
+
+  const climb = validClimb(figures.climb)
+  // The key is omitted rather than set to undefined, so that a record written
+  // before the field existed round-trips as the same object it went in as -
+  // which is what lets `'climb' in figures` mean "the app has looked".
+  return climb === undefined ? { miles, legs } : { miles, legs, climb }
+}
+
+/**
+ * A cached climb, distinguishing all three states.
+ *
+ * `undefined` - the field was never written (a hike saved before it existed,
+ * or junk, which is treated the same way because the honest reading of junk
+ * here is "this record does not tell us").
+ * `null` - the app asked the graph and the graph could not price this walk.
+ * A pair - the figures, when both halves are finite and non-negative.
+ *
+ * Sanitising rather than refusing, per this file's own rule: a climb carries
+ * no invariant the rest of the record's arithmetic depends on, so a broken
+ * one costs the field and never the hike.
+ */
+export function validClimb(candidate: unknown): RouteClimb | null | undefined {
+  if (candidate === undefined) return undefined
+  if (candidate === null) return null
+  if (typeof candidate !== 'object') return undefined
+  const climb = candidate as Partial<RouteClimb>
+  const { gainFt, lossFt } = climb
+  if (typeof gainFt !== 'number' || !Number.isFinite(gainFt) || gainFt < 0)
+    return undefined
+  if (typeof lossFt !== 'number' || !Number.isFinite(lossFt) || lossFt < 0)
+    return undefined
+  return { gainFt, lossFt }
+}
+
+/**
+ * The stops, sanitised (#1194).
+ *
+ * Sanitising rather than refusing, per this file's rule: a stop carries no
+ * invariant the record's arithmetic depends on - it annotates a walk that
+ * was already decided (lib/dayHikeStops.ts) - so a broken entry costs that
+ * row and never the hike. `undefined` for a record with none, so a hike
+ * saved before stops existed round-trips byte for byte.
+ *
+ * A stop with no id is dropped rather than repaired: the id is what re-finds
+ * the waypoint, and a stop nothing can point at is a row that can never say
+ * where it is. Duplicates go the same way - the model is a SET, and two rows
+ * for one shelter would be two stops' worth of stopping time for one stop.
+ */
+function validStops(candidate: unknown): DayHikeStopRef[] | undefined {
+  if (!Array.isArray(candidate)) return undefined
+  const seen = new Set<string>()
+  const stops: DayHikeStopRef[] = []
+  for (const entry of candidate) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const stop = entry as Partial<DayHikeStopRef>
+    if (typeof stop.poiId !== 'string' || stop.poiId.length === 0) continue
+    if (seen.has(stop.poiId)) continue
+    seen.add(stop.poiId)
+    stops.push({
+      poiId: stop.poiId,
+      type: typeof stop.type === 'string' ? stop.type : '',
+      name: typeof stop.name === 'string' ? stop.name : '',
+    })
+  }
+  return stops.length > 0 ? stops : undefined
 }
 
 /**
@@ -209,6 +497,82 @@ function validFigures(candidate: unknown): DayHikeFigures | null {
  * invented one, which is why junk `recorded` reads as 'planned' - the one
  * value that invents no walk nobody took.
  */
+/**
+ * The walks on a record, newest first, or undefined when there are none to
+ * keep.
+ *
+ * JUNK COSTS THE ENTRY, NEVER THE HIKE - this module's rule applied one
+ * level down. An unreadable walk is dropped and the rest are kept, because a
+ * record of eleven outings should not become a record of none over one bad
+ * date. A walk with no readable date is exactly that: `date` is the whole
+ * point of the entry, so there is nothing left to keep.
+ *
+ * SORTED AND DEDUPLICATED ON THE WAY IN, so every reader sees one order and
+ * two logs of the same day cannot both stand. Two walks on one date is a
+ * double-tap, not a hiker who genuinely went twice before midnight - and if
+ * they did, the app has nothing true to say about which note belongs to
+ * which, so the first one loaded wins rather than the list growing a
+ * distinction it cannot support.
+ */
+function validWalks(candidate: unknown): DayHikeWalk[] | undefined {
+  if (!Array.isArray(candidate)) return undefined
+  const byDate = new Map<string, DayHikeWalk>()
+  for (const entry of candidate) {
+    if (typeof entry !== 'object' || entry === null) continue
+    const walk = entry as Partial<DayHikeWalk>
+    if (typeof walk.date !== 'string' || !DATE_SHAPE.test(walk.date)) continue
+    if (byDate.has(walk.date)) continue
+    byDate.set(walk.date, {
+      date: walk.date,
+      note: typeof walk.note === 'string' ? walk.note.slice(0, MAX_NOTE_CHARS) : '',
+    })
+  }
+  if (byDate.size === 0) return undefined
+  // Newest first, and capped from that end: if a record ever reaches the
+  // ceiling it is the oldest walks that fall off, because "when did I last
+  // do this" is the question a hiker asks and the recent end answers it.
+  return [...byDate.values()]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, MAX_WALKS)
+}
+
+/** Every date this route was walked, newest first - the list a card prints. */
+export function walkedDates(hike: DayHike): string[] {
+  return (hike.walks ?? []).map((walk) => walk.date)
+}
+
+/**
+ * The same hike with one more walk logged on it.
+ *
+ * Returns the hike UNCHANGED when that date is already logged, so a double
+ * tap costs nothing and no caller has to check first.
+ */
+export function logWalk(hike: DayHike, date: string, note = ''): DayHike {
+  if (!DATE_SHAPE.test(date)) return hike
+  // Already logged: return the hike itself, untouched. Appending would let
+  // validWalks' first-wins dedupe overwrite the line the hiker wrote on the
+  // first tap with the empty default of the second, which is the one thing
+  // this function must never do to a note (see DayHike.note).
+  if ((hike.walks ?? []).some((walk) => walk.date === date)) return hike
+  const walks = validWalks([{ date, note }, ...(hike.walks ?? [])])
+  return walks === undefined ? hike : { ...hike, walks }
+}
+
+/**
+ * The saved hike this published route was saved as, or undefined.
+ *
+ * Matched on `sourceId` alone. Deliberately NOT on name, which a hiker may
+ * rename, nor on the ends, which the phone re-resolves against whatever
+ * graph it holds - both would drift out from under the record they are meant
+ * to identify.
+ */
+export function savedFromSource(
+  hikes: readonly DayHike[],
+  sourceId: string,
+): DayHike | undefined {
+  return hikes.find((hike) => hike.sourceId === sourceId)
+}
+
 function validDayHike(candidate: unknown): DayHike | null {
   if (typeof candidate !== 'object' || candidate === null) return null
   const hike = candidate as Partial<DayHike>
@@ -225,8 +589,30 @@ function validDayHike(candidate: unknown): DayHike | null {
     date: typeof hike.date === 'string' && DATE_SHAPE.test(hike.date) ? hike.date : null,
     segments,
     figures,
+    // Spread so the key is ABSENT rather than `undefined` for a walk with no
+    // stops - the same omit-don't-write rule StoredPoi's optional fields
+    // follow, and what keeps a pre-#1194 record identical through a
+    // load-and-save round trip.
+    ...(validStops(hike.stops) !== undefined ? { stops: validStops(hike.stops) } : {}),
     looped: hike.looped === true,
     recorded: hike.recorded === 'walked' ? 'walked' : 'planned',
+    // Trimmed and capped, because this rides the sync exchange and a record
+    // is not the place to discover somebody pasted a book into it. Anything
+    // that is not a string is the empty note - the sanitise-rather-refuse
+    // rule this module states: a note carries no invariant the arithmetic
+    // depends on, so junk costs the field and never the walk.
+    note: typeof hike.note === 'string' ? hike.note.slice(0, MAX_NOTE_CHARS) : '',
+    // Both spread rather than written as `undefined`, the omit-don't-write
+    // rule `stops` above follows: a record from before either field existed
+    // has to survive a load-and-save round trip byte for byte, or every
+    // stored hike would upload as changed the first time this build ran.
+    ...(validWalks(hike.walks) !== undefined ? { walks: validWalks(hike.walks) } : {}),
+    ...(typeof hike.sourceId === 'string' && hike.sourceId.length > 0
+      ? { sourceId: hike.sourceId }
+      : {}),
+    ...(typeof hike.sourceAuthor === 'string' && hike.sourceAuthor.length > 0
+      ? { sourceAuthor: hike.sourceAuthor.slice(0, MAX_NOTE_CHARS) }
+      : {}),
   }
 }
 
@@ -266,11 +652,44 @@ export async function loadDayHikes(): Promise<DayHikeStore> {
   return validateDayHikeStore(stored) ?? EMPTY_DAY_HIKES
 }
 
-/** The raw stored hikes, for the ledger's before/after - guarded so a junk
- *  document costs the record of one save, never the save itself. */
+/** Every hike the stored document holds, readable or not - guarded so a junk
+ *  document costs the record of one save, never the save itself.
+ *
+ *  Used ONLY where the hiker has asked to delete everything, which is an act
+ *  rather than an inference: "forget every day hike" means the ones this
+ *  build cannot read too, and leaving those behind would have them sync back
+ *  afterwards. Every other caller wants `readableHikes` below - see it for
+ *  what went wrong when the two were one function. */
 function storedHikes(stored: unknown): DayHike[] {
   const hikes = (stored as Partial<DayHikeStore> | undefined)?.hikes
   return Array.isArray(hikes) ? hikes : []
+}
+
+/**
+ * What this build could READ before the save, for the ledger's before/after.
+ *
+ * Validated, not raw, and the difference is a hike (#1040). `loadDayHikes`
+ * drops a record this build cannot parse - deliberate, and documented - so
+ * the store written back never contains it. Diffing that against the RAW
+ * document made the validator's refusal look like the hiker's own delete:
+ * the next ordinary save recorded a tombstone for it, and the tombstone
+ * travelled, taking a walk off the account and every other device. A phone
+ * on an older build destroyed what a newer one had made, everywhere, and
+ * nobody performed a delete.
+ *
+ * `lib/dayHikeSyncState.ts` states the rule this restores: a delete travels
+ * only as the hiker's OWN delete, recorded at the moment they perform it,
+ * never inferred. "I could not read it" is an inference.
+ *
+ * What still degrades, said rather than left to be found: the unreadable
+ * record is not written back to this device either, so it lives only on the
+ * account until a build that understands it comes back. That is the same
+ * honest skew `mergeServerDayHikes` already applies to a row from a newer
+ * build - dropped rather than rendered - and it is survivable in a way a
+ * tombstone is not.
+ */
+function readableHikes(stored: unknown): DayHike[] {
+  return validateDayHikeStore(stored)?.hikes ?? []
 }
 
 export async function saveDayHikes(store: DayHikeStore): Promise<void> {
@@ -281,7 +700,7 @@ export async function saveDayHikes(store: DayHikeStore): Promise<void> {
   // lib/dayHikeSyncState.ts.
   const before = await get(DAY_HIKES_KEY)
   await set(DAY_HIKES_KEY, store)
-  await recordDayHikeEdits(storedHikes(before), store.hikes)
+  await recordDayHikeEdits(readableHikes(before), store.hikes)
 }
 
 /**

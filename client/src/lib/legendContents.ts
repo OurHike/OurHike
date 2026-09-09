@@ -2,8 +2,10 @@
 // WIREFRAMES.md's Legend section - recomputed fresh per viewport (no
 // caching/staleness here, that's the whole point of a legend that reflects
 // "what's on screen right now"), and rows are tappable to hide except
-// closure/serious-warning, which are always shown per Map Options/Hiker
-// Safety (never a hideable safety layer, anywhere in the app).
+// closure/serious-warning, which carry no per-category switch at all per Map
+// Options/Hiker Safety. That used to be stated as "never a hideable safety
+// layer, anywhere in the app"; #1047 narrowed it to what this file can
+// actually enforce, and NEVER_HIDEABLE below carries the whole of it.
 //
 // One row per category. The confidence split this used to carry, and why it
 // went, is on LegendRow.
@@ -27,6 +29,12 @@
 // (#723). That job wants the whole list and this one wants the viewport, so they
 // are two functions rather than one: `computeLegendContents` still answers only
 // what is in the rectangle, and `withEveryType` pads it for the grid alone.
+//
+// AND THE TWO SAFETY SYMBOLS, NAMED RATHER THAN COUNTED (#1051). `withSafetyKey`
+// appends a closure row and a serious-warning row to that same grid. They are
+// the only rows here that carry no count, because neither layer is a `MapPoint`
+// this file could count or a pin map/drawnPois.ts could measure - so what they
+// offer is a key entry, which is the thing that was actually missing.
 
 export interface BoundingBox {
   west: number
@@ -35,12 +43,70 @@ export interface BoundingBox {
   north: number
 }
 
+/**
+ * The map's view of what is on the phone - one point per waypoint (#1303).
+ *
+ * A named function rather than an inline `pois.map(...)` in the shell, for
+ * App.loadBudget.test.tsx's reason: this is a full pass over 16,949 waypoints
+ * with an allocation per row, and the budget is spelled in calls. The shell
+ * calls it only once a map is mounted, which on a phone landing on Today is
+ * never (#1081's latch) - so a launch that shows no map builds no points.
+ */
+export function mapPointsFrom(
+  pois: readonly {
+    id: string
+    type: string
+    lat: number
+    lon: number
+    confidence: 'high' | 'low'
+    name: string
+    siteId?: string
+    siteRole?: string
+  }[],
+): MapPoint[] {
+  const points: MapPoint[] = new Array<MapPoint>(pois.length)
+  for (let i = 0; i < pois.length; i += 1) {
+    const poi = pois[i]
+    points[i] = {
+      id: poi.id,
+      type: poi.type,
+      lat: poi.lat,
+      lon: poi.lon,
+      confidence: poi.confidence,
+      // The name, for map/poiLabels.ts (#1194). Unconditional, unlike the
+      // site keys below: lib/trailData.ts fills a missing one with the
+      // literal 'Unnamed', so a POI always has SOME string here and the
+      // label layer's filter is what refuses to draw that word.
+      name: poi.name,
+      // Carried through so the map can draw one pin per site (#524). Assigned
+      // conditionally rather than as possibly-undefined, so a POI from a
+      // pre-#523 download has no site keys at all rather than keys holding
+      // undefined - which `composeSites` reads identically, but which would
+      // show up in a snapshot as a claim about a site.
+      ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
+      ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
+    }
+  }
+  return points
+}
+
 export interface MapPoint {
   id: string
   type: string
   lat: number
   lon: number
   confidence: 'high' | 'low'
+  /**
+   * The waypoint's name, for map/poiLabels.ts (#1194).
+   *
+   * Optional, and nothing in THIS file reads it - the legend counts
+   * categories. It rides here for the same reason `siteId` does: the shell
+   * already maps a `StoredPoi` onto this type once, and a parallel array of
+   * names would be a second thing to keep in step. Absent means the caller
+   * had no name to give, and the label layer draws nothing rather than
+   * "Unnamed" - lib/trailData.ts's own restraint, one layer out.
+   */
+  name?: string
   /**
    * Which site this point belongs to, and whether it anchors it (#523/#524).
    *
@@ -70,7 +136,23 @@ export interface MapPoint {
  */
 export interface LegendRow {
   type: string
-  count: number
+  /**
+   * How many of this category are in the viewport, or undefined on a row that
+   * NAMES a symbol rather than counting it (#1051).
+   *
+   * Undefined is the two safety rows and only them. `withSafetyKey` appends a
+   * closure row and a serious-warning row to the grid, and neither can honestly
+   * carry a number: a closure reaches the shell as a mile-marker range and
+   * becomes a `ClosureBand`, a serious warning as a moderated report and becomes
+   * a `WarningPoint`, and neither is ever a `MapPoint` for `computeLegendContents`
+   * to count. Nothing in map/drawnPois.ts measures either one, so a count on
+   * these rows would be a figure with no measurement behind it, on the panel
+   * whose whole promise is that its figures are about the screen.
+   *
+   * A row WITH a count is a row `legendDropSummary` is entitled to reason about;
+   * a row without one is a key entry and nothing else.
+   */
+  count?: number
   hideable: boolean
   /**
    * How many of `count` the map actually drew, or undefined where nobody
@@ -84,12 +166,48 @@ export interface LegendRow {
   drawnCount?: number
 }
 
-/** The one guard on the safety layers, exported so lib/waypointVisibility.ts
- *  filters every stored preference through the SAME set rather than a second
- *  copy of it (#530). Closures and serious warnings have no hide affordance
- *  anywhere in the app, and the way that rule is kept is that it is never
- *  built (features/HIKER_SAFETY.md, features/MAP_OPTIONS.md §4). */
-export const NEVER_HIDEABLE = new Set(['closure', 'serious-warning'])
+/**
+ * The two safety layers, in the order the legend grid draws them (#1051).
+ *
+ * An array rather than only the Set below because the grid needs an ORDER and
+ * `NEVER_HIDEABLE` is asked a different question - "may a stored preference
+ * reach this?" - by four call sites that do not care what order anything is in.
+ * One list, two shapes, and the Set is built from this so they cannot drift:
+ * a third layer added here is hideable by nobody and drawn on the key, without
+ * a second edit that somebody has to remember.
+ */
+export const SAFETY_LAYERS = ['closure', 'serious-warning'] as const
+
+/**
+ * The one guard on the safety layers, exported so lib/waypointVisibility.ts
+ * filters every stored preference through the SAME set rather than a second
+ * copy of it (#530).
+ *
+ * WHAT THIS SET STILL PROMISES, NARROWED BY #1047. It used to be the whole of
+ * "closures and serious warnings have no hide affordance anywhere in the app".
+ * The legend now carries an Alerts switch that takes those marks off the
+ * canvas, so the sentence is no longer true as written - and the half that
+ * matters is the half this set is actually able to enforce.
+ *
+ * The promise now: **no STORED value can produce a map with a closure hidden
+ * on it.** Not a hand-edited preference, not one synced from an older client,
+ * not "only water", not a category a later release adds. That is what every
+ * function in lib/waypointVisibility.ts filtering through this set buys, and
+ * it is exactly the failure the maintainer's constraint on #1047 names - a
+ * thru-hiker whose phone opens with the alerts already off, for days, having
+ * chosen it once.
+ *
+ * What is no longer promised is permanence within a single view. The Alerts
+ * switch is deliberately not routed through here or through
+ * `waypoint_types_shown` at all: it is a `useState` in
+ * chrome/alertLayerPanel.ts that nothing writes down, and it resets whenever
+ * the app is next opened. Two mechanisms, and the reason they are two is that
+ * only one of them can outlive the moment a hiker is looking at the screen.
+ *
+ * features/MAP_OPTIONS.md §"Reroutes / closures" and features/HIKER_SAFETY.md
+ * carry the decision.
+ */
+export const NEVER_HIDEABLE: ReadonlySet<string> = new Set<string>(SAFETY_LAYERS)
 
 function isWithin(point: MapPoint, bbox: BoundingBox): boolean {
   return (
@@ -121,11 +239,14 @@ export function computeLegendContents(
   for (const point of points) {
     if (!isWithin(point, bbox)) continue
     // Never a safety layer, whatever the toggle says. A closure nobody has
-    // confirmed is still a closure, and "no off switch" has to mean every
-    // switch - a filter that happens to take one off the panel is the same
-    // failure as a button that does, and easier to ship by accident. The map
-    // agrees structurally: closures and warnings are their own layers, so
-    // poiFilter() cannot reach them either.
+    // confirmed is still a closure, and a filter that happens to take one off
+    // the panel is the same failure as a button that does, and easier to ship
+    // by accident. The map agrees structurally: closures and warnings are their
+    // own layers, so poiFilter() cannot reach them either.
+    //
+    // Untouched by #1047's Alerts switch, and deliberately: that flag is not a
+    // filter and is not stored, so it has no business arriving here. What a
+    // panel SAYS is in the rectangle stays a fact about the rectangle.
     if (verifiedOnly && point.confidence !== 'high' && !NEVER_HIDEABLE.has(point.type))
       continue
     // Keyed by type alone, so a verified and an unverified spring are two
@@ -182,7 +303,9 @@ export function computeLegendContents(
  *   `hideable` flag untouched. Rows whose type is not in `types` - the safety
  *   layers, which have no toggle to reach and no business claiming "Closure 0"
  *   on a stretch with no closure on it - are appended in their original order
- *   rather than padded.
+ *   rather than padded. What gives those two a row of their own is
+ *   `withSafetyKey` below, which appends a key entry carrying no count at all:
+ *   the objection above is to the NUMBER, and it is why they still have none.
  */
 export function withEveryType(
   rows: readonly LegendRow[],
@@ -210,6 +333,73 @@ export function withEveryType(
 
   const known = new Set(types)
   return [...listed, ...rows.filter((row) => !known.has(row.type))]
+}
+
+/**
+ * The same rows, with a key entry for each safety layer (#1051).
+ *
+ * WHY THOSE ROWS WERE NEVER ON THE PANEL. `computeLegendContents` counts
+ * `MapPoint`s, and the shell builds those from `pois` alone - the eight
+ * artifact-backed categories in `POI_TYPES`. A closure arrives from the backend
+ * as a mile-marker range and becomes a `ClosureBand`; a serious warning arrives
+ * as a moderated report and becomes a `WarningPoint`. Neither is ever a
+ * `MapPoint`, and neither could be. `withEveryType` could not save them either -
+ * it pads from `HIDEABLE_TYPES`, which is `POI_TYPES` minus exactly these two.
+ * So the rows below, their icons and their tag rendered only in
+ * chrome/Legend.test.tsx, and the legend - the only key this app has - has never
+ * named the barred red band across the trail or the red triangle pin bigger than
+ * every other mark on the map. Tapping one does answer, and "tap the thing you
+ * do not recognise" is a worse instruction for a hazard than for a spring.
+ *
+ * A KEY ENTRY RATHER THAN A COUNT, which is the decision and not a shortcut.
+ * These rows carry an icon, a name and their tag, and no number in any state.
+ * Two reasons, and the second is the one that would bite:
+ *
+ *  - Nobody measures either layer. `map/drawnPois.ts` measures the PIN layers,
+ *    and a closure is a line while `map/warningLayers.ts` sets
+ *    `icon-allow-overlap: true` on the warning pin on purpose. A count here
+ *    would be a figure with no measurement behind it on the one panel whose
+ *    promise is that its figures are about the screen.
+ *  - A counted safety row lands in `legendDropSummary`'s arithmetic carrying
+ *    `drawnCount: 0` against a real count, and the panel announces that none of
+ *    the closures on screen fit - about the one category that is always drawn.
+ *    That summary now excludes uncounted rows explicitly (see below), so this is
+ *    belt and braces rather than the only guard, but the row still has no honest
+ *    number to print.
+ *
+ * A real viewport count is the other shape #1051 weighs, and it is a bigger
+ * change than this one: the shell would have to project `ClosureBand` geometry
+ * and `WarningPoint` coordinates against the bbox, which nothing does today.
+ *
+ * ALWAYS PRESENT, WHICH IS THE POINT AND IS A REVERSAL. `withEveryType` appends
+ * a safety row only where the viewport put one there, on the reasoning that
+ * "Closure 0" is a claim about closures that nothing asked this panel to make.
+ * That reasoning is about a COUNT, and it is right about counts - it is why
+ * these rows carry none. A key entry makes no claim about the rectangle at all:
+ * it says what the symbol means, which is the gap, and a key that appears only
+ * once you are already looking at the thing you did not recognise is not a key.
+ *
+ * Any counted safety row the caller happens to hold is replaced rather than
+ * kept, so the row means one thing rather than changing shape with whatever the
+ * shell fed it. Only chrome/Legend.test.tsx feeds one today.
+ *
+ * THE GRID ALONE, like `withEveryType` above it. Every SENTENCE on the panel is
+ * decided by `computeLegendContents`'s rows, and none of them may start speaking
+ * for a category the viewport does not hold.
+ */
+export function withSafetyKey(rows: readonly LegendRow[]): LegendRow[] {
+  const keyed: LegendRow[] = SAFETY_LAYERS.map((type) => ({
+    type,
+    // No count and no drawn figure: a key entry names a symbol, and both of
+    // those fields are answers about a rectangle. See LegendRow.count.
+    count: undefined,
+    drawnCount: undefined,
+    // Read as a fact rather than written as one, so this cannot become the
+    // place a safety layer quietly acquires a toggle.
+    hideable: !NEVER_HIDEABLE.has(type),
+  }))
+
+  return [...rows.filter((row) => !NEVER_HIDEABLE.has(row.type)), ...keyed]
 }
 
 /**
@@ -247,10 +437,20 @@ export function legendDropSummary(
     hiddenTypes !== undefined &&
     hiddenTypes.has(row.type) &&
     !NEVER_HIDEABLE.has(row.type)
-  const measured = rows.filter((row) => row.drawnCount !== undefined && !hidden(row))
+  // UNCOUNTED ROWS ARE OUT, SAID RATHER THAN IMPLIED (#1051). A key entry
+  // carries no count and no drawn figure, so `drawnCount !== undefined` already
+  // drops it and this line changes no arithmetic today. It is here because the
+  // accident is what #1051 warned about: the reason a safety row must never
+  // reach this sum is that nobody MEASURES those layers, and a future row that
+  // acquires a count while staying unmeasured would slip in through a guard
+  // that was only ever about `drawnCount`. Both halves of "counted and
+  // measured" are now asked for by name.
+  const measured = rows.filter(
+    (row) => row.drawnCount !== undefined && row.count !== undefined && !hidden(row),
+  )
   if (measured.length === 0) return null
 
-  const present = measured.reduce((total, row) => total + row.count, 0)
+  const present = measured.reduce((total, row) => total + (row.count ?? 0), 0)
   const drawn = measured.reduce((total, row) => total + (row.drawnCount ?? 0), 0)
   return present > 0 && drawn < present ? { present, drawn } : null
 }

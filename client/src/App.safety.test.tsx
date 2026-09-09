@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { MockMap, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { renderedMap } from './test/liveMap'
-import { appHarness, latOfMile } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { CORRIDOR_ARCHIVE_KEY } from './map/pmtilesSource'
 import { readCamera } from './lib/cameraMemory'
 import { fetchClosures, fetchReports } from './lib/api'
@@ -29,11 +29,15 @@ import { GeolocateControl } from './test/mocks/maplibre-gl'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
-vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
+}))
 vi.mock('./lib/api', () => ({
   API_CONFIGURED: true,
   accessToken: vi.fn(async () => null),
@@ -113,6 +117,7 @@ describe('the closure banner', () => {
     vi.mocked(fetchClosures).mockResolvedValue([closure(6.5, 7.5)])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await establishNobo(5)
@@ -128,6 +133,7 @@ describe('the closure banner', () => {
     vi.mocked(fetchClosures).mockResolvedValue([closure(1, 2)])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await establishNobo(5)
@@ -143,6 +149,7 @@ describe('the closure banner', () => {
     vi.mocked(fetchClosures).mockResolvedValue([closure(4.5, 5.5)])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // One fix. No second fix, no movement, no direction.
@@ -163,6 +170,7 @@ describe('the closure banner', () => {
     vi.mocked(fetchClosures).mockResolvedValue([closure(0, 60), closure(6.5, 7.5)])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await establishNobo(5)
@@ -181,6 +189,7 @@ describe('the closure banner', () => {
     vi.mocked(fetchClosures).mockResolvedValue([closure(0, 60)])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await establishNobo(5)
@@ -196,6 +205,8 @@ describe('the closure banner', () => {
     vi.mocked(fetchClosures).mockRejectedValue(new TypeError('Failed to fetch'))
     hikerOnTrail()
     render(<App />)
+
+    await openMapTab()
 
     await screen.findByRole('region', { name: /trail map/i })
     await establishNobo(5)
@@ -224,6 +235,7 @@ describe('the serious-warnings banner', () => {
     ])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await establishNobo(5)
@@ -256,6 +268,7 @@ describe('the serious-warnings banner', () => {
     ])
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await establishNobo(5)
@@ -271,6 +284,7 @@ describe('the map without its sensors', () => {
     vi.stubGlobal('navigator', { onLine: true, userAgent: '', platform: '' })
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
 
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
@@ -278,6 +292,7 @@ describe('the map without its sensors', () => {
   it('renders when permission was skipped at onboarding', async () => {
     hikerOnTrail({ location_permission_requested: false })
     render(<App />)
+    await openMapTab()
 
     expect(await screen.findByRole('region', { name: /trail map/i })).toBeInTheDocument()
   })
@@ -290,6 +305,7 @@ describe('the map without its sensors', () => {
     // coming is worse off than someone told the switch is off.
     hikerOnTrail({ location_permission_requested: false })
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     expect(screen.getByText(/location is off/i)).toBeInTheDocument()
@@ -303,6 +319,7 @@ describe('the map without its sensors', () => {
     // header knew nothing about, on a second high-accuracy watch.
     hikerOnTrail({ location_permission_requested: false })
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     const map = await waitFor(() => {
@@ -323,6 +340,7 @@ describe('the map without its sensors', () => {
     // the same preference that starts the watch is what puts the control back.
     hikerOnTrail({ location_permission_requested: true })
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     const map = await waitFor(() => {
@@ -354,6 +372,7 @@ describe('a map that cannot draw says so', () => {
     hikerOnTrail({ background_source: 'usgs_topo_offline' })
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['truncated']))
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await sourceFails('usgs-topo')
@@ -372,6 +391,7 @@ describe('a map that cannot draw says so', () => {
     vi.stubGlobal('navigator', { onLine: false, userAgent: '', platform: '' })
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await sourceFails('osm')
@@ -388,6 +408,7 @@ describe('a map that cannot draw says so', () => {
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['pmtiles']))
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // Waited for rather than assumed: the archive status is an IndexedDB read,
@@ -412,6 +433,7 @@ describe('a background switch under the hiker', () => {
     // across exactly that restart (lib/cameraMemory.ts).
     hikerOnTrail()
     const { unmount } = render(<App />)
+    await openMapTab()
     const before = await renderedMap()
 
     before.center = { lng: -77.2, lat: 41.5 }
@@ -434,6 +456,7 @@ describe('a background switch under the hiker', () => {
     unmount()
     resetMapLibreMock()
     render(<App />)
+    await openMapTab()
 
     const reopened = await renderedMap()
     expect(reopened.options.center).toEqual([-77.2, 41.5])
@@ -448,6 +471,7 @@ describe('a background switch under the hiker', () => {
     window.sessionStorage.clear()
     hikerOnTrail()
     render(<App />)
+    await openMapTab()
 
     const opened = await renderedMap()
     expect(opened.options.bounds).toBeDefined()
@@ -463,6 +487,7 @@ describe('a background switch under the hiker', () => {
     hikerOnTrail()
     store.set(CORRIDOR_ARCHIVE_KEY, new Blob(['pmtiles']))
     render(<App />)
+    await openMapTab()
 
     // `renderedMap`, not `findByRole` then `MockMap.live[0]`: the container div
     // commits before the effect that builds the map runs, so the bare read was

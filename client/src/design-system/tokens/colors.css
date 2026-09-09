@@ -21,6 +21,19 @@
 --blaze-orange-dark:#994e15;
 --blaze-orange-light:#e0813c;
 --blaze-yellow:#d69a2d;
+/* The two levels between the three the app started with (#1290). NYNJTC
+   rates in five, and "Easy to Moderate" is a publisher saying the answer is
+   between two - so it needs a hue between them rather than a rounding to
+   either. Olive sits between sage and ochre, terracotta between ochre and
+   blaze orange, and both are new members of the ramp rather than tints of an
+   existing one. Contrast measured 2026-09-09 against their own badge fills:
+   olive ink 5.52:1, terracotta ink 5.55:1, both past 4.5:1. */
+--olive-500:#5a6420;
+--olive-300:#bfc57a;
+--olive-100:#eef0d9;
+--terracotta-600:#8f4a12;
+--terracotta-400:#cf7a24;
+--terracotta-100:#f9e8d3;
 --blaze-blue:#1c6ea4;
 --blaze-blue-light:#4ea3d8;
 --blaze-white:#fdfaf2;
@@ -117,6 +130,10 @@ color-scheme:light;
    dark-block re-point on purpose - it IS the dark theme's own danger colour,
    legible on pine and ink alike. */
 --bg-chrome:var(--pine-900);
+/* A card RAISED off the chrome - the Today screen's volunteer card (#1054)
+   and anything else that sits on pine as a surface of its own. One step
+   lighter than the chrome, the way --surface-card sits off --bg-page. */
+--surface-chrome-raised:var(--pine-800);
 --fg-chrome-1:var(--paper-0);
 --fg-chrome-2:var(--sage-200);
 --fg-chrome-3:var(--moss-300);
@@ -127,8 +144,32 @@ color-scheme:light;
 --brand-primary:var(--forest-600);
 --brand-primary-hover:var(--pine-700);
 --brand-primary-press:var(--pine-800);
---brand-secondary:var(--blaze-orange);
---brand-secondary-hover:var(--blaze-orange-dark);
+/* THE FILLED ORANGE BUTTON'S HUE, ONE RUNG DOWN FROM THE BRAND'S (#1131).
+
+   This was `--blaze-orange`, and a label in `--fg-on-brand` on it measured
+   4.14:1 - under AA, at the 14px a `size="s"` Button sets. Two controls wore
+   it: the Button component's `secondary` variant, and `.wrong-way-cue__primary`,
+   the wrong-way alert's primary action button - a hiker would have read that
+   button in the dark, off-trail, deciding whether to turn around. The alert
+   was removed (#93, #308) after this fix shipped; the token split stands on
+   the Button variant alone now.
+
+   `--blaze-orange-dark` takes it to 5.98:1 (measured 2026-08-27 against
+   `--fg-on-brand`'s own light value, paper-0). The dark theme already points
+   here at `--blaze-orange-light`, which carries ink text at 6.82:1 and needed
+   no change.
+
+   THE BRAND HUE ITSELF DID NOT MOVE. `--accent-blaze-orange` is still
+   `--blaze-orange`, and is what pins, dots, rails and the drought wash keep
+   using - ink nothing sits on, where 4.5:1 does not apply. That split is the
+   point of having two names for one colour family: one for a surface a label
+   lands on, one for a mark that stands alone. */
+--brand-secondary:var(--blaze-orange-dark);
+/* Darker still on hover, following `--brand-primary-hover`'s direction rather
+   than inverting it. There is no rung below `--blaze-orange-dark` in the
+   palette and inventing a fourth orange to sit under it would be a hex nobody
+   can trace, so this mixes toward the palette's own black: 7.22:1. */
+--brand-secondary-hover:color-mix(in srgb, var(--blaze-orange-dark) 85%, var(--black));
 
 --accent-blaze-orange:var(--blaze-orange);
 --accent-blaze-yellow:var(--blaze-yellow);
@@ -195,6 +236,8 @@ color-scheme:dark;
    settles a shade behind the ink-850 canvas instead of matching it - the map
    stays the lighter thing in the dark theme too. */
 --bg-chrome:var(--ink-900);
+/* One step lighter than the ink chrome, as pine-800 is off pine-900. */
+--surface-chrome-raised:var(--ink-800);
 --fg-chrome-1:var(--bone-100);
 --fg-chrome-2:var(--bone-300);
 --fg-chrome-3:var(--bone-500);

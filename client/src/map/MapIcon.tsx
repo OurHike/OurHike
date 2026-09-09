@@ -23,9 +23,17 @@
 //  - A serious warning is the same pin with the three things allowed to differ
 //    (map/warningPin.ts): its colour, its hollow hazard triangle, and on the
 //    map its size. Size is the one this does NOT carry - see below.
-//  - A closure is not a pin at all. It is a barred red band along closed
-//    geometry (lib/closureStyle.ts), and drawing it here as a pin would invent
-//    a symbol the map never shows.
+//  - A closure is not a pin at all. It is barrier tape along closed geometry
+//    (lib/closureStyle.ts), and drawing it here as a pin would invent a symbol
+//    the map never shows.
+//
+// And since #1283 a fourth, which is a line and not a pin: the trail swatch
+// beside each row of the legend's "Trails in view" block, drawn as the map
+// draws that line - solid or dotted, at its own tier's width, in its own
+// ink, ghosted if it is not the chosen system's. Every number in it comes
+// from map/style.ts and map/nearbyTrails.ts, for the reason the pins' come
+// from poiIcons.ts: a second table of blaze hexes or dash pitches in this
+// file is the drift the header above exists to prevent.
 
 import {
   glyphPath,
@@ -38,13 +46,31 @@ import {
   type PoiConfidence,
 } from './poiIcons'
 import { WARNING_GLYPH, WARNING_ICON_ID } from './warningPin'
+import { blazePaintColor } from '../lib/blaze'
+import type { SheetAppearance } from './liveTopo'
+import {
+  NEARBY_TRAIL_DASHARRAY,
+  NEARBY_TRAIL_OPACITY,
+  CHOSEN_TRAIL_OPACITY,
+} from './nearbyTrails'
+import {
+  CASING_OVERHANG,
+  NEAR_WHITE_BLAZES,
+  PRIMARY_TRAIL_WIDTH,
+  RED_LIGHT_BLAZE_COLOR,
+  SIDE_TRAIL_WIDTH,
+  inksNearWhiteAsCasing,
+  redLightActive,
+  trailCasingColor,
+} from './style'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
-  CLOSURE_BAR_RHYTHM,
   CLOSURE_CASING_COLOR,
-  CLOSURE_CASING_WIDTH,
   CLOSURE_COLOR,
-  CLOSURE_LINE_WIDTH,
+  CLOSURE_STRIPE_ANGLE_DEG,
+  CLOSURE_STRIPE_EDGE,
+  CLOSURE_TAPE_CADENCE,
+  CLOSURE_TAPE_WIDTH,
 } from '../lib/closureStyle'
 
 /** The one type here that is a line rather than a pin. Paired with
@@ -168,14 +194,57 @@ function Pin({ className, color, path, confidence }: PinProps) {
   )
 }
 
-/** Height of the closure swatch in its own viewBox: the band plus its casing
- *  either side, in the same line-width units lib/closureStyle.ts uses. */
-const CLOSURE_HEIGHT = CLOSURE_LINE_WIDTH + CLOSURE_CASING_WIDTH * 2
-/** Twice as wide as it is tall, which is three and a bit bars - enough for
- *  "barred" to be a rhythm rather than a single stripe. */
-const CLOSURE_WIDTH = CLOSURE_HEIGHT * 2
+/** The swatch's viewBox is drawn in CSS pixels, at the tape's own width - so
+ *  every number below is the number map/closureTape.ts rasterises, and the
+ *  legend cannot drift from the map by someone editing one of them. */
+const CLOSURE_HEIGHT = CLOSURE_TAPE_WIDTH
+/**
+ * How many pitches of tape the swatch shows.
+ *
+ * Four, and the number was chosen by looking rather than by arithmetic: the
+ * legend's slot is 24px square (chrome.css's .legend__icon) and the viewBox
+ * letterboxes into it, so this trades the strip's height against how much
+ * cadence it shows. At two the swatch is a pair of fat slashes with no rhythm
+ * to read; at four it is a run of parallel diagonals, which is the thing a
+ * hiker has to recognise again on the map.
+ *
+ * The stripes stay at the map's own proportions throughout - this crops the
+ * tape, it does not redraw it - so the last one runs off the right edge, the
+ * way a crop of something continuous should.
+ */
+const CLOSURE_TILES = 4
+const CLOSURE_WIDTH = CLOSURE_TAPE_CADENCE.pitch * CLOSURE_TILES
+/** How far a stripe travels along the tape while crossing it. Same angle the
+ *  image uses, so the swatch leans the way the map does. */
+const CLOSURE_STRIPE_RUN =
+  CLOSURE_HEIGHT / Math.tan((CLOSURE_STRIPE_ANGLE_DEG * Math.PI) / 180)
+/** One stripe per pitch, plus one past each end: an SVG clips to its own
+ *  viewBox, so a stripe that starts off the left edge still draws the part of
+ *  itself that is inside - which is what keeps the swatch from beginning and
+ *  ending on a half-stripe. */
+const CLOSURE_STRIPES = Array.from(
+  { length: CLOSURE_TILES + 2 },
+  (_, index) => (index - 1) * CLOSURE_TAPE_CADENCE.pitch,
+)
 
 function ClosureBand({ className }: { className?: string }) {
+  // Every stripe drawn twice: the dark edge first, the red over it. The same
+  // two passes map/closureTape.ts makes into its byte array, and the same
+  // reason - the edge is what the stripe is outlined WITH, never a second
+  // mark beside it.
+  const stripe = (x: number, mark: string, stroke: string, width: number) => (
+    <line
+      key={`${mark}-${x}`}
+      className={mark}
+      x1={x}
+      y1={CLOSURE_HEIGHT}
+      x2={x + CLOSURE_STRIPE_RUN}
+      y2={0}
+      stroke={stroke}
+      strokeWidth={width}
+    />
+  )
+
   return (
     <svg
       className={className}
@@ -183,30 +252,114 @@ function ClosureBand({ className }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* Continuous, exactly as on the map: the casing runs the whole length
-          and the band's gaps are where it shows through. */}
-      <rect
-        className="map-icon__closure-casing"
-        x={0}
-        y={0}
-        width={CLOSURE_WIDTH}
-        height={CLOSURE_HEIGHT}
-        fill={CLOSURE_CASING_COLOR}
-      />
-      <line
-        className="map-icon__closure-band"
-        x1={0}
-        y1={CLOSURE_HEIGHT / 2}
-        x2={CLOSURE_WIDTH}
-        y2={CLOSURE_HEIGHT / 2}
-        stroke={CLOSURE_COLOR}
-        strokeWidth={CLOSURE_LINE_WIDTH}
-        // MapLibre's dasharray is in line-width units and SVG's is in user
-        // units, which is why the viewBox above is drawn in line-width units
-        // too - the multiplication happens once, here.
-        strokeDasharray={CLOSURE_BAR_RHYTHM.map((part) => part * CLOSURE_LINE_WIDTH).join(
-          ' ',
-        )}
+      {/* No background rect, which is the whole change: what shows between the
+          stripes on the map is the trail and the ground under it, so what
+          shows between them here has to be the legend's own paper. */}
+      {CLOSURE_STRIPES.map((x) =>
+        stripe(
+          x,
+          'map-icon__closure-casing',
+          CLOSURE_CASING_COLOR,
+          CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2,
+        ),
+      )}
+      {CLOSURE_STRIPES.map((x) =>
+        stripe(x, 'map-icon__closure-band', CLOSURE_COLOR, CLOSURE_TAPE_CADENCE.stripe),
+      )}
+    </svg>
+  )
+}
+
+/** The swatch's box: chrome.css's 24px slot, drawn in CSS pixels so the
+ *  widths below are the map's own widths and not a proportion of them. */
+const SWATCH = 24
+/** The casing's own softness, the same 0.7 map/style.ts multiplies the
+ *  ghosting into. */
+const CASING_OPACITY = 0.7
+
+export interface TrailLineSwatchProps {
+  /** The published blaze, or null where the line carries none. */
+  blazeColor: string | null
+  /** Drawn at the through-route width, or the side-trail width. */
+  throughRoute: boolean
+  /** In the chosen system: solid and full-strength. Otherwise dotted and
+   *  ghosted, exactly as the map draws every other line. */
+  chosen: boolean
+  /** Which sheet the map is drawn in, for the casing ink and the near-white
+   *  rule. Defaults to the field day sheet, which is what a legend rendered
+   *  without a map behind it should assume. */
+  appearance?: SheetAppearance
+  className?: string
+}
+
+/**
+ * One trail line, as the map draws it, in a 24px box (#1283).
+ *
+ * Solid or dotted follows `chosen`, the width follows `throughRoute`, and
+ * the ink follows the same three rules map/style.ts's blazeLineColor keeps:
+ * red light's one hue, a near-white blaze inked in the casing colour with no
+ * casing on a day sheet, and the blaze's own hex otherwise. The dot pitch is
+ * NEARBY_TRAIL_DASHARRAY's - two line widths - and the casing under a dotted
+ * line is dotted at the same pitch, which SVG makes trivial (its dasharray
+ * is absolute) where MapLibre needed a second constant.
+ */
+export function TrailLineSwatch({
+  blazeColor,
+  throughRoute,
+  chosen,
+  appearance = { theme: 'light' },
+  className,
+}: TrailLineSwatchProps) {
+  const width = throughRoute ? PRIMARY_TRAIL_WIDTH : SIDE_TRAIL_WIDTH
+  const nearWhite = blazeColor !== null && NEAR_WHITE_BLAZES.includes(blazeColor)
+  // `!chosen` since #1306, exactly as the map's own layers do it
+  // (DARK_INKED_BLAZE_LAYER_IDS): the dark ink is the DOTTED line's rule,
+  // and a taken near-white trail keeps its white blaze and its casing. A
+  // swatch that kept inking it dark would be the legend contradicting the
+  // canvas beside it, which is the failure this component exists to prevent.
+  const inkedAsCasing = nearWhite && !chosen && inksNearWhiteAsCasing(appearance)
+  const casing = trailCasingColor(appearance)
+  const ink = redLightActive(appearance)
+    ? RED_LIGHT_BLAZE_COLOR
+    : inkedAsCasing
+      ? casing
+      : blazePaintColor(blazeColor ?? 'Unknown')
+  const opacity = chosen ? CHOSEN_TRAIL_OPACITY : NEARBY_TRAIL_OPACITY
+  // The blaze's dots are `width` wide at a pitch of NEARBY_TRAIL_DASHARRAY[1]
+  // widths; in SVG's absolute units that is one number both strokes share.
+  const dash = chosen ? undefined : `0 ${NEARBY_TRAIL_DASHARRAY[1] * width}`
+  const path = `M ${width} ${SWATCH / 2} H ${SWATCH - width}`
+
+  return (
+    <svg
+      className={className}
+      viewBox={`0 0 ${SWATCH} ${SWATCH}`}
+      // Decorative, like the pins: the row names the trail beside it.
+      aria-hidden="true"
+      focusable="false"
+      data-drawn={chosen ? 'solid' : 'dotted'}
+    >
+      {!inkedAsCasing && (
+        <path
+          className="map-icon__trail-casing"
+          d={path}
+          fill="none"
+          stroke={casing}
+          strokeWidth={width + CASING_OVERHANG * 2}
+          strokeLinecap="round"
+          strokeOpacity={CASING_OPACITY * opacity}
+          strokeDasharray={dash}
+        />
+      )}
+      <path
+        className="map-icon__trail-blaze"
+        d={path}
+        fill="none"
+        stroke={ink}
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeOpacity={opacity}
+        strokeDasharray={dash}
       />
     </svg>
   )

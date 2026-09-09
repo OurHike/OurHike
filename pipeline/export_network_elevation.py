@@ -97,7 +97,7 @@ from pathlib import Path
 from pyproj import Transformer
 from shapely.geometry import LineString
 
-from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler, index_elevation_tiles
+from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler
 from lib.elevation_gain import (
     DEFAULT_THRESHOLD_FT,
     DEFAULT_THRESHOLD_M,
@@ -106,6 +106,7 @@ from lib.elevation_gain import (
     loss_over_gaps,
 )
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
@@ -209,11 +210,20 @@ def build(graph: dict, geometry: list[list[list[float]]], sampler: ElevationSamp
     stats per source.
 
     EVERY EDGE'S POINTS GO TO THE SAMPLER IN ONE CALL. `sample_many` groups
-    points by the tile that covers them and does one windowed read per tile, so
-    batching across the whole graph is what turns thousands of remote range
-    reads into a handful. Sampling edge-by-edge would re-open the same
-    WarpedVRT for every edge that crosses the same cell, which on a graph whose
-    edges are ~200 m long is nearly all of them.
+    points by the tile that covers them and reads only the blocks those points
+    land in, so batching across the whole graph is what turns hundreds of
+    thousands of separate range reads into one pass per tile. Sampling
+    edge-by-edge would re-open the same tile for every edge crossing that cell
+    - on a graph whose edges are ~200 m long, nearly all of them - and re-read
+    its blocks each time.
+
+    That the batch is one call is now the smaller half of it. The sampler
+    reads blocks rather than a window spanning every point's bounding box,
+    which is what stopped this step being killed at the 120-minute job timeout
+    once the graph reached 468,743 edges (#1287 - Export the climb along each
+    graph edge hangs indefinitely, reproducibly, on the UA publish); a
+    bounding box over a nationwide graph is the whole tile whether it arrives
+    in one call or in ten thousand.
     """
     edges = graph["edges"]
     if len(geometry) != len(edges):
@@ -285,10 +295,9 @@ def write_artifact(climbs: list, stats: dict, sources: dict | None = None) -> di
     path.write_text(json.dumps(climbs, separators=(",", ":")), encoding="utf-8")
 
     manifest = {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
-        "edges": len(climbs),
         "threshold_m": DEFAULT_THRESHOLD_M,
         "sample_interval_m": SAMPLE_INTERVAL_METERS,
         # Flagged in the data rather than left for a reader to infer from this
@@ -298,6 +307,21 @@ def write_artifact(climbs: list, stats: dict, sources: dict | None = None) -> di
         "estimate": True,
         "per_source": stats,
         **coverage_summary(stats),
+        # AFTER the coverage spread, which carries an `edges` of its own, and
+        # the ordering is the whole point: this key used to sit above it and
+        # was overwritten, so the line written to be the alignment check was
+        # never the line that reported it (#1245). The two answer different
+        # questions - coverage's is "how many edges did the sources account
+        # for", this one is "how many entries are in the file the client is
+        # about to check its graph against" - and only the second may answer
+        # here, because it is the one a misalignment shows up in. A run whose
+        # coverage total disagrees with the array length has a bug; publishing
+        # the array's own length means the client's check catches it rather
+        # than being told a number that agrees with nothing.
+        #
+        # `export_network_profile.py` has had this right since it was written
+        # and says so in the same words; this is the sibling catching up.
+        "edges": len(climbs),
         "sources": sources or {},
     }
     (OUT_DIR / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")
@@ -320,7 +344,10 @@ def main(argv: list[str] | None = None) -> dict:
 
     graph = json.loads(args.graph.read_text())
     geometry = json.loads(args.geometry.read_text())
-    sampler = ElevationSampler(index_elevation_tiles(args.tile_index))
+    # `for_index` rather than a bare constructor, so this run reads the
+    # shared sample cache beside the tile index instead of re-reading every
+    # point its sibling exporter just read (#1287). See that classmethod.
+    sampler = ElevationSampler.for_index(args.tile_index)
     try:
         climbs, stats = build(graph, geometry, sampler)
     finally:

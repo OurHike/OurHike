@@ -57,6 +57,17 @@ export interface TripSyncState {
   hikeDirty: boolean
   /** The server's stamp for the planned hike, as last seen. */
   hikeSeen: string | null
+  /** Long hikes changed on this device since its last successful sync
+   *  (#1317). `dirty`'s grain, for the other collection in this store. */
+  hikesDirty: string[]
+  /** Long hikes the hiker forgot here, waiting to travel as tombstones. */
+  hikesDeleted: string[]
+  /** The server's `updated_at` per long hike, as this device last saw it. */
+  hikesSeen: Record<string, string>
+  /** The active-hike pointer changed here since the last sync. */
+  activeHikeDirty: boolean
+  /** The server's stamp for the pointer, as last seen. */
+  activeHikeSeen: string | null
 }
 
 const NEVER_SYNCED: TripSyncState = {
@@ -66,12 +77,25 @@ const NEVER_SYNCED: TripSyncState = {
   since: null,
   hikeDirty: false,
   hikeSeen: null,
+  hikesDirty: [],
+  hikesDeleted: [],
+  hikesSeen: {},
+  activeHikeDirty: false,
+  activeHikeSeen: null,
 }
 
 function ids(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((id): id is string => typeof id === 'string')
     : []
+}
+
+function stamps(value: unknown): Record<string, string> {
+  return typeof value === 'object' && value !== null
+    ? Object.fromEntries(
+        Object.entries(value).filter(([, stamp]) => typeof stamp === 'string'),
+      )
+    : {}
 }
 
 /**
@@ -87,19 +111,19 @@ export async function tripSyncState(): Promise<TripSyncState> {
   const stored = (await get(TRIPS_SYNC_KEY)) as Partial<TripSyncState> | undefined
   if (stored === undefined) return NEVER_SYNCED
 
-  const seen = stored.seen
   return {
     dirty: ids(stored.dirty),
     deleted: ids(stored.deleted),
-    seen:
-      typeof seen === 'object' && seen !== null
-        ? Object.fromEntries(
-            Object.entries(seen).filter(([, stamp]) => typeof stamp === 'string'),
-          )
-        : {},
+    seen: stamps(stored.seen),
     since: typeof stored.since === 'string' ? stored.since : null,
     hikeDirty: stored.hikeDirty === true,
     hikeSeen: typeof stored.hikeSeen === 'string' ? stored.hikeSeen : null,
+    hikesDirty: ids(stored.hikesDirty),
+    hikesDeleted: ids(stored.hikesDeleted),
+    hikesSeen: stamps(stored.hikesSeen),
+    activeHikeDirty: stored.activeHikeDirty === true,
+    activeHikeSeen:
+      typeof stored.activeHikeSeen === 'string' ? stored.activeHikeSeen : null,
   }
 }
 
@@ -144,24 +168,112 @@ export async function recordHikeEdit(): Promise<void> {
 }
 
 /**
- * Record a completed exchange: this device is level with the account again.
+ * Record what the hiker just did to their LONG hikes on this device (#1317).
+ *
+ * `recordTripEdits`' twin, and it over-marks for the same reason: the
+ * callers hand `saveTrips` a whole store from half a dozen modules, so
+ * working out which hike moved would mean this file knowing about every one
+ * of them. Over-marking costs an upload the server recognises as identical
+ * and drops; under-marking loses the hiker's route.
+ */
+export async function recordLongHikeEdits(
+  before: readonly { id: string }[],
+  after: readonly { id: string }[],
+): Promise<void> {
+  const state = await tripSyncState()
+  const remaining = new Set(after.map((hike) => hike.id))
+  const gone = before.map((hike) => hike.id).filter((id) => !remaining.has(id))
+
+  const dirty = new Set([...state.hikesDirty, ...remaining])
+  gone.forEach((id) => dirty.delete(id))
+
+  await write({
+    ...state,
+    hikesDirty: [...dirty],
+    hikesDeleted: [...new Set([...state.hikesDeleted, ...gone])],
+  })
+}
+
+/** Record that the hiker changed which long hike they are in, here. */
+export async function recordActiveHikeEdit(): Promise<void> {
+  const state = await tripSyncState()
+  await write({ ...state, activeHikeDirty: true })
+}
+
+/**
+ * Record a completed exchange: this device is level with the account again,
+ * for everything it actually sent.
  *
  * `keptSeen` replaces the whole stamp map rather than merging into it, so a
  * trip that no longer exists anywhere stops being carried for ever. The
  * caller builds it from what the server just said plus what it already knew.
+ *
+ * `sent` IS THE POINT, and this used to clear the ledger outright (#1040).
+ * A sync is not instant: the request goes out with a snapshot of what was
+ * dirty, and the hiker keeps using the app while it is in the air. Wiping
+ * the whole ledger on the way back marked those later edits as sent when
+ * nothing had sent them - so they sat on one device for ever, never
+ * uploaded, and the other device never saw them. Measured: rename a trip
+ * mid-flight and `dirty` comes back empty with the rename still on disk and
+ * nothing queued to carry it.
+ *
+ * So only what went out is cleared. Anything marked since stays marked, and
+ * goes with the next exchange.
  */
 export async function recordTripSync(
   since: string,
   keptSeen: Record<string, string>,
   hikeSeen: string | null,
+  sent: {
+    dirty: readonly string[]
+    deleted: readonly string[]
+    /** The long hikes that actually went out (#1317). Same rule as `dirty`:
+     *  only what was sent is cleared, because the hiker keeps editing while
+     *  the request is in the air. */
+    hikesDirty?: readonly string[]
+    hikesDeleted?: readonly string[]
+  },
+  /**
+   * #1317's half of the exchange, absent when this build's caller has
+   * nothing to say about it.
+   *
+   * `activeHikeSent` rather than an unconditional clear, deliberately: the
+   * pointer's dirty flag is cleared only when the pointer actually went out.
+   * The planned hike's flag above IS cleared unconditionally, which is a
+   * narrower version of the mid-flight bug #1040 fixed for trips, and
+   * copying it here would reintroduce it on a second field rather than
+   * leaving one instance of it to be fixed on its own.
+   */
+  long?: {
+    seen: Record<string, string>
+    activeHikeSeen: string | null
+    activeHikeSent: boolean
+  },
 ): Promise<void> {
+  // Re-read rather than take the caller's snapshot: the whole point is that
+  // the ledger may have moved while the request was out.
+  const state = await tripSyncState()
+  const sentDirty = new Set(sent.dirty)
+  const sentDeleted = new Set(sent.deleted)
+  const sentHikes = new Set(sent.hikesDirty ?? [])
+  const sentHikesGone = new Set(sent.hikesDeleted ?? [])
   await write({
-    dirty: [],
-    deleted: [],
+    ...state,
+    dirty: state.dirty.filter((id) => !sentDirty.has(id)),
+    deleted: state.deleted.filter((id) => !sentDeleted.has(id)),
     seen: keptSeen,
     since,
     hikeDirty: false,
     hikeSeen,
+    hikesDirty: state.hikesDirty.filter((id) => !sentHikes.has(id)),
+    hikesDeleted: state.hikesDeleted.filter((id) => !sentHikesGone.has(id)),
+    ...(long === undefined
+      ? {}
+      : {
+          hikesSeen: long.seen,
+          activeHikeSeen: long.activeHikeSeen,
+          ...(long.activeHikeSent ? { activeHikeDirty: false } : {}),
+        }),
   })
 }
 

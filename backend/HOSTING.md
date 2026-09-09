@@ -90,6 +90,44 @@ nobody can see in a pull request is a setting that drifts. `render.yaml` is the 
 that becomes a problem; it is deliberately not being added pre-emptively, because a config
 file nobody needs yet is the thing this change is removing.
 
+## Which build is serving, and why the release order depends on it
+
+**Render is to track `main`, so that the backend redeploys on every merge** — the
+maintainer's answer, 2026-08-28. Nothing in this repository can show that (it is the
+dashboard setting above), which is exactly why it is written here: it is load-bearing for
+release ordering and invisible to everyone who has not seen the dashboard.
+
+**It is a decision, not yet a fact, and this paragraph used to say otherwise.** Confirmed
+with the maintainer 2026-09-09: **no Render service exists yet**. The present tense here
+("Render tracks `main`") read as a live service to anyone who had not seen the dashboard —
+the one audience the paragraph was written for — while
+[.github/expected-settings.yml](../.github/expected-settings.yml) said the opposite in the
+same repository, and both could not be true. So: the setting below is what to configure
+when the service is created, which is
+[#600](https://github.com/OurHike/OurHike/issues/600) and is account work rather than
+anything a branch can do. Everything after this paragraph describes what that setting buys
+once it exists.
+
+What it buys is that **the backend is always ahead of the app**. The web build deploys to
+production on the *tag* ([../RELEASING.md](../RELEASING.md) §12) and app-store builds are
+slower still, while the backend is already carrying whatever merged. So a client never
+meets a backend older than itself, and the skew that would actually hurt cannot happen in
+that direction.
+
+That the direction matters is not hypothetical. A v1.2.0 client against a v1.1.1 backend
+would have its whole preferences document rejected — `PreferencesIn` is `extra="forbid"`,
+so one unknown field 422s the PUT, and `preferencesSync.ts` logs and carries on, leaving
+sync silently dead rather than degraded. A field note carrying a new `observation` member
+would 422 too, and the outbox marks such a note unsendable *for the life of the build*
+(`outbox.ts` — "a 422 here would drop those notes into the outbox forever"). Both are
+quiet, and neither would show up in a smoke test.
+
+**If the service is created without that setting, or it changes later, the release train
+gains a step**: deploy the backend, confirm `/openapi.json` carries the new fields, and
+only then publish the draft. With it, the ordering holds by construction and the train
+stays four buttons — which is the reason to set it at creation rather than to discover
+later that it was worth setting.
+
 ## What was removed
 
 `backend/fly.toml` is deleted. Nothing was ever deployed to Fly — no account was created,

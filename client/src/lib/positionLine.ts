@@ -28,6 +28,8 @@
 
 import type { GeolocationState } from './useGeolocation'
 import type { HikeDirection } from '../chrome/Header'
+import { followPosition, type FollowState } from './dayHikeFollow'
+import type { UnitSystem } from './units'
 
 export interface PositionLineInputs {
   /** What the watch is actually doing (lib/useGeolocation.ts). */
@@ -55,6 +57,49 @@ export interface PositionLineInputs {
    * this line exists to answer.
    */
   trailReady: boolean
+  /**
+   * The short name of the trail whose hike this build cannot measure, or
+   * null when it can (#1357).
+   *
+   * A THIRD REASON THE MILE IS MISSING, and it is neither of the two below
+   * it. `trailReady` is the app missing data and "Off the trail" is a claim
+   * about where the hiker is standing; this is the app holding the data,
+   * the hiker standing squarely on their trail, and the download carrying
+   * no mile axis for it. Saying either of the other two here would be
+   * false - the first about the phone, the second about the hiker.
+   *
+   * It is the same refusal `lib/hikeText.ts`'s `setupRefusal` already makes
+   * at hike creation ("a figure on any other trail would be an A.T. mileage
+   * wearing somebody else's name"), carried past creation to the figures -
+   * and the same one the `follow` branch below already makes for a day
+   * hike, whose note about printing "a Springer mile at somebody who is not
+   * walking to Springer" describes this case exactly.
+   *
+   * The NAME rather than a boolean, because the line has room for it and
+   * "No miles on the L.P." tells a hiker which of their two answers is
+   * missing where "No miles here" does not. lib/trails.ts's `shortName`
+   * (#1307) is where it comes from.
+   */
+  unmeasuredTrail?: string | null
+  /**
+   * The day hike being followed, when there is one (lib/dayHikeFollow.ts).
+   *
+   * It outranks the mile because on that ground the mile is not an answer:
+   * #928's finding is that a park has no single axis to number, so
+   * `locateOnTrail` either refuses the fix outright - printing "Off the
+   * trail" at somebody walking a blazed loop - or, in the corridor where the
+   * A.T. and a park network overlap, prints a Springer mile at somebody who
+   * is not walking to Springer. Both are worse than saying nothing.
+   *
+   * It does NOT outrank the GPS states above it. Every one of those is a
+   * reason the position is unknown, and following a route does not make a
+   * denied permission or a lost fix any less true.
+   */
+  follow?: FollowState | null
+  /** Which units the follow reading converts to. Defaulted like every other
+   *  units prop here, and read ONLY by that reading - see followPosition for
+   *  why the A.T. mile stays a mile. */
+  units?: UnitSystem
 }
 
 /**
@@ -76,6 +121,9 @@ export function positionLine({
   mile,
   direction,
   trailReady,
+  unmeasuredTrail = null,
+  follow = null,
+  units = 'imperial',
 }: PositionLineInputs): string {
   // First, because it is the only one of these the hiker chose, and the only
   // one with a fix that is one tap away in Settings. It also outranks the
@@ -102,9 +150,20 @@ export function positionLine({
       break
   }
 
+  // A fix on a route the hiker chose, which is a better answer than any mile
+  // - and reachable even where the centerline index below has not loaded,
+  // because a day hike routes over the junction graph and needs no
+  // centerline at all.
+  if (follow !== null) return followPosition(follow, units)
+
   // A fix, and nowhere to put it. Two different reasons, and they are not
   // interchangeable: one is the app missing data, the other is a claim about
   // where the hiker is standing.
+  // Above both of the next two, because it is true of the app AND of the
+  // hiker at once: the data is here and the hiker is somewhere real, and
+  // neither "No trail data" nor "Off the trail" would be a true sentence.
+  if (unmeasuredTrail !== null) return `No miles on the ${unmeasuredTrail}`
+
   if (!trailReady) return 'No trail data'
   if (mile === undefined) return 'Off the trail'
 

@@ -76,8 +76,9 @@ thirty miles of the trail".
 declines to guess at, and the issue argues at length that the number must not be picked
 before the census is run. **Run the census first** — `spike_osm_water_census.py`, in the
 shape the issue describes — and put the distribution in the issue before touching a
-threshold. Note also that this is *not* the `wrongWay.ts` asymmetry: over-filtering water
-hurts a hiker too, so neither direction is the safe one.
+threshold. Note also that this is *not* the wrong-way alert's old asymmetry (false negatives fine,
+false positives not): over-filtering water hurts a hiker too, so neither direction is the
+safe one.
 
 **Where this stands, 2026-08-20.** The core is built: **#749** and **#710 — "Corroborated
 by both databases" is worth much less in Virginia than in New Hampshire** closed via
@@ -289,7 +290,6 @@ and has the longest lead time.
 **#92 — Real Apple OAuth has never been exercised end to end** ·
 **#279 — Replace the password sign-in path with an emailed code** ·
 **#255 — PATCH null semantics are opposite in sibling endpoints: hikes 500s on an explicit null, closures silently ignore one** ·
-**#247 — POST /wrong-way-events requires a hike_id the client will never have** ·
 **#320 — Backend test harness drops every table in whatever DATABASE_URL names — add a guard** ·
 **#322 — Backend endpoint and error-path test gaps** ·
 **#658 — Backend audit follow-ups: inputs nobody has been bitten by yet, and a moderation trail with gaps**
@@ -306,7 +306,9 @@ does — `backend/scripts/local-postgres.sh` starts it, and the session-start ho
 too. A connection-refused failure means that script has not been run, not that the check
 cannot run here.
 
-**#255 and #247 are contract bugs** — small, well-specified, and good for a short session.
+**#255 is a contract bug** — small, well-specified, and good for a short session. #247
+sat here too; it closed 2026-08-21 (PR #903 deleted the `/wrong-way-events` endpoint
+rather than fixing its contract).
 
 ## J. What it costs and who pays
 
@@ -319,22 +321,21 @@ cannot run here.
 **#395 is the one with a deadline attached to reality** — the app is public now. Worth
 reading as *already overdue* rather than as planning.
 
-## K. Safety surfaces built but not trusted
+## K. Outdoor usability and real-trail testing
 
-**#93 — Wrong-way alert thresholds are wireframe placeholders, not validated numbers** ·
-**#308 — WrongWayCue.tsx is still referenced by 0 non-test files, and mounting it is a decision rather than wiring** ·
 **#105 — Outdoor usability pass — sunlight glare and gloved, one-handed use** ·
 **#106 — Real-trail field testing**
 
-**Why together:** all four need a person on a trail with a phone, and #93 and #308 are one
-decision wearing two numbers.
+**Why together:** both need a person on a trail with a phone.
 
-**Do not "fix" #308 by mounting the component.** ROADMAP.md records that it is unmounted
-*deliberately*: its thresholds are placeholders (#93), it is the only notification this app
-sends, and a false alarm spends the trust budget the single alert was designed around.
-`wrongWay.test.ts` states the asymmetry outright — false negatives are acceptable, false
-positives are the failure the module exists to prevent. **#93 is the prerequisite and it is
-field measurement, not code.**
+**#93 — Wrong-way alert thresholds are wireframe placeholders, not validated numbers** and
+**#308 — WrongWayCue.tsx is still referenced by 0 non-test files, and mounting it is a
+decision rather than wiring** used to sit in this group too. They closed together, not
+separately: the wrong-way alert was fully built, but its thresholds were never
+field-validated and — found later, more fundamentally — its "wrong direction" detection was
+never actually implemented, since nothing in the client ever computed a GPS movement
+bearing; only the off-trail-by-distance mode existed. Rather than keep carrying unmounted,
+partially-implemented safety code, it was removed instead of mounted.
 
 ## L. Client performance and the App.tsx chokepoint
 
@@ -631,8 +632,8 @@ Worth raising alongside the other ATC asks in **#479**.
 
 **Two guardrails that are easy to breach here.** The anti-gamification rule has a stated
 boundary — it targets *comparison and pressure*, not *memory* — and #761 is the phase that
-tests it. And this feature must never become the second thing that sends a notification;
-[HIKER_SAFETY.md](features/HIKER_SAFETY.md)'s wrong-way alert stays the only one.
+tests it. And this feature must not be what makes OurHike send its first push
+notification; it sends none today.
 
 ## V. Trails within reach of NYC — the second trail system, for real
 
@@ -653,9 +654,14 @@ and #780's definition of "the org" — the maintainer's cross-org POI and line-p
 decisions of 2026-08-18 are recorded on #772's thread and presume it.
 
 **What you are walking into:** three things, each named in the issues so nobody
-re-discovers them. The licence on every new source here is **pending the maintainer's own
-outreach** to OPRHP and NYNJTC — fetch-and-review only, nothing publishes to hikers, the
-same posture as the club PDFs' registry entries. **#100 — Build the dbt ELT transform
+re-discovers them. The licence on every new source here was **pending the maintainer's own
+outreach** to OPRHP and NYNJTC — fetch-and-review only, nothing publishing to hikers, the
+same posture as the club PDFs' registry entries. **That changed on 2026-08-24**: OPRHP's
+terms were found to be stated (a truncated read had hidden them), and NYNJTC's, Mohonk
+Preserve's and NYS DEC's — all genuinely unstated — ship on the maintainer's authorisation
+recorded in `sources.json`. The asks are still open; DEC's is the live one (#1019, which
+also removed the survey's proposed ring, so these layers ship statewide rather than clipped
+to a box around New York City). **#100 — Build the dbt ELT transform
 layer before NYNJTC's own trail network arrives** is where new-source staging models
 belong — its Phase A is already merged, so do not build a parallel ingestion path. And
 **#552 — Decide the unit of offline coverage, and write it down** should be answered with
@@ -728,7 +734,25 @@ should wait rather than be written against a system nobody can observe.
 
 ---
 
-## Sequencing, in one paragraph
+## Y. The v2 redesign — Today, and the map given back its viewport
+
+**#1054 — v2 redesign: a dated journal called Today, and the map given back its whole
+viewport**
+
+**Why alone:** one issue by the maintainer's own instruction ("file an issue — only 1"),
+carrying the whole of Claude Design's handoff: the `today | map | plan | more` tab set, the
+Today journal, the map's floating plate and next-up rail, first run downloading on the step
+that asks, More's five destinations, the desktop planning station, and the typography and
+copy passes. It is one branch deliberately — the nine steps each rewrite chrome the next
+step stands on, so slicing them across sessions would put every pair in conflict inside
+`client/src/App.tsx` and `chrome/chrome.css`.
+
+**Where this collides: everywhere the client is.** This group touches `App.tsx`, the map
+chrome, More/Settings, onboarding and the tab bar at once — which is groups **L**, **W**
+and **X**'s territory in a single branch. Do not stack client work beside it; land it
+first and rebase the others. Group **W** in particular (the More tab's reorganization) is
+substantially delivered by this redesign — read its issues against what landed before
+starting them.
 
 **A, B and C first** — they set data and identity that D, E, F, G and Q anchor to.
 **#320, #395 and #750 are urgent for reasons unrelated to sequencing** (a table-dropping
@@ -760,8 +784,9 @@ in one sitting rather than discovered one at a time.
    Hudson Highlands core plus the Catskills plus everything NYNJTC maintains, with
    maintainer outreach to OPRHP and NYNJTC in motion. #100's timing question is settled:
    it rises, and its Phase A is already merged.
-4. **Who is field-testing, and when?** Group K is four issues that no amount of code
-   advances. #93 gates #308, which gates the app's only notification.
+4. **Who is field-testing, and when?** Group K is two issues that no amount of code
+   advances. (It was four; #93 and #308 — the wrong-way alert's threshold validation and
+   its mounting — closed with the feature's removal rather than with field-testing.)
 5. ~~**What are `FRESH_MAX_DAYS` and `AGEING_MAX_DAYS` supposed to be?**~~ **Answered
    2026-08-20, by the maintainer in session (recorded on #256):** they stand at 14 and
    60, tagged `@unvalidated` with real confirmation volume named as what settles them —

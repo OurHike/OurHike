@@ -18,14 +18,23 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildGraphIndex,
+  DRAWN_SNAP_METRES,
+  canSnapToGraph,
   closeTheLoop,
+  holdDesignation,
   legsFromEdges,
   MAX_OFF_NETWORK_FEET,
   metresToMiles,
   nearestPointOnGraph,
   routeBetween,
   routeGeometry,
+  routeLines,
   routeThrough,
+  SAME_TREAD_METRES,
+  sameTrail,
+  sameTread,
+  trailChoice,
+  trailsNear,
   type TrailGraph,
 } from './trailGraph'
 
@@ -89,7 +98,28 @@ const GRAPH: TrailGraph = {
   ],
 }
 
-const index = buildGraphIndex(GRAPH)
+/**
+ * The fixture with each edge's vertex list filled in, which is what every
+ * published graph actually carries (`build_trail_graph.py` writes one per
+ * edge, always). Every trail here is straight, so an edge's vertices are its
+ * two nodes and no assertion below moves.
+ *
+ * Not cosmetic: since #1093 `nearestPointOnGraph` will not snap a tap to an
+ * edge with no vertices, because the only line such an edge offers is the
+ * chord between its junctions and the map is drawing the published one. A
+ * fixture without geometry is a phone mid-download, not a network.
+ */
+function published(graph: TrailGraph): TrailGraph {
+  return {
+    nodes: graph.nodes,
+    edges: graph.edges.map((edge) => ({
+      ...edge,
+      geometry: [graph.nodes[edge.from], graph.nodes[edge.to]],
+    })),
+  }
+}
+
+const index = buildGraphIndex(published(GRAPH))
 
 /** A point on an edge at a known fraction, without going through a tap. */
 function pointOn(edgeIndex: number, fraction: number) {
@@ -304,6 +334,106 @@ describe('the graph index', () => {
 
     expect(nearestPointOnGraph(empty, { lon: -74.1, lat: 41.25 })).toBeNull()
   })
+
+  it('has no search grid before geometry arrives, and one after (#1020)', () => {
+    // Not a degraded state either way: an edge with no vertices is not a snap
+    // candidate at all, so a graph with no geometry has nothing to index.
+    expect(buildGraphIndex(GRAPH).grid).toBeNull()
+    expect(buildGraphIndex(published(GRAPH)).grid).not.toBeNull()
+  })
+
+  it('answers a tap identically with the grid and without it (#1020)', () => {
+    // The grid is an optimisation and must not be a behaviour change. Same
+    // graph, same taps, one index carrying the grid and one with it removed
+    // so the fallback scan runs.
+    const withGrid = buildGraphIndex(published(GRAPH))
+    const withoutGrid = { ...withGrid, grid: null }
+
+    const taps = [
+      { lon: -74.095, lat: 41.25 }, // mid Pine Meadow
+      { lon: -74.09, lat: 41.2555 }, // near the Seven Hills junction
+      { lon: -74.0, lat: 41.3 }, // the Kakiat island
+      { lon: -74.05, lat: 41.28 }, // off everything
+      { lon: -74.1, lat: 41.25 }, // exactly on node 0
+    ]
+
+    for (const tap of taps) {
+      expect(nearestPointOnGraph(withGrid, tap)).toEqual(
+        nearestPointOnGraph(withoutGrid, tap),
+      )
+    }
+  })
+
+  it('keeps a tap out of a grid cell it only nearly reaches (#1020)', () => {
+    // The cell is 0.05 deg, so a tap can sit in a cell holding no edge while
+    // the nearest edge is one cell over and well inside the tolerance. If the
+    // query read only its own cell this would refuse a tap that is 20 ft from
+    // a trail.
+    const grid = buildGraphIndex(published(GRAPH))
+    // 0.0001 deg north of Pine Meadow is about 11 m - inside the 150 ft
+    // tolerance - and Math.floor puts it in the same cell here; the margin
+    // sweep is what the assertion below actually exercises at a cell edge.
+    const justOff = nearestPointOnGraph(grid, { lon: -74.0999, lat: 41.2501 })
+
+    expect(justOff).not.toBeNull()
+    expect(justOff?.edgeIndex).toBe(0)
+  })
+})
+
+describe('which of two equal routes comes back (#1020)', () => {
+  // A diamond: two ways from node 0 to node 3, the same length either way.
+  //
+  //        1
+  //      /   \        both arms 836 m + 1112 m
+  //     0     3
+  //      \   /
+  //        2
+  //
+  // The scan this replaced took whichever node had been discovered first,
+  // which depended on adjacency order, which depends on the edge numbering
+  // that build_trail_graph.py rewrites on every publish. That was never a
+  // stable answer. The heap orders ties by node id, which is stable for as
+  // long as one artifact is - and this test exists so that a future change
+  // to the tie-break is a decision somebody takes rather than a diff nobody
+  // notices.
+  const DIAMOND: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.26],
+      [-74.09, 41.24],
+      [-74.08, 41.25],
+    ],
+    edges: [
+      { ...GRAPH.edges[0], from: 0, to: 1, length_m: 1000, name: 'North arm' },
+      { ...GRAPH.edges[0], from: 1, to: 3, length_m: 1000, name: 'North arm' },
+      { ...GRAPH.edges[0], from: 0, to: 2, length_m: 1000, name: 'South arm' },
+      { ...GRAPH.edges[0], from: 2, to: 3, length_m: 1000, name: 'South arm' },
+    ],
+  }
+
+  it('is the same route every time, and it is the lower-numbered node', () => {
+    const diamond = buildGraphIndex(published(DIAMOND))
+    const start = {
+      edgeIndex: 0,
+      fraction: 0,
+      at: { lon: -74.1, lat: 41.25 },
+      offNetworkFeet: 0,
+    }
+    const end = {
+      edgeIndex: 3,
+      fraction: 1,
+      at: { lon: -74.08, lat: 41.25 },
+      offNetworkFeet: 0,
+    }
+
+    const first = routeBetween(diamond, start, end)
+    const again = routeBetween(diamond, start, end)
+
+    expect(first).not.toBeNull()
+    expect(first?.legs.map((leg) => leg.name)).toEqual(again?.legs.map((leg) => leg.name))
+    // Node 1 is the north arm and sorts before node 2.
+    expect(first?.legs.map((leg) => leg.name)).toContain('North arm')
+  })
 })
 
 describe('routeGeometry, which is what the casing draws', () => {
@@ -401,6 +531,83 @@ describe('routeGeometry, which is what the casing draws', () => {
     expect(span(backward!)).toBeCloseTo(0.005, 5)
   })
 
+  it('draws an out-and-back over one edge rather than nothing (#1040)', () => {
+    // The defect: `route.edgeIndices` is deduplicated across leg joins, so
+    // walking out and back over one edge collapses to `[1]` - and the caller
+    // then handed routeGeometry the FIRST and LAST tap, which for a walk
+    // returning to its start are the same point. The edge got trimmed to a
+    // zero-length span and the whole drawing came back null, under a bar
+    // reading "1 leg · 0.6 mi · ≈12m walking".
+    const index = buildGraphIndex(DRAWN)
+    const out = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const turn = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    expect(out).not.toBeNull()
+    expect(turn).not.toBeNull()
+
+    const route = routeThrough(index, [out!, turn!, out!])
+    expect(route).not.toBeNull()
+    // The route itself was always right - it counts both directions.
+    expect(route!.edgeIndices).toEqual([1])
+    expect(route!.miles).toBeCloseTo(0.623, 2)
+
+    const naive = routeGeometry(index.graph, route!.edgeIndices, out!, out!)
+    expect(naive).toBeNull()
+
+    const lines = routeLines(index.graph, route!)
+    expect(lines).not.toBeNull()
+    // One line per leg: out, and back over the same ground.
+    expect(lines).toHaveLength(2)
+    const span = (line: Array<[number, number]>) =>
+      Math.abs(line[line.length - 1][0] - line[0][0])
+    expect(span(lines![0])).toBeCloseTo(0.006, 5)
+    expect(span(lines![1])).toBeCloseTo(0.006, 5)
+    // And drawn in opposite directions, which is what walking back is.
+    expect(lines![0][0]).toEqual(lines![1][lines![1].length - 1])
+  })
+
+  it('draws the ground walked twice, not just the span between the taps', () => {
+    // Out to 0.8, turn, stop at 0.5. The stretch from 0.5 to 0.8 is walked
+    // twice and was drawn zero times: the old call trimmed the deduplicated
+    // edge to the span between the first and last tap.
+    const index = buildGraphIndex(DRAWN)
+    const start = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const turn = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    const stop = nearestPointOnGraph(index, { lon: -74.085, lat: 41.25 })
+
+    const route = routeThrough(index, [start!, turn!, stop!])
+    expect(route).not.toBeNull()
+
+    const lines = routeLines(index.graph, route!)
+    expect(lines).toHaveLength(2)
+    // The far leg reaches the turnaround, which the single-call drawing
+    // never did. East is the larger longitude here, and the turnaround is
+    // the eastmost point of the walk.
+    const reached = Math.max(...lines!.flat().map(([lon]) => lon))
+    expect(reached).toBeCloseTo(-74.082, 3)
+    // The old call stopped at the last tap instead.
+    const naive = routeGeometry(index.graph, route!.edgeIndices, start!, stop!)
+    expect(Math.max(...naive!.flat().map(([lon]) => lon))).toBeCloseTo(-74.085, 3)
+  })
+
+  it('refuses the whole drawing when one leg cannot be drawn', () => {
+    // The same asymmetry routeGeometry states per edge, one level up: four
+    // legs of a five-leg walk is a picture that lies about the fifth.
+    const index = buildGraphIndex(DRAWN)
+    const a = nearestPointOnGraph(index, { lon: -74.088, lat: 41.25 })
+    const b = nearestPointOnGraph(index, { lon: -74.082, lat: 41.25 })
+    const route = routeThrough(index, [a!, b!])
+    expect(route).not.toBeNull()
+
+    // Strip the geometry from the one edge the route uses.
+    const stripped = {
+      ...index.graph,
+      edges: index.graph.edges.map((edge, at) =>
+        at === route!.edgeIndices[0] ? { ...edge, geometry: undefined } : edge,
+      ),
+    }
+    expect(routeLines(stripped, route!)).toBeNull()
+  })
+
   it('refuses to draw chords when an edge has no geometry', () => {
     // GRAPH's edges carry no geometry at all - an older artifact. No drawing
     // beats drawing a straight line across a switchback.
@@ -440,6 +647,95 @@ describe('projection onto a bent edge', () => {
     expect(found).not.toBeNull()
     expect(found?.offNetworkFeet).toBeLessThan(5)
     expect(found?.fraction).toBeCloseTo(0.5, 1)
+  })
+})
+
+// #1093. The state above with its vertices taken away, which is not an old
+// artifact - it is every phone between the day-hike door opening and
+// `trail_graph_geometry.json` landing, and every phone whose fetch of it
+// never resolves.
+describe('a graph that has arrived without its lines', () => {
+  //         2 ------------- 3      Kakiat Trail, straight, 22 m north of the
+  //                                bend's apex
+  //             (apex)
+  //            /       \            Pine Meadow Trail, bowing 445 m north of
+  //   0 - - - - chord - - - 1       the chord between its own two junctions
+  const NETWORK: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      [-74.1, 41.2542],
+      [-74.09, 41.2542],
+    ],
+    edges: [
+      {
+        from: 0,
+        to: 1,
+        length_m: 1200,
+        trail_id: 'oprhp_trails:1',
+        source: 'oprhp_trails',
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+        geometry: [
+          [-74.1, 41.25],
+          [-74.095, 41.254],
+          [-74.09, 41.25],
+        ],
+      },
+      {
+        from: 2,
+        to: 3,
+        length_m: 836,
+        trail_id: 'nynjtc_long_path:9',
+        source: 'nynjtc_long_path',
+        name: 'Kakiat Trail',
+        blaze_color: 'yellow',
+        geometry: [
+          [-74.1, 41.2542],
+          [-74.09, 41.2542],
+        ],
+      },
+    ],
+  }
+  const bare: TrailGraph = {
+    nodes: NETWORK.nodes,
+    edges: NETWORK.edges.map(({ geometry: _geometry, ...edge }) => edge),
+  }
+
+  /** The apex of Pine Meadow's bend - dead on the line the map is drawing. */
+  const ON_THE_BEND = { lon: -74.095, lat: 41.254 }
+
+  it('says so, rather than answering', () => {
+    expect(canSnapToGraph(buildGraphIndex(bare))).toBe(false)
+    expect(canSnapToGraph(buildGraphIndex(NETWORK))).toBe(true)
+  })
+
+  it('refuses a tap it cannot place instead of placing it on the wrong trail', () => {
+    // WITH the lines, the tap is where the finger was: on Pine Meadow, at no
+    // measurable distance off it.
+    const placed = nearestPointOnGraph(buildGraphIndex(NETWORK), ON_THE_BEND)
+    expect(placed?.edgeIndex).toBe(0)
+    expect(placed?.offNetworkFeet).toBeLessThan(5)
+
+    // WITHOUT them, Pine Meadow offers only the chord between its junctions,
+    // 445 m south of the finger - and Kakiat's chord runs 22 m north of it.
+    // The nearest chord is therefore a DIFFERENT TRAIL, inside the tolerance,
+    // and the old code returned it with no sign that anything had happened:
+    // a walk starting on a trail the hiker never touched. Measured across
+    // Harriman that was 7% of on-trail taps, against 20% refused outright.
+    expect(nearestPointOnGraph(buildGraphIndex(bare), ON_THE_BEND)).toBeNull()
+  })
+
+  it('refuses even a tap on a junction node, which it could have answered', () => {
+    // Node 0 is a published coordinate and its fraction would be 0 either
+    // way, so this one case a chord could have got right. Refused anyway:
+    // the rule is about what the graph can be trusted to say, not about the
+    // handful of points where a wrong answer happens to coincide with a
+    // right one, and a tolerance that admits nodes admits everything within
+    // 150 ft of one.
+    expect(
+      nearestPointOnGraph(buildGraphIndex(bare), { lon: -74.1, lat: 41.25 }),
+    ).toBeNull()
   })
 })
 
@@ -488,14 +784,47 @@ describe('pricing the climb of a walk', () => {
     expect(route?.climb).toBeNull()
   })
 
-  it('counts a re-walked stretch once per pass, as its legs already do', () => {
+  it('counts a re-walked stretch once per pass, in the direction of each pass', () => {
     // The out-and-back half of #1002, applied to climb: walking edge 0 out
-    // and back is two passes of real ground and two passes of real ascent.
+    // and back is two passes of real ground - and the second pass climbs
+    // what the first descended, which is the half #1034 was about. This
+    // asserted `{ gainFt: 200, lossFt: 40 }` until then: two passes counted
+    // in the same direction, describing a walk that ends 200 ft above the
+    // trailhead it returns to.
     const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10] }))
     const there = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
     const andBack = routeThrough(priced, [pointOn(0, 0), pointOn(0, 1), pointOn(0, 0)])
+
     expect(there?.climb).toEqual({ gainFt: 100, lossFt: 20 })
-    expect(andBack?.climb).toEqual({ gainFt: 200, lossFt: 40 })
+    // Both passes of real ground: 100 + 20 up, 20 + 100 down.
+    expect(andBack?.climb).toEqual({ gainFt: 120, lossFt: 120 })
+  })
+
+  it('a walk that ends where it started gains exactly what it loses', () => {
+    // The invariant worth pinning rather than a pair of literals: it is
+    // arithmetic about the ground, true of every closed walk on every
+    // profile, and it is what the old behaviour broke visibly.
+    const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: [70, 5] }))
+    const outAndBack = routeThrough(priced, [
+      pointOn(0, 0.25),
+      pointOn(1, 1),
+      pointOn(0, 0.25),
+    ])
+    expect(outAndBack?.climb).not.toBeNull()
+    expect(outAndBack?.climb?.gainFt).toBeCloseTo(outAndBack?.climb?.lossFt as number, 6)
+    expect(outAndBack?.climb?.gainFt).toBeGreaterThan(0)
+  })
+
+  it('walking an edge backwards climbs what walking it forwards descended', () => {
+    // The plainest statement of the defect. Edge 0 rises 500 ft from node 0
+    // to node 1, so walking 1 -> 0 is 500 ft of descent and no ascent - and
+    // the ascent figure is the only input the day-hike card's ≈time has.
+    const priced = buildGraphIndex(withClimb({ 0: [500, 0] }))
+    const uphill = routeBetween(priced, pointOn(0, 0), pointOn(0, 1))
+    const downhill = routeBetween(priced, pointOn(0, 1), pointOn(0, 0))
+
+    expect(uphill?.climb).toEqual({ gainFt: 500, lossFt: 0 })
+    expect(downhill?.climb).toEqual({ gainFt: 0, lossFt: 500 })
   })
 
   it('prices a closed loop over every edge the loop walks', () => {
@@ -509,5 +838,241 @@ describe('pricing the climb of a walk', () => {
     const priced = buildGraphIndex(withClimb({ 0: [100, 20], 1: [50, 10], 2: null }))
     const route = routeThrough(priced, [pointOn(0, 0), pointOn(1, 1), pointOn(2, 1)])
     expect(route?.climb).toBeNull()
+  })
+})
+
+describe('which trail a drawn line meant (#935)', () => {
+  // Two trails on the SAME tread - the Harriman case, where the A.T. runs
+  // concurrently with Ramapo-Dunderberg and OPRHP publishes its own line over
+  // ground ATC's centerline already covers. Measured on the published network
+  // (2026-08-27): the median separation between the top two candidates at a
+  // sampled Harriman point is 0.0 m.
+  const CONCURRENT: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      // A third trail, 20 m north - inside 25 m and well outside the 8 m that
+      // means "the same place".
+      [-74.1, 41.2502],
+      [-74.09, 41.2502],
+    ],
+    edges: [
+      {
+        ...GRAPH.edges[0],
+        from: 0,
+        to: 1,
+        name: 'Appalachian Trail',
+        blaze_color: 'white',
+        trail_id: 'centerline:at',
+        source: 'centerline',
+      },
+      {
+        ...GRAPH.edges[0],
+        from: 0,
+        to: 1,
+        name: 'Ramapo-Dunderberg',
+        blaze_color: 'red',
+        trail_id: 'oprhp:rd',
+        source: 'oprhp_trails',
+      },
+      {
+        ...GRAPH.edges[0],
+        from: 2,
+        to: 3,
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+        trail_id: 'oprhp:pm',
+        source: 'oprhp_trails',
+      },
+    ],
+  }
+  const concurrent = buildGraphIndex(published(CONCURRENT))
+  const onTheTread = { lon: -74.095, lat: 41.25 }
+
+  it('finds every distinct trail in reach, not every edge of them', () => {
+    // A hiker can answer "which blaze were you following". They cannot answer
+    // "which of these four pieces of the Pine Meadow Trail", which is a
+    // question about the artifact rather than about the ground.
+    const near = trailsNear(concurrent, onTheTread, DRAWN_SNAP_METRES)
+
+    expect(near).toHaveLength(3)
+    expect(near[0].offNetworkFeet).toBeLessThanOrEqual(near[1].offNetworkFeet)
+  })
+
+  it('matches nothing past 25 m, which ends a stretch rather than refusing the walk', () => {
+    // 0.0001 deg of latitude is about 11.1 m here, so this sits 66 m from the
+    // concurrent pair and 44 m from the third trail - outside what a drawn
+    // line may reach, on either.
+    const wellOff = { lon: -74.095, lat: 41.2506 }
+
+    expect(trailsNear(concurrent, wellOff, DRAWN_SNAP_METRES)).toHaveLength(0)
+    expect(trailChoice(concurrent, wellOff).kind).toBe('none')
+  })
+
+  it('asks when the answer changes where somebody walks', () => {
+    const choice = trailChoice(concurrent, onTheTread)
+
+    expect(choice.kind).toBe('ask')
+    if (choice.kind !== 'ask') return
+    // The two on one tread collapse to their nearest; the trail 20 m away is
+    // the second option, because taking it is a different walk.
+    expect(choice.options).toHaveLength(2)
+  })
+
+  it('does not ask when both answers are the same ground', () => {
+    // The concurrency alone, with the third trail removed. Both candidates
+    // are within SAME_TREAD_METRES, so the choice is about a label rather
+    // than about a walk - and a question with no consequence is one a hiker
+    // learns to dismiss.
+    const tread = buildGraphIndex(
+      published({ nodes: CONCURRENT.nodes, edges: CONCURRENT.edges.slice(0, 2) }),
+    )
+    const choice = trailChoice(tread, onTheTread)
+
+    expect(SAME_TREAD_METRES).toBe(8)
+    expect(choice.kind).toBe('one')
+  })
+})
+
+describe('holding a designation across shared tread (#1115)', () => {
+  // A corridor where the Long Path rides Pine Meadow's tread, published the
+  // way the real artifact publishes it: the shared piece appears TWICE, once
+  // per organization, between the same node pairs. The lengths differ by
+  // tracing noise, arranged so the shortest-path search provably alternates -
+  // it takes whichever twin is shorter, and a different twin is shorter on
+  // each piece. That alternation is the defect: without holdDesignation the
+  // legs read Pine Meadow / Long Path / Pine Meadow over one straight walk.
+  //
+  //   0 -- e0 (836, PM) -- 1 == e1/e2 == 2 == e3/e4 == 3 -- e5 (836, PM) -- 4
+  //                            (PM 830)      (PM 836)
+  //                            (LP 836)      (LP 830)
+  const PM = {
+    trail_id: 'oprhp_trails:pm',
+    source: 'oprhp_trails',
+    name: 'Pine Meadow Trail',
+    blaze_color: 'blue',
+  }
+  const LP = {
+    trail_id: 'nynjtc_long_path:lp',
+    source: 'nynjtc_long_path',
+    name: 'Long Path',
+    blaze_color: 'aqua',
+  }
+  const CORRIDOR: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      [-74.08, 41.25],
+      [-74.07, 41.25],
+      [-74.06, 41.25],
+    ],
+    edges: [
+      { from: 0, to: 1, length_m: 836, ...PM },
+      { from: 1, to: 2, length_m: 830, ...PM },
+      { from: 1, to: 2, length_m: 836, ...LP },
+      { from: 2, to: 3, length_m: 836, ...PM },
+      { from: 2, to: 3, length_m: 830, ...LP },
+      { from: 3, to: 4, length_m: 836, ...PM },
+    ],
+  }
+  const corridor = buildGraphIndex(published(CORRIDOR))
+
+  function on(edgeIndex: number, fraction: number) {
+    const edge = CORRIDOR.edges[edgeIndex]
+    const [fromLon, fromLat] = CORRIDOR.nodes[edge.from]
+    const [toLon, toLat] = CORRIDOR.nodes[edge.to]
+    return {
+      edgeIndex,
+      fraction,
+      at: {
+        lon: fromLon + (toLon - fromLon) * fraction,
+        lat: fromLat + (toLat - fromLat) * fraction,
+      },
+      offNetworkFeet: 0,
+    }
+  }
+
+  it('re-picks interior twins so the walk keeps the designation it entered on', () => {
+    const raw = [0, 1, 4, 5]
+    // The precondition the fixture exists to set up: the raw pick alternates.
+    expect(sameTrail(CORRIDOR.edges[1], CORRIDOR.edges[4])).toBe(false)
+
+    const held = holdDesignation(corridor, raw)
+    expect(held).toEqual([0, 1, 3, 5])
+  })
+
+  it('lists one leg over the concurrency, crediting both organizations', () => {
+    const route = routeBetween(corridor, on(0, 0.5), on(5, 0.5))
+    expect(route).not.toBeNull()
+    if (route === null) return
+
+    expect(route.legs).toHaveLength(1)
+    expect(route.legs[0].name).toBe('Pine Meadow Trail')
+    // Post-swap pricing: 418 + 830 + 836 + 418, from the edges the walk now
+    // actually names rather than from the search's pre-swap total.
+    expect(route.miles).toBeCloseTo(metresToMiles(418 + 830 + 836 + 418), 6)
+
+    // The folded-away designation's organization keeps its credit - #1115's
+    // "silently drops the other steward's name" is the failure this pins.
+    expect(route.legs[0].concurrent_sources).toEqual(['nynjtc_long_path'])
+    expect(route.legsBySource).toContainEqual({ source: 'oprhp_trails', legs: 1 })
+    expect(route.legsBySource).toContainEqual({ source: 'nynjtc_long_path', legs: 1 })
+  })
+
+  it('keeps the merged leg through a multi-tap walk', () => {
+    const route = routeThrough(corridor, [on(0, 0.5), on(3, 0.5), on(5, 0.5)])
+    expect(route).not.toBeNull()
+    if (route === null) return
+
+    expect(route.legs).toHaveLength(1)
+    expect(route.legs[0].concurrent_sources).toEqual(['nynjtc_long_path'])
+  })
+
+  it('never swaps onto a fork, however alike its length', () => {
+    // Same node pair, near-equal lengths, genuinely different ground: the
+    // south side bows ~500 m away at its midpoint. This is the published
+    // graph's "Lenape Ridge beside Minisink" shape - the pair that proves
+    // length alone cannot answer same-tread - and swapping onto it would
+    // draw a hiker a line they are not on.
+    const forked: TrailGraph = {
+      nodes: CORRIDOR.nodes,
+      edges: [
+        { from: 0, to: 1, length_m: 836, ...PM },
+        { from: 1, to: 2, length_m: 830, ...PM },
+        { from: 1, to: 2, length_m: 836, ...LP },
+        { from: 3, to: 4, length_m: 836, ...PM },
+      ],
+    }
+    const graph = published(forked)
+    // Bow the LP copy away mid-piece; its endpoints still weld to 1 and 2.
+    graph.edges[2].geometry = [CORRIDOR.nodes[1], [-74.085, 41.2545], CORRIDOR.nodes[2]]
+    const index = buildGraphIndex(graph)
+
+    expect(sameTread(graph, 1, 2)).toBe(false)
+    expect(holdDesignation(index, [0, 2, 3])).toEqual([0, 2, 3])
+  })
+
+  it('refuses twins whose lengths disagree by more than tracing noise', () => {
+    // Identical straight geometry cannot rescue a 5%+ length disagreement on
+    // a long edge: 80 m of extra ground over a mile is a different path.
+    const graph = published({
+      nodes: CORRIDOR.nodes,
+      edges: [
+        { from: 1, to: 2, length_m: 1609, ...PM },
+        { from: 1, to: 2, length_m: 1700, ...LP },
+      ],
+    })
+    expect(sameTread(graph, 0, 1)).toBe(false)
+  })
+
+  it('reads no evidence as "not the same ground"', () => {
+    // Twins without vertices offer nothing to check the tread against, and
+    // an unverifiable swap is refused rather than taken on faith.
+    const bare = buildGraphIndex({
+      nodes: CORRIDOR.nodes,
+      edges: CORRIDOR.edges,
+    })
+    expect(sameTread(bare.graph, 1, 4)).toBe(false)
+    expect(holdDesignation(bare, [0, 1, 4, 5])).toEqual([0, 1, 4, 5])
   })
 })

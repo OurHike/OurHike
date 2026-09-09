@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import { FieldNoteSection, type FieldNoteContext } from './FieldNoteSection'
-import type { NoteSummary } from '../lib/fieldNotes'
+import { goodWords, type NoteSummary } from '../lib/fieldNotes'
 
 afterEach(() => {
   cleanup()
@@ -42,6 +42,7 @@ function context(overrides: Partial<FieldNoteContext> = {}): FieldNoteContext {
     contributeConditions: false,
     onAddNote: vi.fn(),
     onReportProblem: vi.fn(),
+    onSayThanks: vi.fn(),
     now: NOW,
     ...overrides,
   }
@@ -150,7 +151,7 @@ describe('FieldNoteSection', () => {
       },
       undefined,
     )
-    expect(screen.getByText(/^Noted: dry\./)).toBeTruthy()
+    expect(screen.getByRole('status')).toHaveTextContent(/It sends when there’s signal/)
   })
 
   it('signs with the floor when the hiker has not said who they are', () => {
@@ -196,17 +197,30 @@ describe('FieldNoteSection', () => {
     )
   })
 
-  it('routes a damaged shelter straight to the shelter_repair form', () => {
+  it('sends a shelter problem to the picker, not to a form it did not pick', () => {
+    // INVERTED BY #1140, and the inversion is the change. This used to assert
+    // `shelter_repair`, which was right while the button read "Damaged": the
+    // word promised structural damage and the form matched it. "Problem" also
+    // covers mice in the food box, a fouled privy, a missing bear hang - so
+    // the pre-pick would put a repair form in front of somebody who did not
+    // ask for one, which is what lib/fieldNotes.ts refuses for `dry`.
+    //
+    // `undefined` is the picker: chrome/FieldNoteSection.tsx passes the type
+    // only for `{ kind: 'form' }`, so the absent second argument IS the
+    // assertion that no type was chosen for the hiker.
     const onReportProblem = vi.fn()
     renderSection(context({ onReportProblem }), {
       poiType: 'shelter',
       poiId: 'atc_shelters:9',
     })
 
-    fireEvent.click(screen.getByTestId('poi-card-observe-damaged'))
+    fireEvent.click(screen.getByTestId('poi-card-observe-problem'))
     fireEvent.click(screen.getByTestId('poi-card-escalate'))
 
-    expect(onReportProblem.mock.calls[0][1]).toBe('shelter_repair')
+    expect(onReportProblem.mock.calls[0][1]).toBeUndefined()
+    // Still an escalation, though - the offer has to survive, or a broadened
+    // word would have quietly cost a hiker the hand-off entirely.
+    expect(onReportProblem).toHaveBeenCalledTimes(1)
   })
 
   it('offers no escalation after an answer that is not a problem', () => {
@@ -292,7 +306,7 @@ describe('a note’s photo', () => {
     // Synchronously, with no await: the one-tap answer is the contribution
     // DATA_NUDGES.md designed, and putting a model load in front of it would
     // spend the one interaction that has to be free.
-    expect(screen.getByText(/^Noted: dry\./)).toBeTruthy()
+    expect(screen.getByRole('status')).toHaveTextContent(/It sends when there’s signal/)
   })
 
   it('renders a photo that came back with somebody else’s note', () => {
@@ -575,7 +589,7 @@ describe('FieldNoteSection, peeking', () => {
 
     fireEvent.click(screen.getByTestId('poi-card-observe-dry'))
 
-    expect(screen.getByRole('status')).toHaveTextContent('Noted: dry')
+    expect(screen.getByRole('status')).toHaveTextContent(/It sends when there’s signal/)
     fireEvent.click(screen.getByTestId('poi-card-escalate'))
     expect(onReportProblem).toHaveBeenCalledWith(
       expect.objectContaining({ poiId: 'osm_water:1' }),
@@ -591,5 +605,272 @@ describe('FieldNoteSection, peeking', () => {
     })
 
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #1122's changes to what a place is asked, and how the ask is dressed.
+
+describe('the quick answers, reworked (#1122)', () => {
+  it('asks a campsite and a shelter about damage rather than about capacity', () => {
+    // The peek is the surface most hikers use, so which two answers land on it
+    // IS the feature. Capacity is the number this project already declines to
+    // publish; damage is the one a maintainer can act on.
+    for (const poiType of ['shelter', 'campsite']) {
+      const { unmount } = renderSection(context(), {
+        poiType,
+        poiId: `atc_${poiType}s:1`,
+        variant: 'peek',
+      })
+
+      expect(screen.getByTestId('poi-card-observe-fine')).toBeTruthy()
+      expect(screen.getByTestId('poi-card-observe-problem')).toBeTruthy()
+      expect(screen.queryByTestId('poi-card-observe-full')).toBeNull()
+      unmount()
+    }
+  })
+
+  it('gives a campsite its quick answers, opened and peeking alike', () => {
+    // Pinned rather than assumed. `campsite` has been inside NOTE_SCOPED_TYPES
+    // since #759, so this should already have been true - and the suite had no
+    // assertion that it was, because every case here rendered water.
+    const { unmount } = renderSection(context(), {
+      poiType: 'campsite',
+      poiId: 'atc_campsites:xyz',
+      variant: 'peek',
+    })
+    expect(screen.getByTestId('poi-card-peek-conditions')).toBeTruthy()
+    expect(screen.getAllByRole('button').length).toBeGreaterThanOrEqual(2)
+    unmount()
+
+    renderSection(context(), { poiType: 'campsite', poiId: 'atc_campsites:xyz' })
+    expect(screen.getByTestId('poi-card-conditions')).toBeTruthy()
+    for (const id of ['fine', 'problem', 'trash', 'not_found']) {
+      expect(screen.getByTestId(`poi-card-observe-${id}`)).toBeTruthy()
+    }
+  })
+
+  it('asks a parking lot the one capacity question a hiker can actually see', () => {
+    // Parking's whole case for joining the scope: a full lot at a trailhead is
+    // a hiker's way off the trail being unavailable, and unlike a shelter's
+    // capacity it is a fact somebody standing there can read off the ground.
+    renderSection(context(), {
+      poiType: 'parking',
+      poiId: 'atc_parking:1',
+      variant: 'peek',
+    })
+
+    expect(screen.getByTestId('poi-card-observe-open')).toBeTruthy()
+    expect(screen.getByTestId('poi-card-observe-full')).toBeTruthy()
+  })
+
+  it('hands a trash tap straight to the report type of the same name', () => {
+    // One complaint at two weights: the note dates the observation, the report
+    // puts it in front of a maintainer. The type is pre-picked because unlike
+    // "a dry spring" there IS a report type that names this exactly.
+    const onReportProblem = vi.fn()
+    renderSection(context({ onReportProblem }), {
+      poiType: 'shelter',
+      poiId: 'atc_shelters:9',
+    })
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-trash'))
+    fireEvent.click(screen.getByTestId('poi-card-escalate'))
+
+    expect(onReportProblem).toHaveBeenCalledWith(
+      expect.objectContaining({ poiId: 'atc_shelters:9' }),
+      'trash',
+    )
+  })
+
+  it('tints the two ends and leaves the middle answers alone', () => {
+    // The words carry the meaning and the tint says it a second time
+    // (WIREFRAMES.md §11). What this guards is that the second channel lands
+    // on the right two buttons - a scale with three coloured rungs is a scale
+    // that has to be learned.
+    renderSection(context(), { poiType: 'water' })
+
+    expect(screen.getByTestId('poi-card-observe-flowing').className).toContain(
+      'poi-card__observation--good',
+    )
+    expect(screen.getByTestId('poi-card-observe-dry').className).toContain(
+      'poi-card__observation--problem',
+    )
+    expect(screen.getByTestId('poi-card-observe-trickling').className).toBe(
+      'poi-card__observation',
+    )
+    expect(screen.getByTestId('poi-card-observe-not_found').className).toBe(
+      'poi-card__observation',
+    )
+  })
+
+  it('says the same word on the peek and in the opened card', () => {
+    // The invariant the rotation exists inside. These are ONE component at two
+    // heights - PoiCard renders `conditions('peek')` or `conditions('open')`
+    // from the same place - so a card whose peek says "All good" and whose
+    // opened card says "No complaints" would read as two different questions
+    // being asked about one shelter.
+    //
+    // Driven with `rerender` rather than two renders on purpose: two mounts
+    // genuinely re-roll, so a test written that way would pass on a component
+    // that re-picks on every render, which is precisely the bug. Pulling a
+    // card open is a prop change on a live instance, and that is what this
+    // reproduces.
+    const props = {
+      poiId: 'atc_shelters:9',
+      poiType: 'shelter',
+      unverified: false,
+      lat: 41.2,
+      lon: -74.1,
+      context: context({ reporterType: 'thru' }),
+    }
+
+    const { rerender } = render(<FieldNoteSection {...props} variant="peek" />)
+    const peeking = screen.getByTestId('poi-card-observe-fine').textContent
+
+    rerender(<FieldNoteSection {...props} variant="open" />)
+    expect(screen.getByTestId('poi-card-observe-fine')).toHaveTextContent(peeking ?? '')
+
+    // And it is a real word from the right list, not an empty label that would
+    // satisfy the comparison above by matching nothing twice.
+    expect(goodWords('shelter', 'thru')).toContain(peeking)
+  })
+
+  it('re-rolls when the card swaps to a different waypoint', () => {
+    // The other half: the word is held for the life of a CARD, not for the
+    // life of the component. MapScreen renders PoiCard without a React key, so
+    // the instance survives a change of pin - the same reason `filed` and the
+    // photo are reset on `poiId`.
+    //
+    // Asserted as "the roll was re-run", not "the word changed": two rolls can
+    // land on the same word, and a test that demanded otherwise would fail
+    // roughly one run in four. The seam is the private one - `Math.random` -
+    // so this counts calls rather than inspecting the result.
+    const random = vi.spyOn(Math, 'random')
+    try {
+      const props = {
+        poiType: 'shelter',
+        unverified: false,
+        lat: 41.2,
+        lon: -74.1,
+        variant: 'open' as const,
+        context: context({ reporterType: 'thru' }),
+      }
+
+      const { rerender } = render(<FieldNoteSection {...props} poiId="atc_shelters:9" />)
+      const afterMount = random.mock.calls.length
+
+      // A re-render of the SAME card rolls nothing.
+      rerender(<FieldNoteSection {...props} poiId="atc_shelters:9" />)
+      expect(random.mock.calls.length).toBe(afterMount)
+
+      // A different one does.
+      rerender(<FieldNoteSection {...props} poiId="atc_shelters:10" />)
+      expect(random.mock.calls.length).toBeGreaterThan(afterMount)
+    } finally {
+      random.mockRestore()
+    }
+  })
+
+  it('deals a maintainer their own words for the same value', () => {
+    renderSection(context({ reporterType: 'maintainer' }), {
+      poiType: 'shelter',
+      poiId: 'atc_shelters:9',
+    })
+
+    const label = screen.getByTestId('poi-card-observe-fine').textContent ?? ''
+    expect(goodWords('shelter', 'maintainer')).toContain(label)
+  })
+
+  it('keeps the report entry after a note is filed', () => {
+    // The defect this fixes: the entry used to disappear the moment ANY note
+    // was filed, so a hiker who tapped the good answer and then noticed the
+    // privy door was off had nothing left to tap.
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    expect(screen.getByTestId('poi-card-report-here')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('poi-card-observe-fine'))
+    expect(screen.getByTestId('poi-card-report-here')).toBeTruthy()
+  })
+
+  it('steps aside for the escalation, which is the same door with a type picked', () => {
+    // Two buttons into one flow, stacked, would read as two different reports.
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-problem'))
+
+    expect(screen.getByTestId('poi-card-escalate')).toBeTruthy()
+    expect(screen.queryByTestId('poi-card-report-here')).toBeNull()
+  })
+
+  it('asks the question in words a hiker can answer standing there', () => {
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    const entry = screen.getByTestId('poi-card-report-here')
+    expect(entry).toHaveTextContent('Something wrong here?')
+    // The hint carries the feature's own name, so the screen it lands on -
+    // titled "Report a problem" - is not a surprise.
+    expect(entry).toHaveTextContent(/report it/i)
+  })
+})
+
+// The thanks plate (#1133) - the third place saying thanks is reachable from,
+// and the only one that knows which place is being thanked for.
+describe('the thanks entry on a place card', () => {
+  it('carries the place, so the thanks reaches whoever looks after THIS one', () => {
+    // The whole reason this exists rather than being left to Today's button:
+    // a thanks with a `poiId` on it can be routed by the same club lookup a
+    // report is, instead of landing on whatever stretch the hiker is standing
+    // on when they remember to send it.
+    const onSayThanks = vi.fn()
+    renderSection(context({ onSayThanks }), {
+      poiType: 'shelter',
+      poiId: 'atc_shelters:9',
+    })
+
+    fireEvent.click(screen.getByTestId('poi-card-thank-here'))
+
+    expect(onSayThanks).toHaveBeenCalledWith(
+      expect.objectContaining({ poiId: 'atc_shelters:9' }),
+    )
+  })
+
+  it('claims nothing about who maintains the place', () => {
+    // lib/maintainerLookup.ts returns null for a stretch with nobody assigned,
+    // and this card has not asked it. A hint reading "thank the crew who look
+    // after this shelter" would be the card asserting a fact it has not looked
+    // up - the failure CLAUDE.md's evidence standard exists to prevent, on a
+    // surface where the reader cannot tell a checked claim from a warm one.
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    const entry = screen.getByTestId('poi-card-thank-here')
+    expect(entry).toHaveTextContent('Glad it’s here?')
+    expect(entry).toHaveTextContent(/whoever keeps it up/i)
+    expect(entry.textContent).not.toMatch(/club|crew|maintainer|volunteer|ridgerunner/i)
+  })
+
+  it('survives a filed note, exactly as the report entry does', () => {
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    expect(screen.getByTestId('poi-card-thank-here')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('poi-card-observe-fine'))
+    expect(screen.getByTestId('poi-card-thank-here')).toBeTruthy()
+  })
+
+  it('steps aside for the escalation, for the report entry’s reason', () => {
+    // A hiker who has just said something is wrong with the shelter is being
+    // asked one question - do you want to write that up - and a "Glad it's
+    // here?" under it would be the card arguing with itself.
+    renderSection(context(), { poiType: 'shelter', poiId: 'atc_shelters:9' })
+
+    fireEvent.click(screen.getByTestId('poi-card-observe-problem'))
+
+    expect(screen.queryByTestId('poi-card-thank-here')).toBeNull()
+  })
+
+  it('is not on the peek, where neither entry is', () => {
+    renderSection(context(), { variant: 'peek' })
+
+    expect(screen.queryByTestId('poi-card-thank-here')).toBeNull()
   })
 })

@@ -7,8 +7,6 @@ import { parseHighlights } from '../lib/highlights'
 import { CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import {
   BOUNDARY_KIND,
-  CORRIDOR_BOUNDARY_LAYER_ID,
-  CORRIDOR_HIGHLIGHT_LAYER_ID,
   CORRIDOR_KIND_PROPERTY,
   CORRIDOR_MAX_ZOOM,
   CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
@@ -32,13 +30,13 @@ import { POI_PIN_MIN_ZOOM } from './poiLayers'
 const MILE_IN_DEGREES_LAT = 1 / 69.05
 const CASING = '#14130f'
 
-/** The trail paint style.ts hands down, so the corridor is measured against
- *  the same numbers the blaze layer is actually drawn with. */
+/** The app's blaze orange, which the highlight marks were painted in until
+ *  #1292 took them off the canvas - kept so the rule that it never touches a
+ *  trail line is still asserted below, mark or no mark. */
 const SELECTION = '#c1611a'
 
 const TRAIL_PAINT = {
   casingColor: CASING,
-  selectionColor: SELECTION,
   blazeWidth: BLAZE_LINE_WIDTH,
   casingWidth: CASING_LINE_WIDTH,
 }
@@ -174,13 +172,16 @@ describe('the corridor layers', () => {
     expect(new Set(lineColors)).toEqual(new Set([NEUTRAL_BLAZE_COLOR, CASING]))
   })
 
-  it('lets a MARK carry the selection colour, which is not a trail line', () => {
-    // A highlight is the one thing down here a hiker is meant to reach for,
-    // and it is drawn BESIDE the corridor rather than on it - which is what
-    // keeps the two-colour rule about the trail intact. The approved mock-up
-    // draws these in the app's blaze orange.
-    const mark = layers.find((l) => l.id === CORRIDOR_HIGHLIGHT_LAYER_ID)
-    expect((mark?.paint as Record<string, unknown>)['circle-color']).toBe(SELECTION)
+  it('draws lines and nothing else, since the opening camera shows trail lines only (#1292)', () => {
+    // The boundary ticks and the highlight marks used to be two circle layers
+    // here, and on the whole-corridor camera - with the line itself seconds
+    // late (#1291) - they read as a chain of waypoints along the trail. The
+    // features are still built (below); no layer draws them.
+    expect(layers.every((layer) => layer.type === 'line')).toBe(true)
+    expect(layers.map((layer) => layer.id)).toEqual([
+      CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
+      CORRIDOR_UNATTRIBUTED_LAYER_ID,
+    ])
   })
 
   it('never lets the selection colour touch a line layer', () => {
@@ -216,17 +217,6 @@ describe('the corridor layers', () => {
     const order = layers.map((l) => l.id)
     expect(order.indexOf(CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID)).toBeLessThan(
       order.indexOf(CORRIDOR_UNATTRIBUTED_LAYER_ID),
-    )
-  })
-
-  it('draws a highlight mark over the boundary ticks, not under them', () => {
-    // These two collide often at corridor zooms rather than rarely - a pixel
-    // is several trail miles at z5, the mark is 5 px, and the ~30 club
-    // boundaries average ~73 miles apart. Under the ticks, a neutral 2.6 px
-    // dot sits in the middle of the one mark a hiker is meant to tap.
-    const order = layers.map((l) => l.id)
-    expect(order.indexOf(CORRIDOR_BOUNDARY_LAYER_ID)).toBeLessThan(
-      order.indexOf(CORRIDOR_HIGHLIGHT_LAYER_ID),
     )
   })
 
@@ -271,7 +261,7 @@ describe('the corridor in the built style', () => {
     // earlier, and the loose match read that correct ordering as this
     // property being broken. The property itself never changed.
     const ids = buildMapStyle(STYLE_OPTIONS).layers.map((l) => l.id)
-    const corridor = ids.indexOf(CORRIDOR_BOUNDARY_LAYER_ID)
+    const corridor = ids.indexOf(CORRIDOR_UNATTRIBUTED_LAYER_ID)
 
     for (const id of [CLOSURE_LAYER_ID, LONG_TERM_CLOSURE_LAYER_ID]) {
       expect(ids.indexOf(id), id).toBeGreaterThan(corridor)

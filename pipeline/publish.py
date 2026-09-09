@@ -46,16 +46,21 @@ import json
 import os
 import shutil
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 
 import boto3
+from boto3.s3.transfer import TransferConfig
+from botocore.config import Config as BotocoreConfig
 
-from lib import data_env, releases
+from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
+from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
-from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
+from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
@@ -70,6 +75,7 @@ MANIFEST_KEY = "latest.json"
 CONDITIONS_MANIFESTS = (
     "conditions_manifest.json",
     "atc_updates_manifest.json",
+    "nynjtc_alerts_manifest.json",
     "drought_manifest.json",
     "work_projects_manifest.json",
 )
@@ -126,14 +132,67 @@ OFFLINE_SHEET_ARCHIVES = {
     # because a download must be exactly the bytes its advertised size and
     # published hash describe.
     "basemap_z13": "at_basemap_package_z13.pmtiles",
+    # The same cut capped at z12 - the hiking sheet's Light level (#1088/#1107).
+    # The taper narrowed Standard's terrain and left both rungs carrying the
+    # same basemap, so Light needed the other half of its saving here. Safe
+    # where the DEM's z12 cap was not: MapLibre overzooms z13 vector cleanly
+    # (BASEMAP.md), and a hillshade computed from magnified elevation does not
+    # survive the same treatment (LIGHT_DOWNLOAD.md).
+    "basemap_z12": "at_basemap_package_z12.pmtiles",
     "dem": "dem.pmtiles",
+    # The same terrain at a harder taper - the hiking sheet's Light level
+    # (#1088). Its own artifact rather than a cut the client performs, for the
+    # reason basemap_z13 above is one: "a download must be exactly the bytes
+    # its advertised size and published hash describe" (PR #283).
+    #
+    # NOT named _z12: the variant suffix R2_LAYOUT.md reserves for a
+    # zoom-capped cut means the archive really stops at that zoom, and this one
+    # does not - it is z0-13 like its sibling, narrower at the deep end. Naming
+    # it _z12 would promise a zoom ceiling that is not there, and the manifest
+    # merge is additive-only, so the wrong name could never be taken back.
+    "dem_light": "dem_light.pmtiles",
 }
 
-# The sheets that get 50-mile stretch cuts (#556, cut_stretches.py). Each
-# family's cut leaves `<family>_stretches_manifest.json` in PROCESSED_DIR
+# The sheets that get 1-degree coverage-cell cuts (#1175, cut_cells.py).
+# Each family's cut leaves `<family>_cells_manifest.json` in PROCESSED_DIR
 # and collect_artifacts() below reads it; a family added to the cutting
-# workflows and not here would build stretches nothing ever publishes.
-STRETCH_FAMILIES = ("at_basemap", "dem")
+# workflows and not here would build cells nothing ever publishes.
+#
+# SUPERSEDES STRETCH_FAMILIES, removed here 2026-08-28. The stretch cut
+# (#556) built trail-derived 50-mile units; the maintainer replaced that
+# unit with the graticule cell on 2026-08-25 and the pipeline went on
+# cutting stretches for three days. Measured before removal: 88 stretch
+# archives live on production at 942.9 MB, read by zero client code - which
+# is why dropping the cut regresses nothing a hiker can see.
+#
+# Their 90 keys stay in the bucket rather than being reclaimed: this
+# module's manifest merge is additive-only, so an abandoned name can only be
+# joined by a sibling, never renamed or removed from here. Deleting them is
+# a deliberate act against R2, and it belongs AFTER a cell cut has published
+# and verified, not before - an abandoned artifact costs storage, a
+# prematurely deleted one costs a rollback.
+CELL_FAMILIES = ("at_basemap", "dem")
+
+# The third family, and the one that is not a sheet (#1257 stage 2): the
+# other organizations' trail lines as vector tiles, cut into the same 1-degree
+# cells so a stretch download carries the network above the seam as well as
+# the ground under it. NOT in CELL_FAMILIES, deliberately, because that loop
+# in collect_artifacts() is ungated and these cells are the same stewards'
+# geometry as nearby_trails.geojson: they are collected inside that artifact's
+# own `reaches_hikers` branch, so a steward held back holds back their lines,
+# their sketch, their tiles and their cells as one decision. A family added
+# to the loop instead would route licensed geometry around its own gate.
+NEARBY_TRAILS_CELL_FAMILY = "nearby_trails"
+
+# The junction graph's cells (#1257 stage 3, cut_trail_graph.py): JSON shards
+# rather than archives - a graph is parsed, not read by range - cut into the
+# same squares and gated the same way, inside the graph's own reaches_hikers
+# branch below. Not a sheet either, so not in CELL_FAMILIES.
+TRAIL_GRAPH_CELL_FAMILY = "trail_graph"
+
+# Every family a cutter can be asked for, gated or not - what
+# tests/test_r2_keys.py enumerates and verify_release.py's check 20 walks.
+ALL_CELL_FAMILIES = (*CELL_FAMILIES, NEARBY_TRAILS_CELL_FAMILY, TRAIL_GRAPH_CELL_FAMILY)
 
 
 # Build metadata that travels with a release but is not part of it.
@@ -216,6 +275,123 @@ ARTIFACT_CACHE_CONTROL = "public, max-age=300, must-revalidate"
 MANIFEST_CACHE_CONTROL = "no-cache"
 
 
+# How many objects one stage of a publish moves at a time.
+#
+# WHY THIS EXISTS, measured. Run #88 of publish-vector-data.yml (2026-09-08)
+# spent 35:47 - 2,147 s - in "Publish to R2", which moved 1,267.68 MB in 1,715
+# artifact uploads and asked after ~3,016 photos one HEAD at a time, every one
+# of them a sequential round trip. The same runner wrote 422 MB into the
+# Actions cache at 172 MB/s in 1.3 s, so what that step was short of was not
+# bandwidth: it was paying per OBJECT rather than per byte. That is root cause
+# 3 of #1311 - "The vector build went from 20 to 108 minutes in twelve days: a
+# corridor union over 466k lines paid twice, every external layer re-fetched
+# every run, and a publish that pays a round-trip per object".
+#
+# "0.45 S PER OBJECT" IS 2,147 / 4,731 AND IS AN UPPER BOUND on what a round
+# trip costs, not a measurement of one. Those 4,731 are the uploads and the
+# photo HEADs; `describe_changes` read the previous copy of every changed
+# vector artifact in the same step and those reads are on top (see
+# UNDESCRIBED_PREFIXES for the graph shards that dominated them), so the true
+# per-request figure is lower by however many of them there were - a count
+# nobody has pulled out of that log. The finding does not move either way:
+# the step's wall clock tracked the request count and not the bytes.
+#
+# WHAT NOBODY HAS MEASURED, and it is the thing this constant is betting on:
+# whether that per-object cost is request latency or R2 throttling the
+# account. #1311 records the question as open. If it is latency, sixteen in
+# flight divides the step by roughly sixteen; if it is throttling, the
+# requests queue at the far end and this buys much less than it looks like it
+# should. The first CI publish after this lands is what settles it, and the
+# step's own wall clock is the measurement - so do not restate a speed-up here
+# until there is one to restate.
+#
+# A 429 COSTS TIME, NOT THE PUBLISH, which is what makes trying sixteen a
+# cheap bet rather than a risky one. botocore's default retry mode is
+# "legacy" - the config below sets a pool size and nothing else - and its
+# default policy retries any HTTP 429 and any 5xx up to five attempts with
+# randomised exponential backoff (botocore 1.43.78, `data/_retry.json`,
+# `retry.__default__`, read 2026-09-09). So a throttled publish gets slower,
+# and only an object still refused after five tries raises - which
+# `_in_parallel` turns into a failed run rather than a half-publish.
+#
+# THE NUMBER 16 IS @unvalidated - picked, not measured. The reasoning behind
+# the pick: at a round trip of the order of the upper bound above, sixteen
+# requests in flight is about where the ~1.65 GB actually being moved
+# would become the thing the step waits on rather than the latency in front of
+# it, and it is small enough that a publish is not a burst either end has to
+# think about. What would settle it is timing this step at 8, 16 and 32 on the
+# runner that produced the figures above; the knee could be anywhere in that
+# range, and if the throttling answer above turns out to be the right one the
+# knee may be below 8.
+#
+# SIXTEEN IS NOT THE NUMBER OF REQUESTS IN FLIGHT, and anyone reasoning about
+# the load this puts on R2 needs the other factor. `upload_file` is a managed
+# transfer, not one PUT: boto3's default TransferConfig splits anything over
+# 8 MiB into 8 MiB parts and sends up to 10 of them at once, per call (boto3
+# as installed, read 2026-09-09; the fan-out is read off TransferConfig below
+# rather than restated, so that half cannot drift). trail_graph_geometry.json
+# alone was 224.4 MB on run #88, so the artifact stage can have up to 16 x 10
+# requests open at once. That was already true per-file before anything here ran in
+# parallel; what is new is sixteen of them at a time.
+PUBLISH_CONCURRENCY = 16
+
+# The connection pool for the client publish() builds itself - sized to the
+# ceiling above rather than to PUBLISH_CONCURRENCY, and derived rather than
+# picked, so a boto3 that changes its fan-out moves this with it.
+#
+# botocore's default is 10 (`httpsession.MAX_POOL_CONNECTIONS`, 1.43.78), and
+# what a pool smaller than the requests in flight does is NOT queue them:
+# botocore builds its urllib3 pools without `block=True`
+# (`URLLib3Session._get_pool_manager_kwargs`, same version), so every request
+# past the ceiling opens a connection of its own and drops it on release,
+# logging "Connection pool is full, discarding connection". The cost is a
+# fresh TLS handshake per 8 MiB part, paid exactly where the bytes are.
+#
+# Raising the ceiling therefore changes nothing about how hard R2 is being
+# hit - the threads decide that - only whether the connections those threads
+# use are reused or rebuilt. A client passed in by a caller is that caller's
+# to size, pool included. 160, with the values above.
+PUBLISH_POOL_CONNECTIONS = PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
+
+
+def _in_parallel(work: list) -> list:
+    """Run every zero-argument callable in `work` at PUBLISH_CONCURRENCY and
+    return their results in the order they were given.
+
+    Sharing one boto3 client across the threads rather than building one each
+    is deliberate and is what boto3's own concurrency guidance allows: a
+    client is thread-safe for *making API calls*, which is all these workers
+    do - what is not thread-safe is mutating the client or its `meta`. It is
+    also what keeps a client a caller injected (moto, in tests/test_publish.py)
+    the client that actually gets used.
+
+    A FAILURE IN ANY WORKER FAILS THE PUBLISH. Results are gathered in
+    submission order, so the exception a caller sees is the earliest-submitted
+    failure rather than whichever thread happened to finish first - a failing
+    publish then names the same object every time it is re-run. Nothing is
+    swallowed and no short result list is returned for a caller to misread as
+    success.
+
+    The queue is cancelled on the way out for the reason every other ordering
+    rule in this module exists: half a publish is already bad, and 1,700
+    uploads queued behind a failure is worse. What is already in flight is
+    not abandoned, though - `with` closes the pool with `shutdown(wait=True)`
+    after the `except` has cancelled the queue, so by the time the exception
+    reaches the caller no worker of this stage is still running against the
+    bucket. A stage that failed does not go on writing behind the stage that
+    replaces it.
+    """
+    if not work:
+        return []
+    with ThreadPoolExecutor(max_workers=min(PUBLISH_CONCURRENCY, len(work))) as pool:
+        futures = [pool.submit(item) for item in work]
+        try:
+            return [future.result() for future in futures]
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+
+
 def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, dict]:
     """The path to actually upload for `name`, and its ExtraArgs.
 
@@ -257,13 +433,124 @@ def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, di
     return str(compressed), extra
 
 
+# Which artifacts get their change described in the manifest (#919).
+#
+# The set a phone re-downloads when a hiker accepts an update, defined by shape
+# rather than by name so a new vector artifact is covered the day it publishes -
+# the same rule #94 insists on for smoke_published.py, and for the same reason.
+#
+# What the two exclusions are doing:
+#   `.pmtiles`/`.fgb`  the archives, deliberately out of scope - 2.89 GB across
+#                      six tiers, and reading the previous copy of one to
+#                      describe it would cost more than the description is
+#                      worth. The maintainer's decision (2026-08-21): the
+#                      refresh is vector-only.
+#   `conditions/`      already refreshed on every launch by the client
+#                      (useConditions.ts), rewritten daily in place, and its
+#                      baked `generated_at` moves the hash even when no row
+#                      changed. Describing it would produce a "changed" every
+#                      day that means nothing.
+#   `trail_graph`      the junction graph and everything cut from it:
+#                      trail_graph.json, its geometry/elevation/profile
+#                      siblings, the `trail_graph_cells.json` index and the
+#                      `trail_graph*_cell_*.json` shards. NOT ONE OF THEM IS A
+#                      FeatureCollection - they are keyed documents of nodes
+#                      and edges - so `data_change.classify` answers "not a
+#                      FeatureCollection with identified features" for every
+#                      one, and it answers it *after* the download. Measured
+#                      on run #88 (2026-09-08): 78.9 MB of trail_graph.json,
+#                      224.4 MB of trail_graph_geometry.json and 1,004 cell
+#                      shards fetched back out of the bucket to produce that
+#                      same sentence 1,006 times.
+#
+#                      What a hiker loses by this is nothing today, and that
+#                      is checkable rather than assumed: no graph key appears
+#                      in the client's REFRESHABLE_KEYS
+#                      (client/src/lib/config.ts, read 2026-09-09), so no
+#                      phone stores a hash for one, and `availableRefresh`
+#                      grades only the keys a phone stored. If a graph key
+#                      ever joins that list, the fix is a structural diff for
+#                      a keyed document - deleting this line would only buy
+#                      back the `unreadable` verdict the download already
+#                      produces.
+#
+# Matched with `str.startswith` against the artifact NAME, so `conditions/` is
+# a key prefix and `trail_graph` is a filename stem. Nothing else this module
+# publishes begins with those eleven characters - `trails.geojson`,
+# `trails_overview.geojson`, `trail_miles.json` and the `nearby_trails*`
+# family all miss it - and `poi_*.geojson` and `trails.geojson`, which are what
+# the phone's "what changed" prompt is actually built from, are untouched.
+DESCRIBED_SUFFIXES = (".geojson", ".json")
+UNDESCRIBED_PREFIXES = ("conditions/", "trail_graph")
+
+
+def describes_change(name: str) -> bool:
+    """Whether this artifact's change is described for the phone. See
+    DESCRIBED_SUFFIXES."""
+    if any(name.startswith(prefix) for prefix in UNDESCRIBED_PREFIXES):
+        return False
+    return name.endswith(DESCRIBED_SUFFIXES)
+
+
+def _published_bytes(s3_client, bucket: str, key: str) -> bytes | None:
+    """The bytes currently published at `key`, decompressed, or None if there
+    are none to read.
+
+    `upload_args` stores the compressible types gzipped with
+    `ContentEncoding: gzip`, and boto3 hands back exactly what is stored rather
+    than what a browser would see - so this has to undo that itself, keyed on
+    what the object says about itself rather than on a guess from the suffix.
+    """
+    try:
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        body = response["Body"].read()
+    except Exception as exc:
+        if "NoSuchKey" not in str(exc) and "404" not in str(exc):
+            raise
+        return None
+    if str(response.get("ContentEncoding", "")).lower() == "gzip":
+        return gzip.decompress(body)
+    return body
+
+
+def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dict]) -> dict[str, dict]:
+    """`{name: change}` for every artifact in `changed` this describes (#919).
+
+    `changed` is the artifacts whose sha256 already differs from what is live -
+    publish() has worked that out for its own upload decision, so this asks the
+    bucket only about files that are really being replaced.
+
+    **A failure here never fails the publish.** The data is fine; only its
+    description is missing, and `data_change.unreadable` grades a description
+    nobody could produce as CONSEQUENTIAL - so the phone still asks the hiker,
+    it just cannot say what changed. Losing a release over a sentence would be
+    the wrong trade in the obvious direction.
+
+    The reads run PUBLISH_CONCURRENCY at a time. They are independent of one
+    another and every one of them is a round trip to the bucket, which is the
+    shape that constant exists for; the per-artifact `except` stays INSIDE the
+    worker so this function keeps failing one description at a time rather
+    than losing the batch, which is the whole of the paragraph above.
+    """
+    names = [name for name in changed if describes_change(name)]
+
+    def describe(name: str) -> dict:
+        try:
+            previous = _published_bytes(s3_client, bucket, f"{prefix}{name}")
+            return data_change.classify(previous, from_manifest_path(changed[name]["path"]).read_bytes())
+        except Exception as exc:  # noqa: BLE001 - see the docstring
+            return data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
+
+    return dict(zip(names, _in_parallel([partial(describe, name) for name in names]), strict=True))
+
+
 def collect_sidecars() -> dict[str, dict]:
     """Build metadata to upload beside a new version. See SIDECARS."""
     found: dict[str, dict] = {}
     for name, shelf in SIDECARS.items():
         path = (PROCESSED_DIR if shelf == "processed" else RAW_DIR) / name
         if path.exists():
-            found[name] = {"path": str(path), "sha256": sha256_file(path)}
+            found[name] = {"path": to_manifest_path(path), "sha256": sha256_file(path)}
     return found
 
 
@@ -298,38 +585,90 @@ def collect_photos() -> dict[str, str]:
     return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
 
 
-def upload_photos(s3_client, bucket: str, photos: dict[str, str], prefix: str = "") -> list[str]:
+def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
+    """Every photo object this environment's prefix already holds, as unscoped
+    keys - one paginated listing rather than a question per photo.
+
+    WHY A LISTING. The two callers below both used to ask the bucket object by
+    object, and the corpus is now large enough that the question costs more
+    than the answer is worth: run #88 (2026-09-08) sent ~3,016 photo HEADs,
+    one per cached photo, which with the 1,715 artifact uploads is the 4,731
+    round trips PUBLISH_CONCURRENCY's comment divides the step's 2,147 s by.
+    The promise check below then HEADs a second time - but only a referenced
+    key that is NOT in the local store, so on a warm machine it asks for
+    almost nothing and on the cleared `data/` tree #465 exists to allow it
+    asks once per referenced key. One `list_objects_v2` walk answers both
+    questions in pages of a thousand.
+
+    SCOPED TO `prefix`, which is the whole reason the listing is not
+    bucket-wide. `photos/` is the one hiker-facing prefix objects are *deleted*
+    from - a withdrawal is a promise made to whoever shared the photograph -
+    so a UA publish must not see production's photos as present, or a
+    withdrawal rehearsed in UA could take the picture out of production. The
+    prefix is stripped back off on the way out because a key is a fact about
+    what, and the environment is a fact about where.
+    """
+    keys: set[str] = set()
+    token: str | None = None
+    while True:
+        page = s3_client.list_objects_v2(
+            Bucket=bucket,
+            Prefix=f"{prefix}{PHOTO_PREFIX}/",
+            **({"ContinuationToken": token} if token else {}),
+        )
+        keys.update(item["Key"][len(prefix) :] for item in page.get("Contents", []))
+        token = page.get("NextContinuationToken")
+        # Both conditions, and the token is the one that matters: continuing
+        # on the flag alone would re-list page one for ever if a truncated
+        # page ever arrived without a token, so this stops instead - and
+        # what it then returns is a SHORT set, which is the harmless
+        # direction. A photo missing from this set is re-uploaded (its key is
+        # its hash, so the bytes are the same ones) or, if it is only
+        # referenced and not local, fails the publish by name in
+        # `verify_photo_promises`. The direction that would matter - a photo
+        # the bucket does not hold read as present - is not reachable from a
+        # short listing.
+        if not page.get("IsTruncated") or not token:
+            break
+    return keys
+
+
+def upload_photos(
+    s3_client, bucket: str, photos: dict[str, str], prefix: str = "", *, published: set[str] | None = None
+) -> list[str]:
     """Upload any photo the bucket does not already hold, and return what
     was uploaded - under `prefix`, which is the publishing environment's
     (lib/data_env.prefix_for).
 
     Existence is the whole check - no hash comparison, because the key IS
     the hash: an object already at `photos/<digest>.jpg` is by construction
-    the bytes we were about to send. One cheap HEAD per photo per run beats
-    both re-uploading everything and carrying a manifest of them.
+    the bytes we were about to send. Which keys exist comes from
+    `published_photo_keys`, whose docstring has why that is one listing rather
+    than one HEAD per photo, and why it is per environment rather than
+    bucket-wide (a non-production environment's first publish pays for the
+    whole corpus, ~75 MB per features/POI_PHOTOS.md, and every later one pays
+    for nothing).
 
-    That check is per environment rather than bucket-wide, which is what makes
-    a non-production environment's first publish pay for the whole corpus
-    (~75 MB, features/POI_PHOTOS.md) and every later one pay for nothing. The
-    duplication is deliberate: `photos/` is the one hiker-facing prefix objects
-    are *deleted* from - a withdrawal is a promise made to whoever shared the
-    photograph - and a shared prefix would let a withdrawal rehearsed in UA
-    take the picture out of production.
+    `published` lets a caller hand in a listing it already has - publish()
+    does, because the promise check below asks the same question of the same
+    prefix and there is no reason to sweep it twice.
+
+    The uploads run PUBLISH_CONCURRENCY at a time; a failure in any of them
+    raises rather than being counted as an upload that happened.
 
     Returned unscoped, because the caller reports what was published and the
     prefix is a fact about where rather than about what.
     """
-    uploaded: list[str] = []
-    for key, path in photos.items():
-        try:
-            s3_client.head_object(Bucket=bucket, Key=f"{prefix}{key}")
-            continue
-        except Exception as exc:
-            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
-                raise
-        s3_client.upload_file(path, bucket, f"{prefix}{key}", ExtraArgs={"ContentType": "image/jpeg"})
-        uploaded.append(key)
-    return uploaded
+    if published is None:
+        published = published_photo_keys(s3_client, bucket, prefix)
+    pending = {key: path for key, path in photos.items() if key not in published}
+    _in_parallel(
+        [
+            partial(s3_client.upload_file, path, bucket, f"{prefix}{key}", ExtraArgs={"ContentType": "image/jpeg"})
+            for key, path in pending.items()
+        ]
+    )
+    return list(pending)
 
 
 def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
@@ -339,9 +678,20 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     the artifact is what a hiker's card resolves against."""
     keys: set[str] = set()
     for name, entry in artifacts.items():
+        # The suggested hikes' photographs ride the same store (#1290):
+        # each record's `photo.url` is a `photos/<digest>.jpg` key, and the
+        # detail screen resolves it against the bucket exactly as a card
+        # resolves a POI's photo_key - so the same promise is settled here.
+        if name == SUGGESTED_HIKES_KEY:
+            document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
+            for hike in document.get("hikes", []):
+                url = (hike.get("photo") or {}).get("url")
+                if isinstance(url, str) and url.startswith(f"{PHOTO_PREFIX}/"):
+                    keys.add(url)
+            continue
         if not (name.startswith("poi_") and name.endswith(".geojson")):
             continue
-        document = json.loads(Path(entry["path"]).read_text(encoding="utf-8"))
+        document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
         for feature in document.get("features", []):
             properties = feature.get("properties") or {}
             if properties.get("photo_key"):
@@ -353,28 +703,34 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     return keys
 
 
-def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, photos: dict[str, str]) -> None:
+def verify_photo_promises(
+    s3_client, bucket: str, prefix: str, artifacts: dict, photos: dict[str, str], *, published: set[str] | None = None
+) -> None:
     """Fail loudly when an exported photo_key has neither a local file nor a
     bucket object (#465).
 
     This is the check that let the fetches stop requiring local bytes: a
     durable outcome record vouches that a photo was obtained ONCE, and this
     is where that trust is settled against reality - by the one component
-    that already holds credentials and already HEADs every photo key. A
+    that already holds credentials and already knows what the prefix holds. A
     cleared data/ tree publishing a photo_key nobody ever uploaded used to
     be cached_photo_missing()'s job to prevent, at the cost of a ~30-minute
     re-fetch of a corpus the bucket already held.
+
+    Settled against `published_photo_keys`' listing rather than a HEAD per
+    referenced key, which is the same set the upload above already diffed
+    against - `published` is how publish() hands over the one it took, so the
+    prefix is walked once per run instead of twice. NOTHING ABOUT THE
+    FAILURE CHANGES: a key that is in neither the local store nor the listing
+    raises, naming what is missing, before the manifest can make the promise
+    reachable. That is the check standing between a card and a 404.
     """
-    missing: list[str] = []
-    for key in sorted(referenced_photo_keys(artifacts)):
-        if key in photos:
-            continue  # in the local store; upload_photos settled it
-        try:
-            s3_client.head_object(Bucket=bucket, Key=f"{prefix}{key}")
-        except Exception as exc:
-            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
-                raise
-            missing.append(key)
+    if published is None:
+        published = published_photo_keys(s3_client, bucket, prefix)
+    # `photos` first: a key in the local store was settled by upload_photos a
+    # moment ago, which is also why a listing taken BEFORE that upload is
+    # still the right one to read here.
+    missing = [key for key in sorted(referenced_photo_keys(artifacts)) if key not in photos and key not in published]
     if missing:
         shown = ", ".join(missing[:5]) + (f" (+{len(missing) - 5} more)" if len(missing) > 5 else "")
         raise RuntimeError(
@@ -388,6 +744,37 @@ def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, 
 # than inline so test_published_key_contract.py and the client's
 # lib/config.ts have one spelling to agree with.
 NEARBY_TRAILS_KEY = "nearby_trails.geojson"
+
+# export_suggested_hikes.py's artifact (#1290): config.ts's SUGGESTED_HIKES_KEY.
+SUGGESTED_HIKES_KEY = "suggested_hikes.json"
+
+# The published key for export_nearby_poi.py's artifact (#1097) - the POIs NYS
+# DEC and NYS OPRHP publish, the sibling of NEARBY_TRAILS_KEY and gated the
+# same way. Named here for the same reason: one spelling for
+# test_published_key_contract.py and the client's lib/config.ts to agree with.
+NEARBY_POI_KEY = "nearby_poi.geojson"
+
+# The corridor-view sketch of the whole network (#1135,
+# export_nearby_trails.write_overview) - trails_overview.geojson's sibling,
+# published under NEARBY_TRAILS_KEY's own licence gate below because it is the
+# same stewards' geometry with vertices removed. Named here for the same
+# contract-test reason as its two neighbours.
+NETWORK_OVERVIEW_KEY = "network_overview.geojson"
+
+# The same lines as vector tiles (#1257, export_nearby_trails.write_tiles) -
+# what the client draws above the seam since the GeoJSON grew past what a
+# phone can hold whole (#1254). Published under NEARBY_TRAILS_KEY's own
+# licence gate below for the reason the overview is: the same stewards'
+# geometry, re-cut. Named here for the same contract-test reason as its
+# neighbours.
+NEARBY_TRAILS_TILES_KEY = "nearby_trails.pmtiles"
+
+# The mile of every centerline vertex, on the calibrated axis (#1192,
+# export_trails.write_trail_miles) - trails.geojson's sidecar, keyed by the
+# feature ids that file carries and naming its hash. Named here for the same
+# contract-test reason as its neighbours: one spelling for
+# test_published_key_contract.py and the client's lib/config.ts to agree with.
+TRAIL_MILES_KEY = "trail_miles.json"
 
 
 def collect_artifacts() -> dict[str, dict]:
@@ -417,6 +804,12 @@ def collect_artifacts() -> dict[str, dict]:
                 "path": manifest["overview"]["path"],
                 "sha256": manifest["overview"]["sha256"],
             }
+        # The per-vertex miles (#1192). Absent from a release exported before
+        # they existed, or from a checkout with no half-mile markers to
+        # calibrate an axis against, which the client reads as "measure the
+        # line yourself" rather than as a failure - spurs.json's own rule.
+        if "miles" in manifest:
+            artifacts[TRAIL_MILES_KEY] = {"path": manifest["miles"]["path"], "sha256": manifest["miles"]["sha256"]}
 
     # The trail lines other organizations maintain (#950,
     # export_nearby_trails.py). THE ONLY ARTIFACT IN THIS FUNCTION WITH A
@@ -455,6 +848,67 @@ def collect_artifacts() -> dict[str, dict]:
             )
         else:
             artifacts[NEARBY_TRAILS_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+            # The corridor-view sketch of the same lines (#1135). Inside this
+            # branch deliberately: it is the same stewards' geometry, so it
+            # ships and is held back as one decision with the artifact it
+            # sketches - an overview of lines nobody may publish is still
+            # those lines. Absent from a manifest written before the export
+            # grew it, which the client reads as "no network overview" rather
+            # than as a failure - trails_overview.geojson's own rule.
+            if "overview" in manifest:
+                artifacts[NETWORK_OVERVIEW_KEY] = {
+                    "path": manifest["overview"]["path"],
+                    "sha256": manifest["overview"]["sha256"],
+                }
+            # The vector tiles of the same lines (#1257), inside this branch
+            # for the reason the overview is: one decision, three files.
+            # Absent from a manifest written before write_tiles existed, which
+            # the client reads as "no network lines above the seam" - the
+            # state #1254's budget already leaves a phone in.
+            if "tiles" in manifest:
+                artifacts[NEARBY_TRAILS_TILES_KEY] = {
+                    "path": manifest["tiles"]["path"],
+                    "sha256": manifest["tiles"]["sha256"],
+                }
+            # Those tiles cut into 1-degree coverage cells (#1257 stage 2,
+            # cut_cells.py), inside this branch for the reason the tiles are:
+            # the same stewards' geometry, one decision. Collected from the
+            # cutter's own manifest exactly as the sheets' cells are below;
+            # absent when the workflow's cut step did not run, which the
+            # client reads as "no network cells to download".
+            _collect_cells(NEARBY_TRAILS_CELL_FAMILY, artifacts)
+
+    # The POIs those same organizations publish (#1097, export_nearby_poi.py) -
+    # DEC's lean-tos, campsites and privies, OPRHP's vistas, parking and
+    # bridges. The identical licence gate to the lines above, for the identical
+    # reason and with the identical all-or-nothing posture: one artifact holds
+    # every source's points, and a file that sometimes contains a steward and
+    # sometimes does not is worse than one that waits.
+    #
+    # WHAT IS DIFFERENT FROM THE LINES, and it is only the answer rather than
+    # the mechanism: both stewards here are already publishing their trails, so
+    # unlike the block above this one does upload. DEC's POI entries and OPRHP's
+    # facilities layer carry reaches_hikers: true on the same footing their
+    # trails do - `dec_licence`'s maintainer authorisation and `oprhp_licence`'s
+    # stated reuse-with-attribution terms. Neither is a new grant and #769's
+    # open non-commercial question is untouched by this.
+    #
+    # Water is absent from the artifact rather than gated here, which is the
+    # right place for it: a gate can be flipped, and DEC's water is a measured
+    # refusal rather than a pending answer. sources.json's `dec_water_holdback`
+    # and `oprhp_water_holdback` carry the evidence for each.
+    nearby_poi_manifest = PROCESSED_DIR / "nearby_poi_manifest.json"
+    if nearby_poi_manifest.exists():
+        manifest = json.loads(nearby_poi_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: {NEARBY_POI_KEY} not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json. "
+                f"See that file's licence blocks for what each steward was asked."
+            )
+        else:
+            artifacts[NEARBY_POI_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The junction graph derived from those same lines (#974,
     # build_trail_graph.py). It carries the nearby manifest's `sources` forward
@@ -479,6 +933,13 @@ def collect_artifacts() -> dict[str, dict]:
                 "path": manifest["geometry_path"],
                 "sha256": manifest["geometry_sha256"],
             }
+            # The same graph cut into 1-degree cells (#1257 stage 3,
+            # cut_trail_graph.py) - what the client actually loads since the
+            # whole grew past a phone - inside this branch for the reason the
+            # geometry is: the same stewards' topology, one decision. The
+            # whole files above stay published as the cut's input and for
+            # older clients; the current client asks for none of them.
+            _collect_cells(TRAIL_GRAPH_CELL_FAMILY, artifacts)
 
     # The climb along those same edges (#1011, export_network_elevation.py).
     # Its own manifest, because a publish can legitimately run without it -
@@ -502,6 +963,35 @@ def collect_artifacts() -> dict[str, dict]:
             )
         else:
             artifacts["trail_graph_elevation.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The dense sampled profile along those same edges (#1045,
+    # export_network_profile.py) - the fourth file on the graph's shelf, and
+    # the only one a phone fetches when a CHART opens rather than when the
+    # builder does. Its own manifest for the same reason its two-scalar sibling
+    # has one: the elevation steps are gated on `include_elevation`, so a run
+    # that skipped them ships a graph with no chart data rather than no graph.
+    #
+    # SAME LICENCE GATE, one more level down the derivation. Terrain sampled
+    # along a steward's line is that steward's data exactly as its topology and
+    # its climb are, and export_network_profile.py copies `sources` out of the
+    # graph manifest so this check has something to read.
+    #
+    # NOT gated on its two-scalar sibling being published, deliberately. They
+    # answer different questions - that one prices a walk, this one draws it -
+    # and a client holding one without the other degrades the way it already
+    # does when either is absent. Binding them here would make a chart-only
+    # regression take the card's figures down with it.
+    graph_profile_manifest = PROCESSED_DIR / "trail_graph_profile_manifest.json"
+    if graph_profile_manifest.exists():
+        manifest = json.loads(graph_profile_manifest.read_text())
+        held_back = sorted(key for key, entry in manifest.get("sources", {}).items() if not entry.get("reaches_hikers"))
+        if held_back:
+            print(
+                f"  HELD BACK: trail_graph_profile.json not published - "
+                f"{', '.join(held_back)} carry reaches_hikers: false in sources.json."
+            )
+        else:
+            artifacts["trail_graph_profile.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     poi_manifest = PROCESSED_DIR / "poi" / "manifest.json"
     if poi_manifest.exists():
@@ -550,6 +1040,24 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(stewards_manifest.read_text())
         artifacts["stewards.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The registry itself, for the org console (#929) - every registered
+    # source, INCLUDING the ones that reach no hiker.
+    #
+    # Its sibling above is deliberately not this file. `stewards.json` answers
+    # "whose data is on this phone" and may only name what actually ships;
+    # this one answers "what is registered", which is an admin question with a
+    # different rule. Two files rather than one wider one, because widening
+    # the first would have put a held-back steward on a hiker's sources card
+    # the day somebody wanted to count registrations.
+    #
+    # Same optional treatment as every artifact above: absent from a release
+    # exported before it existed, and the console renders an empty registry
+    # rather than an error.
+    registry_manifest = PROCESSED_DIR / "registry_manifest.json"
+    if registry_manifest.exists():
+        manifest = json.loads(registry_manifest.read_text())
+        artifacts["registry.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The curated highlights, if export_highlights.py has run (#595,
     # features/CORRIDOR_VIEW.md). Same shape again, and the same reason a run
     # that changes nothing uploads nothing - which matters more here than for
@@ -559,6 +1067,19 @@ def collect_artifacts() -> dict[str, dict]:
     if highlights_manifest.exists():
         manifest = json.loads(highlights_manifest.read_text())
         artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The routes somebody wrote up, if export_suggested_hikes.py has run
+    # (#1290, features/SUGGESTED_HIKES.md) - NYNJTC's reviewed Favorite
+    # Hikes first. Same shape again. It is absent from a release for THREE
+    # reasons rather than one, and the client reads all three as an empty
+    # shelf rather than a failure: the entry's reaches_hikers, no row yet
+    # signed off in reference/nynjtc_hike_routes.json, or a run that did not
+    # reach the exporter. config.ts declares it `@release optional` for
+    # exactly that.
+    suggested_manifest = PROCESSED_DIR / "suggested_hikes_manifest.json"
+    if suggested_manifest.exists():
+        manifest = json.loads(suggested_manifest.read_text())
+        artifacts[SUGGESTED_HIKES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The tombstones: every POI id ever retired, so an id that has been
     # published once always resolves to something (#673,
@@ -609,23 +1130,18 @@ def collect_artifacts() -> dict[str, dict]:
             for kind, entry in manifest["artifacts"].items():
                 artifacts[f"conditions/{kind}.json"] = {"path": entry["path"], "sha256": entry["sha256"]}
 
-    # The stretch units (#556): each sheet's cut writes one manifest naming
-    # its context, its per-stretch archives, and the coverage index
-    # (cut_stretches.py). Collected per family because the two sheets are
-    # cut by different workflows on different runners - whichever ran
-    # publishes what it has, the same partial-checkout posture as everything
-    # above.
-    for family in STRETCH_FAMILIES:
-        stretches_manifest = PROCESSED_DIR / f"{family}_stretches_manifest.json"
-        if stretches_manifest.exists():
-            manifest = json.loads(stretches_manifest.read_text())
-            for name, entry in manifest["artifacts"].items():
-                artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+    # The coverage cells (#1175): each sheet's cut writes one manifest naming
+    # its context, its per-cell archives, and the coverage index
+    # (cut_cells.py). Collected per family because the two sheets are cut by
+    # different workflows on different runners - whichever ran publishes what
+    # it has, the same partial-checkout posture as everything above.
+    for family in CELL_FAMILIES:
+        _collect_cells(family, artifacts)
 
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
         if path.exists():
-            artifacts[name] = {"path": str(path), "sha256": sha256_file(path)}
+            artifacts[name] = {"path": to_manifest_path(path), "sha256": sha256_file(path)}
 
     # Every entry carries the byte size of the artifact as built - the
     # measurement #505 wanted published rather than hand-kept, and the thing
@@ -634,12 +1150,24 @@ def collect_artifacts() -> dict[str, dict]:
     # gzip-uploaded text artifacts this is the DECODED size - the bytes a
     # client's fetch hands to code, the same bytes the sha256 describes.
     for entry in artifacts.values():
-        entry["size_bytes"] = Path(entry["path"]).stat().st_size
+        entry["size_bytes"] = from_manifest_path(entry["path"]).stat().st_size
 
     return artifacts
 
 
-def _verify_hashes(entries: dict[str, dict]) -> None:
+def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
+    """Add one cell family's context, per-cell archives and coverage index
+    to `artifacts`, from the manifest cut_cells.py wrote for it - or nothing,
+    when that family's cut did not run in this checkout."""
+    cells_manifest = PROCESSED_DIR / f"{family}_cells_manifest.json"
+    if not cells_manifest.exists():
+        return
+    manifest = json.loads(cells_manifest.read_text())
+    for name, entry in manifest["artifacts"].items():
+        artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+
+
+def verify_hashes(entries: dict[str, dict]) -> None:
     """Every collected sha256 must describe the bytes on disk NOW, not the
     bytes the exporter had when it wrote its manifest (#659). Most entries
     carry a hash copied from an exporter's manifest file, and nothing
@@ -650,7 +1178,7 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
     still matches the bucket. Raises before the first upload, naming every
     mismatch, so a bad state costs a failed run instead of a poisoned
     manifest."""
-    stale = {name: entry for name, entry in entries.items() if sha256_file(Path(entry["path"])) != entry["sha256"]}
+    stale = {name: entry for name, entry in entries.items() if sha256_file(from_manifest_path(entry["path"])) != entry["sha256"]}
     if stale:
         raise RuntimeError(
             "manifest hash does not match the file on disk for: "
@@ -660,7 +1188,16 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
         )
 
 
-def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+    """A JSON object already in the bucket, or None if the key is not there.
+
+    Public since #1314: `stage_release.py` reads `releases/index.json` and the
+    previous release's `manifest.json` through exactly this, and the "not
+    found is None, anything else raises" distinction below is the part worth
+    having one copy of. A stager that read a transport error as "no previous
+    release" would stage a full folder every week and never copy anything
+    forward - which looks like it is working.
+    """
     try:
         body = s3_client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read()
     except s3_client.exceptions.NoSuchKey:
@@ -705,7 +1242,13 @@ def _stage_release(
     A failed copy raises rather than warning. It means the flat key named by
     the manifest is not in the bucket, which is a real fault - and half a
     release folder is worse than none, because the index would then advertise
-    something incomplete as somewhere to roll back to.
+    something incomplete as somewhere to roll back to. That is also why the
+    copies run PUBLISH_CONCURRENCY at a time rather than one after another
+    (1,715 of them on a full publish, each a round trip): they are independent
+    of one another, `_in_parallel` re-raises the first failure rather than
+    returning a short list, and the ONE ordering that matters here - the
+    folder's own manifest written after every copy has returned - is a stage
+    boundary rather than something inside the batch.
     """
     names = [name for name in sorted([*manifest["artifacts"], *sidecar_names]) if releases.is_release_artifact(name)]
 
@@ -717,14 +1260,15 @@ def _stage_release(
     # could later resolve.
     assert_valid_keys([f"{prefix}{releases.release_key(release_id, name)}" for name in [*names, releases.RELEASE_MANIFEST_NAME]])
 
-    staged: list[str] = []
-    for name in names:
+    def copy_one(name: str) -> str:
         s3_client.copy_object(
             Bucket=bucket,
             CopySource={"Bucket": bucket, "Key": f"{prefix}{name}"},
             Key=f"{prefix}{releases.release_key(release_id, name)}",
         )
-        staged.append(name)
+        return name
+
+    staged: list[str] = _in_parallel([partial(copy_one, name) for name in names])
 
     # The folder's own manifest, written last of the folder's contents, so it
     # never describes bytes that have not landed yet.
@@ -803,16 +1347,22 @@ def publish(
             endpoint_url=os.environ["R2_ENDPOINT_URL"],
             aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            # Sized to the requests the stages below can have open at
+            # once, which is the thread count times what a managed upload
+            # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
+            # of 10 costs handshakes rather than queueing. Only the client
+            # this function builds: one passed in belongs to its caller.
+            config=BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
 
     # Re-hash every artifact and sidecar against its collected hash before
-    # anything is uploaded - see _verify_hashes for why the gap between an
+    # anything is uploaded - see verify_hashes for why the gap between an
     # exporter's manifest and this upload cannot be trusted.
-    _verify_hashes({**artifacts, **sidecars})
+    verify_hashes({**artifacts, **sidecars})
 
-    remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
+    remote_manifest = load_remote_json(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
 
     # Photos first, before any artifact that names them and well before the
@@ -821,21 +1371,63 @@ def publish(
     # nothing references yet - is invisible and harmless. Ordering is the
     # only thing making that safe, since photos are outside the manifest and
     # so cannot be diffed into the same transaction as the artifacts.
-    uploaded_photos = upload_photos(s3_client, bucket, photos, prefix)
+    #
+    # ONE LISTING OF THE PREFIX, read by both halves. The upload and the
+    # promise check are asking the same question - which photo keys does this
+    # environment already hold - and each used to ask it one object at a time
+    # (~3,016 HEADs, then a second sweep). Taken BEFORE the uploads, and that
+    # is safe rather than lucky: verify_photo_promises skips anything in the
+    # local store, and everything upload_photos just sent came out of the
+    # local store, so nothing the listing missed can be read as absent.
+    published_photos = published_photo_keys(s3_client, bucket, prefix)
+    uploaded_photos = upload_photos(s3_client, bucket, photos, prefix, published=published_photos)
     # And immediately settle every photo promise the artifacts make - the
     # loud half of #465's trust-the-record design; see verify_photo_promises.
-    verify_photo_promises(s3_client, bucket, prefix, artifacts, photos)
+    verify_photo_promises(s3_client, bucket, prefix, artifacts, photos, published=published_photos)
 
-    uploaded: list[str] = []
-    skipped: list[str] = []
-    for name, entry in artifacts.items():
-        remote_entry = remote_artifacts.get(name)
-        if remote_entry is not None and remote_entry["sha256"] == entry["sha256"]:
-            skipped.append(name)
-            continue
-        upload_path, extra = upload_args(name, entry["path"])
+    skipped = sorted(
+        name
+        for name, entry in artifacts.items()
+        if (remote := remote_artifacts.get(name)) is not None and remote["sha256"] == entry["sha256"]
+    )
+    changed = {name: entry for name, entry in artifacts.items() if name not in set(skipped)}
+
+    # BEFORE the uploads below, and that ordering is the whole of it: these
+    # descriptions are a diff against the bytes currently published, and the
+    # first `upload_file` overwrites the side being diffed against (#919).
+    changes = describe_changes(s3_client, bucket, prefix, changed)
+
+    # PUBLISH_CONCURRENCY at a time, and inside this stage only. Everything
+    # ordered around these uploads stays ordered around them: the photos
+    # landed above, the descriptions were read above, and the manifest that
+    # names all of it is written below, after the last of these has returned.
+    def upload_one(name: str, entry: dict) -> tuple[str, int]:
+        upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])))
+        # What a phone actually spends on this artifact, as against `size_bytes`
+        # above, which is the DECODED size (#919).
+        #
+        # The two differ by about 3x for the text artifacts - trails.geojson is
+        # 12 MB decoded and 4.1 MB on the wire, measured 2026-08-21 - and the
+        # difference matters because this number is shown to a hiker deciding
+        # whether to spend it on mobile data. Rounding up to the decoded size
+        # would be the cautious direction for a threshold and a plainly wrong
+        # figure to print, and `dataRefresh.ts` prints it.
+        #
+        # Handed back to the caller rather than written into `entry` here.
+        # Each worker owns a different artifact, so writing it in place would
+        # in fact be safe - but "in fact safe" is a property a reader has to
+        # re-derive every time they touch this loop, and the size landing on
+        # the wrong artifact is a wrong number printed to a hiker rather than
+        # a crash. Recorded below, on one thread, against the name the worker
+        # returned it with.
+        measured = Path(upload_path).stat().st_size
         s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
-        uploaded.append(name)
+        return name, measured
+
+    transfers = _in_parallel([partial(upload_one, name, entry) for name, entry in changed.items()])
+    for name, transfer_bytes in transfers:
+        changed[name]["transfer_bytes"] = transfer_bytes
+    uploaded: list[str] = [name for name, _ in transfers]
 
     if not uploaded:
         return {
@@ -853,7 +1445,7 @@ def publish(
     # After the decision, never before: a sidecar must never be able to cause
     # a version, and must never describe data that was not published.
     for name, entry in sidecars.items():
-        upload_path, extra = upload_args(name, entry["path"], compress=False)
+        upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])), compress=False)
         s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
 
     # Merge, don't replace: an artifact that's live in remote_artifacts but
@@ -866,13 +1458,42 @@ def publish(
     # with no local counterpart this run is preserved as-is.
     new_manifest = {
         "version": new_version,
+        # WHICH VERSION THE `change` BLOCKS BELOW ARE RELATIVE TO (#919).
+        #
+        # They describe exactly one hop: this publish, against what was live
+        # when it started. A phone two releases behind would otherwise read a
+        # description of the last hop as if it covered both, which is the
+        # confident-and-wrong answer - so it is given the means to tell,
+        # rather than a caveat it cannot check. `dataRefresh.ts` compares what
+        # it stored against this and treats anything else as a change it
+        # cannot describe.
+        "previous_version": remote_manifest["version"] if remote_manifest else None,
         "artifacts": {
-            **remote_artifacts,
+            # Carried-forward remote entries lose any `change` they had: that
+            # block described a transition this manifest does not name, and a
+            # stale description is worse than none for the same reason the
+            # field exists at all.
+            **{name: {key: value for key, value in entry.items() if key != "change"} for name, entry in remote_artifacts.items()},
             # size_bytes rides beside the hash when this run measured one
             # (#505/#556); a remote entry from before sizes were published
             # survives without one rather than gaining a guess.
             **{
-                name: {"sha256": entry["sha256"], **({"size_bytes": entry["size_bytes"]} if "size_bytes" in entry else {})}
+                name: {
+                    "sha256": entry["sha256"],
+                    **({"size_bytes": entry["size_bytes"]} if "size_bytes" in entry else {}),
+                    # Only this run's UPLOADS measured one - a skipped artifact
+                    # was never gzipped this time - so an unchanged entry keeps
+                    # the figure the run that did upload it published. Dropping
+                    # it would make a manifest lose sizes the longer nothing
+                    # changed, which is exactly backwards.
+                    **(
+                        {"transfer_bytes": transfer}
+                        if (transfer := entry.get("transfer_bytes", remote_artifacts.get(name, {}).get("transfer_bytes")))
+                        is not None
+                        else {}
+                    ),
+                    **({"change": changes[name]} if name in changes else {}),
+                }
                 for name, entry in artifacts.items()
             },
         },
@@ -902,7 +1523,7 @@ def publish(
         # `releases/` is written, because the answer decides where it is
         # written.
         index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
-        release_index = _load_remote_manifest(s3_client, bucket, index_key)
+        release_index = load_remote_json(s3_client, bucket, index_key)
         release_id = releases.next_release_id(releases.index_ids(release_index))
 
         # The same manifest as the pointer's, minus what may not be frozen.
@@ -988,6 +1609,29 @@ def main() -> dict:
 
     artifacts = collect_artifacts()
     if not artifacts:
+        # AN EMPTY COLLECTION IS AN ANSWER LOCALLY AND A FAULT WHEN WRITING
+        # (#1347). Run by hand, or as a dry run, "there is nothing exported
+        # yet" is true and returning it is right. But this function is only
+        # reached with writes enabled because a workflow was dispatched with
+        # `publish: true`, and in that case an empty data/processed/ does not
+        # mean there is nothing to publish - it means the exports did not
+        # arrive. Something upstream is broken and this is where it shows.
+        #
+        # It went unnoticed for exactly this reason. publish-vector-data.yml
+        # extracted the build's artifact one directory too high, so every run
+        # that reached the publish job collected nothing, exited 0, and let
+        # the workflow report "Published to <env>" - runs #93, #94 against
+        # production, and #98. Failing safe here is what turns the next such
+        # break into a red run instead of a false receipt.
+        if writes_enabled():
+            raise SystemExit(
+                f"No exported artifacts found under {PROCESSED_DIR}/, but publishing is enabled.\n"
+                "Nothing was uploaded. This is a broken handoff, not an empty build: the\n"
+                "export steps ran in another job and their artifact should have been\n"
+                "extracted here. Check that the download-artifact `path:` matches the least\n"
+                "common ancestor of the upload's paths - see .github/tests/"
+                "test_artifact_handoff_paths.py."
+            )
         print("No exported artifacts found under data/processed/ - run the export scripts first.")
         return {
             "environment": environment,

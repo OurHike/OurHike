@@ -16,6 +16,43 @@
 // its own copy of the list, which is where somebody setting the app up rather
 // than reading a map will look.
 //
+// AND TWO ROWS THAT COUNT NOTHING AT ALL (#1051). Below the eight sit a closure
+// row and a serious-warning row, and they are a KEY rather than a tally: an
+// icon, a name, the tag, and no number in any state. Neither layer is a
+// `MapPoint`, so neither has ever appeared on this panel - a hiker who saw the
+// barred red band across the trail, or the red triangle pin bigger than every
+// other mark on the map, had nowhere in the app to look up what either one was.
+// `withSafetyKey` appends them and `lib/legendContents.ts` carries why they
+// carry no count, which is that nobody measures those layers.
+//
+// A "TRAILS IN VIEW" BLOCK ABOVE THE PIN GRID (#1283), and it is not the
+// blaze rows coming back. Those keyed COLOURS - one row per blaze in view,
+// "what does aqua mean". These name TRAILS: one row per named trail on
+// screen, the line drawn as the map draws it, the name, and `taken` on the
+// trail the map is about. The maintainer's design handoff asked for it
+// because on the desktop this is a permanent panel beside a map that, since
+// the dot rhythm and the badges, is a sheet of lines only one of which wears
+// its name - and the block is the key to the rest. Rows are sorted the way
+// the map ranks them: through-routes first, then the chosen system, then by
+// name. map/trailsInView.ts measures the list on the same settled frame as
+// the counts, so the panel cannot name a trail the canvas is not drawing.
+//
+// NO MILEAGE, though the handoff's frames print one. Nothing published
+// carries a whole trail's length: the A.T.'s features carry none, and a
+// nearby record's `length_miles` is that record's, on geometry that comes
+// back here clipped per tile. Summing what is on screen would be a number
+// about the viewport wearing a trail's name, and inventing "2,197 mi" for the
+// A.T. would be a client claim nobody's data stands behind. Absent means
+// unknown - the rule CLAUDE.md gives for a shelter's capacity.
+//
+// THE ROW IS A CONTROL ONLY WHEN THE SHELL OFFERS ONE. The handoff's "tap a
+// row to take that trail" waits on features/NEARBY_TRAILS.md §2's standing
+// decision that a tap must not switch the chosen trail; until that is
+// re-argued nothing in the app takes a trail, and a button that goes
+// nowhere is worse than a row (this file's own rule for every other
+// control). `onTakeTrail` is that seam, and since #1306 it exists: a tap on
+// a through-route's row takes the trail, the same write a badge tap makes.
+//
 // NO BLAZE ROWS, AND WHAT THAT COSTS (maintainer's call, 2026-08-25).
 //
 // The panel used to open with one row per blaze in view - a painted line
@@ -48,13 +85,27 @@
 // where two trail systems overlap and reporting whether the lines are
 // legible without a key.
 //
-// Closure and serious-warning rows render with no hide control whatsoever.
-// Not defaulted-on, not disabled - absent. A safety layer having no off switch
-// is a rule that holds across the whole app (features/MAP_OPTIONS.md,
-// features/HIKER_SAFETY.md), and the surest way to keep it is to never build
-// the affordance. That rule is why the row is not uniformly a button: a
-// hideable row IS one, edge to edge, and a safety row is plain text with an
-// "Always shown" tag beside it.
+// Closure and serious-warning rows still render with no hide control of their
+// own - plain text with a tag beside them, where a hideable row is a button
+// edge to edge. That much is unchanged and is why the row is not uniformly a
+// button. What #1051 changed is that a hiker can now see one: they rendered
+// here and in chrome/Legend.test.tsx and nowhere a hiker could reach.
+//
+// WHAT CHANGED IS THE RULE BEHIND IT (#1047, maintainer's call). "A safety
+// layer has no off switch anywhere in the app" was the whole answer until this
+// panel gained an Alerts switch below the grid, and features/MAP_OPTIONS.md
+// had always flagged that rule as "a recommendation, not force-decided". The
+// half that survives is the half that could have lasted for days: the stored
+// `waypoint_types_shown` filter still cannot reach a closure, which is why
+// these rows are not buttons and why lib/legendContents.ts's NEVER_HIDEABLE is
+// untouched. The half that went is permanence - a hiker can clear the bands
+// off the canvas for as long as they are looking at it, and the app gives them
+// back at the next open (chrome/alertLayerPanel.ts).
+//
+// So these rows now say which of the two states they are in, and grey out with
+// the switch. A row promising "Always shown" over a map a hiker has just
+// cleared would be this panel disagreeing with the screen beside it, which is
+// the one thing a legend may never do.
 //
 // Every row carries the icon the map draws for it, from map/MapIcon.tsx and
 // therefore from the map's own geometry rather than from a second drawing of
@@ -70,10 +121,13 @@ import {
   GHOSTED_TRAILS_NOTE,
   legendDropSummary,
   withEveryType,
+  withSafetyKey,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
-import { MapIcon } from '../map/MapIcon'
+import { MapIcon, TrailLineSwatch } from '../map/MapIcon'
+import type { SheetAppearance } from '../map/liveTopo'
+import type { TrailInView } from '../map/trailsInView'
 import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
 import { BackgroundPicker } from './BackgroundPicker'
@@ -105,6 +159,21 @@ export interface LegendProps {
   /** Whether a trail from outside the chosen system is on screen (#783), which
    *  is the only condition under which the ghosting sentence means anything. */
   ghostedTrailsDrawn?: boolean
+  /**
+   * The named trails the map is drawing (#1283, map/trailsInView.ts), for the
+   * block above the pin grid. Omitted or empty, no block is drawn - a heading
+   * over nothing is a claim about an empty screen.
+   */
+  trailsInView?: readonly TrailInView[]
+  /** Which sheet the map is drawn in, so each row's swatch is inked the way
+   *  the canvas beside it inks that line. Defaults to the field day sheet. */
+  sheetAppearance?: SheetAppearance
+  /**
+   * Takes that trail, from the panel. Offered by nothing today - see the
+   * header - and then the rows are plain; offered, each row is the control,
+   * the same shape `.legend__toggle` already has.
+   */
+  onTakeTrail?: (trail: TrailInView) => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /**
@@ -140,6 +209,30 @@ export interface LegendProps {
    */
   verifiedOnly?: boolean
   onToggleVerifiedOnly?: () => void
+  /**
+   * Whether the alert marks are on the canvas (#1047).
+   *
+   * Read twice on this panel and for two different jobs: it is what the Alerts
+   * switch displays, and it is what the closure and serious-warning rows in
+   * the grid say about themselves. A row tagged "Alerts" over a map with no
+   * band on it would be this panel making the exact claim it exists to
+   * prevent - see the header comment.
+   *
+   * Defaults to drawn, like MapScreen's own prop and for the same reason.
+   */
+  alertsShown?: boolean
+  /**
+   * Takes them off, and puts them back.
+   *
+   * Omitted, no switch is drawn, and a panel drawing alerts says "Always
+   * shown" on its safety rows - which is exactly what they are where nothing
+   * here can hide them. The two branches are one fact, not two designs.
+   *
+   * What this does NOT decide is a panel handed `alertsShown={false}` with no
+   * handler: the screen wins, the rows grey, and the tag reads "Alerts off".
+   * A tag is a statement about the map, never about what this panel can offer.
+   */
+  onToggleAlerts?: () => void
   /**
    * The drought wash, and how to turn it off (#720).
    *
@@ -181,6 +274,10 @@ export interface LegendProps {
   backgroundOverride?: BackgroundOverride | null
   /** Whether the view is zoomed out past what the download covers (#216). */
   belowArchiveZoom?: boolean
+  /** Whether the view is past the edge of everything downloaded (#557) -
+   *  passed to the picker's note, which is where "take the next stretch"
+   *  gets said. */
+  outsideDownload?: boolean
   /** Whether "downloaded only" is a background this phone can get at all -
    *  false since the USGS sheet was withdrawn (#855), except on a phone that
    *  already holds it. Carried rather than derived here: it is the shell that
@@ -232,7 +329,8 @@ export interface LegendProps {
    *  its window will actually look to find out whether it is still going. */
   downloadActivity?: DownloadActivity | null
   /**
-   * How many ATC trail updates the app is holding, for the row that opens
+   * How many trail notices the app is holding, from every organization that
+   * publishes them, for the row that opens
    * all of them (#687). Zero, or the shell not passing it, renders no row -
    * the same "count rather than the notices" reasoning MapScreen's own prop
    * of this name documents.
@@ -245,10 +343,10 @@ export interface LegendProps {
    * this." What is actually NEW gets its own bottom banner on the map screen
    * instead, which this row has no opinion about.
    */
-  atcNoticeCount?: number
-  /** Opens the full list (chrome/AtcNoticeList.tsx), rendered by the shell
+  noticeCount?: number
+  /** Opens the full list (chrome/NoticeList.tsx), rendered by the shell
    *  the same way `onOpenDownloads` is. */
-  onOpenAtcNotices?: () => void
+  onOpenNotices?: () => void
 }
 
 export function Legend({
@@ -257,12 +355,17 @@ export function Legend({
   bbox,
   points,
   ghostedTrailsDrawn = false,
+  trailsInView,
+  sheetAppearance,
+  onTakeTrail,
   hiddenTypes,
   onToggleType,
   onOnlyType,
   onShowAllTypes,
   typesShown,
   verifiedOnly = false,
+  alertsShown = true,
+  onToggleAlerts,
   droughtShown = false,
   onToggleDrought,
   droughtSummary,
@@ -273,6 +376,7 @@ export function Legend({
   onChangeBackground,
   backgroundOverride = null,
   belowArchiveZoom = false,
+  outsideDownload = false,
   offlineBackgroundAvailable = true,
   drawnCounts,
   belowPoiZoom = false,
@@ -280,8 +384,8 @@ export function Legend({
   onOpenDownloads,
   hasDownload = false,
   downloadActivity = null,
-  atcNoticeCount = 0,
-  onOpenAtcNotices,
+  noticeCount = 0,
+  onOpenNotices,
 }: LegendProps) {
   if (!open && !persistent) return null
 
@@ -296,8 +400,24 @@ export function Legend({
   // category whether or not one is in front of the hiker right now. A row
   // reading `Privy 0` is an accurate statement about this rectangle and a
   // working switch; no row at all was neither.
-  const inView = computeLegendContents(bbox, points, verifiedOnly, drawnCounts)
-  const rows = withEveryType(inView, HIDEABLE_TYPES)
+  // `drawnCounts` is withheld below the seam (#1135): with the dot rank
+  // floored there, "drawn" would measure the floor rather than the collision
+  // engine, every row would read `0/N`, and the drop summary would tell a
+  // hiker to zoom in as if the absence were crowding. The rows keep their
+  // in-view counts - the switches' job - and the below-seam sentence says
+  // where the waypoints went.
+  const inView = computeLegendContents(
+    bbox,
+    points,
+    verifiedOnly,
+    belowPoiZoom ? undefined : drawnCounts,
+  )
+  // Padded for the toggles, then keyed for the two symbols that have no toggle
+  // and had no row at all (#1051). `withSafetyKey` is last because it OWNS those
+  // two rows - it replaces whatever the viewport produced for them, so a closure
+  // row means the same thing on every panel rather than changing shape with what
+  // the shell happened to feed in.
+  const rows = withSafetyKey(withEveryType(inView, HIDEABLE_TYPES))
   // Minus the categories the hiker hid (#777): their absence is the filter's
   // doing, not the camera's, so they belong in neither half of the fraction -
   // "zoom in to see the rest" must only promise what zooming in delivers.
@@ -356,6 +476,78 @@ export function Legend({
         )}
       </div>
 
+      {/* The trails on screen (#1283), first, because the map is lines before
+          it is pins and the sentence under this block explains those lines.
+          One row per named trail, ranked as the map ranks them. */}
+      {trailsInView !== undefined && trailsInView.length > 0 && (
+        <section className="legend__trails" aria-label="Trails in view">
+          <h3 className="legend__title">Trails in view</h3>
+          <ul className="legend__trail-rows">
+            {trailsInView.map((trail) => {
+              const taken = trail.throughRoute && trail.chosen
+              const face = (
+                <>
+                  <TrailLineSwatch
+                    className="legend__swatch"
+                    blazeColor={trail.blazeColor}
+                    throughRoute={trail.throughRoute}
+                    chosen={trail.chosen}
+                    appearance={sheetAppearance}
+                  />
+                  <span className="legend__label">{trail.name}</span>
+                  {/* `taken`, in the slot a count would take, on the trail
+                      the map is about. No mileage on the others - the header
+                      says why the number is absent rather than estimated. */}
+                  {taken && <span className="legend__count">taken</span>}
+                  {/* And the affordance where a row can take its trail and
+                      has not (#1306): a takeable through-route's row is a
+                      button then, and a button that looks like a row is a
+                      control nobody finds. Gated on takeable rather than
+                      throughRoute since #1307 - a through-route this build
+                      cannot measure (the Long Path) earns a badge without
+                      earning this row's button. */}
+                  {onTakeTrail !== undefined && trail.takeable && !taken && (
+                    <span className="legend__count">take</span>
+                  )}
+                </>
+              )
+              return (
+                <li
+                  key={trail.name}
+                  className="legend__trail-row"
+                  aria-label={taken ? `${trail.name} · taken` : trail.name}
+                >
+                  {onTakeTrail === undefined || !trail.takeable ? (
+                    // Only a takeable through-route's row is a control: a
+                    // side trail has no registry trail to take (#1306), and
+                    // neither does a through-route this build cannot measure
+                    // (#1307) - a button that does nothing is worse than a
+                    // row.
+                    face
+                  ) : (
+                    <button
+                      type="button"
+                      className="legend__toggle"
+                      aria-pressed={taken}
+                      onClick={() => onTakeTrail(trail)}
+                    >
+                      {face}
+                    </button>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      )}
+
+      {/* features/NEARBY_TRAILS.md §1's sentence of state - directly under the
+          trail rows it explains (#1283 moved it up from above the pin grid,
+          where it sat because it is about the LINES on the map and everything
+          below it is about the pins). No control accompanies it, and that is
+          the decision rather than an omission. */}
+      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
+
       {/* Below the pin zoom this panel used to render the sentence below, which
           at the opening view is false in both halves: there is plenty here, and
           zooming OUT is the wrong direction (#528). Checked first, so the true
@@ -364,21 +556,17 @@ export function Legend({
           The background picker used to sit above this and now sits at the foot of
           the panel with the downloads link (#583) - the daily question keeps the
           top. Nothing here moved it back. */}
-      {/* Below the pin seam. The sentence changed with #603: the dot rank now
-          draws all the way down (map/poiLayers.ts's POI_DOT_MIN_ZOOM), so
-          "waypoints are drawn from a closer zoom" became half wrong - they ARE
-          drawn here, as dots. What needs a closer zoom is telling one from
-          another, which is the pin's job and the thing this panel lists.
-
-          Gated on `inView` rather than `rows`, which is #723's rule and not a
-          detail of this sentence: `rows` now carries every hideable category
-          whether or not one is in front of the hiker, so it is almost never
-          empty and this line would have stopped appearing at all. Every
-          sentence in this panel speaks about the viewport. */}
-      {belowPoiZoom && inView.length === 0 && (
-        <p className="legend__empty">
-          Waypoints show as dots at this zoom. Zoom in to see what each one is.
-        </p>
+      {/* Below the pin seam. This sentence has now flipped three times, with
+          the layer it describes: "drawn from a closer zoom" (#528), then
+          "show as dots at this zoom" when #603 took the dot rank to z0, and
+          back to appearing-from-closer when #1135 floored both ranks at the
+          seam so the opening view is the trails. It renders whenever the
+          camera is below the seam - not only on an empty viewport, as the
+          dots-era version did - because it now describes every below-seam
+          rectangle: the waypoints a hiker can see counted in the grid are
+          all of what this zoom declines to draw. */}
+      {belowPoiZoom && (
+        <p className="legend__empty">Waypoints appear from a closer zoom.</p>
       )}
 
       {/* "No WAYPOINTS", where this said "Nothing", and the word had to change
@@ -395,7 +583,11 @@ export function Legend({
         </p>
       )}
 
-      {emptiedByFilter && (
+      {/* Not below the seam (#1135): down there the filter is not why the map
+          is empty of waypoints - the floor is - and "turn Verified? off to see
+          what is reported" would promise pins no below-seam camera draws. The
+          sentence above covers that band. */}
+      {emptiedByFilter && !belowPoiZoom && (
         <p className="legend__empty">
           Nothing here has been confirmed yet — turn Verified? off to see what is
           reported.
@@ -412,24 +604,23 @@ export function Legend({
         </p>
       )}
 
-      {/* features/NEARBY_TRAILS.md §1's sentence of state - above the pin
-          grid, because it is about the LINES on the map and everything below
-          it is about the pins. It used to sit above the blaze rows and its
-          reason was those rows; with them gone it is the only thing on this
-          panel that speaks about the trail lines at all, which is why it
-          stayed. No control accompanies it, and that is the decision rather
-          than an omission. */}
-      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
-
       {rows.length > 0 && (
         <ul className="legend__pins">
           {rows.map((row) => {
             const label = typeLabel(row.type)
-            const hidden = row.hideable && hiddenTypes.has(row.type)
+            // A hideable row is off when the hiker hid its category; a safety
+            // row is off when the alert marks are off, which is a different
+            // switch and the only one that can reach it (#1047). Both end up
+            // greyed by the same class, because to a hiker they are the same
+            // statement: this is not on the map right now.
+            const hidden = row.hideable ? hiddenTypes.has(row.type) : !alertsShown
             // Only where it differs, which keeps the panel quiet at the zooms
             // where nothing is being dropped: `Water 14` and `Water 13/14` are
             // the same row saying as much as is true.
-            const short = row.drawnCount !== undefined && row.drawnCount < row.count
+            const short =
+              row.count !== undefined &&
+              row.drawnCount !== undefined &&
+              row.drawnCount < row.count
 
             // The pin, the name and the count, in that order. On a hideable
             // row all three go inside the button, which is the whole point:
@@ -462,9 +653,17 @@ export function Legend({
                     which the two-badge version never did - `9` beside `3 shown`
                     is two numbers with nothing saying one is a subset of the
                     other. Maintainer's call between six renderings, PR #706. */}
-                <span className="legend__count">
-                  {short ? `${row.drawnCount}/${row.count}` : row.count}
-                </span>
+                {/* NO SLOT AT ALL on a key entry, rather than an empty one
+                    (#1051). A safety row names its symbol and counts nothing -
+                    see lib/legendContents.ts's `withSafetyKey` for why neither
+                    layer has an honest number - and an empty `.legend__count`
+                    would hold the mono-spaced gutter open beside the tag on the
+                    two rows that must not look like a rendering accident. */}
+                {row.count !== undefined && (
+                  <span className="legend__count">
+                    {short ? `${row.drawnCount}/${row.count}` : row.count}
+                  </span>
+                )}
               </>
             )
 
@@ -473,8 +672,8 @@ export function Legend({
                 key={row.type}
                 className={[
                   'legend__row',
-                  // A safety row is wider than a column, because it carries an
-                  // "Always shown" tag on top of what every other row carries.
+                  // A safety row is wider than a column, because it carries a
+                  // tag on top of what every other row carries.
                   row.hideable ? null : 'legend__row--always',
                   hidden ? 'legend__row--hidden' : null,
                 ]
@@ -518,7 +717,33 @@ export function Legend({
                 ) : (
                   <>
                     {face}
-                    <span className="legend__always">Always shown</span>
+                    {/* WHAT THIS TAG SAYS DEPENDS ON WHETHER A SWITCH EXISTS,
+                        and that is one fact rather than two designs. "Always
+                        shown" was the whole truth for as long as nothing in
+                        the app could hide a closure; #1047 built the Alerts
+                        switch below, and a row still promising "always" over a
+                        map a hiker has just cleared would be the panel
+                        disagreeing with the screen.
+
+                        So where the switch is on the panel, the tag names it -
+                        the word is the switch's own visible label, which is
+                        what makes it findable from here - and the row greys
+                        out with it. Where no switch is offered, nothing on
+                        that panel can take these marks off the map and the
+                        original promise is exactly right.
+
+                        WHAT THE MAP IS DOING IS ASKED FIRST, and deliberately.
+                        A panel handed `alertsShown={false}` with no handler -
+                        a shell that draws no alerts and offers no way back -
+                        must not tag a greyed row "Always shown". The screen
+                        wins over the affordance in every branch here. */}
+                    <span className="legend__always">
+                      {!alertsShown
+                        ? 'Alerts off'
+                        : onToggleAlerts === undefined
+                          ? 'Always shown'
+                          : 'Alerts'}
+                    </span>
                   </>
                 )}
               </li>
@@ -615,6 +840,46 @@ export function Legend({
         </label>
       )}
 
+      {/* THE ALERTS SWITCH (#1047), the first control this app has ever put
+          over a safety layer.
+
+          Here rather than in the grid above, and that is the decision. The
+          rows are one waypoint CATEGORY each and are toggled through the
+          stored `waypoint_types_shown` preference; alerts are neither - they
+          are three map layers (closure bands, the ATC's bands and dots,
+          serious-warning pins) governed by a flag nothing writes down. Putting
+          them in the grid would have meant either a fourth thing the stored
+          filter can express, which is the one shape #1047 rules out, or a row
+          that looks identical to its neighbours and behaves unlike all of
+          them. It sits with the drought wash instead, which is the honest
+          neighbour: a map overlay, switched here because the moment you want
+          it off is the moment you are looking at it.
+
+          The row states what the switch does NOT take away, in both states
+          rather than only while it is off - the moment that matters is
+          BEFORE the tap, when a hiker is deciding what it will cost them.
+          chrome/alertLayerPanel.ts is what makes the sentence true, and
+          chrome/StatusStrip.tsx is what says so on the map itself once the
+          legend is shut. */}
+      {onToggleAlerts !== undefined && (
+        <label className="legend__alerts">
+          <span className="legend__alerts-name">
+            Alerts
+            <span className="legend__alerts-detail">
+              {alertsShown
+                ? 'Closures and warnings, drawn on the map. What is ahead of you is called out at the top either way.'
+                : 'Hidden until you open the app again. What is ahead of you is still called out at the top.'}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            name="alert_layer"
+            checked={alertsShown}
+            onChange={onToggleAlerts}
+          />
+        </label>
+      )}
+
       {/* The drought wash (#720). Rendered whenever the shell can write the
           preference back, INCLUDING in a week with no drought on the trail -
           a hiker who switched it on should see it stay on and say "none this
@@ -668,11 +933,11 @@ export function Legend({
           the downloaded-map block below rather than inside it - those answer
           a different question and #687 is explicit that conflating them is
           what this replaces. */}
-      {atcNoticeCount > 0 && onOpenAtcNotices !== undefined && (
-        <button type="button" className="legend__atc-link" onClick={onOpenAtcNotices}>
-          {atcNoticeCount === 1
-            ? 'Read the 1 ATC trail update'
-            : `Read all ${atcNoticeCount} ATC trail updates`}
+      {noticeCount > 0 && onOpenNotices !== undefined && (
+        <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
+          {noticeCount === 1
+            ? 'Read the 1 trail notice'
+            : `Read all ${noticeCount} trail notices`}
         </button>
       )}
 
@@ -716,6 +981,7 @@ export function Legend({
               onChange={onChangeBackground}
               override={backgroundOverride}
               belowArchiveZoom={belowArchiveZoom}
+              outsideDownload={outsideDownload}
               offlineBackgroundAvailable={offlineBackgroundAvailable}
               idPrefix="legend"
             />

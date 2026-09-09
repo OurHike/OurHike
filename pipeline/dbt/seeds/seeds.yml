@@ -16,6 +16,25 @@ seeds:
       pipeline/tests/test_dbt_seed_sync.py fails CI the moment this file
       and those Python constants drift apart (DBT.md's duplication-risk
       note).
+
+      THE `dec` ROWS ARRIVED WITH PHASE D (#100) AND MIRROR A DIFFERENT
+      AUTHORITY: sources.json itself. Six NYS DEC layers declare a
+      layer-wide `poi_type` in the registry, and those six declarations are
+      transcribed here verbatim; the confidence is not a fresh call either,
+      it is what export_nearby_poi.py's `public_verdict()` returns for a
+      layer with no `public_flag_sets_confidence` - and the sync test calls
+      that function rather than restating its answer.
+
+      WHY THERE ARE NO `oprhp`, `nynjtc` OR `mohonk` ROWS, since all three
+      are staged and two of them do publish POIs. This seed maps a per-layer
+      or per-code vocabulary to one poi_type. `oprhp_facilities` and
+      `dec_backcountry_features` are typed PER ROW instead, through
+      export_nearby_poi.py's OPRHP_SUB_ASSET_TYPES / DEC_ASSET_TYPES value
+      maps, each with its own allowlist and its own NAMED_EXCLUSIONS - the
+      water holdbacks among them. Copying those maps here would be a second
+      home for a product decision that already has one, so the two layers
+      appear in neither this seed nor `int_pois_unioned`. NYNJTC's and
+      Mohonk's layers are trail lines and mint no POI at all.
     config:
       column_types:
         source_system: varchar
@@ -29,7 +48,14 @@ seeds:
         data_tests:
           - not_null
           - accepted_values:
-              values: ["atc", "opentrail"]
+              # WIDENED BY PHASE D (#100), and worth recording that it needed
+              # widening: a two-value closed domain was the one place the
+              # Phase A slice really had baked in "the A.T." where "a trail"
+              # was meant. It is still a closed list on purpose - a
+              # source_system nobody added a row for is a typo, not a new
+              # organization - but adding one is now a one-line change here
+              # rather than a re-think.
+              values: ["atc", "opentrail", "dec"]
       - name: code
         description: >
           The raw value as upstream sends it - an opentrail `icon` letter,

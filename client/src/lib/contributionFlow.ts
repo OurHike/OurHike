@@ -33,11 +33,25 @@ export async function beginContribution(
   draft: ReportDraft,
   authoredAt: Date,
   photo?: Blob,
+  /**
+   * Hold it back until this moment, for the report window's Undo (#1133).
+   *
+   * Passed straight through rather than decided here. Whether a report is
+   * retractable is a property of the SURFACE that filed it - the window files
+   * on a tap and owes an undo; the long form files on a submit and does not -
+   * and this function's job is only that saving happens before anything else
+   * is asked.
+   *
+   * Note what it protects against, which is this file's own next line: the
+   * caller flushes the outbox immediately after saving (#640), so without the
+   * hold the report would routinely be gone before the countdown finished.
+   */
+  holdUntil?: Date,
 ): Promise<OutboxItem> {
   // The photo is saved here with everything else, for the reason above: it is
   // part of what the hiker wrote down, and it must not depend on the sign-in
   // round trip that has not been asked for yet.
-  return enqueue(draft, authoredAt, photo)
+  return enqueue(draft, authoredAt, photo, holdUntil)
 }
 
 export function stepAfterSaving({

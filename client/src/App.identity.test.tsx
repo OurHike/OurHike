@@ -15,12 +15,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -38,10 +39,22 @@ beforeEach(() => {
 })
 
 async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('tab', { name: 'Settings' }))
+  await user.click(screen.getByRole('tab', { name: 'More' }))
+  // More keeps its page across trips (App holds it), so this may land on
+  // home, on the volunteer page, or wherever the last trip ended - walk to
+  // the report button from any of them.
+  if (!screen.queryByRole('button', { name: /report a problem/i })) {
+    const back = screen.queryByRole('button', { name: 'More' })
+    if (back !== null) await user.click(back)
+    await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
+  }
   await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+  // ONE CLICK FILES IT (#1133). This used to be tile-then-Send; the window
+  // writes to the outbox on the tap itself, and what the second click does now
+  // is CLOSE the window - which is when the identity question gets asked,
+  // rather than interrupting the receipt and its undo.
   await user.click(await screen.findByRole('button', { name: /blow down/i }))
-  await user.click(await screen.findByRole('button', { name: /send|save to outbox/i }))
+  await user.click(screen.getByTestId('report-done'))
 }
 
 function queued() {
@@ -54,6 +67,7 @@ describe('asking who is reporting', () => {
   it('mounts the screen the flow has always routed to', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)
@@ -66,6 +80,7 @@ describe('asking who is reporting', () => {
   it('signs the next report with the answer, and remembers it', async () => {
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)
@@ -89,6 +104,7 @@ describe('asking who is reporting', () => {
     // without the guard the screen returns on the very next report.
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)
@@ -107,6 +123,7 @@ describe('asking who is reporting', () => {
     app.onboard({ reporter_type: 'maintainer' })
     const user = userEvent.setup()
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     await fileAReport(user)

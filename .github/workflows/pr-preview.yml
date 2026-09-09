@@ -207,10 +207,32 @@ jobs:
       # pull request is open - which is when review happens, and is not when
       # somebody reads an old pull request to see what a screen used to look
       # like. The merged diff is the record; this is for the reviewer.
+      # SPLIT, AND continue-on-error, BECAUSE `--with-deps` MADE THIS STEP
+      # DECIDE WHETHER THE PREVIEW HAPPENS AT ALL (#1361).
+      #
+      # That flag has Playwright run apt itself, so a third-party repository
+      # preinstalled on the runner image - one this project never uses - can
+      # abort the install with a bad index before the browser is so much as
+      # downloaded. Measured on this pull request, 2026-09-09 17:34 and again
+      # at 17:41: Google's Chrome apt repo served a package index whose
+      # SHA256 did not match its own Release file, `apt-get update` exited
+      # non-zero, and Playwright stopped with "Failed to install browsers /
+      # code: 100". The whole job went red having photographed nothing.
+      #
+      # The system libraries are now allowed to fail (the runner image
+      # already carries Chromium's) and the DOWNLOAD, which touches no apt
+      # repository, is what this job actually needs. `continue-on-error`
+      # finishes the argument the next comment block started: a browser that
+      # will not install costs the pull request its pictures, never its
+      # testable build. Without it that sentence was true of the photograph
+      # step and false of the step that feeds it.
       - name: Install a browser to photograph it with
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        continue-on-error: true
         working-directory: client
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install-deps chromium || true
+          npx playwright install chromium
 
       # Which files this pull request touches, for the camera: every shot
       # recipe in the list (client/preview-shots/) gets photographed and leads
@@ -228,7 +250,7 @@ jobs:
       - name: List what this pull request touches
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         continue-on-error: true
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           LIST: ${{ runner.temp }}/pr-files.txt
         with:

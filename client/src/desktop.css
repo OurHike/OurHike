@@ -27,6 +27,8 @@
  *                     nothing until it is, so "permanent field in the
  *                     chrome" is not what this is)
  *   input             hover, focus rings, relaxed touch targets   done
+ *   builder           the day-hike builder gets a rail            done (#1194)
+ *   long hike         its nine surfaces become windows            done (#1329)
  *   elevation         the full interactive chart                  done (#135)
  *   download UX       reframed for a machine with signal          done
  *   routing           deep links, back button                     NOT done
@@ -34,6 +36,20 @@
  * Routing is still missing and named on purpose - §6 itself calls it "the
  * largest single change in this workstream", and it does not belong in a
  * layout pass.
+ *
+ * TWO WIDE ROOMS LIVE HERE, and they are different rooms with confusable
+ * names, so the difference is stated once here rather than guessed at from
+ * either section heading:
+ *
+ *   the planning station (#1054)   Today's journal docked beside the map.
+ *                                  What a hiker READS on the day.
+ *   the plan bench      (#971)     the Plan tab's three panes over one
+ *                                  selection, with the whole section's
+ *                                  elevation beneath them. Where a hiker
+ *                                  LAYS OUT a trip and moves its days.
+ *
+ * WIREFRAMES.md's 3a is the bench; WEBSITE.md §6's table above is the shell
+ * both of them sit in.
  */
 
 @media (min-width: 900px) {
@@ -137,6 +153,90 @@
     color: var(--fg-chrome-1);
   }
 
+  /* ---------- The sidebar's mode block (#1054) ---------- */
+
+  /* "Today I'm…" between the tabs and the brand mark. The element exists only
+     on a desktop - App passes the slot to TabBar solely above the breakpoint -
+     so these rules are dressing, not gating; the media query is belt and
+     braces in the file's own style. */
+  .tab-bar__mode {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    /* No margin-top: the tab list above already grows (chrome.css), which is
+       what carries this block and the brand mark under it to the foot. */
+    padding: var(--space-4, 16px);
+    border-top: 1px solid var(--border-chrome);
+  }
+
+  .tab-bar__mode-label {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 10px;
+    letter-spacing: var(--tracking-eyebrow, 0.1em);
+    text-transform: uppercase;
+    color: var(--fg-chrome-3);
+  }
+
+  /* Stacked, not the Today header's row: three chips across a 13rem column
+     would crush every label. 38px like the prototype draws - these are mouse
+     targets here, the same relaxation the pointer-keyed block at the foot of
+     this file already makes for every control. */
+  .tab-bar__mode .mode-switch {
+    flex-direction: column;
+  }
+
+  .tab-bar__mode .mode-switch__segment {
+    flex: 0 0 auto;
+    min-height: 38px;
+    text-align: left;
+    padding: 0 14px;
+  }
+
+  /* THE HIKE, UNDER THE MODE, ON EVERY SCREEN (#1344). `Switch hike ›` lived
+     on the Plan band and nowhere else, so a hiker on Today, the map or
+     Settings had no way to change which hike they were on. The sidebar is
+     already on all four screens and already holds the mode - this is the
+     same question one level down, so it goes in the same block.
+
+     Its own line rather than a chip beside the mode: the name is a hike's
+     name and can be long ("Neels Gap → Dicks Creek Gap"), and a 13rem column
+     has no room to put it next to anything. `text-align: left` because a
+     button centres its label and this column does not. */
+  /* Separated from the mode block above by the same rule that separates that
+     block from the tabs - see TabBar's note on why a shared column was not
+     enough on its own. */
+  .tab-bar__hike-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-top: 1px solid var(--border-chrome);
+  }
+
+  .tab-bar__hike {
+    display: block;
+    width: 100%;
+    padding: var(--space-2, 8px) 14px;
+    border: 1px solid var(--border-chrome);
+    /* Squarer than the mode segments' pills, deliberately: two controls in
+       one narrow column that differ only in their label are two controls a
+       hiker has to read to tell apart. */
+    border-radius: var(--radius-s, 4px);
+    background: none;
+    color: var(--fg-chrome-1);
+    font: inherit;
+    font-family: var(--font-display, serif);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .tab-bar__hike:hover {
+    background: color-mix(in srgb, var(--accent-chrome) 10%, transparent);
+  }
+
   .app__screen > .tab-bar .tab-bar__tab[aria-selected='true'],
   .map-screen > .tab-bar .tab-bar__tab[aria-selected='true'] {
     border-top-color: transparent;
@@ -168,52 +268,17 @@
      it is its own decision with its own thumb-zone stakes, not something to
      smuggle in with the desktop's. */
 
-  .map-screen .status-strip {
-    background: var(--bg-chrome);
-    color: var(--fg-chrome-3);
-  }
-
-  /* The light theme's --danger is blaze-orange-dark: 2.2:1 on pine, a
-     closure flag nobody sees. The on-chrome danger is the one the dark theme
-     already uses for the same job. */
-  .map-screen .status-strip__flag {
-    color: var(--danger-on-chrome);
-  }
-
-  .map-screen .map-header {
-    background: var(--bg-chrome);
-    border-bottom-color: var(--border-chrome);
-  }
-
-  .map-screen .map-header__eyebrow {
-    color: var(--fg-chrome-2);
-  }
-
-  .map-screen .map-header__position {
-    color: var(--fg-chrome-1);
-  }
-
-  /* chrome.css fills these with --bg-surface - the brightest possible square
-     on the darkest surface in the app. An outline drawn from the chrome's own
-     foreground holds its shape on pine and on ink alike. */
-  .map-screen .map-header__button {
-    color: var(--fg-chrome-2);
-    background: transparent;
-    border-color: color-mix(in srgb, var(--fg-chrome-2) 40%, transparent);
-  }
-
-  .map-screen .map-header__button:hover {
-    background: color-mix(in srgb, var(--fg-chrome-1) 10%, transparent);
-    color: var(--fg-chrome-1);
-  }
+  /* The identity band this section used to repaint pine is the floating
+     plate now (#1054, chrome.css) - already the chrome colour at every
+     width, buttons already white cards over the map. What remains desktop's
+     to restyle here is nothing; the sidebar rules above still are. */
 
   /* The global focus ring at the bottom of this file is --brand-primary:
      forest on pine is 1.9:1, a ring that cannot be seen on exactly the
      surfaces this section darkens. Outline colour only - width, offset and
      everywhere else on the page stay the global rule's. */
   .app__screen > .tab-bar :focus-visible,
-  .map-screen > .tab-bar :focus-visible,
-  .map-screen .map-header :focus-visible {
+  .map-screen > .tab-bar :focus-visible {
     outline-color: var(--fg-chrome-1);
   }
 
@@ -223,6 +288,379 @@
      shrink pushes the sidebar off the side instead of scrolling. */
   .app__screen > :first-child {
     min-width: 0;
+  }
+
+  /* ---------- The planning station (#1054): the journal beside the map ---------- */
+
+  /* The Today screen, docked as a column between the sidebar and the canvas
+     while the Today tab is active (MapScreen's `journal` slot). 404px is the
+     prototype's column - wide enough for the entry cards at their phone
+     proportions, narrow enough that a 1240px screen keeps most of itself for
+     terrain. */
+  .map-screen__journal {
+    flex: 0 0 25.25rem;
+    min-width: 0;
+    overflow-y: auto;
+    background: var(--bg-page);
+    border-right: 1px solid var(--border-1);
+    /* The containing block for the day-hike card the shell docks in here
+       beside the journal (`.day-hike-card` is an absolute box at
+       `bottom: 0`). Without it that box belongs to the nearest positioned
+       ancestor out in MapScreen, which is the wrong column and, on a screen
+       taller than the card, the wrong edge - the same anchoring rule
+       App.css's `.app__screen > :first-child` states for the phone, and
+       hiddenInputContainment.test.ts for the pickers. */
+    position: relative;
+  }
+
+  /* The journal re-inked for this room. On a phone the Today header is a
+     pine block because it IS the screen's chrome; here the chrome is the
+     sidebar, so the same markup reads as ink on the journal's own paper -
+     the prototype's reasoning, kept: a second pine slab beside the sidebar
+     would put the frame inside the picture. Colour and background only;
+     the component is untouched. */
+  .map-screen__journal .today__chrome {
+    background: none;
+
+    /* THE INK FOLLOWS THE GROUND, and it is re-pointed rather than listed
+       (#1329). This used to be an allowlist below - six class names, each
+       given a paper colour by hand - and an allowlist cannot know about the
+       seventh. #1323 added three lines to this header
+       (`.today__hike-name`, `.today__hike-figures`, `.today__away-line`) and
+       all three kept their chrome ink: `--fg-chrome-1` is #fffdf7 and this
+       ground is #f7f3e9, so a hiker's own hike name and its
+       `mi walked / mi to go` figures rendered as white on cream. The report
+       was "when I save a long hike, it is not displaying anywhere" - and the
+       guess that came with it, "I think the white font simply is not
+       visible", was exactly right.
+
+       These three lines reproduce that allowlist EXACTLY - every one of the
+       six took the paper colour this maps its alias to - and cover the three
+       new lines and the ones nobody has written yet, which is the difference
+       between a repair and the same repair again next release. Re-pointing
+       an alias for a subtree is what the aliases are for: the whole dark
+       theme is this operation at :root.
+
+       Mapped by ROLE rather than by lightness. `--fg-chrome-1` is this
+       block's strongest ink and so is `--fg-1`; it is not "the light one
+       becomes the dark one", which would be a coincidence that stops holding
+       the first time somebody adds a mid-weight line. */
+    --fg-chrome-1: var(--fg-1);
+    --fg-chrome-2: var(--fg-2);
+    --fg-chrome-3: var(--fg-3);
+  }
+
+  /* The strip and the switch are not re-inked but withdrawn, each because
+     this layout already has it: the floating plate carries the status strip
+     over the canvas, and the sidebar carries the mode switch. Twice on one
+     screen, the strip announces every flag twice and the switch is a control
+     with two live copies. */
+  .map-screen__journal .today__chrome .status-strip,
+  .map-screen__journal .today__chrome .mode-switch {
+    display: none;
+  }
+
+  /* The one rule the re-point cannot carry, because it is not a colour: the
+     readout at 44px against the phone's 52, having a column to anchor rather
+     than a whole screen. Its ink comes from the block above like everything
+     else here. */
+  .map-screen__journal .today__mile {
+    font-size: 44px;
+  }
+
+  /* ---------- Plan's homes: a column, not a stretched phone ---------- */
+
+  /* FOUND IN THIS PULL REQUEST'S OWN PREVIEW SHOT (#1329), which is the
+     argument for photographing a change rather than describing it. The new
+     hike room came up correct at 390px and wrong at 1280: "SECTIONS IN THIS
+     HIKE" sat at x=225 with its "All 2 ›" link stranded a thousand pixels
+     away at x=1247, because `.plan-home__section-head` is
+     `justify-content: space-between` and nothing had ever capped the column
+     it spaces things across. Every card was 1,040px wide with a 14px name
+     on it.
+     
+     PRE-EXISTING, AND NOT THIS ISSUE'S: the day room and the sections room
+     are the same block and have looked like this since #805. What #1329 did
+     was build a third home and photograph it, which is how it surfaced. The
+     fix is here rather than deferred because the handoff's Responsive note
+     is the same sentence this whole issue is about - "the frames here become
+     the content column" - and shipping a new room that ignores it at the
+     width the issue is about would be shipping the complaint.
+
+     LEFT-ALIGNED RATHER THAN CENTRED, and the band keeps the full width.
+     The band is chrome, like the sidebar beside it, and its `Switch hike ›`
+     belongs at the header's own right edge; capping it would leave a pine
+     slab with square corners floating in cream. Centring the content under
+     a full-width band would put the h1 and the cards on two different left
+     edges, which is the one arrangement worse than either. */
+  .plan-home > * {
+    max-width: 40rem;
+  }
+
+  .plan-home > .plan-band {
+    max-width: none;
+  }
+
+  /* ---------- The plan bench (#971): one plan, three views ---------- */
+
+  /* WIREFRAMES.md 3a. Not the planning station above - see this file's header
+     for the two rooms and which is which.
+
+     THE WHOLE ARGUMENT FOR THIS LAYOUT, in one rule: on a phone the Plan tab
+     shows one depth of the tree at a time, because that is all there is room
+     for. Here the tree, the map and the timeline are three columns over ONE
+     selection, and the whole section's elevation runs the width underneath -
+     which is what makes a day boundary something a pointer can take hold of.
+     Ten miles of ribbon has nothing to drag a day between.
+
+     Gated at 900px like everything else in this file, and gated a second time
+     in the component (`useDesktop()`), because the bench is a different
+     COMPOSITION rather than a restyling: the phone renders the timeline on its
+     own, and no stylesheet can conjure the two panes beside it. */
+  .plan-bench {
+    display: flex;
+    /* Columns keep their own heights. Stretching them would make the map as
+       tall as a fifty-day timeline, which is a mile of empty canvas. */
+    align-items: flex-start;
+    gap: var(--space-4, 16px);
+  }
+
+  /* WHICH PANE SCROLLS, and it is the whole reason the other two are sticky:
+     the timeline is the long one, and a hiker scrolling to day 40 must not
+     lose the tree that says which section they are in or the map that says
+     where. The screen's own pane is the scroll container
+     (.app__screen > :first-child), so `top: 0` is the top of the visible
+     plan rather than the document. */
+  .plan-bench__tree,
+  .plan-bench__map {
+    position: sticky;
+    top: 0;
+  }
+
+  /* The tree: narrowest, because it is a table of contents rather than
+     content. 15rem holds "Damascus → Atkins" on one line at this size. */
+  .plan-bench__tree {
+    flex: 0 0 15rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+  }
+
+  .plan-bench__tree-hike {
+    align-self: flex-start;
+    padding: 0;
+    font: inherit;
+    font-family: var(--font-display, serif);
+    font-size: 15px;
+    color: var(--fg-2);
+    background: none;
+    border: 0;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .plan-bench__tree-trip {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--fg-3);
+  }
+
+  .plan-bench__tree-sections {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 4px);
+  }
+
+  .plan-bench__tree-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2, 8px);
+    font: inherit;
+    text-align: left;
+    color: var(--fg-1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-1);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+
+  /* The one selection, said the same way in all three panes: a blaze-orange
+     inside edge, the same ink as the chart's selected band - so a hiker's eye
+     can follow one thing across three columns without being told the three
+     marks mean one thing.
+
+     WEIGHT rather than colour alone is what carries it, and that is not
+     decoration: `.plan__day--resupply` already draws its whole border in this
+     exact token (plan.css), so a picked resupply row marked only by hue would
+     be marked by nothing. Four pixels down one edge is legible against a
+     one-pixel surround. `aria-current` carries the same fact for anyone not
+     reading either. */
+  .plan-bench__tree-section--picked,
+  .plan__day--picked {
+    border-left: 4px solid var(--accent-blaze-orange);
+  }
+
+  .plan-bench__tree-name {
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .plan-bench__tree-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2, 8px);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+
+  /* A COUNT, and deliberately nothing else. No bar, no percentage, no "on
+     track" - screens/Plan.tsx's header names this surface as where a progress
+     display would arrive without anyone deciding to add one. */
+  .plan-bench__tree-walked {
+    margin: 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 11px;
+    color: var(--fg-3);
+  }
+
+  /* The map pane. Empty of rules beyond its share of the row, because what
+     goes in it is the shell's to decide (screens/Plan.tsx's `mapPane`) - and
+     it is not rendered at all when the shell has no map to lend. */
+  .plan-bench__map {
+    flex: 1 1 0;
+    min-width: 0;
+    /* A HEIGHT IS NOT OPTIONAL HERE: a map canvas has no intrinsic one, and a
+       sticky column that stretched would leave nothing on screen for the
+       chart. 55vh with an 18rem floor, and the arithmetic is against the
+       narrowest window this layout is photographed at (1280x800, the preview
+       camera's DESKTOP): 440px of map, ~44px of caption, ~200px of chart
+       strip, ~90px of header - about 774 of 800, so the chart is above the
+       fold at the width a reviewer sees. Below roughly 520px of viewport the
+       floor wins and the strip scrolls, which is the right way round: a short
+       window should cost the map, not the gesture. */
+    height: 55vh;
+    min-height: 18rem;
+    overflow: hidden;
+    border: 1px solid var(--border-1);
+    border-radius: 10px;
+  }
+
+  .plan-bench__timeline {
+    flex: 1 1 22rem;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 16px);
+  }
+
+  /* The strip beneath the three panes: what is selected, what the last drag
+     did, and the chart itself. Full width, because the chart is the whole
+     section and a section does not fit in a column. */
+  .plan-bench__strip {
+    /* Pinned to the bottom of the visible plan while the timeline scrolls
+       past it. The chart is what this screen exists for; scrolling away from
+       it to read day 40 and then back to move day 40's boundary is the
+       gesture made two-handed for no reason. */
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    /* Out to the screen's own edges, under the padding `.plan` sets. Sides
+       only: the plan's foot (re-target, delete) follows this in the DOM, and
+       a negative bottom margin would pull it up underneath the chart. */
+    margin: 0 calc(-1 * var(--space-4, 16px));
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-1);
+  }
+
+  .plan-bench__caption {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2, 8px);
+    margin: 0;
+    padding: var(--space-2, 8px) var(--space-4, 16px) 0;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--fg-2);
+  }
+
+  .plan-bench__caption--empty {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+
+  .plan-bench__caption-title {
+    font-weight: 600;
+    color: var(--fg-1);
+  }
+
+  .plan-bench__caption-was {
+    color: var(--fg-3);
+  }
+
+  .plan-bench__caption-action {
+    padding: 2px 8px;
+    font: inherit;
+    color: var(--fg-1);
+    background: none;
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  /* What the last drag did, and the way back out of it. `role="status"` in
+     the markup, so a screen reader hears the two days change rather than
+     having to go looking for them. */
+  .plan-bench__undo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2, 8px);
+    margin: var(--space-2, 8px) var(--space-4, 16px) 0;
+    padding: var(--space-2, 8px);
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 12px;
+    color: var(--fg-1);
+    background: color-mix(in srgb, var(--accent-blaze-orange) 12%, transparent);
+    border-radius: 8px;
+  }
+
+  .plan-bench__undo-action {
+    padding: 2px 10px;
+    font: inherit;
+    font-weight: 600;
+    color: var(--fg-1);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-2);
+    border-radius: 999px;
+    cursor: pointer;
+  }
+
+  .plan-bench__no-chart {
+    margin: 0;
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    font-size: 13px;
+    color: var(--fg-3);
+  }
+
+  /* The chart is already bordered by the strip above it. */
+  .plan-bench__strip .elevation-chart {
+    background: none;
+    border-top: 0;
   }
 
   /* ---------- Map screen: chrome down the side, map in the middle ---------- */
@@ -443,6 +881,51 @@
     vector-effect: non-scaling-stroke;
   }
 
+  /* Day boundaries on the profile (#971). A DIFFERENT ink from the selection
+     wash above, deliberately: the orange band is a measurement somebody made,
+     these lines are the plan itself, and a hiker has to be able to tell the
+     two apart before dragging one. */
+  .elevation-chart__boundary {
+    stroke: var(--fg-1);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  /* An edge that cannot be taken: the plan's two ends, a walked day's, one
+     against a pin. Still drawn - a section whose first and last edges were
+     invisible reads as a plan running off both sides of the picture - and
+     dashed and dimmed, so "you cannot drag this" is legible before the
+     attempt rather than after it. */
+  .elevation-chart__boundary--fixed {
+    stroke: var(--fg-3);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+  }
+
+  /* The handle: a thin column over the line, wide enough to aim at with a
+     mouse and focusable for the keyboard path. Transparent at rest so the
+     picture is the line rather than a row of tabs; it shows itself on hover
+     and focus, which is what a desk pointer already expects. */
+  .elevation-chart__boundary-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    /* Centred on the line it moves, so the pointer's idea of the handle and
+       the eye's idea of the boundary are the same place. */
+    width: 13px;
+    margin-left: -6px;
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 3px;
+    cursor: ew-resize;
+  }
+
+  .elevation-chart__boundary-handle:hover,
+  .elevation-chart__boundary-handle:focus-visible {
+    background: color-mix(in srgb, var(--fg-1) 14%, transparent);
+  }
+
   .elevation-chart__here {
     stroke: var(--fg-1);
     stroke-width: 1;
@@ -536,6 +1019,68 @@
     box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
   }
 
+  /* ---------- The long hike: windows, not takeovers (#1329) ---------- */
+
+  /* THE HANDOFF ASKED FOR THIS AND #1317 SHIPPED THE PHONE'S ANSWER TWICE.
+     Its Responsive note reads "above the desktop breakpoint ... the frames
+     here become the content column"; what shipped was three sheets welded to
+     the bottom edge of a 1440px browser and five screens that replaced the
+     whole app. A maintainer's report of it - "having them full screen makes
+     it hard for me to remember where I am" - is #1133's own sentence for the
+     report window, arrived at independently: a dialog leaves the screen you
+     were already on visible around it, and that is what says you have not
+     gone anywhere.
+
+     So both modifiers converge here. `--sheet` stops being bottom-docked and
+     `--screen` stops being full-bleed, and they become the same window.
+
+     THE SCRIM IS DECLARED FOR BOTH, including `--screen`, which has none on
+     a phone because it covers the viewport. Here it does not cover anything,
+     so the ground behind it needs dimming or the window has no edge.
+
+     One consequence is load-bearing rather than cosmetic: the map behind
+     stays visible and hit-testable, which is the whole of why the set-up
+     window's "Choose on the map" can reach a map at all (App.tsx's
+     `hikePointOnMap`). */
+  .hike-window {
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5, 20px);
+    background: rgb(20 19 15 / 55%);
+  }
+
+  .hike-window > * {
+    flex: 0 1 auto;
+    /* 26rem for a sheet of doors, 30rem for a screen with a points list and
+       an elevation ribbon in it. Both narrower than the content column they
+       float over, which is what keeps them reading as windows - the report
+       window's 334px argument at two sizes. */
+    width: min(26rem, 100%);
+    max-height: min(46rem, 100%);
+    overflow-y: auto;
+    border: 1px solid var(--border-1);
+    /* All four corners: the phone's sheet rounds only its top two because
+       its bottom two are off the screen, and they are not off this one. */
+    border-radius: var(--radius-l, 14px);
+    box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
+  }
+
+  .hike-window--screen > * {
+    width: min(30rem, 100%);
+    /* Undoes the phone's `flex: 1`, which would stretch the window to the
+       full height of the scrim whatever it holds. */
+    flex: 0 1 auto;
+  }
+
+  /* The window's own ground. On a phone each screen paints this itself and
+     `min-height: 100%` makes it the page; here the page is behind the scrim,
+     so the ground has to stop at the window's edge. */
+  .hike-window--screen .hike-setup,
+  .hike-window--screen .hike-day,
+  .hike-window--screen .finished-hike {
+    min-height: 0;
+  }
+
   /* ---------- The opened waypoint card: a column, not a sheet ---------- */
 
   /* A pulled-open card on a phone is a sheet against the bottom edge, because
@@ -562,39 +1107,99 @@
     border-radius: 14px;
   }
 
-  /* ---------- First run: a card on the map, not a band across it ---------- */
+  /* ---------- First run: the photograph fills the window (#1084) ---------- */
 
-  /* On a phone the entry card is anchored to the bottom edge, where the thumb
-     is. A 1440px browser has no thumb and no bottom edge worth reaching, and a
-     full-width strip of it there would bury the map under a band of paper for
-     three paragraphs of text. Centred instead, the same shape the download
-     window takes on this screen - so the map is visible all the way round the
-     steps rather than only above them. */
+  /* THE BAND IS THE PHONE'S ANSWER, and only the phone's. onboarding.css caps
+     the hero at `min(52svh, 480px)` because a portrait screen covered by a
+     landscape photo shows a blurred vertical sliver of its middle - measured
+     and reasoned there, and still right there.
+
+     Turned sideways the same rule inverts. A 480px band across a 1920px
+     window is a 4:1 slot cut from sources that are 1.33:1 to 1.5:1, so most
+     of the frame is thrown away and the rest of the screen is empty pine.
+     Measured 2026-08-27, by reading the rendered image's box back against its
+     naturalWidth/naturalHeight in Chromium and computing the visible share
+     from the object-fit scale - the figure is how much of the SOURCE
+     photograph is still on screen:
+
+                            band (was)      full bleed (is)
+       1440x900, 3:2            48.7%             93.7%
+       1920x1080, 3:2           37.5%             84.3%
+       1920x1080, 1:1           25.0%             56.3%
+
+     A landscape window and a landscape photograph want the same thing, so
+     stop cropping and let it fill. The 1:1 row is the pool's problem rather
+     than this rule's, and lib/heroPhotos.ts is where it is being answered. */
+  .onboarding__hero-image {
+    height: 100%;
+    /* Still off-centre, and still for onboarding.css's reason - a horizon or
+       a blaze sits in the upper-middle of a trail frame. Nearer the middle
+       than the band's 38% because there is no longer a crop deep enough for
+       38% to be rescuing anything from. */
+    object-position: center 45%;
+    /* The band's foot dissolved into pine because the pine was half the
+       screen. Nothing is below the photo now, so a fade at the bottom edge
+       would be a gradient to a colour nobody can see. */
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+
+  /* The steps, docked to the right rather than centred on the photograph.
+     `.onboarding` is a COLUMN (onboarding.css), so `align-items` is its
+     horizontal axis and `justify-content` its vertical one - the pair below
+     reads as "centred vertically, against the right edge", which is the
+     opposite of how it scans.
+
+     Docked rather than centred because a photographer puts the subject in
+     the middle of the frame and this card is 448px of opaque paper: centred,
+     it sat on the Jefferson Rock signpost and on the hiker's head. The right
+     edge is also the one the opened waypoint card uses (.poi-card--open),
+     which is the same instinct - the left is where the sidebar and the brand
+     plate already live. */
   .onboarding {
     justify-content: center;
-    align-items: center;
+    align-items: flex-end;
     padding: var(--space-5, 20px);
   }
 
+  /* 25rem where the centred card was 28rem. At the 900px floor of this
+     breakpoint that leaves 460px of photograph beside it; at 28rem it would
+     leave 412px, which is less of the frame than the phone gets. */
   .onboarding__card {
-    width: min(28rem, 100%);
+    width: min(25rem, 100%);
     max-height: 100%;
     border-radius: 14px;
     box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
   }
 
-  /* The dim a floating card needs and a bottom sheet does not. On a phone the
-     card is attached to the bottom edge and reads as part of the frame, the
-     way the legend sheet does; here it is over the middle of a wide map, and
-     without something behind it the page reads as a card that has come loose.
-     Lighter than the download window's 35% (.downloads-dialog): that one is a
-     decision the map is no part of, and this one is about the map. */
-  .onboarding::before {
+  /* The dim a floating card needs and a bottom sheet does not: over the
+     middle of a bright sky, a white card with nothing behind it reads as a
+     card that has come loose.
+
+     ON THE HERO, NOT ON `.onboarding`, and that is the fix rather than a
+     preference. The rule this replaces was `.onboarding::before` - a
+     generated box first in `.onboarding`'s box tree, which puts it UNDER
+     `.onboarding__hero`, an opaque pine element at `inset: 0` painted after
+     it. So it dimmed nothing, in every desktop build since #1054. Checked
+     2026-08-27 rather than reasoned: set to `rgb(255 0 0 / 90%)` and
+     photographed, the frame comes back with no red pixel anywhere on it.
+     `.onboarding__hero::after` is last inside the hero, so it paints over
+     the photograph, which is the thing that needed dimming.
+
+     Dark at the two edges and near-clear through the middle: the card is at
+     one edge and the brand plate at the other, and the middle is the part of
+     the composition this whole change exists to stop covering. */
+  .onboarding__hero::after {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: rgb(0 0 0 / 22%);
+    background: linear-gradient(
+      90deg,
+      rgb(12 26 18 / 34%) 0%,
+      rgb(12 26 18 / 10%) 42%,
+      rgb(12 26 18 / 48%) 100%
+    );
   }
 }
 
@@ -639,6 +1244,76 @@
   .map-screen > .tab-bar .tab-bar__tab:hover {
     color: var(--fg-chrome-1);
     background: color-mix(in srgb, var(--fg-chrome-1) 8%, transparent);
+  }
+}
+
+/* ---------- The day-hike builder's rail (#1194) ---------- */
+
+@media (min-width: 900px) {
+  /* WEBSITE.md §6's table gained a row with this change, and it is the row
+     that was conspicuously missing: every other wide surface in this app got
+     its room - the tab bar became a sidebar, the legend became a panel, the
+     elevation chart became interactive - and the day-hike builder still wore
+     the phone's bottom sheet on a 27" display, with the map letterboxed above
+     it. That was the first of the three complaints behind #1194.
+
+     `.map-screen__body` is already `flex-direction: row` above, so the panel
+     is a rail simply by being the first child of it (chrome/MapScreen.tsx).
+     What is left is its width and the fact that, here, it shows everything. */
+  .day-hike-panel {
+    flex: 0 0 21.75rem;
+    max-height: none;
+    gap: 0.7rem;
+    padding: 1rem 1.25rem 1.1rem;
+    border-bottom: 0;
+    border-right: 1px solid var(--border-1);
+  }
+
+  /* No collapse on a desktop: the rail has the height, so a control whose
+     only effect is to hide detail there is a control with nothing to do.
+     The body's `hidden` attribute is overridden rather than the toggle being
+     conditionally rendered, so the phone and the desktop run the same
+     component with the same state - see chrome/DayHikePanel.tsx. */
+  .day-hike-panel__details-toggle {
+    display: none;
+  }
+
+  .day-hike-panel__body[hidden] {
+    display: flex !important;
+  }
+
+  /* The route list is what grows, so it is what scrolls - the header, the
+     figures and the label toggles stay put. A rail whose whole length
+     scrolled would take the label row off the screen exactly when a long
+     route made it most useful. */
+  .day-hike-panel__rows {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  /* Two columns, per the handoff's desktop rail, rather than the phone's
+     scrolling chip row. */
+  .day-hike-panel__label-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 6px;
+    overflow-x: visible;
+  }
+
+  .day-hike-panel__label-toggle {
+    justify-content: space-between;
+    min-height: 0;
+    padding: 0.5rem 0.6rem;
+    border-radius: 9px;
+  }
+
+  /* The bar keeps the actions and keeps the bottom - the instruction behind
+     this change, and true on both breakpoints. Here it is the foot of the
+     MAP rather than the foot of the phone, which is the same edge: the map
+     is the whole right-hand side. */
+  .day-hike-bar {
+    max-height: 40%;
   }
 }
 

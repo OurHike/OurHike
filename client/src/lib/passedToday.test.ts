@@ -94,3 +94,95 @@ describe('passedPlaces', () => {
     expect(passedPlaces([], POIS, NOTE_SCOPED_TYPES)).toEqual([])
   })
 })
+
+describe('costing nothing when nothing was passed (#1090)', () => {
+  // walkedMiles.ts's identity rule, kept by the wrapper around it. This record
+  // is React state too, with its own persisting effect, so a fresh object on an
+  // unchanged step is the second of the two `localStorage` writes a jittering
+  // fix used to pay for.
+
+  it('hands back the record it was given when the step adds nothing', () => {
+    const now = new Date('2026-08-27T12:00:00')
+    const current = { day: localDay(now), ranges: [{ startMile: 940, endMile: 941 }] }
+
+    expect(advanceToday(current, now, 940.2, 940.6)).toBe(current)
+  })
+
+  it('hands it back when the pair is too far apart to be walking', () => {
+    const now = new Date('2026-08-27T12:00:00')
+    const current = { day: localDay(now), ranges: [{ startMile: 940, endMile: 941 }] }
+
+    expect(advanceToday(current, now, 940, 940 + MAX_FIX_GAP_MILES + 0.1)).toBe(current)
+  })
+
+  it('still turns the day over on the first step after midnight', () => {
+    // The identity check is "the day has not turned AND the step added
+    // nothing". A record from yesterday has to be replaced whatever the step
+    // did, or a hiker's "places you passed today" would still be yesterday's at
+    // breakfast - and the step itself is measured against the NEW day's empty
+    // record, so ground they walked yesterday is ground they have walked again.
+    const yesterday = { day: '2026-08-26', ranges: [{ startMile: 940, endMile: 941 }] }
+    const now = new Date('2026-08-27T07:00:00')
+
+    const next = advanceToday(yesterday, now, 940.2, 940.6)
+
+    expect(next).not.toBe(yesterday)
+    expect(next).toEqual({
+      day: localDay(now),
+      ranges: [{ startMile: 940.2, endMile: 940.6 }],
+    })
+  })
+
+  it('still records new ground', () => {
+    const now = new Date('2026-08-27T12:00:00')
+    const current = { day: localDay(now), ranges: [{ startMile: 940, endMile: 941 }] }
+
+    const next = advanceToday(current, now, 940.9, 941.3)
+
+    expect(next).not.toBe(current)
+    expect(next.ranges).toEqual([{ startMile: 940, endMile: 941.3 }])
+  })
+})
+
+describe('localDay, without a formatter (#1304)', () => {
+  // It is called from App.tsx's render with lib/useClock.ts's `now`, so it ran
+  // on every tick and every re-render in between - 61-91 ms of main-thread
+  // self time on the first-run profile, for a string that changes once a day.
+  // The formatter is gone; these hold the replacement to what it produced.
+
+  it('spells every day of a year exactly as en-CA formatted it', () => {
+    // A whole year rather than a handful of dates, because what could differ
+    // is padding at the month and day boundaries, and a sample would miss the
+    // one that does.
+    for (let day = 0; day < 365; day += 1) {
+      const date = new Date(2026, 0, 1 + day)
+      expect(localDay(date)).toBe(date.toLocaleDateString('en-CA'))
+    }
+  })
+
+  it('agrees across the days a clock change would land on', () => {
+    // The suite pins TZ=UTC (vite.config.ts, #323), so this does NOT prove the
+    // two agree through a real DST shift - what it proves is that both read the
+    // same local calendar, which is the property that makes them equal in any
+    // zone: `getFullYear`/`getMonth`/`getDate` and `toLocaleDateString` are
+    // both local-time readings of the same instant.
+    for (const iso of [
+      '2026-03-08T06:59:00Z',
+      '2026-03-08T07:01:00Z',
+      '2026-11-01T05:59:00Z',
+      '2026-11-01T06:01:00Z',
+      '2026-12-31T23:59:00Z',
+      '2027-01-01T00:01:00Z',
+    ]) {
+      const date = new Date(iso)
+      expect(localDay(date)).toBe(date.toLocaleDateString('en-CA'))
+    }
+  })
+
+  it('pads a month and a day to two digits, so the string sorts', () => {
+    // The record compares days by string equality and the day-hike planner
+    // sorts by it, so an unpadded 2026-1-5 would be a silently different day.
+    expect(localDay(new Date(2026, 0, 5))).toBe('2026-01-05')
+    expect(localDay(new Date(2026, 10, 12))).toBe('2026-11-12')
+  })
+})

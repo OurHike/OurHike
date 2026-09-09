@@ -20,23 +20,29 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor, act, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { appHarness, latOfMile } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { ROUTE_SOURCE_ID, ROUTE_POINT_LABEL_PROPERTY } from './map/routeLayers'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
 import { MIN_FLAT_PACE_MPH } from './lib/pace'
+import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { PLAN_KEY } from './lib/plan'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { hikeFigures } from './lib/hikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
 }))
-vi.mock('./map/archiveZooms', () => ({ readArchiveZooms: () => Promise.resolve(null) }))
+vi.mock('./map/archiveZooms', () => ({
+  readArchiveZooms: () => Promise.resolve(null),
+  readArchiveFootprint: () => Promise.resolve(null),
+}))
 vi.mock('./lib/api', () => ({
   API_CONFIGURED: false,
   accessToken: vi.fn(async () => null),
@@ -85,7 +91,7 @@ async function throughPlanKind(user: ReturnType<typeof userEvent.setup>) {
   expect(
     await screen.findByRole('dialog', { name: 'What are you planning?' }),
   ).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: /A multi-day trip/ }))
+  await user.click(screen.getByRole('button', { name: /A multi-day section/ }))
 }
 
 async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
@@ -122,7 +128,12 @@ describe('the planning flow', () => {
     const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
     expect(picker).toBeInTheDocument()
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
 
     // The start field carries the PIPELINE mile the plan will run on.
     expect(await screen.findByText('Front Shelter')).toBeInTheDocument()
@@ -136,9 +147,13 @@ describe('the planning flow', () => {
     // Slide shorter: 5 miles reaches for 8.2, and the end re-snaps to
     // Middle Shelter (10.2) - then back out to 15, Beyond Shelter again
     // (|22.2 - 18.2| = 4 beats |13.2 - 18.2| = 5).
-    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
+      target: { value: '5' },
+    })
     expect(screen.getByText('Middle Shelter')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Miles of trail'), { target: { value: '15' } })
+    fireEvent.change(screen.getByLabelText('Trail distance in miles'), {
+      target: { value: '15' },
+    })
     expect(screen.getByText('Beyond Shelter')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
@@ -192,6 +207,121 @@ describe('the planning flow', () => {
     expect(stored.days[1].pinned).toBe(false)
   })
 
+  it('lands the laid-out trip in the trips room, not on a day-hike list left open', async () => {
+    // #1008. `dayListOpen` was lifted into the shell so the map's trailhead
+    // door could reach the list from another tab; the cost is that it now
+    // OUTLIVES the tab switch that used to reset it, and Plan.tsx tests it
+    // BEFORE it tests the mode. So a list opened before a walk on the map
+    // won the trips room outright: the trip the hiker just laid out never
+    // appeared, and what greeted them was the day-hike list wearing the day
+    // band. `enterTripsRoom` is the fix and this is its regression.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(DAY_HIKES_KEY, {
+      hikes: [
+        {
+          id: 'saved-1',
+          name: 'A walk from an earlier session',
+          date: null,
+          segments: [
+            [
+              { coord: [-74.095, 41.25], poiId: null },
+              { coord: [-74.085, 41.25], poiId: null },
+            ],
+          ],
+          figures: { miles: 4.2, legs: [] },
+          looped: false,
+          recorded: 'planned',
+        },
+      ],
+      openId: null,
+    })
+    // A hike to be on, so tapping Long hike is instant - App.dayHike.test's
+    // fixture keeps one for the same reason. Without it the "which long
+    // hike?" sheet opens over the screen with nothing to pick, and since
+    // #1329 that sheet is a modal that means it: what is behind is inert,
+    // so the six taps below would be taps a hiker could not make. On main
+    // they landed anyway, jsdom having no layout to stop them.
+    app.store.set(TRIPS_KEY, {
+      trips: [],
+      openId: null,
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          trailId: 'AT',
+          status: 'planning',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          tripIds: [],
+        },
+      ],
+      groups: [],
+      activeHikeId: 'hike-1',
+    })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    // One saved day hike and no trips opens the day room by itself. Start a
+    // route from the trips room, so there is a live draft to come back to.
+    // #1317 deleted Plan's own ⇄ chip: the app's mode control is the door
+    // to the sections room now, and it is on the Today screen's chrome.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    // The hike's own room since #1329, and since #1344 its primary opens the
+    // planner IN PLACE rather than throwing the hiker at the map. The map is
+    // what this test wants, so it takes the door that leads there - which is
+    // the hand-off itself, exercised end to end.
+    await user.click(await screen.findByRole('button', { name: 'Plan a section' }))
+    await user.click(
+      await screen.findByRole('button', { name: 'Draw it on the map instead' }),
+    )
+    await user.click(await screen.findByRole('button', { name: /Shelter, town, or/ }))
+    await user.type(await screen.findByLabelText('Search for a stop'), 'front')
+    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(screen.getByRole('button', { name: 'Use this stretch' }))
+    expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
+
+    // Detour into the day room's list, mid-route. This is the state that used
+    // to survive the trip being laid out.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'All 1 ›' }))
+    expect(await screen.findByText('Ready to walk')).toBeInTheDocument()
+
+    // Back to the half-built route, and finish it.
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+    fireEvent.change(await screen.findByLabelText('Miles per day'), {
+      target: { value: '8' },
+    })
+    await user.click(screen.getByRole('button', { name: /^Lay out \d+ days?$/ }))
+
+    // The trips room, showing the trip that was just made. (The trips HOME
+    // rather than its timeline: #805 opens the tab on the home whenever
+    // there is something to choose between, and a saved day hike is
+    // something - that part is not this test's business.) What matters is
+    // that the day-hike list is gone.
+    expect(
+      (await screen.findAllByText(/Front Shelter → Beyond Shelter/)).length,
+    ).toBeGreaterThan(0)
+    // "Ready to walk" is the day-hike LIST's own state word, so its absence
+    // is what says the list screen is gone - which is this test's subject.
+    // The day hike's NAME is no longer a proxy for that: #1329's hike room
+    // has a "Day hikes on this trail" shelf, where a walk on this trail
+    // appearing is the room working rather than the list surviving.
+    expect(screen.queryByText('Ready to walk')).toBeNull()
+
+    const store = app.store.get(TRIPS_KEY) as TripStore
+    expect(store.trips).toHaveLength(1)
+  })
+
   it('records a stretch already walked, and the hike roll-up counts it', async () => {
     // #789: most of a section hiker's trail predates the app. Without this
     // door the roll-up opens on somebody who has walked hundreds of miles
@@ -226,8 +356,9 @@ describe('the planning flow', () => {
         id: 'h',
         name: 'Test',
         type: 'section',
-        start: { mile: 0 },
-        end: { mile: 30 },
+        trailId: 'AT',
+        points: [{ mile: 0 }, { mile: 30 }],
+        status: 'walking',
         tripIds: store.trips.map((trip) => trip.id),
       },
       store.trips,
@@ -274,6 +405,7 @@ describe('the planning flow', () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
     app.store.set(TRIPS_KEY, {
       openId: 'trip-1',
       trips: [
@@ -329,6 +461,7 @@ describe('the planning flow', () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
     app.store.set(TRIPS_KEY, {
       openId: 'trip-1',
       trips: [
@@ -350,8 +483,12 @@ describe('the planning flow', () => {
           id: 'hike-1',
           name: 'The whole thing, eventually',
           type: 'section',
-          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
-          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          trailId: 'AT',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          status: 'walking',
           tripIds: ['trip-1'],
         },
       ],
@@ -389,6 +526,7 @@ describe('the planning flow', () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
     app.store.set(TRIPS_KEY, {
       openId: 'trip-1',
       trips: [
@@ -410,8 +548,12 @@ describe('the planning flow', () => {
           id: 'hike-1',
           name: 'The whole thing, eventually',
           type: 'section',
-          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
-          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          trailId: 'AT',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          status: 'walking',
           tripIds: ['trip-1'],
         },
       ],
@@ -719,6 +861,37 @@ describe('the planning flow', () => {
       ).toBeInTheDocument()
     })
 
+    it('forgets a refused tap at the ENTRANCE when the builder closes (#1040)', async () => {
+      // The mirror of the test above, on the other flag. #986 named this
+      // exact defect and fixed `editorRefusedTap`; `entranceRefusedTap` was
+      // declared for the same reason on the next line and cleared in exactly
+      // one place - a successful entrance tap - so cancelling after a refused
+      // one carried the accusation into the next route.
+      const user = userEvent.setup()
+      app.onboard()
+      app.putTrailData({ pois: POIS })
+
+      await openEntrance(user)
+      const map = await liveMap()
+      // Off the corridor: the entrance refuses it and says so.
+      await tap(map, 10, -81)
+      const sheet = await screen.findByRole('dialog', { name: 'Plan a route' })
+      expect(
+        within(sheet).getByText(/off the trail, so nothing moved/),
+      ).toBeInTheDocument()
+
+      await user.click(within(sheet).getByRole('button', { name: /Close/ }))
+
+      // Straight back in, with nothing in between that would clear it.
+      await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+      await user.click(await screen.findByRole('button', { name: /Start on the map/ }))
+      await throughPlanKind(user)
+
+      const fresh = await screen.findByRole('dialog', { name: 'Plan a route' })
+      expect(within(fresh).queryByText(/off the trail, so nothing moved/)).toBeNull()
+      expect(within(fresh).getByText(/just tap the trail on the map/)).toBeInTheDocument()
+    })
+
     it('spends one undo press per real edit, never on a re-tap (#986)', async () => {
       const user = userEvent.setup()
       app.onboard()
@@ -781,12 +954,12 @@ describe('the planning flow', () => {
 
       // Settings → Map & Display → the slowest flat pace. The route is
       // untouched; only the hiker's own speed moved.
-      await user.click(screen.getByRole('tab', { name: 'Settings' }))
-      await user.click(await screen.findByRole('tab', { name: 'Map & Display' }))
+      await user.click(screen.getByRole('tab', { name: 'More' }))
+      await user.click(await screen.findByRole('button', { name: /^the map/i }))
       fireEvent.change(await screen.findByLabelText('Flat pace'), {
         target: { value: String(MIN_FLAT_PACE_MPH) },
       })
-      await user.click(screen.getByRole('tab', { name: 'Trail' }))
+      await user.click(screen.getByRole('tab', { name: 'Map' }))
 
       // The same walk at a slower pace is a longer time. Before #996's fix the
       // figures memo did not list pace, and this panel re-opened on the memo's
@@ -862,10 +1035,19 @@ describe('the ribbon while a trip is being planned', () => {
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    // Scoped to the picker: the next-up rail can hold a card named for the
+    // same shelter (#1054), and the click means the dialog's row.
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
 
-    // Front Shelter (3.2) to the resolved end, Beyond Shelter (22.2).
-    expect(await screen.findByText('Beyond Shelter')).toBeInTheDocument()
+    // Front Shelter (3.2) to the resolved end, Beyond Shelter (22.2). The
+    // rail names the same shelter on a card (#1054), so the assertion aims
+    // at the entrance's own row.
+    expect(await screen.findAllByText('Beyond Shelter')).not.toHaveLength(0)
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
 
     // Nothing on it claims anything about a hiker: there is no fix in this
@@ -884,12 +1066,13 @@ describe('the ribbon while a trip is being planned', () => {
     app.store.set(ELEVATION_STORE_KEY, profile())
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await app.reportFixAtMile(5)
 
-    // The field instrument first: ten miles around the fix, with its lanes.
+    // The field instrument first: ten miles around the fix, with its rail.
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
-    expect(screen.getByTestId('lane-sleep')).toBeInTheDocument()
+    expect(screen.getByTestId('next-up-cards')).toBeInTheDocument()
 
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
@@ -898,9 +1081,14 @@ describe('the ribbon while a trip is being planned', () => {
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
 
-    // The swap. The lanes are re-windowed onto the planned stretch rather than
+    // The swap. The rail is re-windowed onto the planned stretch rather than
     // dropped (#913) - and onto the PIPELINE's axis, which is what the count
     // proves: Front Shelter (3.2) to Beyond Shelter (22.2) holds all four,
     // where reading the client index's own miles would put the 3.0 that starts
@@ -909,15 +1097,15 @@ describe('the ribbon while a trip is being planned', () => {
     expect(fixRibbon()).not.toBeInTheDocument()
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+        within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
       ).toHaveLength(4),
     )
 
-    // And the first of them sits exactly at the ribbon's left edge, because
-    // the stretch starts at that shelter's published mile.
+    // Walked in the stretch's own order, so the first card is the shelter
+    // the stretch starts at.
     expect(
-      within(screen.getByTestId('lane-sleep')).getAllByRole('button')[0],
-    ).toHaveStyle({ left: '0%' })
+      within(screen.getByTestId('next-up-cards')).getAllByRole('button')[0],
+    ).toHaveAccessibleName(/front shelter/i)
 
     await user.click(screen.getByRole('button', { name: 'Close the route builder' }))
 
@@ -925,7 +1113,7 @@ describe('the ribbon while a trip is being planned', () => {
     expect(planRibbon()).not.toBeInTheDocument()
     // Back to the ten miles around the fix, which hold fewer of them.
     expect(
-      within(screen.getByTestId('lane-sleep')).getAllByRole('button').length,
+      within(screen.getByTestId('next-up-cards')).getAllByRole('button').length,
     ).toBeLessThan(4)
   })
 
@@ -939,14 +1127,15 @@ describe('the ribbon while a trip is being planned', () => {
     app.store.set(ELEVATION_STORE_KEY, profile())
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
     await app.reportFixAtMile(5)
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
     // One shelter is inside the ten-mile fix window; the pan below puts four
-    // on screen, which is what makes the lane counts tell the domains apart.
-    expect(within(screen.getByTestId('lane-sleep')).getAllByRole('button')).toHaveLength(
-      1,
-    )
+    // on screen, which is what makes the card counts tell the domains apart.
+    expect(
+      within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
+    ).toHaveLength(1)
 
     const map = MockMap.live[0]
 
@@ -973,11 +1162,11 @@ describe('the ribbon while a trip is being planned', () => {
     })
     expect(mapRibbon).toBeInTheDocument()
     expect(fixRibbon()).not.toBeInTheDocument()
-    // The lanes go where the ribbon goes (#913): the mapped stretch holds all
-    // four shelters, where the fix window held one.
+    // The rail goes where the ribbon goes (#913): the mapped stretch holds
+    // all four shelters, where the fix window held one.
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+        within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
       ).toHaveLength(4),
     )
 
@@ -986,7 +1175,7 @@ describe('the ribbon while a trip is being planned', () => {
     await waitFor(() => expect(fixRibbon()).toBeInTheDocument())
     await waitFor(() =>
       expect(
-        within(screen.getByTestId('lane-sleep')).getAllByRole('button'),
+        within(screen.getByTestId('next-up-cards')).getAllByRole('button'),
       ).toHaveLength(1),
     )
   })
@@ -998,6 +1187,7 @@ describe('the ribbon while a trip is being planned', () => {
     app.store.set(ELEVATION_STORE_KEY, profile())
 
     render(<App />)
+    await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
 
     // Resting on the whole trail: "Whole trail" would do nothing, and neither
@@ -1017,7 +1207,12 @@ describe('the ribbon while a trip is being planned', () => {
     await user.click(screen.getByRole('button', { name: /Shelter, town, or/ }))
     await screen.findByRole('dialog', { name: 'Choose a stop' })
     await user.type(screen.getByLabelText('Search for a stop'), 'front')
-    await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
+    await user.click(
+      await within(screen.getByRole('dialog', { name: 'Choose a stop' })).findByRole(
+        'button',
+        { name: /Front Shelter/ },
+      ),
+    )
     await waitFor(() => expect(planRibbon()).toBeInTheDocument())
 
     const before = MockMap.live[0].cameraMoves.length

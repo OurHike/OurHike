@@ -16,12 +16,19 @@ syncing preferences is expected to always know its own current values for
 these, rather than the backend silently substituting a guess for
 something safety/display relevant.
 
-`show_closures` is deliberately not a field anywhere in this module. Map
-Options makes closures always-on, never hideable, so it isn't a preference
-at all - and `model_config = ConfigDict(extra="forbid")` on `PreferencesIn`
-is what turns a client sending it anyway into a real 422 (a rejected,
-visible error) rather than the field being silently dropped and the rest of
-the request quietly succeeding.
+`show_closures` is deliberately not a field anywhere in this module, and
+OurHike/OurHike#1047 sharpened rather than softened that. Map Options used
+to make closures always-on and never hideable; the client's legend now
+carries an Alerts switch that clears the bands from the canvas while a
+hiker is looking at it. What that switch must never be is a *preference* -
+this object syncs, so a field here would put a hiker's one-off tap in
+Virginia onto a new phone in Maine. The client holds it in memory and
+resets it at the next open instead.
+
+`model_config = ConfigDict(extra="forbid")` on `PreferencesIn` is what
+turns a client sending it anyway into a real 422 (a rejected, visible
+error) rather than the field being silently dropped and the rest of the
+request quietly succeeding.
 """
 
 from enum import Enum
@@ -108,17 +115,27 @@ class LayerDetailLevel(str, Enum):
 
 
 class HikingDetailLevel(str, Enum):
-    """The hiking sheet's download level (#276) - which basemap cut the
-    default background fetches: the z13 Standard package or the full z14
-    Fine one. Mirrors client/src/lib/userPreferences.ts
-    `HIKING_DETAIL_LEVELS` exactly, like every enum in this module.
+    """The hiking sheet's download level (#276) - which pair of archives the
+    default background fetches. Standard and Fine differ in the basemap cut
+    (the z13 package or the full z14 one); Light differs in the DEM, whose
+    corridor tapers harder with depth (#1088). Mirrors
+    client/src/lib/userPreferences.ts `HIKING_DETAIL_LEVEL_VALUES` exactly,
+    like every enum in this module.
 
     Defaulted, unlike `max_background_zoom`, because Standard has a
     documented recommendation behind it: it is the level a hiker who never
     made the choice should get - the sheet that fits the storage envelope -
     and it is what pre-#276 blobs, which have no such key, must read back
-    as."""
+    as.
 
+    `light` is accepted here before anything publishes its archives, and that
+    ordering is deliberate rather than premature: this schema is `extra=forbid`
+    and a stored value it does not know is rejected outright, so the value has
+    to be storable before the first phone can choose it. What stops it being
+    OFFERED meanwhile is client-side - hikingDetail.ts's `published` - not this
+    enum, which only says what may be persisted."""
+
+    light = "light"
     standard = "standard"
     fine = "fine"
 
@@ -186,18 +203,24 @@ class PreferencesIn(BaseModel):
 
     # Safety / privacy
     #
-    # `wrong_way_alert_enabled` SYNCS, and that is a decision rather than an
-    # oversight corrected (#242). It is not the OS notification permission -
-    # that is genuinely per-device and lives with the platform. This is the
+    # `wrong_way_alert_enabled` SYNCS, and that was a decision rather than an
+    # oversight corrected (#242). It was not the OS notification permission -
+    # that is genuinely per-device and lives with the platform. This was the
     # app-level question "do I want OurHike's one alert at all", which
-    # belongs to a person rather than to a handset.
+    # belonged to a person rather than to a handset.
     #
-    # It defaults ON, so the safety path is opt-out - which is exactly why
-    # not syncing it would be the wrong way round: a hiker who deliberately
-    # turned the alert off would get it back on a reinstalled phone, firing
-    # when they had chosen silence. For the one notification this app ever
-    # sends (client/src/lib/push.ts), spending the trust budget that way is
-    # worse than losing a preference.
+    # It defaulted ON, so the safety path was opt-out - which is exactly why
+    # not syncing it would have been the wrong way round: a hiker who
+    # deliberately turned the alert off would get it back on a reinstalled
+    # phone, firing when they had chosen silence.
+    #
+    # The wrong-way alert itself was removed (#93, #308) after shipping fully
+    # built but never mounted - see features/HIKER_SAFETY.md section 5's
+    # history note. OurHike sends no push notification today. This field
+    # stays rather than following it out: it is part of three released
+    # clients' API contracts (backend/openapi_baselines/v1.1.1.json onward),
+    # and RELEASING.md section 8c makes removing a field an expand/contract
+    # change across supported releases, not a same-PR deletion.
     #
     # Defaulted here for the same reason `map_style` is: a row synced before
     # this key existed must read back as the safety default rather than as a
@@ -212,6 +235,16 @@ class PreferencesIn(BaseModel):
     # first), and rows synced before this key existed must read back as
     # "off" rather than as a ValidationError.
     contribute_conditions: bool = False
+
+    # Whether the Volunteer tab draws "What you've put back" (#969,
+    # features/VOLUNTEERING.md §5). Defaulted TRUE, which is the client's own
+    # default and therefore the same answer whichever side answers first - and
+    # which is also the right way for a row synced before this key existed to
+    # read back: the panel summarises hours the hiker typed in themselves, so
+    # the recovered default should show them their own logbook rather than
+    # hide it. Nothing behind this switch leaves the device; it decides a
+    # DISPLAY, and every record it summarises survives it being off.
+    impact_panel_shown: bool = True
 
     # Onboarding progress
     onboarding_completed: bool = False

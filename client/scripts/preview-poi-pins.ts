@@ -8,6 +8,8 @@
 import { deflateSync } from 'node:zlib'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { buildPoiIcons } from '../src/map/poiIcons'
+import { buildAtcNoticeIcon } from '../src/map/atcNoticeMark'
+import { ATC_NOTICE_ICON_ID } from '../src/lib/atcUpdateStyle'
 
 function chunk(type: string, body: Buffer): Buffer {
   const length = Buffer.alloc(4)
@@ -75,7 +77,17 @@ const SCALE = 4
 const outDir = process.argv[2] ?? 'poi-pin-preview'
 mkdirSync(outDir, { recursive: true })
 
-for (const { id, image } of buildPoiIcons()) {
+// The ATC point notice rides along, and this script is exactly why (#1071).
+// Its geometry is polar maths rather than polygon maths, which fails in a
+// different way and in the same place: every constant was right while the first
+// render was a black disc with red spokes on it, and no unit test written
+// against the SPEC could have seen that. map/atcNoticeMark.test.ts samples the
+// alpha channel and would catch it now - but a number saying "the gap is 4.5px"
+// is still not the same as looking at the thing.
+for (const { id, image } of [
+  ...buildPoiIcons(),
+  { id: ATC_NOTICE_ICON_ID, image: buildAtcNoticeIcon() },
+]) {
   const { width: w, height: h, data } = image
   writeFileSync(
     `${outDir}/${id}.png`,
@@ -83,20 +95,40 @@ for (const { id, image } of buildPoiIcons()) {
   )
 }
 
-// A contact sheet, so all twelve can be judged side by side rather than one
+// A contact sheet, so every pin can be judged side by side rather than one
 // browser tab at a time.
+//
+// THE CELL IS THE LARGEST ICON, NOT THE FIRST ONE. This used to be
+// `icons[0].image.width` and every pin was copied as though it were that
+// size, which is true of exactly the 20 plain pins that happen to sort
+// first. The badge variants are not: buildPoiIcons() emits four sizes -
+// 76, 116, 140 and 144 px - because a badge hangs outside the disc. Reading a
+// 144px image with a 76px stride advances by the wrong amount on every row,
+// so each cell sheared a little further than the last and the whole sheet
+// below the third row was diagonal noise.
+//
+// It had been that way for as long as there have been badge variants, and
+// nothing caught it, because the thing this script exists to produce is a
+// picture nobody had scrolled to the bottom of. That is the same failure the
+// script itself is the fix for - "polygon maths type-checks and passes unit
+// tests while drawing something that is not a droplet" - one level up.
+//
+// Found while looking at #1197's ninth pin, which is the only reason it was
+// found at all.
 const icons = buildPoiIcons()
-const cell = icons[0].image.width
+const cell = Math.max(...icons.map(({ image }) => Math.max(image.width, image.height)))
 const cols = 6
 const rows = Math.ceil(icons.length / cols)
 const sheet = new Uint8ClampedArray(cell * cols * cell * rows * 4)
 
 icons.forEach(({ image }, index) => {
-  const ox = (index % cols) * cell
-  const oy = Math.floor(index / cols) * cell
-  for (let y = 0; y < cell; y += 1) {
-    for (let x = 0; x < cell; x += 1) {
-      const from = (y * cell + x) * 4
+  // Centred in its cell, so a badge that hangs off one side does not make the
+  // disc itself look off-register against the row.
+  const ox = (index % cols) * cell + Math.floor((cell - image.width) / 2)
+  const oy = Math.floor(index / cols) * cell + Math.floor((cell - image.height) / 2)
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      const from = (y * image.width + x) * 4
       const to = ((oy + y) * cell * cols + ox + x) * 4
       for (let c = 0; c < 4; c += 1) sheet[to + c] = image.data[from + c]
     }
@@ -111,4 +143,6 @@ writeFileSync(
     upscale(sheet, cell * cols, cell * rows, SCALE),
   ),
 )
-console.log(`Wrote ${icons.length} pins and a contact sheet to ${outDir}/`)
+console.log(
+  `Wrote ${icons.length} pins, the ATC notice mark and a contact sheet to ${outDir}/`,
+)

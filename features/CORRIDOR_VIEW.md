@@ -12,11 +12,31 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 
 ## The first map a hiker ever sees is an empty line
 
-> **Partly fixed, 2026-08-15 (#603).** The dot rank now draws all the way down
-> (`POI_DOT_MIN_ZOOM = 0`), so the opening view carries a stipple of every waypoint on the trail
-> rather than nothing, and the legend's sentence is corrected to match. **The club sections this
+> **Partly fixed, 2026-08-15 (#603).** The dot rank drew all the way down
+> (`POI_DOT_MIN_ZOOM = 0`), so the opening view carried a stipple of every waypoint on the trail
+> rather than nothing, and the legend's sentence was corrected to match. **The club sections this
 > doc argues for are still the subject it is missing** — dots are texture, not a subject, and
 > nothing below answers itself. `CORRIDOR_BOUNDS` is untouched and the section below stands.
+>
+> **And answered, 2026-08-27 (#1135 — Decide what the opening map draws: every mapped trail, and
+> no waypoints below the seam).** The subject this doc argued for having since arrived — the
+> thirty clubs (#594), the highlights (#595) — the maintainer inverted #603's stopgap: the view
+> below the seam is now **every organization's trails and no waypoints**. The A.T. draws with the
+> whole network around it (a 255 KB overview of all 7,670 line-miles,
+> `pipeline/export_nearby_trails.py`'s `write_overview`), and the dot rank stops at the pin seam
+> with the pins. `features/mockups/opening-map.html` is the drawn record of the options and the
+> measurements behind that call.
+>
+> **And narrowed, 2026-09-08 ([#1292](https://github.com/OurHike/OurHike/issues/1292) — Below
+> the seam the map draws marks that read as waypoints; the opening camera should draw trail
+> lines only).** The boundary ticks and the highlight marks (#858) came off the canvas: on the
+> whole-corridor camera, with the line itself seconds late
+> ([#1291](https://github.com/OurHike/OurHike/issues/1291)), they read as a chain of waypoints
+> along the trail. Below the seam the map now draws trail lines only — the A.T., the network
+> sketch, the unattributed grey runs, closure tape — and no point mark of any kind; ATC notices,
+> serious warnings, workdays and dispute marks all start at the seam too. The highlight data, the
+> sheet and the tap path stay in the code, reachable from no mark: whether highlights get a band
+> above the seam or are retired is still the maintainer's to decide.
 
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
 corridor, which lands at **z4.87** on a phone — `fitBounds` over `[[-84.73, 34.2], [-68.3, 46.34]]`
@@ -254,7 +274,7 @@ range, and the source date it came from. Thirty features. The backend already ho
 map's copy for drawing and for working offline, and where the two disagree the backend is right.
 
 **Stretches — renamed `Highlight`, 2026-08-19 (#598).** The word `stretch` belongs to the ~50-mile
-offline download unit `pipeline/cut_stretches.py` cuts (#552, decided 2026-08-18, after this doc was
+offline download unit `pipeline/cut_cells.py` cuts (#552, decided 2026-08-25, after this doc was
 written), and the maintainer's call is that nothing else reuses it. Two further decisions taken with
 it: a **Highlight is its own entity**, not a property of a trail, and it **may cross trails** — so
 the mile range moves down a level into an ordered list of legs, since a mile only means something

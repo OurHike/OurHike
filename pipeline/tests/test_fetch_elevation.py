@@ -31,6 +31,7 @@ from fetch_elevation import (
     cell_url,
     corridor_bbox,
 )
+from lib import http_retry
 from tests.synthetic import CENTERLINE_COORDS, write_centerline
 
 # The shared line's 30-mile buffer spans just over 1 degree of longitude
@@ -339,7 +340,14 @@ def test_each_tile_gets_the_timestamp_its_url_answered_with():
 
 def test_one_request_per_cell_and_no_more():
     """The whole cost of keeping revision detection: one HEAD per cell, no
-    pagination, against the bucket the export already streams from."""
+    pagination, against the bucket the export already streams from.
+
+    Compared as a sorted list rather than in order, because the HEADs go out
+    through a thread pool now (HEAD_WORKERS) and which one comes back first is
+    not a property worth asserting. What is asserted is what the name says:
+    every cell asked exactly once, and no cell asked twice - the count is the
+    half a pool could plausibly break.
+    """
     index = [
         {"url": cell_url("n35w084"), "bounds": [-84.0, 34.0, -83.0, 35.0]},
         {"url": cell_url("n36w084"), "bounds": [-84.0, 35.0, -83.0, 36.0]},
@@ -348,7 +356,41 @@ def test_one_request_per_cell_and_no_more():
 
     fetch_elevation.stamp_last_modified(index, head=lambda url: asked.append(url) or "x")
 
-    assert asked == [cell_url("n35w084"), cell_url("n36w084")]
+    assert sorted(asked) == sorted([cell_url("n35w084"), cell_url("n36w084")])
+
+
+def test_every_cell_keeps_the_answer_that_was_its_own():
+    """The failure a thread pool introduces if it is wired up carelessly: the
+    answers come back in whatever order they finish, and stamping them onto
+    the index by arrival would put one cell's revision date on another. That
+    is a silent wrong answer on the freshness monitor - the cell that changed
+    reads FRESH and the one that did not reads STALE.
+
+    `pool.map` yields in submission order and the writes happen in the calling
+    thread, which is what makes this hold; the test is here because nothing
+    about the code SAYS so at the call site.
+    """
+    cells = [f"n{n}w084" for n in range(35, 51)]
+    index = [{"url": cell_url(cell), "bounds": [-84.0, 34.0, -83.0, 35.0]} for cell in cells]
+
+    def head(url):
+        # Answer with the cell's own name, so a mis-paired answer is visible
+        # rather than merely possible.
+        return url.rsplit("/", 1)[-1]
+
+    fetch_elevation.stamp_last_modified(index, head=head)
+
+    assert [tile["last_modified"] for tile in index] == [f"USGS_13_{cell}.tif" for cell in cells]
+
+
+def test_an_empty_index_asks_nobody_and_returns_it_unchanged():
+    """A run whose corridor produced no cells must not stand up a pool to do
+    nothing with - and `min(workers, len(index))` would be 0, which
+    ThreadPoolExecutor refuses."""
+    asked = []
+
+    assert fetch_elevation.stamp_last_modified([], head=lambda url: asked.append(url) or "x") == []
+    assert asked == []
 
 
 def test_a_failed_head_records_none_rather_than_failing_the_run():
@@ -476,3 +518,42 @@ def test_union_bbox_takes_the_outer_edge_of_each_side():
         -70.0,
         35.0,
     )
+
+
+class TestTheHeadItself:
+    """`_head` is what `stamp_last_modified` calls when nothing is injected,
+    and until #1295 it was a bare `requests.head` with no retry - the fourth
+    such call in the pipeline after #536 and #1063 each found one. These pin
+    the two properties that had to survive putting a retry under it."""
+
+    def test_a_transient_failure_is_absorbed(self, monkeypatch, requests_mock):
+        monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+        url = cell_url("n35w084")
+        requests_mock.head(
+            url,
+            [{"status_code": 503}, {"headers": {"Last-Modified": "Wed, 21 Aug 2026 07:28:00 GMT"}}],
+        )
+
+        assert fetch_elevation._head(url) == "Wed, 21 Aug 2026 07:28:00 GMT"
+        assert requests_mock.call_count == 2
+
+    def test_a_persistent_failure_is_still_none_rather_than_a_raise(self, monkeypatch, requests_mock):
+        """The property the retry must not have changed. freshness_state
+        models None as "we did not find out"; an exception here would take
+        the whole elevation fetch down for a detail nothing depends on."""
+        monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+        url = cell_url("n35w084")
+        requests_mock.head(url, status_code=503)
+
+        assert fetch_elevation._head(url) is None
+        assert requests_mock.call_count == 2  # HEAD_BACKOFF_SECONDS is one retry, not the default two
+
+    def test_a_404_costs_one_request_and_no_sleeping(self, requests_mock):
+        """A tile USGS has not published is an answer. 404 is absent from
+        DEFAULT_RETRYABLE_STATUSES, so this must not spend the budget -
+        across ~110 corridor tiles that difference is the whole runtime."""
+        url = cell_url("n35w084")
+        requests_mock.head(url, status_code=404)
+
+        assert fetch_elevation._head(url) is None
+        assert requests_mock.call_count == 1

@@ -23,10 +23,14 @@
 // size, its own delete; taking or dropping one never touches the other.
 //
 // The trail's own data - the centerline, the spurs, the POIs, the elevation
-// profile - is deliberately not here at all. It is small, it is what makes
+// profile - is deliberately not a CARD here. It is small, it is what makes
 // the app an app rather than a map viewer, and it is fetched by default
 // whenever it is missing (lib/trailData.ts, App.tsx), so presenting it as a
 // decision would be offering someone a choice they have already been given.
+// Since #1103 it does get an ACCOUNT: a read-only list beside the sheets,
+// measured off the store (lib/onThisPhone.ts), because "what is on this
+// phone" is a question a hiker owns even about bytes they never chose -
+// and the two words "trail data" were the whole answer before it.
 //
 // ONE SHEET AT A TIME, UNDER TABS (#298).
 //
@@ -41,13 +45,15 @@
 // be a control.
 
 import { useEffect, useState } from 'react'
-import { formatBytes } from '../lib/formatBytes'
+import { formatBytes, formatBytesLive } from '../lib/formatBytes'
+import { storedTrailData, type TrailDataAsset } from '../lib/onThisPhone'
 import { estimateAvailableBytes, type PersistenceState } from '../lib/storageHealth'
 import { ownPhotoUsage } from '../lib/poiPhotos'
 import { useDesktop } from '../lib/useDesktop'
 import { facingFullDownload } from '../lib/backgroundStatus'
 import { DownloadCard, type DownloadStatus } from './DownloadCard'
 import type { DetailOption } from './DetailPicker'
+import { StretchCard, type StretchOffer } from './StretchCard'
 import { Tabs } from './Tabs'
 import './downloads.css'
 
@@ -58,8 +64,16 @@ export interface SheetDownload {
   title: string
   summary: string
   status: DownloadStatus
-  /** What the whole sheet will take, at the chosen detail. */
-  sizeBytes: number
+  /**
+   * What the whole sheet will take, at the chosen detail - or null where
+   * nothing has measured it yet (#1167).
+   *
+   * Null is a real state rather than a gap: the hiking sheet's sizes come
+   * from `latest.json` alone now, so a phone that has never reached it does
+   * not know. Everything below that would otherwise print or compare against
+   * this figure withholds instead of guessing.
+   */
+  sizeBytes: number | null
   /** Its own failure, if it has one - never a sibling sheet's. */
   error?: string | null
   /** Whether this sheet's bytes are on the phone and the map could not draw
@@ -81,9 +95,37 @@ export interface SheetDownload {
     onChange: (id: string) => void
     name?: string
   }
+  /**
+   * The sheet's own archives, named, with the size and state the store
+   * reports for each (#1103). The card's one figure stays the sheet's - a
+   * sheet is one decision - and this is the detail under it, for the hiker
+   * who wants to know that "790 MB" is the vector cartography AND the
+   * terrain, and which of the two is still coming. Built in App.tsx from
+   * the same statuses the sheet figure is combined from, so the breakdown
+   * and the clump cannot disagree.
+   */
+  assets?: readonly SheetAsset[]
+  /**
+   * The second decision on this sheet's panel (#558): just the stretch under
+   * the hiker's planned hike, priced against what is missing, rendered under
+   * the card by screens/StretchCard.tsx. Only the hiking sheet carries one -
+   * it is the sheet the pipeline cuts into cells - and a sheet without it
+   * renders exactly as it did before cells existed. The whole trail stays
+   * the card's own button, whatever this offers.
+   */
+  stretch?: StretchOffer
   onStart: () => void
   onResume: () => void
   onDelete: () => void
+}
+
+/** One named archive inside a sheet - see SheetDownload.assets. */
+export interface SheetAsset {
+  title: string
+  summary: string
+  /** null where the catalog cannot price this asset at the chosen level. */
+  sizeBytes: number | null
+  status: DownloadStatus
 }
 
 export interface DownloadsProps {
@@ -102,6 +144,95 @@ export interface DownloadsProps {
  * when the download window opens, which is exactly that moment. Null where
  * the browser will not say, and the warning simply does not render.
  */
+/**
+ * What vector trail data the store holds, read when the window opens - the
+ * same moment-of-asking reasoning as useAvailableBytes below. Null until the
+ * read lands, and the section simply does not render.
+ */
+function useStoredTrailData(): TrailDataAsset[] | null {
+  const [assets, setAssets] = useState<TrailDataAsset[] | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void storedTrailData().then((read) => {
+      if (!cancelled) setAssets(read)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return assets
+}
+
+/** One archive's state, in the card's own words (DownloadCard.tsx) - the
+ *  breakdown must never coin a new vocabulary for a state the card above it
+ *  already names. */
+function assetStateLine(asset: SheetAsset): string {
+  const { status } = asset
+  switch (status.state) {
+    case 'downloading':
+      return `${formatBytesLive(status.receivedBytes)} of ${formatBytes(status.totalBytes)} · arriving`
+    case 'checking':
+      return `${formatBytesLive(status.checkedBytes)} of ${formatBytes(status.totalBytes)} · checking`
+    case 'downloaded':
+      return asset.sizeBytes === null
+        ? 'downloaded'
+        : `${formatBytes(asset.sizeBytes)} · downloaded`
+    case 'failed':
+      return `stopped at ${formatBytesLive(status.receivedBytes)} of ${formatBytes(status.totalBytes)}`
+    case 'hash-mismatch':
+      return 'did not match what was published'
+    case 'evicted':
+      return 'removed by the phone to free space'
+    default:
+      return asset.sizeBytes === null
+        ? 'not downloaded'
+        : `${formatBytes(asset.sizeBytes)} · not downloaded`
+  }
+}
+
+/** The trail-data rows' names, hiker words for pipeline artifacts.
+ *
+ *  Exported for onThisPhone.test.ts, which asserts the two ends cover each
+ *  other: a row with no name here renders `undefined` in the window, and a
+ *  name with no row is a line nobody will ever see. TypeScript's `Record`
+ *  catches the first at compile time and neither at runtime, and the second
+ *  not at all - `network-overview` existed as a stored artifact with no row
+ *  for a whole release, and nothing anywhere went red. */
+export const TRAIL_DATA_LABEL: Record<TrailDataAsset['id'], string> = {
+  'trail-line': 'Trail line',
+  waypoints: 'Waypoints',
+  elevation: 'Elevation profile',
+  // The other organizations' network, drawn for the opening view - and since
+  // #1257 the only part of it that arrives on its own; above the seam the
+  // lines are tiles read over the network per view, and the part a phone
+  // keeps is the stretch it took, accounted for on the stretch card above
+  // (lib/onThisPhone.ts says why that earns no row here). Named for WHEN a
+  // hiker sees it rather than
+  // for what it is - "corridor-view sketch" is the pipeline's phrase and
+  // answers nothing somebody is asking while looking at a storage list.
+  'network-overview': 'Nearby trails, zoomed out',
+  // Named for what it DOES rather than for what it is. "Junction graph" is the
+  // pipeline's word and answers no question a hiker has; this row exists so
+  // somebody can tell whether the day-hike builder will work at a trailhead
+  // with no signal (#1050).
+  'day-hike-routing': 'Day-hike routing',
+}
+
+/** One trail-data artifact's state: a measured figure where the store holds
+ *  one, presence where it does not, and a stated absence - absent means not
+ *  here, never zero. */
+function trailAssetLine(asset: TrailDataAsset): string {
+  if (!asset.present) return 'not here yet — arrives with signal'
+  if (asset.bytes !== null) return `${formatBytes(asset.bytes)} on this phone`
+  if (asset.count !== null)
+    return `${asset.count.toLocaleString('en-US')} ${
+      asset.id === 'waypoints' ? 'places' : 'samples'
+    }`
+  return 'on this phone'
+}
+
 function useAvailableBytes(): number | null {
   const [available, setAvailable] = useState<number | null>(null)
 
@@ -151,6 +282,7 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
   const isDesktop = useDesktop()
   const availableBytes = useAvailableBytes()
   const ownPhotos = useOwnPhotoBytes()
+  const trailData = useStoredTrailData()
   const [openSheetId, setOpenSheetId] = useState(sheets[0]?.id ?? '')
 
   // The default sheet, whenever the id in state names none of the ones being
@@ -166,10 +298,19 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
     // round it against fingerprinting), and a hiker at a trailhead deciding
     // to try anyway is making an informed call, which is the whole point.
     // Against this sheet's whole size, since that is what its one tap brings.
+    // An unmeasured sheet raises no warning, which is the conservative
+    // direction here rather than the reckless one: the alternative is warning
+    // against a number this app does not have. A hiker who taps anyway meets
+    // the same storage failure they would have met with a wrong figure, and
+    // was not told something false on the way (#1167).
+    // Bound to a const so the warning below can read it narrowed - TypeScript
+    // cannot carry a narrowing through the separate `spaceTight` boolean.
+    const sheetSize = sheet.sizeBytes
     const spaceTight =
       facingFullDownload(sheet.status) &&
       availableBytes !== null &&
-      availableBytes < sheet.sizeBytes
+      sheetSize !== null &&
+      availableBytes < sheetSize
 
     return (
       <>
@@ -182,14 +323,16 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           <p className="downloads__warning" role="status">
             {sheet.status.state === 'evicted'
               ? `Space still looks tight — about ${formatBytes(availableBytes ?? 0)} free against a ${formatBytes(
-                  sheet.sizeBytes,
+                  sheetSize ?? 0,
                 )} download. Freeing up space first makes another removal less likely.`
               : `This phone reports about ${formatBytes(availableBytes ?? 0)} free for the app — the ${formatBytes(
-                  sheet.sizeBytes,
+                  sheetSize ?? 0,
                 )} download may not fit. ${
                   sheet.detail.options.some(
                     (option) =>
-                      option.sizeBytes !== null && option.sizeBytes < sheet.sizeBytes,
+                      option.sizeBytes !== null &&
+                      sheetSize !== null &&
+                      option.sizeBytes < sheetSize,
                   )
                     ? 'A lighter detail level might, or free up some space first.'
                     : 'Freeing up some space first would make room for it.'
@@ -208,6 +351,25 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
           onResume={sheet.onResume}
           onDelete={sheet.onDelete}
         />
+        {/* The detail under the card's one figure (#1103): which archives
+            the sheet's decision buys, each in the state the store reports.
+            Only where there is a breakdown to show - a sheet of one archive
+            IS its own detail, and a list of one would just repeat the card. */}
+        {sheet.assets !== undefined && sheet.assets.length > 1 && (
+          <ul className="downloads__assets" data-testid={`downloads-assets-${sheet.id}`}>
+            {sheet.assets.map((asset) => (
+              <li key={asset.title} className="downloads__asset">
+                <span className="downloads__asset-name">{asset.title}</span>
+                <span className="downloads__asset-state">{assetStateLine(asset)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {/* Under the sheet's card and its breakdown, never beside the
+            button (#558): the whole trail is the decision above, and this
+            is the smaller one a hiker reaches for once they have said where
+            they are walking. */}
+        {sheet.stretch !== undefined && <StretchCard stretch={sheet.stretch} />}
       </>
     )
   }
@@ -245,6 +407,34 @@ export function Downloads({ sheets, persistence = null }: DownloadsProps) {
             ownPhotos.bytes,
           )} on this phone. Remove one from its waypoint's card.`}
         </p>
+      )}
+
+      {/* The vector trail data, stated beside the sheets it is not part of
+          (#1103): the line, the waypoints, the elevation, the neighbouring
+          network - fetched on their own with signal and until now accounted
+          for by the two words "trail data". Every figure is measured off
+          what the store actually holds, never a size somebody expects; an
+          absent artifact gets a stated absence, because absent means not
+          here and never zero. The whole list renders, present or not - a
+          missing row would be an artifact this window forgot to answer
+          for. */}
+      {trailData !== null && (
+        <div className="downloads__trail-data" data-testid="downloads-trail-data">
+          <p className="downloads__trail-data-title">Trail data on this phone</p>
+          <ul className="downloads__assets">
+            {trailData.map((asset) => (
+              <li key={asset.id} className="downloads__asset">
+                <span className="downloads__asset-name">
+                  {TRAIL_DATA_LABEL[asset.id]}
+                </span>
+                <span className="downloads__asset-state">{trailAssetLine(asset)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="downloads__trail-data-note">
+            These arrive on their own when the app has signal — nothing here to press.
+          </p>
+        </div>
       )}
 
       {sheets.length > 1 ? (

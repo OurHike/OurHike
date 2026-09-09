@@ -197,6 +197,38 @@ tag can identify most of the builds people actually run:
   site that deployed yesterday is what makes a stale install visible from the phone
   instead of from the deploy log.
 
+### A version number is single-use, and there is no undo
+
+**This repository has GitHub's immutable releases enabled.** Once a release has used a
+tag name, that name is reserved *permanently* — and deleting the release does not give
+it back. Nothing in a checkout says so, which is why this paragraph exists: the setting
+lives on the settings page, is invisible from here, and the only way the project has
+learned about it is by losing version numbers to it.
+
+Measured, over one release cycle in August 2026:
+
+- **`v1.0.1`** was cut, then abandoned. Its release *and* its tag were deleted. Re-cutting
+  it was refused with *"v1.0.1 is used by an immutable release and cannot be reused"* —
+  after the deletion, which is the part worth remembering.
+- **`v1.1.0`** was tagged at `1517e682`, deployed, and its GitHub release was left as a
+  draft. The tag could not afterwards be re-pointed at a later commit, so the release was
+  renumbered rather than amended.
+- **`v1.1.1`** was drafted from a pull-request branch, which meant its `target_commitish`
+  was the branch head. Publishing that draft before the branch merged would have created
+  the tag on unmerged work — permanently. It merged with a merge commit, which put the
+  target on `main`'s history and made the question moot; a squash merge would not have.
+
+So: **decide the number before the tag exists, and check what a draft is targeting before
+publishing it.** A draft holds no tag and is safely editable — retarget it rather than
+deleting and re-drafting, because whether the reservation also applies to a draft is not
+something this project has established, and the cheap path never puts that question on
+the critical path.
+
+None of the above is a reason to hoard numbers. Landmarks are not scarce (§5) and neither
+are patch numbers; the cost of burning one is a confusing gap in the release list, not a
+blocked release. The cost of tagging the *wrong commit* is higher, and is the one this
+paragraph is actually about.
+
 ## 5. Release names — the trail, northbound
 
 Every release is named for the next landmark a northbound thru-hiker meets, starting
@@ -387,10 +419,12 @@ The failures that can mislead somebody in a place where being wrong is expensive
 Nothing here is ever a soft gate, and a finding in this set can never become a
 follow-up issue:
 
-- **Position** — where the hiker is, where the trail is, which way they are facing.
-  The wrong-way alert's false-positive behaviour above all: `features/HIKER_SAFETY.md`
-  and TESTING.md both already say false negatives are acceptable and false positives
-  are the failure.
+- **Position** — where the hiker is, where the trail is. `trailPosition.ts` and the
+  map layers it feeds (closures, ATC updates, the corridor view) are what this protects
+  today; the wrong-way alert that used to be its highest-stakes consumer was removed
+  having never been field-validated (#93, #308). CLAUDE.md's
+  false-negatives-acceptable/false-positives-are-the-failure asymmetry remains this
+  codebase's general standard for any alert-shaped feature.
 - **Water** — a water source shown that is not there, or omitted where it is.
 - **Hazard, warning and closure** — anything that would keep somebody out of a place
   they should not be, including its freshness display.
@@ -470,19 +504,19 @@ duration attached, and it is the price of the row above that.
 
 ### 8d. What is not validated goes in the notes
 
-Three things are known-unvalidated today and each is already an issue: the wrong-way
-alert's thresholds ([#93](https://github.com/OurHike/OurHike/issues/93) —
-wireframe placeholders, and the feature where a false alarm costs most), cumulative
+Two things are known-unvalidated today and each is already an issue: cumulative
 ascent ([#91](https://github.com/OurHike/OurHike/issues/91) — the
 check exists and deliberately fails for want of reference figures), and end-to-end
 verification against real published artifacts
-([#94](https://github.com/OurHike/OurHike/issues/94)).
+([#94](https://github.com/OurHike/OurHike/issues/94)). (A third item lived here until
+2026-09-08: the wrong-way alert's thresholds — wireframe placeholders that were never
+field-tested. The alert itself was removed rather than the thresholds fixed, having
+shipped fully built but never mounted — [#93](https://github.com/OurHike/OurHike/issues/93),
+[#308](https://github.com/OurHike/OurHike/issues/308).)
 
-**A release does not have to resolve them. It has to say so.** A hiker deciding
-whether to trust a direction cue is entitled to know the thresholds behind it have
-never been tested under tree canopy. LAUNCH_CHECKLIST.md's "Things I know are not
-done, stated plainly" is the register this section is written in, and the reason it
-works is that it is not optional.
+**A release does not have to resolve them. It has to say so.** LAUNCH_CHECKLIST.md's
+"Things I know are not done, stated plainly" is the register this section is written
+in, and the reason it works is that it is not optional.
 
 ## 9. The release review
 
@@ -590,6 +624,36 @@ An agent may do everything up to that line: prepare the branch, generate the not
 run the battery, open the pull request, and create the GitHub release **as a draft**.
 Publishing the draft is a human action.
 
+The order those steps run in lives in one place —
+[`.claude/skills/release-train/SKILL.md`](.claude/skills/release-train/SKILL.md), the
+train — added 2026-08-27
+([#1123](https://github.com/OurHike/OurHike/issues/1123)) after v1.1.1 was cut with
+every step reconstructed from this document's prose. The train is operational only: it
+cites this document's sections rather than restating them, the agent dispatches every
+job, and the maintainer's part reduces to the approvals, the merge, the UA smoke and
+the publish. Where the two could ever disagree, this document wins.
+
+**That last permission was unbuildable until 2026-08-27, and the sentence did not say
+so.** The only thing that drafts a release is `pages.yml`'s `release` job, and it
+`needs: build` — where `build` *is* the production deploy. So the draft could not exist
+until hikers already had the build, and the one action this section reserves for a human
+was the one that had to happen first. An agent asked to "just draft the release" had two
+choices, both wrong: push a tag, or decline.
+
+`pages.yml` now takes a **`draft_only`** dispatch, with the version as an input. It runs
+the same build and the same two gates a tag runs — gate 12's notes file and §4's version
+agreement, which is the half that matters, because a draft that skips them becomes a tag
+that skipped them the moment somebody presses publish — then **skips the deploy** and
+drafts the release. Publishing that draft creates the tag, which fires this workflow for
+real. So the order finally matches the rule: the agent drafts, the human publishes, and
+publishing is what ships.
+
+The exemption is deliberately narrow. [#644](https://github.com/OurHike/OurHike/issues/644)
+was a non-tag dispatch that *deployed* with both gates silently skipped; a `draft_only`
+run deploys nothing and runs both gates, which is the opposite case rather than a hole in
+that fix. `.github/tests/test_pages_publish.py`'s `TestDraftingWithoutDeploying` holds
+both halves, and nine of its ten assertions fail against the workflow as it stood before.
+
 The mechanism, so that it does not rest only on being followed: a GitHub **environment**
 named `production` with a required reviewer. `publish-vector-data.yml` already runs
 under `environment: production`, so the concept is in place; what it lacks is the
@@ -655,7 +719,7 @@ Three notices, and they fail independently rather than duplicating each other:
 
 | | |
 |---|---|
-| `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12) or one that disagrees with `client/package.json` (§4), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached |
+| `pages.yml` | Deploys production from a `v*` tag, not from `main`. Refuses a tag with no notes file (gate 12) or one that disagrees with `client/package.json` (§4), and drafts the GitHub release with the app exactly as deployed, the OpenAPI document and the data manifest attached. A **`draft_only`** dispatch runs both gates and drafts *without* deploying, which is what makes §12's split between drafting and publishing buildable — first exercised 2026-08-27, [run 142](https://github.com/OurHike/OurHike/actions/runs/33031247079), green in 61s with the deploy step skipped |
 | `client/src/lib/buildInfo.ts` | The version, commit and build time, inlined at build time and shown at the foot of Settings |
 | `ua.yml` | Deploys `main` to UA on its own Cloudflare origin, with no path to the production backend |
 | `pipeline/lib/data_env.py` | UA's data has somewhere of its own to be. `publish.py` scopes every key by the environment it was told to publish to, and refuses to run when nobody told it ([features/DATA_ENVIRONMENTS.md](features/DATA_ENVIRONMENTS.md)) |
@@ -663,6 +727,7 @@ Three notices, and they fail independently rather than duplicating each other:
 | `.github/scripts/release_notes.py` | The generator. Pure half tested in `.github/tests/test_release_notes.py`; the git and API half is a thin seam |
 | `releases/` | Where the notes live, canonically |
 | `.github/expected-settings.yml` | The `UA_*` settings declared (six as of 2026-08-17), so the manifest suite can see them |
+| **The repository settings** | Required status checks and the `production` environment's reviewer ([#375](https://github.com/OurHike/OurHike/issues/375)) are configured, which is what turns §8's table from a document into a mechanism. Verified live rather than on trust: `protections-check.yml` [run 287](https://github.com/OurHike/OurHike/actions/runs/33031573888) (2026-08-27, on `main` at `9abf580f`) reports **19 passed**, including `test_the_required_checks_configured_are_the_ones_declared`, `test_the_production_environment_asks_a_human`, and `test_the_live_check_is_not_silently_skipping_where_it_is_meant_to_run` — the last of which exists precisely to fail when the live half is quietly not running. The two release labels were done 2026-08-08 (gate 11) |
 
 **Not built, and each one is why the process is not yet enforced rather than merely
 followed:**
@@ -673,41 +738,26 @@ followed:**
   ([#371](https://github.com/OurHike/OurHike/issues/371)).
   Until `UA_API_BASE_URL` exists, UA queues reports in the outbox — which is a
   supported state, not a broken one.
-- **The repository settings** — required status checks and the `production`
-  environment's reviewer ([#375](https://github.com/OurHike/OurHike/issues/375)).
-  These are the difference between §8's table being a mechanism and being a
-  document, and none of them can be set from a checkout. **The two labels are done**
-  (2026-08-08), which closes gate 11's half of that list.
-- **The `PROTECTIONS_READ_TOKEN` PAT**, which is why the line above is currently
-  taken on trust. It is declared in
-  [`.github/expected-settings.yml`](.github/expected-settings.yml) and optional by
-  design, so its absence is a declared state rather than a fault — but while it is
-  unset, `protections-check.yml` cannot read classic branch protection or the
-  environments list, which is exactly what gates 1 and 5 depend on. Measured
-  2026-08-15: the run reports 19 passing tests and says in its own log that those
-  two sections *"were not checked"*. Green there currently means "nothing I could
-  see is wrong", and the sections it cannot see are the ones the gate is about.
-- **`settings-configured.yml` cannot run at all**, which is the same problem one
-  level up. Added 2026-08-13 and never completed a job: dispatched twice on
-  2026-08-15, both runs finished in about two seconds with **zero jobs** and a
-  conclusion of `action_required`. The workflow file is not the cause — it parses,
-  its `permissions:` block is valid, it declares no environment, and the run's
-  approvals and pending-deployments endpoints are both empty — so this is a
-  repository-level Actions policy that only the settings page can answer. The cost
-  is specific rather than general: the one check built to notice a credential that
-  is missing or has been revoked, **including the PAT above**, is the one check
-  that cannot report.
-
-  What *is* built is the noticing: `.github/workflows/protections-check.yml` reads the
-  live configuration weekly and reports what is missing, so the remaining two stop
-  being something to remember. Its first real run found exactly the state described
-  above — no required checks, no environment reviewer — and said so.
+- **`settings-configured.yml` cannot run at all.** Added 2026-08-13 and has still
+  never completed a job: **four runs, every one `action_required` with zero jobs**,
+  the latest on its own schedule 2026-08-24. The workflow file is not the cause — it
+  parses, its `permissions:` block is valid, it declares no environment, and the
+  run's approvals and pending-deployments endpoints are both empty — so this is a
+  repository-level Actions policy that only the settings page can answer. The cost is
+  specific rather than general: the one check built to notice a credential that has
+  gone missing or been revoked is the one check that cannot report. Everything the
+  section above knows about the live configuration comes from
+  `protections-check.yml` instead, which is a different workflow answering a
+  narrower question.
 - **The compatibility checks** ([#374](https://github.com/OurHike/OurHike/issues/374)).
-  Deliberately last: the OpenAPI diff and the stored-data fixtures both compare
-  against a *previous release*, and there is no previous release to compare to
-  until `v1.0.0` exists. Building them now would mean shipping code nothing can
-  exercise — which TESTING.md is explicit about being worse than not having it.
-  The baseline they will read is already being attached by the release job.
+  The original reason for deferring them has expired: the OpenAPI diff and the
+  stored-data fixtures compare against a *previous release*, and there was none until
+  `v1.0.0` existed. It exists (`462bb5a5`), and v1.1.0 and v1.1.1 followed, so the
+  baseline is there and the release job has been attaching `openapi.json` since.
+  What is still missing is the diff itself. **One known gap in the fixtures half is
+  recorded in the v1.1.0 notes**: no v1.0.0 entry of `storedShapes.fixtures.ts` was
+  ever captured, so the upgrade path is tested against a pre-1.0 snapshot rather than
+  against what v1.0.0 actually wrote to a phone.
 - **The version on the wire.** Settings now shows the version, the commit and the
   build time, and offers to copy all three (§4, `client/src/screens/AboutBuild.tsx`),
   so a hiker can read back which build they have. What a report still does not carry

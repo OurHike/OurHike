@@ -143,6 +143,29 @@ export function layerCountLine(steward: Steward): string | null {
  *   claim about who maintains it but a statement that nothing does the
  *   claiming.
  */
+/**
+ * The published attributions, keyed the way lib/lineDetail.ts's
+ * TrailSourceTable wants them: one entry per registry key, carrying the
+ * steward's verbatim attribution (#1142).
+ *
+ * Derived from the same stewards artifact every credit surface reads, so the
+ * tapped-line sheet and the sources screen cannot disagree about whose words
+ * a layer ships under. No `edited` date rides along - stewards.json does not
+ * carry per-layer edit dates, and the sheet's date clause simply stays silent
+ * rather than this table inventing one.
+ */
+export function trailSourceTableFrom(
+  stewards: Stewards,
+): Readonly<Record<string, { attribution: string | null }>> {
+  const table: Record<string, { attribution: string | null }> = {}
+  for (const steward of stewards) {
+    for (const key of steward.keys) {
+      table[key] = { attribution: steward.attribution }
+    }
+  }
+  return table
+}
+
 export function orgLabelFrom(stewards: Stewards): (source: string | null) => string {
   const byKey = new Map<string, string>()
   for (const steward of stewards) {
@@ -152,4 +175,48 @@ export function orgLabelFrom(stewards: Stewards): (source: string | null) => str
     if (source === null) return 'Unattributed'
     return byKey.get(source) ?? source
   }
+}
+
+/**
+ * A graph edge's or a notice's `source` key, as the organization's SHORT name.
+ *
+ * `orgLabelFrom`'s sibling, and the difference is the surface. That one
+ * answers a card, where "New York-New Jersey Trail Conference" is what a hiker
+ * should read. This one answers the header's single line, which a hiker reads
+ * while walking - `pipeline/sources.json`'s `provider` is the registry's own
+ * short form for exactly that ("ATC", "NYNJTC", "NYS OPRHP"), so the
+ * abbreviation is the organization's rather than one this app shortened.
+ *
+ * Same three honesty tiers as `orgLabelFrom`, for the same reasons: the
+ * provider where a steward claims the key, the raw key where none does, and
+ * "Unattributed" for no key at all.
+ */
+export function orgProviderFrom(stewards: Stewards): (source: string | null) => string {
+  const byKey = new Map<string, string>()
+  for (const steward of stewards) {
+    for (const key of steward.keys) byKey.set(key, steward.provider)
+  }
+  return (source) => {
+    if (source === null) return 'Unattributed'
+    return byKey.get(source) ?? source
+  }
+}
+
+/**
+ * An organization's name, made possessive: `the ATC` -> `the ATC’s`.
+ *
+ * Here rather than in the component that first needed it, because there are
+ * two callers and were two implementations - NoticeList.tsx declared this
+ * with a comment saying it was "one rule with one caller", while
+ * AtcUpdateSheet.tsx inlined the same expression a few lines into its body.
+ * Two copies of one rule is the state where they can disagree, and this one
+ * is a rule about ENGLISH rather than about notices or sheets, so neither
+ * component was ever its home.
+ *
+ * An organization whose name already ends in s takes the bare apostrophe.
+ * None of the registered organizations does today; the branch is there so the
+ * first one that registers does not read wrong.
+ */
+export function possessive(name: string): string {
+  return name.endsWith('s') ? `${name}’` : `${name}’s`
 }

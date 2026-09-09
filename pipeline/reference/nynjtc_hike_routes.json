@@ -1,0 +1,297 @@
+{
+  "_README": [
+    "The reviewed ends of every NYNJTC Favorite Hike OurHike publishes (#1290), and the reason for every one it does not.",
+    "NYNJTC publishes a trailhead pin and a turn-by-turn description; they publish no line. Each `proposed` row is OurHike's construction of that description as the ENDS a phone routes between over trail_graph.json - the same ends-only shape a saved day hike stores (features/SUGGESTED_HIKES.md), so the phone re-routes it with client/src/lib/trailGraph.ts and lib/trail_graph_route.py is the pipeline's twin of that arithmetic. route_nynjtc_hikes.py measures every row against the current graph and renders the review sheet; export_suggested_hikes.py ships ONLY rows whose status is `reviewed`.",
+    "STATUS VOCABULARY. `proposed`: built and measured, waiting for a person to sign it off - nothing ships. `reviewed`: a person has read the review sheet and stands behind these ends; set `reviewed` to the date. `held`: no route can be built on this build's lines, with `reason` saying why and which issue would change it - the maintainer's rule, 2026-09-09: 'hold any hikes that you can't make a route on'.",
+    "EVERY `proposed` ROW WAS PLACED BY HAND on 2026-09-09 from the description and the graph as published to production that day, junction by junction, and `basis` says how; `measured_miles` is what lib/trail_graph_route.py priced then, kept beside NYNJTC's own `published_miles` so the two can disagree in the open. The review sheet re-measures on every run; a row whose measurement drifts from this figure by more than a few percent has had the ground under it republished, and is worth re-reading.",
+    "`ends` are [lon, lat] pairs snapped onto the trail line, in walking order; `closed: true` means the walk returns to its first end (a loop, or an out-and-back through its far point). A `published_miles` override carries NYNJTC's own figure where lib/nynjtc_hikes.py's parse of the overview picked the wrong number, with `published_miles_note` saying why.",
+    "This file lives in reference/ because every row is a judgement a reviewer signs, and its diff is that review (.github/tests/test_no_committed_data.py).",
+    "`hiker_note` is the one sentence a HIKER reads on the card about how this route differs from NYNJTC's page - what is not drawn and why, where the route starts if not at their pin, and a measured length that sits well off theirs. `basis` is the reviewer's; this is the hiker's, and export_suggested_hikes.py ships it as `hikerNote`.",
+    "A ROW KEY IS NYNJTC'S SLUG, optionally followed by '#' and a variant name. The variant exists because one of their pages is three walks: 'Platte Clove to Overlook Mountain via Codfish Point and Echo Lake' offers 4.5, 8.8 and 13 miles under one title, and the maintainer's call on 2026-09-09 was to ship all three as separate hikes. A variant row therefore carries its own `name` - OurHike's, because NYNJTC wrote one title for three walks and it names only the longest - and its own `published_miles`, the length of the three their overview states for THIS walk. Everything before the '#' is the cache key and the page a hiker is sent to; the three share both.",
+    "`reviewed` carries the date a person signed the row off, and export_suggested_hikes.py ships nothing without it. Every row was signed off on 2026-09-09 by the maintainer, reading the review sheet route_nynjtc_hikes.py renders. That includes Stillman/Highlands/Bluebird at 20% under NYNJTC's own figure, on their explicit instruction to ship it with both figures shown rather than hold it - the card prints this build's measurement beside NYNJTC's, so the disagreement is in front of the hiker rather than resolved behind them."
+  ],
+  "routes": {
+    "catskill-fire-towers": {
+      "status": "held",
+      "reason": "a set of five map PDFs, not a hike: no start, no description, no route to build",
+      "proposed": "2026-09-09"
+    },
+    "forest-view-closter-dock-trail-loop-palisades-interstate-park-nynjtc": {
+      "status": "held",
+      "reason": "Palisades Interstate Park, New Jersey section: no lines within 2.5 km of the map centre (the page start is a place-card map, read at lower confidence), and the Long Path extract this build carries does not reach this stretch - #1293",
+      "proposed": "2026-09-09"
+    },
+    "hike-bear-mountain-summit-loop": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.006997,
+          41.311763
+        ],
+        [
+          -74.004701,
+          41.315391
+        ]
+      ],
+      "measured_miles": 0.65,
+      "basis": "the All Persons Trail only, out and back from the Perkins Memorial Tower lot to the north-facing overlook where the accessible section ends - the primary hike in the page title. The optional summit loop is held: its return leg, the blue-blazed connector, ends 3 m off the A.T. line at fraction 0.804 of a single 825 m A.T. edge, on the edge INTERIOR, and build_trail_graph.py joins endpoints to endpoints only, so on this build the connector is a dead end from the tower and the loop cannot close (the phone would refuse it too).",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09",
+      "published_miles": 0.75,
+      "published_miles_note": "the overview says '0.35-mile' for the one-way accessible section and 'roughly 0.75-mile out-and-back' in the description; the route built is the out-and-back",
+      "hiker_note": "This is the accessible All Persons Trail out and back, 0.35 mi each way. The optional summit loop in NYNJTC's description is not drawn: on this build's trail lines its blue connector does not join the A.T."
+    },
+    "hike-buttermilk-falls-in-rockland-county": {
+      "status": "held",
+      "reason": "Buttermilk Falls County Park, Rockland County: the start is 958 m from the nearest line (the Long Path passes nearby) and the park own Red and White trails are not on this build lines; no source registered for Rockland County parks",
+      "proposed": "2026-09-09"
+    },
+    "hike-catfish-loop-trail": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -73.868835,
+          41.420443
+        ],
+        [
+          -73.875043,
+          41.414156
+        ],
+        [
+          -73.884959,
+          41.409928
+        ],
+        [
+          -73.892051,
+          41.411591
+        ],
+        [
+          -73.87869,
+          41.41927
+        ]
+      ],
+      "measured_miles": 4.43,
+      "basis": "the start on the A.T. by Dennytown Road, then four points along the red-blazed Catfish Loop in the clockwise order the description walks it, so the shortest path cannot shortcut across the loop on the A.T. (which crosses it once, at the cairn junction)",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09",
+      "hiker_note": "Measured 4.4 mi on this build's lines against NYNJTC's 4.6."
+    },
+    "hike-cranberry-lake-preserve-loop": {
+      "status": "held",
+      "reason": "Cranberry Lake Preserve, Westchester County: no lines within 2.5 km of the start; no source registered for Westchester County parks",
+      "proposed": "2026-09-09"
+    },
+    "hike-dickie-barre-peters-kill-and-awosting-falls-loop": {
+      "status": "held",
+      "reason": "the loop crosses Route 44/55 and walks a paved park road for 495 m between the High Peters Kill Trail west end and the Awosting Falls carriage road, and roads are not routable on this build lines (build_trail_graph.py, deliberately); the carriage road east end also sits 5 m from Trapps Road west end unjoined, and Mohonk piece of the High Peters Kill Trail is not joined to OPRHP piece",
+      "proposed": "2026-09-09"
+    },
+    "hike-doris-duke-trail": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.230777,
+          41.25338
+        ],
+        [
+          -74.233155,
+          41.266219
+        ],
+        [
+          -74.243209,
+          41.257024
+        ]
+      ],
+      "measured_miles": 3.81,
+      "basis": "the kiosk end of the Doris Duke Trail, then its two junctions with the Allis/Highlands Trail in counterclockwise order (the DD Loop sign sends the hiker right); the shortest path between them is the ridge on the Allis Trail southwest, as described",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09",
+      "hiker_note": "Measured 3.8 mi on this build's lines against NYNJTC's 4.0."
+    },
+    "hike-duck-pond-multi-use-trail": {
+      "status": "held",
+      "reason": "Swartswood State Park, New Jersey: no lines within 2.5 km of the start - #1293",
+      "proposed": "2026-09-09"
+    },
+    "hike-falling-waters-and-grand-loop-trails": {
+      "status": "held",
+      "reason": "Schooley Mountain County Park, New Jersey: no lines beyond two Highlands Trail edges - #1293 for the NJ statewide layer, which may or may not carry Morris County park trails",
+      "proposed": "2026-09-09"
+    },
+    "hike-kennedy-dells-county-park-loop-hike": {
+      "status": "held",
+      "reason": "Kennedy Dells County Park, Rockland County: no trail lines, only OPRHP roads within 2.5 km; no source registered for Rockland County parks",
+      "proposed": "2026-09-09"
+    },
+    "hike-laurel-pond-and-wawayanda-furnace-from-cherry-ridge-road": {
+      "status": "held",
+      "reason": "Wawayanda State Park, New Jersey: no lines within 2.5 km of the start - #1293",
+      "proposed": "2026-09-09"
+    },
+    "hike-mount-tammany-loop": {
+      "status": "held",
+      "reason": "Worthington State Forest, New Jersey: the Red Dot (Mount Tammany) and Blue Dot trails and the Dunnfield Creek Trail are absent; only the A.T. and three ATC vista side trails are on this build lines - #1293",
+      "proposed": "2026-09-09"
+    },
+    "hike-short-and-scenic-loop-hike-on-bullwheel-high-peters-kill-and-red-trails": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.218393,
+          41.738559
+        ],
+        [
+          -74.219203,
+          41.740099
+        ],
+        [
+          -74.211158,
+          41.744485
+        ],
+        [
+          -74.219356,
+          41.74577
+        ]
+      ],
+      "measured_miles": 2.11,
+      "basis": "the lower Peters Kill lot, the Bullwheel Trail start off the Red Loop, the Bullwheel/High Peters Kill junction, and the yellow trail junction at the base of the descent; the return along the yellow and red trails beside the stream is the shortest way back and the one described",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09"
+    },
+    "hike-state-line-trail-ernest-walter-trail-a-t-loop-from-greenwood-lake-marina": {
+      "status": "held",
+      "reason": "the Ernest Walter Trail loop through Surprise Lake and West Pond is in Abram S. Hewitt State Forest, New Jersey, and this build lines carry only a 1.7-mile piece of it as one edge (ATC side_trails layer); the Bearfort Ridge and West Ridge trails are absent - #1293",
+      "proposed": "2026-09-09"
+    },
+    "hike-stillman-highlands-bluebird-trails-loop-from-mountain-road": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.012025,
+          41.432271
+        ],
+        [
+          -74.002736,
+          41.433024
+        ],
+        [
+          -74.001907,
+          41.429384
+        ],
+        [
+          -73.992763,
+          41.432648
+        ]
+      ],
+      "measured_miles": 3.61,
+      "basis": "the Mountain Road lot on the Stillman Trail, the Bluebird Trail north junction (turn right), the Bluebird Trail south junction (turn left, uphill), and the By-Pass Trail junction where the Stillman/Highlands turns sharply left for the viewpoints; the return is the Stillman/Highlands descent to the Bluebird junction and the gravel road back. MEASURED 20% UNDER NYNJTC: 3.61 against 4.5. The Highlands line here is NYNJTC own extract and OPRHP copy of it, welded every few metres; whether the shortfall is a simplified line or a different loop shape is for the reviewer.",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09",
+      "hiker_note": "Measured 3.6 mi on this build's lines against NYNJTC's 4.5; the Highlands Trail line here may be simplified, so allow for the longer figure."
+    },
+    "hike-van-cortlandt-park-history-loop": {
+      "status": "held",
+      "reason": "Van Cortlandt Park, NYC Parks: only one Old Croton Aqueduct edge within 2.5 km; no source registered for NYC Parks (pipeline/NYC_SOURCE_SURVEY.md)",
+      "proposed": "2026-09-09"
+    },
+    "hike-vista-loop-trail": {
+      "status": "held",
+      "reason": "Ramapo Valley County Reservation, Bergen County, New Jersey: no lines within 2.5 km of the start - #1293 for the NJ statewide layer, which may or may not carry Bergen County park trails",
+      "proposed": "2026-09-09"
+    },
+    "hike-west-kill-mountain-from-spruceton-road": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.266608,
+          42.180849
+        ],
+        [
+          -74.297084,
+          42.166172
+        ]
+      ],
+      "measured_miles": 6.59,
+      "basis": "out and back. The start is the Diamond Notch trailhead at the cable barrier, 0.2 mi up the road from the lot NYNJTC pins (the road walk is not on the trail lines). The far end is placed 2.7 mi along the Devil Path west of the Diamond Notch Falls junction - NYNJTC 3.4 mi from the road less the 0.7 mi of Diamond Notch Trail - which is where their description puts the summit sign and cairn; nobody has checked that point against the summit on the ground.",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09",
+      "hiker_note": "The route starts at the cable barrier 0.2 mi up Spruceton Road from the parking area; that road walk is not on the trail lines. The far end sits where NYNJTC's mileage puts the summit sign, 3.4 mi from the road."
+    },
+    "hike-platte-clove-to-overlook-mountain-via-codfish-point-and-echo-lake#codfish-point": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.082091,
+          42.133888
+        ],
+        [
+          -74.080303,
+          42.108647
+        ]
+      ],
+      "measured_miles": 4.9,
+      "published_miles": 4.5,
+      "published_miles_note": "One of three lengths NYNJTC's single page offers (4.5, 8.8 and 13 miles); this row carries the one this route walks.",
+      "name": "Platte Clove to Codfish Point",
+      "basis": "The shortest of the three walks NYNJTC publishes on one page, out and back on the Long Path and the Overlook Trail. THE TURNAROUND IS PLACED BY THEIR OWN MILEAGE, not by a junction: between 1.17 mi and 3.34 mi this build's lines carry one unbroken 2.17-mile edge with no node on it, and the yellow spur to Codfish Point is not on them at all - so the end sits 2.45 mi along, which is where their mile list puts the turn ('[2.45] Left on yellow to Codfish Point'). Nobody has checked that point against the spur on the ground.",
+      "hiker_note": "Turns around where NYNJTC's mileage puts the Codfish Point junction. The last 250 feet to the viewpoint is a yellow spur this build has no line for, so it is not drawn and not counted.",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09"
+    },
+    "hike-platte-clove-to-overlook-mountain-via-codfish-point-and-echo-lake#echo-lake": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.082091,
+          42.133888
+        ],
+        [
+          -74.089051,
+          42.096936
+        ]
+      ],
+      "measured_miles": 8.34,
+      "published_miles": 8.8,
+      "published_miles_note": "One of three lengths NYNJTC's single page offers (4.5, 8.8 and 13 miles); this row carries the one this route walks.",
+      "name": "Platte Clove to Echo Lake",
+      "basis": "The middle walk of the three, out and back, turning at the Echo Lake lean-to where the yellow Echo Lake Trail ends - a real junction on this build's lines (the trail leaves the Overlook Trail at a node and its far end is drawn), so unlike its shorter sibling this route's ends are both places the graph knows.",
+      "hiker_note": "Turns at the Echo Lake lean-to. The descent to the lake is about 450 feet, which you climb again on the way back.",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09"
+    },
+    "hike-platte-clove-to-overlook-mountain-via-codfish-point-and-echo-lake#overlook-mountain": {
+      "status": "reviewed",
+      "closed": true,
+      "ends": [
+        [
+          -74.082091,
+          42.133888
+        ],
+        [
+          -74.089051,
+          42.096936
+        ],
+        [
+          -74.12228,
+          42.071131
+        ]
+      ],
+      "measured_miles": 14.55,
+      "published_miles": 13.0,
+      "published_miles_note": "One of three lengths NYNJTC's single page offers (4.5, 8.8 and 13 miles); this row carries the one this route walks.",
+      "name": "Platte Clove to Overlook Mountain",
+      "basis": "The longest of the three and the one NYNJTC's own page title names, with the Echo Lake spur visited on the way out as their description walks it: the lot on the Long Path, the Echo Lake lean-to, then the fire tower at the end of the red Overlook Spur Trail, and back the way it came. NYNJTC files this variant under '10+ miles' and 'Full-Day'.",
+      "hiker_note": "Measured 14.6 mi on this build's lines against NYNJTC's 13. Not drawn, because no trail line carries them: the Plattekill Falls path, the spur to Codfish Point, and the walk to the Overlook Mountain House ruins.",
+      "proposed": "2026-09-09",
+      "reviewed": "2026-09-09"
+    }
+  }
+}

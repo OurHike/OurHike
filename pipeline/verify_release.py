@@ -79,12 +79,14 @@ import json
 import re
 import sys
 from datetime import date
+from fnmatch import fnmatch
 from pathlib import Path
 
 import requests
 
 from lib import data_env
 from lib.completeness import DROP_THRESHOLD, count_problems
+from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 from lib.releases import (
     RELEASE_INDEX_KEY,
     RELEASE_MANIFEST_NAME,
@@ -104,6 +106,12 @@ CLIENT_LIB = ROOT.parent / "client" / "src" / "lib"
 OK = "ok"
 FAILED = "failed"
 SKIPPED = "skipped"
+# The check ran, answered, and the answer is worth a human's eye without being
+# a reason to hold a release (#1173). Distinct from SKIPPED, which means the
+# check could not run at all - `--strict` escalates that one and deliberately
+# not this one, because escalating "we looked and it is probably fine" is how a
+# gate goes back to crying wolf.
+WARN = "warn"
 
 # The response headers a browser must be allowed to READ, from
 # .github/expected-origins.yml's `expose_headers`. Named here rather than read
@@ -130,9 +138,27 @@ HIKER_ORIGIN = "https://ourhike.org"
 # trails.geojson would make check 15 assert that the data agrees with itself.
 CORRIDOR_BBOX = (-85.0, 33.5, -66.5, 46.5)
 
+# Sources this bound does not apply to - registered nationwide on purpose,
+# per the maintainer's 2026-08-25 decision (export_nearby_trails.py's own
+# docstring, #1019): "There shouldnt be a ring around NYC. Include all of
+# DEC, NYNJTC & NYSP. Don't limit data from orgs based on geography." USFS's
+# two layers are the case that policy actually bites: unlike the NY-state
+# sources, which stay near the corridor simply because their own service is
+# state-scoped, `usfs_trails`/`usfs_rec_sites` are federal layers that cover
+# the whole country, so an unfiltered fetch legitimately produces features
+# in Arizona and elsewhere (measured 2026-09-04: 68,622 of 112,378
+# nearby_trails features, 11,241 of 21,379 nearby_poi). A real projection
+# bug in one of these would still be caught - it would just also have to
+# land outside the whole country, which check 13's parse and this check's
+# empty-geometry half still watch for. Scoping this down to the region that
+# prompted the registration is tracked separately (#1231) and is not a
+# release blocker: nothing here is wrong, it is bigger than intended.
+NATIONWIDE_SOURCES = frozenset({"usfs_trails", "usfs_rec_sites"})
+
 # Check 21's reviewed side (#672): the identity ledger in THIS checkout,
 # against which every published POI id is verified.
 IDENTITY_LEDGER_PATH = Path(__file__).parent / "reference" / "poi_identity.json"
+ACKNOWLEDGED_DROPS_PATH = Path(__file__).parent / "reference" / "acknowledged_drops.json"
 
 # How close a tier has to stay to the size the app advertises (check 18).
 # README.md already says a tier drifting far from its advertised size "is a
@@ -167,23 +193,107 @@ def _report(check: int, key: str, state: str, detail: str) -> dict:
 # failure being guarded against is the two disagreeing. The regexes are narrow
 # and `expected_client_keys` raises rather than returning a short list, so a
 # rename in config.ts fails this loudly instead of quietly checking fewer keys.
+#
+# UNTIL #1048 IT READ FOUR NAMES OUT OF A FILE DECLARING SEVENTEEN, and the
+# gap was invisible from here: the four matched, nothing raised, and of those
+# seventeen keys check 2 reached exactly one - `TRAILS_KEY`. (It asked after
+# thirteen keys in all; the other twelve are the POI types and archive tiers,
+# which are generated names rather than declared ones.) A release missing
+# `trail_graph.json`, `club_sections.json`, `highlights.json`,
+# `trails_overview.geojson`, `stewards.json`, `retired_poi.geojson`,
+# `nearby_trails.geojson` and the two graph companions passed it (measured
+# 2026-08-26, #1048's own table). Now every `export const *_KEY = '...'` is
+# read, and each one carries an `@release` declaration beside it.
+#
+# WHAT THAT DECLARATION ANSWERS, because the obvious reading is the wrong one.
+# It is NOT "does the app survive this artifact's absence" - measured against
+# `main` on 2026-09-05, sixteen of the seventeen survive it deliberately, each
+# through its own fetch path (`fetchOptionalArtifact` for seven of them,
+# trailOverview.ts:56, trailGraphData.ts:193 and nearbyTrailData.ts:245 for the
+# rest), because a hiker holding a release exported before an artifact existed
+# must not be shown an error. A declaration on that axis would SKIP every key
+# this check exists to catch. The phone structurally cannot tell "this release
+# predates it" from "this release should have it", and this script is the only
+# thing that can, because it knows the checkout it was run from.
+#
+# So it answers #940's invariant instead - can an exporter in THIS CHECKOUT
+# write it - which is the half PR #1108 deliberately left ("the bucket-contents
+# half is still worth having and is not this"). `publish.py` can write all
+# seventeen, so that alone would be no discriminator either; what separates
+# them is that seven sit behind a `reaches_hikers` licence gate and one behind
+# whether a sheet's cut ran, and those are conditions no reading of the code
+# can evaluate.
+#
+# THE CONTRACT IS BETWEEN THIS CHECKOUT AND THE RELEASE IT BUILT. Pointed at an
+# older release, this will fail keys that release's checkout could not write -
+# that is the check working rather than a false positive, and it is how #1048
+# was found. verify-release.yml is dispatch-only for exactly this reason: a
+# person asks it about a candidate they are deciding whether to promote.
+#
+# @unvalidated - a licence-gated key reports SKIPPED whether or not its gate is
+# actually shut, so a graph missing while every steward says `reaches_hikers:
+# true` reads the same as one held back. Resolving it needs the artifact ->
+# steward mapping, which today exists only in the generated manifests under
+# `pipeline/data/` and so is unavailable to a gate run from a clean checkout
+# against a public URL. `pipeline/sources.json` is checked in and would be half
+# of it; the other half is what would settle this.
 # ---------------------------------------------------------------------------
+
+#: A release must carry this key, or check 2 fails.
+REQUIRED = "required"
+#: publish.py can decline to write this key for a reason outside the code, so
+#: its absence is a declaration rather than a defect - a named SKIPPED.
+OPTIONAL = "optional"
+
+_KEY_DECLARATION = re.compile(r"^export const (\w+_KEY)\s*=\s*'([^']+)'", re.MULTILINE)
+_RELEASE_TAG = re.compile(rf"@release\s+({REQUIRED}|{OPTIONAL})\b")
 
 
 def _read(name: str) -> str:
     return (CLIENT_LIB / name).read_text(encoding="utf-8")
 
 
-def expected_client_keys(config_ts: str | None = None) -> list[str]:
-    """Every object key the client is built to request."""
+def _declared_keys(source: str) -> dict[str, str]:
+    """Each `*_KEY` constant in config.ts, mapped to its `@release` word.
+
+    A key's declaration is the one tag between the previous key and this one,
+    which is that key's own comment block and nothing else. Exactly one, so a
+    tag left behind by a copied comment fails here rather than quietly
+    declaring the wrong thing about the wrong artifact.
+    """
+    declared: dict[str, str] = {}
+    cursor = 0
+    for match in _KEY_DECLARATION.finditer(source):
+        name, key = match.group(1), match.group(2)
+        tags = _RELEASE_TAG.findall(source[cursor : match.start()])
+        cursor = match.end()
+        if len(tags) != 1:
+            found = f"{len(tags)} of them" if tags else "none"
+            raise ValueError(
+                f"{name} in client/src/lib/config.ts carries {found} where it needs exactly one "
+                f"`@release {REQUIRED}` or `@release {OPTIONAL}` line. Every key the client can "
+                "request has to say whether a release built from this checkout must carry it - "
+                "that question is what check 2 asks, and an artifact added without answering it "
+                "is the gap #1048 found."
+            )
+        declared[key] = tags[0]
+    return declared
+
+
+def expected_client_keys(config_ts: str | None = None) -> dict[str, str]:
+    """Every object key the client is built to request, and what it is owed.
+
+    Maps key -> REQUIRED or OPTIONAL. Iterating it yields the keys, which is
+    what most callers want; the values are what check 2 grades against.
+    """
     source = config_ts if config_ts is not None else _read("config.ts")
 
-    trails = re.search(r"TRAILS_KEY\s*=\s*'([^']+)'", source)
     poi_types = re.search(r"POI_TYPES\s*=\s*\[([^\]]+)\]", source)
     poi_pattern = re.search(r"poiKey\([^)]*\)[^{]*\{\s*return\s*`([^`]+)`", source)
     archives = re.findall(r"^\s*(?:light|standard|fine):\s*'([^']+)'", source, re.MULTILINE)
+    declared = _declared_keys(source)
 
-    if not (trails and poi_types and poi_pattern and archives):
+    if not (poi_types and poi_pattern and archives and declared):
         raise ValueError(
             "could not read the key contract out of client/src/lib/config.ts. "
             "It has been restructured, and this check must be updated rather than "
@@ -191,10 +301,16 @@ def expected_client_keys(config_ts: str | None = None) -> list[str]:
         )
 
     types = re.findall(r"'([^']+)'", poi_types.group(1))
-    keys = [trails.group(1)]
-    keys += [poi_pattern.group(1).replace("${type}", poi_type) for poi_type in types]
-    keys += archives
-    return keys
+    # The generated names carry no declaration of their own and need none:
+    # publish.py writes every `poi_<type>.geojson` from one ungated manifest
+    # (:706) and every archive is a file on disk (:849), so a type or a tier
+    # the client offers and the release lacks is the plain failure this check
+    # has always called it. A withdrawn tier is still weakened below.
+    keys = dict.fromkeys(
+        [poi_pattern.group(1).replace("${type}", poi_type) for poi_type in types] + archives,
+        REQUIRED,
+    )
+    return {**declared, **keys}
 
 
 def advertised_sizes(download_detail_ts: str | None = None) -> dict[str, int]:
@@ -214,6 +330,99 @@ def archive_keys(config_ts: str | None = None) -> dict[str, str]:
     """tier -> object key, so an advertised size can be matched to an artifact."""
     source = config_ts if config_ts is not None else _read("config.ts")
     return dict(re.findall(r"^\s*(light|standard|fine):\s*'([^']+)'", source, re.MULTILINE))
+
+
+# Each level of the hiking sheet, as hikingDetail.ts declares it. The fields
+# are read in the order that file writes them; a level missing any of them
+# fails the count guard below rather than matching into its neighbour.
+#: No size groups since #1167 - hikingDetail.ts no longer carries any. The
+#: table names artifacts and says whether a level is offered; what those
+#: artifacts weigh is `latest.json`'s to say, and the app reads it from there.
+_HIKING_LEVEL = re.compile(
+    r"level:\s*'(?P<level>\w+)'.*?"
+    r"\bartifact:\s*'(?P<basemap>[^']+)'.*?"
+    r"demArtifact:\s*'(?P<dem>[^']+)'.*?"
+    r"published:\s*(?P<published>true|false)",
+    re.DOTALL,
+)
+
+
+def hiking_sheet_levels(hiking_detail_ts: str | None = None) -> list[dict]:
+    """Every hiking-sheet level: its two artifacts and whether the app offers it.
+
+    THE SHEET HIKERS ACTUALLY DOWNLOAD, and until #1144 nothing here read it.
+    Checks 2 and 18 knew only `downloadDetail.ts`'s tiers - the USGS raster,
+    withdrawn under #855 - so a production bucket missing `dem_light.pmtiles`
+    verified green, and the advertised figures that moved this cycle (a DEM
+    from 607 MB to 276) had no drift gate at all. Two comments claimed
+    otherwise; both are corrected.
+
+    NO SIZES ANY MORE (#1167). This used to return each artifact's advertised
+    bytes so check 18 could weigh them, and that check was the reason the
+    constants had to be hand-edited in lockstep with a promotion. The client
+    stopped advertising, so there is nothing left to weigh - see check 18.
+    What remains is the half that matters for the four ways this app can hurt
+    somebody: check 2 asks whether every key the app can request is actually
+    in the release, and a missing one is a 404 on a mountain.
+
+    Read out of the client's own table for the reason `expected_client_keys`
+    reads config.ts, and holds the same line: a level whose entry this cannot
+    parse raises, rather than being silently checked one artifact fewer.
+    """
+    source = hiking_detail_ts if hiking_detail_ts is not None else _read("hikingDetail.ts")
+    levels = [match.groupdict() for match in _HIKING_LEVEL.finditer(source)]
+    declared = len(re.findall(r"^\s*level:\s*'\w+',\s*$", source, re.MULTILINE))
+    if not levels or len(levels) != declared:
+        raise ValueError(
+            f"could not read HIKING_DETAIL_LEVELS out of client/src/lib/hikingDetail.ts - "
+            f"{declared} level(s) declared, {len(levels)} fully parsed. It has been "
+            "restructured, and this check must be updated rather than left checking "
+            "fewer artifacts than the app offers."
+        )
+    return [
+        {
+            "level": level["level"],
+            "published": level["published"] == "true",
+            # A tuple rather than a mapping now that there is no size to map
+            # to. Both readers iterate keys, so this is the same iteration.
+            "artifacts": (level["basemap"], level["dem"]),
+        }
+        for level in levels
+    ]
+
+
+def launch_artifact_budget(artifact_budget_ts: str | None = None) -> int:
+    """How many decoded bytes the client will fetch whole, from its own declaration.
+
+    `client/src/lib/artifactBudget.ts` is where the number lives and why
+    (#1254): the app declines an artifact the manifest says is bigger than
+    this, and the day that guard was written was the day a promotion carried
+    a 228.8 MB `nearby_trails.geojson` and a 78.6 MB `trail_graph.json` to
+    every phone - a crashed map and a frozen first page. Read out of the
+    client's source for the reason `expected_client_keys` reads config.ts: a
+    copy here would be a second home for the contract, and the two drifting
+    apart is the failure this check exists to catch.
+    """
+    source = artifact_budget_ts if artifact_budget_ts is not None else _read("artifactBudget.ts")
+    # Anchored to the end of its line, so an expression (`32 * 1024 * 1024`) is a
+    # restructuring this cannot follow rather than a budget of 32 bytes.
+    found = re.search(r"LAUNCH_ARTIFACT_BUDGET_BYTES\s*=\s*([\d_]+)\s*$", source, re.MULTILINE)
+    if not found:
+        raise ValueError(
+            "could not read LAUNCH_ARTIFACT_BUDGET_BYTES out of client/src/lib/artifactBudget.ts. "
+            "It has been restructured, and this check must be updated rather than left "
+            "weighing nothing."
+        )
+    return int(found.group(1).replace("_", ""))
+
+
+# What is read by byte range rather than fetched whole. Everything else
+# publish.py gzips and the client reads entire - `response.arrayBuffer()` or
+# `.json()` - so check 22's budget applies to every key NOT ending in one of
+# these. The same literal lib/dataManifest.ts keeps as STORED_UNCOMPRESSED,
+# rather than an import from content_types.py, so the two ends of the
+# contract name the same files by the same rule.
+RANGE_READ_SUFFIXES = (".pmtiles", ".fgb")
 
 
 # ---------------------------------------------------------------------------
@@ -270,8 +479,25 @@ def withdrawn_tier_keys(packages_ts: str | None = None, config_ts: str | None = 
     return keys
 
 
-def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts: str | None = None) -> list[dict]:
+def check_client_keys(
+    manifest: dict,
+    config_ts: str | None = None,
+    packages_ts: str | None = None,
+    hiking_detail_ts: str | None = None,
+) -> list[dict]:
     """2. Every key the CLIENT will request exists in the release.
+
+    Every key, since #1048 - this read four names out of a file declaring
+    seventeen, and a production release missing nine artifacts passed it.
+
+    A key config.ts declares `@release optional` is held to the weaker claim
+    that its own comment names: publish.py can decline to write it for a
+    reason outside the code - a steward's `reaches_hikers`, a sheet whose cut
+    has not run - so its absence is a declaration and reports SKIPPED. Never
+    OK, which would erase the declaration, and never FAILED, which is what
+    made every UA run un-passable in #854. The eight keys declared `required`
+    are ungated in publish.py, so their absence is the promotion gap this
+    check now exists to name.
 
     A key whose sheet is withdrawn (#855) is held to a weaker claim: no new
     request will ever be made for it, so its absence from a release is a
@@ -279,11 +505,19 @@ def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts:
     FAILED, which is what made every UA run un-passable (#854). Its
     *presence* still reports OK: publishing bytes a phone may be carrying is
     exactly right.
+
+    The hiking sheet's artifacts are held to the same rule with `published`
+    as the gate rather than `withdrawn` (#1144): an unpublished level is one
+    `offeredHikingDetails()` filters off the picker, so nothing requests it
+    and its absence is a SKIPPED. An OFFERED level's artifacts are the
+    strongest form of this check there is - the app will hand a hiker that
+    download - so their absence is the plain failure the raster tiers used to
+    be the only claimants of.
     """
     published = set((manifest.get("artifacts") or {}).keys())
     withdrawn = withdrawn_tier_keys(packages_ts, config_ts)
     reports = []
-    for key in expected_client_keys(config_ts):
+    for key, owed in expected_client_keys(config_ts).items():
         if key in published:
             reports.append(_report(2, key, OK, "the client asks for this and the release has it"))
         elif key in withdrawn:
@@ -297,6 +531,17 @@ def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts:
                     "resolves this key, and it resolves locally",
                 )
             )
+        elif owed == OPTIONAL:
+            reports.append(
+                _report(
+                    2,
+                    key,
+                    SKIPPED,
+                    "absent, and client/src/lib/config.ts declares it `@release optional` - "
+                    "publish.py can decline to write it for a reason outside the code, so this "
+                    "is a state somebody declared rather than an artifact nobody published",
+                )
+            )
         else:
             reports.append(
                 _report(
@@ -307,6 +552,40 @@ def check_client_keys(manifest: dict, config_ts: str | None = None, packages_ts:
                     "the app would fail on a key nothing else in the build would notice",
                 )
             )
+
+    # One report per artifact, not per level: `dem.pmtiles` is Standard's and
+    # Fine's alike, and asking after it twice would say one fact twice.
+    seen: set[str] = set()
+    for level in hiking_sheet_levels(hiking_detail_ts):
+        for key in level["artifacts"]:
+            if key in seen:
+                continue
+            seen.add(key)
+            if key in published:
+                reports.append(
+                    _report(2, key, OK, f"the hiking sheet's {level['level']} level asks for this and the release has it")
+                )
+            elif not level["published"]:
+                reports.append(
+                    _report(
+                        2,
+                        key,
+                        SKIPPED,
+                        f"absent, and the {level['level']} level carries `published: false` in "
+                        "client/src/lib/hikingDetail.ts - offeredHikingDetails() keeps it off the "
+                        "picker, so nothing requests it",
+                    )
+                )
+            else:
+                reports.append(
+                    _report(
+                        2,
+                        key,
+                        FAILED,
+                        f"the hiking sheet offers its {level['level']} level and the release does not "
+                        "contain this artifact - a hiker who picks that level gets a 404 on a mountain",
+                    )
+                )
     return reports
 
 
@@ -520,8 +799,10 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
         name = key.removeprefix("poi_").removesuffix(".geojson")
         counts[name] = len(features)
 
-        # 15. No null or empty geometries, and nothing outside the corridor. A
-        # feature at (0, 0) is what a projection bug looks like.
+        # 15. No null or empty geometries, and nothing outside the corridor
+        # bar NATIONWIDE_SOURCES above. A feature at (0, 0) is what a
+        # projection bug looks like - empty geometry is held to that
+        # regardless of source; only the bbox half is exempted.
         west, south, east, north = CORRIDOR_BBOX
         empty = 0
         astray = 0
@@ -530,6 +811,8 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
             coordinates = geometry.get("coordinates")
             if not geometry or not coordinates:
                 empty += 1
+                continue
+            if (feature.get("properties") or {}).get("source") in NATIONWIDE_SOURCES:
                 continue
             for lon, lat in _positions(coordinates):
                 if not (west <= lon <= east and south <= lat <= north):
@@ -549,17 +832,22 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
             else:
                 reports.append(_report(16, key, OK, "every trail feature carries a blaze_color"))
 
-    # 14. Per-type minimums, with export_poi.py's own exception.
+    # 14. Per-type minimums, sharing export_poi.py's own exception
+    # (lib.poi_schema.ALLOWED_EMPTY_POI_TYPES - crossing and trailhead as of
+    # this writing) rather than a hand-copy: check_output_quality.py kept
+    # its own copy too, `trailhead` joined the real one in #1197 and reached
+    # neither copy, and a v1.2.1 UA release failed this exact check over an
+    # export that had nothing wrong with it (#1225/#1227/#1228 is the first
+    # copy's story; this is the second).
     #
-    # `retired_poi` joins `crossing` at zero, for a different reason (#673).
-    # `crossing` is empty because nothing fills it yet; the tombstones are
-    # empty because a bucket where upstream has never dropped a place is a
+    # `retired_poi` joins them at zero for a different, verify_release-only
+    # reason (#673): a bucket where upstream has never dropped a place is a
     # HEALTHY bucket, and the count only ever grows. A default minimum of 1
     # here would fail exactly the releases with nothing wrong with them.
     # Its geometry is still held to checks 13 and 15 above, which is the
     # half worth keeping: a tombstone at (0, 0) is the same projection bug
     # on a retired place as on a live one.
-    problems = count_problems(counts, minimums={"crossing": 0, "retired_poi": 0})
+    problems = count_problems(counts, minimums={**ALLOWED_EMPTY_POI_TYPES, "retired_poi": 0})
     if problems:
         reports.append(_report(14, "poi_*", FAILED, "; ".join(problems)))
     else:
@@ -583,10 +871,16 @@ def _positions(coordinates):
 
 
 def check_advertised_size(base: str, key: str, tier: str, advertised: int, session=None) -> dict:
-    """18. Each tier within 2% of the size the app tells a hiker to expect.
+    """18. Each advertised download within 2% of the size the app tells a
+    hiker to expect - the raster tiers, and since #1144 the hiking sheet's
+    per-level basemap cuts and DEMs, which are the downloads this app
+    actually offers.
 
     Weighed against remaining phone storage at a trailhead, which is why
     README.md calls a drift here "a real problem, not a rounding detail".
+
+    `tier` is whatever names this download in the sentence a failure prints -
+    a raster tier, or a hiking level and which half of it.
     """
     try:
         response = (session or requests).head(f"{base}/{key}", timeout=HTTP_TIMEOUT)
@@ -709,6 +1003,61 @@ def _content_length(base: str, key: str, session=None) -> tuple[int, str] | None
         return None
 
 
+def decoded_size(manifest: dict, name: str) -> int | None:
+    """The DECODED size publish.py recorded for this artifact, or None.
+
+    `size_bytes` is written beside the hash only by a run that measured one
+    (#505/#556), so a manifest published before that carries entries without
+    it and a carried-forward remote entry keeps whatever it had. None therefore
+    means "this release cannot say", never zero - and check 17 treats the two
+    completely differently, because a guard that read an unknown as "no drop"
+    would be the false-clean this whole battery exists against.
+    """
+    entry = (manifest.get("artifacts") or {}).get(name)
+    if not isinstance(entry, dict):
+        return None
+    size = entry.get("size_bytes")
+    return size if isinstance(size, int) and size > 0 else None
+
+
+def acknowledged_drops(path: Path | None = None) -> list[dict]:
+    """The deliberate shrinkages somebody has signed for (#1143).
+
+    reference/acknowledged_drops.json is the file and its `_README` is the
+    reasoning; this only reads it. Absent or unreadable is EMPTY rather than an
+    error: a bucket with no acknowledgements is the ordinary state, and a
+    malformed file must not be able to turn the gate off by failing open in the
+    other direction either - it simply acknowledges nothing.
+    """
+    source = path or ACKNOWLEDGED_DROPS_PATH
+    if not source.exists():
+        return []
+    try:
+        rows = json.loads(source.read_text(encoding="utf-8")).get("drops") or []
+    except (json.JSONDecodeError, OSError):
+        return []
+    return [row for row in rows if isinstance(row, dict) and row.get("artifact")]
+
+
+def acknowledgement_for(artifact: str, previous_id: str, rows: list[dict]) -> dict | None:
+    """The row covering this artifact against this predecessor, or None.
+
+    ONE PAIR OF RELEASES, which is the whole safety property: an entry names
+    the predecessor its drop was measured against, so the moment a newer
+    release takes that place the entry stops applying. An acknowledgement
+    cannot outlive the comparison it was written for, and nobody has to
+    remember to delete it.
+    """
+    for row in rows:
+        if row.get("from_release") != previous_id:
+            continue
+        pattern = row["artifact"]
+        matched = fnmatch(artifact, pattern) if "*" in pattern else artifact == pattern
+        if matched:
+            return row
+    return None
+
+
 def check_release_regression(
     base: str,
     previous_id: str,
@@ -716,6 +1065,7 @@ def check_release_regression(
     previous_manifest: dict,
     current_manifest: dict,
     session=None,
+    acknowledgements: list[dict] | None = None,
 ) -> list[dict]:
     """17. No artifact shrank more than DROP_THRESHOLD against the last release.
 
@@ -738,12 +1088,43 @@ def check_release_regression(
     4,142,846 while carrying exactly the same features. Reporting that as data
     loss would be a red gate on a change that lost nothing, and worse, it would
     teach whoever saw it that this check cries wolf.
+
+    AND A CHANGE THAT COMPRESSES BETTER IS THE THIRD (#1173). The encoding
+    comparison above catches a change of storage FORMAT; it cannot catch a
+    change in how well the same format compresses the same data. `latest.json`
+    publishes both figures per artifact - `size_bytes` decoded and
+    `transfer_bytes` on the wire - so both are compared here, and a drop past
+    the threshold on the wire alone is a WARN naming the ratio rather than a
+    red gate. Measured, from the v1.2.0 run that prompted this:
+    nearby_trails.geojson went 23,469,839 -> 15,921,393 decoded (-32%) and
+    7,703,741 -> 3,729,336 stored (-52%), a compression ratio of 3.05x
+    becoming 4.27x, with 21,805 features and all five organizations still
+    present. The gap between the two percentages IS the signal.
+
+    WHAT THIS DOES NOT FIX, said here because the run above is still red under
+    it: that release's DECODED size also fell 32%, well past the 10% threshold,
+    so the comparison below still fails it. Nothing about a byte count can tell
+    "stopped writing eleven junk digits per coordinate" from "lost a third of
+    the trails" - only a feature count can, which is #1173's option 3 and needs
+    a count published beside the artifact. A precision change is meanwhile
+    exactly the shape `reference/acknowledged_drops.json` exists to sign for.
+
+    A DELIBERATE CULL IS THE OTHER WAY TO CRY WOLF, and until #1143 there was
+    no way to say one had happened: this check's only exemption was an upstream
+    that changed, which a gate culling unreachable water is not. Every one of
+    the five failures in the 2026-08-26 run against production was a cull
+    somebody had decided on purpose. `reference/acknowledged_drops.json` is
+    where that decision is now written down, with its evidence and a ceiling,
+    and `acknowledgement_for` is what makes an entry apply to exactly one pair
+    of releases so a signed drop cannot silence this check twice.
     """
     shared = sorted(
         set((previous_manifest.get("artifacts") or {}).keys()) & set((current_manifest.get("artifacts") or {}).keys())
     )
     if not shared:
         return [_report(17, f"(vs {previous_id})", SKIPPED, "no artifact appears in both releases")]
+
+    rows = acknowledged_drops() if acknowledgements is None else acknowledgements
 
     reports = []
     for name in shared:
@@ -768,14 +1149,73 @@ def check_release_regression(
             reports.append(_report(17, name, OK, f"{previous_id} published it empty, so there is no drop to measure"))
             continue
         drop = (before - now) / before
-        if drop > DROP_THRESHOLD:
+        signed = acknowledgement_for(name, previous_id, rows)
+        if drop > DROP_THRESHOLD and signed is not None and drop <= signed.get("max_drop", 0):
+            reports.append(
+                _report(
+                    17,
+                    name,
+                    OK,
+                    f"{now} bytes against {before} in {previous_id} - down {drop:.0%}, and signed for in "
+                    f"reference/acknowledged_drops.json: {signed.get('authority', 'no authority named')}. "
+                    f"{signed.get('reason', '')}".strip(),
+                )
+            )
+        elif drop > DROP_THRESHOLD:
+            covered = (
+                ""
+                if signed is None
+                else (
+                    f" reference/acknowledged_drops.json signs for a drop of up to "
+                    f"{signed.get('max_drop', 0):.0%} here ({signed.get('authority', 'no authority named')}) "
+                    "and does not cover this much."
+                )
+            )
+            raw_before = decoded_size(previous_manifest, name)
+            raw_now = decoded_size(current_manifest, name)
+            if raw_before is not None and raw_now is not None:
+                raw_drop = (raw_before - raw_now) / raw_before
+                if raw_drop <= DROP_THRESHOLD:
+                    reports.append(
+                        _report(
+                            17,
+                            name,
+                            WARN,
+                            f"{now} bytes against {before} in {previous_id} - down {drop:.0%} ON THE WIRE, but the "
+                            f"decoded size held: {raw_now} against {raw_before}, down {raw_drop:.0%}. This build "
+                            f"compresses better than {previous_id} did ({raw_before / before:.2f}x, now "
+                            f"{raw_now / now:.2f}x), which is not data loss. Nothing to hold the release for; "
+                            "worth a glance at what changed the entropy.",
+                        )
+                    )
+                    continue
+                reports.append(
+                    _report(
+                        17,
+                        name,
+                        FAILED,
+                        f"{now} bytes against {before} in {previous_id} - down {drop:.0%} on the wire and "
+                        f"{raw_drop:.0%} decoded ({raw_now} against {raw_before}), both past the "
+                        f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data." + covered,
+                    )
+                )
+                continue
             reports.append(
                 _report(
                     17,
                     name,
                     FAILED,
                     f"{now} bytes against {before} in {previous_id} - down {drop:.0%}, past the "
-                    f"{DROP_THRESHOLD:.0%} threshold. Either an upstream really shrank or this build lost data.",
+                    f"{DROP_THRESHOLD:.0%} threshold. "
+                    + (
+                        f"{previous_id} publishes no size_bytes for it"
+                        if raw_before is None and raw_now is not None
+                        else f"{current_id} publishes no size_bytes for it"
+                        if raw_now is None and raw_before is not None
+                        else "neither release publishes a size_bytes for it"
+                    )
+                    + ", so the decoded size cannot be checked and this stored drop stands on its own. "
+                    "Either an upstream really shrank or this build lost data." + covered,
                 )
             )
         else:
@@ -866,23 +1306,47 @@ def release_checks(base: str, manifest: dict, session=None, hash_artifacts: bool
     ]
 
 
-def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict]:
-    """20. The published stretches tile the whole trail, and every one the
-    index names is really in the release (#556).
+# Every family the cutters cut - publish.py's ALL_CELL_FAMILIES, spelled
+# again here because this gate deliberately imports nothing from the publisher
+# it checks. tests/test_verify_release.py holds the two tuples equal, so a
+# family added to one and not the other fails a test rather than shipping
+# cells this check never looks at. `nearby_trails` is #1257 stage 2's and
+# `trail_graph` (cut_trail_graph.py, JSON shards rather than archives) is its
+# stage 3's.
+CELL_FAMILIES = ("at_basemap", "dem", "nearby_trails", "trail_graph")
 
-    A stretch the index promises and the manifest lacks is blank map on a
-    ridge - the same trap check 2 guards for client keys, at the unit
-    level. And a gap between two stretches' mile intervals is a slice of
-    trail no unit covers, which no amount of per-artifact hashing would
-    notice. Reported per sheet family; a family with no published index is
-    a SKIP, not a pass - stretches simply have not shipped for it yet.
+
+def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
+    """20. Every coverage cell the index names is really in the release, and
+    every cell it names is a whole graticule square (#1175).
+
+    A cell the index promises and the manifest lacks is blank map on a
+    ridge - the same trap check 2 guards for client keys, at the unit level.
+    Reported per sheet family; a family with no published index is a SKIP,
+    not a pass - cells simply have not shipped for it yet.
+
+    WHAT DID NOT CARRY OVER FROM THE STRETCH CHECK, and why, because a check
+    quietly losing half its job is worth writing down. Against 50-mile
+    stretches this also proved the units tiled the trail with no gap: a
+    stretch is an interval on a line, consecutive intervals either abut or
+    they do not, and a gap was a slice of trail no unit covered.
+
+    Cells are not intervals on a line. They are a 2-D set over a thin
+    winding band, so the published set is deliberately NOT a filled
+    rectangle - most of the bounding box the corridor passes through holds
+    no trail at all - and there is no arithmetic here that can tell a cell
+    the corridor never touched from a cell that went missing. The invariant
+    that replaced it lives in the cutter instead, where the tiles are:
+    cut_cells refuses to publish at all if any cell in its grid would
+    receive no tiles. This check is the other half, the half only a released
+    manifest can answer.
     """
     artifacts = manifest.get("artifacts") or {}
     reports = []
-    for family in ("at_basemap", "dem"):
-        index_key = f"{family}_stretches.json"
+    for family in CELL_FAMILIES:
+        index_key = f"{family}_cells.json"
         if index_key not in artifacts:
-            reports.append(_report(20, index_key, SKIPPED, "no stretch index published for this sheet yet"))
+            reports.append(_report(20, index_key, SKIPPED, "no cell index published for this sheet yet"))
             continue
         try:
             response = (session or requests).get(f"{base}/{index_key}", timeout=HTTP_TIMEOUT)
@@ -893,24 +1357,32 @@ def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict
             continue
 
         problems = []
-        stretches = index.get("stretches") or []
-        if not stretches:
-            problems.append("index lists no stretches")
-        missing = [entry["key"] for entry in stretches if entry["key"] not in artifacts]
+        cells = index.get("cells") or []
+        degrees = index.get("cell_degrees")
+        if not cells:
+            problems.append("index lists no cells")
+        missing = [entry["key"] for entry in cells if entry["key"] not in artifacts]
         if missing:
-            problems.append(f"{len(missing)} stretch(es) named but not published: {', '.join(missing[:4])}")
+            problems.append(f"{len(missing)} cell(s) named but not published: {', '.join(missing[:4])}")
         if index.get("context") and index["context"] not in artifacts:
             problems.append(f"context archive {index['context']} named but not published")
-        expected_lo = 0.0
-        for entry in stretches:
-            lo, hi = entry["miles"]
-            if abs(lo - expected_lo) > 1e-6:
-                problems.append(f"gap or overlap at mile {expected_lo}: stretch {entry['id']} starts at {lo}")
-                break
-            expected_lo = hi
-        else:
-            if stretches and abs(expected_lo - index.get("axis_top_mile", expected_lo)) > 1e-6:
-                problems.append(f"coverage ends at mile {expected_lo}, short of the axis top {index['axis_top_mile']}")
+
+        # A cell that is not a whole square means the grid was anchored to a
+        # bounding box rather than the graticule - the failure that would
+        # silently reintroduce cross-org duplication (lib/corridor_grid).
+        if degrees:
+            ragged = [
+                entry["name"]
+                for entry in cells
+                if abs((entry["bounds"][2] - entry["bounds"][0]) - degrees) > 1e-6
+                or abs((entry["bounds"][3] - entry["bounds"][1]) - degrees) > 1e-6
+            ]
+            if ragged:
+                problems.append(f"{len(ragged)} cell(s) are not whole {degrees} deg squares: {', '.join(ragged[:4])}")
+
+        duplicates = len(cells) - len({entry["name"] for entry in cells})
+        if duplicates:
+            problems.append(f"{duplicates} duplicate cell name(s) in the index")
 
         if problems:
             reports.append(_report(20, index_key, FAILED, "; ".join(problems)))
@@ -920,7 +1392,7 @@ def check_stretch_coverage(base: str, manifest: dict, session=None) -> list[dict
                     20,
                     index_key,
                     OK,
-                    f"{len(stretches)} stretches tile miles 0-{index['axis_top_mile']} with no gap, all published",
+                    f"{len(cells)} cells published, every one a whole {degrees} deg square named in the release",
                 )
             )
     return reports
@@ -1145,6 +1617,105 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
     return [_report(21, key, OK, f"{len(features)} tombstones, every retired ledger row present and resolving")]
 
 
+# The per-cell graph shards (cut_trail_graph.py): fetched whole and parsed,
+# so weighed, but derived on the phone from `trail_graph_cells.json` rather
+# than declared one by one in config.ts. The four halves, any cell name.
+_GRAPH_CELL_SHARD = re.compile(r"^trail_graph(_geometry|_elevation|_profile)?_cell_[ns]\d{2}[ew]\d{3}\.json$")
+
+
+def _fetched_whole_by_the_client(key: str, client_keys: set[str]) -> bool:
+    """Whether some phone running the current client fetches `key` entire -
+    the artifacts check 22 weighs. Declared keys, and the graph shards the
+    client derives from a declared index."""
+    return key in client_keys or _GRAPH_CELL_SHARD.match(key) is not None
+
+
+def check_launch_budget(
+    manifest: dict, budget: int | None = None, client_keys: set[str] | frozenset[str] | None = None
+) -> list[dict]:
+    """Check 22: no whole-fetched artifact is bigger than the client will load.
+
+    The client fetches every text artifact entire and parses it - the junction
+    graph on the main thread - and on 2026-09-07 a promotion whose gate 6 was
+    green carried a 78,595,556-byte `trail_graph.json` and a 228,820,578-byte
+    `nearby_trails.geojson` to production: the first froze the main thread
+    for ten seconds, the second crashed the renderer (#1254). Check 15 had
+    looked straight at the cause - #1231's nationwide USFS features - and
+    documented it as an exception, and nothing weighed the result.
+
+    The client now declines an artifact over `LAUNCH_ARTIFACT_BUDGET_BYTES`
+    (client/src/lib/artifactBudget.ts), so a phone survives; this check is
+    what stops such a release being promoted at all, against the same number,
+    read from the same file. One OK row for the whole family rather than one
+    per artifact, because a hundred identical passes are where the one
+    failure hides; a failure or a skip names its artifact.
+
+    A text artifact with no `size_bytes` is a SKIP, never a pass: it is exactly
+    the artifact the client cannot weigh before fetching either.
+
+    WEIGHED: WHAT THE CURRENT CLIENT FETCHES WHOLE, AND ONLY THAT (#1257). The
+    keys client/src/lib/config.ts declares (`expected_client_keys`), plus the
+    per-cell graph shards it derives from the cell index rather than declaring
+    one by one (`_fetched_whole_by_the_client`). An artifact nothing in the
+    current client requests - `trail_graph.json` and `nearby_trails.geojson`
+    since the tiles and the cells replaced them - is a SKIP with the reason
+    named, not a failure: it stays in the bucket as the cut's input and for
+    older clients, and weighing it would keep the gate red on a file no
+    phone this release ships will ever parse. The manifest merge being
+    additive-only, nothing else could ever let this check go green again.
+    """
+    budget = launch_artifact_budget() if budget is None else budget
+    client_keys = set(expected_client_keys() if client_keys is None else client_keys)
+    reports = []
+    weighed: list[tuple[int, str]] = []
+    for key, entry in sorted(manifest["artifacts"].items()):
+        if key.endswith(RANGE_READ_SUFFIXES):
+            continue
+        if not _fetched_whole_by_the_client(key, client_keys):
+            reports.append(
+                _report(
+                    22,
+                    key,
+                    SKIPPED,
+                    "not fetched whole by the current client (client/src/lib/config.ts declares no key for it "
+                    "and it is no cell shard), so its size cannot reach a phone this release ships; left in "
+                    "the bucket as a cut's input and for older clients",
+                )
+            )
+            continue
+        size = entry.get("size_bytes")
+        if not isinstance(size, int) or isinstance(size, bool):
+            reports.append(
+                _report(
+                    22,
+                    key,
+                    SKIPPED,
+                    "no size_bytes published, so neither this check nor the client can weigh it before it is fetched whole",
+                )
+            )
+            continue
+        if size > budget:
+            reports.append(
+                _report(
+                    22,
+                    key,
+                    FAILED,
+                    f"{size:,} bytes decoded is over the {budget:,}-byte launch budget the client enforces "
+                    f"(client/src/lib/artifactBudget.ts, #1254): a phone declines it, and before the budget "
+                    f"existed a phone fetching it whole froze or crashed",
+                )
+            )
+            continue
+        weighed.append((size, key))
+    if weighed:
+        largest, largest_key = max(weighed)
+        detail = f"{len(weighed)} within the {budget:,}-byte launch budget; largest {largest:,} bytes ({largest_key})"
+    else:
+        detail = "no artifact in this release is fetched whole, so there is nothing to weigh"
+    reports.append(_report(22, "whole-fetched artifacts", OK, detail))
+    return reports
+
+
 def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict]:
     session = session or requests.Session()
     manifest = fetch_manifest(base, session)
@@ -1161,13 +1732,16 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
             reports
             + [
                 _report(check, "latest.json", SKIPPED, "the manifest could not be read, so no release could be resolved")
-                for check in (3, 17, 19, 20, 21)
+                for check in (3, 17, 19, 20, 21, 22)
             ]
             + skipped_checks()
         )
 
     artifacts = manifest["artifacts"]
     reports += check_client_keys(manifest)
+    # Before anything is fetched: the one check that can fail a release on
+    # the manifest alone, and the cheapest question in the battery.
+    reports += check_launch_budget(manifest)
 
     for key in sorted(artifacts):
         # size_bytes only for the identity-uploaded binaries - see
@@ -1210,9 +1784,23 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
         if tier in sizes:
             reports.append(check_advertised_size(base, key, tier, sizes[tier], session))
 
+    # THE HIKING SHEET IS NOT WEIGHED HERE, and its absence is the point (#1167).
+    #
+    # #1144 added exactly that loop, because the client advertised each of these
+    # artifacts to the byte and nothing held the two together. It worked, and it
+    # made a hand-copied constant into a release gate: promoting the basemap and
+    # editing three literals became one indivisible change, or the release
+    # failed. The constants are gone now - the app reads `latest.json` and shows
+    # nothing where the manifest is silent - so there is no advertised figure to
+    # drift and nothing for this check to compare.
+    #
+    # Check 2 above still asks the question that protects a hiker: is every key
+    # the app can request actually in this release. A missing artifact is a 404
+    # on a mountain; a size the app never claimed is not a risk at all.
+
     reports += check_vector(base, [key for key in sorted(artifacts) if key.endswith(".geojson")], session)
     reports += check_poi_identity(base, manifest, session)
-    reports += check_stretch_coverage(base, manifest, session)
+    reports += check_cell_coverage(base, manifest, session)
     # Last, because it is the only group that reads a DIFFERENT release than
     # the one every check above is about, and because check 19 is the
     # expensive one when hashing is on.
@@ -1222,8 +1810,17 @@ def check_all(base: str, session=None, hash_artifacts: bool = True) -> list[dict
 
 
 def verdict_document(base: str, reports: list[dict], strict: bool) -> dict:
+    """The verdict, with the three kinds of not-OK kept apart.
+
+    `warned` does not gate, and `--strict` does not escalate it either. A WARN
+    is a check that ran and answered; SKIPPED is one that could not run, which
+    is what `--strict` exists to refuse to ship on. Escalating "we looked and
+    it is not data loss" would put this battery straight back to failing
+    releases for compression, which is the thing #1173 is about.
+    """
     failed = [report for report in reports if report["state"] == FAILED]
     skipped = [report for report in reports if report["state"] == SKIPPED]
+    warned = [report for report in reports if report["state"] == WARN]
     return {
         "checked_at": date.today().isoformat(),
         "base": base,
@@ -1231,6 +1828,7 @@ def verdict_document(base: str, reports: list[dict], strict: bool) -> dict:
         "checks": reports,
         "failed": failed,
         "skipped": skipped,
+        "warned": warned,
         "gate": "fail" if failed or (strict and skipped) else "pass",
     }
 
@@ -1274,12 +1872,14 @@ def main(argv: list[str] | None = None) -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(document, indent=2))
 
-    failed, skipped = document["failed"], document["skipped"]
+    failed, skipped, warned = document["failed"], document["skipped"], document["warned"]
     if failed:
         print(f"\n{len(failed)} check(s) FAILED - this candidate must not be promoted.")
     if skipped:
         print(f"{len(skipped)} check(s) could not run. They are listed above rather than counted as passes.")
-    if not failed and not skipped:
+    if warned:
+        print(f"{len(warned)} check(s) answered with something worth reading. They do not hold the release.")
+    if not failed and not skipped and not warned:
         print("\nEvery check passed.")
     elif not failed:
         print("Everything that could be asked, passed.")

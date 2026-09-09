@@ -7,19 +7,20 @@
 // mocking config there would quietly change the subject of every test in it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { RELEASE_MANIFEST_PATH } from './lib/dataRelease'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { get } from 'idb-keyval'
 import { MockMap } from './test/mocks/maplibre-gl'
-import { appHarness } from './test/appHarness'
+import { appHarness, openMapTab } from './test/appHarness'
 import { liveMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
-import { PREFERENCES_KEY } from './lib/preferences'
 import { TRAILS_KEY } from './lib/config'
 import { TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID } from './map/style'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -32,13 +33,23 @@ vi.mock('./map/protocol', () => ({
 // Only the base URL and the two helpers keyed off it. Spreading the real
 // module keeps POI_TYPES and the file-name constants exactly as they ship, so
 // this stays a test about a configured build rather than about a fake one.
-vi.mock('./lib/config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./lib/config')>()),
-  DATA_BASE_URL: 'https://data.example',
-  DATA_CONFIGURED: true,
-  dataUrl: (key: string) => `https://data.example/${key}`,
-  archiveUrl: () => 'https://data.example/corridor.pmtiles',
-}))
+vi.mock('./lib/config', async (importOriginal) => {
+  // The release layout is the real one, not a flattened stand-in: a mock
+  // that put artifacts at the root while the module under test read the
+  // manifest from releases/<pin>/ would agree with neither the bucket nor
+  // itself. Only the base is substituted.
+  const { releasePath, RELEASE_MANIFEST_PATH } = await import('./lib/dataRelease')
+  return {
+    ...(await importOriginal<typeof import('./lib/config')>()),
+    DATA_BASE_URL: 'https://data.example',
+    DATA_CONFIGURED: true,
+    dataUrl: (key: string) => `https://data.example/${releasePath(key)}`,
+    releaseManifestUrl: () => `https://data.example/${RELEASE_MANIFEST_PATH}`,
+    archiveUrl: () => 'https://data.example/corridor.pmtiles',
+  }
+})
+
+import { RELEASE_KEY } from './lib/dataRefresh'
 
 const TRAILS = '{"type":"FeatureCollection","features":[]}'
 
@@ -78,6 +89,7 @@ afterEach(() => {
 async function renderApp() {
   const { default: App } = await import('./App')
   render(<App />)
+  await openMapTab()
   await screen.findByRole('region', { name: /trail map/i })
 }
 
@@ -135,18 +147,26 @@ describe('trail data on a phone that has downloaded nothing', () => {
     })
   })
 
-  it('draws the trail line behind the first-run steps, before the waypoints are fetched', async () => {
-    // #863, and the reason the download is ordered the way it is. The entry
-    // steps are a card over the map, and on a phone holding nothing there was
-    // no map behind them: the commit waited for the whole release, which is
-    // ~12 s on a 4x-throttled phone profile at 12 Mbps, against about eight
-    // seconds to click through three steps. So a newcomer read three sentences
-    // about a map over an empty background.
+  it('draws the trail line before the waypoints are fetched, rather than after', async () => {
+    // #863, and the reason the download is ordered the way it is: the commit
+    // used to wait for the whole release - ~12 s on a 4x-throttled phone
+    // profile at 12 Mbps - so a phone holding nothing showed a map with no
+    // trail on it for the whole of that.
+    //
+    // THE FIRST-RUN FRAMING IS GONE FROM THIS TEST AND THE ORDER IS NOT
+    // (#1324). #863 was written about the entry steps, which were a card over
+    // the map: three sentences about a map, read over an empty background. The
+    // steps have stood over an opaque photograph since #1054 and build no map
+    // at all since #1324, so a first-run assertion here would be about a map
+    // nobody has. What it was really pinning is `useTrailData` committing the
+    // centerline on its own rather than with the release, which is true on
+    // every launch - so it is asserted on the launch that has a map. That the
+    // line is on the phone by the time first run ends is the other half, and
+    // lives in App.mapLifecycle.test.tsx.
     //
     // The waypoints are held here rather than answered, which is what makes
     // this a statement about ORDER: the line is on the map while their fetches
     // are still outstanding, not merely by the end.
-    store.delete(PREFERENCES_KEY)
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
@@ -164,9 +184,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
       ),
     )
 
-    const { default: App } = await import('./App')
-    render(<App />)
-    await screen.findByText('What OurHike is')
+    await renderApp()
     const map = await liveMap()
 
     await waitFor(() =>
@@ -186,7 +204,12 @@ describe('trail data on a phone that has downloaded nothing', () => {
     // centerline is 51 KB of the same trail. This asserts the order that
     // makes that worth publishing: the sketch is on the map while the real
     // line is still outstanding.
-    store.delete(PREFERENCES_KEY)
+    //
+    // On the map screen rather than behind the entry steps, for #1324's
+    // reason: the steps build no map, so the sketch's whole audience is the
+    // map screen now. What the sketch is FOR is unchanged - a phone with the
+    // real line still in flight draws something true at 100 m rather than
+    // nothing.
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
@@ -204,9 +227,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
       ),
     )
 
-    const { default: App } = await import('./App')
-    render(<App />)
-    await screen.findByText('What OurHike is')
+    await renderApp()
     const map = await liveMap()
 
     await waitFor(() =>
@@ -219,25 +240,38 @@ describe('trail data on a phone that has downloaded nothing', () => {
     expect(map.sourceData.get(TRAILS_SOURCE_ID)).toBeUndefined()
   })
 
-  it('drops the sketch as soon as the real centerline is on the phone', async () => {
+  it('keeps the sketch until the map has drawn the real centerline, then drops it (#1291)', async () => {
     // Held to a deadline rather than left as a second trail line: it is 100 m
     // of tolerance, and the map stops drawing it the moment it has something
     // better (lib/config.ts's TRAILS_OVERVIEW_KEY for what 100 m means at
-    // each zoom).
-    store.delete(PREFERENCES_KEY)
-
-    const { default: App } = await import('./App')
-    render(<App />)
-    await screen.findByText('What OurHike is')
+    // each zoom). "Something better" is the map's own line ON SCREEN, not the
+    // shell holding the bytes: the worker still has to parse 11.5 MB, and a
+    // sketch dropped at the download was the frame with no trail on it that
+    // every preview photographed.
+    //
+    // On the map screen rather than behind the entry steps (#1324): the steps
+    // build no map now, so first run is no longer a launch this can be asked
+    // about. What #1291 pinned is unchanged - it is about when the sketch
+    // comes off, which is the map's business on whichever launch has one.
+    await renderApp()
     const map = await liveMap()
 
-    // The whole release lands, so the real lines are drawn...
+    // The whole release lands, so the real lines are handed to the map...
     await waitFor(() =>
       expect(map.sourceData.get(TRAILS_SOURCE_ID)).toEqual(
         expect.stringContaining('blob:'),
       ),
     )
-    // ...and the sketch is taken off, whether or not it ever arrived.
+    // ...and the sketch stays on while the map is still parsing them.
+    await waitFor(() =>
+      expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual(
+        expect.stringContaining('blob:'),
+      ),
+    )
+
+    // The map reports its trails source loaded: the sketch comes off.
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
     await waitFor(() =>
       expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
         type: 'FeatureCollection',
@@ -485,7 +519,7 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     const user = userEvent.setup()
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.endsWith('latest.json')) {
+      if (url.endsWith(RELEASE_MANIFEST_PATH)) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -520,5 +554,117 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     expect(notice).toHaveTextContent(/fresh copy from the start/i)
     // Nothing was stored, exactly as the sentence claims.
     expect(store.get(TRAILS_BLOB_KEY)).toBeUndefined()
+  })
+})
+
+describe('a phone holding a superseded release (#919)', () => {
+  // The failure these are about: #749's water gate shipped, the bucket served
+  // the corrected layer, and every phone that already had data went on drawing
+  // 1,535 ungated OSM water points. The pipeline was fixed and the hiker still
+  // had the old answer, because the download asked whether there was trail
+  // data and never which.
+
+  /** A phone that finished a download of release `version`. */
+  function holding(version: string | null, hashes: Record<string, string>) {
+    store.set(TRAILS_BLOB_KEY, new Blob([TRAILS]))
+    store.set('ourhike:pois', [])
+    store.set(RELEASE_KEY, { version, hashes, at: 1_700_000_000_000 })
+  }
+
+  /** The release manifest as the bucket serves it, and every artifact fetch
+   *  after it. */
+  function publishing(manifest: unknown) {
+    vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input)
+      const body = url.endsWith(RELEASE_MANIFEST_PATH) ? JSON.stringify(manifest) : TRAILS
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        arrayBuffer: () => Promise.resolve(new TextEncoder().encode(body).buffer),
+        blob: () => Promise.resolve(new Blob([body])),
+        text: () => Promise.resolve(body),
+        json: () => Promise.resolve(JSON.parse(body)),
+      } as unknown as Response)
+    })
+  }
+
+  const WATER_REMOVED = {
+    version: 'v2',
+    previous_version: 'v1',
+    artifacts: {
+      'poi_water.geojson': {
+        sha256: 'newhash',
+        size_bytes: 300_000,
+        transfer_bytes: 100_000,
+        change: { severity: 'consequential', added: 0, removed: 3, moved: 0, edited: 0 },
+      },
+    },
+  }
+
+  it('asks before replacing a map somebody may be walking with', async () => {
+    holding('v1', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+
+    expect(await screen.findByRole('button', { name: 'Update' })).toBeInTheDocument()
+    expect(screen.getByText(/3 removed/)).toBeInTheDocument()
+  })
+
+  it('does not replace anything until it is told to', async () => {
+    // The decision this guards (2026-08-21): nothing is applied unasked. A
+    // phone that merely NOTICED an update must not have spent the bytes.
+    holding('v1', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+    await screen.findByRole('button', { name: 'Update' })
+
+    expect(requested().some(isTrailsRequest)).toBe(false)
+  })
+
+  it('fetches the release when the hiker takes it', async () => {
+    holding('v1', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+    await renderApp()
+
+    const { default: userEvent } = await import('@testing-library/user-event')
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Update' }))
+
+    await waitFor(() => expect(requested().some(isTrailsRequest)).toBe(true))
+  })
+
+  it('says nothing when this phone already holds the published release', async () => {
+    holding('v2', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+    await waitFor(() =>
+      expect(requested().some((url) => url.endsWith(RELEASE_MANIFEST_PATH))).toBe(true),
+    )
+
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
+  })
+
+  it('says nothing to a phone that has never downloaded, which is the launch fetch’s job', async () => {
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+
+    expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()
+  })
+
+  it('refuses to describe a hop the release does not cover', async () => {
+    // Two releases behind. Repeating counts from somebody else's transition
+    // would be the plausible sentence rather than the true one.
+    holding('v0', { 'poi_water.geojson': 'oldhash' })
+    publishing(WATER_REMOVED)
+
+    await renderApp()
+
+    await screen.findByRole('button', { name: 'Update' })
+    expect(screen.getByText(/has changed since this was downloaded/)).toBeInTheDocument()
+    expect(screen.queryByText(/3 removed/)).not.toBeInTheDocument()
   })
 })

@@ -22,8 +22,9 @@ import {
   RECIPE_DIR,
   PREVIEW_BASE_PLACEHOLDER,
   DISPLAY_WIDTH,
+  DESKTOP_DISPLAY_WIDTH,
 } from '../../scripts/photograph-preview.mjs'
-import { DEFAULT_WAIT_MS } from '../../scripts/screenshot.mjs'
+import { DEFAULT_WAIT_MS, DESKTOP } from '../../scripts/screenshot.mjs'
 
 const everything = () => true
 
@@ -126,8 +127,19 @@ describe('the recipe contract', () => {
       caption: 'water-card',
       alt: 'water-card',
       entry: false,
+      desktop: false,
       wait: DEFAULT_WAIT_MS,
     })
+  })
+
+  it('photographs a phone unless the recipe asks for the wide layout', () => {
+    // `desktop` is opt-in and strictly boolean, like `entry` beside it: a
+    // recipe that means to photograph the wide layout says so, and a typo
+    // ('desktop: 1280') falls back to the phone rather than quietly
+    // photographing something else. Both are the same shape on purpose.
+    expect(normaliseRecipe({}, 'x').desktop).toBe(false)
+    expect(normaliseRecipe({ desktop: true }, 'x').desktop).toBe(true)
+    expect(normaliseRecipe({ desktop: 1280 }, 'x').desktop).toBe(false)
   })
 
   it('lets alt default to the caption, which is the readable one', () => {
@@ -152,6 +164,35 @@ describe('the comment block', () => {
     bytes: 1000,
     error: undefined,
     ...extra,
+  })
+
+  it('gives a desktop shot the width and the row a wide frame needs', () => {
+    // Two 640px images do not fit the ~830px a comment gets, so a desktop
+    // shot ends its row. The regression this catches is a desktop shot
+    // pairing up with a phone one and being rendered at 320 - which looks
+    // like a working shot in the markdown and like nothing in the comment.
+    const block = renderComment(
+      [shot('first-run-desktop', true, { desktop: true }), shot('legend', true)],
+      {},
+    )
+
+    expect(block).toContain(
+      `<img src="${PREVIEW_BASE_PLACEHOLDER}/__screenshot/first-run-desktop.png" width="${DESKTOP_DISPLAY_WIDTH}" alt="Alt for first-run-desktop">`,
+    )
+    expect(block).toContain(`width="${DISPLAY_WIDTH}" alt="Alt for legend"`)
+    // Its own row: the desktop caption is not on a line with the phone one.
+    const desktopRow = block
+      .split('\n')
+      .find((line) => line.includes('The first-run-desktop'))
+    expect(desktopRow).toBe('| The first-run-desktop |')
+    // And the footer stops claiming every frame is a phone.
+    expect(block).toContain(`the wide ones at ${DESKTOP.width}x${DESKTOP.height}`)
+  })
+
+  it('keeps pairing phone shots when no desktop shot is among them', () => {
+    const block = renderComment([shot('legend', true), shot('more', true)], {})
+    expect(block).toContain('| The legend | The more |')
+    expect(block).not.toContain('the wide ones at')
   })
 
   it('leads with the pull request’s own shots, standing after', () => {

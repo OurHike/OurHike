@@ -68,8 +68,10 @@ export interface PlanDayMeta {
   /** This day does not move - a booked hostel, a mail drop with a date on
    *  it. The cascade re-plans between pins and never through one. */
   pinned: boolean
-  /** The app chose this day and the hiker has not touched it. Flips false on
-   *  the first edit and never back - the timeline's quiet "auto" marker. */
+  /** The app chose this day and the hiker has not touched it - the
+   *  timeline's quiet "auto" marker. Flips false on the first edit; back to
+   *  true only where the cascade has since re-planned the day, which is the
+   *  app choosing it again rather than the marker leaking. */
   generated: boolean
   /**
    * This day was walked. A record, not a plan any more (SEGMENTS.md's
@@ -125,6 +127,66 @@ export interface PlanDayMeta {
  * writing a journal entry, and this was never the place for one.
  */
 export const DAY_NOTE_MAX_CHARS = 280
+
+/**
+ * How far a nearo is allowed to walk.
+ *
+ * Lives here rather than in lib/restRhythm.ts, where it was written and
+ * where it is still used to place a rest: it is the definition of what
+ * `rest` means on a walking day, so every mutator below that changes a
+ * day's distance has to know it, and restRhythm.ts imports plan.ts rather
+ * than the other way round.
+ *
+ * @unvalidated 6 miles is picked, not measured. A nearo is understood on
+ * this trail as a short day into or out of town - most of a rest, with a
+ * couple of hours of walking in it - and six miles is the roundest number
+ * inside every description of one I could find. Nobody has checked it
+ * against what hikers actually walk on those days.
+ *
+ * What would settle it: the distribution of day lengths that hikers
+ * themselves call nearos, which this app will start to have once #789's
+ * recorded stretches and the day log accumulate. Until then the window errs
+ * SHORT - a window too small falls back to a zero, which is a rest either
+ * way, while one too large turns a rest day into an ordinary day of
+ * walking and calls it a rest.
+ */
+export const NEARO_MAX_MI = 6
+
+/**
+ * Whether a day running `fromMile` → `toMile` can still be the rest its
+ * `rest` flag claims - a zero, or a nearo inside the window above (#1031).
+ *
+ * THE FLAG IS A CLAIM ABOUT A DISTANCE, and four operations here and in
+ * lib/cascade.ts move a day's boundaries: absorb and shift re-plan the
+ * stretch under metas that keep their ordinal slot, `removeDay` folds a
+ * removed day's miles into its neighbour, and `callItADay` moves tomorrow's
+ * start to wherever the hiker actually stopped. Measured before the fix, on
+ * a 15-mile-target plan with a nearo rhythm: those four put the badge on
+ * days of 17.1, 8.1, 21.8 and 10.4 miles, and screens/Plan.tsx printed
+ * "nearo · your rest day" against each of them.
+ *
+ * So every one of them runs the flag back through this, and a day that is
+ * no longer a rest loses it. The rest itself is not re-placed - the plan
+ * keeps its `rhythm`, so a re-lay reproduces the rests, and whether the
+ * cascade should instead carry each one onto the new boundaries is #1031's
+ * open half and a decision that moves days rather than labels.
+ */
+export function stillARest(fromMile: number, toMile: number): boolean {
+  return Math.abs(toMile - fromMile) <= NEARO_MAX_MI
+}
+
+/** `meta` with a `rest` flag that has stopped being true dropped - see
+ *  {@link stillARest}. Returns the same object when there is nothing to
+ *  drop, so an unchanged day stays referentially unchanged. */
+export function keepingRest(
+  meta: PlanDayMeta,
+  fromMile: number,
+  toMile: number,
+): PlanDayMeta {
+  if (meta.rest !== true || stillARest(fromMile, toMile)) return meta
+  const { rest: _spent, ...rest } = meta
+  return rest
+}
 
 /**
  * A rest every `everyDays` walking days (#798).
@@ -203,16 +265,26 @@ export function validatePlan(candidate: unknown): HikePlan | null {
   // this one carries none. A note that came back as a number, or longer
   // than the cap an older build did not enforce, costs its own line -
   // never the plan's days, which are the part nobody can retype.
-  const days = plan.days.map((day) => {
-    const note = (day as { note?: unknown }).note
-    if (note === undefined) return day
+  //
+  // A SPENT REST FLAG IS SANITISED HERE TOO, and for a reason the note does
+  // not have: the four mutators that could strand one were fixed in #1031,
+  // but every plan already on a phone was written by a build without that
+  // fix, and a plan is not re-planned on load. So the flag is re-checked
+  // against the boundaries it is stored beside, which is the only place a
+  // plan written months ago can be met. Sanitised rather than refused,
+  // because a spent badge is a wrong label and never a broken invariant.
+  const stops = plan.stops as PlanStop[]
+  const days = plan.days.map((day, index) => {
+    const kept = keepingRest(day, stops[index].mile, stops[index + 1].mile)
+    const note = (kept as { note?: unknown }).note
+    if (note === undefined) return kept
     if (typeof note !== 'string' || note.length === 0) {
-      const { note: _dropped, ...rest } = day
+      const { note: _dropped, ...rest } = kept
       return rest as PlanDayMeta
     }
     return note.length <= DAY_NOTE_MAX_CHARS
-      ? day
-      : { ...day, note: note.slice(0, DAY_NOTE_MAX_CHARS) }
+      ? kept
+      : { ...kept, note: note.slice(0, DAY_NOTE_MAX_CHARS) }
   })
 
   // Dated throughout or not at all, and forward-only: a plan that is half a
@@ -590,10 +662,17 @@ export function removeDay(plan: HikePlan, index: number): HikePlan {
         : meta,
     )
   const absorber = zero || index >= days.length ? null : index
+  const stops = plan.stops.filter((_, i) => i !== index + 1)
   return {
     ...plan,
-    stops: plan.stops.filter((_, i) => i !== index + 1),
-    days: days.map((meta, i) => (i === absorber ? touched(meta) : meta)),
+    stops,
+    days: days.map((meta, i) =>
+      // The absorber grew by the removed day's miles, so a rest flag on it
+      // is a claim about a distance that no longer exists (#1031).
+      i === absorber
+        ? keepingRest(touched(meta), stops[i].mile, stops[i + 1].mile)
+        : meta,
+    ),
   }
 }
 

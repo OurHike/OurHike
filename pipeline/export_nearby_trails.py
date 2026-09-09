@@ -3,11 +3,37 @@ behind the chosen trail (#950, features/NEARBY_TRAILS.md).
 
 export_trails.py's subject is the A.T.: two ATC sources, clipped to a 30-mile
 corridor around ATC's own centerline. This module's subject is everything else
-already on the ground a hiker is standing on - NYS OPRHP's statewide layer and
-NYNJTC's two public extracts today, DEC's Catskills and the NJ layers when
+already on the ground a hiker is standing on - NYS OPRHP's statewide layer,
+NYS DEC's statewide hiking layer, NYNJTC's two public extracts and Mohonk
+Preserve's own, with the NJ layers still to come when
 pipeline/NYC_SOURCE_SURVEY.md's next verdicts are acted on. Different sources,
 a different extent, and a different licence footing, which is why it is a
 second export rather than a branch inside the first.
+
+AND NO EXTENT OF ITS OWN, SINCE #1019. This module used to clip everything to
+a bounding box around New York City - NYC_SOURCE_SURVEY.md §1's proposed
+"ring", which that section had left with two edges explicitly open. The
+maintainer closed both on 2026-08-25, in these words:
+
+    "There shouldnt be a ring around NYC. Include all of DEC, NYNJTC & NYSP.
+     Don't limit data from orgs based on geography."
+
+So every filter below is something the SOURCE says about a trail - is it
+walkable, is it open, does another organization own the route - and none of
+them is where the trail is. What that bought, measured 2026-08-25 by running
+this export either side of the change against the same fetched layers:
+
+    4,002 features -> 21,805, and 5.4 MB -> 23.5 MB on disk (1.7 -> 7.3 MB
+    gzipped, which is what a phone actually pulls). #1019 flags that
+    download rather than solving it: features/NEARBY_TRAILS.md §9 carries
+    the number into #552's offline-unit decision, which is where a
+    per-region cut would be argued and is not this module's to take.
+
+    NYS Parks: 3,618 of their 16,641 statewide segments -> 16,187. NYNJTC's
+    Long Path: 33 of 43 sections -> all 43, so it no longer stops at a
+    section boundary in the Catskills while NYNJTC's own line runs on to
+    43.23°. DEC, registered by the same change: the ring would have kept 418
+    of its 5,286 rows, and 5,224 ship.
 
 WHAT THE CLIENT DOES WITH THIS, AND WHY THE PROPERTY NAMES ARE NOT NEGOTIABLE
 
@@ -25,44 +51,51 @@ by the SAME expressions the A.T. is drawn by:
   `trail_status`  lib/closureStyle.ts's LONG_TERM_CLOSED_FILTER compares this,
                   downcased, against "closed" and draws the barred band.
   `id`            the feature identity map/lineTaps.ts hands the sheet.
+  `closure_kind` / `closure_reason` / `closure_source`
+                  on closed records only: which kind of closed, the closing
+                  org's own words, and the closure LAYER's registry key -
+                  what lets lib/lineDetail.ts speak a temporary area closure
+                  in the closing organization's voice rather than the
+                  line-drawing organization's (#1142).
 
-THE FOUR FILTERS, AND THE EVIDENCE UNDER EACH
+THE THREE FILTERS, AND THE EVIDENCE UNDER EACH
 
-All counts below were measured on 2026-08-24 against the layers
-fetch_external_layers.py had just fetched, re-running the census
-spike_nyc_trails.py first ran on 2026-08-18. Where the two disagree the newer
-number is the one written down, and none of them disagreed by more than the
-statewide/ring difference the ring clip explains.
+Counts below carry their own date. The 2026-08-24 ones were measured against
+the layers fetch_external_layers.py had just fetched, re-running the census
+spike_nyc_trails.py first ran on 2026-08-18; the 2026-08-25 ones were measured
+by #1019's re-run, which is also the first run of this export over DEC's layer
+and over the whole of OPRHP's. Where two dates disagree the newer is written
+down.
 
 1. HIKING ONLY - the maintainer's decision, 2026-08-18 ("Only keep hiking
    trails for now... It's OurHike, not OurBike"). A source declaring a
-   `foot_field` keeps only rows that allow foot travel; a source with no use
-   flags at all keeps every row, because NYNJTC publishes hiking trails and
-   nothing else. Statewide, OPRHP's Foot column is a clean two-value domain
-   (Y 16,441 / N 200).
+   `foot_field` keeps only the rows whose value is in its own `foot_allowed`
+   set; a source with no use flags at all keeps every row, because NYNJTC and
+   Mohonk publish hiking trails and nothing else. Statewide, OPRHP's Foot
+   column is a clean two-value domain (Y 16,441 / N 200), so its allowed set
+   is the default {"Y"} and the 200 are what this filter drops - it dropped 53
+   while the ring was on, because the other 147 were outside the box before
+   this filter ever saw them.
 
-2. THE RING - NYC_SOURCE_SURVEY.md §1's proposal, applied. A feature is kept
-   if any part of it INTERSECTS the ring; its geometry is never cut at the
-   boundary. That mirrors export_trails.py's own corridor clip, and the reason
-   is the same one stated there: cutting would end a trail at a line nobody
-   drew on the ground. So a kept feature may run some distance past the ring
-   - the Long Path sections that straddle 42.55° are exported whole.
+   WHY THE ALLOWED SET IS PER-SOURCE RATHER THAN ONE CONSTANT, which is the
+   shape #1019 found when DEC arrived. DEC's FOOT is the same five-code
+   CORRIDOR USE domain OPRHP's is (Y/N/U/M/-99, read off the live field
+   metadata 2026-08-25) and its live values are not: over all 5,286 rows of
+   DEC's own Hiking Trails layer, 4,050 read `Y` and 1,236 read `M` - DEC's
+   code for MAINTAINED - and nothing reads N, U or -99. A single {"Y"} would
+   have dropped 23% of the layer DEC itself publishes as hiking trails, which
+   is the opposite of what a hiking-only filter is for. sources.json's
+   `dec_hiking_trails` entry carries what `M` is read as, and what would
+   settle it.
 
-   BE CLEAR ABOUT WHAT THAT DOES NOT DO: it saves the geometry of features
-   that cross the edge, not features that lie wholly beyond it. Measured
-   2026-08-24, 10 of NYNJTC's 43 Long Path sections are north of the ring
-   entirely and are dropped, so the exported Long Path does stop - just at a
-   section boundary rather than mid-line. See RING_BBOX (b), which is where
-   that is argued.
-
-3. STATUS - the maintainer's decision, 2026-08-18, taken with the statewide
+2. STATUS - the maintainer's decision, 2026-08-18, taken with the statewide
    counts in front of them: `Open` ships, `Closed` SHIPS DRAWN AS CLOSED (so
    somebody standing at the trailhead with an old paper map is told, rather
    than the trail silently missing), `Proposed` is dropped because it is not
    ground, and blank/`Unknown` are dropped and counted - omit rather than
    guess. main() prints every dropped count; nothing is filtered silently.
 
-4. THE ROUTE OWNER'S LINE WINS - features/NEARBY_TRAILS.md §5. A source that
+3. THE ROUTE OWNER'S LINE WINS - features/NEARBY_TRAILS.md §5. A source that
    `owns_route_names` in the registry supplies that route's geometry, and
    another organization's copy of it is suppressed. See suppressed_by_owner()
    for why the match is on the source's own NAME field only and never on an
@@ -99,10 +132,15 @@ future reader has to re-fetch to check. The maintainer determined on
 2026-08-24 that OurHike is a non-commercial use within them, with the
 counter-reading recorded beside it.
 
-NYNJTC STATE NOTHING - empty licenseInfo on both items - so their two public
-extracts ship on the maintainer's authorisation, the same footing atc_licence
-and photo_licence already use. SOURCE_SURVEY.md §5's verdict on the full
-NYNJTC network is untouched by that: still an agreement, not a scrape.
+NYNJTC, MOHONK PRESERVE AND NYS DEC STATE NOTHING - empty licenseInfo on the
+AGOL items, and DEC is an on-prem service with no item to carry terms at all
+and an empty copyrightText - so those four layers ship on the maintainer's
+authorisation, the same footing atc_licence and photo_licence already use.
+SOURCE_SURVEY.md §5's verdict on the full NYNJTC network is untouched by that:
+still an agreement, not a scrape. DEC's own authorisation is #1019's scope
+decision read as covering the data as well as its extent, which is argued in
+sources.json's `dec_licence` along with the one-field way to undo it if that
+reading is wrong.
 
 THE ATTRIBUTION IS NOT OPTIONAL, and it is not this file's to render. OPRHP's
 condition is met by client/src/map/credits.ts, which puts their name in the
@@ -111,12 +149,17 @@ lines somewhere that credit does not follow, the condition is broken - so the
 export records each source's `steward` and `attribution` in its manifest, and
 export_sources.py names them on the sources screen.
 
-WHAT STILL DOES NOT SHIP: two of the four oprhp_* layers. Facilities (8,823
-points) and park polygons (858) keep `reaches_hikers: false` for a reason that
-is nothing to do with licensing - nothing exports them. That is the field's
-other meaning (see reaches_hikers_comment) and the two should not be blurred.
-The closures layer left that group under #964 and now ships, derived onto the
-trail lines as described above.
+WHAT STILL DOES NOT SHIP: two of the four oprhp_* layers, and every DEC layer
+but the trails. OPRHP's facilities (8,823 points) and park polygons (858) keep
+`reaches_hikers: false` for a reason that is nothing to do with licensing -
+nothing exports them. That is the field's other meaning (see
+reaches_hikers_comment) and the two should not be blurred. The closures layer
+left that group under #964 and now ships, derived onto the trail lines as
+described above. DEC's back-country features (21,466 points), trailheads
+(10,524) and lean-tos (314) are not registered at all - #1019 registered the
+trail lines it needed and left the POIs to whoever answers
+NYC_SOURCE_SURVEY.md §10(g)'s open question about whether any of them are
+water, which is one of CLAUDE.md's four ways and raises the evidence bar.
 
 The provenance line features/NEARBY_TRAILS.md §6 specifies - "Trail data: NYS
 OPRHP", in a voice that does not outrun a steward who disclaims accuracy - is
@@ -129,15 +172,26 @@ attribution so that screen has one place to read them from when it does.
 import json
 from pathlib import Path
 
+import duckdb
+from pmtiles.reader import MmapSource, Reader
 from shapely import wkt as shapely_wkt
-from shapely.geometry import MultiLineString, box, shape
+from shapely.geometry import MultiLineString, shape
+from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
-from export_trails import geometry_to_wkt, simplify_records
+from export_trails import (
+    _TO_METRIC,
+    OVERVIEW_COORDINATE_DECIMALS,
+    OVERVIEW_SIMPLIFY_TOLERANCE_M,
+    _overview_coordinates,
+    geometry_to_wkt,
+    simplify_records,
+)
 from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.source_registry import external_arcgis_sources, load_registry
 
 ROOT = Path(__file__).parent
@@ -148,65 +202,142 @@ SOURCES_PATH = ROOT / "sources.json"
 ARTIFACT_NAME = "nearby_trails.geojson"
 MANIFEST_NAME = "nearby_trails_manifest.json"
 
-# NYC_SOURCE_SURVEY.md §1's "as a spike bbox" - Delaware Water Gap to the
-# Connecticut line, New York Harbor to the Catskills' northern escarpment.
-#
-# `@unvalidated` - a survey's PROPOSAL, not a decision anybody has taken. §1
-# says so in its own words: the ring is "proposed, with edges", and two of
-# those edges are explicitly the maintainer's rather than the survey's. Both
-# are still open, and both move this number:
-#
-#   (a) LONG ISLAND. The survey's county list does not include Nassau or
-#       Suffolk - "NYNJTC does not cover LI and the scope call did not name
-#       it" - but the bbox above reaches to −73.4° and takes in the western
-#       half of the island anyway. Measured 2026-08-24, and the two numbers
-#       are worth keeping apart because keep_reason() tests the unit BEFORE
-#       the foot and status filters: main() reports 2,058 segments dropped as
-#       Long Island, of which 1,951 would have passed every other filter too.
-#       That 1,951 against the 5,759 that otherwise survive is the number the
-#       decision turns on - a bbox-only ring would be 34% ground the scope
-#       call never asked for. EXCLUDED_UNITS below resolves that toward the
-#       county list, which is the closest thing to a decision that exists;
-#       main() prints what it drops so the other answer is one constant away.
-#   (b) THE NORTHERN CUT. The Long Path continues past the Catskills toward
-#       Albany, reaching 43.23°, and this box cuts it: measured 2026-08-24,
-#       10 of NYNJTC's 43 sections lie entirely north of 42.55° and are
-#       dropped. Keeping whole features rather than cutting geometry (filter
-#       2) does NOT save them - it only means the 33 that survive are not
-#       themselves truncated. §1(b) guesses this is the right call for v1
-#       ("cut the trail at the ring's edge AND SAY SO ON SCREEN rather than
-#       pretend it ends there"), and the second half of that sentence is not
-#       built: nothing on the map tells a hiker at Windham that the Long Path
-#       continues past where our line stops. **#557 — Draw the map from
-#       several coverage units, and say plainly where they end** is that
-#       work's home, and until it lands this export produces a trail with a
-#       silent end, which is the honest description of it.
-#
-# What would settle it: the maintainer answering §1's two NEEDS REVIEW edges,
-# on #768. Until then this is a proposal being applied, and saying so is the
-# point of the tag.
-RING_BBOX = (-75.4, 40.45, -73.4, 42.55)
+# The corridor-view sketch of this whole network - export_trails.py's
+# write_overview pattern (#869) applied to the artifact above, so the opening
+# camera can draw every organization's trails without fetching or parsing the
+# full file (#1135). Its own flat name for publish.py and lib/config.ts to
+# agree on, like NEARBY_TRAILS_KEY.
+OVERVIEW_ARTIFACT_NAME = "network_overview.geojson"
 
-# See RING_BBOX (a). Expressed in OPRHP's own vocabulary - its `Unit` column
-# is its eleven administrative regions - because that is the one place the
-# distinction is already drawn by the steward rather than inferred by us.
-EXCLUDED_UNITS = frozenset({"Long Island"})
+# THE SAME LINES AS VECTOR TILES (#1257), which is how the map draws them
+# above the seam since the GeoJSON above outgrew a phone.
+#
+# On 2026-09-07 the artifact reached 228,820,578 bytes - nationwide USFS
+# trails, #1231 - and every phone that fetched it whole crashed its map
+# (#1254): the file was parsed entire on the way to MapLibre, and a renderer
+# at 1.7 GB is a dead one. A PMTiles archive is read by byte range - the
+# header, one directory, then only the tiles under the viewport - so what a
+# phone holds is a few kilobytes per tile whatever the archive weighs. The
+# basemap has shipped that way all along; these lines never did.
+#
+# GDAL writes it, through the same DuckDB spatial extension every exporter
+# here already loads - no new tool. Measured against that day's real file on
+# a 4-core runner: 112,378 features tiled z9-z14 in 92 s into 132,995,363
+# bytes and 173,209 tiles, layer `trails`, every property intact - and 388
+# bytes of header and root directory to open, which is what a phone reads
+# before its first tile.
+#
+# THE ZOOM RANGE IS A CONTRACT WITH THE CLIENT. client/src/lib/config.ts
+# declares NEARBY_TRAILS_TILES_MIN_ZOOM and _MAX_ZOOM for the source it
+# builds over these tiles, and tests/test_export_nearby_trails.py reads that
+# file to hold the two ends equal - a tileset the map asks the wrong zooms of
+# draws nothing, silently. 9 is the pin seam (map/poiLayers.ts), where the
+# full network's layers start; below it the overview sketch above still
+# draws. 14 is where the Fine hiking sheet stops and MapLibre overzooms.
+TILES_ARTIFACT_NAME = "nearby_trails.pmtiles"
+TILES_LAYER = "trails"
+TILES_MIN_ZOOM = 9
+TILES_MAX_ZOOM = 14
 
-# What a `foot_field` has to read for a segment to be a hiking trail. OPRHP's
-# domain also declares U/M/I/-99; none of the four appears in the live data
-# (measured 2026-08-24, 16,641 rows: Y 16,441, N 200), and an unrecognised
-# value is dropped and counted rather than assumed walkable.
-FOOT_ALLOWED = frozenset({"Y"})
+# Coordinates are written at six decimals - about 0.11 m of longitude at
+# these latitudes - by export_trails.py's own precision rule: an order finer
+# than the tolerance the geometry was simplified to, which is 1 m here (the
+# `simplify_records` call in main()). OVERVIEW_COORDINATE_DECIMALS states the
+# rule for its 100 m sketch and lands on four; 1 m lands on six.
+#
+# This was the one artifact writing coordinates with no precision floor at
+# all: records_to_geojson serialises shapely's __geo_interface__, and the
+# EPSG:5070 round trip inside simplify_records hands back full-precision
+# doubles, ~17 significant digits each. The A.T.'s trails.geojson never had
+# this problem because GDAL's GeoJSON driver caps it at seven decimals
+# (export_trails.py's "why it is written here" block); this export writes its
+# own JSON, so it caps its own. The digits dropped describe less ground than
+# the simplification already discarded - and less than a tenth of the 1 m the
+# simplification is allowed to move a vertex, so nothing downstream can tell
+# the difference: build_trail_graph.py's ENDPOINT_SNAP_M is 8 m, and the
+# off-route thresholds lib/dayHikeFollow.ts holds against derived geometry
+# are 90 ft out / 45 ft back.
+#
+# What it buys, measured 2026-08-27 on the vertex bytes themselves (10,000
+# uniform pairs in the artifact's own lon/lat range, JSON with the compact
+# separators this export uses): 39.0 characters per full-precision pair
+# against 22.8 at six decimals, 0.58x. The artifact is coordinates almost
+# entirely, so the whole-file ratio should land near that; the run itself
+# prints the byte count, which is where the measured after comes from.
+NEARBY_COORDINATE_DECIMALS = 6
+
+# What a `foot_field` has to read for a segment to be a hiking trail, where
+# the source's entry does not say otherwise. OPRHP's domain also declares
+# U/M/I/-99; none of the four appears in its live data (measured 2026-08-24,
+# 16,641 rows: Y 16,441, N 200), and an unrecognised value is dropped and
+# counted rather than assumed walkable.
+#
+# A source overrides this with `foot_allowed` in sources.json, next to the
+# organization whose vocabulary it describes - DEC's `M` (MAINTAINED) is the
+# case that made the default a default. Filter 1 above has the measurement.
+FOOT_ALLOWED_DEFAULT = frozenset({"Y"})
 
 # Raw status -> the `trail_status` the client reads, for the two that ship.
-# Anything else is dropped by filter 3.
+# Anything else is dropped by filter 2.
 SHIPPED_STATUSES = {"Open": "open", "Closed": "closed"}
 
-# What a source with no status column at all publishes. NYNJTC's two extracts
-# have no status field: their sections are the trail as NYNJTC maintains it,
-# and inventing a "closed" for a layer that cannot say so would be the exact
-# failure this pipeline's closure treatment exists to avoid.
+# What a source with no status column at all publishes. NYNJTC's two extracts,
+# Mohonk's layer and DEC's have no status field: their rows are the trail as
+# each organization maintains it, and inventing a "closed" for a layer that
+# cannot say so would be the exact failure this pipeline's closure treatment
+# exists to avoid.
 DEFAULT_STATUS = "open"
+
+# What write_overview keeps as its own named feature rather than folding into
+# the generic (source, blaze_color, trail_status) haze (#1307).
+#
+# REASONED FROM THE ISSUE'S OWN TWO EXAMPLES, NOT MEASURED AGAINST THE LIVE
+# REGISTRY. #1307 names the Long Path (~358 miles) and "a park loop" (under
+# 10) as the two ends this threshold has to separate; nothing in this
+# sandbox can fetch the live ArcGIS layers to measure the real distribution
+# of named routes between them (no pipeline/data/raw/external here to sum -
+# fetch_external_layers.py needs network access this environment does not
+# have). 50 sits comfortably above a park loop and comfortably below the
+# Long Path, which is everything the two examples actually pin down; where a
+# trail the size of the Shawangunk Ridge Trail lands is genuinely unknown.
+# What would settle it: running this against the live registry once
+# fetchable, and reading the real gap between a park's longest loop and the
+# shortest thing anyone would call a long-distance trail.
+NAMED_TRAIL_THRESHOLD_MILES = 50.0
+
+METERS_PER_MILE = 1609.344
+
+
+def _miles(record: dict) -> float:
+    """One record's real-world length, in miles.
+
+    export_trails.py's own EPSG:5070 metric transform (_TO_METRIC), reused
+    rather than a second way of measuring distance - that file's rule for
+    simplification tolerance applies just as much to a threshold a trail is
+    named or merged on either side of."""
+    return shapely_transform(_TO_METRIC, shapely_wkt.loads(record["wkt"])).length / METERS_PER_MILE
+
+
+def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
+    """Total real-world length per (source, name), for every record whose
+    name is more than whitespace.
+
+    Summed once here rather than per record: #1307's "a trail whose segments
+    total at least some threshold" is a claim about the whole trail, and one
+    trail is ordinarily many rows - NYNJTC's Long Path alone published 43
+    section records as of #1019's measurement. Keyed by (source, name)
+    rather than by name alone, so two different organizations' trails that
+    happen to share a name are never summed together - the same restraint
+    suppressed_by_owner takes on the same two fields, for the same reason.
+    """
+    totals: dict[tuple[str, str], float] = {}
+    for record in records:
+        name = record.get("name")
+        if name is None or not str(name).strip():
+            continue
+        key = (record["source"], name)
+        totals[key] = totals.get(key, 0.0) + _miles(record)
+    return totals
 
 
 def network_line_sources(registry: dict) -> list[dict]:
@@ -220,6 +351,32 @@ def network_line_sources(registry: dict) -> list[dict]:
     and is skipped here without needing to be named.
     """
     return [s for s in external_arcgis_sources(registry) if "blaze_field" in s or "blaze_default" in s]
+
+
+def shipped_line_source_keys(registry: dict) -> set[str]:
+    """The network line sources whose geometry actually reaches hikers.
+
+    WHO NEEDS THIS AND WHY (#1016). The water build measures against this
+    export's artifact - `build_osm_water_reach.py` gates OSM springs on being
+    near one of these lines, `fetch_trail_water.py` intersects streams with
+    them - and the artifact holds every EXPORTED source, held back or not,
+    because a reviewer has to be able to look at the map before a licence
+    answer arrives. That is the right shape for this file and the wrong input
+    for those two.
+
+    A newly registered organization is review-only by default, which is the
+    normal opening state rather than an edge case: `reaches_hikers` goes true
+    when somebody answers about terms. Without this filter, registering one
+    would immediately start deriving PUBLISHED water pins from lines nobody
+    may publish - and drawing them over ground where the app shows no trail,
+    because publish.py holds the whole artifact back when any source in it is
+    held back.
+
+    So the same field decides both, one file apart: `reaches_hikers` says
+    whether an organization's data reaches a hiker, and water derived from
+    that organization's trails is that organization's data reaching a hiker.
+    """
+    return {source["key"] for source in network_line_sources(registry) if source.get("reaches_hikers")}
 
 
 def owned_route_names(registry: dict) -> dict[str, str]:
@@ -311,28 +468,70 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
         return source.get("blaze_default", NEUTRAL_FALLBACK), "default"
 
     raw = properties.get(field)
-    if raw is None or (isinstance(raw, str) and not raw.strip()):
+    if raw is None:
         return NEUTRAL_FALLBACK, "absent"
+
+    # A BLANK STRING GETS ASKED OF THE REVIEWED TABLE BEFORE IT FALLS THROUGH
+    # (#1207). Until the White Mountains arrived, every blank was the same
+    # thing - a row whose publisher had not filled the column in - so this
+    # returned Unknown ("Blaze not recorded") without looking.
+    #
+    # NH GRANIT breaks that. Its BLAZE is blank on 7,574 of the 7,643 Whites
+    # rows, and the blank is CORRECT rather than missing: the White Mountains
+    # largely do not use paint blazes, and the 62 rows that do read White are
+    # the A.T. (61 carry TRAILSYS "Appalachian Trail"). For that source blank
+    # means UNBLAZED, which the palette spells "None" and the client renders
+    # as "Unblazed" - a true statement about a Whites trail, where Unknown
+    # would print a hedge in place of a fact.
+    #
+    # That is a judgement about one organization's data, so it lives where the
+    # other such judgements live - reference/blaze_mapping.json, a reviewed
+    # file whose diff is the review - rather than as a new registry field.
+    # A source whose table says nothing about blanks still gets Unknown, which
+    # is every source but one.
+    if isinstance(raw, str) and not raw.strip():
+        mapped, disposition = map_source_blaze(raw, mapping)
+        return (mapped, "mapped") if disposition == "mapped" else (NEUTRAL_FALLBACK, "absent")
+
     return map_source_blaze(raw, mapping)
 
 
 def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str]) -> str | None:
     """None if this feature ships, else the reason it does not - a short string
     main() counts and prints. Every drop is one of these; there is no path out
-    of this function that discards a feature without naming why."""
+    of this function that discards a feature without naming why.
+
+    NOTHING IN HERE ASKS WHERE THE FEATURE IS, since #1019. Two tests used to:
+    a bounding box around New York City and an exclusion of OPRHP's `Long
+    Island` region. Both are gone by the maintainer's decision of 2026-08-25
+    (quoted in this module's docstring), and the geometry argument survives
+    only as the emptiness check - a source that hands us nothing to draw."""
     if geometry is None or geometry.is_empty:
         return "no geometry"
 
-    if not box(*RING_BBOX).intersects(geometry):
-        return "outside the ring"
-
-    unit_field = source.get("unit_field")
-    if unit_field and properties.get(unit_field) in EXCLUDED_UNITS:
-        return f"excluded unit: {properties.get(unit_field)}"
-
     foot_field = source.get("foot_field")
-    if foot_field and properties.get(foot_field) not in FOOT_ALLOWED:
+    if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
         return f"not a foot trail: {foot_field}={properties.get(foot_field)!r}"
+
+    # The other direction, and it exists because one source can only be
+    # filtered that way (#1207). `foot_field` asks "does this row SAY it is
+    # walkable" and drops everything that does not - which is right where the
+    # column is populated, and destructive where it is not. NH GRANIT's PED is
+    # blank on 3,760 of 7,643 Whites rows, and 2,541 of those blanks carry no
+    # use flag of any kind while being ordinary hiking trails - one of them
+    # literally named "Appalachian Trail - road link". A PED allowlist would
+    # delete them.
+    #
+    # What GRANIT does assert positively is what a corridor is FOR: 1,209 of
+    # those blank-PED rows are flagged SNOWMBL and 124 ATV. Acting on a
+    # positive assertion is sound where acting on an absence is not, so this
+    # drops on the motorized flag and keeps everything else - the maintainer's
+    # "It's OurHike, not OurBike" applied with the only evidence the layer
+    # offers. sources.json's `excluded_when_comment` on that entry carries the
+    # measurement and says why MTNBIKE, HORSE and XCSKI are NOT in the set.
+    for field, values in (source.get("excluded_when") or {}).items():
+        if properties.get(field) in values:
+            return f"excluded use: {field}={properties.get(field)!r}"
 
     status_field = source.get("status_field")
     if status_field and properties.get(status_field) not in SHIPPED_STATUSES:
@@ -502,9 +701,10 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     partly. Closing those 33 whole would draw the barred band along the entire
     Ramapo-Dunderberg on the strength of 16.7% of its length, and along the
     whole Suffern-Bear Mountain on 0.0% - a trail that touches the boundary and
-    goes nowhere near the closure. A band across a trail that is open is the
-    cry-wolf failure wrongWay.test.ts names for its own module, on a mark a
-    hiker is meant to obey without checking.
+    goes nowhere near the closure. A band across a trail that is open is a
+    cry-wolf failure on a mark a hiker is meant to obey without checking -
+    the same false-positive cost this codebase's safety paths generally
+    treat as worse than a miss (CLAUDE.md, "Miss rather than cry wolf").
 
     THE DIRECTION THIS ERRS, stated because the split makes it a choice rather
     than an accident: a line is closed where it is INSIDE the polygon, by
@@ -570,9 +770,55 @@ def apply_area_closures(records: list[dict], areas: list[dict]) -> tuple[list[di
     return out, stats
 
 
+def _drawable_after_cut(geom_type: str, coords) -> bool:
+    """Whether every line part still has two distinct vertices - the same
+    question export_trails' _has_drawable_geometry asks, re-asked here
+    because the answer can CHANGE at six decimals: two vertices less than
+    the rounding step apart land on the same grid point, and a zero-length
+    LineString draws as nothing while the run reports success."""
+    lines = coords if geom_type == "MultiLineString" else [coords]
+    return all(len({tuple(pair) for pair in line}) >= 2 for line in lines)
+
+
+def _rounded_geometry(geometry) -> dict:
+    """`__geo_interface__` with every coordinate cut to
+    NEARBY_COORDINATE_DECIMALS - see that constant for the derivation. A cut,
+    not a re-derivation: the vertices are the simplified ones, minus digits
+    finer than the simplification's own tolerance.
+
+    With one exception, and it is simplify_records' own never-drop
+    convention: a feature the cut would degenerate - a closure sliver or a
+    source line shorter than ~0.1 m in both axes, whose two vertices round
+    onto one grid point - keeps its full-precision vertices instead. A few
+    dozen uncut characters against a trail marked closed by an invisible
+    zero-length line."""
+    geo = geometry.__geo_interface__
+
+    def walk(coords, cut: bool):
+        if len(coords) == 0:
+            return []
+        if isinstance(coords[0], (int, float)):
+            if cut:
+                return [round(value, NEARBY_COORDINATE_DECIMALS) for value in coords]
+            return list(coords)
+        return [walk(part, cut) for part in coords]
+
+    # Only the two line types reach here (build_records skips anything else,
+    # and the closure split merges back to them); a type this predicate does
+    # not understand is passed through uncut rather than guessed at.
+    if geo["type"] not in ("LineString", "MultiLineString"):
+        return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
+
+    rounded = walk(geo["coordinates"], cut=True)
+    if _drawable_after_cut(geo["type"], rounded):
+        return {"type": geo["type"], "coordinates": rounded}
+    return {"type": geo["type"], "coordinates": walk(geo["coordinates"], cut=False)}
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """The FeatureCollection the client draws. Properties only - no geometry
-    re-derivation - so what is written is what was clipped and simplified."""
+    re-derivation - so what is written is what was clipped and simplified,
+    at the precision NEARBY_COORDINATE_DECIMALS caps."""
     from shapely import wkt as shapely_wkt
 
     features = []
@@ -589,16 +835,207 @@ def records_to_geojson(records: list[dict]) -> dict:
                     "trail_status": record["trail_status"],
                     # Only on a closed record, and only when the steward said
                     # something. Omitted rather than null everywhere else -
-                    # 3,663 features do not need two empty keys each, and an
+                    # 3,663 features do not need three empty keys each, and an
                     # absent key reads as "no reason given" the same way an
                     # absent capacity does on a shelter.
+                    #
+                    # `closure_source` is the CLOSURE layer's registry key,
+                    # not the line's `source`: an area closure can land on
+                    # another organization's trail, and the sheet must not
+                    # read OPRHP's closure in NYNJTC's name (#1142). It was
+                    # set on every area record since #964 and never shipped -
+                    # the client-side half of that finding.
                     **({"closure_kind": record["closure_kind"]} if record.get("closure_kind") else {}),
                     **({"closure_reason": record["closure_reason"]} if record.get("closure_reason") else {}),
+                    **({"closure_source": record["closure_source"]} if record.get("closure_source") else {}),
                 },
-                "geometry": json.loads(json.dumps(geometry.__geo_interface__)),
+                "geometry": _rounded_geometry(geometry),
             }
         )
     return {"type": "FeatureCollection", "features": features}
+
+
+def exported_bbox(records: list[dict]) -> list[float] | None:
+    """The ground this artifact actually covers, as [west, south, east, north].
+
+    REPLACES A DECLARED EXTENT WITH A MEASURED ONE (#1019). The manifest used
+    to carry `ring_bbox` - the box this module clipped to - which answered
+    "what did we decide to cover" and was read by nobody. Now that nothing is
+    clipped there is no such decision to report, and the honest neighbouring
+    fact is what the exported lines actually span. Derived from the records
+    rather than declared above them, so it cannot go stale when a source is
+    added or an organization's layer grows.
+
+    None when there are no records, which the completeness gate has already
+    refused to let happen for a real run; a caller reading this key still has
+    to handle it rather than index into an empty list.
+    """
+    if not records:
+        return None
+    bounds = [shapely_wkt.loads(record["wkt"]).bounds for record in records]
+    return [
+        min(b[0] for b in bounds),
+        min(b[1] for b in bounds),
+        max(b[2] for b in bounds),
+        max(b[3] for b in bounds),
+    ]
+
+
+def write_overview(records: list[dict]) -> dict:
+    """Write the corridor-view sketch of the network to OUT_DIR, and return its
+    manifest entry (#1135).
+
+    Takes the SAME records write_artifact publishes - after every filter, the
+    closure split and the 1 m simplification - so the sketch can never describe
+    different trails: it is those lines with vertices removed, at
+    export_trails.py's own overview constants (100 m Douglas-Peucker, four
+    decimals), imported rather than copied so the two sketches cannot drift.
+
+    ONE FEATURE PER (source, blaze_color, trail_status), where the A.T.'s
+    overview is one feature flat. The first two are the properties the client's
+    line expressions read (map/style.ts keys width and ghosting off `source`,
+    colour off `blaze_color`), so the sketch draws through the same paint as
+    the real lines. `trail_status` is the safety column: 224 of 21,805 features
+    read `closed` (measured 2026-08-27), and folding closed ground into an
+    `open` feature would draw it open-looking at the one range of zooms where
+    the full artifact's own tape does not draw - the display outrunning its
+    source. Measured cost of carrying it: 25 -> 31 features, +328 gzipped
+    bytes. `closure_kind` and `closure_reason` deliberately do not ride along:
+    the sketch is paint and tape, and the sheet that reads those opens on the
+    real lines above the seam.
+
+    EXCEPT WHERE A NAME EARNS ITS OWN FEATURE (#1307). "Only the AT shows
+    initially. All the long distance trails should show. At least the
+    LongPath should be visible" - the maintainer, on the opening camera this
+    sketch draws. A source's rows sharing one NAME_TRAIL_THRESHOLD_MILES's
+    worth of real length (_named_lengths, in miles over export_trails.py's
+    own EPSG:5070 transform) keep that name and a `through_route: true` flag
+    instead of folding into the (source, blaze_color, trail_status) haze - so
+    map/trailsInView.ts can badge them the same way it already badges the
+    A.T. (TAPPABLE_BLAZE_LAYER_IDS), and map/style.ts can draw them at their
+    own weight (NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH) instead of the
+    generic dot haze's. Everything under the threshold, and everything with
+    no name at all, groups exactly as before - this is an exception to ONE
+    FEATURE PER above, not a replacement for it.
+
+    What it weighs, measured 2026-08-27 against the live published artifact by
+    pipeline/spike_network_overview.py (this function is that spike's method,
+    moved into the export): 480,115 -> 57,226 coordinates, 1,125,263 bytes raw,
+    255,263 gzipped - beside 7.3 MB gzipped for the artifact it sketches. That
+    measurement predates the named-feature exception above, which only grows
+    the count where a trail actually clears the threshold - the Long Path's
+    own rows, folded into one NYNJTC feature before, are the first to.
+    """
+    coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
+
+    named_lengths = _named_lengths(coarse)
+    qualifying = {key for key, miles in named_lengths.items() if miles >= NAMED_TRAIL_THRESHOLD_MILES}
+
+    # The group key is always this four-tuple, name "" standing for "not a
+    # qualifying named trail" - never None, which would make sorted() below
+    # compare a string against a NoneType and raise. feature_properties()
+    # reads the sentinel back into "omit name and through_route entirely",
+    # this export's existing convention for closure_kind above.
+    groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
+    for record in coarse:
+        name = record.get("name")
+        qualifies = name is not None and (record["source"], name) in qualifying
+        key = (record["source"], name if qualifies else "", record["blaze_color"], record["trail_status"])
+        lines = _overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS)
+        groups.setdefault(key, []).extend(lines)
+
+    def feature_properties(key: tuple[str, str, str, str]) -> dict:
+        source, name, blaze, status = key
+        properties = {"source": source, "blaze_color": blaze, "trail_status": status}
+        if name != "":
+            properties["name"] = name
+            properties["through_route"] = True
+        return properties
+
+    body = {
+        "type": "FeatureCollection",
+        "features": [
+            {
+                "type": "Feature",
+                "properties": feature_properties(key),
+                "geometry": {"type": "MultiLineString", "coordinates": lines},
+            }
+            for key, lines in sorted(groups.items())
+        ],
+    }
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR / OVERVIEW_ARTIFACT_NAME
+    path.write_text(json.dumps(body, separators=(",", ":")))
+
+    return {
+        "path": to_manifest_path(path),
+        "sha256": sha256_file(path),
+        "feature_count": len(body["features"]),
+        "coordinate_count": sum(len(line) for lines in groups.values() for line in lines),
+        "tolerance_m": OVERVIEW_SIMPLIFY_TOLERANCE_M,
+        "named_trail_threshold_miles": NAMED_TRAIL_THRESHOLD_MILES,
+    }
+
+
+def write_tiles(geojson_path: Path) -> dict:
+    """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
+    manifest entry (#1257).
+
+    Cut from the written GeoJSON rather than from the records, so the tiles
+    and the file cannot disagree about a vertex: ST_Read hands GDAL exactly
+    the features and properties the file carries, and `SELECT *` keeps every
+    property - the closure_* columns only exist on a run whose records hold a
+    closed trail, and a hand-kept column list would fail the runs that do not.
+
+    GDAL's PMTiles driver builds an MBTiles beside the output and converts it,
+    so the run needs roughly the archive's own size again in scratch space
+    while it runs, released when the COPY returns.
+
+    Fails loudly if the header does not declare the zooms the client is
+    built for: a creation option GDAL silently ignored would publish a
+    tileset the map never asks the right zooms of, and the failure on the
+    phone is an empty map with no error anywhere.
+    """
+    path = OUT_DIR / TILES_ARTIFACT_NAME
+    # COPY TO refuses to overwrite for these drivers - export_trails.py's own
+    # note - and this needs to be safely re-runnable.
+    path.unlink(missing_ok=True)
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    con.execute(
+        f"""
+        COPY (SELECT * FROM ST_Read('{geojson_path.as_posix()}'))
+        TO '{path.as_posix()}'
+        WITH (
+            FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
+            DATASET_CREATION_OPTIONS (
+                'MINZOOM={TILES_MIN_ZOOM}', 'MAXZOOM={TILES_MAX_ZOOM}',
+                'NAME={TILES_ARTIFACT_NAME.removesuffix(".pmtiles")}',
+                'DESCRIPTION=Trail lines other organizations maintain, as vector tiles'
+            )
+        )
+        """
+    )
+
+    with path.open("rb") as f:
+        header = Reader(MmapSource(f)).header()
+    zooms = (header["min_zoom"], header["max_zoom"])
+    if zooms != (TILES_MIN_ZOOM, TILES_MAX_ZOOM):
+        raise SystemExit(
+            f"{path} declares zooms {zooms}, not the z{TILES_MIN_ZOOM}-z{TILES_MAX_ZOOM} the client is "
+            "built for (client/src/lib/config.ts). GDAL did not honour the creation options, and a "
+            "tileset the map asks the wrong zooms of draws nothing."
+        )
+
+    return {
+        "path": to_manifest_path(path),
+        "sha256": sha256_file(path),
+        "layer": TILES_LAYER,
+        "min_zoom": TILES_MIN_ZOOM,
+        "max_zoom": TILES_MAX_ZOOM,
+        "tile_count": header["addressed_tiles_count"],
+    }
 
 
 def write_artifact(records: list[dict], per_source: dict) -> dict:
@@ -608,10 +1045,10 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "feature_count": len(records),
-        "ring_bbox": list(RING_BBOX),
+        "bbox": exported_bbox(records),
         "sources": per_source,
     }
 
@@ -683,9 +1120,28 @@ def main() -> dict:
     simplified = simplify_records(all_records)
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
+    # The corridor-view sketch, from the same simplified records the artifact
+    # was just written from - export_trails.py's ordering, for its reason: the
+    # overview simplifies the same geometry a second time at its own coarser
+    # tolerance.
+    manifest["overview"] = write_overview(simplified)
+    # The same lines as vector tiles (#1257), cut from the file just written
+    # so the two cannot disagree - see write_tiles for what a phone gains.
+    manifest["tiles"] = write_tiles(Path(manifest["path"]))
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
+    overview = manifest["overview"]
+    print(
+        f"  overview: {overview['feature_count']} features, {overview['coordinate_count']:,} coordinates "
+        f"-> {overview['path']} ({Path(overview['path']).stat().st_size:,} bytes)"
+    )
+
+    tiles = manifest["tiles"]
+    print(
+        f"  tiles: {tiles['tile_count']:,} tiles z{tiles['min_zoom']}-z{tiles['max_zoom']} "
+        f"-> {tiles['path']} ({Path(tiles['path']).stat().st_size:,} bytes)"
+    )
 
     held_back = [k for k, s in per_source.items() if not s["reaches_hikers"]]
     if held_back:

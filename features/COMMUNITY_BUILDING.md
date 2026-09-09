@@ -34,7 +34,7 @@ Every feature designed so far in this project has been pointed at *minimizing* i
 - **Minimal retention by default: show the latest point, not a breadcrumb trail.** Auto-tracking's job is "are they still moving, roughly where," not building a permanent record of everywhere someone has been - each new ping should be able to simply replace the last one rather than accumulate into a history, unless a hiker explicitly opts into keeping one (a different, bigger decision, flagged as an open question rather than a default).
 - **"Only publish when not in airplane mode," precisely:** a web app can't directly query whether airplane mode is toggled - that's a device-level OS setting, not something exposed to a browser or WebView. What it *can* reliably check is actual network connectivity (`navigator.onLine` and the standard `online`/`offline` events), which achieves the real intent here just as well: **don't transmit a location ping without a live connection, and don't queue one up to send later once reconnected either** - queuing would mean quietly accumulating a location history on-device even while "not sharing," which is exactly the kind of hidden data collection this feature is trying to avoid. Only ever publish a point that's genuinely current.
 
-**Architecture note, connecting a dot across two features rather than treating this as isolated:** reliable ~30-minute auto-tracking needs the app to check location periodically even when it isn't the foreground app - the same background-location gap FEATURES.md's own PWA-vs-native trade-off already flags, and the same native GPS plugin path Hiker Safety already named for the wrong-way alert. This is now the **second** feature that needs that capability - worth treating as one investment to make once, not two separate asks that each get deferred.
+**Architecture note:** reliable ~30-minute auto-tracking needs the app to check location periodically even when it isn't the foreground app - the same background-location gap FEATURES.md's own PWA-vs-native trade-off already flags. Hiker Safety's now-removed wrong-way alert would have needed the same native GPS plugin path (#93/#308), but never got far enough to build it - so this is the first real ask for that capability, not the second, and still worth treating as one investment rather than something to defer again.
 
 ## @ mentions - attached to content, not a chat thread
 
@@ -42,7 +42,7 @@ Every feature designed so far in this project has been pointed at *minimizing* i
 
 **Findable via a simple "mentions of me" list, not a conversation UI.** No threads, no read receipts, no typing indicators - genuinely not a chat app, matching what you asked for directly.
 
-**Notification: no push, in-app only - consistent with how this project has answered this question every time it's come up.** Hiker Safety scoped the wrong-way alert as the only notification OurHike sends; Data Nudges resolved "nudge" to mean visual map prominence, not a push. A mention isn't time-critical the way either of those cases is, so it follows the same default: it shows up in the findable list above next time the app is open, nothing interrupts.
+**Notification: no push, in-app only - consistent with how this project has answered this question every time it's come up.** OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - Hiker Safety §5); Data Nudges resolved "nudge" to mean visual map prominence, not a push. A mention isn't time-critical either way, so it follows the same default: it shows up in the findable list above next time the app is open, nothing interrupts.
 
 **A real abuse guardrail worth stating explicitly, not assuming away:** mentions should only be possible between hikers who are already mutually connected (Tramily members, or an equivalent explicit connection) - not any hiker mentioning any other hiker at will. This limits the feature to people who already have a real relationship, the same reasoning Report a Problem already applied to why "bad hikers" needs careful, non-open handling.
 
@@ -52,7 +52,7 @@ The fourth feature that's had to say this explicitly, after Segments, Volunteeri
 
 ## Architecture fit
 
-Everything here needs Authentication (real, mutually-verifiable accounts - none of this works with an anonymous device-local ID) and the same Phase 2+ backend Report a Problem and Data Nudges already require for their write paths. Check-ins' auto-tracking mode additionally needs the native background-location capability already flagged for Hiker Safety's wrong-way alert - not a new dependency, the same one, now needed twice.
+Everything here needs Authentication (real, mutually-verifiable accounts - none of this works with an anonymous device-local ID) and the same Phase 2+ backend Report a Problem and Data Nudges already require for their write paths. Check-ins' auto-tracking mode additionally needs the native background-location capability FEATURES.md already flags - the same gap the now-removed wrong-way alert would have needed too (#93/#308), though nothing has actually built it yet, either time.
 
 ## Data model sketch
 

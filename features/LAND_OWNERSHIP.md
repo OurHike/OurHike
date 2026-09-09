@@ -102,7 +102,7 @@ That second line is the whole feature's integrity in one sentence, and should su
 
 - **Not a trespass warning.** No alerts, no boundary-crossing notification, no "private land ahead". The data does not support it and the notification policy forbids it.
 - **Not parcel data.** No owner names of private individuals, ever — PAD-US does not carry them and it would be a privacy problem if it did.
-- **Not a routing constraint.** It does not affect snapping, wrong-way detection, or anything that computes.
+- **Not a routing constraint.** It does not affect snapping or anything that computes.
 - **Not a substitute for signage and blazes.** On the ground, the blazes and the landowner's own signs are authoritative. This is orientation, not permission.
 
 ## Open questions (for you, not decided here)

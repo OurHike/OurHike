@@ -57,6 +57,7 @@ from pathlib import Path
 from lib.atc_scrape import MileReference, ParsedUpdate
 from lib.atc_updates import auto_publish_refusal, auto_row, file_problems, is_reviewed, published_rows
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 REVIEWED_PATH = ROOT / "reference" / "atc_updates.json"
@@ -226,7 +227,7 @@ def main() -> dict | None:
     manifest = {
         "artifacts": {
             PAYLOAD: {
-                "path": str(OUT_PATH),
+                "path": to_manifest_path(OUT_PATH),
                 "sha256": sha256_file(OUT_PATH),
                 "count": len(rows),
                 "reviewed_count": len(rows) - len(automatic),

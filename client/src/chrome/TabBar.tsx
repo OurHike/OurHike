@@ -34,15 +34,42 @@
 // mark off it would make the brand one more member of the set - which is
 // exactly what a screen reader would then announce.
 
+import type { ReactNode } from 'react'
 import { TABS, type TabId } from './tabs'
 import logoIcon from '../design-system/assets/logo-icon.svg'
 
 export interface TabBarProps {
   active: TabId
   onSelect: (id: TabId) => void
+  /**
+   * The sidebar's mode block (#1054): the "today I'm…" control, rendered
+   * between the tabs and the brand mark. The shell passes it only above the
+   * breakpoint - the phone's bar is a strip of thumb targets with no room
+   * for a second control, and the phone already carries the switch on the
+   * Today header. A slot rather than this bar owning ModeSwitch, so the bar
+   * stays ignorant of hiker modes and every home renders the one component
+   * (chrome/ModeSwitch.tsx).
+   */
+  modeSwitch?: ReactNode
+  /**
+   * The hike a hiker is on, as a control (#1344), under the mode block.
+   *
+   * ITS OWN SLOT RATHER THAN PART OF `modeSwitch`, because the two answer
+   * different questions and the eyebrow above only asks one. "Today I'm ▸
+   * Long hike" is a mode; "Springer → Katahdin" is which hike, and reading
+   * the second as an answer to the first would make the hike look like a
+   * fourth mode segment.
+   *
+   * The sidebar is on every screen, which is the whole point: before this,
+   * `Switch hike ›` existed on the Plan band and nowhere else. Passed only
+   * above the breakpoint, for `modeSwitch`'s own reason - a phone's bar is
+   * three thumb targets - and the phone carries the same door on Today's
+   * header instead.
+   */
+  hikeSwitch?: ReactNode
 }
 
-export function TabBar({ active, onSelect }: TabBarProps) {
+export function TabBar({ active, onSelect, modeSwitch, hikeSwitch }: TabBarProps) {
   return (
     <nav className="tab-bar" aria-label="Main">
       <div className="tab-bar__tabs" role="tablist">
@@ -61,6 +88,38 @@ export function TabBar({ active, onSelect }: TabBarProps) {
           </button>
         ))}
       </div>
+
+      {/* Above the brand mark, so the tab list's flex growth carries both to
+          the foot of the sidebar together. The eyebrow is aria-hidden because
+          the control inside already names itself "Today I'm" - a visible
+          label AND an aria-label would announce the question twice. */}
+      {modeSwitch !== undefined && (
+        <div className="tab-bar__mode">
+          <p className="tab-bar__mode-label" aria-hidden="true">
+            Today I’m
+          </p>
+          {modeSwitch}
+        </div>
+      )}
+
+      {/* ITS OWN BLOCK, WITH ITS OWN EYEBROW, and the first attempt is why.
+          Dropped straight in under the mode segments it read as a FOURTH
+          segment - same column, same width, same rounded outline - which is
+          the exact confusion the slot was split to avoid, arrived at anyway
+          because splitting the prop did nothing about the picture. The rule
+          above it and the eyebrow are what make it a different question.
+
+          Same aria-hidden reason as the mode block's: the control inside
+          names itself, and a visible label plus an accessible one announces
+          it twice. */}
+      {hikeSwitch !== undefined && (
+        <div className="tab-bar__hike-block">
+          <p className="tab-bar__mode-label" aria-hidden="true">
+            On the hike
+          </p>
+          {hikeSwitch}
+        </div>
+      )}
 
       {/* Rendered on every screen, not only the map: the sidebar is one shared
           piece of chrome, and a mark that appeared under Trail and vanished

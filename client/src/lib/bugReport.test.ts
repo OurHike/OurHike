@@ -104,3 +104,29 @@ describe('BUG_REPORT_OPTIONS', () => {
     expect(BUG_REPORT_OPTIONS.some((o) => o.area === 'Not sure')).toBe(true)
   })
 })
+
+describe('how long the launch took, in the report (#1299)', () => {
+  const software = BUG_REPORT_OPTIONS.find((option) => option.id === 'app')!
+  const TIMINGS = 'Launch timings (ms from navigation): Tab bar rendered 480'
+
+  it('carries the timings into the software form beside the build', () => {
+    // "The app takes about six seconds to open" is a report nobody can act on
+    // without knowing which six seconds, and the phone is the only place that
+    // number exists - the throttled profile in scripts/measure-first-run.mjs
+    // cannot see a browser process starting.
+    const conditions = paramsOf(bugReportUrl(software, RELEASE, TIMINGS)).get(
+      'conditions',
+    )
+
+    expect(conditions).toContain('1.0.0')
+    expect(conditions).toContain('Tab bar rendered 480')
+  })
+
+  it('sends them to no form that does not ask, exactly as the build is not', () => {
+    const data = BUG_REPORT_OPTIONS.find(
+      (option) => option.template !== software.template,
+    )!
+
+    expect(paramsOf(bugReportUrl(data, RELEASE, TIMINGS)).get('conditions')).toBeNull()
+  })
+})

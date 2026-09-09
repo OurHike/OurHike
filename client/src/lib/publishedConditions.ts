@@ -45,6 +45,7 @@ export const PUBLISHED_DROUGHT_KEY = 'conditions/drought.json'
 export const PUBLISHED_NOTES_KEY = 'conditions/notes.json'
 export const PUBLISHED_DISPUTES_KEY = 'conditions/disputes.json'
 export const PUBLISHED_WORK_PROJECTS_KEY = 'conditions/work_projects.json'
+export const PUBLISHED_NYNJTC_ALERTS_KEY = 'conditions/nynjtc_alerts.json'
 
 export interface PublishedConditions<T> {
   /** When the bake ran. Rendered to the hiker; see lib/conditionState.ts. */
@@ -122,7 +123,8 @@ async function fetchPublished<T>(
     | 'drought'
     | 'notes'
     | 'work_projects'
-    | 'disputes',
+    | 'disputes'
+    | 'nynjtc_alerts',
   signal?: AbortSignal,
   options: PublishedReadOptions = {},
 ): Promise<PublishedConditions<T> | null> {
@@ -167,7 +169,8 @@ async function recalled<T>(
     | 'drought'
     | 'notes'
     | 'work_projects'
-    | 'disputes',
+    | 'disputes'
+    | 'nynjtc_alerts',
 ): Promise<PublishedConditions<T> | null> {
   const cached = await recallPublished(key)
   if (cached === null) return null
@@ -189,7 +192,8 @@ function parsePublished<T>(
     | 'drought'
     | 'notes'
     | 'work_projects'
-    | 'disputes',
+    | 'disputes'
+    | 'nynjtc_alerts',
 ): PublishedConditions<T> | null {
   if (typeof document?.generated_at !== 'string') return null
   const items = document[field]
@@ -324,6 +328,75 @@ export async function fetchPublishedAtcUpdates(
   options?: PublishedReadOptions,
 ): Promise<PublishedConditions<AtcUpdate> | null> {
   return fetchPublished(PUBLISHED_ATC_UPDATES_KEY, 'atc_updates', signal, options)
+}
+
+/**
+ * Where a notice is, as `pipeline/export_nynjtc_alerts.py` writes it.
+ *
+ * A tagged union rather than two mile columns, because the A.T.'s mile axis
+ * is the A.T.'s and no other organization publishes one
+ * (features/ORG_NOTICES.md §3). `unplaced` is a first-class arm, not a
+ * failure: a notice nobody can draw is still one a hiker is told about, which
+ * is the rule `lib/closureBanner.ts` already lives by for a closure whose
+ * band cannot be placed.
+ */
+export type NoticePlace =
+  | { kind: 'at_miles'; start: number; end: number }
+  | { kind: 'org_terms'; terms: string[] }
+  | { kind: 'unplaced' }
+
+/**
+ * One notice from an organization that is not the ATC, exactly as
+ * `pipeline/export_nynjtc_alerts.py` writes it.
+ *
+ * `category` is nullable and NYNJTC's is always null today: they file every
+ * alert under one category and publish no per-alert vocabulary, so there is
+ * nothing true to put there and absent means unknown. A renderer must show
+ * the title alone in that case rather than inventing a word.
+ *
+ * `obstructsTrail` is false on every published row and the pipeline forces it
+ * so - an unreviewed notice may never draw a barrier across a trail. It is
+ * carried rather than assumed because a reviewed row will one day be able to
+ * say otherwise.
+ */
+export interface OrgNotice {
+  notice_id: string
+  /** The `sources.json` key, which is how a renderer finds the org's name -
+   *  never a string in a component (features/ORG_NOTICES.md §6). */
+  source_key: string
+  title: string
+  category: string | null
+  /** The coarse "roughly where", from the org's own region/state/park tags.
+   *  Empty string when the org tagged nothing, which renders as no locality
+   *  rather than as a guess. */
+  locality: string
+  place: NoticePlace
+  obstructs_trail: boolean
+  /** The ORG's own last-updated stamp, and the age a hiker cares about. */
+  updated_at: string
+  source_url: string
+  review_state: 'reviewed' | 'unreviewed'
+}
+
+/**
+ * NYNJTC's own trail alerts, or null if there isn't a usable set.
+ *
+ * The second publisher in the notice family and the first that is not the
+ * ATC. Everything it returns is `unplaced` and `unreviewed` today - there is
+ * no reviewed join table to place a notice with and nobody has checked
+ * NYNJTC's page - so a renderer's honest surface for these is a list a hiker
+ * reads, not map ink.
+ *
+ * `null` on a 404, which is what the bucket serves when
+ * `fetch_nynjtc_alerts.py` has not run: the pipeline publishes nothing rather
+ * than an empty document in that state, because "we have not looked" and
+ * "NYNJTC reports nothing" are different claims.
+ */
+export async function fetchPublishedNynjtcAlerts(
+  signal?: AbortSignal,
+  options?: PublishedReadOptions,
+): Promise<PublishedConditions<OrgNotice> | null> {
+  return fetchPublished(PUBLISHED_NYNJTC_ALERTS_KEY, 'nynjtc_alerts', signal, options)
 }
 
 /** One published drought band, exactly as `pipeline/export_drought.py` writes

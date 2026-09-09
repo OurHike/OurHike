@@ -31,6 +31,7 @@ from fetch_elevation import (
     cell_url,
     corridor_bbox,
 )
+from lib import http_retry
 from tests.synthetic import CENTERLINE_COORDS, write_centerline
 
 # The shared line's 30-mile buffer spans just over 1 degree of longitude
@@ -476,3 +477,42 @@ def test_union_bbox_takes_the_outer_edge_of_each_side():
         -70.0,
         35.0,
     )
+
+
+class TestTheHeadItself:
+    """`_head` is what `stamp_last_modified` calls when nothing is injected,
+    and until #1295 it was a bare `requests.head` with no retry - the fourth
+    such call in the pipeline after #536 and #1063 each found one. These pin
+    the two properties that had to survive putting a retry under it."""
+
+    def test_a_transient_failure_is_absorbed(self, monkeypatch, requests_mock):
+        monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+        url = cell_url("n35w084")
+        requests_mock.head(
+            url,
+            [{"status_code": 503}, {"headers": {"Last-Modified": "Wed, 21 Aug 2026 07:28:00 GMT"}}],
+        )
+
+        assert fetch_elevation._head(url) == "Wed, 21 Aug 2026 07:28:00 GMT"
+        assert requests_mock.call_count == 2
+
+    def test_a_persistent_failure_is_still_none_rather_than_a_raise(self, monkeypatch, requests_mock):
+        """The property the retry must not have changed. freshness_state
+        models None as "we did not find out"; an exception here would take
+        the whole elevation fetch down for a detail nothing depends on."""
+        monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+        url = cell_url("n35w084")
+        requests_mock.head(url, status_code=503)
+
+        assert fetch_elevation._head(url) is None
+        assert requests_mock.call_count == 2  # HEAD_BACKOFF_SECONDS is one retry, not the default two
+
+    def test_a_404_costs_one_request_and_no_sleeping(self, requests_mock):
+        """A tile USGS has not published is an answer. 404 is absent from
+        DEFAULT_RETRYABLE_STATUSES, so this must not spend the budget -
+        across ~110 corridor tiles that difference is the whole runtime."""
+        url = cell_url("n35w084")
+        requests_mock.head(url, status_code=404)
+
+        assert fetch_elevation._head(url) is None
+        assert requests_mock.call_count == 1

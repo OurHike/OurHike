@@ -52,6 +52,7 @@ import requests
 from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
 from lib.photo_store import local_photo_path, photo_digest
+from lib.user_agent import CONTACTABLE_USER_AGENT as USER_AGENT
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -142,8 +143,6 @@ RECHECK_NONE_AFTER_DAYS = 30
 # override (delete the outcomes file deliberately) as fetch_poi_images.py,
 # whose own comment this module cited while not having one (#659).
 MAX_PHOTO_DROP_RATIO = 0.5
-
-USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/OurHike/OurHike; contact via repository issues)"
 
 # A Drive share link carries the file id between /d/ and the next slash, in
 # both the plain and the Workspace-scoped (/a/appalachiantrail.org/) forms.

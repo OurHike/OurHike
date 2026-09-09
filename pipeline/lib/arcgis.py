@@ -17,20 +17,52 @@ from lib.http_retry import request_with_retry
 PAGE_SIZE = 1000
 
 
-def fetch_layer_geojson(layer_url: str) -> dict:
-    """Fetch every feature from an ArcGIS FeatureServer/MapServer layer as GeoJSON."""
+def fetch_layer_geojson(
+    layer_url: str,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    page_size: int | None = None,
+) -> dict:
+    """Fetch every feature from an ArcGIS FeatureServer/MapServer layer as GeoJSON.
+
+    THE STOP CONDITION IS AN EMPTY PAGE, and never a short one. A page
+    shorter than what was asked for is not proof there is no more data - a
+    server whose own `maxRecordCount` sits below the requested size returns
+    short pages the whole way through. This loop used to stop on a short
+    page and did skip data; `tests/test_lib_arcgis.py` holds both regression
+    tests. The cost of getting it right is one extra request per layer that
+    comes back empty, which is the correct thing to buy.
+
+    THE QUERY SHAPE IS THE CALLER'S (#1295), because there was a second
+    implementation of this loop in `publish-conditions.yml` whose only reason
+    to exist was that it needed a different one - geometry only, at reduced
+    precision, in bigger pages. Its stop condition trusted
+    `exceededTransferLimit`, which is the early exit the tests above exist to
+    prevent, so the fix was to make this function able to answer that
+    caller rather than to keep two loops.
+
+    `page_size` resolves against the module constant in the BODY rather than
+    in the signature, so a test monkeypatching `arcgis.PAGE_SIZE` still
+    reaches it - a default bound at definition time would have captured the
+    original forever. `lib/http_retry.py`'s `sleep` argument carries the same
+    note for the same reason.
+    """
     query_url = layer_url.rstrip("/") + "/query"
+    records = PAGE_SIZE if page_size is None else page_size
     features = []
     offset = 0
     while True:
         params = {
             "where": "1=1",
-            "outFields": "*",
+            "outFields": out_fields,
             "outSR": 4326,
             "f": "geojson",
             "resultOffset": offset,
-            "resultRecordCount": PAGE_SIZE,
+            "resultRecordCount": records,
         }
+        if geometry_precision is not None:
+            params["geometryPrecision"] = geometry_precision
         resp = request_with_retry(query_url, params=params, timeout=60)
         batch = resp.json().get("features", [])
         if not batch:
@@ -40,9 +72,21 @@ def fetch_layer_geojson(layer_url: str) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-def fetch_layer_to_file(layer_url: str, out_path: Path) -> int:
+def fetch_layer_to_file(
+    layer_url: str,
+    out_path: Path,
+    *,
+    out_fields: str = "*",
+    geometry_precision: int | None = None,
+    page_size: int | None = None,
+) -> int:
     """Fetch a layer and write it to out_path as GeoJSON. Returns feature count."""
-    fc = fetch_layer_geojson(layer_url)
+    fc = fetch_layer_geojson(
+        layer_url,
+        out_fields=out_fields,
+        geometry_precision=geometry_precision,
+        page_size=page_size,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(fc))
     return len(fc["features"])

@@ -104,15 +104,15 @@ import requests
 # by is `{SHELTER_SOURCE}:{GlobalID}`, and spelling it locally would be the
 # second copy that drifts.
 from export_poi import SHELTER_SOURCE
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
 OUT_PATH = ROOT / "reference" / "shelter_capacity.json"
 
+# The page is served by a CMS that returns 403 to an unadorned client, so
+# lib/user_agent.py's string is required here rather than polite.
 GREENBELLY_URL = "https://www.greenbelly.co/pages/appalachian-trail-shelters"
-
-# The page is served by a CMS that returns 403 to an unadorned client.
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 
 TIMEOUT = 60
 

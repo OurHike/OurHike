@@ -79,6 +79,12 @@ from lib.nynjtc_alerts import (
     parse_terms,
 )
 
+#: Names the project and links to it, the same courtesy `lib/atc_scrape.py`
+#: extends - though unlike ATC's host, NYNJTC's answers a default client fine
+#: (measured 2026-08-27). It is set anyway so an operator who wants to
+#: throttle or contact us can see who this is from one line of their log.
+from lib.user_agent import USER_AGENT
+
 ROOT = Path(__file__).resolve().parent
 CACHE_PATH = ROOT / "data" / "raw" / "nynjtc_alerts.json"
 
@@ -87,12 +93,6 @@ CACHE_PATH = ROOT / "data" / "raw" / "nynjtc_alerts.json"
 #: `LISTING_URL`: the registry records where a source lives for a human, and
 #: the fetcher knows the machine route to it.
 API_ROOT = "https://www.nynjtc.org/wp-json/wp/v2"
-
-#: Names the project and links to it, the same courtesy `lib/atc_scrape.py`
-#: extends - though unlike ATC's host, NYNJTC's answers a default client fine
-#: (measured 2026-08-27). It is set anyway so an operator who wants to
-#: throttle or contact us can see who this is from one line of their log.
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 
 #: WordPress caps `per_page` at 100 and pages the rest. 18 alerts and 45
 #: trail terms fit in one page each today; `park` returned exactly 100 on

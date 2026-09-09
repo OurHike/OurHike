@@ -57,6 +57,80 @@
 # environment they could differ by - so both runs publish the same reviewed
 # content into their own tree, which is what makes UA's copy a real rehearsal
 # rather than an empty one.
+#
+# WHAT THIS CLOCK DOES TO THE REPOSITORY'S ACTIONS CACHE, which is why the
+# three save keys below are content hashes rather than `github.run_id`.
+#
+# Count it off this file: 24 runs a day, two matrix legs each, three
+# `actions/cache/save` steps per leg, under a key that cannot repeat.
+#
+# Measured on run #342, the scheduled run of 2026-09-09T00:35Z: the production
+# leg's drought save reported "Sent 18640702 of 18640702 (100.0%)" and "Cache
+# saved with key: drought-inputs-34295667889" - 18.6 MB compressed, once an
+# hour, under a key nothing will ever ask for again. Not two: one entry exists
+# per key, so the ua leg computing the identical key cannot add a second copy,
+# and both save steps concluded success on that run, which is what says this
+# is the design working as written rather than a failure nobody noticed.
+#
+# So three new entries a run, 72 a day, of which the drought one is
+# 24 x 18.6 MB = about 450 MB a day. GitHub's per-repository cache is 10 GB
+# and evicts least-recently-used, so this workflow alone fills the whole
+# repository's allowance with itself in roughly three weeks - and it is
+# already sharing that allowance. The obvious thing it walks out is
+# publish-vector-data.yml's fetch-outputs entry, around 400 MB (#1311 measured
+# 422 MB moving into the cache on run #88, 2026-09-08), whose comment at "Do
+# not expect it to hit" blames GitHub's 7-day idle eviction for the misses it
+# sees.
+#
+# THE HYPOTHESIS IS THAT THIS WORKFLOW IS WHAT ACTUALLY EVICTS IT, days before
+# the 7-day rule could - and that is reasoned, not measured. It follows from
+# the arithmetic above and GitHub's documented eviction policy, and it has
+# never been checked against a cache listing. What would settle it: one
+# `GET /repos/OurHike/OurHike/actions/caches`, recording every entry's size
+# and `last_accessed_at`, taken before this change and again a week after. If
+# the vector build's entry survives a week where it used to vanish in three
+# days, the hypothesis was right; if it still vanishes, the eviction pressure
+# is somewhere else and this change bought only the smaller cache bill.
+#
+# WHAT A CONTENT HASH FIXES AND WHAT IT DOES NOT, because only one of the
+# three is actually fixed:
+#
+#  - The drought entry is fixed, and it is the one carrying the bytes. Its key
+#    hashes the dated USDM release and the centerline, neither of which moves
+#    on an hourly clock, so every run after the week's first computes a key
+#    that already exists, and an existing key is one entry however many jobs
+#    write it. One entry per USDM release rather than 24 a day: about 450 MB a
+#    day becomes about 19 MB a week.
+#  - The ATC and NYNJTC entries are NOT fixed, and claiming otherwise would be
+#    the confident wrong answer. Both fetchers stamp `fetched_at` - this run's
+#    clock - into the payload they cache (`fetch_atc_updates.py:131`,
+#    `fetch_nynjtc_alerts.py:209`), so those files' bytes move every hour
+#    whether or not ATC or NYNJTC posted anything, and a hash of moving bytes
+#    moves too. They are small beside the drought entry, which is the only
+#    reason this is tolerable rather than a blocker. What content addressing
+#    does buy them is the hour a fetch fails: the restored copy is carried
+#    forward unchanged, and re-saving unchanged bytes now lands on the key
+#    that already holds them instead of opening a fresh entry. Stopping their
+#    churn outright means keeping the fetch clock out of the cached payload,
+#    which is a change to those two scripts and not to this file.
+#
+# CONSIDERED AND REJECTED, because the obvious way to make bytes stop moving
+# is to stop stamping them. Every artifact here carries a `generated_at` from
+# export_conditions.py's `build_document`, and that stamp is exactly what makes
+# an unchanged bake produce changed bytes. Two ways to stop it, both worse than
+# the cache bill:
+#
+#  - Drop it. client/src/lib/publishedConditions.ts refuses a document with no
+#    `generated_at` rather than defaulting one - "the one strict thing here" -
+#    so the phone would fall back to whatever copy it kept and the hourly
+#    publish would reach nobody at all.
+#  - Freeze it, to the reviewed date or to the hour. conditionState.ts:134-136
+#    turns the stamp into "Conditions as of 2h ago" / "3d ago", so a closure a
+#    moderator verified this hour would tell a hiker it was days old.
+#
+# And publishing less often, the third version of the same trade, is the
+# cadence the section above argues for. A cheaper cache is not worth a verified
+# closure that reads as stale - or one that does not read at all.
 
 name: Publish conditions
 
@@ -171,9 +245,29 @@ jobs:
       # the ATC layer wait on Supabase account work it has nothing to do with.
       - uses: actions/checkout@v7
 
+      # `cache: pip`, which the other four workflows that run publish.py all
+      # set and this one did not - checked across the directory 2026-09-09 and
+      # now checked on every run by
+      # .github/tests/test_cache_keys_are_content_addressed.py. The install
+      # below therefore reached PyPI for the whole of pipeline/requirements.txt
+      # on all 48 jobs a day, where every other publisher pays it once per
+      # change to that file. Measured on run #342, 2026-09-09: 13 s on the ua
+      # leg and 16 s on production, so about eleven minutes of runner time a
+      # day, most of which this line gives back.
+      #
+      # `cache-dependency-path` pins the key to the one requirements file this
+      # job installs. Left off, setup-python hashes every requirements file in
+      # the tree, so a backend or .github/tests pin nothing here installs would
+      # move this key and throw the entry away.
+      #
+      # It also pulls the opposite way to the three caches below: this is one
+      # small entry that 48 jobs a day RESTORE, and an entry read every half
+      # hour is the last thing a least-recently-used policy evicts.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -231,12 +325,28 @@ jobs:
       # previous cache forward. Saving only on success would throw the cache
       # away exactly when it is doing the most good - the run that could not
       # refetch is the run that most needs the copy it already had.
+      #
+      # The `hashFiles(...) != ''` half of that condition is new, and it is the
+      # part `always()` on its own gets wrong: when the restore missed AND the
+      # fetch failed there is no file at all, and the old key saved that
+      # nothing anyway - under a key the `restore-keys: atc-updates-` prefix
+      # above then prefers, because a prefix lookup takes the most recent
+      # match. An empty entry that outranks a good one is the only way this
+      # cache can make a run worse than no cache, and hashFiles is empty
+      # exactly when nothing matched.
+      #
+      # The key is a content hash, for the header's reason. Read that section
+      # before assuming this stops the hourly churn: it does not, because
+      # fetch_atc_updates.py writes this run's clock into the file as
+      # `fetched_at`, so these bytes move hourly even when ATC has posted
+      # nothing. What it does stop is the failed hour saving a second copy of
+      # a file it did not change.
       - name: Save ATC's trail updates
-        if: always()
+        if: always() && hashFiles('pipeline/data/raw/atc_updates.json') != ''
         uses: actions/cache/save@v6
         with:
           path: pipeline/data/raw/atc_updates.json
-          key: atc-updates-${{ github.run_id }}
+          key: atc-updates-${{ hashFiles('pipeline/data/raw/atc_updates.json') }}
 
       - name: Export the ATC's reviewed trail updates
         run: python export_atc_updates.py
@@ -281,12 +391,21 @@ jobs:
         continue-on-error: true
         run: python fetch_nynjtc_alerts.py
 
+      # Same shape as the ATC save above, and the same two caveats: the guard
+      # is what stops a cold-and-failed hour saving nothing under a prefix a
+      # later restore would prefer, and the content hash does not stop this
+      # entry churning hourly because fetch_nynjtc_alerts.py stamps
+      # `fetched_at` into the payload too. It re-fetches every alert every run
+      # rather than planning which are due, the way the ATC fetcher does, so
+      # every entry in the file carries the new clock and not just the
+      # document's header - these bytes move on every successful hour without
+      # exception.
       - name: Save NYNJTC's trail alerts
-        if: always()
+        if: always() && hashFiles('pipeline/data/raw/nynjtc_alerts.json') != ''
         uses: actions/cache/save@v6
         with:
           path: pipeline/data/raw/nynjtc_alerts.json
-          key: nynjtc-alerts-${{ github.run_id }}
+          key: nynjtc-alerts-${{ hashFiles('pipeline/data/raw/nynjtc_alerts.json') }}
 
       # Exits without writing when there is no cache to read - a first run on
       # a cold cache whose fetch failed - which publish.py reads as "this
@@ -375,15 +494,50 @@ jobs:
       - name: Export the drought bands
         run: python export_drought.py
 
+      # THE ENTRY THE HEADER'S ARITHMETIC IS ACTUALLY ABOUT: the 27.6 MB
+      # release plus the 12 MB centerline, 18.6 MB of them compressed and sent
+      # 24 times a day under a key that could not repeat (measured on run #342,
+      # 2026-09-09). This is the one a content hash fixes outright, down to one
+      # entry per USDM release.
+      #
+      # THE KEY HASHES THE INPUTS, NOT EVERYTHING THE PATH SAVES, and the
+      # difference is deliberate. `data/raw/drought` is a dated release file
+      # and `centerline.geojson` is refetched only when the cache did not
+      # carry one, so both are byte-stable for a week at a time and a hash of
+      # them is a name for "which week's inputs are these". The third path,
+      # the built artifact, is not: it carries its own `generated_at` from the
+      # wall clock of whichever run built it (export_drought.py's
+      # `build_document`), so two cold runs in the same week would produce
+      # different bytes from identical inputs and earn a second full entry for
+      # nothing.
+      #
+      # It is still saved - it is what makes the hourly run cheap, because
+      # export_drought.py skips the ~43 s rebuild when the artifact on disk
+      # already names this week (its `already_published`). That skip is also
+      # why hashing the artifact would not have been the hourly disaster it
+      # looks like: the exporter rewrites the MANIFEST on every run but not the
+      # artifact, so these bytes really do sit still for six days out of seven.
+      # Run #342 is that measured rather than argued - "3 drought row(s),
+      # generated 2026-09-03T21:55:22Z" on a run six days later, and publish.py
+      # reporting `skipped ['conditions/drought.json']` because the hash still
+      # matched what was in the bucket. Hashing the inputs is the stronger
+      # choice rather than the rescue: the key then means what produced the
+      # entry, not when.
+      #
+      # The guard is the ATC step's: hashFiles is empty only when neither
+      # input is on disk, which is a run that fetched nothing and has nothing
+      # worth a cache entry. A run that produced one input and not the other
+      # still saves, and self-heals - fetch_drought.py refetches a missing
+      # release, and the centerline step above refetches a missing centerline.
       - name: Save the drought inputs
-        if: always()
+        if: always() && hashFiles('pipeline/data/raw/drought/**', 'pipeline/data/raw/centerline.geojson') != ''
         uses: actions/cache/save@v6
         with:
           path: |
             pipeline/data/raw/drought
             pipeline/data/raw/centerline.geojson
             pipeline/data/processed/conditions/drought.json
-          key: drought-inputs-${{ github.run_id }}
+          key: drought-inputs-${{ hashFiles('pipeline/data/raw/drought/**', 'pipeline/data/raw/centerline.geojson') }}
 
       - name: Export verified conditions
         id: export

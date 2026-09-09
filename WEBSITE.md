@@ -376,6 +376,29 @@ the information moves into a 348px left rail (`chrome/DayHikePanel.tsx`) — the
 route's figures, its ordered legs and stops, and the map-label toggles — and the
 map takes the whole remaining frame.
 
+**The long hike's nine surfaces become windows.** The same rule, applied a
+second time and for the same reason.
+[#1317](https://github.com/OurHike/OurHike/issues/1317) shipped them in two
+arrangements — three sheets docked to the bottom edge, and five screens that
+replace the app entirely — and the design handoff had already asked for
+something else above this breakpoint: *"the frames here become the content
+column."* Both arrangements are a phone's answers. A sheet at the foot of a
+1440px browser is the letterboxed map above in a second place; a full-screen
+takeover is worse, because it removes the very thing that tells somebody where
+they are. A maintainer's report of it —
+[#1329](https://github.com/OurHike/OurHike/issues/1329) — was *"having them
+full screen makes it hard for me to remember where I am"*, which is the
+sentence [#1133](https://github.com/OurHike/OurHike/issues/1133) already wrote
+for the report window: a dialog leaves the screen you were on visible around
+it, and that is what says you have not gone anywhere. So all nine wear one
+`.hike-window` chrome, unchanged on a phone and centred over the dimmed app
+here.
+
+One consequence is not cosmetic. With the screens no longer replacing the app,
+the map behind stays mounted — and the set-up screen's *"Choose on the map"*
+door, which had been wired to close its picker and place nothing, has a map to
+offer.
+
 **The buttons do not move, on either breakpoint**, and that is the one place
 this workstream's own reasoning gets applied against itself. The tab bar becomes
 a sidebar because "the tab bar's placement is a thumb-reach decision that means

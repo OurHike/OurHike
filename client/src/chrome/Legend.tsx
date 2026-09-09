@@ -500,10 +500,13 @@ export function Legend({
                       says why the number is absent rather than estimated. */}
                   {taken && <span className="legend__count">taken</span>}
                   {/* And the affordance where a row can take its trail and
-                      has not (#1306): a through-route's row is a button
-                      then, and a button that looks like a row is a control
-                      nobody finds. */}
-                  {onTakeTrail !== undefined && trail.throughRoute && !taken && (
+                      has not (#1306): a takeable through-route's row is a
+                      button then, and a button that looks like a row is a
+                      control nobody finds. Gated on takeable rather than
+                      throughRoute since #1307 - a through-route this build
+                      cannot measure (the Long Path) earns a badge without
+                      earning this row's button. */}
+                  {onTakeTrail !== undefined && trail.takeable && !taken && (
                     <span className="legend__count">take</span>
                   )}
                 </>
@@ -514,10 +517,12 @@ export function Legend({
                   className="legend__trail-row"
                   aria-label={taken ? `${trail.name} · taken` : trail.name}
                 >
-                  {onTakeTrail === undefined || !trail.throughRoute ? (
-                    // Only a through-route's row is a control: a side trail
-                    // has no registry trail to take (#1306), and a button that
-                    // does nothing is worse than a row.
+                  {onTakeTrail === undefined || !trail.takeable ? (
+                    // Only a takeable through-route's row is a control: a
+                    // side trail has no registry trail to take (#1306), and
+                    // neither does a through-route this build cannot measure
+                    // (#1307) - a button that does nothing is worse than a
+                    // row.
                     face
                   ) : (
                     <button

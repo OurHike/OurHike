@@ -51,9 +51,25 @@ export interface TabBarProps {
    * (chrome/ModeSwitch.tsx).
    */
   modeSwitch?: ReactNode
+  /**
+   * The hike a hiker is on, as a control (#1344), under the mode block.
+   *
+   * ITS OWN SLOT RATHER THAN PART OF `modeSwitch`, because the two answer
+   * different questions and the eyebrow above only asks one. "Today I'm ▸
+   * Long hike" is a mode; "Springer → Katahdin" is which hike, and reading
+   * the second as an answer to the first would make the hike look like a
+   * fourth mode segment.
+   *
+   * The sidebar is on every screen, which is the whole point: before this,
+   * `Switch hike ›` existed on the Plan band and nowhere else. Passed only
+   * above the breakpoint, for `modeSwitch`'s own reason - a phone's bar is
+   * three thumb targets - and the phone carries the same door on Today's
+   * header instead.
+   */
+  hikeSwitch?: ReactNode
 }
 
-export function TabBar({ active, onSelect, modeSwitch }: TabBarProps) {
+export function TabBar({ active, onSelect, modeSwitch, hikeSwitch }: TabBarProps) {
   return (
     <nav className="tab-bar" aria-label="Main">
       <div className="tab-bar__tabs" role="tablist">
@@ -83,6 +99,25 @@ export function TabBar({ active, onSelect, modeSwitch }: TabBarProps) {
             Today I’m
           </p>
           {modeSwitch}
+        </div>
+      )}
+
+      {/* ITS OWN BLOCK, WITH ITS OWN EYEBROW, and the first attempt is why.
+          Dropped straight in under the mode segments it read as a FOURTH
+          segment - same column, same width, same rounded outline - which is
+          the exact confusion the slot was split to avoid, arrived at anyway
+          because splitting the prop did nothing about the picture. The rule
+          above it and the eyebrow are what make it a different question.
+
+          Same aria-hidden reason as the mode block's: the control inside
+          names itself, and a visible label plus an accessible one announces
+          it twice. */}
+      {hikeSwitch !== undefined && (
+        <div className="tab-bar__hike-block">
+          <p className="tab-bar__mode-label" aria-hidden="true">
+            On the hike
+          </p>
+          {hikeSwitch}
         </div>
       )}
 

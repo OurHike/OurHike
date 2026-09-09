@@ -146,6 +146,18 @@ export interface PlanScreenProps {
   /** Open the "add a day hike to this hike" sheet (#1317). Passed straight
    *  through: the sheet is the shell's, like every other one here. */
   onAddDayHikeToHike?: () => void
+  /** The long hike the app is on, or null - which decides whether the
+   *  sections room is the HIKE's room (#1329). Passed in for the same reason
+   *  `room` is: the pointer lives in the shell's trip store. */
+  activeHike: Hike | null
+  /** Open the pick sheet as a switch. The shell's, like every sheet here. */
+  onSwitchHike?: () => void
+  /** Give the active hike a different name (#1344). The store's, like every
+   *  other write on this screen. */
+  onRenameHike?: (name: string) => void
+  /** The inline section planner (#1344), rendered where the primary is.
+   *  The shell's, like every other surface this screen only positions. */
+  sectionPlanner?: ReactNode
   /** Whether the full day-hike list is open, for the same reason: the map's
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
@@ -238,6 +250,10 @@ export function PlanScreen({
   gpsAt,
   room,
   onAddDayHikeToHike,
+  activeHike,
+  onSwitchHike,
+  onRenameHike,
+  sectionPlanner,
   dayListOpen,
   onDayListOpen,
   draftKind,
@@ -419,6 +435,10 @@ export function PlanScreen({
       <div className={room === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
           room={room}
+          activeHike={activeHike}
+          onSwitchHike={onSwitchHike}
+          onRenameHike={onRenameHike}
+          sectionPlanner={sectionPlanner}
           onAddDayHikeToHike={onAddDayHikeToHike}
           trips={trips}
           hikes={hikes}

@@ -7,6 +7,12 @@
 // hike") - the one place in the app where tapping a mode segment is not
 // instantaneous, said on screen rather than only in a comment.
 //
+// WHAT IT IS EVIDENCE FOR SINCE #1329: that the PHONE did not move. The
+// sheet is one `.hike-window--sheet` now, shared with every other long-hike
+// surface, and every difference between a phone and a laptop lives in
+// desktop.css - so this frame has to be the same frame it was before that
+// change, and long-hike-window-desktop.mjs is what the laptop looks like.
+//
 // WHAT IT IS NOT EVIDENCE FOR. The list of existing hikes. This phone has
 // none, which is deliberately the frame a first-time hiker gets: one door,
 // "A new long hike", with nothing above it. long-hike-setup.mjs is what that

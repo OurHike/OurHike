@@ -28,6 +28,7 @@ import type { StoredPoi } from '../lib/trailData'
 
 const PROPS = {
   elevation: null,
+  activeHike: null,
   pois: [] as readonly StoredPoi[],
   gpsMile: null,
   units: 'imperial' as const,

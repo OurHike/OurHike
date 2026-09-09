@@ -176,9 +176,11 @@ import duckdb
 from pmtiles.reader import MmapSource, Reader
 from shapely import wkt as shapely_wkt
 from shapely.geometry import MultiLineString, shape
+from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
 from export_trails import (
+    _TO_METRIC,
     OVERVIEW_COORDINATE_DECIMALS,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
     _overview_coordinates,
@@ -285,6 +287,57 @@ SHIPPED_STATUSES = {"Open": "open", "Closed": "closed"}
 # cannot say so would be the exact failure this pipeline's closure treatment
 # exists to avoid.
 DEFAULT_STATUS = "open"
+
+# What write_overview keeps as its own named feature rather than folding into
+# the generic (source, blaze_color, trail_status) haze (#1307).
+#
+# REASONED FROM THE ISSUE'S OWN TWO EXAMPLES, NOT MEASURED AGAINST THE LIVE
+# REGISTRY. #1307 names the Long Path (~358 miles) and "a park loop" (under
+# 10) as the two ends this threshold has to separate; nothing in this
+# sandbox can fetch the live ArcGIS layers to measure the real distribution
+# of named routes between them (no pipeline/data/raw/external here to sum -
+# fetch_external_layers.py needs network access this environment does not
+# have). 50 sits comfortably above a park loop and comfortably below the
+# Long Path, which is everything the two examples actually pin down; where a
+# trail the size of the Shawangunk Ridge Trail lands is genuinely unknown.
+# What would settle it: running this against the live registry once
+# fetchable, and reading the real gap between a park's longest loop and the
+# shortest thing anyone would call a long-distance trail.
+NAMED_TRAIL_THRESHOLD_MILES = 50.0
+
+METERS_PER_MILE = 1609.344
+
+
+def _miles(record: dict) -> float:
+    """One record's real-world length, in miles.
+
+    export_trails.py's own EPSG:5070 metric transform (_TO_METRIC), reused
+    rather than a second way of measuring distance - that file's rule for
+    simplification tolerance applies just as much to a threshold a trail is
+    named or merged on either side of."""
+    return shapely_transform(_TO_METRIC, shapely_wkt.loads(record["wkt"])).length / METERS_PER_MILE
+
+
+def _named_lengths(records: list[dict]) -> dict[tuple[str, str], float]:
+    """Total real-world length per (source, name), for every record whose
+    name is more than whitespace.
+
+    Summed once here rather than per record: #1307's "a trail whose segments
+    total at least some threshold" is a claim about the whole trail, and one
+    trail is ordinarily many rows - NYNJTC's Long Path alone published 43
+    section records as of #1019's measurement. Keyed by (source, name)
+    rather than by name alone, so two different organizations' trails that
+    happen to share a name are never summed together - the same restraint
+    suppressed_by_owner takes on the same two fields, for the same reason.
+    """
+    totals: dict[tuple[str, str], float] = {}
+    for record in records:
+        name = record.get("name")
+        if name is None or not str(name).strip():
+            continue
+        key = (record["source"], name)
+        totals[key] = totals.get(key, 0.0) + _miles(record)
+    return totals
 
 
 def network_line_sources(registry: dict) -> list[dict]:
@@ -851,28 +904,63 @@ def write_overview(records: list[dict]) -> dict:
     the sketch is paint and tape, and the sheet that reads those opens on the
     real lines above the seam.
 
+    EXCEPT WHERE A NAME EARNS ITS OWN FEATURE (#1307). "Only the AT shows
+    initially. All the long distance trails should show. At least the
+    LongPath should be visible" - the maintainer, on the opening camera this
+    sketch draws. A source's rows sharing one NAME_TRAIL_THRESHOLD_MILES's
+    worth of real length (_named_lengths, in miles over export_trails.py's
+    own EPSG:5070 transform) keep that name and a `through_route: true` flag
+    instead of folding into the (source, blaze_color, trail_status) haze - so
+    map/trailsInView.ts can badge them the same way it already badges the
+    A.T. (TAPPABLE_BLAZE_LAYER_IDS), and map/style.ts can draw them at their
+    own weight (NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH) instead of the
+    generic dot haze's. Everything under the threshold, and everything with
+    no name at all, groups exactly as before - this is an exception to ONE
+    FEATURE PER above, not a replacement for it.
+
     What it weighs, measured 2026-08-27 against the live published artifact by
     pipeline/spike_network_overview.py (this function is that spike's method,
     moved into the export): 480,115 -> 57,226 coordinates, 1,125,263 bytes raw,
-    255,263 gzipped - beside 7.3 MB gzipped for the artifact it sketches.
+    255,263 gzipped - beside 7.3 MB gzipped for the artifact it sketches. That
+    measurement predates the named-feature exception above, which only grows
+    the count where a trail actually clears the threshold - the Long Path's
+    own rows, folded into one NYNJTC feature before, are the first to.
     """
     coarse = simplify_records(records, OVERVIEW_SIMPLIFY_TOLERANCE_M)
 
-    groups: dict[tuple[str, str, str], list[list[list[float]]]] = {}
+    named_lengths = _named_lengths(coarse)
+    qualifying = {key for key, miles in named_lengths.items() if miles >= NAMED_TRAIL_THRESHOLD_MILES}
+
+    # The group key is always this four-tuple, name "" standing for "not a
+    # qualifying named trail" - never None, which would make sorted() below
+    # compare a string against a NoneType and raise. feature_properties()
+    # reads the sentinel back into "omit name and through_route entirely",
+    # this export's existing convention for closure_kind above.
+    groups: dict[tuple[str, str, str, str], list[list[list[float]]]] = {}
     for record in coarse:
-        key = (record["source"], record["blaze_color"], record["trail_status"])
+        name = record.get("name")
+        qualifies = name is not None and (record["source"], name) in qualifying
+        key = (record["source"], name if qualifies else "", record["blaze_color"], record["trail_status"])
         lines = _overview_coordinates(shapely_wkt.loads(record["wkt"]), OVERVIEW_COORDINATE_DECIMALS)
         groups.setdefault(key, []).extend(lines)
+
+    def feature_properties(key: tuple[str, str, str, str]) -> dict:
+        source, name, blaze, status = key
+        properties = {"source": source, "blaze_color": blaze, "trail_status": status}
+        if name != "":
+            properties["name"] = name
+            properties["through_route"] = True
+        return properties
 
     body = {
         "type": "FeatureCollection",
         "features": [
             {
                 "type": "Feature",
-                "properties": {"source": source, "blaze_color": blaze, "trail_status": status},
+                "properties": feature_properties(key),
                 "geometry": {"type": "MultiLineString", "coordinates": lines},
             }
-            for (source, blaze, status), lines in sorted(groups.items())
+            for key, lines in sorted(groups.items())
         ],
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -885,6 +973,7 @@ def write_overview(records: list[dict]) -> dict:
         "feature_count": len(body["features"]),
         "coordinate_count": sum(len(line) for lines in groups.values() for line in lines),
         "tolerance_m": OVERVIEW_SIMPLIFY_TOLERANCE_M,
+        "named_trail_threshold_miles": NAMED_TRAIL_THRESHOLD_MILES,
     }
 
 

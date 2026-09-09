@@ -107,6 +107,9 @@ export interface MapScreenProps {
   /** The sidebar's "today I'm…" control, handed through to the TabBar this
    *  screen renders - see TabBarProps.modeSwitch for the contract. */
   modeSwitch?: ReactNode
+  /** The hike a hiker is on, as a control - passed straight through to the
+   *  sidebar for the same reason (#1344). See TabBarProps.hikeSwitch. */
+  hikeSwitch?: ReactNode
   topoArchiveUrl: string
   trailsUrl: string
   /** The corridor-view centerline, drawn until the map has the real line on
@@ -808,6 +811,7 @@ export function MapScreen({
   onSelectTab,
   journal,
   modeSwitch,
+  hikeSwitch,
   onOpenLegend,
   onOpenSearch,
   legendOpen,
@@ -1702,7 +1706,12 @@ export function MapScreen({
         )}
       </div>
 
-      <TabBar active={activeTab} onSelect={onSelectTab} modeSwitch={modeSwitch} />
+      <TabBar
+        active={activeTab}
+        onSelect={onSelectTab}
+        modeSwitch={modeSwitch}
+        hikeSwitch={hikeSwitch}
+      />
     </div>
   )
 }

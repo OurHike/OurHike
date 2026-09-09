@@ -7,6 +7,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanHome, planRoomFor, type PlanHomeProps } from './PlanHome'
+import { DEFAULT_TRAIL_ID, type Hike } from '../lib/hikes'
 import { PlanKindSheet } from '../chrome/PlanKindSheet'
 import type { DayHike } from '../lib/dayHikes'
 import type { Trip } from '../lib/trips'
@@ -45,8 +46,25 @@ function trip(id: string): Trip {
   }
 }
 
+function hike(overrides: Partial<Hike> = {}): Hike {
+  return {
+    id: 'hike-1',
+    name: 'Springer → Katahdin',
+    type: 'thru',
+    trailId: DEFAULT_TRAIL_ID,
+    status: 'walking',
+    points: [
+      { name: 'Springer Mountain', mile: 0 },
+      { name: 'Katahdin', mile: 100 },
+    ],
+    tripIds: [],
+    ...overrides,
+  }
+}
+
 const PROPS: PlanHomeProps = {
   network: { kind: 'ready' },
+  activeHike: null,
   room: 'day' as const,
   trips: [],
   hikes: [],
@@ -306,22 +324,160 @@ describe('the trips room', () => {
   })
 })
 
-describe('what neither home may say', () => {
+describe("the hike's own room (#1329, handoff §4)", () => {
+  const inRoom = (props: Partial<PlanHomeProps> = {}) =>
+    render(<PlanHome {...PROPS} room="sections" activeHike={hike()} {...props} />)
+
+  it("puts the hike's name in the band, where the room's word used to be", () => {
+    // #1317 bound this tab to the mode and left the band reading "Sections",
+    // so nothing on the Plan tab said WHICH hike. "When I save a long hike,
+    // it is not displaying anywhere" was partly this.
+    inRoom()
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      'Springer → Katahdin',
+    )
+  })
+
+  it('offers a way onto a different hike, and only where there is one', async () => {
+    // `activeHikeId` could be set exactly once before this - by the pick
+    // sheet, which only opened where no hike was active - so a hiker with
+    // two hikes was stuck on whichever they picked first.
+    const user = userEvent.setup()
+    const onSwitchHike = vi.fn()
+    inRoom({ onSwitchHike })
+
+    await user.click(screen.getByRole('button', { name: /Switch hike/ }))
+    expect(onSwitchHike).toHaveBeenCalled()
+
+    cleanup()
+    inRoom()
+    expect(screen.queryByRole('button', { name: /Switch hike/ })).toBeNull()
+  })
+
+  it('prints the two figures and draws them, and draws no third band', () => {
+    // The handoff overrides features/SEGMENTS.md here in as many words: no
+    // gap rows, no gap arithmetic, no dashed gap band. The bar is walked and
+    // to-go, and it is `aria-hidden` because the line above it says the same
+    // thing in words a screen reader can use.
+    const { container } = inRoom()
+
+    expect(screen.getByText(/mi walked · .* mi to go/)).toBeInTheDocument()
+    expect(container.querySelectorAll('.plan-home__bar > *')).toHaveLength(2)
+    expect(container.querySelector('.plan-home__bar')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    )
+  })
+
+  it('draws no bar at all for a hike with no end to end', () => {
+    // A full-width grey bar under two zeroes is an illustration of an
+    // absence. Absent means unknown, and the figures line still says so.
+    const { container } = inRoom({
+      activeHike: hike({ points: [{ name: 'Springer', mile: 12 }] }),
+    })
+
+    expect(container.querySelector('.plan-home__bar')).toBeNull()
+  })
+
+  it('separates the sections in the hike from the ones that are not', async () => {
+    // Nothing in the app puts a PLANNED section into a hike yet
+    // (`assignTrip` has one caller, the day-hike sheet), so a room that
+    // showed only `tripIds` would hide a section the hiker laid out from
+    // this very screen - the report this issue started from, one level down.
+    const user = userEvent.setup()
+    const onOpenTrip = vi.fn()
+    inRoom({
+      activeHike: hike({ tripIds: ['Damascus → Pearisburg'] }),
+      trips: [trip('Damascus → Pearisburg'), trip('Hot Springs → Erwin')],
+      onOpenTrip,
+    })
+
+    expect(screen.getByText('Sections in this hike')).toBeInTheDocument()
+    expect(screen.getByText('Your other sections')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /Hot Springs → Erwin/ }))
+    expect(onOpenTrip).toHaveBeenCalledWith('Hot Springs → Erwin')
+  })
+
+  it('leads with the hike rather than a generic list, and never lists it twice', () => {
+    // The old room showed "Your hikes" - every hike, including this one, as
+    // a row among rows. The room is ABOUT this hike now, so it appears once,
+    // as the thing to carry on with.
+    inRoom()
+
+    expect(screen.queryByText('Your hikes')).toBeNull()
+    expect(screen.getAllByText('Springer → Katahdin')).toHaveLength(2)
+  })
+
+  it('renames the hike in place, which nothing could do before', async () => {
+    // `renameHike` has been in the store since #788 with no caller, so every
+    // hike kept the "A new long hike" that `handleNewHike` invents (#1344).
+    const user = userEvent.setup()
+    const onRenameHike = vi.fn()
+    inRoom({ onRenameHike })
+
+    await user.click(screen.getByRole('button', { name: /Rename/ }))
+    const field = screen.getByLabelText('New name for Springer → Katahdin')
+    await user.clear(field)
+    await user.type(field, 'Georgia to Maine')
+    await user.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onRenameHike).toHaveBeenCalledWith('Georgia to Maine')
+  })
+
+  it('offers no rename where the shell passes no way to do one', () => {
+    inRoom()
+    expect(screen.queryByRole('button', { name: /Rename/ })).toBeNull()
+  })
+
+  it('names its primary "Plan a section", and gives the place up to the planner', () => {
+    // #1344: "that content should live on the same page". The planner takes
+    // the primary's place rather than opening over it - one thing at a time
+    // in one column.
+    inRoom()
+    expect(screen.getByRole('button', { name: 'Plan a section' })).toBeInTheDocument()
+
+    cleanup()
+    inRoom({ sectionPlanner: <p>the planner</p> })
+    expect(screen.getByText('the planner')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Plan a section' })).toBeNull()
+  })
+
+  it('falls back to the kept-sections list when the mode is long and no hike is picked', () => {
+    // Transient by design - the pick sheet opens on the way in - and
+    // reachable anyway. The honest answer there is everything the hiker has
+    // kept, not a room about a hike they have not named.
+    render(<PlanHome {...PROPS} room="sections" activeHike={null} trips={[trip('a')]} />)
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Sections')
+  })
+})
+
+describe('what no home may say', () => {
   it('no score, no behind, no arrival clock - the standing guard', () => {
-    for (const room of ['day', 'sections'] as const) {
-      render(
-        <PlanHome
-          {...PROPS}
-          room={room}
-          trips={[trip('Damascus → Pearisburg')]}
-          dayHikes={[dayHike('Pine Meadow loop', { date: '2026-09-12' })]}
-        />,
-      )
-      const text = document.body.textContent ?? ''
-      expect(text).not.toMatch(/behind/i)
-      expect(text).not.toMatch(/ahead of/i)
-      expect(text).not.toMatch(/\d{1,2}:\d{2}\s*(am|pm)/i)
-      cleanup()
+    // THREE HOMES SINCE #1329, and the third is the one the handoff singles
+    // out: "Figures: miles walked · miles to go only. No percentages, no
+    // behind, no ahead of, no on track, no streaks, no comparison to other
+    // hikers" - with the note that this guard "must cover the new surfaces".
+    // The hike room is where breaking it would be easiest, because it is the
+    // one that draws a bar.
+    for (const activeHike of [null, hike({ tripIds: ['Damascus → Pearisburg'] })]) {
+      for (const room of ['day', 'sections'] as const) {
+        render(
+          <PlanHome
+            {...PROPS}
+            room={room}
+            activeHike={activeHike}
+            trips={[trip('Damascus → Pearisburg')]}
+            dayHikes={[dayHike('Pine Meadow loop', { date: '2026-09-12' })]}
+          />,
+        )
+        const text = document.body.textContent ?? ''
+        expect(text).not.toMatch(/%|behind|ahead of|on track|streak/i)
+        expect(text).not.toMatch(/\d{1,2}:\d{2}\s*(am|pm)/i)
+        cleanup()
+      }
     }
   })
 })

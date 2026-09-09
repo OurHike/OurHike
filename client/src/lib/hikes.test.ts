@@ -11,6 +11,7 @@ import {
   gapSpans,
   hikeBounds,
   hikeEnds,
+  hikeNameFromEnds,
   hikeFigures,
   hikeLegMiles,
   hikeLegs,
@@ -669,6 +670,46 @@ describe('hikeBounds', () => {
       tripIds: [],
     }
     expect(hikeBounds(hike, POIS)).toEqual({ from: 471.2, to: 503.3 })
+  })
+})
+
+describe('hikeNameFromEnds - what a cleared name falls back to (#1344)', () => {
+  const twoEnds = (over: Partial<Hike> = {}): Hike => ({
+    id: 'h',
+    name: '',
+    type: 'section',
+    trailId: 'AT',
+    points: [
+      { poiId: 'damascus', mile: 470.8 },
+      { poiId: 'atkins', mile: 503.3 },
+    ],
+    status: 'walking',
+    tripIds: [],
+    ...over,
+  })
+
+  it('names it by its own two ends, low to high', () => {
+    // `renameTrip`'s rule at the hike's grain: an empty name is not stored
+    // as an empty name. Set-up carries a name field since #1344 and a field
+    // can be cleared - and a blank would show as a blank heading on Today,
+    // in the Plan band, in the sidebar and on the pick sheet at once.
+    expect(hikeNameFromEnds(twoEnds(), POIS)).toBe('Damascus → Atkins')
+  })
+
+  it('falls back again where the ends cannot be placed at all', () => {
+    // A hike whose points this download has never heard of still needs
+    // something to be called.
+    expect(hikeNameFromEnds(twoEnds({ points: [] }), POIS)).toBe('A long hike')
+  })
+
+  it('uses the mile as a MARKER for an end with no name', () => {
+    // #986: a mile is a place's name here, never a distance - so it is not
+    // run through a units formatter on the way into a hike's own name.
+    const named = hikeNameFromEnds(
+      twoEnds({ points: [{ mile: 12 }, { mile: 40.5 }] }),
+      [],
+    )
+    expect(named).toBe('mi 12.0 → mi 40.5')
   })
 })
 

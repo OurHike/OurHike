@@ -371,10 +371,10 @@ Then follow through. Your session watches its own pull request, so the merge arr
 as an event:
 
 - **Dispatch each staled dispatchable path with `data_environment: ua` and
-  `publish: true`**, and tell the maintainer an approval is waiting. Within the hour —
-  a pending approval is cancelled by the next hourly conditions bake
-  (`publish-vector-data.yml`'s header has the measurement). If it dies unapproved,
-  re-dispatch; do not shrug.
+  `publish: true`.** A `ua` dispatch carries no environment gate (#1330) — nothing
+  for the maintainer to approve, so it runs as soon as the shared `publish-data`
+  concurrency group is free. Watch the run rather than announcing it, and re-dispatch
+  if it fails for an unrelated reason; do not shrug.
 - The script's other two answers need nothing: a path whose schedule reruns it from
   `main`, and the withdrawn raster build (#855).
 - **Never `data_environment: production` from pull-request follow-up.** UA is what

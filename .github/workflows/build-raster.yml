@@ -333,7 +333,14 @@ jobs:
     needs: [compute-cells, assemble]
     if: inputs.publish && needs.compute-cells.outputs.partial == 'false'
     runs-on: ubuntu-latest
-    environment: production
+    # Gated only for a real production dispatch (#1330) - a `ua` publish is
+    # the routine, disposable case (RELEASING.md §3b) and runs straight
+    # through. Nothing else in this job branches on data_environment, so
+    # there is no second, independently-written copy of this predicate for
+    # it to drift out of sync with (the #1262/#1265 failure mode). Currently
+    # moot in practice - this workflow is withdrawn for v2 (#855) - but kept
+    # consistent with the other three publish jobs against it being revived.
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
     # Every writer of latest.json shares this group (publish-vector-data.yml,
     # build-dem.yml, build-basemap.yml): publish() does a read-modify-write
     # of the manifest, and two concurrent publishes could interleave and

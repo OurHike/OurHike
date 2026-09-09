@@ -38,8 +38,21 @@ That the `publish` job's `if:` still names `inputs.publish` (the #1262 half
 holds the `regenerate_identity_ledger` half, since that file is where the
 ledger's mutual-exclusion property is asserted end to end), that `publish`
 still depends on `build` having run first, and that a run which does reach
-`publish` still names the `production` environment RELEASING.md §12
-depends on.
+`publish` still names an environment at all.
+
+WHAT #1330 DID TO IT
+
+Not the literal `production` string specifically, any more: a `data_environment: ua`
+publish is the routine, disposable case (RELEASING.md §3b) and #1330 made
+`environment:` conditional on `inputs.data_environment` so it stops waiting on the
+reviewer too. That reintroduces the shape this file's #1262 section warns about - a
+same-job `environment:` expression - but not the bug: #1262's failure was the
+expression mirroring a *second, independently-written* copy of the write/no-write
+predicate this job's own `if:` already answers, and #1330's expression answers a
+different question (which environment) that has no second copy anywhere in this job
+to drift from. Which exact value it resolves to for which input is
+test_publish_data_environment_gating.py's property to hold - this file does not carry
+a second copy of that exact string to keep in sync with the first.
 """
 
 from __future__ import annotations
@@ -77,17 +90,15 @@ def test_the_publish_job_still_needs_the_build_job():
     )
 
 
-def test_a_run_that_reaches_publish_still_names_production():
-    """RELEASING.md §12 - only the maintainer ships - depends on this exact
-    string: it is what expected-protections.yml's `production` entry gates
-    and what test_repository_protections.py looks up by name.
-
-    Asserted as an exact match rather than a substring, unlike this file's
-    pre-#1265 version - unconditional `environment: production` used to be
-    exactly the bug (#1262), and is exactly correct now that the job's own
-    `if:` is what makes it conditional."""
+def test_a_run_that_reaches_publish_still_names_an_environment():
+    """RELEASING.md §12 - only the maintainer ships - depends on a run that
+    writes still naming an environment at all. #1330 split which exact value
+    that is into its own home, test_publish_data_environment_gating.py, so
+    this file only checks that the field survived rather than holding a
+    second copy of the exact expression to keep in sync with the first."""
     environment = _publish_job().get("environment")
-    assert environment == "production", (
-        f"the 'publish' job's environment is {environment!r}, not the plain 'production' string - "
-        "a run that writes to the bucket must still wait for the maintainer. See RELEASING.md §12."
+    assert environment, (
+        "the 'publish' job no longer names an environment at all - a run that writes to "
+        "the bucket must still be able to wait for the maintainer. See RELEASING.md §12 and "
+        "test_publish_data_environment_gating.py for which environment it resolves to."
     )

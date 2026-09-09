@@ -8,8 +8,20 @@
 // components may reasonably want to guarantee the protocol exists before they
 // build a map, the guarantee is made idempotent here rather than pushed onto
 // every caller to coordinate.
+//
+// `addProtocol` ARRIVES AS AN ARGUMENT, and the reason is #1300. This module
+// used to import it from `maplibre-gl` at its top, and `App.tsx` imports
+// `CORRIDOR_ARCHIVE_URL` from here - a string - which made the whole engine
+// part of the shell's eager chunk again: 406 KB of `maplibre-gl-shared.mjs`
+// modulepreloaded on every launch, on a Today screen that mounts no map,
+// undoing the deferral #722 measured at 860 ms of parse on a throttled phone.
+// The only thing here that needs the library is the one call that hands
+// MapLibre the handler, so the caller that already holds the library
+// (map/engine.ts, the seam `import()` reaches) passes it in, and this file
+// imports nothing but a type. scripts/check-build-output.mjs fails the build
+// if the engine ever reaches the eager closure again.
 
-import { addProtocol } from 'maplibre-gl'
+import type { addProtocol as AddProtocol } from 'maplibre-gl'
 import { PMTiles, Protocol, SharedPromiseCache } from 'pmtiles'
 import type { Entry, Header, Source } from 'pmtiles'
 import { MAP_PACKAGES } from '../lib/packages'
@@ -77,7 +89,7 @@ export const CORRIDOR_ARCHIVE_URL = packageArchiveUrl(CORRIDOR_ARCHIVE_KEY)
 
 let registered: Protocol | null = null
 
-export function registerPMTilesProtocol(): Protocol {
+export function registerPMTilesProtocol(addProtocol: typeof AddProtocol): Protocol {
   if (registered !== null) return registered
 
   const protocol = new Protocol()

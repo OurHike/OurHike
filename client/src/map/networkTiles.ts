@@ -93,7 +93,10 @@
 // on basemap.ts's terms, so the pipeline can change its mind without a
 // client release.
 
-import { addProtocol } from 'maplibre-gl'
+// A type only - the engine seam passes the real `addProtocol` in, so this
+// module never pulls the library into the shell's eager chunk (#1300; the
+// reasoning is map/protocol.ts's header).
+import type { addProtocol as AddProtocol } from 'maplibre-gl'
 import { PMTiles } from 'pmtiles'
 import { DATA_CONFIGURED, dataUrl, NEARBY_TRAILS_TILES_KEY } from '../lib/config'
 import {
@@ -301,7 +304,7 @@ let registered = false
  * mid-session, which is exactly the class of surprise that call exists to
  * prevent.
  */
-export function registerNetworkProtocol(): void {
+export function registerNetworkProtocol(addProtocol: typeof AddProtocol): void {
   if (registered) return
   addProtocol(NETWORK_SCHEME, (params, abortController) =>
     loadNetworkTile(params.url, abortController.signal),

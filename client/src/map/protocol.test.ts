@@ -13,6 +13,11 @@ import { get } from 'idb-keyval'
 vi.mock('maplibre-gl', () => import('../test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({ get: vi.fn() }))
 
+/** Stands in for MapLibre's `addProtocol` where a test does not look at the
+ *  registration itself - the module takes it as an argument since #1300 and
+ *  never imports the library. */
+const addProtocolStub = vi.fn()
+
 describe('registerPMTilesProtocol', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -22,9 +27,9 @@ describe('registerPMTilesProtocol', () => {
     const { addProtocol } = await import('maplibre-gl')
     const { registerPMTilesProtocol } = await import('./protocol')
 
-    registerPMTilesProtocol()
-    registerPMTilesProtocol()
-    registerPMTilesProtocol()
+    registerPMTilesProtocol(addProtocol)
+    registerPMTilesProtocol(addProtocol)
+    registerPMTilesProtocol(addProtocol)
 
     expect(addProtocol).toHaveBeenCalledTimes(1)
   })
@@ -33,7 +38,7 @@ describe('registerPMTilesProtocol', () => {
     const { addProtocol } = await import('maplibre-gl')
     const { registerPMTilesProtocol, PMTILES_SCHEME } = await import('./protocol')
 
-    registerPMTilesProtocol()
+    registerPMTilesProtocol(addProtocol)
 
     expect(PMTILES_SCHEME).toBe('pmtiles')
     expect(addProtocol).toHaveBeenCalledWith(PMTILES_SCHEME, expect.any(Function))
@@ -42,8 +47,8 @@ describe('registerPMTilesProtocol', () => {
   it('hands back the same Protocol instance every time, so tile caching is never split across two', async () => {
     const { registerPMTilesProtocol } = await import('./protocol')
 
-    const first = registerPMTilesProtocol()
-    const second = registerPMTilesProtocol()
+    const first = registerPMTilesProtocol(addProtocolStub)
+    const second = registerPMTilesProtocol(addProtocolStub)
 
     expect(first).toBe(second)
   })
@@ -57,7 +62,7 @@ describe('registerPMTilesProtocol', () => {
     const { CORRIDOR_ARCHIVE_KEY, IndexedDbArchiveSource } =
       await import('./pmtilesSource')
 
-    const protocol = registerPMTilesProtocol()
+    const protocol = registerPMTilesProtocol(addProtocolStub)
     const archive = protocol.get(CORRIDOR_ARCHIVE_KEY)
 
     expect(archive).toBeDefined()
@@ -80,7 +85,7 @@ describe('registerPMTilesProtocol', () => {
     const { registerPMTilesProtocol, packageArchiveUrl } = await import('./protocol')
     const { IndexedDbArchiveSource } = await import('./pmtilesSource')
 
-    const protocol = registerPMTilesProtocol()
+    const protocol = registerPMTilesProtocol(addProtocolStub)
     const a = protocol.get('ourhike:package-a')
     const b = protocol.get('ourhike:package-b')
 
@@ -121,7 +126,7 @@ describe('registerPMTilesProtocol', () => {
 
     // Nothing downloaded yet: the read rejects, as it should.
     vi.mocked(get).mockResolvedValue(undefined)
-    const archive = registerPMTilesProtocol().get(CORRIDOR_ARCHIVE_KEY)!
+    const archive = registerPMTilesProtocol(addProtocolStub).get(CORRIDOR_ARCHIVE_KEY)!
     await expect(archive.getHeader()).rejects.toThrow(/No offline map archive/)
 
     // The download lands - same session, same map, no restart.

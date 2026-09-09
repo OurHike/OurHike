@@ -35,6 +35,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gzipSync } from 'node:zlib'
 
 // Overridable so the checker's own tests (src/test/checkBuildOutput.test.ts,
 // #319) can run the real script against tiny synthetic dist/ trees and prove
@@ -362,6 +363,106 @@ if (serviceWorker !== undefined) {
   }
 }
 
+// 8. What the document loads before any `import()` carries no MapLibre, and
+// fits the launch budget.
+//
+// The eager closure is every module the browser must parse before `App` can
+// render its first element: the document's `type="module"` script, every
+// `modulepreload` Vite adds beside it, and whatever those reach through STATIC
+// imports. A chunk reached only through `import()` is not in it - that is the
+// whole mechanism map/mapEngineLoader.ts relies on to keep the map engine off
+// the first paint (#722: 860 ms of parse on a throttled phone).
+//
+// It is checked here because it broke silently once (#1300). Three modules
+// imported `addProtocol` from `maplibre-gl` and were also imported by the
+// shell for a string and two setters, so Rollup placed the whole engine in a
+// chunk both sides reach and Vite preloaded it from the head: 406 KB of
+// `maplibre-gl-shared.mjs` on every launch, on a Today screen that mounts no
+// map, from 2026-08-27 to 2026-09-09 with every test green. Two markers name
+// the two halves of the library - the style spec's own property name, which
+// the shared module carries, and the DOM class prefix the Map module writes -
+// and neither appears in this app's own code (the class name is in CSS, which
+// is not scanned).
+//
+// The byte figure is features/LAUNCH_BUDGET.md §3's row for eager
+// JavaScript, staged: measured 2026-09-09 at 437 KB compressed before #1300
+// and 323 KB after, so this ceiling holds the saving; #1302 (the screens and
+// the Supabase client behind `import()`) is what brings it under the doc's
+// 250 KB and tightens this constant to match. gzip, because that is what the
+// host serves (GitHub Pages; measured off production's own response headers).
+const EAGER_JS_BUDGET_BYTES = 340 * 1024
+const MAPLIBRE_MARKERS = ['fill-extrusion-vertical-gradient', 'maplibregl-']
+
+const indexHtml = files.find((f) => /(^|[\\/])index\.html$/.test(f))
+const eagerProblems = []
+const closure = new Set()
+let eagerBytes = 0
+if (indexHtml === undefined) {
+  eagerProblems.push(
+    'No index.html in the build output, so nothing can be said about what it loads.',
+  )
+} else {
+  const html = readFileSync(indexHtml, 'utf8')
+  const entryRefs = [
+    ...html.matchAll(/<script\b[^>]*\btype="module"[^>]*\bsrc="([^"]+)"/g),
+    ...html.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g),
+  ].map(([, ref]) => ref)
+
+  /** A reference in the document or a chunk, to the dist-relative path it names. */
+  const toDistPath = (ref, fromDir) => {
+    const tail = ref.match(/(?:^|\/)(assets\/[^"'?#]+)/)
+    if (tail !== null) return tail[1]
+    return relative(DIST, join(fromDir, ref)).split(/[\\/]/).join('/')
+  }
+
+  const queue = entryRefs.map((ref) => toDistPath(ref, dirname(indexHtml)))
+  while (queue.length > 0) {
+    const path = queue.shift()
+    if (closure.has(path) || !present.has(path) || !/\.m?js$/.test(path)) continue
+    closure.add(path)
+    const text = readFileSync(join(DIST, path), 'utf8')
+    // Static forms only: `import x from"./c.js"`, `import"./c.js"`,
+    // `export{x}from"./c.js"`. `import("./c.js")` has a parenthesis where
+    // these have a quote, so it is not matched - deliberately.
+    for (const [, target] of text.matchAll(
+      /\b(?:from|import)\s*["'](\.{1,2}\/[^"']+)["']/g,
+    )) {
+      queue.push(toDistPath(target, dirname(join(DIST, path))))
+    }
+  }
+
+  for (const path of closure) {
+    const bytes = readFileSync(join(DIST, path))
+    eagerBytes += gzipSync(bytes).length
+    const text = bytes.toString('utf8')
+    const found = MAPLIBRE_MARKERS.filter((marker) => text.includes(marker))
+    if (found.length > 0) {
+      eagerProblems.push(
+        `MapLibre is in a chunk the document loads before any import(): ${path}`,
+        `  (found ${found.map((m) => `"${m}"`).join(' and ')})`,
+        '  The engine belongs behind map/mapEngineLoader.ts. Something the shell',
+        '  imports statically reaches `maplibre-gl` - see map/engine.ts and #1300.',
+      )
+    }
+  }
+  if (eagerBytes > EAGER_JS_BUDGET_BYTES) {
+    eagerProblems.push(
+      `Eager JavaScript is ${eagerBytes.toLocaleString()} bytes compressed, over the ` +
+        `${EAGER_JS_BUDGET_BYTES.toLocaleString()}-byte launch budget.`,
+      `  ${[...closure].join(', ')}`,
+      '  Every byte here is parsed before the first frame. features/LAUNCH_BUDGET.md §3',
+      '  has the budget; put the growth behind import() or say why the number moves.',
+    )
+  }
+  if (closure.size === 0) {
+    eagerProblems.push(
+      'index.html loads no module script, so the eager closure could not be walked.',
+      '  Vite always emits one; if the entry moved, update this check with it.',
+    )
+  }
+}
+problems.push(...eagerProblems)
+
 if (problems.length > 0) fail(problems)
 
 console.log(
@@ -370,5 +471,7 @@ console.log(
     `${fontsInDist.length} UI font file(s) vendored and precached, ` +
     `${engineChunks.length} detector engine chunk(s) and ${modelFiles.length} model file(s) shipped un-precached, ` +
     `no cross-origin CSS, ` +
-    `${REQUIRED_STYLESHEETS.length} required stylesheet(s) in the built CSS.`,
+    `${REQUIRED_STYLESHEETS.length} required stylesheet(s) in the built CSS, ` +
+    `${closure.size} eagerly loaded chunk(s) at ${eagerBytes.toLocaleString()} bytes compressed ` +
+    `(budget ${EAGER_JS_BUDGET_BYTES.toLocaleString()}) with no MapLibre in them.`,
 )

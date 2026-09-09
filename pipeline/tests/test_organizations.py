@@ -185,6 +185,17 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     NYNJTC's own written words; `nynjtc_hikes_licence` says so and says what
     it does not cover.
 
+    WHAT MOVED ON 2026-09-09 (#1293), and it moved this file's other column
+    for once: New Jersey's two trail layers (`njdep_park_trails`,
+    `nj_statewide_trails`) registered `unresolved`, 1 -> 3. Their terms are
+    STATED and were read whole - the NJDEP Data Distribution Agreement,
+    quoted verbatim in `njdep_licence` - and they permit reuse, so this is
+    neither a refusal nor a silence. What is missing is a decision to
+    satisfy two conditions that need building: the metadata redistributed
+    alongside the data, and NJDEP's credit/disclaimer sentence verbatim on
+    any map. When that decision is taken and recorded they become
+    `stated_by_org`, beside OPRHP's.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -192,4 +203,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 8, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 8, "unresolved": 3}

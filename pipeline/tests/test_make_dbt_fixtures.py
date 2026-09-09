@@ -51,6 +51,8 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_usfs__usfs_trails",
             "raw_usfs__usfs_rec_sites",
             "raw_granit__nh_granit_trails",
+            "raw_njdep__njdep_park_trails",
+            "raw_njdep__nj_statewide_trails",
         }
         assert skipped == [], (
             "every registered feature layer needs a fixture, or the CI dbt build "

@@ -891,3 +891,144 @@ class TestTheHourlyBakeIsStillRunning:
 
         assert report["state"] == FAILED
         assert hiker_facing_failures([report], manifest) == []
+
+
+class TestBackendHealth:
+    """The backend probe (#1359).
+
+    The service does not exist yet, so every one of these is about what the
+    check CONCLUDES rather than about a real deployment - which is the same
+    footing as the rest of this file. The two that matter most are the two
+    that keep the check readable when it eventually watches something real:
+    an unset base is not a failure, and a request that never completed is not
+    an outage.
+    """
+
+    API = "https://backend.example.org"
+    HEALTH = f"{API}/health"
+
+    def test_an_unset_base_is_skipped_rather_than_failed(self):
+        """`API_BASE_URL` is unset on every build today, and .github/expected-settings.yml
+        says that is supported rather than broken. Red daily for a service
+        nobody has deployed is how a check stops being read."""
+        report = check_deployment.check_backend_health(None)
+
+        assert report["state"] == check_deployment.SKIPPED
+        assert report["state"] not in (FAILED, UNREACHABLE)
+
+    def test_a_skipped_backend_is_not_counted_as_a_failure_anywhere(self):
+        """The verdict document is what the workflow renders and what decides
+        whether the tracking issue opens, so `skipped` has to be invisible to
+        both lists rather than merely spelled differently."""
+        report = check_deployment.check_backend_health(None)
+        document = verdict_document(BASE, [report], load_manifest(), published=True)
+
+        assert document["failed"] == []
+        assert document["unreachable"] == []
+        assert document["hiker_facing_failures"] == []
+
+    def test_a_healthy_backend_passes(self, requests_mock):
+        requests_mock.get(self.HEALTH, json={"status": "ok"})
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == OK
+
+    def test_a_trailing_slash_does_not_double_up(self, requests_mock):
+        requests_mock.get(self.HEALTH, json={"status": "ok"})
+
+        report = check_deployment.check_backend_health(f"{self.API}/")
+
+        assert report["state"] == OK
+        assert report["key"] == self.HEALTH
+
+    def test_a_non_200_is_a_failure(self, requests_mock):
+        requests_mock.get(self.HEALTH, status_code=502)
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+        assert "502" in report["detail"]
+
+    def test_a_200_that_is_not_json_is_a_failure(self, requests_mock):
+        """A parked domain, a proxy error page and a host's own placeholder all
+        answer 200 cheerfully. Checking the status alone would call any of them
+        a healthy backend."""
+        requests_mock.get(self.HEALTH, text="<html>Application deployed</html>")
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+        assert "not JSON" in report["detail"]
+
+    def test_a_200_with_the_wrong_body_is_a_failure(self, requests_mock):
+        requests_mock.get(self.HEALTH, json={"status": "degraded"})
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+
+    def test_a_200_with_json_that_is_not_an_object_does_not_crash_the_run(self, requests_mock):
+        """Valid JSON is not necessarily a dict, and `[].get` is an
+        AttributeError. Every check in this file returns a verdict rather than
+        raising, because one bad response must not cost the other twelve their
+        report."""
+        requests_mock.get(self.HEALTH, json=[])
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+
+    def test_a_request_that_never_completed_is_unreachable_not_failed(self, requests_mock):
+        """#431's rule, applied one service along: a flaky third party must not
+        be able to declare an outage. A free tier that overran even the
+        cold-start budget is exactly that."""
+        requests_mock.get(self.HEALTH, exc=requests.exceptions.ConnectTimeout)
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == UNREACHABLE
+        assert report["state"] != FAILED
+
+    def test_a_failing_backend_does_not_claim_a_hiker_cannot_download_the_map(self, requests_mock):
+        """features/CONDITIONS_DELIVERY.md moved the safety read to R2, so the
+        map and the closures survive this service being down. Reports waiting
+        in the outbox is real and is not the outage headline."""
+        requests_mock.get(self.HEALTH, status_code=500)
+
+        report = check_deployment.check_backend_health(self.API)
+
+        assert report["state"] == FAILED
+        assert hiker_facing_failures([report], load_manifest()) == []
+
+    def test_the_timeout_outlasts_the_documented_cold_start(self):
+        """backend/HOSTING.md budgets 30-60s for the first request after idle,
+        and this check runs daily, so it meets a slept instance nearly every
+        time. Reusing HTTP_TIMEOUT (30) would report a healthy backend as
+        unreachable most mornings - the constant's derivation, as a test rather
+        than only as a comment."""
+        assert check_deployment.BACKEND_COLD_START_TIMEOUT > 60
+        assert check_deployment.BACKEND_COLD_START_TIMEOUT > check_deployment.HTTP_TIMEOUT
+
+    def test_main_reads_the_environment_and_reports_the_backend(self, mock, monkeypatch, capsys):
+        """End to end through main(), because the wiring is the part that can
+        be wrong while every unit above passes."""
+        _healthy_bucket(mock)
+        monkeypatch.setenv("DATA_BASE_URL", BASE)
+        monkeypatch.setenv("API_BASE_URL", self.API)
+        mock.get(self.HEALTH, json={"status": "ok"})
+
+        check_deployment.main(["--exit-zero"])
+
+        assert "backend" in capsys.readouterr().out
+
+    def test_main_without_the_variable_still_reports_the_backend_line(self, mock, monkeypatch, capsys):
+        """The skipped line is the point: a reader learns the backend was not
+        asked, rather than the check silently having no opinion."""
+        _healthy_bucket(mock)
+        monkeypatch.setenv("DATA_BASE_URL", BASE)
+        monkeypatch.delenv("API_BASE_URL", raising=False)
+
+        check_deployment.main(["--exit-zero"])
+
+        assert "SKIPPED" in capsys.readouterr().out

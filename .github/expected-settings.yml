@@ -125,13 +125,20 @@ settings:
       Where the client sends queued reports - backend/'s FastAPI service, not
       the R2 bucket DATA_BASE_URL names and not the Supabase project. Optional
       because unset is a genuinely supported state and is what every build
-      currently produces: the backend is not deployed anywhere yet (#95), and
-      with no value the app still maps, downloads and writes reports, which
-      wait in the offline outbox with their authored timestamps instead of
-      being sent. On the Variables tab because it is a public URL that ships
-      inside the bundle, the same reasoning as DATA_BASE_URL. Read only by
-      pages.yml - pr-preview.yml deliberately does not, so a preview cannot
-      file test reports into the moderation queue a club works from.
+      currently produces: the backend is not deployed anywhere yet (#600 is
+      standing it up; #95 is whether it survives real Postgres once it is),
+      and with no value the app still maps, downloads and writes reports,
+      which wait in the offline outbox with their authored timestamps instead
+      of being sent. On the Variables tab because it is a public URL that
+      ships inside the bundle, the same reasoning as DATA_BASE_URL.
+
+      Read by pages.yml, which bakes it into the bundle, and by
+      check-deployment.yml, which asks whatever it names for /health so that
+      the service is watched from the day it exists rather than from the day
+      somebody notices it is down (#1359). That second reader changes nothing
+      about a build. Still not pr-preview.yml, and that remains deliberate
+      rather than an omission: a preview build that could send would file test
+      reports into the moderation queue a club works from.
 
   UA_DATA_BASE_URL:
     where: variable

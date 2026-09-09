@@ -127,15 +127,21 @@ jobs:
       # would have handed the tracking-issue step a half-written verdict as
       # the day's truth. The status is read back out of PIPESTATUS, the same
       # pattern check-upstream-freshness.yml has carried all along.
-      - name: Ask the bucket as a browser would
+      # API_BASE arrives the same way and for the same reason as BASE. It is
+      # empty on every run today - `API_BASE_URL` is unset until #600 stands
+      # the service up - and the check reports `skipped` rather than failing
+      # on that, so this line is dormant rather than conditional (#1359).
+      - name: Ask the bucket as a browser would, and the backend whether it is up
         id: check
         if: steps.can.outputs.go == 'true'
         env:
           BASE: ${{ steps.can.outputs.base }}
+          API_BASE: ${{ vars.API_BASE_URL }}
         run: |
           set +e
           python check_deployment.py \
             --base "$BASE" \
+            --api-base "$API_BASE" \
             --json deployment.json \
             --exit-zero | tee deployment.txt
           status=${PIPESTATUS[0]}

@@ -1098,10 +1098,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # `pipeline/data/`, NOT `pipeline/` - and the difference is the whole
+      # of #1347. upload-artifact@v4 roots the archive at the LEAST COMMON
+      # ANCESTOR of its search paths, and the upload above names both
+      # `pipeline/data/processed/` and six `pipeline/data/raw/` entries, so
+      # that ancestor is `pipeline/data`. The archive therefore contains
+      # `processed/` and `raw/`, and extracting it to `pipeline/` put the
+      # exports at `pipeline/processed/` where nothing looks for them.
+      #
+      # What that cost: publish.py found no artifacts, returned normally, and
+      # this job reported "Published to <env>" having uploaded nothing - runs
+      # #93, #94 (production) and #98, every run that reached this job between
+      # the split in #1267 and the fix. publish.py now refuses that case
+      # outright, so this pairing failing again is loud rather than silent,
+      # and .github/tests/test_artifact_handoff_paths.py holds the two ends
+      # together so a later edit to either path list cannot drift them apart.
       - uses: actions/download-artifact@v4
         with:
           name: vector-data-build-output
-          path: pipeline/
+          path: pipeline/data/
 
       # `!regenerate_identity_ledger` no longer needs spelling out here - the
       # job's own `if:` above already excludes it, and RELEASING.md §12's

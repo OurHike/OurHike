@@ -109,7 +109,7 @@ import duckdb
 from export_nearby_trails import SOURCES_PATH, shipped_line_source_keys
 from fetch_trail_water import M_PER_FT, MATCH_RADIUS_FT, MAX_GRADE, MIN_GRADE_RUN_FT, elevation_ft, grade_gate
 from lib import fetch_receipts
-from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor, count_features
+from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor, count_features, keep_within_corridor
 from lib.source_registry import load_registry
 
 ROOT = Path(__file__).parent
@@ -218,16 +218,20 @@ def load_water(con: duckdb.DuckDBPyConnection) -> int:
     """
     water_path = (RAW_DIR / "osm_water.geojson").as_posix()
     con.execute(f"""
-        CREATE OR REPLACE TABLE water AS
+        CREATE OR REPLACE TABLE water_all AS
         SELECT
             w.osm_id,
             w.kind,
             ST_X(w.geom) AS lon,
             ST_Y(w.geom) AS lat,
             ST_Transform(w.geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
-        FROM ST_Read('{water_path}') w, corridor
-        WHERE ST_Intersects(w.geom, corridor.geom)
+        FROM ST_Read('{water_path}') w
     """)
+    # The polygon and the network ring in one question (#1311), through the
+    # same helper export_poi.py clips with, so this file's population stays
+    # exactly the population that would otherwise reach the map.
+    keep_within_corridor(con, "water_all", "osm_id", "lon", "lat")
+    con.execute("CREATE OR REPLACE TABLE water AS SELECT a.* FROM water_all a JOIN corridor_hits h ON a.osm_id = h.id")
     return con.execute("SELECT count(*) FROM water").fetchone()[0]
 
 

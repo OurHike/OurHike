@@ -244,7 +244,7 @@ from export_elevation import (
 )
 from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
+from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor, keep_within_corridor
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 from lib.photo_screen import gate_photos
@@ -1279,20 +1279,19 @@ def gate_osm_water_reach(records: list[dict], verdicts: dict[str, bool] | None) 
 
 
 def clip_to_corridor(con: duckdb.DuckDBPyConnection, unified: list[dict]) -> list[dict]:
-    """Keep only unified POIs whose point intersects the already-built
-    'corridor' table - the same clip spike_corridor.py proved on real
-    campsites/shelters, generalized to any unified POI list."""
+    """Keep only unified POIs the already-built corridor reaches - the same
+    clip spike_corridor.py proved on real campsites/shelters, generalized to
+    any unified POI list, and since #1311 asked of lib/corridor.py's
+    `keep_within_corridor` so the network ring is a join rather than a
+    polygon (that module's docstring has the measurement)."""
     if not unified:
         return []
 
     con.execute("CREATE OR REPLACE TABLE poi_points (id VARCHAR, lat DOUBLE, lon DOUBLE)")
     con.executemany("INSERT INTO poi_points VALUES (?, ?, ?)", [(r["id"], r["lat"], r["lon"]) for r in unified])
 
-    rows = con.execute("""
-        SELECT poi_points.id FROM poi_points, corridor
-        WHERE ST_Intersects(ST_Point(poi_points.lon, poi_points.lat), corridor.geom)
-    """).fetchall()
-    kept_ids = {row[0] for row in rows}
+    keep_within_corridor(con, "poi_points", "id", "lon", "lat")
+    kept_ids = {row[0] for row in con.execute("SELECT id FROM corridor_hits").fetchall()}
     return [r for r in unified if r["id"] in kept_ids]
 
 

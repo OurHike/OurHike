@@ -131,6 +131,7 @@ emails before the eighth was filtered. Alert on transitions, not on runs.
 | `check-deployment.yml` | tracking issue | sends a real `Origin` for every declared origin — the one check that would have caught #427 — and ages the newest `conditions/*` stamp, which is what notices the hourly bake having stopped (#1129) |
 | `check-deployed-app.yml` | tracking issue | whether the deployed app draws a trail at all |
 | `check-upstream-freshness.yml` | tracking issue | whether ATC and the other upstreams have moved |
+| `build-data-release.yml` | job summary | whether the week's upstream movement is worth dispatching a build for (#1314) - `check-upstream-freshness.yml`'s sibling, weekly rather than daily, and reporting to a summary because its answer is a recommendation rather than an alarm |
 | `smoke-published.yml` | tracking issue | the published artifacts, weekly |
 | `check-pending-approvals.yml` | tracking issue | whether a run is sitting in `waiting` for an approval nobody was told about |
 | `check-auth-redirects.yml` | tracking issue | whether a sign-in can still come back to a declared origin (#488) |
@@ -213,6 +214,7 @@ gathered rather than restated.
 | When | | |
 |---|---|---|
 | `7,37 * * * *` | twice an hour | `check-pending-approvals.yml` — the tightest cadence here, because its worst case is a production publish expiring unapproved at 30 days |
+| `25 6 * * 1` | Mondays | `build-data-release.yml` — early, because the answer is most useful before the week's work is planned |
 | `20 7 * * *` | daily | `check-upstream-freshness.yml` |
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
@@ -222,6 +224,8 @@ gathered rather than restated.
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |
 | `40 9 * * 1` | Mondays | `smoke-published.yml` |
+| `40 9 * * 2` | Tuesdays | `check-note-anchors.yml` |
+| `50 9 * * 3` | Wednesdays | `route-disputes.yml` |
 | `50 */20 * * *` | 00:50 and 20:50 | `supabase-keepalive.yml` |
 
 ## The shared actions

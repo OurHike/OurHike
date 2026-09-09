@@ -401,3 +401,95 @@ def test_a_release_folder_is_staged_under_the_environment_that_published_it(s3_c
 
     assert keys_under(s3_client, f"environments/ua/releases/{result['release']}/")
     assert keys_under(s3_client, "releases/") == []
+
+
+class TestReleaseStatus:
+    """`status` is what separates a folder that has been checked from one that
+    has only been written (#1314). DATA_RELEASES.md section 2 stages a release
+    as `candidate` and section 3's battery is what may promote it, so the two
+    writes are different jobs and the index is the only thing that carries the
+    answer between them."""
+
+    def test_a_status_is_written_when_one_is_given(self):
+        index = releases.append_release(
+            None,
+            release_id="2026-09-09",
+            version="v1",
+            created_at="2026-09-09T01:00:00+00:00",
+            status=releases.STATUS_CANDIDATE,
+        )
+
+        [entry] = index["releases"]
+        assert entry["status"] == "candidate"
+
+    def test_no_status_omits_the_key_rather_than_inventing_one(self):
+        """publish.py's case. A publish writes a release folder whose bytes are
+        already live at the flat keys - it never staged and no battery ran
+        against it, so neither grade is true of it. An ungraded entry must be
+        distinguishable from a graded one, which a default would destroy."""
+        index = releases.append_release(None, release_id="2026-09-09", version="v1", created_at="x")
+
+        [entry] = index["releases"]
+        assert "status" not in entry
+
+    def test_the_flip_changes_one_entry_and_leaves_the_others(self):
+        index = releases.append_release(
+            None, release_id="2026-09-08", version="v1", created_at="a", status=releases.STATUS_CANDIDATE
+        )
+        index = releases.append_release(
+            index, release_id="2026-09-09", version="v2", created_at="b", status=releases.STATUS_CANDIDATE
+        )
+
+        flipped = releases.set_release_status(index, release_id="2026-09-09", status=releases.STATUS_VERIFIED)
+
+        assert [(e["id"], e["status"]) for e in flipped["releases"]] == [
+            ("2026-09-08", "candidate"),
+            ("2026-09-09", "verified"),
+        ]
+
+    def test_the_flip_does_not_mutate_the_index_it_was_given(self):
+        """The verify job reads the index, flips, and writes the result back.
+        A mutating flip would make a failed write leave the in-memory copy
+        already claiming `verified`, so a retry would upload a lie."""
+        index = releases.append_release(
+            None, release_id="2026-09-09", version="v1", created_at="a", status=releases.STATUS_CANDIDATE
+        )
+
+        releases.set_release_status(index, release_id="2026-09-09", status=releases.STATUS_VERIFIED)
+
+        assert index["releases"][0]["status"] == "candidate"
+
+    def test_flipping_an_unlisted_release_raises_rather_than_no_opping(self):
+        """A silent no-op leaves a folder at `candidate` with a green verify
+        job beside it - which reads as "the battery has not run" when what
+        happened is that it ran and nobody recorded the answer."""
+        index = releases.append_release(None, release_id="2026-09-09", version="v1", created_at="a")
+
+        with pytest.raises(KeyError, match="2026-09-08"):
+            releases.set_release_status(index, release_id="2026-09-08", status=releases.STATUS_VERIFIED)
+
+    @pytest.mark.parametrize("mutate", [releases.append_release, releases.set_release_status])
+    def test_sibling_keys_survive_both_writers(self, mutate):
+        """`releases/pinned.json` is already reserved in lib/r2_keys.py and the
+        retention rule reads it, so an index growing a second top-level key is
+        foreseeable. A writer that ate it would be found out by a prune job
+        deleting somebody's pinned release."""
+        index = {"pinned": ["2026-08-01"], "releases": [{"id": "2026-09-09", "created_at": "a", "version": "v1"}]}
+
+        if mutate is releases.append_release:
+            result = mutate(index, release_id="2026-09-10", version="v2", created_at="b")
+        else:
+            result = mutate(index, release_id="2026-09-09", status=releases.STATUS_VERIFIED)
+
+        assert result["pinned"] == ["2026-08-01"]
+
+
+def test_the_three_statuses_are_spelled_once():
+    """They are compared across scripts - the stager writes one, the verifier
+    flips it, a prune job may read them - so a typo would read as "no release
+    has that status" rather than as an error."""
+    assert (releases.STATUS_CANDIDATE, releases.STATUS_VERIFIED, releases.STATUS_RELEASED) == (
+        "candidate",
+        "verified",
+        "released",
+    )

@@ -97,7 +97,7 @@ from pathlib import Path
 from pyproj import Transformer
 from shapely.geometry import LineString
 
-from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler, index_elevation_tiles
+from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler
 from lib.elevation_gain import (
     DEFAULT_THRESHOLD_FT,
     DEFAULT_THRESHOLD_M,
@@ -210,11 +210,20 @@ def build(graph: dict, geometry: list[list[list[float]]], sampler: ElevationSamp
     stats per source.
 
     EVERY EDGE'S POINTS GO TO THE SAMPLER IN ONE CALL. `sample_many` groups
-    points by the tile that covers them and does one windowed read per tile, so
-    batching across the whole graph is what turns thousands of remote range
-    reads into a handful. Sampling edge-by-edge would re-open the same
-    WarpedVRT for every edge that crosses the same cell, which on a graph whose
-    edges are ~200 m long is nearly all of them.
+    points by the tile that covers them and reads only the blocks those points
+    land in, so batching across the whole graph is what turns hundreds of
+    thousands of separate range reads into one pass per tile. Sampling
+    edge-by-edge would re-open the same tile for every edge crossing that cell
+    - on a graph whose edges are ~200 m long, nearly all of them - and re-read
+    its blocks each time.
+
+    That the batch is one call is now the smaller half of it. The sampler
+    reads blocks rather than a window spanning every point's bounding box,
+    which is what stopped this step being killed at the 120-minute job timeout
+    once the graph reached 468,743 edges (#1287 - Export the climb along each
+    graph edge hangs indefinitely, reproducibly, on the UA publish); a
+    bounding box over a nationwide graph is the whole tile whether it arrives
+    in one call or in ten thousand.
     """
     edges = graph["edges"]
     if len(geometry) != len(edges):
@@ -335,7 +344,10 @@ def main(argv: list[str] | None = None) -> dict:
 
     graph = json.loads(args.graph.read_text())
     geometry = json.loads(args.geometry.read_text())
-    sampler = ElevationSampler(index_elevation_tiles(args.tile_index))
+    # `for_index` rather than a bare constructor, so this run reads the
+    # shared sample cache beside the tile index instead of re-reading every
+    # point its sibling exporter just read (#1287). See that classmethod.
+    sampler = ElevationSampler.for_index(args.tile_index)
     try:
         climbs, stats = build(graph, geometry, sampler)
     finally:

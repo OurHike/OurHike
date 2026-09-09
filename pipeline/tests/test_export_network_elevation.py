@@ -65,8 +65,15 @@ def _index_for(tmp_path, *tiles):
     return out
 
 
-def _sampler(index_path):
-    return network_elevation.ElevationSampler(network_elevation.index_elevation_tiles(index_path))
+def _sampler(index_path, *, cache=False):
+    """The sampler these tests read through.
+
+    `cache=False` by default so each test's reads are its own: the sample
+    cache is shared per SAMPLER as well as on disk, and a test asserting how
+    much was read wants to be the only thing that has read anything. The cache
+    gets its own tests, where it is turned on deliberately.
+    """
+    return network_elevation.ElevationSampler.for_index(index_path, cache=cache)
 
 
 def _graph(*sources):
@@ -304,3 +311,60 @@ class TestWriteArtifact:
         sources = {"oprhp_trails": {"reaches_hikers": False}}
         manifest = network_elevation.write_artifact([None], {}, sources)
         assert manifest["sources"] == sources
+
+
+class TestReadingManyTilesAtOnce:
+    """Tiles are read on a thread pool now (#1287), one worker per tile, each
+    opening its own dataset because rasterio's are not safe to share.
+
+    What a pool can break that a loop cannot is the pairing: a value read off
+    one tile landing against a point that belongs to another. Nothing about
+    the code at the call site says the pairing holds, so it is asserted here
+    on ground where a crossed wire is arithmetic rather than plausible - four
+    tiles a thousand feet apart in elevation, one edge on each.
+    """
+
+    def _tile_at(self, tmp_path, west, base):
+        return _write_ramp_tile(
+            tmp_path / f"tile_{base:.0f}.tif",
+            bounds=(west, SOUTH, west + 0.20, NORTH),
+            base=base,
+            per_column=0.0,
+        )
+
+    def test_each_edge_gets_the_elevation_of_its_own_tile(self, tmp_path):
+        bases = [100.0, 400.0, 700.0, 1000.0]
+        wests = [-74.20, -74.00, -73.80, -73.60]
+        tiles = [self._tile_at(tmp_path, west, base) for west, base in zip(wests, bases)]
+        sampler = _sampler(_index_for(tmp_path, *tiles))
+        try:
+            # One flat edge inside each tile. A flat edge climbs nothing, so
+            # `edge_climb` is [0, 0] everywhere - which is exactly why the
+            # assertion below reads the samples rather than the climbs.
+            geometry = [[[west + 0.05, 41.30], [west + 0.15, 41.30]] for west in wests]
+            points = [(west + 0.10, 41.30) for west in wests]
+            climbs, _stats = network_elevation.build(_graph(*(["oprhp_trails"] * len(wests))), geometry, sampler)
+            sampled = sampler.sample_many(points)
+        finally:
+            sampler.close()
+
+        assert climbs == [[0, 0]] * len(wests)
+        assert sampled == [pytest.approx(base) for base in bases]
+
+    def test_a_single_worker_reads_the_same_values_as_eight(self, tmp_path):
+        """The pool is a speed change and must not be a correctness one, so
+        the two widths are compared against each other rather than against a
+        number written down here."""
+        bases = [100.0, 400.0, 700.0]
+        wests = [-74.20, -74.00, -73.80]
+        tiles = [self._tile_at(tmp_path, west, base) for west, base in zip(wests, bases)]
+        index_path = _index_for(tmp_path, *tiles)
+        points = [(west + 0.10, 41.30) for west in wests] + [(west + 0.02, 41.25) for west in wests]
+
+        wide = network_elevation.ElevationSampler.for_index(index_path, cache=False, max_workers=8)
+        narrow = network_elevation.ElevationSampler.for_index(index_path, cache=False, max_workers=1)
+        try:
+            assert wide.sample_many(points) == narrow.sample_many(points)
+        finally:
+            wide.close()
+            narrow.close()

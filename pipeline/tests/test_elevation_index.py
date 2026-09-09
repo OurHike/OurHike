@@ -36,7 +36,10 @@ left here is the shape of the index and the sampler that reads it.
 
 import json
 
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_bounds
 
 from export_elevation import ElevationSampler
 from fetch_elevation import TILE_URL_TEMPLATE, build_tile_index, cell_url
@@ -192,3 +195,95 @@ def test_neighbouring_cells_both_survive():
 
     assert len(index) == 2
     assert len({tile["url"] for tile in index}) == 2
+
+
+# --- How the sampler opens a remote tile (#1287) ---------------------------
+#
+# The index resolves to `/vsicurl/` URLs, and what GDAL does at each open is
+# most of what a run over hundreds of tiles costs. Nothing in pipeline/ set a
+# GDAL option before this change, so these two tests pin the parts of the new
+# behaviour that would go quiet rather than red if they were lost: the options
+# being in force AT OPEN TIME (rasterio's environment is thread-local, so an
+# Env entered anywhere but inside the worker reaches nothing), and the handle
+# being closed as soon as its tile is done (each open handle carries its own
+# VSI cache buffer).
+
+
+def _local_tile(path, elevation=500.0):
+    """One tiny real GeoTIFF, so a sampler has something to open. Written to
+    real bytes rather than committed (TESTING.md)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    profile = {
+        "driver": "GTiff",
+        "height": 20,
+        "width": 20,
+        "count": 1,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_bounds(-84.3, 34.5, -84.0, 34.8, 20, 20),
+        "nodata": -9999.0,
+    }
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(np.full((1, 20, 20), elevation, dtype="float32"))
+    return [(path, (-84.3, 34.5, -84.0, 34.8))]
+
+
+def test_the_range_read_options_are_in_force_when_a_tile_is_opened(tmp_path, monkeypatch):
+    """GDAL_DISABLE_READDIR_ON_OPEN is the one with teeth: without it every
+    /vsicurl/ open lists the bucket prefix looking for sidecars, once per tile
+    per run. The others ride the same Env.
+
+    Asserted at the moment of the open rather than by reading the constant,
+    because rasterio's environment is thread-local and the sampler opens its
+    tiles on worker threads - an Env entered around the run instead of inside
+    the worker would leave this reading GDAL's defaults with nothing failing.
+    """
+    tile_index = _local_tile(tmp_path / "tile.tif")
+    seen = {}
+    real_open = rasterio.open
+
+    def recording_open(*args, **kwargs):
+        seen.update(rasterio.env.getenv())
+        return real_open(*args, **kwargs)
+
+    monkeypatch.setattr(rasterio, "open", recording_open)
+
+    sampler = ElevationSampler(tile_index)
+    try:
+        assert sampler.sample(-84.15, 34.65) == pytest.approx(500.0)
+    finally:
+        sampler.close()
+
+    assert seen.get("GDAL_DISABLE_READDIR_ON_OPEN") == "EMPTY_DIR"
+    assert seen.get("CPL_VSIL_CURL_ALLOWED_EXTENSIONS") == ".tif"
+    assert seen.get("GDAL_HTTP_MULTIRANGE") in ("YES", True)
+
+
+def test_a_tile_is_closed_as_soon_as_its_points_are_read(tmp_path, monkeypatch):
+    """The sampler used to hold one open handle per tile for its whole life,
+    which was fine for the ~110 corridor cells and is not for the 473 an index
+    covering the network reaches: each open handle carries its own
+    VSI_CACHE_SIZE buffer. So a tile is opened, read and closed.
+
+    close() still closes anything left - that is the backstop for a run that
+    raises mid-read - and this asserts there is normally nothing left for it.
+    """
+    tile_index = _local_tile(tmp_path / "tile.tif")
+    opened = []
+    real_open = rasterio.open
+
+    def recording_open(*args, **kwargs):
+        dataset = real_open(*args, **kwargs)
+        opened.append(dataset)
+        return dataset
+
+    monkeypatch.setattr(rasterio, "open", recording_open)
+
+    sampler = ElevationSampler(tile_index)
+    try:
+        sampler.sample_many([(-84.15, 34.65), (-84.10, 34.60)])
+        assert opened, "the sampler never opened the tile at all - this test would assert nothing"
+        assert all(dataset.closed for dataset in opened)
+        assert sampler._open_datasets == []
+    finally:
+        sampler.close()

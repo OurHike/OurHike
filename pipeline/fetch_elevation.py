@@ -83,6 +83,7 @@ import argparse
 import json
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import duckdb
@@ -242,7 +243,25 @@ def build_tile_index(bbox: tuple[float, float, float, float], corridor_hit) -> l
     return index
 
 
-def stamp_last_modified(index: list[dict], *, head=None) -> list[dict]:
+#: How many HEADs are in flight at once.
+#:
+#: Measured on run #92 of publish-vector-data.yml (2026-09-08): 473 cells,
+#: sequentially, took **4 minutes 37 seconds** - 0.59 s of round trip each,
+#: essentially all of it waiting. The cell list stopped being ~110 corridor
+#: tiles when #1019 removed the network clip, and a per-cell cost that was
+#: fine at 110 is four and a half minutes at 473 and grows with every trail
+#: system registered.
+#:
+#: 8 is picked rather than derived - `@unvalidated`, like the sampler's
+#: DEFAULT_TILE_WORKERS next door, and what would settle it is the same thing:
+#: one real run timed at a few widths. It is deliberately modest because these
+#: are HEADs against somebody else's bucket for a detail nothing downstream
+#: depends on; the point is to stop the wait dominating, not to extract the
+#: last second from it.
+HEAD_WORKERS = 8
+
+
+def stamp_last_modified(index: list[dict], *, head=None, workers: int = HEAD_WORKERS) -> list[dict]:
     """Add each tile's S3 `Last-Modified` to the index, in place.
 
     WHY THIS IS NOT A CONTRADICTION OF "ZERO DISCOVERY REQUESTS". Discovery -
@@ -273,19 +292,34 @@ def stamp_last_modified(index: list[dict], *, head=None) -> list[dict]:
     freshness_state already keeps rather than filters - "we did not find out"
     is a state it models. The index itself is unaffected, so a network
     problem costs freshness detail and never the elevation profile.
+
+    ASKED IN PARALLEL, WRITTEN IN ORDER (see HEAD_WORKERS for the measurement
+    that made that worth doing). `pool.map` yields in submission order, and
+    every write to `index` happens here in the calling thread, so the entries
+    come back in exactly the order they went in - which is a property
+    `elevation_marker` does not need (it sorts) but a diff of two
+    tile_index.json files does. What the pool changes is how long the waiting
+    takes; it changes nothing about what a failed HEAD records, because that
+    decision is still `_head`'s and is still `None`.
     """
     send = head if head is not None else _head
-    for tile in index:
-        tile["last_modified"] = send(tile["url"])
+    if not index:
+        return index
+    with ThreadPoolExecutor(max_workers=min(workers, len(index))) as pool:
+        for tile, last_modified in zip(index, pool.map(lambda tile: send(tile["url"]), index)):
+            tile["last_modified"] = last_modified
     return index
 
 
 #: One retry, two seconds, and impatient on purpose - the opposite posture
 #: from every other caller of `request_with_retry` in this pipeline, which is
 #: exactly the per-caller policy `lib/http_retry.py` says it exists to allow.
-#: This HEAD runs once per corridor tile, ~110 of them, and what it buys is
-#: freshness DETAIL rather than the elevation profile; nothing downstream
-#: stops if it comes back None. The default (5, 30) ladder against a USGS
+#: This HEAD runs once per indexed cell, and what it buys is freshness DETAIL
+#: rather than the elevation profile; nothing downstream stops if it comes
+#: back None. It was ~110 cells when the index was the A.T. corridor alone;
+#: run #92 measured 473 (2026-09-08) now that the index covers the network
+#: extent too, which makes the budget argument below stronger rather than
+#: weaker - and is why the HEADs go out on a pool (HEAD_WORKERS). The default (5, 30) ladder against a USGS
 #: outage would be up to 64 minutes of sleeping to learn nothing, so the
 #: budget is small enough to absorb a single flake and no more (#1295).
 HEAD_BACKOFF_SECONDS = (2,)

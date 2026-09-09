@@ -614,3 +614,407 @@ def test_the_manifest_carries_the_marker_agreement(tmp_path, monkeypatch):
     assert manifest["marker_holdout_max_mi"] <= export_elevation.MARKER_HOLDOUT_MAX_MI
     on_disk = json.loads(manifest_path.read_text())
     assert on_disk["marker_holdout_median_mi"] == manifest["marker_holdout_median_mi"]
+
+
+# --- How much of a tile a run actually reads (#1287) -----------------------
+#
+# The sampler used to reproject a whole tile through a WarpedVRT and read one
+# window spanning the bounding box of every point that tile covered. For the
+# A.T. that box is a thin ribbon. For the nationwide junction graph it is the
+# tile, and the measurement in ElevationSampler's docstring is what that cost:
+# 65.1 s for 400 diagonal points on the real n35w084, against under 0.1 s for
+# the 39 blocks they actually land in.
+#
+# What is testable here without the network is the shape of the reads - that
+# the sampler asks for blocks, one per touched block and no more. A tiny
+# 1024x1024 fixture written with a real 256x256 block size stands in for the
+# real tile's 512x512, because what the assertion turns on is the grouping,
+# not the size.
+
+
+class _CountingDataset:
+    """A rasterio dataset that records the window of every read.
+
+    A proxy rather than a patched method, because rasterio's dataset is a
+    Cython extension type and does not take an instance attribute. Everything
+    the sampler reads off a dataset - `transform`, `crs`, `block_shapes`,
+    `nodata`, the sizes - falls through __getattr__ untouched, so the only
+    thing this changes is that the reads are counted.
+    """
+
+    def __init__(self, dataset, windows):
+        self._dataset = dataset
+        self._windows = windows
+
+    def read(self, *args, **kwargs):
+        self._windows.append(kwargs.get("window"))
+        return self._dataset.read(*args, **kwargs)
+
+    def close(self):
+        self._dataset.close()
+
+    def __getattr__(self, name):
+        return getattr(self._dataset, name)
+
+
+def _count_windowed_reads(monkeypatch):
+    """Every window the sampler reads, in the order it read them."""
+    windows = []
+    real_open = rasterio.open
+
+    def counting_open(*args, **kwargs):
+        return _CountingDataset(real_open(*args, **kwargs), windows)
+
+    monkeypatch.setattr(rasterio, "open", counting_open)
+    return windows
+
+
+def _forbid_raster_opens(monkeypatch):
+    """Make opening a DEM tile at all a failure.
+
+    Stronger than counting reads for the cache tests: a point answered from
+    the cache should cost no open, no range request and no block, and the
+    cheapest way to assert all three is that nothing was opened.
+    """
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("the sampler opened a DEM tile for a point it already had a cached answer for")
+
+    monkeypatch.setattr(rasterio, "open", refuse)
+
+
+def _tiled_ramp_tile(path, bounds=(-84.3, 34.5, -84.0, 34.8), size=1024, block=256):
+    """A real GeoTIFF with a real internal block size, so `block_shapes`
+    reports 256x256 the way a 3DEP tile reports 512x512 (measured on n35w084,
+    2026-09-08) rather than one block covering everything.
+
+    The values rise west to east, so a test can tell which block it got as
+    well as how many it read.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    profile = {
+        "driver": "GTiff",
+        "height": size,
+        "width": size,
+        "count": 1,
+        "dtype": "float32",
+        "crs": "EPSG:4326",
+        "transform": from_bounds(*bounds, size, size),
+        "nodata": -9999.0,
+        "tiled": True,
+        "blockxsize": block,
+        "blockysize": block,
+    }
+    with rasterio.open(path, "w", **profile) as dst:
+        dst.write(np.tile(np.arange(size, dtype="float32"), (size, 1))[np.newaxis, :, :])
+    return path
+
+
+def _index_json(path, entries):
+    """A tile index written by hand, so a test can control the ORDER tiles are
+    tried in (the mosaic falls through in index order) and stamp editions on
+    them (the sample cache is keyed to those)."""
+    path.write_text(json.dumps(entries))
+    return path
+
+
+def test_only_the_blocks_the_points_land_in_are_read(tmp_path, monkeypatch):
+    """The whole of #1287 in one assertion.
+
+    Three points in two of the fixture's sixteen 256x256 blocks. Two reads, of
+    one block each - not one read spanning the bounding box of all three,
+    which on this fixture would be 990x990 pixels and on the real n35w084 was
+    94.5 megapixels and 65.1 seconds.
+    """
+    tile = _tiled_ramp_tile(tmp_path / "tiled.tif")
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8]}])
+    windows = _count_windowed_reads(monkeypatch)
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+    try:
+        # Two in the north-west block, one in the south-east: the second point
+        # is what proves the grouping is by BLOCK and not by point.
+        values = sampler.sample_many([(-84.29, 34.79), (-84.28, 34.78), (-84.01, 34.51)])
+    finally:
+        sampler.close()
+
+    assert len(windows) == 2, f"expected one read per touched block, got {windows}"
+    assert {(w.width, w.height) for w in windows} == {(256, 256)}
+    # And the values are still the ramp, read out of the right blocks.
+    assert values[0] == pytest.approx(34.0, abs=1.0)
+    assert values[2] == pytest.approx(989.0, abs=1.0)
+
+
+def test_an_untiled_fixture_is_one_block_rather_than_a_failure(tmp_path, monkeypatch):
+    """The small fixtures this suite builds are written without tiling, so
+    `block_shapes` reports a single block covering the whole raster. Block
+    grouping has to be correct for that too - it is what every other test in
+    this file reads through."""
+    _write_dem_tile(tmp_path / "flat" / "tile.tif", (-84.3, 34.5, -84.0, 34.8), elevation=612.0)
+    index = _index_for_dir(tmp_path / "flat", tmp_path)
+    windows = _count_windowed_reads(monkeypatch)
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+    try:
+        values = sampler.sample_many([(-84.25, 34.75), (-84.05, 34.55)])
+    finally:
+        sampler.close()
+
+    assert values == [pytest.approx(612.0), pytest.approx(612.0)]
+    assert len(windows) == 1
+
+
+def test_a_point_spanning_two_tiles_still_falls_through_the_first_ones_hole(tmp_path, monkeypatch):
+    """The mosaic rule, checked against the new read path.
+
+    Two tiles cover the same ground; the first in index order is all nodata
+    there. The point must be answered by the SECOND tile rather than reading
+    as a gap - the "mosaic if needed" case, which is the one piece of
+    sample_many that had to survive the rewrite untouched because it is the
+    difference between a real elevation and a hole in the profile.
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    hole = tmp_path / "hole" / "tile.tif"
+    real = tmp_path / "real" / "tile.tif"
+    _write_dem_tile(hole, bounds, elevation=-9999.0, nodata=-9999.0)
+    _write_dem_tile(real, bounds, elevation=742.0, nodata=-9999.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [
+            {"url": hole.as_posix(), "bounds": list(bounds)},
+            {"url": real.as_posix(), "bounds": list(bounds)},
+        ],
+    )
+    windows = _count_windowed_reads(monkeypatch)
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+    try:
+        value = sampler.sample(-84.15, 34.65)
+    finally:
+        sampler.close()
+
+    assert value == pytest.approx(742.0)
+    # One block off each tile: the fall-through is a second read, not a
+    # re-read of the first tile.
+    assert len(windows) == 2
+
+
+# --- The shared sample cache (#1287) ---------------------------------------
+#
+# Three exporters sample DEM points, and two of them sample the SAME points at
+# the same interval by construction. The cache is what stops the second one
+# paying for the first one's work again, and what makes a re-run after a
+# failure nearly free. These are the properties it has to hold to be safe on a
+# path a hiker reads a climb off: it must not answer for tiles that have been
+# re-flown, and a gap must stay a gap rather than becoming a re-read.
+
+
+def _cache_file(index_path):
+    return index_path.parent / export_elevation.SAMPLE_CACHE_NAME
+
+
+def test_a_cached_point_costs_no_open_and_no_read_at_all(tmp_path, monkeypatch):
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, (-84.3, 34.5, -84.0, 34.8), elevation=515.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8], "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}],
+    )
+
+    first = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert first.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        first.close()
+    assert _cache_file(index).exists()
+
+    _forbid_raster_opens(monkeypatch)
+    second = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert second.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        second.close()
+
+
+def test_a_re_flown_tile_discards_the_whole_cache_rather_than_merging(tmp_path):
+    """A cell USGS re-published must not be answered from the samples taken
+    off the old one. The marker is lib/freshness_state.py's elevation_marker -
+    the sorted set of editions the index pins - and a difference throws the
+    file away entirely, because a merge would keep serving exactly the entries
+    that are now wrong.
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=515.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": list(bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}],
+    )
+
+    first = export_elevation.ElevationSampler.for_index(index)
+    try:
+        first.sample(-84.15, 34.65)
+    finally:
+        first.close()
+
+    # The same cell, re-flown: same URL, new Last-Modified. Re-written on disk
+    # with a genuinely different elevation, so an answer served from the stale
+    # cache is visible rather than merely suspected.
+    _write_dem_tile(tile, bounds, elevation=901.0)
+    _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": list(bounds), "last_modified": "Mon, 01 Jun 2026 00:00:00 GMT"}],
+    )
+
+    second = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert second.sample(-84.15, 34.65) == pytest.approx(901.0)
+    finally:
+        second.close()
+
+    assert json.loads(_cache_file(index).read_text())["marker"].endswith("Mon, 01 Jun 2026 00:00:00 GMT")
+
+
+def test_a_dem_gap_is_cached_as_a_gap_and_stays_none(tmp_path, monkeypatch):
+    """A hole in the DEM is a finding, not a miss.
+
+    Storing it as an absence would make every gap the most expensive point in
+    the run - re-read on every pass, and re-read across every re-run - which
+    is backwards, because a gap is the point that cost the most to establish
+    (it went through every covering tile before it was one).
+    """
+    bounds = (-84.3, 34.5, -84.0, 34.8)
+    tile = tmp_path / "hole" / "tile.tif"
+    _write_dem_tile(tile, bounds, elevation=-9999.0, nodata=-9999.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": list(bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"}],
+    )
+
+    first = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert first.sample(-84.15, 34.65) is None
+    finally:
+        first.close()
+
+    stored = json.loads(_cache_file(index).read_text())["samples"]
+    assert stored == {"-84.150000,34.650000": None}, "a gap is stored as an explicit null, not left out"
+
+    _forbid_raster_opens(monkeypatch)
+    second = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert second.sample(-84.15, 34.65) is None
+    finally:
+        second.close()
+
+
+def test_a_point_no_tile_covers_is_cached_as_a_gap_too(tmp_path, monkeypatch):
+    """The other kind of gap - no covering tile at all - takes the same path.
+    It is the cheap one to establish, but caching it keeps one rule rather
+    than two."""
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, (-84.3, 34.5, -84.0, 34.8), elevation=515.0)
+    index = _index_json(
+        tmp_path / "tile_index.json",
+        [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8], "last_modified": "x"}],
+    )
+
+    first = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert first.sample(-70.0, 20.0) is None
+    finally:
+        first.close()
+
+    _forbid_raster_opens(monkeypatch)
+    second = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert second.sample(-70.0, 20.0) is None
+    finally:
+        second.close()
+
+
+def test_the_same_point_asked_for_twice_in_one_run_is_read_once(tmp_path, monkeypatch):
+    """Which is not a contrivance: a junction graph asks for each node's
+    coordinate once per edge that meets there, and the two network exporters
+    ask for the whole graph's points twice between them."""
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, (-84.3, 34.5, -84.0, 34.8), elevation=515.0)
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8]}])
+    windows = _count_windowed_reads(monkeypatch)
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+    try:
+        values = sampler.sample_many([(-84.15, 34.65)] * 5)
+    finally:
+        sampler.close()
+
+    assert values == [pytest.approx(515.0)] * 5
+    assert len(windows) == 1
+
+
+def test_an_unreadable_cache_costs_a_slow_run_and_not_the_export(tmp_path):
+    """The cache is an optimisation, so a corrupt one is treated as no cache
+    rather than as a reason to stop. A half-written file is exactly what a run
+    killed at the job timeout could leave behind, which is the failure this
+    whole change is about."""
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, (-84.3, 34.5, -84.0, 34.8), elevation=515.0)
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8]}])
+    _cache_file(index).write_text('{"marker": "x", "samples": {"-84.150')
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        assert sampler.sample(-84.15, 34.65) == pytest.approx(515.0)
+    finally:
+        sampler.close()
+
+
+def test_the_cache_lands_beside_the_tile_index_it_was_sampled_against(tmp_path):
+    """Where the file lives is the reason a test suite cannot write samples
+    into the real data tree, so it is worth asserting rather than assuming -
+    and it is why the real path resolves inside data/raw/elevation/, which
+    publish-vector-data.yml's FETCH_OUTPUTS already carries between runs."""
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, (-84.3, 34.5, -84.0, 34.8), elevation=515.0)
+    (tmp_path / "nested").mkdir()
+    index = _index_json(tmp_path / "nested" / "tile_index.json", [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8]}])
+
+    sampler = export_elevation.ElevationSampler.for_index(index)
+    try:
+        sampler.sample(-84.15, 34.65)
+    finally:
+        sampler.close()
+
+    assert (tmp_path / "nested" / "samples.json").exists()
+    assert export_elevation.SAMPLE_CACHE_PATH == export_elevation.ELEVATION_INDEX_PATH.parent / "samples.json"
+
+
+def test_a_point_the_transformer_cannot_place_is_a_gap_and_not_a_pixel(tmp_path, monkeypatch):
+    """The guard in _read_tile, reached the only way it can be.
+
+    No CRS pair tried here produces a non-finite coordinate - pyproj 3.7.2
+    clamps out-of-domain points rather than answering inf (checked 2026-09-08
+    against a Web Mercator pole and a UTM antipode) - so the transformer is
+    replaced with one that answers NaN. That is a fixture, not a discovery
+    about pyproj, and the test says so.
+
+    What it pins is the choice, not the arithmetic: a coordinate with no
+    position in the tile's grid reads as a gap. The vectorised cast would
+    otherwise turn a NaN into some arbitrary pixel index and publish whatever
+    was there as an elevation, which is the confidently-wrong answer this
+    codebase spends most of its comments avoiding.
+    """
+    tile = tmp_path / "flat" / "tile.tif"
+    _write_dem_tile(tile, (-84.3, 34.5, -84.0, 34.8), elevation=515.0)
+    index = _index_json(tmp_path / "tile_index.json", [{"url": tile.as_posix(), "bounds": [-84.3, 34.5, -84.0, 34.8]}])
+
+    class _NanTransformer:
+        def transform(self, xs, ys):
+            return np.full(len(xs), np.nan), np.full(len(ys), np.nan)
+
+    sampler = export_elevation.ElevationSampler.for_index(index, cache=False)
+    monkeypatch.setattr(sampler, "_transformer_to", lambda crs: _NanTransformer())
+    try:
+        assert sampler.sample(-84.15, 34.65) is None
+    finally:
+        sampler.close()

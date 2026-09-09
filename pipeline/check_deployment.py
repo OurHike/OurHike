@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +83,27 @@ FAILED = "failed"
 # must not be able to declare an outage. These are reported and, unlike a real
 # refusal, do not on their own open the tracking issue.
 UNREACHABLE = "unreachable"
+# Not "it passed" and not "it failed" - "there was nothing to ask" (#1359).
+# The backend probe below is the only user: `API_BASE_URL` is unset on every
+# build today because the service does not exist yet, and a check that goes
+# red daily for that is one nobody reads by the time it matters.
+SKIPPED = "skipped"
+
+# The backend's own liveness endpoint (backend/app/main.py), and how long it
+# may take to answer.
+#
+# REASONED from backend/HOSTING.md's own decision rather than picked. That
+# document chose a free tier that sleeps after 15 minutes idle and costs
+# "30-60 seconds on the first request after idle", accepted deliberately
+# because nothing a hiker reads on the trail comes from this service. This
+# check runs daily, so it will meet a sleeping instance nearly every time -
+# the cold start IS the normal path here, not the exception. HTTP_TIMEOUT is
+# 30, which is inside that documented window, so reusing it would report a
+# healthy backend as unreachable most mornings. 90 is the documented worst
+# case plus the same margin again, and it is a timeout rather than a promise:
+# a service that is genuinely down still fails fast on a refused connection.
+BACKEND_HEALTH_PATH = "/health"
+BACKEND_COLD_START_TIMEOUT = 90
 
 # The prefix the hourly bake writes under, and how old its newest file may be
 # before this says so (#1129).
@@ -773,6 +795,99 @@ def check_advertised_sizes(base: str, artifacts: list[str], session: requests.Se
     return reports
 
 
+def check_backend_health(api_base: str | None, session: requests.Session | None = None) -> dict:
+    """Is the backend answering - the one service nothing else here asks about (#1359).
+
+    Deliberately not part of `check_all`: everything there is one bucket's, and
+    this is a different service on a different host. It is assembled beside
+    those reports rather than inside them.
+
+    Three properties, each of which is the difference between a check somebody
+    reads and a check somebody mutes:
+
+    **Unset is `skipped`, never `failed`.** `.github/expected-settings.yml`
+    records that `API_BASE_URL` is optional and that unset "is what every build
+    currently produces" - the backend is not deployed anywhere yet (#600). A
+    check that goes red daily for a service nobody has created yet teaches the
+    reader to ignore the run, and this file's whole subject is a green check
+    that meant nothing.
+
+    **A cold start is not an outage.** backend/HOSTING.md chose a free tier that
+    sleeps after 15 minutes idle and pays 30-60 seconds on the next request, and
+    that is a documented cost rather than a fault. `HTTP_TIMEOUT` is 30, so
+    reusing it would report a healthy service as down roughly whenever it had
+    been quiet - which is the same muting, arrived at from the other direction.
+
+    **Not hiker-facing.** features/CONDITIONS_DELIVERY.md moved the safety read
+    off this service: closures reach a phone from R2, and the app is built to
+    work with no backend at all. So this being down means reports wait in the
+    outbox and moderation waits with them - real, and not a hiker on a ridge
+    without a map, which is the distinction `hiker_facing_failures` exists to
+    keep.
+    """
+    if not api_base:
+        return {
+            "check": "backend",
+            "key": "API_BASE_URL",
+            "state": SKIPPED,
+            "hiker_facing": False,
+            "detail": "unset, so there is no backend to ask - reports queue in the outbox by design (#600)",
+        }
+
+    url = f"{api_base.rstrip('/')}{BACKEND_HEALTH_PATH}"
+    try:
+        response = (session or requests).get(url, timeout=BACKEND_COLD_START_TIMEOUT)
+    except requests.RequestException as exc:
+        # Same reasoning as UNREACHABLE everywhere else in this file: a request
+        # that never completed says nothing about the service. A slept instance
+        # taking longer than even the cold-start budget lands here, and that is
+        # the honest answer rather than a declared outage.
+        return {
+            "check": "backend",
+            "key": url,
+            "state": UNREACHABLE,
+            "hiker_facing": False,
+            "detail": f"could not ask: {exc.__class__.__name__}",
+        }
+
+    if response.status_code != 200:
+        return {
+            "check": "backend",
+            "key": url,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"{BACKEND_HEALTH_PATH} answered {response.status_code}",
+        }
+
+    # A 200 is not the whole question. A sleeping free-tier instance, a proxy
+    # error page or a parked domain can all answer 200 with something that is
+    # not this service, so the body has to say it is.
+    try:
+        body = response.json()
+    except ValueError:
+        return {
+            "check": "backend",
+            "key": url,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"{BACKEND_HEALTH_PATH} answered 200 but not JSON, so something other than the backend replied",
+        }
+
+    # `isinstance` rather than a bare `.get`: valid JSON is not necessarily an
+    # object, and `[].get` is an AttributeError that would take the whole run
+    # down - the one thing every check in this file is built not to do.
+    if not isinstance(body, dict) or body.get("status") != "ok":
+        return {
+            "check": "backend",
+            "key": url,
+            "state": FAILED,
+            "hiker_facing": False,
+            "detail": f"{BACKEND_HEALTH_PATH} answered 200 with {body!r}",
+        }
+
+    return {"check": "backend", "key": url, "state": OK, "hiker_facing": False, "detail": "answering"}
+
+
 def hiker_facing_failures(reports: list[dict], manifest: dict) -> list[dict]:
     """The failures that mean a hiker cannot get the map.
 
@@ -826,6 +941,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=data_env.ENVIRONMENTS,
         help="Check this environment's data rather than the base as given (features/DATA_ENVIRONMENTS.md).",
     )
+    parser.add_argument(
+        "--api-base",
+        metavar="URL",
+        help="Backend base to ask for /health. Defaults to $API_BASE_URL; skipped when neither is set.",
+    )
     parser.add_argument("--json", metavar="OUT", type=Path, help="Also write the verdict to OUT as JSON.")
     parser.add_argument(
         "--origins",
@@ -861,6 +981,11 @@ def main(argv: list[str] | None = None) -> int:
 
     reports = check_all(base, manifest)
     published = any(report["check"] == "artifact" for report in reports)
+
+    # Appended rather than folded into check_all, which is the bucket's alone.
+    # This asks a different service on a different host, and its report is
+    # `skipped` until somebody deploys one (#1359).
+    reports.append(check_backend_health(args.api_base or os.environ.get("API_BASE_URL")))
 
     for report in reports:
         subject = report.get("origin") or report.get("key") or ""

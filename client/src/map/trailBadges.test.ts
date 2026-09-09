@@ -21,6 +21,7 @@ import {
   TRAIL_BADGE_PLATE_HEIGHT,
   TRAIL_BADGE_PLATE_NIGHT,
   TRAIL_BADGE_TEXT_FIT_PADDING,
+  trailIdForSource,
   trailMarkImageId,
   WHITE_CHIP_GROUND,
 } from './trailBadges'
@@ -60,6 +61,22 @@ describe('who earns a badge', () => {
     expect(trailMarkImageId('centerline')).toBe(`trail-mark-${TRAILS.AT.id}`)
     expect(trailMarkImageId('oprhp_trails')).toBeNull()
     expect(trailMarkImageId(null)).toBeNull()
+  })
+
+  it('wears the Long Path’s own mark since #1307', () => {
+    expect(trailMarkImageId('nynjtc_long_path')).toBe(`trail-mark-${TRAILS.LP.id}`)
+  })
+
+  it('lets the A.T.’s badge be taken, and not the Long Path’s yet', () => {
+    // A mark is a claim about which trail a line IS; taking one is a claim
+    // about mileage, elevation and position this build can only back for
+    // the A.T. (lib/hikes.ts's trailHasMileAxis, #1317). Wearing a mark and
+    // not being takeable is the Long Path's honest state today, not a bug -
+    // see TAKEABLE_SOURCES's own header.
+    expect(trailIdForSource('centerline')).toBe(TRAILS.AT.id)
+    expect(trailIdForSource('nynjtc_long_path')).toBeNull()
+    expect(trailIdForSource('oprhp_trails')).toBeNull()
+    expect(trailIdForSource(null)).toBeNull()
   })
 
   it('gives every palette member a chip, and the neutrals one grey chip between them - each with a bare twin', () => {

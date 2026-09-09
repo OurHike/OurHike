@@ -100,6 +100,62 @@ describe('positionLine', () => {
     expect(positionLine({ ...WALKING, mile: undefined })).toBe('Off the trail')
   })
 
+  describe('a hike on a trail this build cannot measure (#1357)', () => {
+    // The third reason the mile is missing, and the one the other two would
+    // lie about. `lib/hikeText.ts` already refuses to CREATE such a hike -
+    // "a figure on any other trail would be an A.T. mileage wearing somebody
+    // else's name" - and this is that refusal carried past creation.
+    const ON_THE_LONG_PATH: PositionLineInputs = {
+      ...WALKING,
+      unmeasuredTrail: 'L.P.',
+      mile: undefined,
+    }
+
+    it('names the trail rather than blaming the phone or the hiker', () => {
+      expect(positionLine(ON_THE_LONG_PATH)).toBe('No miles on the L.P.')
+    })
+
+    it('outranks "No trail data", which would be false about a loaded phone', () => {
+      // The data IS downloaded here; it simply carries no axis for this
+      // trail. Reporting a missing download would send a hiker to the
+      // downloads screen to fix something that is not broken.
+      expect(positionLine({ ...ON_THE_LONG_PATH, trailReady: false })).toBe(
+        'No miles on the L.P.',
+      )
+    })
+
+    it('outranks "Off the trail", which would be false about the hiker', () => {
+      // The one that reaches a hiker's safety: they may be standing squarely
+      // on their own trail. THE GATE UPSTREAM MAKES THIS UNREACHABLE - App's
+      // `trailIndex` is withheld, so no mile is computed - and it is asserted
+      // anyway, because this file owns the precedence and a future caller
+      // that passes both must not get the accusation.
+      expect(positionLine({ ...ON_THE_LONG_PATH, mile: 1407.2 })).toBe(
+        'No miles on the L.P.',
+      )
+    })
+
+    it('does not outrank a GPS state, which is true whatever the trail is', () => {
+      // Same asymmetry the `follow` branch already keeps: a denied permission
+      // is not made any less true by which trail the hike is on.
+      expect(positionLine({ ...ON_THE_LONG_PATH, enabled: false })).toBe(
+        'Location is off',
+      )
+    })
+
+    it('yields to a followed day hike, which measures its own walk', () => {
+      // A route's distance comes off its own edges and needs no A.T. axis,
+      // so it is an answer where this is only an absence.
+      expect(positionLine({ ...ON_THE_LONG_PATH, follow: FOLLOWING })).toBe(
+        '2.4 mi in · 3.8 mi to go',
+      )
+    })
+
+    it('is absent by default, so every other caller is unaffected', () => {
+      expect(positionLine(WALKING)).toBe('mi 1,407.2 · NOBO')
+    })
+  })
+
   // Following a day hike (#1041). A park has no mile axis to number (#928),
   // so on that ground the A.T. reading is not a weaker answer - it is the
   // wrong question, answered confidently.

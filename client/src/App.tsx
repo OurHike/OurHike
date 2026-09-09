@@ -286,6 +286,7 @@ import {
   hikeNameFromEnds,
   hikeOfTrip,
   recordedPlan,
+  trailHasMileAxis,
   type Hike,
   type PlaceRef,
 } from './lib/hikes'
@@ -1168,11 +1169,49 @@ function App() {
    *  hike yet. Derived from the active Hike rather than its own preference
    *  since #1352: taking a trail from the map is now the same act as
    *  picking one in Plan, not a second, weaker path answering the same
-   *  question differently. Decides the lines and the legend's `taken`,
-   *  nothing else: the trail the rest of this shell is about is
-   *  TRAIL_NAME's. */
+   *  question differently. Decides the lines, the legend's `taken`, and -
+   *  since #1357 - whether this download's miles apply at all. The trail
+   *  the rest of this shell is NAMED for is still TRAIL_NAME's. */
   const chosenTrailId = activeHikeOf(tripStore)?.trailId ?? null
   const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+
+  /**
+   * The trail this build cannot measure the active hike on, by short name,
+   * or null when it can (#1357).
+   *
+   * `lib/hikeText.ts`'s `setupRefusal` already refuses to CREATE a hike on a
+   * trail with no published mile axis - "a figure on any other trail would
+   * be an A.T. mileage wearing somebody else's name". Nothing carried that
+   * refusal past creation, so `locateOnTrail`, the elevation ribbon and
+   * `legFigures` would have gone on answering in A.T. miles under the other
+   * trail's name. This is where that stops.
+   *
+   * NO ACTIVE HIKE IS MEASURABLE, not unmeasurable: a hiker who has set up
+   * no long hike is on the A.T. shell this app is named for, which is
+   * today's behaviour and stays it.
+   *
+   * SET-UP CANNOT REACH THIS STATE; SYNC CAN. `setupRefusal` blocks
+   * *creating* a hike on any other trail, which is what made this look like
+   * a purely future gate - and that reading was wrong. `lib/tripsSync.ts`'s
+   * `mergeServerHikes` folds in hikes changed on the hiker's OTHER devices
+   * ("unknown row is added, known row is replaced"), each read by
+   * `validateHike`, which accepts any non-empty `trailId` and does not
+   * consult `trailHasMileAxis` at all (lib/hikes.ts, the `trailId` branch).
+   * So a hike on an unmeasurable trail arrives fully formed on this phone
+   * the moment anything upstream writes one, with `activeHikeId` free to
+   * point at it.
+   *
+   * Whether such a row exists on any server TODAY is a different question
+   * and not one this file can answer: the backend's `Hike.trail_id`
+   * defaults to "AT" and nothing known writes another value. The honest
+   * claim is about the path, which is open, rather than about the traffic
+   * on it. That is enough to make this a gate on a live route rather than
+   * one armed for #768.
+   */
+  const unmeasuredTrail = useMemo(() => {
+    if (chosenTrailId === null || trailHasMileAxis(chosenTrailId)) return null
+    return TRAILS[chosenTrailId as keyof typeof TRAILS]?.shortName ?? chosenTrailId
+  }, [chosenTrailId])
 
   /**
    * The corridor re-fitted once the entry steps end (#1296).
@@ -1224,11 +1263,11 @@ function App() {
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
   // nothing else writes them.
   const {
-    trailIndex,
+    trailIndex: downloadedTrailIndex,
     poiMiles,
     pois,
     spurs,
-    elevation,
+    elevation: downloadedElevation,
     clubSections,
     stewards,
     highlights,
@@ -1246,6 +1285,39 @@ function App() {
     applyUpdate,
     declineUpdate,
   } = useTrailData(online, { centerlineOnly: entering })
+
+  /**
+   * The mile axis and the profile, withheld when they do not measure the
+   * hike the hiker is on (#1357).
+   *
+   * TWO VALUES GATE ALL THREE COMPUTATIONS, which is why this is four lines
+   * and not a change at forty display sites. `lib/trailPosition.ts` is only
+   * reachable through a `TrailIndex` - `mileOnTrail` and `locateOnTrail`
+   * both take one - and `lib/elevationProfile.ts` and `lib/route.ts`'s
+   * `legFigures()` are only reachable through an `ElevationProfile`.
+   * Withhold those two and no figure measured on the A.T.'s axis can be
+   * computed, let alone printed, for a hike that is not on it. A figure
+   * never computed cannot be displayed wrongly.
+   *
+   * `lib/naismith.ts` and `lib/pace.ts` need nothing and get nothing. They
+   * take `{ distanceMi, ascentFt }` and no trail identity, so they are
+   * already honest about whatever axis feeds them; the defect was only ever
+   * in the provenance of their inputs, which is here.
+   *
+   * NULL RATHER THAN A NEW UNAVAILABLE TYPE, because null is a state every
+   * reader already handles: both of these are null before the download
+   * lands, so the fifteen modules that call `mileOnTrail`/`locateOnTrail`
+   * and the ribbon that calls `ribbonView` all branch on it today.
+   * `ribbonView` returns undefined on a null profile and MapScreen omits
+   * the block entirely - designed for a download with no profile in it
+   * (see that function's own docstring), and exactly right here.
+   *
+   * The one reader for which null is NOT enough is `lib/positionLine.ts`,
+   * which would say "No trail data" about a phone that is holding it. That
+   * line takes `unmeasuredTrail` instead - see the ladder in that file.
+   */
+  const trailIndex = unmeasuredTrail === null ? downloadedTrailIndex : null
+  const elevation = unmeasuredTrail === null ? downloadedElevation : null
 
   /**
    * Closure miles, re-read against the release this phone is holding (#674).
@@ -7594,7 +7666,12 @@ function App() {
     enabled: locationAllowed,
     mile: fix?.mile,
     direction: direction?.direction,
-    trailReady: trailIndex !== null,
+    // `downloadedTrailIndex`, not the gated one: this asks whether the phone
+    // HAS the data, and the gate below answers the different question of
+    // whether it measures this hike. Passing the gated value would print
+    // "No trail data" at a phone holding all of it.
+    trailReady: downloadedTrailIndex !== null,
+    unmeasuredTrail,
     // A park has no mile axis (#928), so a followed hike replaces the
     // Springer mile with distance along the hiker's own walk.
     follow: followState,

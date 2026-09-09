@@ -12,9 +12,12 @@ import gzip
 import json
 import pathlib
 import re
+import time
+from functools import partial
 
 import boto3
 import pytest
+from boto3.s3.transfer import TransferConfig
 from moto import mock_aws
 
 import publish
@@ -583,6 +586,14 @@ def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, loc
 # and a card resolving to a 404 on a mountain.
 
 
+def _refuse_one_object_at_a_time(**kwargs):
+    """A `head_object` that fails the test rather than answering it. Since
+    #1311 a publish asks the prefix ONE listing and nothing per object, and a
+    HEAD creeping back in is a per-photo round trip nothing would otherwise
+    notice - the run would still be correct, just slow again."""
+    raise AssertionError(f"the publish asked about {kwargs.get('Key')!r} one object at a time")
+
+
 def _poi_artifact(tmp_path, properties_list):
     path = tmp_path / "poi_shelters.geojson"
     features = [{"type": "Feature", "properties": props, "geometry": None} for props in properties_list]
@@ -617,8 +628,13 @@ def test_referenced_photo_keys_ignores_artifacts_that_are_not_poi_layers(tmp_pat
 def test_a_promise_backed_by_the_bucket_passes_without_local_bytes(s3_client, local_artifacts, tmp_path):
     """The whole point of #465: a cold machine whose data/ tree is empty can
     still publish, because the corpus is already content-addressed in the
-    bucket and a HEAD per referenced key proves it."""
+    bucket and what the bucket holds is checkable from here.
+
+    Checkable from ONE listing of the prefix since #1311, which is what the
+    exploding `head_object` pins: this promise is settled against that
+    listing, not against a HEAD per referenced key."""
     s3_client.put_object(Bucket=BUCKET, Key="photos/aaa.jpg", Body=b"\xff\xd8 already there")
+    s3_client.head_object = _refuse_one_object_at_a_time
     artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": "photos/aaa.jpg"}])}
 
     result = publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
@@ -638,9 +654,13 @@ def test_a_promise_backed_by_nothing_fails_the_publish_before_any_artifact_lands
         s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
 
 
-def test_a_promise_backed_by_the_local_store_passes_without_a_head_request(s3_client, local_artifacts, local_photos, tmp_path):
-    """A key in the local store was just settled by upload_photos - HEADing
-    it again would double the request count for the common case."""
+def test_a_promise_backed_by_the_local_store_is_settled_though_the_listing_predates_it(
+    s3_client, local_artifacts, local_photos, tmp_path
+):
+    """A key in the local store was settled by upload_photos a moment ago -
+    and since #1311 the listing the check reads was taken BEFORE that upload,
+    so this key is not in it. The local-store check is the only thing that
+    passes this publish, which is why it is tested on its own."""
     key = next(iter(local_photos))
     artifacts = {**local_artifacts, **_poi_artifact(tmp_path, [{"photo_key": key}])}
 
@@ -1642,13 +1662,9 @@ def test_a_photo_the_prefix_listing_already_shows_is_not_uploaded_again(s3_clien
     IS the hash, so a key the listing shows is by construction the bytes we
     were about to send - and the listing is the only thing asked, which is what
     stubbing `head_object` into a failure asserts."""
-
-    def no_object_at_a_time(**kwargs):
-        raise AssertionError(f"the publish asked about {kwargs.get('Key')!r} one object at a time")
-
     already, fresh = sorted(local_photos)
     s3_client.put_object(Bucket=BUCKET, Key=already, Body=pathlib.Path(local_photos[already]).read_bytes())
-    s3_client.head_object = no_object_at_a_time
+    s3_client.head_object = _refuse_one_object_at_a_time
 
     result = publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
 
@@ -1678,8 +1694,13 @@ def test_a_promise_the_prefix_listing_cannot_back_still_fails_by_name(s3_client,
     HEAD per referenced key. What must not have changed with the mechanism: an
     artifact naming a photo that is in neither the local store nor the bucket
     fails the publish, by name, before the manifest can make the promise
-    reachable. This is the check standing between a hiker's card and a 404."""
+    reachable. This is the check standing between a hiker's card and a 404.
+
+    `head_object` explodes so that the raise is the listing's verdict rather
+    than a surviving per-key HEAD's - the mechanism changed under this check,
+    and a test that passes either way would not have noticed."""
     s3_client.put_object(Bucket=BUCKET, Key="photos/aaa.jpg", Body=b"\xff\xd8 already there")
+    s3_client.head_object = _refuse_one_object_at_a_time
     artifacts = {
         **local_artifacts,
         **_poi_artifact(tmp_path, [{"photo_key": "photos/aaa.jpg"}, {"photo_key": "photos/bbb.jpg"}]),
@@ -1819,3 +1840,91 @@ def test_a_failed_photo_upload_fails_the_publish_before_any_artifact_lands(s3_cl
         publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
 
     assert _keys_in(s3_client) == []
+
+
+def test_a_corpus_larger_than_one_page_is_listed_all_the_way_to_the_end(s3_client):
+    """`list_objects_v2` answers a thousand keys at a time and the corpus is
+    already about three thousand (run #88 sent ~3,016 photo HEADs), so the
+    single-page version of this would report the tail of the corpus absent -
+    re-uploading it every run, and failing the publish by name for any photo
+    that lives only in the bucket. One key over the page size is all it takes
+    to reach the second page; the extra two keep this an assertion about a
+    page boundary rather than about an off-by-one."""
+    keys = sorted(photo_key(f"{index:064x}") for index in range(1003))
+    for key in keys:
+        s3_client.put_object(Bucket=BUCKET, Key=key, Body=b"\xff\xd8")
+    # One key in another environment, to hold the scoping while the pagination
+    # is being held: a UA publish must not read production's corpus as present.
+    s3_client.put_object(Bucket=BUCKET, Key=f"environments/ua/{keys[0]}", Body=b"\xff\xd8")
+
+    assert publish.published_photo_keys(s3_client, BUCKET) == set(keys)
+    assert publish.published_photo_keys(s3_client, BUCKET, "environments/ua/") == {keys[0]}
+
+
+def test_the_earliest_submitted_failure_is_the_one_a_publish_reports():
+    """Which exception surfaces has to be a property of the work, not of the
+    race: a publish that named a different object every time it was re-run
+    would send whoever is fixing it hunting a different fault each round.
+    Slowest-to-fail is submitted first here, so a version gathering results as
+    they complete would report the other one.
+
+    The same test holds the other half of `_in_parallel`'s promise: nothing is
+    still running against the bucket when the exception arrives. A stage that
+    failed while its own uploads went on landing behind it is the half-publish
+    every ordering rule in publish.py exists to prevent."""
+    for _ in range(3):
+        started, finished = [], []
+
+        def slow_failure():
+            started.append("slow")
+            time.sleep(0.05)
+            finished.append("slow")
+            raise RuntimeError("the earliest-submitted failure")
+
+        def quick_failure():
+            raise RuntimeError("a later one that finishes first")
+
+        def bystander(index):
+            started.append(index)
+            time.sleep(0.05)
+            finished.append(index)
+            return index
+
+        work = [partial(bystander, 0), slow_failure, quick_failure, *[partial(bystander, i) for i in range(3, 30)]]
+
+        with pytest.raises(RuntimeError, match="the earliest-submitted failure"):
+            publish._in_parallel(work)
+
+        assert sorted(started, key=str) == sorted(finished, key=str), "a worker was still running when the failure surfaced"
+
+
+def test_results_come_back_in_the_order_the_work_was_given():
+    """Everything reading `_in_parallel`'s answer pairs it with the list it
+    passed in - `describe_changes` zips it against the names, and the upload
+    stage relies on each result carrying its own name. Finishing order is
+    deliberately the reverse of submission order here."""
+    work = [partial(lambda i: (time.sleep((10 - i) * 0.005), i)[1], index) for index in range(10)]
+
+    assert publish._in_parallel(work) == list(range(10))
+
+
+def test_the_client_publish_builds_can_hold_every_request_it_opens(monkeypatch, s3_client, local_artifacts):
+    """The pool is invisible when it is wrong - botocore does not block on a
+    full one, it opens a connection outside the pool and drops it after,
+    paying a TLS handshake per 8 MiB part and logging a line nobody reads. So
+    the only place that can notice is here: the client publish() builds for
+    itself carries a pool covering the requests its own stages can open, which
+    is PUBLISH_CONCURRENCY times what a managed upload fans out to."""
+    seen = {}
+
+    def capture(*args, **kwargs):
+        seen.update(kwargs)
+        return s3_client
+
+    monkeypatch.setattr(publish.boto3, "client", capture)
+    for name in ("R2_ENDPOINT_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"):
+        monkeypatch.setenv(name, "unused")
+
+    publish.publish(local_artifacts, sidecars={}, photos={}, bucket=BUCKET)
+
+    assert seen["config"].max_pool_connections == publish.PUBLISH_CONCURRENCY * TransferConfig().max_concurrency

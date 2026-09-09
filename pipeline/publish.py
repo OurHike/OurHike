@@ -52,6 +52,7 @@ from functools import partial
 from pathlib import Path
 
 import boto3
+from boto3.s3.transfer import TransferConfig
 from botocore.config import Config as BotocoreConfig
 
 from lib import data_change, data_env, releases
@@ -277,38 +278,80 @@ MANIFEST_CACHE_CONTROL = "no-cache"
 # How many objects one stage of a publish moves at a time.
 #
 # WHY THIS EXISTS, measured. Run #88 of publish-vector-data.yml (2026-09-08)
-# spent 35:47 in "Publish to R2" moving 1,267.68 MB across 1,715 artifacts
-# plus ~3,016 photo objects: 0.45 s per object, every one a sequential round
-# trip. The same runner wrote 422 MB into the Actions cache at 172 MB/s in
-# 1.3 s, so what that step was short of was not bandwidth - the wall clock
-# was the object COUNT rather than the bytes. That is root cause 3 of
-# #1311 - "The vector build went from 20 to 108 minutes in twelve days: a
+# spent 35:47 - 2,147 s - in "Publish to R2", which moved 1,267.68 MB in 1,715
+# artifact uploads and asked after ~3,016 photos one HEAD at a time, every one
+# of them a sequential round trip. The same runner wrote 422 MB into the
+# Actions cache at 172 MB/s in 1.3 s, so what that step was short of was not
+# bandwidth: it was paying per OBJECT rather than per byte. That is root cause
+# 3 of #1311 - "The vector build went from 20 to 108 minutes in twelve days: a
 # corridor union over 466k lines paid twice, every external layer re-fetched
 # every run, and a publish that pays a round-trip per object".
 #
+# "0.45 S PER OBJECT" IS 2,147 / 4,731 AND IS AN UPPER BOUND on what a round
+# trip costs, not a measurement of one. Those 4,731 are the uploads and the
+# photo HEADs; `describe_changes` read the previous copy of every changed
+# vector artifact in the same step and those reads are on top (see
+# UNDESCRIBED_PREFIXES for the graph shards that dominated them), so the true
+# per-request figure is lower by however many of them there were - a count
+# nobody has pulled out of that log. The finding does not move either way:
+# the step's wall clock tracked the request count and not the bytes.
+#
 # WHAT NOBODY HAS MEASURED, and it is the thing this constant is betting on:
-# whether that 0.45 s is request latency or R2 throttling the account. #1311
-# records the question as open. If it is latency, sixteen in flight divides
-# the step by roughly sixteen; if it is throttling, the requests queue at the
-# far end and this buys much less than it looks like it should. The first CI
-# publish after this lands is what settles it, and the step's own wall clock
-# is the measurement - so do not restate a speed-up here until there is one
-# to restate.
+# whether that per-object cost is request latency or R2 throttling the
+# account. #1311 records the question as open. If it is latency, sixteen in
+# flight divides the step by roughly sixteen; if it is throttling, the
+# requests queue at the far end and this buys much less than it looks like it
+# should. The first CI publish after this lands is what settles it, and the
+# step's own wall clock is the measurement - so do not restate a speed-up here
+# until there is one to restate.
+#
+# A 429 COSTS TIME, NOT THE PUBLISH, which is what makes trying sixteen a
+# cheap bet rather than a risky one. botocore's default retry mode is
+# "legacy" - the config below sets a pool size and nothing else - and its
+# default policy retries any HTTP 429 and any 5xx up to five attempts with
+# randomised exponential backoff (botocore 1.43.78, `data/_retry.json`,
+# `retry.__default__`, read 2026-09-09). So a throttled publish gets slower,
+# and only an object still refused after five tries raises - which
+# `_in_parallel` turns into a failed run rather than a half-publish.
 #
 # THE NUMBER 16 IS @unvalidated - picked, not measured. The reasoning behind
-# the pick: at ~0.45 s a round trip, sixteen requests in flight is roughly
-# where the ~1.65 GB actually being moved would become the thing the step
-# waits on rather than the latency in front of it, and it is small enough that
-# a publish is not a burst either end has to think about. What would settle it
-# is timing this step at 8, 16 and 32 on the runner that produced the figures
-# above; the knee could be anywhere in that range, and if the throttling
-# answer above turns out to be the right one the knee may be below 8.
+# the pick: at a round trip of the order of the upper bound above, sixteen
+# requests in flight is about where the ~1.65 GB actually being moved
+# would become the thing the step waits on rather than the latency in front of
+# it, and it is small enough that a publish is not a burst either end has to
+# think about. What would settle it is timing this step at 8, 16 and 32 on the
+# runner that produced the figures above; the knee could be anywhere in that
+# range, and if the throttling answer above turns out to be the right one the
+# knee may be below 8.
 #
-# The client publish() builds for itself is given a connection pool of the
-# same size, because botocore's default is 10: a pool smaller than the thread
-# count spends the difference queueing, and says so in a per-call warning
-# nobody reads. A client passed in by a caller is that caller's to size.
+# SIXTEEN IS NOT THE NUMBER OF REQUESTS IN FLIGHT, and anyone reasoning about
+# the load this puts on R2 needs the other factor. `upload_file` is a managed
+# transfer, not one PUT: boto3's default TransferConfig splits anything over
+# 8 MiB into 8 MiB parts and sends up to 10 of them at once, per call (boto3
+# as installed, read 2026-09-09; the fan-out is read off TransferConfig below
+# rather than restated, so that half cannot drift). trail_graph_geometry.json
+# alone was 224.4 MB on run #88, so the artifact stage can have up to 16 x 10
+# requests open at once. That was already true per-file before anything here ran in
+# parallel; what is new is sixteen of them at a time.
 PUBLISH_CONCURRENCY = 16
+
+# The connection pool for the client publish() builds itself - sized to the
+# ceiling above rather than to PUBLISH_CONCURRENCY, and derived rather than
+# picked, so a boto3 that changes its fan-out moves this with it.
+#
+# botocore's default is 10 (`httpsession.MAX_POOL_CONNECTIONS`, 1.43.78), and
+# what a pool smaller than the requests in flight does is NOT queue them:
+# botocore builds its urllib3 pools without `block=True`
+# (`URLLib3Session._get_pool_manager_kwargs`, same version), so every request
+# past the ceiling opens a connection of its own and drops it on release,
+# logging "Connection pool is full, discarding connection". The cost is a
+# fresh TLS handshake per 8 MiB part, paid exactly where the bytes are.
+#
+# Raising the ceiling therefore changes nothing about how hard R2 is being
+# hit - the threads decide that - only whether the connections those threads
+# use are reused or rebuilt. A client passed in by a caller is that caller's
+# to size, pool included. 160, with the values above.
+PUBLISH_POOL_CONNECTIONS = PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
 
 
 def _in_parallel(work: list) -> list:
@@ -331,7 +374,12 @@ def _in_parallel(work: list) -> list:
 
     The queue is cancelled on the way out for the reason every other ordering
     rule in this module exists: half a publish is already bad, and 1,700
-    uploads queued behind a failure is worse.
+    uploads queued behind a failure is worse. What is already in flight is
+    not abandoned, though - `with` closes the pool with `shutdown(wait=True)`
+    after the `except` has cancelled the queue, so by the time the exception
+    reaches the caller no worker of this stage is still running against the
+    bucket. A stage that failed does not go on writing behind the stage that
+    replaces it.
     """
     if not work:
         return []
@@ -543,11 +591,14 @@ def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
 
     WHY A LISTING. The two callers below both used to ask the bucket object by
     object, and the corpus is now large enough that the question costs more
-    than the answer is worth: run #88 (2026-09-08) sent ~3,016 photo HEADs and
-    then a second sweep of HEADs for every key the artifacts referenced, among
-    the 4,731 sequential round trips that made that step average 0.45 s per
-    object. One `list_objects_v2` walk answers the same question in pages of a
-    thousand.
+    than the answer is worth: run #88 (2026-09-08) sent ~3,016 photo HEADs,
+    one per cached photo, which with the 1,715 artifact uploads is the 4,731
+    round trips PUBLISH_CONCURRENCY's comment divides the step's 2,147 s by.
+    The promise check below then HEADs a second time - but only a referenced
+    key that is NOT in the local store, so on a warm machine it asks for
+    almost nothing and on the cleared `data/` tree #465 exists to allow it
+    asks once per referenced key. One `list_objects_v2` walk answers both
+    questions in pages of a thousand.
 
     SCOPED TO `prefix`, which is the whole reason the listing is not
     bucket-wide. `photos/` is the one hiker-facing prefix objects are *deleted*
@@ -567,9 +618,16 @@ def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
         )
         keys.update(item["Key"][len(prefix) :] for item in page.get("Contents", []))
         token = page.get("NextContinuationToken")
-        # Both, not just the flag: a truncated page without a token is a
-        # listing this cannot continue, and silently returning a partial set
-        # would re-upload the tail of the corpus rather than fail.
+        # Both conditions, and the token is the one that matters: continuing
+        # on the flag alone would re-list page one for ever if a truncated
+        # page ever arrived without a token, so this stops instead - and
+        # what it then returns is a SHORT set, which is the harmless
+        # direction. A photo missing from this set is re-uploaded (its key is
+        # its hash, so the bytes are the same ones) or, if it is only
+        # referenced and not local, fails the publish by name in
+        # `verify_photo_promises`. The direction that would matter - a photo
+        # the bucket does not hold read as present - is not reachable from a
+        # short listing.
         if not page.get("IsTruncated") or not token:
             break
     return keys
@@ -1253,12 +1311,12 @@ def publish(
             endpoint_url=os.environ["R2_ENDPOINT_URL"],
             aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
-            # Sized to the thread count the stages below run at, because
-            # botocore's default pool is 10 connections and a pool smaller
-            # than the concurrency spends the difference queueing - see
-            # PUBLISH_CONCURRENCY. Only the client this function builds: one
-            # passed in belongs to its caller.
-            config=BotocoreConfig(max_pool_connections=PUBLISH_CONCURRENCY),
+            # Sized to the requests the stages below can have open at
+            # once, which is the thread count times what a managed upload
+            # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
+            # of 10 costs handshakes rather than queueing. Only the client
+            # this function builds: one passed in belongs to its caller.
+            config=BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]

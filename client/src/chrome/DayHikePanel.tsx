@@ -212,6 +212,17 @@ export function DayHikePanel({
               re-rounds it. A walk this phone cannot price prints nothing
               rather than a zero. */}
           <dd>{walking === null ? '—' : walking.text}</dd>
+          {/* AND WHAT IT WAS ADJUSTED FROM (#851). This figure is the hiker's
+              own pace applied to Naismith, and the maintainer's decision on
+              #851 is that no surface prints one without the other: a pace set
+              optimistic in week one must not quietly become the number
+              somebody plans their evening around. `paceEstimate` returns the
+              pair for exactly this, and this stat printed half of it.
+              Absent at the standard pace, which is most hikers - a caveat on
+              every line reads like a caveat on none. */}
+          {walking?.relativeLine != null && (
+            <dd className="day-hike-panel__baseline">{walking.relativeLine}</dd>
+          )}
         </div>
       </dl>
 

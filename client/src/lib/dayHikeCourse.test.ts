@@ -19,6 +19,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildCourse, mileTicks, projectOnCourse } from './dayHikeCourse'
+import { orderStops } from './dayHikeStops'
+import { routeRows } from './dayHikeRows'
+import type { StoredPoi } from './trailData'
 import { draftStatus, tapAt, EMPTY_DRAFT, startStretch } from './dayHikeDraft'
 import { buildGraphIndex, type TrailGraph } from './trailGraph'
 
@@ -118,11 +121,16 @@ describe('building the course', () => {
     const status = pineMeadow()
     const course = buildCourse(PUBLISHED, status.stretches)
 
-    // Not exact equality: the totals come from the graph's published
-    // `length_m` and the course re-measures the drawn vertices, which is a
-    // haversine over the same ground rather than the same arithmetic. Close
-    // is the claim - a hundredth of a mile is 50 ft.
-    expect(course.miles).toBeCloseTo(status.miles, 2)
+    // EXACT, and it was not. This used to assert `toBeCloseTo(..., 2)` under
+    // a comment conceding the point - "the totals come from the graph's
+    // published `length_m` and the course re-measures the drawn vertices,
+    // which is a haversine over the same ground rather than the same
+    // arithmetic" - while the module's own header claimed the two agreed
+    // "exactly, by construction". They did not: `length_m` is EPSG:5070, an
+    // equal-AREA projection that reads an east-west metre 0.8% short at this
+    // latitude, and the vertices are WGS84. The course is now scaled onto the
+    // published metres, so the claim is true and this asserts it.
+    expect(course.miles).toBeCloseTo(status.miles, 10)
   })
 
   it('carries the mile across a gap rather than adding it', () => {
@@ -230,5 +238,95 @@ describe('mile ticks', () => {
     const course = buildCourse(PUBLISHED, pineMeadow().stretches)
 
     expect(mileTicks(course, 0)).toEqual([])
+  })
+})
+
+describe('one axis, so a stop and a leg can be compared (#1194 fallout)', () => {
+  // Two DIFFERENTLY NAMED trails meeting at a junction, so `sameTrail` splits
+  // the walk into two legs and the junction is a leg boundary. The shared
+  // fixture above names both edges Pine Meadow, which is one leg and has no
+  // boundary to misplace anything against - which is why nothing caught this.
+  const FORK: TrailGraph = {
+    nodes: [
+      [-74.09, 41.25],
+      [-74.078, 41.25],
+      [-74.066, 41.25],
+    ],
+    edges: [
+      {
+        from: 0,
+        to: 1,
+        // What build_trail_graph.py publishes: this ground measured in
+        // EPSG:5070. At 41.25N Albers reads an east-west metre 0.792% short,
+        // so the 1,005.8 m of real trail below publishes as 997.8.
+        length_m: 997.8,
+        trail_id: 'nynjtc:1',
+        source: 'nynjtc',
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+      },
+      {
+        from: 1,
+        to: 2,
+        length_m: 997.8,
+        trail_id: 'nynjtc:2',
+        source: 'nynjtc',
+        name: 'Seven Hills Trail',
+        blaze_color: 'white',
+      },
+    ],
+  }
+  const forkGraph = published(FORK)
+  const forkIndex = buildGraphIndex(forkGraph)
+
+  const shelterAtJunction: StoredPoi = {
+    id: 'tom-jones',
+    type: 'shelter',
+    name: 'Tom Jones Shelter',
+    lon: -74.078,
+    lat: 41.25,
+    confidence: 'high',
+  } as unknown as StoredPoi
+
+  function acrossTheFork() {
+    const draft = tapAt(
+      forkIndex,
+      tapAt(forkIndex, EMPTY_DRAFT, { lon: -74.09, lat: 41.25 }),
+      { lon: -74.066, lat: 41.25 },
+    )
+    const status = draftStatus(forkIndex, draft)
+    if (status.kind !== 'routed') throw new Error('fixture should route')
+    return status
+  }
+
+  it('puts a shelter standing AT a junction after the leg that reached it', () => {
+    // The defect this pins. A stop's mile came off the course (haversine over
+    // the drawn WGS84 vertices) and a leg's came off `length_m` (EPSG:5070),
+    // and lib/dayHikeRows.ts compares the two directly - `stops[placed].mile
+    // <= mile`. Measured before the fix on this fixture: the shelter sat at
+    // course-mile 0.6234 while leg one ended at 0.6200, so the comparison
+    // failed at every leg and the last-leg sweep collected it at the END of
+    // the walk. The panel then printed "mile 0.6" on a row listed after a leg
+    // running 0.6-1.2 - a list contradicting its own numbers.
+    const status = acrossTheFork()
+    const course = buildCourse(forkGraph, status.stretches)
+    const stops = orderStops(course, new Set(['tom-jones']), [shelterAtJunction])
+    expect(stops).toHaveLength(1)
+
+    const rows = routeRows(status.legs, stops, status.gaps)
+    const shape = rows.map((row) => (row.kind === 'leg' ? row.name : row.kind))
+    expect(shape).toEqual(['Pine Meadow Trail', 'stop', 'Seven Hills Trail'])
+  })
+
+  it('lands the course exactly on each leg boundary, which is what makes that work', () => {
+    const status = acrossTheFork()
+    const course = buildCourse(forkGraph, status.stretches)
+    const stops = orderStops(course, new Set(['tom-jones']), [shelterAtJunction])
+
+    // The stop is at the junction, so its course mile IS the first leg's end.
+    // Equality here is the whole property: any drift at all puts a stop
+    // standing on a boundary onto the wrong side of it.
+    expect(stops[0].mile).toBeCloseTo(status.legs[0].miles, 10)
+    expect(course.miles).toBeCloseTo(status.miles, 10)
   })
 })

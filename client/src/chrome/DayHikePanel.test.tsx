@@ -112,6 +112,32 @@ describe('what the panel says about the walk', () => {
     expect(screen.getByText('≈2h 15m')).toBeInTheDocument()
   })
 
+  it('says what the walking time was adjusted from, when it was (#851)', () => {
+    // The main figure on the day-hike builder, and it printed naked. #851's
+    // decision is the maintainer's: "We should always display how their
+    // setting relates to Naismith." A hiker who set their pace optimistic in
+    // week one is otherwise handed the time they leave late on.
+    panel({
+      walking: {
+        minutes: 190,
+        text: '≈3h 10m',
+        relativeLine: 'was ≈2h 15m · 1.4× standard',
+      },
+    })
+
+    expect(screen.getByText('≈3h 10m')).toBeInTheDocument()
+    expect(screen.getByText('was ≈2h 15m · 1.4× standard')).toBeInTheDocument()
+  })
+
+  it('says nothing about pace for a hiker who never moved a control', () => {
+    // The other half of the rule: a caveat on every line reads exactly like a
+    // caveat on none, so `relativeLine` is null at the standard pace and the
+    // row carries no extra line at all.
+    panel()
+
+    expect(screen.queryByText(/standard/)).not.toBeInTheDocument()
+  })
+
   it('names the route from the trails it uses, never a guessed destination', () => {
     panel()
 

@@ -276,6 +276,46 @@ export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
   NEARBY_TRAIL_CASING_LAYER_ID,
   NEARBY_TRAIL_CASING_DOTTED_LAYER_ID,
 ]
+/**
+ * The blaze layers that ink a near-white line in the casing's colour on a
+ * day sheet, and the ones that leave it white (#1306).
+ *
+ * The rule used to be "every day sheet", and the maintainer overruled it on
+ * the frame rather than in the abstract: a TAKEN A.T. drawn in the casing's
+ * ink is a black line across the country ("that is not a dashed line / it
+ * looks like a black line", 2026-09-09), where what a hiker expects of the
+ * trail they have taken is the white blaze with its dark edge - which is
+ * what a casing is for and what every paper map draws.
+ *
+ * So the ink follows the DOT RHYTHM rather than the sheet alone. The
+ * original argument survives exactly where it bites: a dotted white line
+ * has nothing between its two dark rails, so an untaken near-white trail is
+ * inked dark and drawn without a casing. A solid one keeps its white blaze
+ * and its casing.
+ *
+ * BOTH SKETCHES ARE IN THE DARK LIST WHATEVER THEY DRAW, and that is the
+ * one place the old unconditional rule stands: neither has a casing pair
+ * (buildNetworkOverviewLayer and the sketch layer both say so), and a white
+ * line with no edge at all is the empty-looking frame #1291 exists to
+ * prevent. The cost is a taken A.T. changing ink once, when the real line
+ * replaces the sketch; at the corridor camera both read as a dark-edged
+ * stroke of the same weight, which is the least bad of the three options.
+ */
+export const DARK_INKED_BLAZE_LAYER_IDS: readonly string[] = [
+  BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_LAYER_ID,
+  TRAIL_OVERVIEW_LAYER_ID,
+]
+
+/** The casing halves that go to zero under a near-white line, the other
+ *  half of the rule above: the dotted ones, whose blaze is inked dark. */
+export const DOTTED_TRAIL_CASING_LAYER_IDS: readonly string[] = [
+  TRAIL_CASING_DOTTED_LAYER_ID,
+  NEARBY_TRAIL_CASING_DOTTED_LAYER_ID,
+]
+
 export const BLAZE_LINE_LAYER_IDS: readonly string[] = [
   BLAZE_LAYER_ID,
   BLAZE_DOTTED_LAYER_ID,
@@ -509,9 +549,9 @@ function nearWhiteBlazeCondition(): unknown[] {
  * or the shared blaze match with near-white swapped for the sheet's casing
  * ink on day sheets - see NEAR_WHITE_BLAZES.
  */
-export function blazeLineColor(appearance: SheetAppearance): unknown {
+export function blazeLineColor(appearance: SheetAppearance, dotted = true): unknown {
   if (redLightActive(appearance)) return RED_LIGHT_BLAZE_COLOR
-  if (!inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
+  if (!dotted || !inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
   return [
     'case',
     nearWhiteBlazeCondition(),
@@ -568,16 +608,30 @@ export function attachMapAppearance(
       // rails back under the A.T. on the way to day.
       for (const layerId of TRAIL_CASING_LAYER_IDS) {
         if (map.getLayer(layerId) === undefined) continue
+        const dotted = DOTTED_TRAIL_CASING_LAYER_IDS.includes(layerId)
         map.setPaintProperty(layerId, 'line-color', trailCasingColor(appearance) as never)
         map.setPaintProperty(
           layerId,
           'line-width',
-          trailCasingWidthExpression(appearance) as never,
+          (dotted
+            ? dottedTrailCasingWidthExpression(appearance)
+            : solidTrailCasingWidthExpression(appearance)) as never,
         )
       }
       for (const layerId of BLAZE_LINE_LAYER_IDS) {
         if (map.getLayer(layerId) === undefined) continue
-        map.setPaintProperty(layerId, 'line-color', blazeLineColor(appearance) as never)
+        // Per layer since #1306: the dotted halves and both sketches ink a
+        // near-white line dark, the solid halves leave it white. One colour
+        // for all of them would put the black line back on a taken trail at
+        // every theme switch.
+        map.setPaintProperty(
+          layerId,
+          'line-color',
+          blazeLineColor(
+            appearance,
+            DARK_INKED_BLAZE_LAYER_IDS.includes(layerId),
+          ) as never,
+        )
       }
 
       // The through-route badge (#1283): its plate is an image per sheet
@@ -794,7 +848,7 @@ function sketchDotted(chosen: readonly string[]): boolean {
  * is @unvalidated beyond the preview frame.
  */
 export function sketchWidthExpression(chosen: readonly string[]): unknown {
-  return sketchDotted(chosen) ? dottedTrailWidthExpression() : TRAIL_WIDTH_EXPRESSION
+  return sketchDotted(chosen) ? dottedTrailWidthExpression() : solidTrailWidthExpression()
 }
 
 /**
@@ -957,7 +1011,9 @@ function buildTrailLineLayers(
         // hairline stays a hairline under a line that is 1.5 px there.
         'line-width': (dotted
           ? dottedTrailCasingWidthExpression(appearance)
-          : trailCasingWidthExpression(appearance)) as unknown as number,
+          : solidTrailCasingWidthExpression(appearance)) as unknown as number,
+        // (the near-white zero lives inside those two, and only the dotted
+        // one has it - #1306's DARK_INKED_BLAZE_LAYER_IDS)
         // The casing's own 0.7, MULTIPLIED by the line's ghosting rather
         // than replaced by it. Both facts are true at once and they compose:
         // a casing is always slightly softer than the blaze it carries, and
@@ -998,14 +1054,16 @@ function buildTrailLineLayers(
       paint: {
         // Through blazeLineColor rather than the match expression directly,
         // so a cold start under red light is red in its first frame - the
-        // same reason `appearance` seeds the backdrop above.
-        'line-color': blazeLineColor(appearance) as unknown as string,
+        // same reason `appearance` seeds the backdrop above. `dotted` is the
+        // near-white question (#1306): dark ink under dots, white with its
+        // casing when solid.
+        'line-color': blazeLineColor(appearance, dotted) as unknown as string,
         // Its own tier, except on the dotted side below the seam, where a
         // dot rhythm is a stroke of the line's own width and the tier is a
         // rope (dottedTrailWidthExpression, #1306).
         'line-width': (dotted
           ? dottedTrailWidthExpression()
-          : TRAIL_WIDTH_EXPRESSION) as unknown as number,
+          : solidTrailWidthExpression()) as unknown as number,
         // The third channel (#783). Hue still says which blaze and width
         // still says which line the map is about; opacity says which SYSTEM,
         // which is the distinction an A.T.-only map never had to draw. See
@@ -1295,15 +1353,15 @@ export const CASING_LINE_WIDTH = BLAZE_LINE_WIDTH + CASING_OVERHANG * 2
  * scaled proportionally would be twice as heavy under a through-route as under
  * everything else.
  */
-function trailWidthExpression(extra: number): unknown[] {
+function trailWidthExpression(extra: number, scale = 1): unknown[] {
   return [
     'match',
     ['get', 'source'],
     ...Object.entries(TRAIL_LINE_WIDTHS).flatMap(([source, width]) => [
       source,
-      width + extra,
+      width * scale + extra,
     ]),
-    DEFAULT_TRAIL_LINE_WIDTH + extra,
+    DEFAULT_TRAIL_LINE_WIDTH * scale + extra,
   ]
 }
 
@@ -1319,8 +1377,11 @@ export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHAN
  * outline in the same ink would just be a fatter line. Dark sheets keep the
  * casing under every blaze - a white line on ink is what a casing is for.
  */
-export function trailCasingWidthExpression(appearance: SheetAppearance): unknown[] {
-  if (!inksNearWhiteAsCasing(appearance)) return TRAIL_CASING_WIDTH_EXPRESSION
+export function trailCasingWidthExpression(
+  appearance: SheetAppearance,
+  dotted = true,
+): unknown[] {
+  if (!dotted || !inksNearWhiteAsCasing(appearance)) return TRAIL_CASING_WIDTH_EXPRESSION
   return ['case', nearWhiteBlazeCondition(), 0, TRAIL_CASING_WIDTH_EXPRESSION]
 }
 
@@ -1432,6 +1493,45 @@ export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = overviewTaper(
  */
 export function dottedTrailWidthExpression(): unknown {
   return overviewTaper(NETWORK_OVERVIEW_FAR_WIDTH, TRAIL_WIDTH_EXPRESSION)
+}
+
+/**
+ * How much of its own tier a line keeps at the continental camera (#1306).
+ *
+ * Derived, not picked: it is the factor that lands the SIDE-TRAIL tier
+ * exactly on NETWORK_OVERVIEW_FAR_WIDTH, so a solid side trail and the
+ * network overview's dots are the same weight where they run side by side,
+ * and no third number decides the far end. The through-route tier follows
+ * from the same factor at 4.5 x 0.6 = 2.7 px, which is the prototype's own
+ * hierarchy at that scope: `Opening Map Options.html` draws the taken line
+ * at `baseW * 2.1` against 1.5 for everything else.
+ *
+ * WHY A SOLID LINE NEEDS THIS TOO, which the first cut of #1306 missed.
+ * Only the dotted side tapered, so a TAKEN A.T. still drew at 4.5 px from
+ * Georgia to Maine - the maintainer's "it looks like a black line",
+ * reproduced on the built app at a 1512 px desktop window with
+ * `chosen_trail_id` set (2026-09-09). Taking a trail is meant to move a
+ * line from a dot rhythm to a solid stroke, not from a fine line to a rope.
+ */
+export const OVERVIEW_WIDTH_SCALE = NETWORK_OVERVIEW_FAR_WIDTH / DEFAULT_TRAIL_LINE_WIDTH
+
+/** `line-width` for a SOLID blaze: its tier at the seam, that tier scaled
+ *  down at the continental camera (#1306). */
+export function solidTrailWidthExpression(): unknown {
+  return overviewTaper(
+    trailWidthExpression(0, OVERVIEW_WIDTH_SCALE),
+    TRAIL_WIDTH_EXPRESSION,
+  )
+}
+
+/** The casing under it, keeping the same hairline overhang at both stops. */
+export function solidTrailCasingWidthExpression(appearance: SheetAppearance): unknown {
+  // No near-white case on this side since #1306: a solid white blaze keeps
+  // its casing on every sheet, which is the edge that lets it stay white.
+  return overviewTaper(
+    trailWidthExpression(CASING_OVERHANG * 2, OVERVIEW_WIDTH_SCALE),
+    trailCasingWidthExpression(appearance, false),
+  )
 }
 
 export function dottedTrailCasingWidthExpression(appearance: SheetAppearance): unknown {

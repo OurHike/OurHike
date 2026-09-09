@@ -61,6 +61,10 @@ import {
   dottedTrailCasingWidthExpression,
   OVERVIEW_FAR_ZOOM,
   TRAIL_CASING_WIDTH_EXPRESSION,
+  solidTrailWidthExpression,
+  DARK_INKED_BLAZE_LAYER_IDS,
+  DOTTED_TRAIL_CASING_LAYER_IDS,
+  solidTrailCasingWidthExpression,
 } from './style'
 import {
   BUNDLED_GLYPHS,
@@ -152,6 +156,18 @@ function layer(id: string) {
 }
 
 /** What a `match` on `source` resolves to for one source key. */
+/**
+ * The tier a trail line lands on at the seam.
+ *
+ * Since #1306 every trail-line width is a taper - `interpolate(zoom, 4,
+ * <scaled tier>, POI_PIN_MIN_ZOOM, <tier>)` - because a line drawn at its
+ * tier below the seam is a rope at the corridor camera. The cases below are
+ * about the TIER, so they unwrap the taper rather than restating it; the
+ * taper itself is pinned in its own cases further down.
+ */
+const seamTier = (width: unknown): unknown =>
+  Array.isArray(width) && width[0] === 'interpolate' ? width[width.length - 1] : width
+
 function widthFor(expression: unknown, source: string): number {
   const [, , ...rest] = expression as unknown[]
   for (let i = 0; i + 1 < rest.length; i += 2) {
@@ -242,8 +258,15 @@ describe('buildMapStyle', () => {
     // IS the match. Every blaze-coloured layer, so a fifth cannot drift.
     for (const id of BLAZE_LINE_LAYER_IDS) {
       const day = layer(id).paint as Record<string, unknown>
-      expect((day['line-color'] as unknown[])[0]).toBe('case')
-      expect((day['line-color'] as unknown[])[3]).toBe(BLAZE_MATCH_EXPRESSION)
+      if (DARK_INKED_BLAZE_LAYER_IDS.includes(id)) {
+        // The dotted halves and both sketches: the match with near-white
+        // swapped for the casing ink, the match still its fallback (#1306).
+        expect((day['line-color'] as unknown[])[0], id).toBe('case')
+        expect((day['line-color'] as unknown[])[3], id).toBe(BLAZE_MATCH_EXPRESSION)
+      } else {
+        // A solid line keeps its white blaze and its casing (#1306).
+        expect(day['line-color'], id).toBe(BLAZE_MATCH_EXPRESSION)
+      }
 
       const night = buildMapStyle({ ...STYLE_OPTIONS, theme: 'dark' }).layers.find(
         (l) => l.id === id,
@@ -325,19 +348,29 @@ describe('buildMapStyle', () => {
       const paint = { ...built.paint }
       delete paint['line-dasharray']
       delete paint['line-width']
+      delete paint['line-color']
       return { ...built, id: undefined, paint, filter: undefined }
     }
     expect(strip(BLAZE_DOTTED_LAYER_ID)).toEqual(strip(BLAZE_LAYER_ID))
     expect(strip(TRAIL_CASING_DOTTED_LAYER_ID)).toEqual(strip(TRAIL_CASING_LAYER_ID))
 
-    const width = (id: string) =>
-      (layer(id).paint as Record<string, unknown>)['line-width']
-    expect((width(BLAZE_DOTTED_LAYER_ID) as unknown[]).at(-1)).toEqual(
-      width(BLAZE_LAYER_ID),
-    )
-    expect((width(TRAIL_CASING_DOTTED_LAYER_ID) as unknown[]).at(-1)).toEqual(
-      width(TRAIL_CASING_LAYER_ID),
-    )
+    const seam = (id: string) =>
+      seamTier((layer(id).paint as Record<string, unknown>)['line-width'])
+    expect(seam(BLAZE_DOTTED_LAYER_ID)).toEqual(seam(BLAZE_LAYER_ID))
+    // The casing halves land on the same tier too, with the one difference
+    // the near-white rule puts there on a day sheet (#1306): under a DOTTED
+    // white line the casing is zero, because that line is inked dark.
+    const dottedCasing = seam(TRAIL_CASING_DOTTED_LAYER_ID) as unknown[]
+    expect(dottedCasing[0]).toBe('case')
+    expect(dottedCasing[2]).toBe(0)
+    expect(dottedCasing[3]).toEqual(seam(TRAIL_CASING_LAYER_ID))
+
+    // Colour is the fourth difference and the newest (#1306): the dotted
+    // half inks a near-white blaze dark and the solid half leaves it white,
+    // off the same match expression either way.
+    const color = (id: string) =>
+      (layer(id).paint as Record<string, unknown>)['line-color']
+    expect((color(BLAZE_DOTTED_LAYER_ID) as unknown[])[3]).toEqual(color(BLAZE_LAYER_ID))
   })
 
   it('partitions the trail source: every line lands on exactly one side', () => {
@@ -380,8 +413,12 @@ describe('buildMapStyle', () => {
 
   it('drives line-width from the source attribute, as a second data-driven channel', () => {
     const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
-    const width = paint['line-width'] as unknown[]
+    const taper = paint['line-width'] as unknown[]
+    const width = seamTier(taper) as unknown[]
 
+    // Wrapped in the zoom taper (#1306), and data-driven inside it.
+    expect(taper[0]).toBe('interpolate')
+    expect(taper[2]).toEqual(['zoom'])
     expect(width[0]).toBe('match')
     expect(width[1]).toEqual(['get', 'source'])
   })
@@ -400,7 +437,7 @@ describe('buildMapStyle', () => {
     expect(PRIMARY_TRAIL_SOURCES.length).toBeGreaterThan(0)
     for (const primary of PRIMARY_TRAIL_SOURCES) {
       for (const other of [...others, DEFAULT_TRAIL_LINE_WIDTH]) {
-        expect(widthFor(width['line-width'], primary)).toBeGreaterThan(other)
+        expect(widthFor(seamTier(width['line-width']), primary)).toBeGreaterThan(other)
       }
     }
   })
@@ -415,7 +452,7 @@ describe('buildMapStyle', () => {
     const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
 
     for (const source of PRIMARY_TRAIL_SOURCES) {
-      expect(widthFor(paint['line-width'], source)).toBe(PRIMARY_TRAIL_WIDTH)
+      expect(widthFor(seamTier(paint['line-width']), source)).toBe(PRIMARY_TRAIL_WIDTH)
     }
   })
 
@@ -425,7 +462,9 @@ describe('buildMapStyle', () => {
     // release - the same call poiLayers.ts makes for an unknown POI type.
     const paint = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
 
-    expect(widthFor(paint['line-width'], 'some_source_added_in_2027')).toBeGreaterThan(0)
+    expect(
+      widthFor(seamTier(paint['line-width']), 'some_source_added_in_2027'),
+    ).toBeGreaterThan(0)
   })
 
   it('never lets a side trail be drawn over the AT centerline', () => {
@@ -533,9 +572,15 @@ describe('buildMapStyle', () => {
     // arrives.
     const sketch = layer(TRAIL_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
     const blaze = layer(BLAZE_LAYER_ID).paint as Record<string, unknown>
+    const dotted = layer(BLAZE_DOTTED_LAYER_ID).paint as Record<string, unknown>
 
-    expect(sketch['line-color']).toEqual(blaze['line-color'])
+    // Width from the side it is standing in for - this style has the A.T.
+    // taken, so the sketch is solid and carries the solid taper.
     expect(sketch['line-width']).toEqual(blaze['line-width'])
+    // Colour from the dotted half, always: the sketch has no casing pair,
+    // so a near-white line has to be inked dark or it has no edge at all
+    // (#1306, DARK_INKED_BLAZE_LAYER_IDS).
+    expect(sketch['line-color']).toEqual(dotted['line-color'])
   })
 
   it('opens with an empty sketch, so a launch with no overview draws nothing', () => {
@@ -1099,14 +1144,19 @@ describe('the map style and red light (MAP_STYLE_SPEC.md)', () => {
     // exactly as buildMapStyle spells it for the day sheet (the shared match
     // with near-white inked as casing), and the casing returns to the field
     // ink at the day sheet's width.
+    // BLAZE_LAYER_ID is a SOLID half, so its restore is the plain match:
+    // a white blaze keeps its own colour and its casing (#1306).
     expect(m.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toEqual(
-      blazeLineColor({ theme: 'light' }),
+      blazeLineColor({ theme: 'light' }, false),
+    )
+    expect(m.paintProperties.get(`${BLAZE_DOTTED_LAYER_ID}/line-color`)).toEqual(
+      blazeLineColor({ theme: 'light' }, true),
     )
     expect(m.paintProperties.get(`${TRAIL_CASING_LAYER_ID}/line-color`)).toBe(
       TOPO_PALETTE.label,
     )
     expect(m.paintProperties.get(`${TRAIL_CASING_LAYER_ID}/line-width`)).toEqual(
-      trailCasingWidthExpression({ theme: 'light' }),
+      solidTrailCasingWidthExpression({ theme: 'light' }),
     )
     expect(m.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       MAP_BACKDROP.light,
@@ -1440,7 +1490,7 @@ describe('the network overview sketch (#1135)', () => {
     const fullLines = layer(NEARBY_BLAZE_LAYER_ID).paint as Record<string, unknown>
     expect(taper[taper.length - 2]).toBe(POI_PIN_MIN_ZOOM)
     expect(taper[taper.length - 1]).toBe(DEFAULT_TRAIL_LINE_WIDTH)
-    expect(widthFor(fullLines['line-width'], 'oprhp_trails')).toBe(
+    expect(widthFor(seamTier(fullLines['line-width']), 'oprhp_trails')).toBe(
       DEFAULT_TRAIL_LINE_WIDTH,
     )
   })
@@ -1496,10 +1546,17 @@ describe('a near-white blaze on paper is inked in the casing colour, with no cas
     ({ options }) => {
       const built = buildMapStyle({ ...STYLE_OPTIONS, ...options })
       expect(inksNearWhiteAsCasing(options)).toBe(true)
-      for (const id of [BLAZE_LAYER_ID, BLAZE_DOTTED_LAYER_ID, NEARBY_BLAZE_LAYER_ID]) {
-        expect(paintFor(built, id, 'line-color', colorSpec, white)).toBe(
+      // The dotted halves and both sketches (#1306): dark ink, because a
+      // dotted white line has nothing between its rails.
+      for (const id of DARK_INKED_BLAZE_LAYER_IDS) {
+        expect(paintFor(built, id, 'line-color', colorSpec, white), id).toBe(
           trailCasingColor(options),
         )
+      }
+      // The solid halves keep the white blaze, with the casing that gives it
+      // an edge - the maintainer's call on the frame, 2026-09-09.
+      for (const id of [BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID]) {
+        expect(paintFor(built, id, 'line-color', colorSpec, white), id).toBe('#fffdf7')
       }
       // And leaves a Blue one exactly as the shared match paints it.
       expect(paintFor(built, BLAZE_LAYER_ID, 'line-color', colorSpec, blue)).toBe(
@@ -1508,13 +1565,20 @@ describe('a near-white blaze on paper is inked in the casing colour, with no cas
     },
   )
 
-  it.each(DAY)('draws no casing under it — $name', ({ options }) => {
+  it.each(DAY)('draws no casing under a DOTTED one — $name', ({ options }) => {
+    // paintFor evaluates at zoom 12, above the seam, where the taper
+    // (#1306) is already at the layer's own tier.
     const built = buildMapStyle({ ...STYLE_OPTIONS, ...options })
-    for (const id of TRAIL_CASING_LAYER_IDS) {
-      expect(paintFor(built, id, 'line-width', widthSpec, white)).toBe(0)
-      expect(paintFor(built, id, 'line-width', widthSpec, blue)).toBe(
+    for (const id of DOTTED_TRAIL_CASING_LAYER_IDS) {
+      expect(paintFor(built, id, 'line-width', widthSpec, white), id).toBe(0)
+      expect(paintFor(built, id, 'line-width', widthSpec, blue), id).toBe(
         SIDE_TRAIL_WIDTH + CASING_OVERHANG * 2,
       )
+    }
+    // And keeps it under a solid one, which is what lets that line stay
+    // white (#1306).
+    for (const id of [TRAIL_CASING_LAYER_ID, NEARBY_TRAIL_CASING_LAYER_ID]) {
+      expect(paintFor(built, id, 'line-width', widthSpec, white), id).toBeGreaterThan(0)
     }
   })
 
@@ -1555,16 +1619,21 @@ describe('attachMapAppearance repaints every trail line, not two of them (#1283)
     attachMapAppearance(m as never, { theme: 'dark' })
 
     for (const id of BLAZE_LINE_LAYER_IDS) {
-      expect(m.paintProperties.get(`${id}/line-color`)).toEqual(
-        blazeLineColor({ theme: 'dark' }),
+      expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(
+        blazeLineColor({ theme: 'dark' }, DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
       )
     }
     for (const id of TRAIL_CASING_LAYER_IDS) {
-      expect(m.paintProperties.get(`${id}/line-color`)).toBe(
+      const dotted = DOTTED_TRAIL_CASING_LAYER_IDS.includes(id)
+      expect(m.paintProperties.get(`${id}/line-color`), id).toBe(
         trailCasingColor({ theme: 'dark' }),
       )
-      expect(m.paintProperties.get(`${id}/line-width`)).toEqual(
-        trailCasingWidthExpression({ theme: 'dark' }),
+      // Per side since #1306, so a theme switch cannot put the dotted
+      // half's zero-under-white casing under a solid line, or vice versa.
+      expect(m.paintProperties.get(`${id}/line-width`), id).toEqual(
+        dotted
+          ? dottedTrailCasingWidthExpression({ theme: 'dark' })
+          : solidTrailCasingWidthExpression({ theme: 'dark' }),
       )
     }
   })
@@ -1787,11 +1856,24 @@ describe('nothing taken (#1306)', () => {
         dottedTrailWidthExpression(),
       )
     }
+    // The solid side tapers too, by its own tier rather than flat: a TAKEN
+    // A.T. at 4.5 px from Georgia to Maine is the same rope by another name
+    // ("it looks like a black line", 2026-09-09).
     for (const id of [BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID]) {
       expect(layerIn(untaken, id)?.paint?.['line-width'], id).toEqual(
-        TRAIL_WIDTH_EXPRESSION,
+        solidTrailWidthExpression(),
       )
     }
+    // And the scale is derived, not picked: a side trail's far end IS the
+    // network overview's own far width, so the two agree where they meet.
+    expect(
+      widthFor(
+        (solidTrailWidthExpression() as unknown[])[4],
+        Object.keys(TRAIL_LINE_WIDTHS).find(
+          (source) => !PRIMARY_TRAIL_SOURCES.includes(source),
+        ) as string,
+      ),
+    ).toBeCloseTo(NETWORK_OVERVIEW_FAR_WIDTH)
     // Both stops land on the layer's own tier at the seam and on the
     // network overview's weight at the far end, so the three tapers agree
     // to the pixel where they meet.
@@ -1842,7 +1924,7 @@ describe('nothing taken (#1306)', () => {
       TRAIL_WIDTH_EXPRESSION,
     ])
     expect(layerIn(taken, TRAIL_OVERVIEW_LAYER_ID)?.paint?.['line-width']).toEqual(
-      TRAIL_WIDTH_EXPRESSION,
+      solidTrailWidthExpression(),
     )
     expect(sketchWidthExpression([])).toEqual(
       layerIn(untaken, TRAIL_OVERVIEW_LAYER_ID)?.paint?.['line-width'],

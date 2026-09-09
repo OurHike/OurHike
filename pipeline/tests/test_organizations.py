@@ -174,6 +174,17 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     rest of NYNJTC's sources: 27 -> 28 here, and `unresolved` back to 1.
     `nynjtc_guide_licence` carries the words and what they do not cover.
 
+    WHAT MOVED ON 2026-09-09 (#1290): NYNJTC's Favorite Hikes
+    (`nynjtc_favorite_hikes`), 28 -> 29 here. The first NYNJTC surface whose
+    permission arrived WITH the ask ("we have their permission ... Include
+    everything, the description, the photos"; "We can use anything"), and
+    the broadest grant any NYNJTC block records - it ships their prose and
+    their photographs, where the other three stop at facts and a link. It
+    still sits in this column and not the next, because what this
+    repository holds is the maintainer's relay of the permission, not
+    NYNJTC's own written words; `nynjtc_hikes_licence` says so and says what
+    it does not cover.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -181,4 +192,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 28, "stated_by_org": 8, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 8, "unresolved": 1}

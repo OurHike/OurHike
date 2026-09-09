@@ -105,7 +105,12 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
-          sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool
+          # Split rather than `&&`: `apt-get update` exits non-zero when any
+          # repository preinstalled on the runner image fails, which stopped
+          # the install running at all. See backend-tests.yml for the measured
+          # case and the trade (#1361).
+          sudo apt-get update -qq || true
+          sudo apt-get install -y -qq osmium-tool
           osmium --version | head -1
 
       - name: Warm the DuckDB spatial extension

@@ -106,9 +106,13 @@ jobs:
       # different one, so the browser is installed rather than assumed. Only
       # chromium: the check is about one deployment, not cross-browser
       # behaviour, and the other two would triple the install for nothing.
+      # No `--with-deps`: it makes Playwright run apt, which fails when any
+      # repository preinstalled on the runner image has a bad index. See
+      # pr-preview.yml for the measured case and for the assumption this
+      # rests on, which that job is what settles (#1361).
       - name: Install Chromium
         if: steps.can.outputs.go == 'true'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Load the deployed app
         if: steps.can.outputs.go == 'true'

@@ -207,10 +207,28 @@ jobs:
       # pull request is open - which is when review happens, and is not when
       # somebody reads an old pull request to see what a screen used to look
       # like. The merged diff is the record; this is for the reviewer.
+      # No `--with-deps`. That flag has Playwright shell out to its own
+      # `apt-get`, which fails when ANY repository preinstalled on the runner
+      # image has a bad index - so a third party this project does not use
+      # could stop the camera. On 2026-09-09 Google's Chrome repository served
+      # an index whose hash did not match the Release file it had just
+      # published, and this job died at apt's exit 100 on three pull requests
+      # at once, none of which had touched the client (#1361). Downloading the
+      # browser itself needs no apt at all.
+      #
+      # @unvalidated that ubuntu-latest carries every shared library chromium
+      # needs. The image ships Chrome, so it plausibly does, but an agent
+      # sandbox is not the runner image and nobody has checked. What settles
+      # it is this job: a missing library means chromium fails to LAUNCH, so
+      # the failure lands loudly in the shot step below rather than quietly in
+      # a wrong picture. If that happens, restore `--with-deps` behind
+      # `sudo rm -f /etc/apt/sources.list.d/google-chrome.list` - narrower,
+      # but it hardcodes a vendor unrelated to this project and fixes only
+      # that one repository going bad.
       - name: Install a browser to photograph it with
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         working-directory: client
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       # Which files this pull request touches, for the camera: every shot
       # recipe in the list (client/preview-shots/) gets photographed and leads

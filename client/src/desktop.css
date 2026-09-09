@@ -324,6 +324,39 @@
     font-size: 44px;
   }
 
+  /* ---------- Plan's homes: a column, not a stretched phone ---------- */
+
+  /* FOUND IN THIS PULL REQUEST'S OWN PREVIEW SHOT (#1329), which is the
+     argument for photographing a change rather than describing it. The new
+     hike room came up correct at 390px and wrong at 1280: "SECTIONS IN THIS
+     HIKE" sat at x=225 with its "All 2 ›" link stranded a thousand pixels
+     away at x=1247, because `.plan-home__section-head` is
+     `justify-content: space-between` and nothing had ever capped the column
+     it spaces things across. Every card was 1,040px wide with a 14px name
+     on it.
+     
+     PRE-EXISTING, AND NOT THIS ISSUE'S: the day room and the sections room
+     are the same block and have looked like this since #805. What #1329 did
+     was build a third home and photograph it, which is how it surfaced. The
+     fix is here rather than deferred because the handoff's Responsive note
+     is the same sentence this whole issue is about - "the frames here become
+     the content column" - and shipping a new room that ignores it at the
+     width the issue is about would be shipping the complaint.
+
+     LEFT-ALIGNED RATHER THAN CENTRED, and the band keeps the full width.
+     The band is chrome, like the sidebar beside it, and its `Switch hike ›`
+     belongs at the header's own right edge; capping it would leave a pine
+     slab with square corners floating in cream. Centring the content under
+     a full-width band would put the h1 and the cards on two different left
+     edges, which is the one arrangement worse than either. */
+  .plan-home > * {
+    max-width: 40rem;
+  }
+
+  .plan-home > .plan-band {
+    max-width: none;
+  }
+
   /* ---------- The plan bench (#971): one plan, three views ---------- */
 
   /* WIREFRAMES.md 3a. Not the planning station above - see this file's header

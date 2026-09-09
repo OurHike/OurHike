@@ -246,6 +246,16 @@ describe('desktop layout contract', () => {
     }
   })
 
+  it("caps Plan's homes to a column, leaving the band full width", () => {
+    // The defect this PR's own preview shot showed: `.plan-home__section-head`
+    // is `justify-content: space-between`, so with nothing capping the column
+    // an "All 2 ›" link ends up a thousand pixels from the heading it belongs
+    // to. The band is deliberately exempt - it is chrome, and a capped one
+    // would be a pine slab floating in cream.
+    expect(declarationsOf('.plan-home > *')).toMatch(/max-width:\s*40rem/)
+    expect(declarationsOf('.plan-home > .plan-band')).toMatch(/max-width:\s*none/)
+  })
+
   it('makes the long-hike surfaces windows rather than takeovers', () => {
     // The handoff's Responsive note - "the frames here become the content
     // column" - and the reason a maintainer asked for it: "having them full

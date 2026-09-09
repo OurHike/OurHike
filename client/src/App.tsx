@@ -71,6 +71,7 @@ import {
   type ReportWindowAnchor,
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
+import { FIT_PADDING } from './map/MapView'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -976,6 +977,39 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
+
+  /**
+   * The corridor re-fitted once the entry steps end (#1296).
+   *
+   * The map behind the steps is fitted with `entryFitPadding` (below), and
+   * since #721 it is the same map instance the map screen keeps, so nothing
+   * rebuilds it with a fresh fit when the card goes. Its first moveend has
+   * already reported the padded camera into `camera`, so `bounds` is not
+   * even passed any more. MEASURED 2026-09-09 on the built app, a fresh
+   * profile through Continue, Keep going and Skip: the Map tab opened on the
+   * whole corridor squeezed into the top fifth of the screen under the
+   * identity plate at a 300 mi scale - which, with nothing else drawn down
+   * there since #1292, reads as an empty map. The same framing on `main`.
+   *
+   * Only while the hiker has not taken the map: `mapTaken` latches on the
+   * first pan or pinch, and a view somebody chose is never re-framed. And
+   * only for a map that was built during the steps, which the ref latches:
+   * a returning hiker's map never had the card's padding, and re-fitting it
+   * would throw away the camera lib/cameraMemory.ts put back. No animation,
+   * because Today is showing when this runs and the Map tab is a tap away.
+   * Declared up here with the other unconditional hooks: the shell has early
+   * returns further down, and a hook after one of them is a hook React
+   * cannot count on.
+   */
+  const fittedForEntry = useRef(false)
+  useEffect(() => {
+    if (entering && map !== null) fittedForEntry.current = true
+  }, [entering, map])
+  useEffect(() => {
+    if (entering || map === null || mapTaken || !fittedForEntry.current) return
+    fittedForEntry.current = false
+    map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
+  }, [entering, map, mapTaken])
 
   /**
    * Whether this session has ever needed the map, because the map is built at

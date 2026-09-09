@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { FIT_PADDING } from './map/MapView'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, set, setMany, update } from 'idb-keyval'
@@ -256,6 +257,44 @@ describe('App shell', () => {
       await screen.findByRole('tab', { name: 'Today', selected: true }),
     ).toBeInTheDocument()
     expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
+  })
+
+  it('re-fits the corridor when the steps end, because the card framed it (#1296)', async () => {
+    // The map behind the steps is fitted with the card's padding - the whole
+    // trail squeezed into the top fifth of the screen - and it is the same
+    // map instance the map screen keeps, so nothing else ever re-framed it.
+    // The first map a hiker opened after first run was the corridor under the
+    // identity plate at 300 mi, and with #1292 nothing else, which read as
+    // an empty map.
+    const user = userEvent.setup()
+    render(<App />)
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    const before = map.cameraMoves.length
+
+    await completeOnboarding(user)
+
+    await waitFor(() => {
+      const fit = map.cameraMoves.slice(before).find((move) => 'fitBounds' in move)
+      expect(fit).toBeDefined()
+      expect(fit?.fitBounds).toEqual(map.options.bounds)
+      expect(fit?.padding).toBe(FIT_PADDING)
+    })
+  })
+
+  it('never re-fits a returning hiker, whose map had no card to frame it', async () => {
+    // The re-fit is for a map built during the steps. A phone past them opens
+    // on the corridor already, or on the camera session storage put back -
+    // and a fit here would throw that camera away.
+    returningHiker()
+    render(<App />)
+    // Today is the home tab, so a returning hiker's map is built on the way
+    // to the map screen - fitted at construction, never by a later call.
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+
+    expect(map.cameraMoves.some((move) => 'fitBounds' in move)).toBe(false)
   })
 
   it('opens no window when the steps finish - the download already started on the step that asked', async () => {

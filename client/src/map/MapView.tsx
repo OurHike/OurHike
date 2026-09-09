@@ -456,8 +456,10 @@ const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
 /** Breathing room around a fitted box, on every side, when the caller asks for
- *  nothing more specific. */
-const FIT_PADDING = 24
+ *  nothing more specific. Exported for the shell's re-fit of the corridor
+ *  once the entry steps end (#1296), so the map a hiker opens after first
+ *  run is framed exactly as a returning hiker's is. */
+export const FIT_PADDING = 24
 
 // Module-level, so the default is the SAME value on every render. A `= []`
 // default parameter would hand over a fresh identity each time and re-run the

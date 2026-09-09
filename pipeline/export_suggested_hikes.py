@@ -67,11 +67,13 @@ from lib.nynjtc_hikes import SOURCE_KEY
 from lib.source_registry import find_source, load_registry
 from route_nynjtc_hikes import (
     STATUS_REVIEWED,
+    base_slug,
     load_cache,
     load_graph,
     load_routes,
     measure,
     published_miles,
+    row_name,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -130,8 +132,11 @@ def record_for(slug: str, row: dict, hike: dict, route: router.Route, points: li
     publication = hike.get("publication") or {}
     start = hike.get("start") or {}
     record = {
+        # The FULL key, variant and all: three walks share one NYNJTC page
+        # and would otherwise share one id, which the client dedupes on -
+        # two of the three would silently never reach a shelf.
         "id": f"{SOURCE_KEY}:{slug}",
-        "name": hike["name"],
+        "name": row_name(slug, row, hike),
         "miles": round(route.miles, 2),
         "difficulty": hike.get("difficulty"),
         "author": {"kind": AUTHOR_KIND, "name": steward},
@@ -186,7 +191,7 @@ def build_document(
         row = routes[slug]
         if row.get("status") != STATUS_REVIEWED:
             continue
-        hike = cache.get(slug)
+        hike = cache.get(base_slug(slug))
         if hike is None:
             dropped.append(
                 (slug, "reviewed in reference/nynjtc_hike_routes.json but not in the fetch cache - run fetch_nynjtc_hikes.py")

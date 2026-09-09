@@ -236,3 +236,83 @@ class TestTheContract:
 
         assert document["source"] == SOURCE_KEY
         assert document["generated_at"].endswith("Z")
+
+
+class TestVariants:
+    """One NYNJTC page, three walks (#1290, maintainer's call 2026-09-09).
+
+    "Platte Clove to Overlook Mountain via Codfish Point and Echo Lake"
+    offers 4.5, 8.8 and 13 miles under one title. A row key is the slug plus
+    "#" and a variant name; everything before the "#" is the cache key and
+    the page a hiker is sent to.
+    """
+
+    def rows(self) -> dict:
+        return {
+            "hike-pine#short": row(
+                name="Pine Meadow, the short way", ends=[[LON + 0.2 * STEP, LAT], [LON + STEP, LAT]], closed=False
+            ),
+            "hike-pine#long": row(
+                name="Pine Meadow to the ridge", ends=[[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT]], closed=False
+            ),
+        }
+
+    def test_both_variants_ship_from_one_cached_hike(self, sandbox):
+        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
+
+        manifest = exporter.main()
+
+        assert manifest["count"] == 2
+        # Published in key order, which is deterministic and is all this end
+        # promises - the shelf and the finder sort for themselves.
+        records = published(sandbox)["hikes"]
+        assert [r["name"] for r in records] == ["Pine Meadow to the ridge", "Pine Meadow, the short way"]
+        # Both point at NYNJTC's one page.
+        assert {r["url"] for r in records} == {"https://www.nynjtc.org/hike/pine/"}
+
+    def test_each_variant_gets_its_own_id_so_the_client_cannot_dedupe_them_away(self, sandbox):
+        """lib/suggestedHikesData.ts drops a second record sharing an id.
+        Keying on the base slug would silently lose two of the three."""
+        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
+
+        exporter.main()
+
+        ids = [r["id"] for r in published(sandbox)["hikes"]]
+        assert ids == [f"{SOURCE_KEY}:hike-pine#long", f"{SOURCE_KEY}:hike-pine#short"]
+        assert len(set(ids)) == 2
+
+    def test_the_variants_measure_differently(self, sandbox):
+        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
+
+        exporter.main()
+        long, short = published(sandbox)["hikes"]
+
+        assert short["miles"] < long["miles"]
+
+    def test_a_variant_carries_its_own_published_miles(self, sandbox):
+        """NYNJTC states a length per walk, not per page - the row says which
+        of the three this one is, and the parse's single stated_miles cannot."""
+        rows = self.rows()
+        rows["hike-pine#short"]["published_miles"] = 0.1
+        rows["hike-pine#long"]["published_miles"] = 0.2
+        sandbox["reference"].write_text(json.dumps({"routes": rows}))
+
+        exporter.main()
+        long, short = published(sandbox)["hikes"]
+
+        assert (short["publishedMiles"], long["publishedMiles"]) == (0.1, 0.2)
+
+    def test_a_variant_with_no_name_of_its_own_is_refused(self, sandbox):
+        """Three cards reading identically is worse than a failed export: a
+        hiker choosing between 4.5 and 13 miles could not tell which is which."""
+        rows = self.rows()
+        rows["hike-pine#short"].pop("name")
+        sandbox["reference"].write_text(json.dumps({"routes": rows}))
+
+        with pytest.raises(SystemExit, match="carries no `name`"):
+            exporter.main()
+
+    def test_a_plain_row_still_takes_its_name_from_nynjtcs_page(self, sandbox):
+        exporter.main()
+
+        assert published(sandbox)["hikes"][0]["name"] == "Pine Meadow Loop"

@@ -190,47 +190,66 @@ describe('App shell', () => {
     expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
   })
 
-  it('draws the map behind the first-run steps, rather than describing one', async () => {
+  it('builds nothing behind the first-run steps, because nothing is behind them (#1324)', async () => {
+    // THE REVERSAL, and worth stating rather than quietly editing. From #721
+    // this asserted the opposite - one live map behind the steps - on the
+    // argument that every step is a claim about the map and a claim is better
+    // shown than asserted. That argument was good and it stopped applying at
+    // #1054, which put a photograph of the trail in front of the map:
+    // `.onboarding__hero` is `inset: 0` over an opaque `--bg-chrome`, so what
+    // stands behind the steps is a wall.
+    //
+    // Measured on the built app 2026-09-09 in pixels: with every layer of the
+    // map screen painted magenta by injected CSS and first run rendered as it
+    // normally does, 0 of the frame's 329,160 pixels came back magenta -
+    // while the map screen and its canvas were both present. Building it cost
+    // 730-950 ms of MapLibre on the thread the Skip button was waiting for.
+    //
+    // THE SECOND HALF IS THE ORDERING PROOF and is not optional. An assertion
+    // that nothing has been built yet is also what a test that looked too
+    // early would say, and this file has no read-by-read settle helper to
+    // anchor on. So the same shell is driven on to where it DOES build one:
+    // zero while the steps are up and one when they are done is a fact about
+    // the shell, where zero on its own is a fact about the clock. It also
+    // covers the two structural halves the `inert` test used to hold - during
+    // first run there is no map screen to mark inert and no map region to
+    // announce, which is strictly stronger than marking them hidden.
+    //
+    // The COUNT of maps first run may build is priced in
+    // App.loadBudget.test.tsx with the rest of the launch's operations. This
+    // one is about what the shell puts on screen.
+    const user = userEvent.setup()
     render(<App />)
 
     await screen.findByText('What OurHike is')
+    // Not only about stray taps: MapView attaches a locate control, and
+    // reaching it would raise the OS location prompt before the step whose
+    // whole job is to explain why we are asking.
+    expect(document.querySelector('.map-screen')).toBe(null)
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
 
-    // Every step is a claim about the map. It is behind them from the first
-    // frame, so the claims are shown rather than only asserted.
-    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    await completeOnboarding(user)
+    await openMapTab()
+
+    await screen.findByRole('region', { name: /trail map/i })
   })
 
-  it('opens that map on the whole corridor, the same view the map screen opens on', async () => {
+  it('opens on the whole corridor once the steps are done, the map screen view', async () => {
+    // The camera assertion #721 made about the backdrop map, moved to the map
+    // a hiker now actually gets. `CORRIDOR_BOUNDS` unchanged: what first run
+    // opens on is still the whole trail, which is the claim the first step
+    // makes in words.
+    const user = userEvent.setup()
     render(<App />)
 
-    await screen.findByText('What OurHike is')
+    await completeOnboarding(user)
+    await openMapTab()
     const map = await liveMap()
 
     expect(map.options.bounds).toEqual([
       [-84.73, 34.2],
       [-68.3, 46.34],
     ])
-  })
-
-  it('keeps the first-run map inert, so nothing behind the steps can be reached', async () => {
-    render(<App />)
-
-    await screen.findByText('What OurHike is')
-    await liveMap()
-
-    // Not only about stray taps. MapView attaches a locate control, and
-    // reaching it would raise the OS location prompt before the step whose
-    // whole job is to explain why we are asking. `inert` also keeps the canvas
-    // out of the tab order and its region out of the accessibility tree.
-    // The map screen IS the backdrop now (#721) - there is no separate entry
-    // map to find, which is the whole point. What has to hold is what held
-    // before: nothing behind the steps is reachable or announced.
-    const backdrop = document.querySelector('.map-screen')
-    expect(backdrop).not.toBe(null)
-    expect(backdrop).toHaveClass('map-screen--entering')
-    expect(backdrop).toHaveAttribute('inert')
-    expect(backdrop).toHaveAttribute('aria-hidden', 'true')
-    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
   })
 
   it('never holds two live maps, before or after the steps finish', async () => {

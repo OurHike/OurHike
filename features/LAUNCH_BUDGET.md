@@ -232,6 +232,15 @@ either the fallback fired or a caller goes around it), and 61 ms of
 production the same window is dominated by functions in the engine chunk that the
 minified build cannot name; the attributed run is what says they are MapLibre's.
 
+**The parenthesis above is wrong, and §4.6 is where that gets settled.** "The card is
+over a map" stopped being true at #1054 and this section inherited the sentence from
+#857 without re-checking it. What the entry steps stand on is `.onboarding__hero`, a
+full-viewport child at `inset: 0` painted in an opaque `--bg-chrome`. The line is not
+the one thing behind the card worth seeing; nothing behind the card is visible at all.
+Left in place rather than quietly corrected because the error is the interesting part:
+every figure in this paragraph was measured, and the one clause nobody measured is the
+one that made a thousand milliseconds look like a purchase.
+
 ## 3. The budget
 
 All figures are on the stopwatch's profile (390×844, 4× CPU, 12 Mbps / 80 ms, tiles
@@ -328,12 +337,51 @@ has no mile, never a zero.
 
 The first-run profile is read by name (§2.5) and each named cost is either moved off
 the tapping thread or held until the steps are done, the way #857 — *Skip on the first-run steps feels like a broken button* — held the
-waypoints: the pin rasteriser goes back into its worker for every caller, `localDay`
-is memoised per day rather than per render, and MapLibre's own work behind the card is
-bounded — the centerline sketch is 200 KB and is what the card should be over; the
-full 11.5 MB line and the network can follow when the card is gone. **#863 — On a cold first run the trail line never appears behind the entry steps,
+waypoints: the pin rasteriser goes back into its worker for every caller, and
+`localDay` is memoised per day rather than per render.
+
+**And the map is not built at all while the steps are up** — #1324 — *First run builds
+the whole map screen behind an opaque photograph*. This section used to say MapLibre's
+work behind the card should be *bounded*: draw the 200 KB centerline sketch, hold the
+11.5 MB line and the network until the card is gone. That was the right shape for a
+card the map is visible through, which is what first run was from #721 until #1054 put
+a photograph in front of it. It is the wrong shape for a wall.
+
+**Measured** 2026-09-09 on the built app at 390×844, in pixels: every layer of the map
+screen — the wrapper, the screen, the canvas container and the canvas — painted
+`rgb(255, 0, 255)` by injected CSS, first run rendered as it normally does, the frame
+screenshotted and counted. The map screen was present and so was its canvas. **Magenta
+pixels in the frame: 0 of 329,160.** `desktop.css` had already run the same experiment
+in red on 2026-08-27, for a different reason, and filed the answer under the scrim.
+
+A `document.elementFromPoint` grid was tried first, and is recorded here because it is
+the wrong instrument in a way that looks right: `.onboarding__hero` is
+`pointer-events: none`, so the hit test walks past the very element whose opacity is
+the question and reports whatever is behind it. It answers what a finger reaches, never
+what an eye sees — and on this screen those are different questions with, as it happens,
+the same answer.
+
+So the bound is zero. The saving is the whole of MapLibre's self time — 730–950 ms
+across three cold runs — plus the map screen's own React tree, which is where
+`StatusStrip` was rebuilding an `Intl.DateTimeFormat` per render (87–124 ms) for a
+clock the same wall covers. What #721 promised — *the map is warm the moment the steps
+finish* — is kept, and moved: an idle callback after the steps mounts it, at the point
+the thread is free rather than the point it is busiest. A phone never collected that
+warmth at the promised moment anyway, because first run lands on Today and Today covers
+the map.
+
+**#863 — On a cold first run the trail line never appears behind the entry steps,
 because it waits for the whole release to commit**'s answer — commit the centerline as
-soon as it is fetched — stays.
+soon as it is fetched — stays, for a different reason than it was written for. Nothing
+draws it during the steps now; what it buys is a warm map that already has its line,
+and a phone that is not still fetching one when the hiker reaches the Map tab.
+
+Two things this deliberately does not do. **Desktop still builds its map from launch**
+(`isDesktop` is not conditioned on `entering`): the hero covers a desktop viewport too,
+but a desktop shows Today *beside* the map the moment the steps end, so the warmth is
+collected there, and a laptop is not the profile this budget is about. And **the
+photograph stays** — #1054 settled what first run sells, and this changes only what is
+paid for behind it.
 
 ## 5. What keeps it there
 

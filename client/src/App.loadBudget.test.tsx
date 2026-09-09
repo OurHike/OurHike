@@ -54,6 +54,7 @@ import { get, getMany } from 'idb-keyval'
 import App from './App'
 import { appHarness, openMapTab } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
+import { MockMap } from './test/mocks/maplibre-gl'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
 import { PREFERENCES_KEY } from './lib/preferences'
@@ -181,6 +182,28 @@ describe('what first run may do before the steps are done', () => {
 
     await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
     expect(buildPoiIcons).not.toHaveBeenCalled()
+  })
+
+  it('builds no map (#1324)', async () => {
+    // The largest of the four operations this file's header prices, and the
+    // one first run was still paying in full: 2,353 ms of blocking work on a
+    // loaded phone here, 730-950 ms of MapLibre self time on the stopwatch's
+    // cold first run against 659598a8 (three runs, 2026-09-09).
+    //
+    // It bought a backdrop nobody sees. `.onboarding__hero` is `inset: 0` over
+    // an opaque `--bg-chrome`, so the map has stood behind a wall since #1054
+    // - measured in pixels on the built app, where the map screen painted
+    // magenta contributed 0 of the frame's 329,160 pixels. The map is built
+    // when the steps are done instead (App.mapLifecycle).
+    //
+    // Anchored on the trail-line read like its neighbours above: it is the
+    // read the map would have been waiting for, so a shell that wanted one
+    // has had everything it needs by the time this asserts.
+    render(<App />)
+    await screen.findByText('What OurHike is')
+
+    await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
+    expect(MockMap.instances).toHaveLength(0)
   })
 
   it('does not build the index or place a waypoint', async () => {

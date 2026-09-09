@@ -6,6 +6,7 @@
 // position rendered exactly like a live one. Silence would read as "this is
 // where you are" when the honest answer is "this is where you last were."
 
+import { useMemo } from 'react'
 import { syncAgeLabel } from '../lib/syncAge'
 import type { BackgroundOverride } from '../lib/dataSaver'
 import type { BackgroundProblem } from '../lib/backgroundHealth'
@@ -136,6 +137,33 @@ export interface StatusStripProps {
   alertsHidden?: boolean
 }
 
+/**
+ * The clock's formatter, built once (#1324).
+ *
+ * `time.toLocaleTimeString(...)` constructed a fresh `Intl.DateTimeFormat`
+ * on every render of this component, and this component re-renders on every
+ * render of the shell above it - which during a launch is many, none of them
+ * about the time. MEASURED 2026-09-09 on three cold first runs of
+ * client/scripts/measure-first-run.mjs against 659598a8: 87-124 ms of
+ * sampled self time in this function, third behind MapLibre itself, for a
+ * strip that first run hides in CSS and #1324 has now stopped mounting at
+ * all. The same defect #1304 took out of lib/passedToday.ts, in a second
+ * file.
+ *
+ * Constructed lazily rather than at module load: this file is in the eager
+ * closure that client/scripts/check-build-output.mjs bounds, and an `Intl`
+ * built at import time would be work in front of the first paint - the exact
+ * thing being removed. Kept as `Intl` rather than hand-rolled, which is where
+ * `passedToday` went: that one produces a storage key, this one produces a
+ * time a hiker reads to decide whether they beat the dark, and a bespoke
+ * 12-hour clock is not worth the microseconds.
+ */
+let clockFormat: Intl.DateTimeFormat | null = null
+function formatClock(time: Date): string {
+  clockFormat ??= new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' })
+  return clockFormat.format(time)
+}
+
 export function StatusStrip({
   time,
   online,
@@ -149,11 +177,14 @@ export function StatusStrip({
   trailLinesMissing = false,
   alertsHidden = false,
 }: StatusStripProps) {
+  // Keyed on the Date itself, which lib/useClock.ts replaces once a minute
+  // and never in between - so every other render of the shell reuses the
+  // string rather than re-running the formatter over an unchanged instant.
+  const clock = useMemo(() => formatClock(time), [time])
+
   return (
     <div className="status-strip">
-      <span className="status-strip__time">
-        {time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-      </span>
+      <span className="status-strip__time">{clock}</span>
 
       {/* Polite, not assertive: losing signal mid-walk is expected, and should
           never interrupt whatever the hiker is already reading. */}

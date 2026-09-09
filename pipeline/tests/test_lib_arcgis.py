@@ -118,3 +118,78 @@ def test_get_field_coded_domain_returns_none_when_domain_is_not_coded_value_type
 def test_get_field_coded_domain_returns_none_when_field_not_found(requests_mock):
     requests_mock.get(LAYER_URL, json={"fields": [{"name": "OBJECTID", "type": "esriFieldTypeOID"}]})
     assert get_field_coded_domain(LAYER_URL, "Blaze") is None
+
+
+def test_fetch_layer_geojson_defaults_are_unchanged_by_the_new_parameters(requests_mock):
+    """The twelve callers that pass nothing must send exactly what they sent
+    before #1295 widened this signature. Pinned as a whole-dict comparison
+    rather than field by field, so a parameter added later that leaks into
+    the default query fails here rather than in a publish."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(query_url, [{"json": {"features": []}}])
+
+    fetch_layer_geojson(LAYER_URL)
+
+    assert requests_mock.request_history[0].qs == {
+        "where": ["1=1"],
+        "outfields": ["*"],
+        "outsr": ["4326"],
+        "f": ["geojson"],
+        "resultoffset": ["0"],
+        "resultrecordcount": ["1000"],
+    }
+    # Absent rather than empty: a caller that wants full precision must not
+    # send the parameter at all, because ArcGIS reads geometryPrecision=0 as
+    # "round to whole degrees" rather than "do not round".
+    assert "geometryprecision" not in requests_mock.request_history[0].qs
+
+
+def test_fetch_layer_geojson_carries_the_callers_query_shape(requests_mock):
+    """fetch_centerline.py's shape, which is why these parameters exist."""
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(query_url, [{"json": {"features": []}}])
+
+    fetch_layer_geojson(LAYER_URL, out_fields="", geometry_precision=5, page_size=2000)
+
+    asked = requests_mock.request_history[0].qs
+    assert asked["outfields"] == [""]
+    assert asked["geometryprecision"] == ["5"]
+    assert asked["resultrecordcount"] == ["2000"]
+
+
+def test_page_size_resolves_against_the_module_constant_at_call_time(requests_mock, monkeypatch):
+    """`page_size=None` must mean "whatever PAGE_SIZE is now", not "whatever
+    it was when this function was defined". The existing server-cap test
+    monkeypatches arcgis.PAGE_SIZE and would have gone on passing against a
+    stale default bound in the signature, so the property is pinned directly
+    - it is the same trap lib/http_retry.py documents for its `sleep`."""
+    monkeypatch.setattr(arcgis, "PAGE_SIZE", 25)
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(query_url, [{"json": {"features": []}}])
+
+    arcgis.fetch_layer_geojson(LAYER_URL)
+
+    assert requests_mock.request_history[0].qs["resultrecordcount"] == ["25"]
+
+
+def test_a_custom_page_size_still_stops_only_on_an_empty_page(requests_mock):
+    """The stop condition does not become the caller's along with the shape.
+
+    This is the guarantee that let publish-conditions.yml's heredoc be
+    deleted rather than ported: whatever page size it asks for, a short page
+    is not the end.
+    """
+    query_url = LAYER_URL + "/query"
+    requests_mock.get(
+        query_url,
+        [
+            {"json": {"features": [{"id": i} for i in range(3)]}},  # far short of 2000
+            {"json": {"features": [{"id": 3}]}},
+            {"json": {"features": []}},
+        ],
+    )
+
+    fc = fetch_layer_geojson(LAYER_URL, page_size=2000)
+
+    assert len(fc["features"]) == 4
+    assert requests_mock.call_count == 3

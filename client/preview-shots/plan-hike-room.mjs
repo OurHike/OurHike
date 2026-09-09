@@ -15,6 +15,13 @@
 // hike" it was created with - and a primary that reads "Plan a section" and
 // opens the planner in place (plan-section-inline.mjs is that frame).
 //
+// SINCE #1367 EACH SECTION ROW CARRIES ITS MOVE. `unassignTrip` had been in
+// the store since #788 with no caller, so a section could join a hike and
+// never leave one — the only escape being "Forget this hike", which ungroups
+// every section in it. "Take out" on a row in the hike, "Add" on one in
+// "Your other sections", and the two shelves become two halves of one
+// control rather than a division a hiker can see and cannot change.
+//
 // WHAT TO LOOK FOR: the hike's NAME as the band's h1, "Switch hike ›" beside
 // it, the blaze-bordered "Carry on with" card, and "This hike, end to end"
 // carrying `mi walked · mi to go` over a two-band bar.

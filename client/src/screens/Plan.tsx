@@ -158,6 +158,10 @@ export interface PlanScreenProps {
   /** The inline section planner (#1344), rendered where the primary is.
    *  The shell's, like every other surface this screen only positions. */
   sectionPlanner?: ReactNode
+  /** Move a section into the active hike, or out of it (#1367). The store's,
+   *  like every other write this screen only positions. */
+  onAddSectionToHike?: (tripId: string) => void
+  onTakeSectionOut?: (tripId: string) => void
   /** Whether the full day-hike list is open, for the same reason: the map's
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
@@ -254,6 +258,8 @@ export function PlanScreen({
   onSwitchHike,
   onRenameHike,
   sectionPlanner,
+  onAddSectionToHike,
+  onTakeSectionOut,
   dayListOpen,
   onDayListOpen,
   draftKind,
@@ -439,6 +445,8 @@ export function PlanScreen({
           onSwitchHike={onSwitchHike}
           onRenameHike={onRenameHike}
           sectionPlanner={sectionPlanner}
+          onAddSectionToHike={onAddSectionToHike}
+          onTakeSectionOut={onTakeSectionOut}
           onAddDayHikeToHike={onAddDayHikeToHike}
           trips={trips}
           hikes={hikes}

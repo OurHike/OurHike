@@ -110,6 +110,10 @@ export interface MapScreenProps {
   /** The hike a hiker is on, as a control - passed straight through to the
    *  sidebar for the same reason (#1344). See TabBarProps.hikeSwitch. */
   hikeSwitch?: ReactNode
+  /** The hike this phone is on, named on the plate, and the door to a
+   *  different one beside it (#1367). Both undefined off a long hike. */
+  hikeName?: string
+  onSwitchHike?: () => void
   topoArchiveUrl: string
   trailsUrl: string
   /** The corridor-view centerline, drawn until the map has the real line on
@@ -813,6 +817,8 @@ export function MapScreen({
   journal,
   modeSwitch,
   hikeSwitch,
+  hikeName,
+  onSwitchHike,
   onOpenLegend,
   onOpenSearch,
   legendOpen,
@@ -1277,6 +1283,8 @@ export function MapScreen({
                 trailLogo={trailLogo}
                 state={state}
                 position={position}
+                hikeName={hikeName}
+                onSwitchHike={onSwitchHike}
                 onOpenLegend={onOpenLegend}
                 onOpenSearch={onOpenSearch}
                 strip={

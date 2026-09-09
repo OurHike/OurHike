@@ -26,7 +26,7 @@
 // own two ends on the way into the store, which is renameTrip's rule.
 export const caption = 'Setting up a long hike — the points are the whole form (#1317)'
 export const alt =
-  'A full screen with a pine SETTING UP band reading "A new long hike" and a Cancel button, a lede saying two ends is the whole requirement, an empty points list with "Add a point on the way", a note about what a third point means, an "Already walked some of it?" door, and a disabled "Start this long hike" button under the reason it is refused'
+  'A full screen with a pine SETTING UP band reading "A new long hike" and a Cancel button, a lede saying two ends is the whole requirement, an "Its name" field prefilled with the same "A new long hike" the band shows, an empty points list with "Add a point on the way", a note about what a third point means, an "Already walked some of it?" door, and a disabled "Start this long hike" button under the reason it is refused'
 
 export default async function drive(page) {
   await page.getByRole('radio', { name: 'Long hike' }).click()

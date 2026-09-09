@@ -1557,3 +1557,265 @@ def test_collect_publishes_the_vertex_miles_beside_the_trails_they_describe(tmp_
 
     entry = publish.collect_artifacts()[publish.TRAIL_MILES_KEY]
     assert (entry["path"], entry["sha256"]) == (str(miles), "miles-hash")
+
+
+# ------------------------------ what a publish spends per object (#1311) ---
+#
+# Run #88 of publish-vector-data.yml (2026-09-08) spent 35:47 in "Publish to
+# R2" moving 1,267.68 MB across 1,715 artifacts plus ~3,016 photo objects -
+# 0.45 s per object, one sequential round trip each, while the same runner
+# wrote 422 MB into the Actions cache at 172 MB/s. That is root cause 3 of
+# #1311, "The vector build went from 20 to 108 minutes in twelve days".
+#
+# NONE OF THESE TESTS MEASURE A SPEED-UP, and they are not meant to: moto
+# answers in microseconds, so a suite here can say nothing about a round trip
+# on a runner. What it can hold is the shape of the fix and the four things
+# parallelism is capable of quietly breaking - the stage orderings, the
+# per-artifact figures, the loud photo check, and a worker's failure being the
+# publish's failure.
+
+
+@pytest.fixture
+def many_artifacts(tmp_path):
+    """Thirty artifacts - comfortably more than PUBLISH_CONCURRENCY, so the
+    upload stage really does run several threads rather than taking
+    `_in_parallel`'s trivial path."""
+    artifacts = {}
+    for index in range(30):
+        path = tmp_path / f"poi_cell_{index:03d}.geojson"
+        _write_fc(path, [_poi_feature(f"p{index}")])
+        artifacts[path.name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+    return artifacts
+
+
+def test_every_changed_artifact_lands_and_the_pointer_is_written_last(s3_client, many_artifacts):
+    """The property the upload loop had for free when it was a `for`: every
+    artifact in `changed` is in the bucket, and `latest.json` - the pointer
+    every client fetches first - is written after the last of them. Parallelism
+    is within the stage, never across it."""
+    seen: list[str] = []
+    real_upload, real_put = s3_client.upload_file, s3_client.put_object
+
+    def record_upload(path, bucket, key, **kwargs):
+        result = real_upload(path, bucket, key, **kwargs)
+        seen.append(key)
+        return result
+
+    def record_put(**kwargs):
+        result = real_put(**kwargs)
+        seen.append(kwargs["Key"])
+        return result
+
+    s3_client.upload_file, s3_client.put_object = record_upload, record_put
+
+    result = publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    assert sorted(result["uploaded"]) == sorted(many_artifacts)
+    assert set(many_artifacts) <= set(_keys_in(s3_client))
+    # Every upload is behind the pointer, not merely most of them.
+    assert seen[-1] == publish.MANIFEST_KEY
+    assert set(many_artifacts) <= set(seen)
+
+
+def test_each_artifact_keeps_its_own_transfer_size_when_they_upload_together(s3_client, tmp_path):
+    """The figure `dataRefresh.ts` prints to a hiker deciding whether to spend
+    mobile data on an update. Measured inside the worker and recorded against
+    the name that worker returned, so thirty threads cannot hand one artifact
+    another's number - which would be a wrong figure shown rather than a crash,
+    and so would never be noticed."""
+    artifacts = {}
+    for index in range(20):
+        path = tmp_path / f"poi_cell_{index:03d}.geojson"
+        # Deliberately different lengths, so a swapped figure is visible.
+        _write_fc(path, [_poi_feature(f"p{n}") for n in range(index + 1)])
+        artifacts[path.name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+
+    publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    published = json.loads(s3_client.get_object(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]
+    for name in artifacts:
+        assert published[name]["transfer_bytes"] == s3_client.head_object(Bucket=BUCKET, Key=name)["ContentLength"]
+
+
+def test_a_photo_the_prefix_listing_already_shows_is_not_uploaded_again(s3_client, local_artifacts, local_photos):
+    """One paginated listing of `photos/` in place of a HEAD per photo. The key
+    IS the hash, so a key the listing shows is by construction the bytes we
+    were about to send - and the listing is the only thing asked, which is what
+    stubbing `head_object` into a failure asserts."""
+
+    def no_object_at_a_time(**kwargs):
+        raise AssertionError(f"the publish asked about {kwargs.get('Key')!r} one object at a time")
+
+    already, fresh = sorted(local_photos)
+    s3_client.put_object(Bucket=BUCKET, Key=already, Body=pathlib.Path(local_photos[already]).read_bytes())
+    s3_client.head_object = no_object_at_a_time
+
+    result = publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert result["photos_uploaded"] == [fresh]
+    assert s3_client.get_object(Bucket=BUCKET, Key=fresh)["Body"].read() == pathlib.Path(local_photos[fresh]).read_bytes()
+
+
+def test_a_ua_publish_does_not_read_productions_photos_as_already_there(s3_client, local_artifacts, local_photos):
+    """The listing is scoped to the publishing environment's prefix, and this
+    is why: `photos/` is the one hiker-facing prefix objects are DELETED from,
+    so a UA publish seeing production's corpus as present would let a
+    withdrawal rehearsed in UA take a picture out of production."""
+    publish.publish(
+        local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET, environment="production"
+    )
+
+    result = publish.publish(
+        local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET, environment="ua"
+    )
+
+    assert sorted(result["photos_uploaded"]) == sorted(local_photos)
+    assert {f"environments/ua/{key}" for key in local_photos} <= set(_keys_in(s3_client))
+
+
+def test_a_promise_the_prefix_listing_cannot_back_still_fails_by_name(s3_client, local_artifacts, tmp_path):
+    """The loud half of #465, now settled against the listing rather than a
+    HEAD per referenced key. What must not have changed with the mechanism: an
+    artifact naming a photo that is in neither the local store nor the bucket
+    fails the publish, by name, before the manifest can make the promise
+    reachable. This is the check standing between a hiker's card and a 404."""
+    s3_client.put_object(Bucket=BUCKET, Key="photos/aaa.jpg", Body=b"\xff\xd8 already there")
+    artifacts = {
+        **local_artifacts,
+        **_poi_artifact(tmp_path, [{"photo_key": "photos/aaa.jpg"}, {"photo_key": "photos/bbb.jpg"}]),
+    }
+
+    with pytest.raises(RuntimeError, match=re.escape("photos/bbb.jpg")):
+        publish.publish(artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    with pytest.raises(s3_client.exceptions.NoSuchKey):
+        s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
+
+
+# Every name the junction graph publishes under: the four whole files, the
+# cell index, and one cell's routing and geometry shards
+# (pipeline/cut_trail_graph.py's CELL_NAMES).
+GRAPH_FAMILY = (
+    "trail_graph.json",
+    "trail_graph_geometry.json",
+    "trail_graph_elevation.json",
+    "trail_graph_profile.json",
+    "trail_graph_cells.json",
+    "trail_graph_cell_n41w074.json",
+    "trail_graph_geometry_cell_n41w074.json",
+)
+
+
+def _graph_and_vector_layers(tmp_path, marker):
+    """The graph family plus the two vector layers the phone's "what changed"
+    prompt is actually built from - every one of them carrying `marker`, so a
+    second call changes every hash."""
+    artifacts = {}
+    for name in GRAPH_FAMILY:
+        path = tmp_path / name
+        # A keyed document of nodes and edges, which is what these really are -
+        # never a FeatureCollection, which is the whole point below.
+        path.write_text(json.dumps({"nodes": [[-74.0, 41.0]], "edges": [{"id": marker}]}))
+        artifacts[name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+    for name in ("poi_water.geojson", "trails.geojson"):
+        path = tmp_path / name
+        _write_fc(path, [_poi_feature(marker)])
+        artifacts[name] = {"path": str(path), "sha256": publish.sha256_file(path)}
+    return artifacts
+
+
+def test_the_graph_family_is_neither_described_nor_downloaded_to_be_described(s3_client, tmp_path):
+    """`data_change.classify` grades every one of these `unreadable` - they are
+    keyed documents, not FeatureCollections - and it grades them that way AFTER
+    downloading them. On run #88 that was 78.9 MB of trail_graph.json, 224.4 MB
+    of trail_graph_geometry.json and 1,004 cell shards fetched back out of the
+    bucket to produce the same sentence 1,006 times."""
+    publish.publish(_graph_and_vector_layers(tmp_path, "a"), sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    read: list[str] = []
+    real_get = s3_client.get_object
+
+    def record_get(**kwargs):
+        read.append(kwargs["Key"])
+        return real_get(**kwargs)
+
+    s3_client.get_object = record_get
+    publish.publish(_graph_and_vector_layers(tmp_path, "b"), sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    published = json.loads(real_get(Bucket=BUCKET, Key="latest.json")["Body"].read())["artifacts"]
+    for name in GRAPH_FAMILY:
+        assert "change" not in published[name], name
+        assert name not in read, f"{name} was fetched back only to be graded unreadable"
+    # And the layers the prompt is built from keep their descriptions, read
+    # from the bytes that were live - which is the half of this that a
+    # too-wide exclusion would silently take away.
+    assert "trails.geojson" in read
+    assert published["poi_water.geojson"]["change"]["removed"] == 1
+    assert published["trails.geojson"]["change"]["added"] == 1
+
+
+def test_the_release_folder_copies_everything_and_writes_its_manifest_last(s3_client, many_artifacts):
+    """A release folder must be complete or absent - a half-copied one has the
+    index advertising something incomplete as somewhere to roll back to. The
+    copies run together; the folder's own manifest is written after every one
+    of them has returned, so it never describes bytes that have not landed."""
+    order: list[str] = []
+    real_copy, real_put = s3_client.copy_object, s3_client.put_object
+
+    def record_copy(**kwargs):
+        result = real_copy(**kwargs)
+        order.append(kwargs["Key"])
+        return result
+
+    def record_put(**kwargs):
+        result = real_put(**kwargs)
+        order.append(kwargs["Key"])
+        return result
+
+    s3_client.copy_object, s3_client.put_object = record_copy, record_put
+
+    result = publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    folder = f"releases/{result['release']}/"
+    written = [key for key in order if key.startswith(folder)]
+    assert sorted(written) == sorted([f"{folder}{name}" for name in many_artifacts] + [f"{folder}manifest.json"])
+    assert written[-1] == f"{folder}manifest.json"
+    assert set(result["release_artifacts"]) == set(many_artifacts)
+
+
+def test_a_failed_artifact_upload_fails_the_publish_rather_than_moving_the_pointer(s3_client, many_artifacts):
+    """A worker's exception is the publish's exception. Swallowed, the run
+    would go on to write a `latest.json` naming a version whose bytes are not
+    all in the bucket - a 404 on a hiker's download instead of a failed job,
+    and nothing in the log to say which."""
+    doomed = sorted(many_artifacts)[7]
+    real_upload = s3_client.upload_file
+
+    def refuse_one(path, bucket, key, **kwargs):
+        if key == doomed:
+            raise RuntimeError("R2 refused this object")
+        return real_upload(path, bucket, key, **kwargs)
+
+    s3_client.upload_file = refuse_one
+
+    with pytest.raises(RuntimeError, match="R2 refused this object"):
+        publish.publish(many_artifacts, sidecars={}, photos={}, s3_client=s3_client, bucket=BUCKET)
+
+    with pytest.raises(s3_client.exceptions.NoSuchKey):
+        s3_client.get_object(Bucket=BUCKET, Key=publish.MANIFEST_KEY)
+
+
+def test_a_failed_photo_upload_fails_the_publish_before_any_artifact_lands(s3_client, local_artifacts, local_photos):
+    """The same rule one stage earlier, where the ordering argument is
+    sharpest: photos land before the artifacts that name them, so a photo
+    stage that failed quietly would leave a card pointing at a 404."""
+
+    def refuse_every_photo(path, bucket, key, **kwargs):
+        raise RuntimeError("R2 refused this photo")
+
+    s3_client.upload_file = refuse_every_photo
+
+    with pytest.raises(RuntimeError, match="R2 refused this photo"):
+        publish.publish(local_artifacts, sidecars={}, photos=local_photos, s3_client=s3_client, bucket=BUCKET)
+
+    assert _keys_in(s3_client) == []

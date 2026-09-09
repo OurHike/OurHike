@@ -3475,10 +3475,16 @@
    bright the picture behind it is.
 */
 
+/* `100dvh` rather than `100%`, and it is the one place in this file that
+   needs it: every other screen here sits on paper, so an unfilled tail below
+   it is invisible. This one is pine, and a dark screen that stops two-thirds
+   of the way down with page ground under it reads as a rendering fault
+   rather than as a short page. `dvh` rather than `vh` so a phone's
+   retracting address bar does not leave a strip either. */
 .finish {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  min-height: 100dvh;
   background: var(--bg-chrome);
   color: var(--fg-chrome-1);
 }
@@ -3759,4 +3765,41 @@
   font-size: 12px;
   line-height: 1.5;
   color: var(--fg-3);
+}
+
+/* ---------------------------------------------------------------------------
+   Docking a sheet over WHATEVER screen the hiker is on (#1317).
+
+   `.plan-kind` itself is an in-flow block - the planning sheet sits at the
+   bottom of the Plan screen's own column, which is right there and wrong
+   here. The mode switch that opens "Which long hike?" lives on Today, in
+   Settings and in the desktop sidebar, and stepping away is reached from
+   More, so these three have no single column to sit in and have to float.
+
+   Fixed rather than absolute, so the sheet is docked to the VIEWPORT: an
+   absolutely-positioned one would be placed against whichever ancestor
+   happened to be positioned, which differs per tab and is how a sheet ends
+   up half a screen down a scrolled column.
+*/
+
+.hike-sheet-dock {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  /* A scrim, not a blur: what is behind stays legible, which matters when
+     the sheet is asking a hiker to choose between hikes they can see. */
+  background: rgb(18 32 22 / 45%);
+}
+
+.hike-sheet-dock > * {
+  max-height: 85dvh;
+  overflow-y: auto;
+  padding-top: var(--space-3, 12px);
+  border-top-left-radius: var(--radius-l, 14px);
+  border-top-right-radius: var(--radius-l, 14px);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-raised, 0 -6px 24px rgb(0 0 0 / 18%));
 }

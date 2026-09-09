@@ -7264,42 +7264,48 @@ function App() {
       {/* Stepping away (#1317) - over whatever screen it was opened from,
           like the pick sheet and for the same reason. */}
       {stepAwayOpen && activeHike !== null && (
-        <StepAwaySheet
-          hikeName={activeHike.name}
-          status={activeHike.status}
-          confirmingForget={confirmingForget}
-          // A zero and a town night edit the day rather than the hike, and
-          // that editing is #1317's next slice - so for now each closes
-          // rather than pretending to act. A control that looks like it did
-          // something and did not is worse than one that says "not yet".
-          onZero={closeStepAway}
-          onTownNight={closeStepAway}
-          onPause={handlePauseHike}
-          onTurnAround={handleTurnHikeAround}
-          onFinish={handleFinishHike}
-          onForget={handleForgetHike}
-          onCancelForget={() => setConfirmingForget(false)}
-          onClose={closeStepAway}
-        />
+        <div className="hike-sheet-dock">
+          <StepAwaySheet
+            hikeName={activeHike.name}
+            status={activeHike.status}
+            confirmingForget={confirmingForget}
+            // A zero and a town night edit the day rather than the hike, and
+            // that editing is #1317's next slice - so for now each closes
+            // rather than pretending to act. A control that looks like it did
+            // something and did not is worse than one that says "not yet".
+            onZero={closeStepAway}
+            onTownNight={closeStepAway}
+            onPause={handlePauseHike}
+            onTurnAround={handleTurnHikeAround}
+            onFinish={handleFinishHike}
+            onForget={handleForgetHike}
+            onCancelForget={() => setConfirmingForget(false)}
+            onClose={closeStepAway}
+          />
+        </div>
       )}
       {addDayHikeOpen && activeHike !== null && (
-        <AddDayHikeSheet
-          candidates={dayHikeCandidates}
-          onAdd={handleAddDayHikeToHike}
-          onClose={() => setAddDayHikeOpen(false)}
-        />
+        <div className="hike-sheet-dock">
+          <AddDayHikeSheet
+            candidates={dayHikeCandidates}
+            onAdd={handleAddDayHikeToHike}
+            onClose={() => setAddDayHikeOpen(false)}
+          />
+        </div>
       )}
       {hikeSheet === 'pick' && (
-        <HikePickSheet
-          hikes={tripStore.hikes}
-          trips={tripStore.trips}
-          pois={pois}
-          units={units}
-          today={localDay(now)}
-          onPick={handlePickHike}
-          onNew={handleNewHike}
-          onClose={handleCancelHikePick}
-        />
+        <div className="hike-sheet-dock">
+          <HikePickSheet
+            hikes={tripStore.hikes}
+            trips={tripStore.trips}
+            pois={pois}
+            units={units}
+            today={localDay(now)}
+            onPick={handlePickHike}
+            onNew={handleNewHike}
+            onClose={handleCancelHikePick}
+          />
+        </div>
       )}
       {mapMounted && (
         <div
@@ -7943,7 +7949,9 @@ function finishedHeader(facts: FinishedFacts, units: UnitSystem): string {
 function finishedSentence(facts: FinishedFacts, units: UnitSystem): string {
   const trail = TRAILS[facts.hike.trailId]?.name ?? 'the trail'
   const whole = facts.figures.leftMi < MIN_GAP_MI
-  const what = whole ? `You walked the whole ${trail}` : `You walked ${trail}`
+  // "the" on both branches: the registry publishes "Appalachian Trail" as a
+  // name, and "You walked Appalachian Trail" is not a sentence anybody says.
+  const what = whole ? `You walked the whole ${trail}` : `You walked part of the ${trail}`
   const when =
     facts.startedOn === null || facts.finishedOn === null
       ? null

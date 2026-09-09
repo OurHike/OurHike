@@ -40,6 +40,16 @@ Segment
   children: [Segment]  (recursive - same shape all the way down)
 ```
 
+**Built, 2026-09-09 ([#1317](https://github.com/OurHike/OurHike/issues/1317)), and the `Hike` above is one shape out of date in three ways.** The block stays as written because it is the design this was built from and the reasoning below it still holds; what shipped differs like this:
+
+- **`overall start reference, overall end reference` became an ordered list of POINTS, at least two long.** Two ends cannot say that a hike turns around, and turning around is not an edge case — a flip-flop, a section skipped back for, and a there-and-back are all ordinary. Order carries the meaning, so nothing needs a mode or a toggle to say which kind of hike it is. Each point is still a reference in exactly the sense the paragraph below insists on: `poiId` plus a cached mile, re-resolved on every read.
+- **`planned_start_date` was not built, and dates live on the points instead.** Any point may carry one or none. A single start date cannot survive the thing that actually happens to a long hike — a hiker stops for eleven months and starts again in a different place — and the cascade already moves dates in pieces rather than from one anchor.
+- **A `status` was added** (`planning`, `walking`, `paused`, `finished`), with `pausedAtMile`/`pausedOn` and `finishedOn`. None of the four is recoverable from the miles: a hike with no walked section might be one somebody set up this morning or one they abandoned in 2019, and only they know which.
+
+**The trail reference is stored and is not yet load-bearing.** This client has one published mile axis — `StoredPoi.mile` is NOBO miles from Springer — so `trailHasMileAxis` gates *creating* a hike on any other trail while reading stays permissive: a `trailId` this build has never heard of is kept as stored, because rewriting it to the default would move somebody's hike onto a trail they did not choose. What would settle it is the pipeline publishing a per-trail axis.
+
+**Gaps are not shown on the #1317 screens.** [#790](https://github.com/OurHike/OurHike/issues/790)'s hike zoom and [#791](https://github.com/OurHike/OurHike/issues/791)'s What's left still derive and show them, and are unchanged apart from taking their bounds from the outermost points; the new surfaces print `miles walked · miles to go` and nothing else.
+
 **Start/end references should point at real trail geography, not free text.** The pipeline already has exactly what's needed for this: the centerline mile-marker points (`half_mile_points_from_springer`, 4,395 points), shelters, campsites, and parking/road-crossing POIs. A Segment's boundary should be one of these — or, if nothing fits, a point the user drops on the map — but always something with real coordinates. This is what makes "completed" mean something concrete (value #4, trustworthy above all) rather than a vague checkbox next to a text label.
 
 ## Completion — deliberately simple, not gamified

@@ -3371,3 +3371,71 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   Setting up a long hike (#1317).
+
+   The header is `.plan-band--trips` unchanged - same pine ground, same
+   eyebrow, same 24px display word - because this IS that band with a
+   different word in it, and a second one styled to match is how two bands
+   drift apart. Only the body below it is new.
+
+   The points list inside reuses `chrome.css`'s `.route-stops__*` rows
+   verbatim: the dots, the dotted rail between them, the field, the mile and
+   the leg line. What is NOT reused is `.route-stops` itself, which is
+   absolutely positioned over the map - this is a full screen, so the
+   container is its own and the rows are that panel's.
+*/
+
+.hike-setup {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg-page);
+  padding: var(--space-4, 16px);
+}
+
+.hike-setup__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding-top: var(--space-4, 16px);
+}
+
+.hike-setup__lede {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--fg-2);
+}
+
+/* The rows' own container, standing in for `.route-stops` on a screen that
+   is not floating over a map. */
+.hike-setup__points {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3, 12px);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  background: var(--surface-card);
+}
+
+.hike-setup__note {
+  margin: var(--space-2, 8px) 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--fg-3);
+}
+
+.hike-setup__total {
+  margin: var(--space-2, 8px) 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.hike-setup__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}

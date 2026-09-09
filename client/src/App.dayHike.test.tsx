@@ -888,6 +888,11 @@ describe('the day-hike builder, end to end', () => {
           tripIds: ['trip-1'],
         },
       ],
+      // Already on this hike, so tapping Long hike is instant. Without it
+      // the "which long hike?" sheet opens over the screen and offers the
+      // same hike a second time, which is #1317's designed behaviour for a
+      // hiker who has not picked one - and not what this test is about.
+      activeHikeId: 'hike-1',
     })
     // Since #1317 the Plan tab's room comes from the app's mode rather than
     // from a guess at what the hiker has kept, so this phone is on Long hike.

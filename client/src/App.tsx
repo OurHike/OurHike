@@ -191,7 +191,8 @@ import {
 } from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
-import { type RouteStopChoice } from './chrome/RouteStopPicker'
+import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
+import { stopLabel } from './lib/planDisplay'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   currentDayIndex,
@@ -207,6 +208,7 @@ import {
   EMPTY_STORE,
   addGroup,
   addHike,
+  setActiveHike,
   addToGroup,
   addTrip,
   loadTrips,
@@ -221,7 +223,13 @@ import {
   updateTrip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips, hikeOfTrip, recordedPlan } from './lib/hikes'
+import {
+  DEFAULT_TRAIL_ID,
+  hikeFromTrips,
+  hikeOfTrip,
+  recordedPlan,
+  type Hike,
+} from './lib/hikes'
 import { GroupScreen } from './screens/GroupScreen'
 import { TripList } from './screens/TripList'
 import { PlanScreen } from './screens/Plan'
@@ -291,6 +299,8 @@ import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
 import { planRoomFor } from './screens/PlanHome'
+import { HikePickSheet } from './chrome/HikePickSheet'
+import { HikeSetup, setupRefusal } from './screens/HikeSetup'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { PlanTargetSheet } from './screens/PlanTargetSheet'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
@@ -771,6 +781,19 @@ function App() {
    * list it as a dependency.
    */
   /**
+   * Which long-hike sheet is open, or null (#1317).
+   *
+   * `'pick'` is "which long hike?", opened by tapping Long hike with nothing
+   * active. `'setup'` is the full-screen set-up over a draft. Held here
+   * rather than inside a screen because the mode switch that opens the first
+   * one lives in three places and none of them is the Plan tab.
+   */
+  const [hikeSheet, setHikeSheet] = useState<'pick' | 'setup' | null>(null)
+  /** The hike being set up, before it is kept. Held so a trip into the stop
+   *  picker and back does not lose what has been entered. */
+  const [hikeDraft, setHikeDraft] = useState<Hike | null>(null)
+
+  /**
    * Write the app's mode (#1317).
    *
    * Separate from the SWITCH's handler on purpose: tapping the Long hike
@@ -1214,11 +1237,20 @@ function App() {
     (mode: HikerMode) => {
       if (mode === 'long') {
         enterTripsRoom()
+        // Long hike means "the hike I'm on", and with nothing active there
+        // is no such thing to mean - so the sheet asks. The mode is written
+        // first and the switch draws it pending, so what the hiker tapped is
+        // on screen while they answer and the revert on cancel is not a
+        // surprise (#1317's one deliberate exception to an instant mode).
+        if (tripStore.activeHikeId === null) setHikeSheet('pick')
         return
       }
+      // Day hike or Volunteer keeps `activeHikeId`: the hike is not
+      // abandoned, just not leading.
+      setHikeSheet(null)
       applyHikerMode(mode)
     },
-    [applyHikerMode, enterTripsRoom],
+    [applyHikerMode, enterTripsRoom, tripStore.activeHikeId],
   )
 
   // Nothing waits on this. A hike changes what the banners can say and
@@ -2752,6 +2784,156 @@ function App() {
       return next
     })
   }, [])
+
+  /** Close the pick sheet without picking - the mode goes back to Day hike,
+   *  because a long-hike state with no hike in it is every screen varying to
+   *  an empty answer. */
+  const handleCancelHikePick = useCallback(() => {
+    setHikeSheet(null)
+    setHikeDraft(null)
+    applyHikerMode('day')
+  }, [applyHikerMode])
+
+  const handlePickHike = useCallback(
+    (hikeId: string) => {
+      applyTripStore((store) => setActiveHike(store, hikeId))
+      setHikeSheet(null)
+    },
+    [applyTripStore],
+  )
+
+  /** Start a new one. The draft is two unnamed points rather than none, so
+   *  the list has the shape of the thing being built from the first frame -
+   *  a hiker looking at an empty box has to guess what goes in it. */
+  /** "Add a stretch you remember" - the recorded-walk flow (#789), which
+   *  already exists behind the planning sheet's third door. Setting up is
+   *  left rather than layered under it: two full screens over each other is
+   *  a back button nobody can predict. */
+  const handleRecordStretchFromSetup = useCallback(() => {
+    setHikeSheet(null)
+    setPlanKindOpen(true)
+  }, [])
+
+  const handleNewHike = useCallback(() => {
+    setHikeDraft({
+      id: crypto.randomUUID(),
+      name: 'A new long hike',
+      type: 'section',
+      trailId: DEFAULT_TRAIL_ID,
+      points: [],
+      status: 'planning',
+      tripIds: [],
+    })
+    setHikeSheet('setup')
+  }, [])
+
+  /**
+   * Editing the draft's points.
+   *
+   * The stop picker this opens is the route builder's own
+   * (`chrome/RouteStopPicker.tsx`), which is what the handoff asks for and
+   * what stops a second stop editor existing: a point on a hike and a stop
+   * on a route are the same act - naming somewhere on the centerline - and
+   * two pickers would drift into naming it two different ways.
+   *
+   * Held here rather than inside the screen because the picker is a sheet
+   * the shell owns, and a screen that opened it would have to own the sheet
+   * too.
+   */
+  const [hikePointAt, setHikePointAt] = useState<number | null>(null)
+
+  const handleEditHikePoint = useCallback((index: number) => {
+    setHikePointAt(index)
+  }, [])
+
+  /**
+   * Where the picker measures from, and which way.
+   *
+   * Appending measures from the last point; editing one measures from the
+   * point before it. Null at the very first point, where there is nothing to
+   * measure from yet and the distance door says so itself.
+   *
+   * The direction is the LAST LEG's, not the hike's - the same rule the list
+   * prints, applied to the question "which way is a day's walk from here".
+   * A hike that has turned around is heading the other way now, and offering
+   * distances up-trail after a turn would be measuring from the wrong end.
+   */
+  const previousHikePoint = useMemo(() => {
+    if (hikeDraft === null || hikePointAt === null) return null
+    const at = hikePointAt < 0 ? hikeDraft.points.length : hikePointAt
+    const before = hikeDraft.points[at - 1]
+    if (before === undefined) return null
+    return { mile: before.mile, label: stopLabel(before) }
+  }, [hikeDraft, hikePointAt])
+
+  const hikePointSouth = useMemo(() => {
+    if (hikeDraft === null || hikePointAt === null) return false
+    const at = hikePointAt < 0 ? hikeDraft.points.length : hikePointAt
+    const before = hikeDraft.points[at - 1]
+    const twoBack = hikeDraft.points[at - 2]
+    if (before === undefined || twoBack === undefined) return false
+    return before.mile < twoBack.mile
+  }, [hikeDraft, hikePointAt])
+
+  const handleAddHikePoint = useCallback(() => {
+    setHikePointAt(-1)
+  }, [])
+
+  /** Take the last point back, one at a time - `RouteStopsPanel`'s undo, on
+   *  a shorter list. */
+  const handleUndoHikePoint = useCallback(() => {
+    setHikeDraft((draft) =>
+      draft === null || draft.points.length === 0
+        ? draft
+        : { ...draft, points: draft.points.slice(0, -1) },
+    )
+  }, [])
+
+  /**
+   * A point chosen in the picker, written into the draft.
+   *
+   * `-1` appends; anything else replaces in place. The reference travels
+   * with it - `poiId` and the name as resolved - so the point re-resolves
+   * later like every other one rather than freezing today's mile.
+   */
+  const handleHikePointChosen = useCallback(
+    (point: { mile: number; poiId?: string; name?: string }) => {
+      setHikeDraft((draft) => {
+        if (draft === null) return draft
+        const next = {
+          mile: point.mile,
+          ...(point.poiId === undefined ? {} : { poiId: point.poiId }),
+          ...(point.name === undefined ? {} : { name: point.name }),
+        }
+        const at = hikePointAt
+        const points =
+          at === null || at < 0
+            ? [...draft.points, next]
+            : draft.points.map((existing, index) =>
+                index === at
+                  ? {
+                      ...next,
+                      ...(existing.date === undefined ? {} : { date: existing.date }),
+                    }
+                  : existing,
+              )
+        return { ...draft, points }
+      })
+      setHikePointAt(null)
+    },
+    [hikePointAt],
+  )
+
+  /** Keep the draft and walk it. Refused where the screen refuses, so the
+   *  button and the store cannot disagree about whether this is a hike. */
+  const handleStartHike = useCallback(() => {
+    if (hikeDraft === null) return
+    if (setupRefusal(hikeDraft, trailIndex?.totalMiles ?? null) !== null) return
+    const started: Hike = { ...hikeDraft, status: 'walking' }
+    applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
+    setHikeDraft(null)
+    setHikeSheet(null)
+  }, [hikeDraft, applyTripStore, trailIndex])
 
   /**
    * Keep a drafted stretch as ground already walked (#789).
@@ -5785,7 +5967,54 @@ function App() {
   // typing or deciding - and while one is up the downloads window is not
   // rendered, which is the behaviour the early returns gave it.
   let flowScreen: ReactNode = null
-  if (authFlow !== null) {
+  if (hikeSheet === 'setup' && hikeDraft !== null) {
+    // A flow rather than a sheet: it is a whole screen with its own Cancel,
+    // and the map underneath stays mounted exactly as every other flow's
+    // does. First in the chain because nothing else may outrank a hiker
+    // halfway through describing their own hike.
+    flowScreen = (
+      <>
+        <HikeSetup
+          hike={hikeDraft}
+          recorded={tripStore.trips.filter((trip) => trip.recorded === true)}
+          pois={pois}
+          units={units}
+          totalMiles={trailIndex?.totalMiles ?? null}
+          onEditPoint={handleEditHikePoint}
+          onAddPoint={handleAddHikePoint}
+          onUndo={hikeDraft.points.length > 0 ? handleUndoHikePoint : null}
+          onRecordStretch={handleRecordStretchFromSetup}
+          onOpenRecorded={handleOpenTrip}
+          onStart={handleStartHike}
+          onCancel={handleCancelHikePick}
+        />
+        {/* The route builder's own stop picker, over the set-up screen -
+            NOT a second one. A point on a hike and a stop on a route are the
+            same act, naming somewhere on the centerline, and two pickers
+            would drift into naming it two different ways. */}
+        {hikePointAt !== null && (
+          <RouteStopPicker
+            choices={routeStopChoices}
+            pois={pois}
+            // The point before the slot being filled, so the distance door
+            // has somewhere to measure from. Appending measures from the
+            // last point; editing measures from the one before it.
+            previous={previousHikePoint}
+            south={hikePointSouth}
+            // A hike's points are never "removed" from the picker: the ends
+            // are the hike, and a point on the way is taken back with the
+            // undo above, which is the control the list already offers.
+            removable={false}
+            units={units}
+            onPick={handleHikePointChosen}
+            onMapPick={() => setHikePointAt(null)}
+            onRemove={() => setHikePointAt(null)}
+            onClose={() => setHikePointAt(null)}
+          />
+        )}
+      </>
+    )
+  } else if (authFlow !== null) {
     flowScreen =
       authFlow.screen === 'email' ? (
         <EmailSignIn
@@ -6552,6 +6781,22 @@ function App() {
 
   return (
     <>
+      {/* "Which long hike?" (#1317) - over whatever screen the hiker is on,
+          because the mode switch that opens it lives on Today, in Settings
+          and in the sidebar, and the sheet has to appear wherever it was
+          tapped. Outside the tab screens for that reason. */}
+      {hikeSheet === 'pick' && (
+        <HikePickSheet
+          hikes={tripStore.hikes}
+          trips={tripStore.trips}
+          pois={pois}
+          units={units}
+          today={localDay(now)}
+          onPick={handlePickHike}
+          onNew={handleNewHike}
+          onClose={handleCancelHikePick}
+        />
+      )}
       {mapMounted && (
         <div
           className={screenOver !== null ? 'app__map-held' : undefined}

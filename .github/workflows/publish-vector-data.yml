@@ -155,6 +155,7 @@ jobs:
         pipeline/data/raw/poi_images_atc.json
         pipeline/data/raw/elevation
         pipeline/data/raw/nynjtc_long_path_guide
+        pipeline/data/raw/external
 
     steps:
       - uses: actions/checkout@v7
@@ -182,6 +183,14 @@ jobs:
       # step 13 and discarded twelve completed steps - and the photos were
       # the only thing that came back, because the photo cache this step
       # grew out of was the only cache in the job.
+      #
+      # data/raw/external/ IS CARRIED TOO, though no receipt names it (#1311).
+      # fetch_external_layers.py's skip compares each layer's change marker
+      # against external/manifest.json, and `pipeline/data/raw/*.geojson` does
+      # not reach into a subdirectory - so on every fresh runner the manifest
+      # was absent, the skip could not fire, and all 18 layers were re-fetched:
+      # ~195,000 features over ~200 page requests, 9m43s to 12m51s measured
+      # on 2026-09-08, byte-identical output run to run.
       #
       # THE PATHS MUST COVER EVERY OUTPUT ANY RECEIPT NAMES. Receipts are
       # restored with the files they describe, and check_output_quality.py

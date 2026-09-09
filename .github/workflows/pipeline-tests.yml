@@ -118,7 +118,7 @@ jobs:
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.14"
@@ -191,7 +191,7 @@ jobs:
             .github/workflows/pipeline-tests.yml
             .github/actions/changed-paths/
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         if: steps.scope.outputs.run == 'true'
         with:
           python-version: "3.12"

@@ -43,15 +43,6 @@
 
 import { DATA_BASE_URL, releaseManifestUrl } from './config'
 
-/** publish.py's MANIFEST_KEY - the ROOT pointer.
- *
- *  Kept because it is still the name publish.py writes and the one
- *  `verify_release.py` and the smoke tests look for, but this module no
- *  longer fetches it: a pinned build reads its own release's manifest
- *  instead (config.releaseManifestUrl, and dataRelease.RELEASE_MANIFEST_PATH
- *  for why). */
-export const MANIFEST_KEY = 'latest.json'
-
 interface DataManifest {
   version?: string
   previous_version?: unknown

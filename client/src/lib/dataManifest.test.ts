@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { RELEASE_MANIFEST_PATH } from './dataRelease'
 
 // The published-hash lookup (#197). Everything here turns on one distinction:
 // null means "no published answer", never "verified" - so the cases that
@@ -52,7 +53,7 @@ describe('publishedHash', () => {
     })
 
     expect(await publishedHash('background.pmtiles')).toBe(HASH.toLowerCase())
-    expect(globalThis.fetch).toHaveBeenCalledWith(`${BASE}/latest.json`, {
+    expect(globalThis.fetch).toHaveBeenCalledWith(`${BASE}/${RELEASE_MANIFEST_PATH}`, {
       signal: undefined,
     })
   })
@@ -129,7 +130,7 @@ describe('publishedHash', () => {
     const controller = new AbortController()
 
     await publishedHash('background.pmtiles', { signal: controller.signal })
-    expect(globalThis.fetch).toHaveBeenCalledWith(`${BASE}/latest.json`, {
+    expect(globalThis.fetch).toHaveBeenCalledWith(`${BASE}/${RELEASE_MANIFEST_PATH}`, {
       signal: controller.signal,
     })
   })
@@ -275,7 +276,7 @@ describe('one manifest read for everyone asking at once (#1302)', () => {
   }
 
   // A launch with signal asked for the manifest from six places in the same
-  // commit, and the bucket serves `latest.json` with `cache-control: no-cache`
+  // commit, and the bucket serves the manifest with `cache-control: no-cache`
   // (measured 2026-09-09 off production's own headers), so nothing deduped
   // them: six round trips on the connection the first frame was sharing.
 

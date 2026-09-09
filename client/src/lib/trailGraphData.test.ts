@@ -20,6 +20,7 @@
 // thread.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
 
 import type { CoverageCell } from './coverageCells'
 
@@ -34,12 +35,20 @@ vi.mock('./trailGraphStore', async (importOriginal) => ({
   forgetStoredGraph: vi.fn(async () => undefined),
 }))
 
-vi.mock('./config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./config')>()),
-  DATA_BASE_URL: 'https://data.example',
-  DATA_CONFIGURED: true,
-  dataUrl: (key: string) => `https://data.example/${key}`,
-}))
+vi.mock('./config', async (importOriginal) => {
+  // The release layout is the real one, not a flattened stand-in: a mock
+  // that put artifacts at the root while the module under test read the
+  // manifest from releases/<pin>/ would agree with neither the bucket nor
+  // itself. Only the base is substituted.
+  const { releasePath, RELEASE_MANIFEST_PATH } = await import('./dataRelease')
+  return {
+    ...(await importOriginal<typeof import('./config')>()),
+    DATA_BASE_URL: 'https://data.example',
+    DATA_CONFIGURED: true,
+    dataUrl: (key: string) => `https://data.example/${releasePath(key)}`,
+    releaseManifestUrl: () => `https://data.example/${RELEASE_MANIFEST_PATH}`,
+  }
+})
 
 const {
   attachTrailGraphElevation,
@@ -159,7 +168,8 @@ async function hashed(
 
 /**
  * A bucket holding exactly `files`, answering 404 for everything else, with
- * `manifest` at latest.json. `failing` is no signal at all.
+ * `manifest` at the pinned release's manifest.json. `failing` is no signal
+ * at all.
  */
 function serve({
   files = {},
@@ -174,7 +184,7 @@ function serve({
     'fetch',
     vi.fn((url: string) => {
       if (failing) return Promise.reject(new TypeError('Failed to fetch'))
-      if (String(url).includes('latest.json')) {
+      if (String(url).includes(RELEASE_MANIFEST_PATH)) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -244,7 +254,9 @@ describe('the junction graph, one cell at a time', () => {
 
     await loadGraphShard(WEST)
 
-    expect(fetched()).toContain('https://data.example/trail_graph_cell_n41w075.json')
+    expect(fetched()).toContain(
+      `https://data.example/${releasePath('trail_graph_cell_n41w075.json')}`,
+    )
   })
 
   it('routes on nothing when the bytes are not what was published', async () => {
@@ -477,8 +489,8 @@ describe('the geometry half, fetched when the door opens', () => {
     expect(geometry?.[1]).toEqual(SEAM_EDGE)
     expect(geometry?.[2]).toEqual([NODE[2], NODE[3]])
     // Both cells' halves were asked for, by their own names.
-    expect(fetched()).toContain(`https://data.example/${WEST_KEYS.geometry}`)
-    expect(fetched()).toContain(`https://data.example/${EAST_KEYS.geometry}`)
+    expect(fetched()).toContain(`https://data.example/${releasePath(WEST_KEYS.geometry)}`)
+    expect(fetched()).toContain(`https://data.example/${releasePath(EAST_KEYS.geometry)}`)
   })
 
   it('refuses a cell whose count disagrees with its shard, and with it the whole', async () => {
@@ -715,7 +727,7 @@ describe('a cell the phone cannot hold (#1254)', () => {
       because: 'too-large',
     })
 
-    expect(fetched()).toEqual(['https://data.example/latest.json'])
+    expect(fetched()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
     expect(writeStoredGraph).not.toHaveBeenCalled()
     // Only a smaller publish changes it - nothing here offers a retry.
     expect(isSettledAbsence('too-large')).toBe(true)
@@ -730,7 +742,7 @@ describe('a cell the phone cannot hold (#1254)', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) => {
-        if (String(url).includes('latest.json')) {
+        if (String(url).includes(RELEASE_MANIFEST_PATH)) {
           return Promise.resolve({
             ok: true,
             status: 200,
@@ -763,7 +775,7 @@ describe('a cell the phone cannot hold (#1254)', () => {
       },
     })
     await expect(fetchTrailGraphGeometryCells(west)).resolves.toBeNull()
-    expect(fetched()).toEqual(['https://data.example/latest.json'])
+    expect(fetched()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
 
     serve({
       manifest: {
@@ -771,7 +783,7 @@ describe('a cell the phone cannot hold (#1254)', () => {
       },
     })
     await expect(fetchTrailGraphElevationCells(west)).resolves.toBeNull()
-    expect(fetched()).toEqual(['https://data.example/latest.json'])
+    expect(fetched()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
   })
 })
 
@@ -810,7 +822,7 @@ describe('the phone that has no signal (#1050)', () => {
   })
 
   it('does not go to the network to do it', async () => {
-    // A phone offline cannot reach latest.json, so the stored hash is what it
+    // A phone offline cannot reach the manifest, so the stored hash is what it
     // has to trust - and nothing is ever written that did not match the
     // manifest when it was fetched.
     holding({ [graphCellStoreKey(WEST.name, 'graph')]: WEST_SHARD })
@@ -933,7 +945,7 @@ describe('keeping a verified copy (#1050)', () => {
             const abort = () => reject(new DOMException('aborted', 'AbortError'))
             if (signal?.aborted) return abort()
             const timer = setTimeout(() => {
-              if (String(url).includes('latest.json')) {
+              if (String(url).includes(RELEASE_MANIFEST_PATH)) {
                 resolve({
                   ok: true,
                   status: 200,

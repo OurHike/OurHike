@@ -15,6 +15,7 @@
 // three times before any push.
 
 import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { RELEASE_MANIFEST_PATH } from './lib/dataRelease'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -60,12 +61,20 @@ vi.mock('./lib/api', () => ({
 // The graph loader reads DATA_CONFIGURED and dataUrl; the harness's app runs
 // with neither configured, so this file turns them on and serves the two
 // artifacts itself - trailGraphData.test.ts's pattern, inside the whole app.
-vi.mock('./lib/config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./lib/config')>()),
-  DATA_BASE_URL: 'https://data.example',
-  DATA_CONFIGURED: true,
-  dataUrl: (key: string) => `https://data.example/${key}`,
-}))
+vi.mock('./lib/config', async (importOriginal) => {
+  // The release layout is the real one, not a flattened stand-in: a mock
+  // that put artifacts at the root while the module under test read the
+  // manifest from releases/<pin>/ would agree with neither the bucket nor
+  // itself. Only the base is substituted.
+  const { releasePath, RELEASE_MANIFEST_PATH } = await import('./lib/dataRelease')
+  return {
+    ...(await importOriginal<typeof import('./lib/config')>()),
+    DATA_BASE_URL: 'https://data.example',
+    DATA_CONFIGURED: true,
+    dataUrl: (key: string) => `https://data.example/${releasePath(key)}`,
+    releaseManifestUrl: () => `https://data.example/${RELEASE_MANIFEST_PATH}`,
+  }
+})
 
 const app = appHarness({
   navigator: { onLine: true, geolocation: true },
@@ -264,7 +273,7 @@ async function serveGraph({ withGraph = true, withGeometry = true } = {}) {
     vi.fn((url: string) => {
       const key = String(url)
       requested.push(key)
-      if (key.includes('latest.json')) {
+      if (key.includes(RELEASE_MANIFEST_PATH)) {
         return Promise.resolve({
           ok: true,
           status: 200,

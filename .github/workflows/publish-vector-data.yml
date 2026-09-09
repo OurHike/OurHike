@@ -65,48 +65,34 @@ on:
         type: boolean
         default: false
 
-# One publish at a time. Two concurrent runs would race on latest.json and could
-# interleave uploads, leaving the manifest describing a mixture of two builds.
-# `publish-conditions.yml` shares this group for that reason and not by
-# accident: collect_artifacts() folds its `conditions/*.json` into the SAME
-# artifacts dict, so both paths write the one MANIFEST_KEY.
-#
-# WHAT THAT COSTS A DISPATCHED RUN, WHICH IS NOT OBVIOUS FROM HERE. Concurrency
-# groups coalesce rather than queue - one pending entrant, and a newer pending
-# run cancels the older (publish-conditions.yml's own header spells the
-# mechanism out, for its two legs). Every job in this workflow runs under the
-# `production` environment, so a dispatch waits in `pending` until a human
-# approves it - and `publish-conditions.yml` is on an hourly cron into this
-# same group. So a run left un-approved is cancelled by the next bake, however
-# innocent it was: a dry run with `publish: false` dies exactly as a real
-# publish would.
-#
-# Measured 2026-08-19: run 32294671249 queued 19:44:16Z with `publish: false`,
-# sat pending awaiting approval, and was cancelled 19:56:39Z - one second after
-# the hourly bake queued at 19:56:38Z. Nothing reported a cause.
-#
-# PRACTICAL CONSEQUENCE: approve a dispatch within the hour or re-dispatch it.
-# Once a job actually starts it is safe - `cancel-in-progress: false` means the
-# bake queues behind it rather than killing it. The structural fix (a run that
-# uploads nothing should not need the production environment at all) is
-# #838 - v3: shipping anything takes thirty workflows and a maintainer who
-# remembers all of them.
+# One build at a time, so two dispatches do not just burn compute in
+# parallel for no reason - mirroring build-basemap.yml/build-dem.yml/
+# build-raster.yml, which each guard their own (much longer) build the same
+# way. This is NOT the group that guards latest.json - see the `publish` job
+# below for that - because nothing in the build job touches the bucket or
+# any shared state a second build could race. Two concurrent builds are
+# wasteful, never wrong.
 concurrency:
-  group: publish-data
+  group: build-vector-data
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
-    # Building and publishing share a job on purpose. The export scripts record
-    # absolute paths in their manifests (export_trails.py:387) and publish.py
-    # reads those paths back, so the two only agree on one filesystem. Splitting
-    # them across jobs would work only as long as the runner's checkout path
-    # never changed - a trap rather than a design.
-    environment: production
+    # No environment: this job never writes - see the `publish` job below,
+    # which is the only place R2_WRITE_ENABLED is ever set. #1265 made that
+    # split possible: the export scripts used to record absolute paths in
+    # their manifests (a build here and a publish there "only agree on one
+    # filesystem", in this job's own words before #1265), so publish.py had
+    # to run on the exact runner that built its inputs. lib/manifest_paths.py
+    # resolves a manifest path against Path(__file__)'s own directory instead
+    # of the process's CWD, the same idiom lib/fetch_receipts.py already
+    # carried for receipts - so a manifest this job writes means the same
+    # file to the publish job that reads it, on a different runner entirely.
+    #
     # Raised from 60 when photos were added, because the old ceiling no longer
     # fit and the failure mode is bad: a timeout kills a release mid-run, and
     # the first thing publish.py uploads is photos, so a half-finished publish
@@ -142,6 +128,8 @@ jobs:
         pipeline/data/raw/poi_images.json
         pipeline/data/raw/poi_images_atc.json
         pipeline/data/raw/elevation
+        pipeline/data/raw/nynjtc_long_path_guide
+        pipeline/data/raw/nynjtc_hikes.json
 
     steps:
       - uses: actions/checkout@v7
@@ -407,6 +395,19 @@ jobs:
       - name: Export the trails other organizations maintain
         run: python export_nearby_trails.py
 
+      # The same lines as 1-degree coverage cells (#1257 stage 2), so a
+      # stretch download carries the network above the seam and not only the
+      # ground under it. Cut here rather than in the basemap or DEM builds
+      # because the archive it cuts is written by the step above, in this
+      # job, and hands off to nothing. `--context-zoom 8` is one below the
+      # archive's minimum zoom: no shared context, z9 rides in the cells -
+      # cut_cells.py's docstring carries the measurement (9.65 MB of z9
+      # nationwide, for a zoom the sketch already draws below and the cells
+      # draw above). publish.py collects the result inside the lines' own
+      # reaches_hikers gate, never through the ungated sheet loop.
+      - name: Cut the network tiles into coverage cells
+        run: python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
+
       # The waypoints those same organizations publish (#1097) - NYS DEC's
       # lean-tos, primitive campsites and privies, NYS OPRHP's vistas, parking
       # areas and trail bridges. Beside its sibling above rather than anywhere
@@ -425,6 +426,41 @@ jobs:
       # exist rather than a reviewer noticing: it caught export_nearby_poi.py
       # wired into publish.py, marked reaches_hikers true, and invoked by
       # nothing - #940's pattern, on its second outing in one day.
+      # NYNJTC's Long Path section guide (#1288): forty web pages the
+      # registered Long Path layer links to from its own GuideURL field, and
+      # the only place NYNJTC publishes a waypoint - a lot with coordinates,
+      # a lean-to at a mile, a spring. fetch_nynjtc_long_path_guide.py caches
+      # them under data/raw/nynjtc_long_path_guide/ (in FETCH_OUTPUTS above,
+      # so an unchanged page costs one hash compare) and parses them;
+      # export_nearby_poi.py below reads the parse behind the entry's own
+      # reaches_hikers gate - true since 2026-09-08 on the maintainer's
+      # authorisation (sources.json's nynjtc_guide_licence), so these ride in
+      # nearby_poi.geojson beside DEC's, OPRHP's and USFS's waypoints.
+      #
+      # continue-on-error for the reason the external fetch above gives its
+      # own: a website's bad afternoon must not fail an A.T. publish. The
+      # export then reads whatever the restore left on disk; with no cache
+      # at all it refuses, as it does for a missing layer, because an
+      # artifact silently short of a source it is meant to carry is the
+      # worse outcome.
+      - name: Fetch the Long Path section guide
+        continue-on-error: true
+        run: python fetch_nynjtc_long_path_guide.py
+
+      # NYNJTC's Favorite Hikes (#1290): the twenty public write-ups, with
+      # their photographs, into data/raw/nynjtc_hikes.json (in FETCH_OUTPUTS
+      # above) and the content-addressed photo store. One listing request
+      # and one per photograph the cache does not already hold. The export
+      # that reads this cache runs far below, after the junction graph is
+      # built, because a published route is measured on that graph.
+      #
+      # continue-on-error for the same reason as the guide fetch above: a
+      # website's bad afternoon must not fail an A.T. publish, and the
+      # export reads whatever the restore left on disk.
+      - name: Fetch NYNJTC's Favorite Hikes
+        continue-on-error: true
+        run: python fetch_nynjtc_hikes.py
+
       - name: Export the waypoints other organizations publish
         run: python export_nearby_poi.py
 
@@ -739,6 +775,34 @@ jobs:
         if: inputs.include_elevation
         run: python export_network_profile.py
 
+      # The routes somebody wrote up (#1290, features/SUGGESTED_HIKES.md):
+      # NYNJTC's Favorite Hikes, each one's ends signed off by a person in
+      # reference/nynjtc_hike_routes.json and measured here on this run's
+      # own junction graph by lib/trail_graph_route.py, the twin of the
+      # phone's router. AFTER the two elevation steps and NOT gated on
+      # include_elevation: the export needs the graph, and prices climb only
+      # when this run also wrote a climb sidecar that fits it - a run
+      # without elevation ships the routes with their climb absent, which
+      # the card reads as unknown. Three gates decide what it writes, none of
+      # them this workflow's (the script's docstring); a run where no row
+      # is reviewed yet writes nothing, and publish.py collects nothing.
+      - name: Export the routes NYNJTC publishes
+        run: python export_suggested_hikes.py
+
+      # The graph and whatever companions this run wrote, cut into 1-degree
+      # cells (#1257 stage 3, cut_trail_graph.py) - what a phone actually
+      # loads since the whole graph grew past what it can parse (78.6 MB on
+      # 2026-09-07). After BOTH companion steps, so a run that sampled
+      # elevation cuts the climb and the profile per cell too, and after the
+      # graph, which is its input. Not gated on include_elevation: a run
+      # without elevation cuts the graph and its geometry alone, and the
+      # client reads a cell with no climb companion as "no figures for this
+      # hike", exactly as it reads the whole artifact's absence today.
+      # publish.py collects the result inside the graph's own reaches_hikers
+      # gate, never through the ungated sheet loop.
+      - name: Cut the junction graph into coverage cells
+        run: python cut_trail_graph.py
+
       # Saved even when an earlier step failed, which is the whole reason the
       # cache is split into restore/save rather than left as `actions/cache`:
       # the bundled post-step only runs on success, so both failed runs of
@@ -865,8 +929,7 @@ jobs:
           # here: this block used to name four, which was every type that
           # could carry a photo when it was written. The day vistas, parking
           # and privies started publishing - three categories ATC has its own
-          # photographs for - they would have been silently outside both the
-          # count and the missing-bytes check below.
+          # photographs for - they would have been silently outside the count.
           referenced = set()
           for poi_type in POI_TYPES:
               exported = Path("data/processed/poi") / f"{poi_type}.geojson"
@@ -877,13 +940,46 @@ jobs:
               referenced.update(f["properties"]["photo_key"] for f in with_photo)
               print(f"  {poi_type}: {len(with_photo)}/{len(features)} features carry a photo")
 
-          # The one failure that would reach a hiker as a broken card: an
-          # exported feature pointing at an object this run is not uploading.
-          # publish.py already orders photos before artifacts, so this catches
-          # the other case - bytes that were never fetched at all.
-          missing = referenced - set(photos)
-          if missing:
-              raise SystemExit(f"{len(missing)} exported photo_key(s) have no local image to upload, e.g. {sorted(missing)[:3]}")
+          # NOT A GATE, and that is the fix rather than a weakening (#1319).
+          #
+          # This block used to raise on `referenced - set(photos)` - any
+          # exported photo_key with no local file. That was the right check
+          # when local disk was the only evidence a photo had ever been
+          # obtained. #465 ended that: a durable outcome record now vouches
+          # a photo was fetched ONCE, the fetches skip on the record alone,
+          # and publish.verify_photo_promises settles the record against
+          # reality by HEADing every key - passing a photo that is in the
+          # local store OR in the bucket.
+          #
+          # #465 saw this line and left it, calling it "a weaker version of
+          # this check". Weaker is not the problem; being in the WRONG JOB
+          # is. `build` holds no R2 credential by design, so it cannot ask
+          # the bucket and can only ever answer "is it on this runner's
+          # disk" - the question #465 established is the wrong one. On a warm
+          # cache it passed by accident. On a cold one it failed a publish
+          # whose photos were all present in R2, and because it runs in
+          # `build` it failed before the job that would have answered
+          # correctly ever started.
+          #
+          # MEASURED: runs #95 and #96 (2026-09-08/09) both died here after
+          # ~69 minutes, 1,487 keys reported "missing" against 1,620 the
+          # ledgers recorded as found. The Actions cache had missed, so the
+          # ledgers came back over HTTPS and the bytes did not - and with a
+          # monthly-ish publish cadence against GitHub's 7-day cache
+          # eviction, #465 measured that "the normal publish is always cold".
+          #
+          # So it reports, and publish.py gates. The count below is still
+          # worth printing: a large jump in it between runs means the local
+          # store emptied, which is not a failure but is worth seeing before
+          # a 36-minute upload step decides the same thing more slowly.
+          local = referenced & set(photos)
+          from_bucket = referenced - set(photos)
+          print(
+              f"{len(referenced)} referenced photo key(s): {len(local)} in the local store, "
+              f"{len(from_bucket)} expected to be in the bucket already."
+          )
+          if from_bucket:
+              print("  publish.py's verify_photo_promises HEADs each of those and fails the publish if any is absent.")
           PY
 
       # Kept short-lived: these are inspectable evidence for a dry run, not a
@@ -900,20 +996,114 @@ jobs:
           retention-days: 3
           if-no-files-found: error
 
-      # `!regenerate_identity_ledger` is the second half of the condition and is
-      # not belt-and-braces: a run that has just rewritten the ledger has
-      # rewritten it to something NOBODY HAS REVIEWED, which is the exact state
-      # the identity gate exists to keep out of the bucket. Publishing from such
-      # a run would publish POIs under ids whose diff no human has read - the
-      # failure #671 built the ledger to make impossible - so the two inputs are
-      # mutually exclusive here rather than merely discouraged in the form.
+      # The handoff to the `publish` job below (#1265). Everything
+      # publish.py can read: collect_artifacts() walks data/processed/
+      # manifests wholesale, collect_sidecars() and collect_photos() read
+      # the specific data/raw/ files SIDECARS and PHOTOS_DIRNAME name
+      # (publish.py). Not the rest of data/raw/ - the ArcGIS/opentrail/
+      # elevation fetch cache publish.py never opens, which FETCH_OUTPUTS
+      # above already carries between runs for a different reason and would
+      # be pure waste to carry sideways too.
+      #
+      # Uploaded even on a dry run or a ledger-regeneration run, when the
+      # `publish` job's own `if:` skips it and this artifact goes unread -
+      # the alternative is a second copy of that job's predicate here, which
+      # is exactly the drift #1262's tests exist to catch elsewhere in this
+      # file. Short retention because nothing outside this same run ever
+      # reads it.
+      - name: Upload data for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: vector-data-build-output
+          path: |
+            pipeline/data/processed/
+            pipeline/data/raw/poi_images_atc.json
+            pipeline/data/raw/poi_images.json
+            pipeline/data/raw/osm_water.geojson
+            pipeline/data/raw/osm_water_reach.json
+            pipeline/data/raw/trail_water.json
+            pipeline/data/raw/poi_photos/
+          retention-days: 1
+          if-no-files-found: warn
+
+      # The two cases that never reach the `publish` job below, because its
+      # own `if:` excludes both - see that job for the other three. Split out
+      # of one "Say what happened" step by #1265, when publishing moved to a
+      # separate job that cannot report on a run it never saw.
+      - name: Say what happened
+        if: always()
+        run: |
+          if [ "${{ inputs.regenerate_identity_ledger }}" = "true" ]; then
+            echo "Ledger regeneration run - nothing was uploaded to R2, whatever 'publish' said."
+            echo "Download the 'poi-identity-ledger' artifact, review the diff against"
+            echo "pipeline/reference/poi_identity.json, and commit it. Then re-run without"
+            echo "'regenerate_identity_ledger' to publish against the reviewed ledger."
+          elif [ "${{ inputs.publish }}" != "true" ]; then
+            echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
+          fi
+
+  # A separate job from build (#1265, #838 direction 2). publish.py resolves
+  # every manifest path it reads through lib/manifest_paths.py rather than
+  # trusting the string verbatim, so it no longer needs to be the runner
+  # that built its inputs - the same reason build-basemap.yml and
+  # build-dem.yml already split this way, in build-basemap.yml's own words:
+  # "nothing depends on this being the runner that produced them".
+  #
+  # WHAT THIS BUYS THE HOURLY CONDITIONS BAKE. This job, not the 120-minute
+  # build above, is what now holds `concurrency: publish-data` - so
+  # `publish-conditions.yml`'s hourly firing waits behind (or risks losing
+  # its coalescing race against, per #838 finding 1) however long THIS job
+  # takes, not however long the whole build does. Minutes, not two hours -
+  # the actual latency the investigation behind #1265 was answering.
+  publish:
+    needs: build
+    # Unconditional on inputs.publish alone would run this job - and wait on
+    # the reviewer below - for a dry run or a ledger-regeneration run that
+    # structurally cannot write (#1262's finding, now enforced by not
+    # instantiating the job at all, rather than by a same-job `environment:`
+    # expression mirroring a step's `if:` in two independently-written
+    # places). See "Say what happened" above for the two cases this excludes.
+    if: inputs.publish && !inputs.regenerate_identity_ledger
+    runs-on: ubuntu-latest
+    environment: production
+    # Every writer of latest.json shares this group (publish-conditions.yml,
+    # build-basemap.yml, build-dem.yml, build-raster.yml): publish() does a
+    # read-modify-write of the manifest, and two concurrent publishes could
+    # interleave and clobber each other's entries (#645).
+    concurrency:
+      group: publish-data
+      cancel-in-progress: false
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vector-data-build-output
+          path: pipeline/
+
+      # `!regenerate_identity_ledger` no longer needs spelling out here - the
+      # job's own `if:` above already excludes it, and RELEASING.md §12's
+      # `production` gate now applies to this whole job rather than to one
+      # step inside a bigger one.
       - name: Publish to R2
         id: publish
-        if: ${{ inputs.publish && !inputs.regenerate_identity_ledger }}
         env:
           # The gate publish.py checks. Set only on this step, so every other
-          # step in this workflow is structurally incapable of writing to the
-          # bucket - see publish.py's writes_enabled().
+          # step in this job is structurally incapable of writing to the
+          # bucket beyond what publish.py itself does - see writes_enabled().
           R2_WRITE_ENABLED: "true"
           # The second gate, and the one that decides *where*. publish.py scopes
           # every key it writes by this, so a UA run cannot reach production's
@@ -926,44 +1116,24 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: python publish.py
 
-      # REPORTS THE OUTCOME, NOT THE INTENT (#948). Every branch here used to
-      # read `inputs` alone, so a run that asked to publish and never got there
-      # still signed off "Published to production". Measured on run
-      # 32672955042: it died at the identity gate, sixteen steps in, skipped
-      # `Publish to R2` with everything else after it, uploaded nothing - and
-      # printed that line as its last word.
+      # REPORTS THE OUTCOME, NOT THE INTENT (#948). The three cases that can
+      # only be decided here, now that this job only ever runs with intent to
+      # write - build's own "Say what happened" covers the two that do not
+      # (#1265).
       #
-      # The first two branches below are safe to leave reading inputs, and do:
-      # a ledger-regeneration run and a dry run upload nothing whether they
-      # succeed or fail, so both sentences stay true on a failed run. Only the
-      # three "Published to ..." branches could ever lie, so only they are
-      # gated - on the step's own `outcome`, which separates `skipped` (the run
-      # never reached it) from `failure` (the upload itself broke) from
-      # `success`.
-      #
-      # Naming which of the two it was matters more than it looks: they send a
-      # reader to completely different places. `skipped` means the failure is
-      # upstream and the log above holds it; `failure` means publish.py itself
-      # is the thing to read. "Nothing was uploaded" alone would leave both
-      # searches open.
-      #
-      # The job's own conclusion already goes red in these cases, so this is
-      # not a silent-failure fix - it is the sentence a person actually reads
-      # for "did this publish?", which is the question #940 and #729 both
-      # record somebody getting the wrong answer to.
+      # Gated on the step's own `outcome`, which separates `skipped` (an
+      # earlier step in THIS job failed - checkout, setup, or the download
+      # above) from `failure` (the upload itself broke) from `success`.
+      # Naming which of the two it was matters more than it looks: they send
+      # a reader to completely different places. `skipped` means the failure
+      # is upstream in this job and the log above holds it; `failure` means
+      # publish.py itself is the thing to read.
       - name: Say what happened
         if: always()
         run: |
-          if [ "${{ inputs.regenerate_identity_ledger }}" = "true" ]; then
-            echo "Ledger regeneration run - nothing was uploaded to R2, whatever 'publish' said."
-            echo "Download the 'poi-identity-ledger' artifact, review the diff against"
-            echo "pipeline/reference/poi_identity.json, and commit it. Then re-run without"
-            echo "'regenerate_identity_ledger' to publish against the reviewed ledger."
-          elif [ "${{ inputs.publish }}" != "true" ]; then
-            echo "Dry run - nothing was uploaded. Re-run with 'publish' ticked to upload."
-          elif [ "${{ steps.publish.outcome }}" = "skipped" ]; then
-            echo "NOTHING WAS UPLOADED - this run never reached the publish step."
-            echo "'publish' was ticked and an earlier step failed, so no key in"
+          if [ "${{ steps.publish.outcome }}" = "skipped" ]; then
+            echo "NOTHING WAS UPLOADED - this job never reached the publish step."
+            echo "An earlier step in this job failed, so no key in"
             echo "${{ inputs.data_environment }} was written. The failure is above this line."
           elif [ "${{ steps.publish.outcome }}" != "success" ]; then
             echo "NOTHING WAS UPLOADED, or only part of it was - publish.py did not succeed"

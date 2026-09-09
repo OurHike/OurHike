@@ -31,10 +31,19 @@
 // Nobody's data is in the frame by construction: no account, no saved hikes
 // seeded, no location fix, and the map is wherever the app opens itself.
 
+// 2026-09-08 (#1212): the walk comes from the phone recipe's `walkInHarriman`,
+// reused rather than copied - preview-shots/README.md's rule - so the two
+// builders photograph the same route and a change to the drive lands in
+// both frames. The rail keeps its body open on desktop, so the stop row is
+// in frame without a Details click. Unverified as of 2026-09-08 for the
+// reason the phone recipe's header records: the release's graph is over the
+// launch budget, so the door was withheld before the walk could run.
+import { walkInHarriman } from './day-hike-builder.mjs'
+
 export const caption =
-  'The day-hike builder on a laptop - a left rail, and the map gets the rest (#1194)'
+  'The day-hike builder on a laptop with a walk in it - a left rail, and the map gets the rest (#1194, #1212)'
 export const alt =
-  'Either the day-hike builder in a wide browser window - a narrow panel down the left headed "Your route" with Distance, Climb and Walking figures, the route order beneath them and a two-column grid of map-label toggles at its foot, the map filling the whole right of the window, and the builder bar with Cancel and its actions along the bottom of the map - or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
+  'Either the day-hike builder in a wide browser window holding a walk - a narrow panel down the left headed "Your route" with Distance, Climb and Walking figures, the route order with a stop row for Fingerboard Shelter beneath them and a two-column grid of map-label toggles at its foot, the map filling the whole right of the window with the route cased dark, and the builder bar with Cancel and its actions along the bottom of the map - or the same rail still waiting for a first tap, where the search found no such shelter or no tap landed on a trail; or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
 
 // The wide layout, which is the entire subject.
 export const desktop = true
@@ -63,4 +72,11 @@ export default async function drive(page) {
   // Waiting on the route order proves that rather than assuming it.
   await page.getByRole('region', { name: 'Your route' }).waitFor()
   await page.getByText('Route order · tap the map to add').waitFor()
+
+  if (await walkInHarriman(page)) {
+    await page
+      .getByText(/Shelter · mile/)
+      .waitFor({ timeout: 10000 })
+      .catch(() => {})
+  }
 }

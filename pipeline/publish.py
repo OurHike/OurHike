@@ -54,8 +54,9 @@ import boto3
 from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
+from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
-from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
+from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
@@ -167,6 +168,27 @@ OFFLINE_SHEET_ARCHIVES = {
 # and verified, not before - an abandoned artifact costs storage, a
 # prematurely deleted one costs a rollback.
 CELL_FAMILIES = ("at_basemap", "dem")
+
+# The third family, and the one that is not a sheet (#1257 stage 2): the
+# other organizations' trail lines as vector tiles, cut into the same 1-degree
+# cells so a stretch download carries the network above the seam as well as
+# the ground under it. NOT in CELL_FAMILIES, deliberately, because that loop
+# in collect_artifacts() is ungated and these cells are the same stewards'
+# geometry as nearby_trails.geojson: they are collected inside that artifact's
+# own `reaches_hikers` branch, so a steward held back holds back their lines,
+# their sketch, their tiles and their cells as one decision. A family added
+# to the loop instead would route licensed geometry around its own gate.
+NEARBY_TRAILS_CELL_FAMILY = "nearby_trails"
+
+# The junction graph's cells (#1257 stage 3, cut_trail_graph.py): JSON shards
+# rather than archives - a graph is parsed, not read by range - cut into the
+# same squares and gated the same way, inside the graph's own reaches_hikers
+# branch below. Not a sheet either, so not in CELL_FAMILIES.
+TRAIL_GRAPH_CELL_FAMILY = "trail_graph"
+
+# Every family a cutter can be asked for, gated or not - what
+# tests/test_r2_keys.py enumerates and verify_release.py's check 20 walks.
+ALL_CELL_FAMILIES = (*CELL_FAMILIES, NEARBY_TRAILS_CELL_FAMILY, TRAIL_GRAPH_CELL_FAMILY)
 
 
 # Build metadata that travels with a release but is not part of it.
@@ -359,7 +381,7 @@ def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dic
             continue
         try:
             previous = _published_bytes(s3_client, bucket, f"{prefix}{name}")
-            described[name] = data_change.classify(previous, Path(entry["path"]).read_bytes())
+            described[name] = data_change.classify(previous, from_manifest_path(entry["path"]).read_bytes())
         except Exception as exc:  # noqa: BLE001 - see the docstring
             described[name] = data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
     return described
@@ -371,7 +393,7 @@ def collect_sidecars() -> dict[str, dict]:
     for name, shelf in SIDECARS.items():
         path = (PROCESSED_DIR if shelf == "processed" else RAW_DIR) / name
         if path.exists():
-            found[name] = {"path": str(path), "sha256": sha256_file(path)}
+            found[name] = {"path": to_manifest_path(path), "sha256": sha256_file(path)}
     return found
 
 
@@ -447,9 +469,20 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     the artifact is what a hiker's card resolves against."""
     keys: set[str] = set()
     for name, entry in artifacts.items():
+        # The suggested hikes' photographs ride the same store (#1290):
+        # each record's `photo.url` is a `photos/<digest>.jpg` key, and the
+        # detail screen resolves it against the bucket exactly as a card
+        # resolves a POI's photo_key - so the same promise is settled here.
+        if name == SUGGESTED_HIKES_KEY:
+            document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
+            for hike in document.get("hikes", []):
+                url = (hike.get("photo") or {}).get("url")
+                if isinstance(url, str) and url.startswith(f"{PHOTO_PREFIX}/"):
+                    keys.add(url)
+            continue
         if not (name.startswith("poi_") and name.endswith(".geojson")):
             continue
-        document = json.loads(Path(entry["path"]).read_text(encoding="utf-8"))
+        document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
         for feature in document.get("features", []):
             properties = feature.get("properties") or {}
             if properties.get("photo_key"):
@@ -497,6 +530,9 @@ def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, 
 # lib/config.ts have one spelling to agree with.
 NEARBY_TRAILS_KEY = "nearby_trails.geojson"
 
+# export_suggested_hikes.py's artifact (#1290): config.ts's SUGGESTED_HIKES_KEY.
+SUGGESTED_HIKES_KEY = "suggested_hikes.json"
+
 # The published key for export_nearby_poi.py's artifact (#1097) - the POIs NYS
 # DEC and NYS OPRHP publish, the sibling of NEARBY_TRAILS_KEY and gated the
 # same way. Named here for the same reason: one spelling for
@@ -509,6 +545,14 @@ NEARBY_POI_KEY = "nearby_poi.geojson"
 # same stewards' geometry with vertices removed. Named here for the same
 # contract-test reason as its two neighbours.
 NETWORK_OVERVIEW_KEY = "network_overview.geojson"
+
+# The same lines as vector tiles (#1257, export_nearby_trails.write_tiles) -
+# what the client draws above the seam since the GeoJSON grew past what a
+# phone can hold whole (#1254). Published under NEARBY_TRAILS_KEY's own
+# licence gate below for the reason the overview is: the same stewards'
+# geometry, re-cut. Named here for the same contract-test reason as its
+# neighbours.
+NEARBY_TRAILS_TILES_KEY = "nearby_trails.pmtiles"
 
 # The mile of every centerline vertex, on the calibrated axis (#1192,
 # export_trails.write_trail_miles) - trails.geojson's sidecar, keyed by the
@@ -601,6 +645,23 @@ def collect_artifacts() -> dict[str, dict]:
                     "path": manifest["overview"]["path"],
                     "sha256": manifest["overview"]["sha256"],
                 }
+            # The vector tiles of the same lines (#1257), inside this branch
+            # for the reason the overview is: one decision, three files.
+            # Absent from a manifest written before write_tiles existed, which
+            # the client reads as "no network lines above the seam" - the
+            # state #1254's budget already leaves a phone in.
+            if "tiles" in manifest:
+                artifacts[NEARBY_TRAILS_TILES_KEY] = {
+                    "path": manifest["tiles"]["path"],
+                    "sha256": manifest["tiles"]["sha256"],
+                }
+            # Those tiles cut into 1-degree coverage cells (#1257 stage 2,
+            # cut_cells.py), inside this branch for the reason the tiles are:
+            # the same stewards' geometry, one decision. Collected from the
+            # cutter's own manifest exactly as the sheets' cells are below;
+            # absent when the workflow's cut step did not run, which the
+            # client reads as "no network cells to download".
+            _collect_cells(NEARBY_TRAILS_CELL_FAMILY, artifacts)
 
     # The POIs those same organizations publish (#1097, export_nearby_poi.py) -
     # DEC's lean-tos, campsites and privies, OPRHP's vistas, parking and
@@ -657,6 +718,13 @@ def collect_artifacts() -> dict[str, dict]:
                 "path": manifest["geometry_path"],
                 "sha256": manifest["geometry_sha256"],
             }
+            # The same graph cut into 1-degree cells (#1257 stage 3,
+            # cut_trail_graph.py) - what the client actually loads since the
+            # whole grew past a phone - inside this branch for the reason the
+            # geometry is: the same stewards' topology, one decision. The
+            # whole files above stay published as the cut's input and for
+            # older clients; the current client asks for none of them.
+            _collect_cells(TRAIL_GRAPH_CELL_FAMILY, artifacts)
 
     # The climb along those same edges (#1011, export_network_elevation.py).
     # Its own manifest, because a publish can legitimately run without it -
@@ -785,6 +853,19 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(highlights_manifest.read_text())
         artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The routes somebody wrote up, if export_suggested_hikes.py has run
+    # (#1290, features/SUGGESTED_HIKES.md) - NYNJTC's reviewed Favorite
+    # Hikes first. Same shape again. It is absent from a release for THREE
+    # reasons rather than one, and the client reads all three as an empty
+    # shelf rather than a failure: the entry's reaches_hikers, no row yet
+    # signed off in reference/nynjtc_hike_routes.json, or a run that did not
+    # reach the exporter. config.ts declares it `@release optional` for
+    # exactly that.
+    suggested_manifest = PROCESSED_DIR / "suggested_hikes_manifest.json"
+    if suggested_manifest.exists():
+        manifest = json.loads(suggested_manifest.read_text())
+        artifacts[SUGGESTED_HIKES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The tombstones: every POI id ever retired, so an id that has been
     # published once always resolves to something (#673,
     # features/POI_IDENTITY.md). Deliberately NOT named `poi_retired.geojson`
@@ -840,16 +921,12 @@ def collect_artifacts() -> dict[str, dict]:
     # different workflows on different runners - whichever ran publishes what
     # it has, the same partial-checkout posture as everything above.
     for family in CELL_FAMILIES:
-        cells_manifest = PROCESSED_DIR / f"{family}_cells_manifest.json"
-        if cells_manifest.exists():
-            manifest = json.loads(cells_manifest.read_text())
-            for name, entry in manifest["artifacts"].items():
-                artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+        _collect_cells(family, artifacts)
 
     for name in (*BACKGROUND_ARCHIVES.values(), *OFFLINE_SHEET_ARCHIVES.values()):
         path = PROCESSED_DIR / name
         if path.exists():
-            artifacts[name] = {"path": str(path), "sha256": sha256_file(path)}
+            artifacts[name] = {"path": to_manifest_path(path), "sha256": sha256_file(path)}
 
     # Every entry carries the byte size of the artifact as built - the
     # measurement #505 wanted published rather than hand-kept, and the thing
@@ -858,12 +935,24 @@ def collect_artifacts() -> dict[str, dict]:
     # gzip-uploaded text artifacts this is the DECODED size - the bytes a
     # client's fetch hands to code, the same bytes the sha256 describes.
     for entry in artifacts.values():
-        entry["size_bytes"] = Path(entry["path"]).stat().st_size
+        entry["size_bytes"] = from_manifest_path(entry["path"]).stat().st_size
 
     return artifacts
 
 
-def _verify_hashes(entries: dict[str, dict]) -> None:
+def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
+    """Add one cell family's context, per-cell archives and coverage index
+    to `artifacts`, from the manifest cut_cells.py wrote for it - or nothing,
+    when that family's cut did not run in this checkout."""
+    cells_manifest = PROCESSED_DIR / f"{family}_cells_manifest.json"
+    if not cells_manifest.exists():
+        return
+    manifest = json.loads(cells_manifest.read_text())
+    for name, entry in manifest["artifacts"].items():
+        artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+
+
+def verify_hashes(entries: dict[str, dict]) -> None:
     """Every collected sha256 must describe the bytes on disk NOW, not the
     bytes the exporter had when it wrote its manifest (#659). Most entries
     carry a hash copied from an exporter's manifest file, and nothing
@@ -874,7 +963,7 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
     still matches the bucket. Raises before the first upload, naming every
     mismatch, so a bad state costs a failed run instead of a poisoned
     manifest."""
-    stale = {name: entry for name, entry in entries.items() if sha256_file(Path(entry["path"])) != entry["sha256"]}
+    stale = {name: entry for name, entry in entries.items() if sha256_file(from_manifest_path(entry["path"])) != entry["sha256"]}
     if stale:
         raise RuntimeError(
             "manifest hash does not match the file on disk for: "
@@ -884,7 +973,16 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
         )
 
 
-def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+    """A JSON object already in the bucket, or None if the key is not there.
+
+    Public since #1314: `stage_release.py` reads `releases/index.json` and the
+    previous release's `manifest.json` through exactly this, and the "not
+    found is None, anything else raises" distinction below is the part worth
+    having one copy of. A stager that read a transport error as "no previous
+    release" would stage a full folder every week and never copy anything
+    forward - which looks like it is working.
+    """
     try:
         body = s3_client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read()
     except s3_client.exceptions.NoSuchKey:
@@ -1032,11 +1130,11 @@ def publish(
         bucket = os.environ["R2_BUCKET"]
 
     # Re-hash every artifact and sidecar against its collected hash before
-    # anything is uploaded - see _verify_hashes for why the gap between an
+    # anything is uploaded - see verify_hashes for why the gap between an
     # exporter's manifest and this upload cannot be trusted.
-    _verify_hashes({**artifacts, **sidecars})
+    verify_hashes({**artifacts, **sidecars})
 
-    remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
+    remote_manifest = load_remote_json(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
 
     # Photos first, before any artifact that names them and well before the
@@ -1064,7 +1162,7 @@ def publish(
 
     uploaded: list[str] = []
     for name, entry in changed.items():
-        upload_path, extra = upload_args(name, entry["path"])
+        upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])))
         # What a phone actually spends on this artifact, as against `size_bytes`
         # above, which is the DECODED size (#919).
         #
@@ -1094,7 +1192,7 @@ def publish(
     # After the decision, never before: a sidecar must never be able to cause
     # a version, and must never describe data that was not published.
     for name, entry in sidecars.items():
-        upload_path, extra = upload_args(name, entry["path"], compress=False)
+        upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])), compress=False)
         s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
 
     # Merge, don't replace: an artifact that's live in remote_artifacts but
@@ -1172,7 +1270,7 @@ def publish(
         # `releases/` is written, because the answer decides where it is
         # written.
         index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
-        release_index = _load_remote_manifest(s3_client, bucket, index_key)
+        release_index = load_remote_json(s3_client, bucket, index_key)
         release_id = releases.next_release_id(releases.index_ids(release_index))
 
         # The same manifest as the pointer's, minus what may not be frozen.

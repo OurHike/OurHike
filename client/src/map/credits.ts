@@ -172,8 +172,10 @@ export function mapCredits({
   // a phone holding a release OLDER than a steward is credited for lines it
   // does not have - a release exported before #1019 carries no DEC lines and
   // this list still names DEC. The flag these key off is "an artifact loaded"
-  // (App.tsx passes `nearbyTrailsUrl !== null`, a blob URL), not "which
-  // sources are in it", and nothing parses 23 MB of features to find out. It
+  // (App.tsx passes `networkOverviewUrl !== null`, the sketch's blob URL -
+  // since #1257 the only nearby-network artifact the shell handles, the full
+  // lines being tiles the map reads for itself), not "which sources are in
+  // it", and nothing parses the sketch's features to find out. It
   // is the weak form of the failure this module was written to fix - naming a
   // source that is not on screen - and the fix if it ever matters is the
   // stewards artifact, which lib/stewards.ts already fetches and which lists

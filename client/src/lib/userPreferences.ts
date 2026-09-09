@@ -192,9 +192,16 @@ export interface UserPreferences {
    */
   auto_rotate_enabled: boolean
 
-  // Safety / privacy. The wrong-way alert is a NOTIFICATION preference - it
-  // governs whether the one push OurHike sends is delivered, not whether
-  // hazards appear on the map. Defaulted on, so the safety path is opt-out.
+  // Safety / privacy.
+  //
+  // Legacy: `wrong_way_alert_enabled` governed the wrong-way alert, removed
+  // (#93, #308) after shipping fully built but never mounted - see
+  // features/HIKER_SAFETY.md section 5's history note. No code reads this
+  // today. Kept rather than dropped for the same reason as
+  // `auto_rotate_enabled` above: it is in the backend's `extra="forbid"`
+  // schema and part of three released clients' API contracts, so removing it
+  // is a coordinated expand/contract change across supported releases
+  // (RELEASING.md section 8c), not a same-PR deletion.
   wrong_way_alert_enabled: boolean
   anonymity_window_days: number
 
@@ -204,8 +211,8 @@ export interface UserPreferences {
    * card, and the places-you-passed list. Off by default, because the
    * passive surface interrupts nobody and the assertive one is only
    * legitimate when it was asked for. NOT a notification consent of any
-   * kind: nothing behind this toggle ever interrupts anyone, and the
-   * wrong-way alert above stays the only notification this app sends.
+   * kind: nothing behind this toggle ever interrupts anyone, and OurHike
+   * sends no push notification of any kind today.
    */
   contribute_conditions: boolean
 
@@ -234,6 +241,17 @@ export interface UserPreferences {
   onboarding_completed: boolean
   download_choice_made: boolean
   location_permission_requested: boolean
+
+  /**
+   * The taken trail (#1306): which trail the map draws solid, by
+   * lib/trails.ts registry id, or null - nothing taken, which is first launch
+   * and the all-dotted opening view the handoff's z4 frame draws. Taken from
+   * a badge or a legend row; never switched by a tap on a line
+   * (features/NEARBY_TRAILS.md §2). What it decides is the LINES and the
+   * legend's `taken`: the app's trail - Today, the miles, the waypoints, the
+   * plate - is the A.T. whether or not it is taken.
+   */
+  chosen_trail_id: string | null
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -277,6 +295,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   onboarding_completed: false,
   download_choice_made: false,
   location_permission_requested: false,
+
+  chosen_trail_id: null,
 }
 
 /** The complete key set, so invariants can be asserted against the schema

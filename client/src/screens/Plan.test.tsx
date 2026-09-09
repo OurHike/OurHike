@@ -50,8 +50,7 @@ const PROPS = {
   // The mode split (#1008). Trips by default so the existing assertions
   // keep describing the screens they were written against; the day-side
   // tests pass mode: 'day' themselves.
-  mode: 'trips' as const,
-  onSwitchMode: vi.fn(),
+  room: 'sections' as const,
   dayListOpen: false,
   onDayListOpen: vi.fn(),
   draftKind: null,
@@ -490,8 +489,12 @@ describe('the three zooms (#790)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { name: 'Damascus', mile: 470.8 },
-    end: { name: 'Rockfish Gap', mile: 860 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 470.8 },
+      { name: 'Rockfish Gap', mile: 860 },
+    ],
+    status: 'walking',
     tripIds: ['t1'],
   }
 
@@ -595,8 +598,12 @@ describe('the door to what’s left (#791)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { name: 'Damascus', mile: 470.8 },
-    end: { name: 'Rockfish Gap', mile: 860 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 470.8 },
+      { name: 'Rockfish Gap', mile: 860 },
+    ],
+    status: 'walking',
     tripIds: ['t1'],
   }
 
@@ -721,8 +728,12 @@ describe('the Plan home (#805)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { name: 'Damascus', mile: 470.8 },
-    end: { name: 'Rockfish Gap', mile: 860 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 470.8 },
+      { name: 'Rockfish Gap', mile: 860 },
+    ],
+    status: 'walking',
     tripIds: ['t1'],
   }
 
@@ -748,8 +759,8 @@ describe('the Plan home (#805)', () => {
     )
 
     expect(screen.getByText('Carry on with')).toBeInTheDocument()
-    expect(screen.getByText('Recent trips')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Plan a new trip' })).toBeInTheDocument()
+    expect(screen.getByText('Recent sections')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Plan a new section' })).toBeInTheDocument()
   })
 
   it('opens straight into a lone trip, as it always did', () => {
@@ -758,7 +769,7 @@ describe('the Plan home (#805)', () => {
     render(<PlanScreen {...PROPS} plan={smallPlan()} trips={twoTrips().slice(0, 1)} />)
 
     expect(screen.queryByText('Carry on with')).toBeNull()
-    expect(screen.queryByText('Recent trips')).toBeNull()
+    expect(screen.queryByText('Recent sections')).toBeNull()
     // The timeline itself, not a menu in front of it.
     expect(screen.getByRole('button', { name: 'Delete plan' })).toBeInTheDocument()
   })
@@ -836,7 +847,7 @@ describe('the day room and its list (#1008)', () => {
     const { rerender } = render(
       <PlanScreen
         {...PROPS}
-        mode="day"
+        room="day"
         dayHikes={[DAY_HIKE]}
         plan={null}
         onDayListOpen={onDayListOpen}
@@ -849,7 +860,7 @@ describe('the day room and its list (#1008)', () => {
     rerender(
       <PlanScreen
         {...PROPS}
-        mode="day"
+        room="day"
         dayHikes={[DAY_HIKE]}
         plan={null}
         dayListOpen={true}
@@ -878,8 +889,12 @@ describe('the day room and its list (#1008)', () => {
       id: 'h9',
       name: 'Virginia, over a few years',
       type: 'section' as const,
-      start: { name: 'Damascus', mile: 470.8 },
-      end: { name: 'Rockfish Gap', mile: 860 },
+      trailId: 'AT',
+      points: [
+        { name: 'Damascus', mile: 470.8 },
+        { name: 'Rockfish Gap', mile: 860 },
+      ],
+      status: 'walking' as const,
       tripIds: [],
     }
     render(
@@ -906,8 +921,12 @@ describe('the day room and its list (#1008)', () => {
       id: 'h9',
       name: 'Virginia, over a few years',
       type: 'section' as const,
-      start: { name: 'Damascus', mile: 470.8 },
-      end: { name: 'Rockfish Gap', mile: 860 },
+      trailId: 'AT',
+      points: [
+        { name: 'Damascus', mile: 470.8 },
+        { name: 'Rockfish Gap', mile: 860 },
+      ],
+      status: 'walking' as const,
       tripIds: [],
     }
     render(
@@ -936,7 +955,7 @@ describe('the day room and its list (#1008)', () => {
     render(
       <PlanScreen
         {...PROPS}
-        mode="day"
+        room="day"
         plan={null}
         dayHikes={[DAY_HIKE]}
         draftLive={true}
@@ -952,7 +971,7 @@ describe('the day room and its list (#1008)', () => {
     render(
       <PlanScreen
         {...PROPS}
-        mode="trips"
+        room="sections"
         plan={null}
         dayHikes={[DAY_HIKE]}
         draftLive={true}
@@ -970,7 +989,7 @@ describe('the day room and its list (#1008)', () => {
     render(
       <PlanScreen
         {...PROPS}
-        mode="day"
+        room="day"
         plan={null}
         dayHikes={[DAY_HIKE]}
         draftLive={true}
@@ -985,8 +1004,12 @@ describe('the day room and its list (#1008)', () => {
       id: 'h9',
       name: 'Virginia, over a few years',
       type: 'section' as const,
-      start: { name: 'Damascus', mile: 470.8 },
-      end: { name: 'Rockfish Gap', mile: 860 },
+      trailId: 'AT',
+      points: [
+        { name: 'Damascus', mile: 470.8 },
+        { name: 'Rockfish Gap', mile: 860 },
+      ],
+      status: 'walking' as const,
       tripIds: [],
     }
     render(

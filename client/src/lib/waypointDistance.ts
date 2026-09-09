@@ -28,8 +28,8 @@
 // WHAT THIS LINE STILL CANNOT SAY is the other half of the drawn mock-up:
 // "20 ft off trail". That is a distance from the centerline rather than along
 // it, `PoiDetail` carries no such field, and nothing in the pipeline publishes
-// one - #953 splits it off for that reason, and `wrongWay.ts`'s measured note
-// that 72% of shelters sit past OFF_TRAIL_THRESHOLD_FT suggests "20 ft" is a
+// one - #953 splits it off for that reason, and #308's measured finding that
+// 72% of shelters sit past OFF_TRAIL_THRESHOLD_FT suggests "20 ft" is a
 // mock-up's round number rather than a typical value.
 
 import type { HikeDirection } from '../chrome/Header'

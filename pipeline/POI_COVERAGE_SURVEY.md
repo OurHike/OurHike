@@ -65,13 +65,15 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | | shelter | campsite | water | resupply | crossing | viewpoint | parking | privy | trailhead |
 |---|---|---|---|---|---|---|---|---|---|
 | **ATC** | shipping | shipping | shipping | shipping | *available* 409 | shipping | shipping | shipping | absent |
-| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 793** | **ships 629** | **ships 1,201** | **ships 574** | **ships 287** |
-| **NYS DEC** | **ships 315** | **ships 2,077** | **unsuitable** 23 / **0** | absent | **ships 246** | **ships 202** | **ships 1,852** | **ships 350** | *available* 10,520 |
-| **NYNJTC** | absent | absent | absent | absent | absent | absent | *unsuitable* 26 | absent | *unsuitable* 26 |
+| **NYS OPRHP** | **ships 37** | **ships 204** | *available* 151 / 15 | *available* 109 / 91 | **ships 1,222** | **ships 629** | **ships 1,202** | **ships 574** | **ships 287** |
+| **NYS DEC** | **ships 331** | **ships 2,315** | **unsuitable** 23 / **0** | absent | **ships 1,182** | **ships 248** | **ships 2,256** | **ships 393** | *available* 10,520 |
+| **NYNJTC** | **ships 17** | **ships 17** | **ships 21** | absent | absent | **ships 92** | **ships 120** | **ships 4** | *unsuitable* 26 |
 | **Mohonk Preserve** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 | **GATC** | absent | absent | *available* 65 | absent | absent | absent | absent | absent | absent |
 | **OpenStreetMap** | unprobed | unprobed | shipping | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
 | **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent | absent |
+| **USFS** | *unsuitable* 815 | **ships 4,605** | absent | absent | absent | **ships 636** | absent | absent | **ships 7,358** |
+| **NH GRANIT** | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
 
 **The trailhead column is new with [#1197](https://github.com/OurHike/OurHike/issues/1197)**,
 which gave `POI_TYPES` the ninth category §7c said it lacked. Three of its cells are worth
@@ -89,22 +91,42 @@ reading rather than skimming:
   `Trailheads_HighlandsProject_Apr2026` is a featured-hikes table whose rows happen to be
   trailheads — one row is one suggested hike, and `ParkingLot` is a lot's name as prose.
   A ninth category does not make a curated hike list into an inventory.
-- **USFS's 7,358 are already published, as `parking`.** They are the loudest cell in the
-  column and the only one where the verdict is about *us* rather than about an org.
-  `export_nearby_poi.py` maps `site_type` `TRAILHEAD` onto `poi_type` `parking`, which
+- **USFS's 7,358 ship as trailheads since [#1218](https://github.com/OurHike/OurHike/issues/1218),**
+  and shipped as `parking` for the sixteen days before it. This was the loudest cell in the
+  column and the only one where the verdict was about *us* rather than about an org:
+  `export_nearby_poi.py` mapped `site_type` `TRAILHEAD` onto `poi_type` `parking`, which
   [#1207](https://github.com/OurHike/OurHike/issues/1207) chose on 2026-09-02 and recorded as
   one of "the two clean mappings" — correct that morning, because there was no ninth category
-  until #1197 added one the same afternoon. Not changed here: it is a decision belonging to
-  whoever probed the layer, `test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings`
-  asserts it by name, and moving it would leave the `parking` cell describing something nobody
-  has measured — §2c of [WHITE_MOUNTAINS_SOURCE_SURVEY.md](WHITE_MOUNTAINS_SOURCE_SURVEY.md)
-  finds no `PARKING` site_type in its 335-row White Mountains census (a census, not a sample),
-  so on that evidence USFS would ship no parking at all. Tracked as [#1218](https://github.com/OurHike/OurHike/issues/1218).
+  until #1197 added one the same afternoon. So 7,358 pins drew a "P" glyph on a category the
+  app had since decided is a different thing.
 
-**USFS and NH GRANIT have no row in the matrix above**, because #1207 registered them after it
-was last redrawn and #1197 added a column rather than rows. Their verdicts are in
-`sources.json`, which `tests/test_poi_coverage.py` reads and this table does not — so the table
-is the stale half. Worth fixing next time somebody is in here.
+  **What #1218 did that #1197 could not was take the measurement the move has to come with.**
+  `TRAILHEAD` was the *only* value in `USFS_SITE_TYPES` pointing at `parking`, so moving it
+  empties that cell for this organization — and #1218 refused to write `absent` there on the
+  strength of §2c of [WHITE_MOUNTAINS_SOURCE_SURVEY.md](WHITE_MOUNTAINS_SOURCE_SURVEY.md)'s
+  335-row White Mountains census, which is a census of the wrong 1% of the layer. The
+  nationwide `site_type` group-by was re-run **2026-09-04: 33 distinct values over 31,406
+  features, and no `PARKING` among them.** The nearest are `SNOWPARK` 318, `OHV STAGING AREA`
+  181 and `DAY USE AREA` 1,034, none of which is a parking lot — this is a recreation-*sites*
+  layer, and a parking lot is not a recreation site, so the absence is structural rather than
+  a gap in what the Forest Service publishes.
+
+  `test_usfs_trailheads_and_observation_sites_are_the_two_clean_mappings` was argued away
+  rather than deleted: it still asserts two clean mappings and one of them moved.
+
+**USFS and NH GRANIT have rows now** ([#1218](https://github.com/OurHike/OurHike/issues/1218)).
+They had none while #1207 registered them after the table was last redrawn and #1197 added a
+column rather than rows, which left `sources.json` and this table disagreeing with only one of
+them under test. The table above is regenerated from `sources.json` — the file
+`tests/test_poi_coverage.py` reads — so every cell in it is now the same verdict the tests see.
+
+That redraw moved seven numbers besides the two new rows, all of them stale in the direction of
+under-counting: OPRHP `crossing` 793 → 1,222, DEC `shelter` 315 → 331, `campsite` 2,077 → 2,315,
+`crossing` 246 → 1,182, `viewpoint` 202 → 248, `parking` 1,852 → 2,256, `privy` 350 → 393. Named
+rather than silently corrected, because a table that quietly gains a thousand crossings is one a
+reader should be able to ask about. **NH GRANIT's row is nine `unprobed` cells**, which is an
+admission and not a finding — #1207's scope was trails, and only layer 2 of its service was
+opened.
 
 **Twelve of those cells became `shipping` on 2026-08-27**
 ([#1097](https://github.com/OurHike/OurHike/issues/1097)) — the maintainer's decision on
@@ -342,6 +364,37 @@ properly — clipping the amenity types to `NETWORK_BUFFER_FEET` around
 `nearby_trails.geojson`, the way §11 already buffers water. That is a follow-up with its
 own issue, not something this change did quietly either way.
 
+### The clip, and what it actually cost ([#1113](https://github.com/OurHike/OurHike/issues/1113))
+
+`export_nearby_poi.clip_to_network` now applies that ring. Measured 2026-09-04 against the
+published `nearby_poi.geojson` (21,379 waypoints) and `nearby_trails.geojson` (112,378
+lines), through `spike_oprhp_poi_density.py --artifact` on both sides so the two columns
+are the same arithmetic:
+
+| densest z12 screen, 390 × 700 | every category on | default visibility |
+|---|---:|---:|
+| Harriman / Bear Mountain | 66 → **57** | 26 → **19** |
+| Catskills | 34 → **32** | 22 → **22** |
+| **Adirondacks** | **114 → 43** | **107 → 35** |
+
+**The ring is targeted, which is what makes it worth the loss.** The Adirondack screen
+falls by two thirds — those 105 tent sites are reached by water rather than by trail — and
+the Catskills does not move at all. 5,115 of 21,379 waypoints drop.
+
+**It does not reach POI_VISIBILITY.md's ~16, and that is worth saying plainly.** Sweeping
+every window rather than the three named regions, the worst screen as published is the
+Adirondacks at 106 (default visibility); after the clip the worst is Allegany at 53,
+filled by OPRHP crossings, campsites and privies that survive because they genuinely are
+trail-adjacent. #1105's "fifty is too many" is still open for that screen.
+
+**`parking` and `trailhead` are exempt**, and the measurement is why rather than taste: a
+uniform ring drops 49% of DEC's parking areas and 12% of OPRHP's — the largest per-type
+losses in the clip — while exempting them changes *no* default-visibility figure above,
+because both start hidden under #865. 2,493 more waypoints survive for no density cost.
+#981 is the supporting argument: a lot is "an annotation on a start, never a
+precondition", so the type whose purpose is to sit off the tread is the wrong one to
+measure against tread.
+
 ## 5. NYS OPRHP — the richest, and the least curated where it matters most
 
 The only org publishing something for all eight types, all in one layer registered since
@@ -378,6 +431,68 @@ are point layers:
 The org that maintains more of this ground than anyone publishes the least of it, which
 NYC_SOURCE_SURVEY.md §4 established for trails and this confirms for POIs. Their full
 network remains an agreement, not a scrape.
+
+**Re-probed 2026-09-08, with a different answer** ([#1288 — Read NYNJTC's Long Path
+section guide for the waypoints its layer does not carry](https://github.com/OurHike/OurHike/issues/1288)).
+The sentence above is true of NYNJTC's *data* and wrong about NYNJTC: their waypoints exist,
+and they are published as prose. The **Long Path End-to-End Section Guide** — forty
+WordPress pages at `nynjtc.org/lp-section-N/`, the same pages the registered
+`nynjtc_long_path` layer links to from its own `GuideURL` field — carries, per section, a
+`Distance:` header and four blocks: Access, **Parking** (a mile, a description, and
+NYNJTC's own coordinates to five decimals), **Camping** (a mile and a lean-to or campsite),
+and a mile-by-mile **Detailed Trail Description** naming springs, lean-tos, campsites,
+lookouts and restrooms. Measured across all forty pages on 2026-09-08: **1,256
+mile-marked entries, 153 with explicit coordinates**, every page in one skeleton.
+
+`lib/nynjtc_long_path_guide.py` reads them into waypoints and the NYNJTC row of §0 is
+re-drawn from what it read, against the live layer the same day:
+
+| type | records | how placed |
+|---|---:|---|
+| parking | 120 | 106 at NYNJTC's coordinates (high confidence), 14 by mile |
+| viewpoint | 92 | by mile, low confidence |
+| water | 21 | by mile, low confidence — every one read in full, and the rule is the narrowest in the module |
+| shelter | 17 | by mile; two stated to be off the trail and pinned at the turn-off with a sentence saying so |
+| campsite | 17 | by mile |
+| privy | 4 | by mile |
+
+Those are the counts *after* merging the 61 places the guide says more than once (Big Hill
+Shelter is mentioned at four miles of section 5) and leaving out the 14 entries NYNJTC
+marks "(unlocated)". "By mile" means the guide's mile walked along the section's line in
+the registered layer, scaled to the section's stated distance because the layer's line is
+shorter than the section it draws on 37 of 40 sections (83–105%). That is an estimate, and
+it is measured rather than assumed: over the 151 entries carrying both a mile and
+coordinates, the along-trail distance between where the mile lands and where NYNJTC's
+point projects onto the line is **median 86 m, p90 476 m, max 2,430 m**
+(`spike_long_path_guide_placement.py` re-derives it), so every mile-placed record carries
+`position_error_m: 500` — the p90 rounded up — and `CONFIDENCE_LOW`. Sections 23, 25 and
+37 measured markedly worse (medians 573, 950 and 1,223 m); the layer's line and the guide's
+mileage disagree there, and a republish of either may move them.
+
+**Every cell read `available` for most of that day, and the reason is worth keeping
+because it is the parent surveys' rule made sharp.** This is the first NYNJTC surface with
+*stated* terms: nynjtc.org's Terms & Conditions §3 (page dated 2025-03-10, read
+2026-09-08) say all content including maps and text is owned by NYNJTC — a copyright claim,
+not a grant. `nynjtc_licence` covers the two trail extracts "and nothing else",
+`nynjtc_notices_licence` covers the alerts, and both say they must not be read as
+precedent; so `nynjtc_long_path_guide` was registered `reaches_hikers: false` with its own
+`nynjtc_guide_licence` block recording nothing, and `export_nearby_poi.py` was built to keep
+a held-back source out of the artifact's manifest so the all-or-nothing gate on that
+artifact could never hold back DEC's, OPRHP's and USFS's waypoints on NYNJTC's account.
+
+**The maintainer answered the same day** — *"make reach_hikers:true - I'm assuming my
+relationship with nynjtc is enough"* — and the six cells read **ships** on that
+authorisation, recorded in those words in `nynjtc_guide_licence`. It is the maintainer's
+decision and not a grant from NYNJTC, the footing their alerts already ship on, and
+[#768](https://github.com/OurHike/OurHike/issues/768) remains where NYNJTC's own answer
+belongs. What ships is facts and a link — type, position, section and mile, an off-trail
+distance where the guide states one, a short name, the page URL — never the guide's
+sentence, the split the notices already ship on; and the safety holdbacks are the
+measurement's, not the licence's: every mile-placed record is `CONFIDENCE_LOW` with a stated
+500 m error, water carries the guide's reliability word in the cautious direction, and an
+off-trail place is pinned at its turn-off with the card saying so. The interactive map at
+`nynjtc.org/long-path-interactive-map/` was read the same day and adds nothing
+point-shaped: three line layers, two of them already catalogued by ALERTS_NOTICES_SURVEY.md.
 
 **Mohonk Preserve.** All 23 services listed; three carry real data and none is a POI layer
 — the 304 trail polylines already shipping, a single boundary polygon, and the
@@ -488,11 +603,12 @@ a fetcher or extending `export_poi.py` each needs its own issue and its own revi
 6. **Measure OSM's POI coverage over this ground** — seven of OSM's eight cells read
    `unprobed`, which is honest and unsatisfying.
    [#771](https://github.com/OurHike/OurHike/issues/771) is the runnable place for it.
-7. **Clip the amenity types to the trail ring** (§4b) — the follow-up that closes the
-   rule collision #1105 exposed, using §11's existing `NETWORK_BUFFER_FEET` machinery.
-   Ranked here rather than higher because the maintainer took the ship-and-record decision
-   knowingly; ranked at all because 107 waypoints competing for a 16-pin screen is a real
-   cost somebody should get to weigh with a number for what the clip would drop.
+7. ~~**Clip the amenity types to the trail ring**~~ — **done**
+   ([#1113](https://github.com/OurHike/OurHike/issues/1113)), and §4b carries what it
+   cost. It closes the rule collision #1105 exposed and takes the Adirondack screen from
+   107 to 35. What it does *not* do is reach POI_VISIBILITY.md's ~16: the worst screen
+   anywhere is 53 after the clip, so #1105's "fifty is too many" survives it and wants
+   an answer that is not a geographic one.
 8. **Get `N Vehicle Capacity` out of DEC's `DESCRIP`** (§4a). It is exactly what a hiker
    planning a trailhead start wants, it is in a free-text column 27% of which is
    maintenance shorthand, and #806's lesson is that a plausible read of an uncounted column

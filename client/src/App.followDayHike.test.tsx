@@ -24,16 +24,13 @@ import { DAY_HIKE_SOURCE_ID } from './map/dayHikeLayers'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
-import {
-  TRAIL_GRAPH_GEOMETRY_KEY,
-  TRAIL_GRAPH_KEY,
-  TRAIL_GRAPH_PROFILE_KEY,
-} from './lib/config'
+import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
 import { appHarness, MILE_LAT } from './test/appHarness'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -108,7 +105,37 @@ const GRAPH = JSON.stringify({
       blaze_color: 'White',
     },
   ],
+  // The shard's half of the shape (#1257 stage 3): where each row sits in
+  // the whole graph. One cell, so the whole IS the cell.
+  node_ids: [0, 1, 2, 3],
+  edge_ids: [0, 1, 2],
 })
+
+/** The one cell all of Harriman falls in, and its halves' keys. */
+const GRAPH_CELL = 'n41w075'
+const GRAPH_KEY = trailGraphCellKey(GRAPH_CELL, 'graph')
+const GEOMETRY_KEY = trailGraphCellKey(GRAPH_CELL, 'geometry')
+const PROFILE_KEY = trailGraphCellKey(GRAPH_CELL, 'profile')
+const cellsIndex = (profile: boolean) =>
+  JSON.stringify({
+    cell_degrees: 1.0,
+    seam_margin_km: 3.0,
+    context_zoom: 0,
+    context: null,
+    cells: [
+      {
+        name: GRAPH_CELL,
+        key: GRAPH_KEY,
+        bounds: [-75, 41, -74, 42],
+        edges: 3,
+        companions: {
+          geometry: GEOMETRY_KEY,
+          elevation: null,
+          profile: profile ? PROFILE_KEY : null,
+        },
+      },
+    ],
+  })
 
 const GEOMETRY = JSON.stringify([
   [
@@ -210,18 +237,30 @@ const PROFILE = JSON.stringify([
   [1100, 1200, 1300, 1400, 1500],
 ])
 
+/**
+ * Serve the graph's cell index, Harriman's cell, its geometry and - when
+ * asked - its profile, all hashed; 404 everything else. The cell is wanted
+ * by the followed hike's own ends (App.tsx's `graphWanted`, #1257 stage 3),
+ * so nothing here has to put the camera anywhere.
+ */
 async function serveGraph({ profile = false } = {}) {
+  const index = cellsIndex(profile)
   const manifest = {
     artifacts: {
-      [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) },
-      [TRAIL_GRAPH_GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) },
+      [TRAIL_GRAPH_CELLS_KEY]: { sha256: await hashOf(index) },
+      [GRAPH_KEY]: { sha256: await hashOf(GRAPH) },
+      [GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) },
       // Absent unless a test asks for it, because absent is the ordinary
       // state: the profile is fetched only once a walk is being followed, and
       // a release built without `include_elevation` does not carry it at all.
-      ...(profile
-        ? { [TRAIL_GRAPH_PROFILE_KEY]: { sha256: await hashOf(PROFILE) } }
-        : {}),
+      ...(profile ? { [PROFILE_KEY]: { sha256: await hashOf(PROFILE) } } : {}),
     },
+  }
+  const bodies: Record<string, string | null> = {
+    [TRAIL_GRAPH_CELLS_KEY]: index,
+    [GRAPH_KEY]: GRAPH,
+    [GEOMETRY_KEY]: GEOMETRY,
+    [PROFILE_KEY]: profile ? PROFILE : null,
   }
   vi.stubGlobal(
     'fetch',
@@ -234,14 +273,8 @@ async function serveGraph({ profile = false } = {}) {
           json: () => Promise.resolve(manifest),
         } as unknown as Response)
       }
-      const body =
-        profile && key.includes(TRAIL_GRAPH_PROFILE_KEY)
-          ? PROFILE
-          : key.includes(TRAIL_GRAPH_GEOMETRY_KEY)
-            ? GEOMETRY
-            : key.includes(TRAIL_GRAPH_KEY)
-              ? GRAPH
-              : null
+      const name = Object.keys(bodies).find((candidate) => key.endsWith(`/${candidate}`))
+      const body = name === undefined ? null : bodies[name]
       if (body === null) {
         return Promise.resolve({ ok: false, status: 404 } as unknown as Response)
       }

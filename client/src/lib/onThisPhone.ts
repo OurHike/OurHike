@@ -17,17 +17,11 @@
 
 import { get } from 'idb-keyval'
 import { ELEVATION_STORE_KEY, POIS_KEY, TRAILS_BLOB_KEY } from './trailData'
-import { NEARBY_TRAILS_STORE_KEY, NETWORK_OVERVIEW_STORE_KEY } from './nearbyTrailData'
+import { NETWORK_OVERVIEW_STORE_KEY } from './nearbyTrailData'
 import { storedGraphBytes } from './trailGraphStore'
 
 export interface TrailDataAsset {
-  id:
-    | 'trail-line'
-    | 'waypoints'
-    | 'elevation'
-    | 'nearby-trails'
-    | 'network-overview'
-    | 'day-hike-routing'
+  id: 'trail-line' | 'waypoints' | 'elevation' | 'network-overview' | 'day-hike-routing'
   /** Measured bytes of what is stored, or null where the stored shape has
    *  no byte size to measure (a parsed record is not its wire bytes, and
    *  inventing one would be a figure nobody stands behind). */
@@ -54,25 +48,25 @@ async function read(key: string): Promise<unknown> {
  * moment the answer is worth having.
  */
 export async function storedTrailData(): Promise<TrailDataAsset[]> {
-  const [trails, pois, elevation, nearby, overview, graph] = await Promise.all([
+  const [trails, pois, elevation, overview, graph] = await Promise.all([
     read(TRAILS_BLOB_KEY),
     read(POIS_KEY),
     read(ELEVATION_STORE_KEY),
-    read(NEARBY_TRAILS_STORE_KEY),
     read(NETWORK_OVERVIEW_STORE_KEY),
     storedGraphBytes(),
   ])
 
-  // The four graph artifacts as ONE row, because they are one capability to a
-  // hiker: either day hikes work without a signal or they do not, and a row
-  // per file would be four numbers answering a question nobody asked. Summed
-  // rather than counted for the same reason - what a hiker wants to know is
-  // what it is costing them.
+  // Every graph cell half this phone holds as ONE row (#1257 stage 3 - four
+  // halves per 1° cell, lib/trailGraphStore.ts), because they are one
+  // capability to a hiker: either day hikes work without a signal or they
+  // do not, and a row per file would be dozens of numbers answering a
+  // question nobody asked. Summed rather than counted for the same reason -
+  // what a hiker wants to know is what it is costing them.
   const graphBytes = Object.values(graph).reduce((sum, bytes) => sum + bytes, 0)
 
-  // Both nearby-network artifacts are kept under one shape by
-  // lib/nearbyTrailData.ts (`{ bytes: Blob, hash: string }`), so one reader
-  // serves both rather than two that have to be kept agreeing.
+  // lib/nearbyTrailData.ts's record shape (`{ bytes: Blob, hash: string }`),
+  // shape-checked because every past version of that module wrote it and a
+  // stale record from one of them must read as absent, not throw.
   const storedBytes = (record: unknown): number | null =>
     record !== undefined &&
     record !== null &&
@@ -80,7 +74,6 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
       ? (record as { bytes: Blob }).bytes.size
       : null
 
-  const nearbyBytes = storedBytes(nearby)
   const overviewBytes = storedBytes(overview)
 
   const elevationSamples =
@@ -115,25 +108,23 @@ export async function storedTrailData(): Promise<TrailDataAsset[]> {
       count: null,
       present: graphBytes > 0,
     },
-    {
-      id: 'nearby-trails',
-      bytes: nearbyBytes,
-      count: null,
-      present: nearbyBytes !== null,
-    },
-    // The corridor-view sketch of that same network (#1135). A SEPARATE ROW
-    // rather than folded into the one above, which is the opposite call from
-    // the four graph files and made on the same test: is this one capability
-    // to a hiker, or two? The graph files are one - day hikes work offline or
-    // they do not. These two are not. They draw at different zooms, and losing
-    // only the sketch means an offline launch opens on an A.T.-only map that
-    // the last online launch did not show, with the detailed network arriving
-    // as you zoom in. That is a distinguishable thing to be missing, so it
-    // gets a line that can say so.
+    // The other organizations' network as the corridor-view sketch the
+    // opening camera draws (#1135) - and since #1257 the only part of that
+    // network that arrives on its own, which is what this list is. Above the
+    // seam the lines are vector tiles read off the bucket per view
+    // (map/networkTiles.ts) and kept nowhere, so there is no row for them
+    // here; the part of them a phone DOES keep is the stretch it took - 1°
+    // cells of those tiles, chosen and priced with the basemap's on the
+    // hiking sheet's stretch card (screens/StretchCard.tsx, #1257 stage 2),
+    // which is where a chosen download is accounted for, not in a list of
+    // things that arrive with signal. The whole-file copy earlier releases
+    // stored is deleted at launch (lib/nearbyTrailData.ts's
+    // forgetNearbyTrails), and a row that said "gone" would be a row about
+    // nothing.
     //
-    // It was in no row at all until now, which is the defect: this window
-    // claims to be what is on the phone, and an artifact holding bytes while
-    // appearing nowhere is the one answer it must not give.
+    // The sketch was in no row at all until #1103, which is the defect this
+    // module exists to prevent: an artifact holding bytes while appearing
+    // nowhere is the one answer the window must not give.
     {
       id: 'network-overview',
       bytes: overviewBytes,

@@ -106,6 +106,7 @@ from lib.elevation_gain import (
     loss_over_gaps,
 )
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 IN_DIR = ROOT / "data" / "processed"
@@ -285,10 +286,9 @@ def write_artifact(climbs: list, stats: dict, sources: dict | None = None) -> di
     path.write_text(json.dumps(climbs, separators=(",", ":")), encoding="utf-8")
 
     manifest = {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "bytes": path.stat().st_size,
-        "edges": len(climbs),
         "threshold_m": DEFAULT_THRESHOLD_M,
         "sample_interval_m": SAMPLE_INTERVAL_METERS,
         # Flagged in the data rather than left for a reader to infer from this
@@ -298,6 +298,21 @@ def write_artifact(climbs: list, stats: dict, sources: dict | None = None) -> di
         "estimate": True,
         "per_source": stats,
         **coverage_summary(stats),
+        # AFTER the coverage spread, which carries an `edges` of its own, and
+        # the ordering is the whole point: this key used to sit above it and
+        # was overwritten, so the line written to be the alignment check was
+        # never the line that reported it (#1245). The two answer different
+        # questions - coverage's is "how many edges did the sources account
+        # for", this one is "how many entries are in the file the client is
+        # about to check its graph against" - and only the second may answer
+        # here, because it is the one a misalignment shows up in. A run whose
+        # coverage total disagrees with the array length has a bug; publishing
+        # the array's own length means the client's check catches it rather
+        # than being told a number that agrees with nothing.
+        #
+        # `export_network_profile.py` has had this right since it was written
+        # and says so in the same words; this is the sibling catching up.
+        "edges": len(climbs),
         "sources": sources or {},
     }
     (OUT_DIR / MANIFEST_NAME).write_text(json.dumps(manifest, indent=2), encoding="utf-8")

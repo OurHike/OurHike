@@ -132,6 +132,17 @@ export interface PublishedSnapshot {
    * decoded size is the wrong answer rather than a rough one.
    */
   sizes: Record<string, number>
+  /**
+   * What each artifact occupies once fetched and decoded, where the manifest
+   * carries `size_bytes` - the question lib/artifactBudget.ts asks before a
+   * launch fetches something whole (#1254).
+   *
+   * Deliberately the OTHER number from `sizes`: that one is the wire cost a
+   * hiker is shown, this is the memory cost the phone pays, and for a gzipped
+   * text artifact they are about 4x apart. Neither is a cautious version of
+   * the other, which is why both are carried rather than one derived.
+   */
+  decodedSizes: Record<string, number>
   /** Every artifact's change grade, where this release describes one. */
   changes: Record<string, ArtifactChange>
 }
@@ -163,6 +174,7 @@ const NOTHING_READABLE: PublishedSnapshot = {
   lookup: NOTHING_PUBLISHED,
   hashes: {},
   sizes: {},
+  decodedSizes: {},
   changes: {},
 }
 
@@ -204,12 +216,14 @@ const STORED_UNCOMPRESSED = ['.pmtiles', '.fgb']
 function snapshotInto(manifest: DataManifest): PublishedSnapshot {
   const hashes: Record<string, string> = {}
   const sizes: Record<string, number> = {}
+  const decodedSizes: Record<string, number> = {}
   const changes: Record<string, ArtifactChange> = {}
   const lookup = lookupInto(manifest)
 
   for (const [key, entry] of Object.entries(manifest?.artifacts ?? {})) {
     const hash = lookup(key)
     if (hash !== null) hashes[key] = hash
+    if (isCount(entry?.size_bytes)) decodedSizes[key] = entry.size_bytes
     if (isCount(entry?.transfer_bytes)) sizes[key] = entry.transfer_bytes
     else if (
       isCount(entry?.size_bytes) &&
@@ -228,6 +242,7 @@ function snapshotInto(manifest: DataManifest): PublishedSnapshot {
     lookup,
     hashes,
     sizes,
+    decodedSizes,
     changes,
   }
 }
@@ -243,14 +258,105 @@ export async function publishedSnapshot({
   signal,
 }: { signal?: AbortSignal } = {}): Promise<PublishedSnapshot> {
   if (DATA_BASE_URL === '') return NOTHING_READABLE
+  if (signal?.aborted) throw abortError()
 
+  // ONE READ FOR EVERYONE ASKING AT ONCE (#1302). A launch with signal asked
+  // for this from six places - lib/useTrailData.ts's update check,
+  // lib/usePublishedSizes.ts, lib/nearbyTrailData.ts's network sketch,
+  // lib/trailData.ts, lib/trailGraphData.ts and map/networkTiles.ts - and
+  // `latest.json` is served `cache-control: no-cache`, so that was six round
+  // trips to the bucket on the connection the first frame was sharing. The
+  // fetch in flight is shared with every caller that arrives before it
+  // settles; a caller arriving after gets a fresh one, so nothing here ever
+  // serves a manifest older than the request it answers.
+  //
+  // THE SHARED FETCH CARRIES NO CALLER'S SIGNAL, because one caller's abort
+  // must not end the read the other five are waiting on. Each caller's own
+  // signal is honoured on its own promise below instead, and still rejects
+  // with AbortError exactly as the un-shared fetch did - what it no longer
+  // does is cancel the request, which is one small JSON file and the price of
+  // not cancelling somebody else's.
+  if (snapshotInFlight === null) {
+    snapshotInFlight = readSnapshot().finally(() => {
+      snapshotInFlight = null
+    })
+  }
+  const shared = snapshotInFlight
+  if (signal === undefined) return shared
+
+  return new Promise<PublishedSnapshot>((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    // Between the entry check above and this line, the shared read has already
+    // been STARTED - and a fetch that aborts the caller's controller
+    // synchronously (which is what an abort during a launch fetch looks like,
+    // and what lib/nearbyTrailData.test.ts drives) fires the event before
+    // there is a listener for it. Without this re-check that caller's promise
+    // settled neither way and simply hung, which is worse than the round trip
+    // the sharing saves.
+    if (signal.aborted) {
+      signal.removeEventListener('abort', onAbort)
+      reject(abortError())
+      return
+    }
+    shared.then(
+      (snapshot) => {
+        signal.removeEventListener('abort', onAbort)
+        if (signal.aborted) reject(abortError())
+        else resolve(snapshot)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
+/** The rejection an aborted caller gets, spelled the way `fetch` spells it -
+ *  callers match on the NAME (lib/useTrailData.ts, lib/nearbyTrailData.ts),
+ *  because what a fetch rejects with on abort differs between browsers and
+ *  test environments. */
+function abortError(): DOMException {
+  return new DOMException('Aborted', 'AbortError')
+}
+
+let snapshotInFlight: Promise<PublishedSnapshot> | null = null
+
+/**
+ * How long the shared read may take before it is given up on.
+ *
+ * A shared read has one property an unshared one does not: while it is in
+ * flight, everyone else waits on it. A `fetch` with no deadline does not fail
+ * on a captive portal at a trailhead - it HANGS, for as long as the browser
+ * is willing to - so without this, one such read would hold the slot for the
+ * whole page and every later caller would join the wait rather than making
+ * its own attempt. That is the one way sharing can be worse than not sharing,
+ * and this is the bound that removes it.
+ *
+ * @unvalidated - picked, not measured. Twenty seconds is far longer than the
+ * manifest takes on any connection this app has been measured on (~50 KB,
+ * 0.45 s against production on 2026-09-09) and short enough that a hiker who
+ * walks back into signal is not still waiting on a request from the dead
+ * spot. What would settle it is what a real trailhead connection does to this
+ * request, which nothing has recorded.
+ */
+export const MANIFEST_READ_TIMEOUT_MS = 20_000
+
+/** The read itself. Never rejects: anything unreadable is a snapshot that
+ *  knows nothing, on {@link publishedSnapshot}'s own terms - and a read that
+ *  never answers becomes unreadable rather than eternal. */
+async function readSnapshot(): Promise<PublishedSnapshot> {
+  const controller = new AbortController()
+  const deadline = setTimeout(() => controller.abort(), MANIFEST_READ_TIMEOUT_MS)
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal })
+    const response = await fetch(dataUrl(MANIFEST_KEY), { signal: controller.signal })
     if (!response.ok) return NOTHING_READABLE
     return snapshotInto((await response.json()) as DataManifest)
-  } catch (error) {
-    if ((error as { name?: string } | null)?.name === 'AbortError') throw error
+  } catch {
     return NOTHING_READABLE
+  } finally {
+    clearTimeout(deadline)
   }
 }
 

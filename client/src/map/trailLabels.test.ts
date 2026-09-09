@@ -6,7 +6,10 @@ import {
   THROUGH_ROUTE_SOURCES,
   TRAIL_LABEL_FILTER,
   TRAIL_LABEL_LAYER_ID,
+  TRAIL_LABEL_MAX_ANGLE,
+  TRAIL_LABEL_MIN_ZOOM,
   TRAIL_LABEL_SORT_KEY_EXPRESSION,
+  TRAIL_LABEL_SPACING_EXPRESSION,
 } from './trailLabels'
 import { nearbyTrailOpacityExpression, CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
 import {
@@ -202,12 +205,27 @@ describe('where it sits in the stack', () => {
     expect(buildMapStyle(STYLE_OPTIONS).glyphs).toBeDefined()
   })
 
-  it('stays off the map at the zoom where the subject is the park, not the trails', () => {
-    // features/NEARBY_TRAILS.md §8: "at z7 Harriman is one green shape". Tied
-    // to the pins' own threshold so the two cannot drift.
+  it('starts at the overview band, below the pin seam (#1283)', () => {
+    // This used to borrow the pins' z9, which kept every name off exactly
+    // the screen the complaint was about - the opening camera. The floor is
+    // the overview band now; what stages the labels above it is the ladder.
     const label = buildMapStyle(STYLE_OPTIONS).layers.find(
       (l) => l.id === TRAIL_LABEL_LAYER_ID,
     )
-    expect((label as { minzoom?: number }).minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect((label as { minzoom?: number }).minzoom).toBe(TRAIL_LABEL_MIN_ZOOM)
+    expect(TRAIL_LABEL_MIN_ZOOM).toBeLessThan(POI_PIN_MIN_ZOOM)
+  })
+
+  it('names sparser at the overview than at hiking zooms, and drops a bent name', () => {
+    // Both measured on the handoff prototype's four cameras: 250 px between
+    // repeats is right on a park and seven copies across a state.
+    expect(layout(LABEL)['symbol-spacing']).toEqual(TRAIL_LABEL_SPACING_EXPRESSION)
+    const spacing = TRAIL_LABEL_SPACING_EXPRESSION
+    expect(spacing[0]).toBe('interpolate')
+    expect(spacing[3]).toBe(TRAIL_LABEL_MIN_ZOOM)
+    expect(spacing[4] as number).toBeGreaterThan(spacing[6] as number)
+    expect(spacing[6]).toBe(250)
+    expect(layout(LABEL)['text-max-angle']).toBe(TRAIL_LABEL_MAX_ANGLE)
+    expect(TRAIL_LABEL_MAX_ANGLE).toBeLessThan(45)
   })
 })

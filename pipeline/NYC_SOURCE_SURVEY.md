@@ -262,9 +262,31 @@ teal it wears on the ground. The fire-detour layer is still unregistered.
   Its own description is honest that it is "a first iteration and in no way complete", so
   it *supplements* the NJDEP park layer rather than replacing it.
 - **Terms — stated, at last:** the item carries the **NJDEP Data Distribution Agreement**
-  (as-is, no warranty, no duty to maintain). **NEEDS REVIEW:** read the agreement in full
-  before registering — it is the first source in this program whose upstream wrote terms
-  down, and the reading decides whether NJ needs an ask at all.
+  (as-is, no warranty, no duty to maintain). This section said **NEEDS REVIEW: read the
+  agreement in full before registering**, and that was done on 2026-09-09 under
+  [#1293](https://github.com/OurHike/OurHike/issues/1293): 1,968 characters, quoted
+  verbatim into `sources.json`'s new `njdep_licence`. **The reading, in one line: it
+  permits reuse and redistribution, on three conditions, and two of them need building
+  before anything can ship.** The coordinate reference system must stay intact (satisfied
+  by construction); the data "may not be reproduced or redistributed without all the
+  metadata provided" (this project has no surface where a hiker reads NJDEP's metadata);
+  and any map must carry NJDEP's credit/disclaimer sentence **verbatim**, not a paraphrase
+  (`map/credits.ts` prints names, not sentences). So both layers are registered
+  `licence_basis: unresolved`, `reaches_hikers: false` — a decision waiting on the
+  maintainer rather than an ask waiting on New Jersey. The agreement is stated on the
+  **Forum item only**; the on-prem park layer carries `copyrightText` "NJDEP" and no terms
+  at all (read live 2026-09-09), so it inherits the agreement by shared ownership
+  (NJDEPBGIS), which is an inference and is recorded as one.
+- **Registered 2026-09-09** as `njdep_park_trails` and `nj_statewide_trails`, with
+  `reference/blaze_mapping.json` tables for both. **What they would actually route** for
+  [#1290](https://github.com/OurHike/OurHike/issues/1290)'s held New Jersey hikes, probed
+  the same day within ~900 m of each trailhead: the park layer reaches Mount Tammany (8
+  segments incl. the Red Dot and Dunnfield Creek trails), Swartswood's Duck Pond loop (9),
+  Wawayanda's Laurel Pond loop (7) and the State Line Trail (1); the statewide layer adds
+  the county ground the park layer cannot see — Ramapo Valley County Reservation's Vista
+  Loop (7, Bergen County) and Schooley's Mountain (61, Morris County Park Commission).
+  **Neither reaches the Palisades**: the PIPC New Jersey section is absent from both, so
+  that hike stays held whatever the licence decision is.
 - The NJ Highlands Council's own Highlands Trail copy (owner NJHWPPC) exists; NYNJTC's is
   fresher and theirs — secondary.
 

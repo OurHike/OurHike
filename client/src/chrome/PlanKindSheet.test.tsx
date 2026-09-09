@@ -22,18 +22,13 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { PlanKindSheet } from './PlanKindSheet'
-import type { TrailNetworkState } from '../lib/trailGraphData'
+import type { TrailNetworkAbsence, TrailNetworkState } from '../lib/trailGraphData'
 
 const READY: TrailNetworkState = { kind: 'ready' }
-const absent = (
-  because:
-    | 'unconfigured'
-    | 'unreachable'
-    | 'not-in-release'
-    | 'unverifiable'
-    | 'not-a-graph'
-    | 'empty',
-): TrailNetworkState => ({ kind: 'absent', because })
+const absent = (because: TrailNetworkAbsence): TrailNetworkState => ({
+  kind: 'absent',
+  because,
+})
 
 // This suite renders the same sheet many times; the repo's convention is an
 // explicit cleanup rather than relying on a global one.
@@ -60,7 +55,9 @@ describe('the three doors', () => {
     renderSheet()
 
     expect(screen.getByRole('button', { name: /A day hike/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /A multi-day section/ }),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /A walk I.{0,3}ve already done/ }),
     ).toBeInTheDocument()
@@ -83,7 +80,7 @@ describe('the three doors', () => {
     fireEvent.click(screen.getByRole('button', { name: /A day hike/ }))
     expect(props.onPickDayHike).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole('button', { name: /A multi-day trip/ }))
+    fireEvent.click(screen.getByRole('button', { name: /A multi-day section/ }))
     expect(props.onPickTrip).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: /A walk I.{0,3}ve already done/ }))
@@ -111,7 +108,9 @@ describe('when the phone has no trail network', () => {
   it('still offers the two doors that need no network', () => {
     renderSheet({ network: absent('not-in-release') })
 
-    expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /A multi-day section/ }),
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /A walk I.{0,3}ve already done/ }),
     ).toBeInTheDocument()
@@ -144,6 +143,12 @@ describe('the sentence is true of the absence it is about (#1049)', () => {
       renderSheet({ network: absent(because) })
       expect(screen.getByRole('note')).toHaveTextContent(/does not check out/i)
     }
+  })
+
+  it('says a network too big to load is not being used, and promises nothing (#1254)', () => {
+    renderSheet({ network: absent('too-large') })
+    expect(screen.getByRole('note')).toHaveTextContent(/too big/i)
+    expect(screen.getByRole('note')).not.toHaveTextContent(/sync|connection|yet/i)
   })
 
   it('blames the ground, not the phone, when the release simply has no trails here', () => {
@@ -182,6 +187,7 @@ describe('the sentence is true of the absence it is about (#1049)', () => {
       absent('not-in-release'),
       absent('unverifiable'),
       absent('not-a-graph'),
+      absent('too-large'),
       absent('empty'),
     ]) {
       cleanup()
@@ -208,6 +214,7 @@ describe('the one absence a hiker can act on', () => {
       absent('not-in-release'),
       absent('unverifiable'),
       absent('not-a-graph'),
+      absent('too-large'),
       absent('empty'),
       { kind: 'looking' } as const,
     ]) {

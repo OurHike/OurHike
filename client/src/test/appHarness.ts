@@ -21,10 +21,13 @@
 
 import { afterEach, beforeEach, expect, vi } from 'vitest'
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react'
-import { del, get, set, update } from 'idb-keyval'
+import { del, get, getMany, set, update } from 'idb-keyval'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
 import { PREFERENCES_KEY } from '../lib/preferences'
+import { forgetLaunchMirror, writeLaunchMirror } from '../lib/launchMirror'
+import { preloadScreens } from '../screens/deferred'
+import { DEFAULT_HIKER_MODE } from '../lib/hikerMode'
 import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from '../lib/trailData'
 
@@ -100,7 +103,7 @@ export interface AppHarness {
    * question - the state nearly every test wants to start from, since neither
    * screen is the subject.
    */
-  onboard(overrides?: Record<string, unknown>): void
+  onboard(overrides?: Record<string, unknown>, options?: { mirror?: boolean }): void
   /** Trail data already on the phone, so nothing is fetched and the centerline
    *  index is built from exactly this geometry. */
   putTrailData(options?: { miles?: number; pois?: readonly unknown[] }): void
@@ -139,6 +142,9 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
   beforeEach(async () => {
     store.clear()
     watchSuccess = undefined
+    // The mirror lives in localStorage, which jsdom keeps across the tests in
+    // a file; a test that did not onboard must not inherit one.
+    forgetLaunchMirror()
     resetMapLibreMock()
 
     // Primes the deferred map engine (#722) before anything renders.
@@ -156,8 +162,19 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     // library, which throws GPUInitializationError in jsdom - the trap
     // recorded on #722.
     await loadMapEngine()
+    // And the screens that arrive through import() (#1302), for the same
+    // reason: a test that taps More and reaches for Settings must not race
+    // the chunk. Loaded once per process - the wrapper memoises - so this is
+    // a resolved promise on every test but the first.
+    await preloadScreens()
 
     vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+    // `getMany` follows whatever `get` is doing right now (#1303's one
+    // transaction in lib/trailData.ts), so a test that re-points `get` mid-file
+    // does not have to re-point both.
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
+    )
     vi.mocked(set).mockImplementation((key, value) => {
       store.set(key as string, value)
       return Promise.resolve()
@@ -213,13 +230,18 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
   return {
     store,
 
-    onboard(overrides: Record<string, unknown> = {}) {
-      store.set(PREFERENCES_KEY, {
+    onboard(overrides: Record<string, unknown> = {}, { mirror = true } = {}) {
+      const preferences = {
         ...DEFAULT_PREFERENCES,
         onboarding_completed: true,
         download_choice_made: true,
         ...overrides,
-      })
+      }
+      store.set(PREFERENCES_KEY, preferences)
+      // A phone that has launched since #1301 shipped holds the mirror too,
+      // which is the ordinary case; `mirror: false` is the first launch after
+      // the upgrade, where the shell still waits for the record.
+      if (mirror) writeLaunchMirror(preferences, DEFAULT_HIKER_MODE)
     },
 
     putTrailData({ miles = 40, pois = [] } = {}) {

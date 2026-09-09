@@ -2,7 +2,7 @@
 
 Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHNICAL_ARCHITECTURE.md), and [OurHikeValues.md](../OurHikeValues.md). Builds directly on [REPORT_A_PROBLEM.md](REPORT_A_PROBLEM.md) (the "still a problem?" check reuses its existing `status` field; the check-in model is a lighter sibling to its `Report`, not a replacement) and [MAP_OPTIONS.md](MAP_OPTIONS.md) (reuses its normalize-then-`match` rendering pattern and legend). Also closes a loop FEATURES.md left open - see "What this actually feeds" below. **[FIELD_NOTES.md](FIELD_NOTES.md) (2026-08-09) now owns the record a contribution becomes**, and this doc owns when to ask for one; the split is described under "Data model sketch".
 
-**Terminology, pinned down before anything else, because it changes the whole design:** "nudge" here means **visual prominence on the map only** - a distinct pin treatment inviting a tap. Confirmed directly while scoping this doc, specifically because [HIKER_SAFETY.md](HIKER_SAFETY.md) already scoped the wrong-way alert as "the only notification we ever send." This feature adds **no push, no in-app banner, no alert, no message** - so it doesn't touch that rule at all, rather than becoming a second exception to it.
+**Terminology, pinned down before anything else, because it changes the whole design:** "nudge" here means **visual prominence on the map only** - a distinct pin treatment inviting a tap. Confirmed directly while scoping this doc: OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - [HIKER_SAFETY.md](HIKER_SAFETY.md) §5). This feature adds **no push, no in-app banner, no alert, no message** - so it doesn't touch that rule at all, rather than becoming a second exception to it.
 
 **Scope note:** Post-MVP (Community reporting) - builds on Report a Problem, so it needs the same Phase 2+ backend that doc already requires. **Built 2026-08-20 as VOLUNTEERING.md's Phase A (#759, with #256):** the passive prominence (pin rings via lib/stalenessDisplay.ts, under the maintainer's day-one rules recorded on #256), the card's one-tap ask writing a `FieldNote`, the waypoint-lane tier styling, the opt-in in `UserPreferences`, and the places-you-passed-today list. One delta landed differently than §"The opt-in mode" below describes: the opted-in photo travels on the report *escalation* rather than on the note itself — a note publishes unmoderated (FIELD_NOTES.md §5), and an unmoderated public photo needs the screening/licence/withdrawal answers POI_PHOTOS.md gives its own photos; the note-photo question is filed as its own issue rather than answered by accident.
 
@@ -19,7 +19,7 @@ Because there's no push and no in-app alert, a "wants an update" pin is only eve
 - **"Don't need everyone, just a couple a day" happens by construction.** Only whoever happens to glance at the map near a stale POI sees the prompt - there's no broadcast to throttle.
 - **It's self-limiting per POI.** The moment any one hiker taps through and contributes, that POI's data is fresh again and the prominent styling drops away for the next hiker along. No quota system or "we already have enough today" tracking needed - freshness itself is the off switch.
 
-This also means the detection side needs no special-case logic (no "did they just leave a water source" departure detection, no overnight-dwell GPS tracking) - it's just: render POIs based on how stale their data is, same as any other map layer. That sidesteps the background-GPS limitation FEATURES.md already flags for the wrong-way alert entirely, since nothing here needs to run while the app is closed.
+This also means the detection side needs no special-case logic (no "did they just leave a water source" departure detection, no overnight-dwell GPS tracking) - it's just: render POIs based on how stale their data is, same as any other map layer. That sidesteps the background-GPS limitation FEATURES.md already flags entirely, since nothing here needs to run while the app is closed.
 
 ## What actually drives the pin styling
 
@@ -63,7 +63,7 @@ FEATURES.md's Water Reliability Prediction section already names its needed inpu
 
 **The "places you passed today" list has a trap in it**, and it is the one thing in this addition that could undo the section below: a list of missed opportunities is a guilt mechanic wearing a helpful hat. The rule that keeps it honest is that **it never counts, and never mentions what was skipped**. If it cannot be built without a number on it, it should not be built.
 
-None of this adds a notification. The opt-in is consent to be *asked more thoroughly when you are already looking*, not consent to be interrupted — so the rule this doc opens with is unchanged, and [HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way alert stays the only notification the app ever sends.
+None of this adds a notification. The opt-in is consent to be *asked more thoroughly when you are already looking*, not consent to be interrupted — so the rule this doc opens with is unchanged: OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - [HIKER_SAFETY.md](HIKER_SAFETY.md) §5).
 
 ## The anti-gamification guardrail - a pattern this project keeps needing, worth naming as one
 

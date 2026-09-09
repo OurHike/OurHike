@@ -39,6 +39,26 @@ the stretch cut because the reasoning survives the change of unit:
   the 67.9 MB sheet it came from, spent entirely on duplication, to solve a
   problem about size.
 
+A THIRD FAMILY SINCE #1257 (stage 2), and the first that is not a sheet: the
+other organizations' trail lines as vector tiles (export_nearby_trails.py's
+nearby_trails.pmtiles, z9-z14, nationwide since #1231). Two things differ
+from the sheets, both decided on measurement rather than inherited:
+
+- NO CONTEXT ARTIFACT: publish-vector-data.yml cuts it with `--context-zoom 8`,
+  one below the archive's own minimum zoom, so nothing lands in a context and
+  z9 rides in the cells. Measured on 2026-09-07's real archive (132,995,363
+  bytes): z9 alone is 915 tiles and 9,653,907 bytes - a shared context bigger
+  than the basemap's whole 5.71 MB one, downloaded with every first stretch,
+  to show a zoom the corridor-view sketch (network_overview.geojson, cached
+  whole by lib/nearbyTrailData.ts) already draws below and the cells draw
+  above. The z9 tiles a stretch needs are the few over its own cells.
+- A CONTINENTAL CANDIDATE GRID: the archive's bounds span the country, so
+  graticule_cells proposes on the order of a thousand candidates and 525 of
+  them hold a tile (measured the same day, by tile centre, without the
+  margin). Routing 173,209 tiles by scanning every candidate is a quarter of
+  a billion rectangle tests; GraticuleLookup below does it by arithmetic
+  instead, exactly, because every candidate is a whole-degree square.
+
 @unvalidated SEAM_MARGIN_KM = 3.0 is picked, not found. What would settle it:
 how far past a cell boundary a hiker actually pans and walks once #558 ships
 and there is behaviour to measure, plus the duplication share this module
@@ -59,6 +79,7 @@ from pmtiles.writer import write
 
 from export_elevation import sha256_file
 from lib.corridor_grid import CELL_DEGREES, graticule_cells
+from lib.manifest_paths import to_manifest_path
 from lib.tiling import tile_bounds_merc
 
 PROCESSED_DIR = Path(__file__).parent / "data" / "processed"
@@ -136,6 +157,45 @@ def cells_for_tile(
     return hits
 
 
+class GraticuleLookup:
+    """cells_for_tile's answer by arithmetic, for candidates that are all
+    whole CELL_DEGREES squares - which graticule_cells' always are.
+
+    A widened rectangle [west, east] x [south, north] overlaps the square
+    with south-west corner (cw, cs) exactly when cw < east, cw + d > west,
+    cs < north and cs + d > south; for integral corners that is every cw in
+    [floor(west / d), ceil(east / d)) and every cs likewise, so the hits are
+    read off a dict of corners rather than found by scanning the list. Same
+    open/closed edges as the scan (a rectangle touching a square's edge from
+    outside is not a hit), so the two agree exactly - test_cut_cells.py holds
+    them to it. Refuses any candidate list it cannot represent, so a caller
+    with an irregular grid gets the scan and never a wrong answer.
+    """
+
+    def __init__(self, cells: list[tuple]):
+        self.by_corner: dict[tuple[int, int], int] = {}
+        for index, (west, south, east, north) in enumerate(cells):
+            if abs((east - west) - CELL_DEGREES) > 1e-9 or abs((north - south) - CELL_DEGREES) > 1e-9:
+                raise ValueError(f"cell {index} is not a whole {CELL_DEGREES}-degree square")
+            corner = (round(west / CELL_DEGREES), round(south / CELL_DEGREES))
+            if abs(corner[0] * CELL_DEGREES - west) > 1e-9 or abs(corner[1] * CELL_DEGREES - south) > 1e-9:
+                raise ValueError(f"cell {index} is not anchored on the graticule")
+            self.by_corner[corner] = index
+
+    def hits(self, tile: tuple[float, float, float, float], margin_km: float) -> list[int]:
+        west, south, east, north = tile
+        d_lon, d_lat = margin_degrees(south, north, margin_km)
+        west, east = west - d_lon, east + d_lon
+        south, north = south - d_lat, north + d_lat
+        found = []
+        for cw in range(math.floor(west / CELL_DEGREES), math.ceil(east / CELL_DEGREES)):
+            for cs in range(math.floor(south / CELL_DEGREES), math.ceil(north / CELL_DEGREES)):
+                index = self.by_corner.get((cw, cs))
+                if index is not None:
+                    found.append(index)
+        return sorted(found)
+
+
 def archive_bounds(header: dict) -> tuple[float, float, float, float]:
     """The lon/lat bounds a PMTiles header declares."""
     return (
@@ -208,12 +268,16 @@ def cut_cells(
                 "Either the header is wrong or this is not a sheet worth cutting."
             )
 
-        # Pass 1: route every above-context tile by the cells it overlaps.
+        # Pass 1: route every above-context tile by the cells it overlaps -
+        # by arithmetic over the graticule (GraticuleLookup), which is the
+        # scan's exact answer at a thousandth of its cost on a nationwide
+        # archive.
+        lookup = GraticuleLookup(candidates)
         candidate_routing: dict[tuple[int, int, int], list[int]] = {}
         context_tile_count = 0
         for (z, x, y), _data in all_tiles(get_bytes):
             if z > context_zoom:
-                candidate_routing[(z, x, y)] = cells_for_tile(tile_bounds_lonlat(z, x, y), candidates, margin_km)
+                candidate_routing[(z, x, y)] = lookup.hits(tile_bounds_lonlat(z, x, y), margin_km)
             else:
                 context_tile_count += 1
 
@@ -311,7 +375,7 @@ def cut_cells(
     manifest = {
         "artifacts": {
             name: {
-                "path": str(out_dir / name),
+                "path": to_manifest_path(out_dir / name),
                 "sha256": sha256_file(out_dir / name),
                 "size_bytes": (out_dir / name).stat().st_size,
             }
@@ -338,8 +402,17 @@ def cut_cells(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("source", type=Path, help="The corridor archive to cut (at_basemap_package.pmtiles or dem.pmtiles)")
-    parser.add_argument("--family", required=True, choices=["at_basemap", "dem"], help="Key family for the cut artifacts")
+    parser.add_argument(
+        "source",
+        type=Path,
+        help="The archive to cut (at_basemap_package.pmtiles, dem.pmtiles or nearby_trails.pmtiles)",
+    )
+    parser.add_argument(
+        "--family",
+        required=True,
+        choices=["at_basemap", "dem", "nearby_trails"],
+        help="Key family for the cut artifacts - publish.py's ALL_CELL_FAMILIES, spelled the same way",
+    )
     parser.add_argument("--margin-km", type=float, default=SEAM_MARGIN_KM)
     parser.add_argument("--context-zoom", type=int, default=CELL_CONTEXT_ZOOM)
     args = parser.parse_args()

@@ -99,9 +99,17 @@ real blaze hue — and add the one new value this feature introduces:
   (WIREFRAMES.md §2) gain one sentence of state". Those rows were removed as clutter at
   the maintainer's request, and the sentence outlived them — it now sits directly above
   the pin grid, and is the only thing the legend still says about the trail lines.)*
-- **Not a contradiction of §3, an extension.** Every line stays solid; the no-dash rule
-  holds; the through-route is still the widest and last-drawn. Ghosting adds a third
-  channel (opacity) for a distinction the AT-only map never had to draw.
+- **Not a contradiction of §3, an extension.** The through-route is still the widest and
+  last-drawn. Ghosting adds a third channel (opacity) for a distinction the AT-only map
+  never had to draw. *(Amended 2026-09-08,
+  [#1283](https://github.com/OurHike/OurHike/issues/1283): this said "every line stays
+  solid; the no-dash rule holds". It no longer does — a nearby trail is now also a
+  **dot rhythm**, a fourth channel on a layer of its own under the chosen system's solid
+  lines, because at the opening camera opacity alone could not say which of a
+  country's worth of threads the map was about. Ghosting is unchanged and applies to
+  both halves of the split; the argument above for opacity over a halo or a hue
+  survives a dash pattern untouched. WIREFRAMES.md §3 carries the amended rule, the
+  through-route badge, and the near-white ink that goes with them.)*
 
 The tradeoff this choice accepts, stated so nobody rediscovers it: blaze identity weakens
 on exactly the trails a hiker might be thinking of taking. Two things recover it — the hue
@@ -113,7 +121,12 @@ the color on the map"*), and the tap sheet below shows the blaze at full strengt
 Tapping any line already opens a sheet naming the blaze and its source (WIREFRAMES.md §3;
 [#134](https://github.com/OurHike/OurHike/issues/134)'s line-detail sheet is the pattern).
 A nearby trail's sheet carries: the name, the blaze chip at full color, the length and the
-park, the provenance line (§6 below) — **and no switch action**. Switching trails stays in
+park, the provenance line (§6 below) — **and no switch action**. Where the trail is one the
+client's trail registry knows by name (`lib/trails.ts` — the A.T., and since
+[#1288](https://github.com/OurHike/OurHike/issues/1288) the Long Path), its own mark sits
+beside the name; a trail with no recorded mark gets none, never a placeholder, and every
+mark in that registry is a third-party trademark whose permission is recorded on its org's
+row in `pipeline/sources.json`'s `org_marks`. Switching trails stays in
 the picker ([#558 — Let a hiker take the stretch they are walking, without picking it off a
 list](https://github.com/OurHike/OurHike/issues/558) is that flow's home).
 
@@ -126,6 +139,17 @@ standing at a junction wanting to take the other trail — is served by two scre
 of one tap. **Revisit trigger, named**: if field testing (#106) shows hikers at junctions
 reaching for the sheet expecting a switch, this decision earns a re-argument with that
 evidence; until then it stands.
+
+**Re-argued 2026-09-09, for the badge only ([#1306](https://github.com/OurHike/OurHike/issues/1306) —
+First launch takes no trail: every line dotted until the hiker takes one from its badge or
+legend row).** The case above is against a one-tap switch on a *line* at a junction, and it
+still holds for lines: a tap on any line opens the sheet and switches nothing. A through-route's
+**badge** is a different thing — a deliberate thumb target the design chose over bare along-line
+names precisely so there would be one — and the maintainer's call is that a tap on it *takes* the
+trail, as does a tap on the trail's row in the legend's "Trails in view" block. Nothing is taken
+on first launch. What taking changes is the lines (solid against dotted) and the legend's
+`taken`; the mile frame, the ribbon, the numbers and the POI set stay the A.T.'s, which is what
+keeps this outside the argument above rather than a reversal of it.
 
 ## 3. Closed trails — the closure vocabulary, reused
 
@@ -268,20 +292,22 @@ a source whose steward disclaims accuracy may not render in the same voice as a 
 one ("never let a display outrun its source"). The exact sentence is settled with the
 first shipped rendering; the canvas mock's wording is a placeholder and says so.
 
-## 7. Wrong-way in a network
+## 7. Wrong-way in a network — historical, feature removed
 
-`trailPosition.ts` and `wrongWay.ts` infer "lost" from distance-to-*the*-centerline. The
-spike's number says what that inference does in Harriman: half the AT is within 150 m of a
-different marked trail, so "off the chosen trail" usually means "on another one" — not
-lost, and alerting on it is the false positive `wrongWay.test.ts` exists to prevent.
+`trailPosition.ts` used to feed `wrongWay.ts`'s "lost" inference from
+distance-to-*the*-centerline alone (both files, along with the wrong-way alert itself,
+are gone as of [#93](https://github.com/OurHike/OurHike/issues/93)/[#308](https://github.com/OurHike/OurHike/issues/308)'s
+resolution — see [features/HIKER_SAFETY.md](HIKER_SAFETY.md) §5). Kept here because the
+underlying measurement outlives the feature it was made for: half the AT's length in
+Harriman runs within 150 m of a different marked trail, so "off the chosen trail" usually
+means "on another one," not lost — a real false-positive risk for any future detection
+built against centerline distance alone.
 
-The answer for now, honoring [#93](https://github.com/OurHike/OurHike/issues/93): **the
-wrong-way alert stays scoped to the AT corridor's isolation profile and does not arm on
-network ground** until its thresholds are field-validated there. The network-aware design,
-sketched for when that work happens: a position within threshold of *any* shipped trail
-line is not "off trail" — the alert's question becomes "off the network", and "off the
-chosen trail but on the Ramapo-Dunderberg" is a banner-grade note at most, never the app's
-one notification.
+If a similar feature is built again, the network-aware shape this section used to sketch
+is worth re-deriving fresh against whatever detection logic exists at that time, rather
+than resurrected from here: broadly, a position within threshold of *any* shipped trail
+line is not "off trail," and "off the chosen trail but on another mapped one" reads as a
+much lower-stakes signal than actually being lost.
 
 ## 8. The seam, and what sits below it in a park
 
@@ -353,6 +379,42 @@ question and keeps the stored copy — but every phone still parses the whole st
 any of it. A per-region cut is the obvious answer and it is
 [#552](https://github.com/OurHike/OurHike/issues/552)'s to make, not this doc's.
 
+**The whole-file cache was withdrawn on 2026-09-07, and the reason is the number above
+having moved again.** The artifact was promoted that day at 228,820,578 bytes raw — nationwide
+USFS trails, [#1231](https://github.com/OurHike/OurHike/issues/1231) — and every phone that
+fetched it whole crashed its map ([#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254)).
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257)
+changes the shape rather than the data: the same lines are cut into z9–z14 vector tiles
+(`nearby_trails.pmtiles`, `export_nearby_trails.py`'s `write_tiles`) and the map reads them by
+byte range as the camera asks, a few kilobytes a tile, whatever the archive weighs — the way
+the hiking sheet has always been read. What that costs, stated: **a tile lives in the
+browser's HTTP cache and nowhere else, so with no signal the map above the seam draws no
+nearby trails.** The corridor-view sketch below the seam is still cached and still draws.
+That is the state this section described before #1082 and the state #1254's budget had
+already left every phone in; it is honest rather than good, and it is the paragraph above
+as written: a **named** download of the network, cut to #552's unit, is now #1257's second
+stage, on `cut_cells.py`'s per-family machinery, rather than a cache that quietly held the
+whole state.
+
+**Stage 2 landed the same day.** `cut_cells.py` cuts `nearby_trails.pmtiles` into
+`nearby_trails_cell_<name>.pmtiles` as a third family (no shared context: z9 nationwide is
+9,653,907 bytes for a zoom the sketch draws below and the cells draw above, so z9 rides in
+the cells), `publish.py` ships the cells inside the lines' own `reaches_hikers` gate, and the
+client's "take this stretch" tap takes the network cells under the hike with the basemap's
+(`client/src/lib/coverageCells.ts`'s `NETWORK_CELLS`, priced as one decision by
+`priceStretches`). `map/networkTiles.ts` asks a held cell before the bucket, so a phone that
+took its stretch draws every organization's trail on it with no signal — which is this
+section's promise as written, at #552's unit, for the first time. A phone holding the whole
+hiking sheet is the one still outside it: the stretch card stands down for it, and nothing
+else offers the network cells yet.
+
+**Stage 3 (2026-09-08) cut the junction graph derived from these lines the same way** —
+`cut_trail_graph.py`, `trail_graph_cells.json`, every edge filed whole into every cell within
+the seam margin — but the graph's cells are not a download: the day-hike builder loads the
+cells a hiker is planning in and keeps them per cell (`features/HIKE_PLANNING.md`, *The graph a
+phone keeps is the cells it planned in*). The whole 78.6 MB `trail_graph.json` of 2026-09-07
+stays in the bucket and no current client fetches it.
+
 ## 10. POI density, measured
 
 Amenities-chosen-only was decided partly on an unmeasured fear: Harriman-scale POI
@@ -423,12 +485,38 @@ half of #783's split is no longer true of every organization on the map.** It ho
 the A.T. corridor, where `export_poi.py` still clips amenities to it; it does not hold for
 DEC and OPRHP, whose amenities ship statewide.
 
-**What would close it properly**, and is not done: clip `nearby_poi.geojson`'s amenity
-types to `NETWORK_BUFFER_FEET` around `nearby_trails.geojson`, exactly as §11 already
-buffers water — the machinery exists and the ring is already computed. That would keep the
-waypoints near a trail somebody could be walking and drop the lake-shore clusters that
-produce the Adirondack figure. It wants its own issue and its own measurement of what it
-costs.
+**What closed it**, and what it cost ([#1113](https://github.com/OurHike/OurHike/issues/1113)):
+`export_nearby_poi.clip_to_network` clips the amenity types to `NETWORK_BUFFER_FEET`
+around `nearby_trails.geojson`, exactly as §11 buffers water — the same 500 ft, one number
+with one home, rather than a second radius here that could drift from it.
+
+Measured 2026-09-04 through `spike_oprhp_poi_density.py --artifact` on both sides, so the
+before and after are the same arithmetic:
+
+| densest z12 screen, default visibility | published | clipped |
+|---|---:|---:|
+| Harriman / Bear Mountain | 26 | **19** |
+| Catskills | 22 | **22** |
+| **Adirondacks** | **107** | **35** |
+
+**Targeted, which is the point.** The Adirondack screen falls by two thirds — those 105
+tent sites sit along the Saranac lake shores and are reached by water rather than by trail
+— while the Catskills does not move at all. 5,115 of 21,379 waypoints drop.
+
+**And it does not reach POI_VISIBILITY.md's ~16.** Sweeping every window rather than the
+three named regions, the worst screen as published is the Adirondacks at 106; after the
+clip the worst is Allegany at 53, filled by OPRHP crossings, campsites and privies that
+survive because they genuinely *are* trail-adjacent. So the clip is a large improvement
+and not a fix, and #1105's "fifty is too many" is still open for that screen — which is
+worth writing down, because "clip to the ring" reads like an answer.
+
+**`parking` and `trailhead` are exempt**, from the measurement rather than from taste. A
+uniform ring drops 49% of DEC's parking areas and 12% of OPRHP's, the largest per-type
+losses in the clip; exempting them changes *no* figure in the table above, because both
+start hidden under #865's default, and keeps 2,493 more waypoints. A hiker who turns
+parking on pays for it and is a hiker asking for parking. #981 is the supporting argument:
+a lot is "an annotation on a start, never a precondition", so the type whose whole purpose
+is to sit off the tread is the wrong one to measure against tread.
 
 ### What this does not measure, and it is the bigger half
 

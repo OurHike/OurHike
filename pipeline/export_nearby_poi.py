@@ -28,6 +28,16 @@ Six of the eight POI types, from both orgs. The counts each org publishes, and
 what this module actually emits, are in POI_COVERAGE_SURVEY.md §0; the
 per-source totals are printed by every run and written into the manifest.
 
+A THIRD INPUT SINCE 2026-09-08 (#1288), AND THE FIRST THAT IS NOT A LAYER:
+NYNJTC's Long Path section guide, forty web pages fetch_nynjtc_long_path_guide.py
+caches and lib/nynjtc_long_path_guide.py reads into waypoints - 271 on the day
+it landed: parking lots at NYNJTC's own coordinates, and lean-tos, springs,
+campsites, lookouts and restrooms placed by walking the guide's mile along the
+registered Long Path line at low confidence with a measured error. guide_records
+below is the whole of it; the gate is the entry's own reaches_hikers, and what
+that gate holding back must NOT do to everybody else's waypoints is that
+function's docstring.
+
 THE TWO ORG FLAGS, AND WHY THEY ARE READ DIFFERENTLY
 
 This is the one decision in this module that a reviewer should push on, because
@@ -101,10 +111,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import duckdb
+
 from lib.completeness import count_problems, fail_if_incomplete
+from lib.corridor import GEOGRAPHIC_CRS, NETWORK_BUFFER_FEET, PROJECTED_CRS, count_features
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
+from lib.nynjtc_long_path_guide import LINE_SOURCE_KEY as GUIDE_LINE_KEY
+from lib.nynjtc_long_path_guide import SOURCE_KEY as GUIDE_KEY
+from lib.nynjtc_long_path_guide import Section
+from lib.nynjtc_long_path_guide import build_records as build_guide_records
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
-from lib.source_registry import load_registry
+from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw" / "external"
@@ -112,6 +130,37 @@ OUT_DIR = ROOT / "data" / "processed"
 
 ARTIFACT_NAME = "nearby_poi.geojson"
 MANIFEST_NAME = "nearby_poi_manifest.json"
+NETWORK_ARTIFACT_NAME = "nearby_trails.geojson"
+
+#: Where fetch_nynjtc_long_path_guide.py leaves its parse, and where a
+#: held-back guide's records are written FOR REVIEW - a file publish.py never
+#: collects, so a reviewer can put the pins on a map before anybody decides
+#: whether hikers may see them.
+GUIDE_RAW_DIR = ROOT / "data" / "raw" / "nynjtc_long_path_guide"
+GUIDE_REVIEW_NAME = "long_path_guide_poi.review.geojson"
+
+METERS_PER_FOOT = 0.3048
+
+#: The two types the ring does not apply to (#1113).
+#:
+#: MEASURED, 2026-09-04, against the published artifacts - and this exemption
+#: exists because the measurement asked for it rather than because it seemed
+#: kind. A 500 ft ring drops 49% of DEC's parking areas and 12% of OPRHP's,
+#: which are the largest per-type losses in the whole clip; #1113 predicted
+#: exactly that ("a trailhead parking area can legitimately sit further from
+#: the tread than a spring does").
+#:
+#: What settles it is that exempting them costs NOTHING on the screen the clip
+#: exists to fix. Both start hidden under #865's default, so the densest z12
+#: screen is identical either way - Harriman 19, Catskills 22, Adirondacks 35,
+#: run through spike_oprhp_poi_density.py --artifact both ways - while 2,493
+#: more waypoints survive. A hiker who turns parking on pays for it and is a
+#: hiker asking for parking.
+#:
+#: #981 is the supporting argument rather than this file's own: a lot is "an
+#: annotation on a start, never a precondition", so the type whose whole
+#: purpose is to sit off the tread is the wrong one to measure against tread.
+NETWORK_RING_EXEMPT_TYPES = frozenset({"parking", "trailhead"})
 
 # `trail_id` per org rather than export_poi.py's "AT". Nothing on the client
 # reads this field today; it is the pipeline's own record of which system a row
@@ -196,7 +245,33 @@ OPRHP_SUB_ASSET_TYPES = {
 # unprobed; and the ski, boating, fishing, target-range and OHV-staging types
 # are not POI_TYPEs at all. Counts are nationwide, measured 2026-09-02.
 USFS_SITE_TYPES = {
-    "TRAILHEAD": "parking",
+    # `trailhead` since #1218, and `parking` for the sixteen days before it.
+    #
+    # #1207 wrote `parking` on 2026-09-02 and was right to: POI_TYPES had eight
+    # entries that morning and parking was the nearest honest home for a place
+    # where the walking begins. #1197 landed the ninth the same afternoon, and
+    # nobody had gone back to the mapping since - so 7,358 nationwide USFS
+    # trailheads reached hikers as a "P" glyph on a category the app had by
+    # then decided is a different thing.
+    #
+    # MOVING IT EMPTIES USFS'S PARKING CELL, and that is measured rather than
+    # assumed. #1218 would not close on the White Mountains census (335 rows of
+    # 31,405) that pointed this way. Re-run nationwide 2026-09-04 by group-by
+    # statistics on site_type: 33 distinct values over 31,406 features, and NO
+    # `PARKING` among them. The nearest things to one are SNOWPARK (318),
+    # OHV STAGING AREA (181) and DAY USE AREA (1,034), none of which is a
+    # parking lot. So this layer publishes no parking, and sources.json's
+    # `parking` cell says `absent` on that measurement.
+    #
+    # (31,406 rather than #1207's 31,405: the layer gained one row in two days.
+    # Recorded because a figure that quietly moves is worth a reader knowing
+    # about, not because one row matters.)
+    #
+    # #981 settled the direction this goes in - "a dayhike should be able to
+    # start anywhere - not just the parking lot" - and #1197 carried the
+    # consequence: a lot is an annotation on a start, never a precondition.
+    # 7,358 pins said the opposite by their glyph.
+    "TRAILHEAD": "trailhead",
     "CAMPGROUND": "campsite",
     "GROUP CAMPGROUND": "campsite",
     "OBSERVATION SITE": "viewpoint",
@@ -451,6 +526,176 @@ def build_records(source: dict, features: list[dict]) -> tuple[list[dict], dict]
     }
 
 
+def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict], dict]:
+    """Drop amenity waypoints further than NETWORK_BUFFER_FEET from a published line.
+
+    THE COLLISION THIS CLOSES (#1113). features/NEARBY_TRAILS.md's decisions
+    table says amenity POIs are chosen-trail-only and safety POIs are drawn for
+    every trail on screen; #1097 then shipped 8,480 DEC and OPRHP waypoints
+    clipped to nothing at all. The maintainer took that knowingly and asked for
+    the collision to be recorded rather than quietly resolved. This is the
+    other half.
+
+    THE SAME RING WATER ALREADY USES, deliberately - `NETWORK_BUFFER_FEET`, one
+    number with one home, rather than a second radius here that could drift
+    from it. NEARBY_TRAILS.md section 11 buffers a nearby trail's water by that
+    500 ft; this buffers its amenities by the same.
+
+    MEASURED, 2026-09-04, against the published `nearby_poi.geojson` (21,379
+    waypoints) and `nearby_trails.geojson` (112,378 lines), through
+    `spike_oprhp_poi_density.py --artifact` on both sides so the before and
+    after are the same arithmetic. Densest z12 screen at default visibility:
+
+        region        published   after
+        Harriman             26      19
+        Catskills            22      22
+        Adirondacks         107      35
+
+    The ring is TARGETED, which is what makes it worth doing: the Adirondack
+    screen falls by two thirds - it is 105 DEC primitive tent sites along the
+    Saranac lake shores, reached by water rather than by trail - while the
+    Catskills does not move at all.
+
+    AND IT DOES NOT REACH POI_VISIBILITY.md's ~16 PINS, said here because "clip
+    to the ring" reads like a fix and is an improvement. Sweeping every window
+    rather than the three named regions, the worst screen as published is the
+    Adirondacks at 106 (default visibility); after the clip the worst is
+    Allegany at 53, filled by OPRHP crossings, campsites and privies that
+    survive because they genuinely are trail-adjacent. #1105's "fifty is too
+    many" is still open for that screen and this does not answer it.
+
+    NOT CLIPPING IS THE FAILURE DIRECTION. A missing or empty network artifact
+    returns every record untouched with `ran: False` rather than dropping
+    everything - an empty artifact is an ordinary state (the licence gate
+    having held every steward's lines back, the reading `lib/corridor.py`
+    already gives it), and reading "no lines to measure against" as "nothing is
+    near a line" would empty the map on a state that is not an error.
+    """
+    stats = {
+        "ran": False,
+        "ring_feet": NETWORK_BUFFER_FEET,
+        "exempt_types": sorted(NETWORK_RING_EXEMPT_TYPES),
+        "kept": len(records),
+        "dropped": 0,
+        "dropped_by_source_type": {},
+    }
+    if not records:
+        return records, stats
+
+    con = duckdb.connect()
+    con.execute("INSTALL spatial; LOAD spatial;")
+    if not count_features(con, network_path):
+        stats["reason"] = f"{network_path.name} holds no lines, so there is no ring to measure against"
+        return records, stats
+
+    con.execute(f"""
+        CREATE TABLE network AS
+        SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+        FROM ST_Read('{network_path.as_posix()}')
+    """)
+    con.execute("CREATE INDEX network_ring ON network USING RTREE (g)")
+
+    # Only the types the ring applies to are measured - the exempt ones never
+    # reach this table, so an exemption costs no query time and cannot be
+    # accidentally undone by a later filter.
+    candidates = [(at, record) for at, record in enumerate(records) if record["poi_type"] not in NETWORK_RING_EXEMPT_TYPES]
+    con.execute("CREATE TABLE candidate (idx INTEGER, lon DOUBLE, lat DOUBLE)")
+    con.executemany(
+        "INSERT INTO candidate VALUES (?, ?, ?)",
+        [(at, record["lon"], record["lat"]) for at, record in candidates],
+    )
+
+    radius_m = NETWORK_BUFFER_FEET * METERS_PER_FOOT
+    inside = {
+        row[0]
+        for row in con.execute(f"""
+            SELECT c.idx
+            FROM candidate c
+            JOIN network n
+              ON ST_Intersects(
+                   n.g,
+                   ST_Buffer(
+                     ST_Transform(ST_Point(c.lon, c.lat), '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}',
+                                  always_xy := true),
+                     {radius_m}
+                   )
+                 )
+            GROUP BY c.idx
+        """).fetchall()
+    }
+
+    dropped_by: dict[str, int] = {}
+    kept: list[dict] = []
+    for at, record in enumerate(records):
+        if record["poi_type"] in NETWORK_RING_EXEMPT_TYPES or at in inside:
+            kept.append(record)
+            continue
+        key = f"{record['source']}/{record['poi_type']}"
+        dropped_by[key] = dropped_by.get(key, 0) + 1
+
+    stats.update(
+        ran=True,
+        kept=len(kept),
+        dropped=len(records) - len(kept),
+        dropped_by_source_type=dict(sorted(dropped_by.items(), key=lambda kv: -kv[1])),
+    )
+    return kept, stats
+
+
+def guide_records(registry: dict, raw_dir: Path = GUIDE_RAW_DIR, lines_dir: Path = RAW_DIR) -> tuple[list[dict], dict | None]:
+    """NYNJTC's Long Path section guide, read as waypoints - and whether they may ship.
+
+    The third input to this artifact and the first that is not an ArcGIS
+    layer: forty web pages, parsed by lib/nynjtc_long_path_guide.py into
+    parking lots with NYNJTC's own coordinates and lean-tos, springs,
+    campsites and lookouts placed by walking the guide's mile along the
+    registered `nynjtc_long_path` line. That module's docstring carries what
+    is placed, what is not, and the measured error on the estimate.
+
+    Returns (records, stats), where stats is None when the source is not
+    registered at all. THE GATE IS THE ENTRY'S OWN `reaches_hikers`, read
+    here the way every layer's is, but with one difference in how `main`
+    treats the answer: a held-back guide is kept OUT of the manifest's
+    `sources`. publish.py's gate on this artifact is all-or-nothing over that
+    dict - one steward held back holds back every steward's points - and it
+    is right to be, for lines and points a steward may still refuse. It
+    would be wrong here: DEC's, OPRHP's and USFS's waypoints must not vanish
+    from every phone because a fourth source is waiting on a licence
+    answer. So a held-back guide's stats go under the manifest's
+    `held_back_sources` instead, its records go to the review file, and the
+    artifact is what it was before this source existed.
+
+    A published guide (reaches_hikers true) with no cache on disk raises, as
+    a missing layer does: the alternative is an artifact silently short of a
+    source it is meant to carry. A held-back one with no cache is a line in
+    the log - there was nothing to review and nothing to publish.
+    """
+    source = find_source(registry, GUIDE_KEY)
+    if source is None:
+        return [], None
+    publishable = bool(source.get("reaches_hikers"))
+    sections_path = raw_dir / "sections.json"
+    lines_path = lines_dir / f"{GUIDE_LINE_KEY}.geojson"
+    missing = [path for path in (sections_path, lines_path) if not path.exists()]
+    base = {
+        "steward": source.get("steward"),
+        "attribution": source.get("attribution"),
+        "reaches_hikers": publishable,
+    }
+    if missing:
+        names = ", ".join(path.name for path in missing)
+        if publishable:
+            raise FileNotFoundError(
+                f"{names} missing - {GUIDE_KEY} carries reaches_hikers: true, so this artifact must carry it. "
+                "Run fetch_nynjtc_long_path_guide.py (the guide) and fetch_external_layers.py (the line it is placed along) first."
+            )
+        return [], {**base, "kept": 0, "reason": f"{names} not on disk; nothing to review"}
+    sections = [Section.from_dict(data) for data in json.loads(sections_path.read_text(encoding="utf-8"))]
+    features = json.loads(lines_path.read_text(encoding="utf-8")).get("features", [])
+    records, stats = build_guide_records(sections, features)
+    return records, {**base, **stats}
+
+
 def records_to_geojson(records: list[dict]) -> dict:
     """One FeatureCollection, mixed poi_types.
 
@@ -474,7 +719,7 @@ def records_to_geojson(records: list[dict]) -> dict:
     }
 
 
-def write_artifact(records: list[dict], per_source: dict) -> dict:
+def write_artifact(records: list[dict], per_source: dict, ring: dict | None = None, held_back: dict | None = None) -> dict:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ARTIFACT_NAME
     path.write_text(json.dumps(records_to_geojson(records), separators=(",", ":")))
@@ -484,11 +729,20 @@ def write_artifact(records: list[dict], per_source: dict) -> dict:
         by_type[record["poi_type"]] = by_type.get(record["poi_type"], 0) + 1
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "feature_count": len(records),
         "by_type": {poi_type: by_type.get(poi_type, 0) for poi_type in POI_TYPES if by_type.get(poi_type)},
         "sources": per_source,
+        # What the ring did, in the manifest rather than only in the log. Each
+        # `sources` entry counts what its own layer contributed BEFORE the clip
+        # (see main), so without this block the manifest's per-source figures
+        # and its feature_count would disagree with no way to see why.
+        **({"network_ring": ring} if ring is not None else {}),
+        # Sources read and NOT carried, with why - outside `sources` so that
+        # publish.py's all-or-nothing gate over that dict sees only what the
+        # artifact actually holds (see guide_records).
+        **({"held_back_sources": held_back} if held_back else {}),
     }
 
 
@@ -528,12 +782,64 @@ def main() -> dict:
         }
         all_records.extend(records)
 
+    # NYNJTC's Long Path section guide - the one input here that is not a
+    # layer. See guide_records for why a held-back guide stays out of
+    # `per_source` and goes to a review file instead.
+    held_back_sources: dict[str, dict] = {}
+    guide, guide_stats = guide_records(registry)
+    if guide_stats is not None:
+        if "reason" in guide_stats:
+            print(f"  {GUIDE_KEY}: {guide_stats['reason']}")
+        else:
+            print(
+                f"  {GUIDE_KEY}: {guide_stats['kept']:,} waypoints from {guide_stats['sections']} section pages  {guide_stats['by_type']}"
+            )
+            print(
+                f"      {guide_stats['entries_placed']['stated']:,} at NYNJTC's own coordinates, "
+                f"{guide_stats['entries_placed']['interpolated']:,} placed by mile along the line (low confidence), "
+                f"{guide_stats['duplicates_merged']:,} repeats merged"
+            )
+            for reason, count in guide_stats["skipped"].items():
+                print(f"      skipped {count:>6,}  {reason}")
+        if guide_stats["reaches_hikers"]:
+            counts[GUIDE_KEY] = guide_stats["kept"]
+            per_source[GUIDE_KEY] = guide_stats
+            all_records.extend(guide)
+        else:
+            held_back_sources[GUIDE_KEY] = guide_stats
+            if guide:
+                OUT_DIR.mkdir(parents=True, exist_ok=True)
+                review_path = OUT_DIR / GUIDE_REVIEW_NAME
+                review_path.write_text(json.dumps(records_to_geojson(guide), separators=(",", ":")))
+                print(
+                    f"      HELD BACK: reaches_hikers is false, so none of these enter {ARTIFACT_NAME}; written for review to {review_path}"
+                )
+
     # export_nearby_trails.py's gate, for the same reason it has one: a source
     # that silently returns zero - an ArcGIS schema change, a renamed asset
     # value - must fail the run rather than quietly shrink the map.
     fail_if_incomplete(count_problems(counts), label="Incomplete nearby-POI export")
 
-    manifest = write_artifact(all_records, per_source)
+    # AFTER the gate, not before, and the order is the argument: that gate
+    # exists to catch a source that silently returned zero - an ArcGIS schema
+    # change, a renamed asset value - and it reads the per-layer counts to do
+    # it. The ring legitimately removes most of some layers (57% of DEC's
+    # primitive tent sites), so clipping first would let a deliberate,
+    # measured drop fail the run wearing a fetch failure's name.
+    before = len(all_records)
+    all_records, ring = clip_to_network(all_records, OUT_DIR / NETWORK_ARTIFACT_NAME)
+    if ring["ran"]:
+        print(
+            f"\n  ring: {ring['dropped']:,} of {before:,} dropped further than "
+            f"{ring['ring_feet']} ft from a published line "
+            f"({', '.join(ring['exempt_types'])} exempt - see NETWORK_RING_EXEMPT_TYPES)"
+        )
+        for key, count in list(ring["dropped_by_source_type"].items())[:8]:
+            print(f"      dropped {count:>6,}  {key}")
+    else:
+        print(f"\n  ring: not applied - {ring.get('reason', 'no network artifact')}")
+
+    manifest = write_artifact(all_records, per_source, ring, held_back_sources)
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
     print(f"  by type: {manifest['by_type']}")

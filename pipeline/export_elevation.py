@@ -108,6 +108,7 @@ from lib.elevation_gain import (
     raw_cumulative_gain,
 )
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).parent
 CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
@@ -839,7 +840,7 @@ def main() -> dict:
     OUT_PATH.write_text(json.dumps(records))
 
     manifest = {
-        "path": str(OUT_PATH),
+        "path": to_manifest_path(OUT_PATH),
         "sha256": sha256_file(OUT_PATH),
         "point_count": len(records),
         "null_elevation_count": null_elevation_count,

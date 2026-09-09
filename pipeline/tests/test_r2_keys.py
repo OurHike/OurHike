@@ -15,6 +15,7 @@ pass fails here rather than in a bucket nobody can undo.
 
 import pytest
 
+import cut_trail_graph
 import publish
 from lib import data_env, r2_keys
 
@@ -41,6 +42,20 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         "trail_graph_geometry.json",
         "trail_graph_elevation.json",
         "trail_graph_profile.json",
+        # The same four cut per 1-degree cell (#1257 stage 3,
+        # cut_trail_graph.py): JSON shards, one per half per cell, spelled by
+        # the cutter's own cell_key so a respelling there is a failure here.
+        *[cut_trail_graph.cell_key(name, half) for name in ("n34w084", "s34e007") for half in cut_trail_graph.HALVES],
+        # The other organizations' network (#950, #1135, #1257): the lines,
+        # their corridor-view sketch, and the same lines as vector tiles, all
+        # three written by export_nearby_trails.py and published as one
+        # reaches_hikers decision. The archive is the one the client reads by
+        # byte range, so its extension is what the bucket's CORS and
+        # content-type rules key off - a respelling here is a map that draws
+        # no network above the seam and reports nothing.
+        "nearby_trails.geojson",
+        "network_overview.geojson",
+        "nearby_trails.pmtiles",
         # The tombstones (#673). Spelled WITHOUT the `poi_` prefix on
         # purpose - that prefix is a namespace meaning "live rows of one
         # poi_type", and export_retired_poi.py's docstring lists the three
@@ -58,7 +73,7 @@ def test_every_artifact_name_publish_can_produce_is_a_legal_key():
         # key rules have to admit every corner of the grid, not just the A.T.
         *[
             name
-            for family in publish.CELL_FAMILIES
+            for family in publish.ALL_CELL_FAMILIES
             for name in (
                 f"{family}_cells.json",
                 f"{family}_context.pmtiles",

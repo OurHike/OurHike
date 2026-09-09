@@ -100,8 +100,9 @@ class SyncedPlannedHike(Base):
     So this is last-write-wins, and being wrong costs re-entering two numbers.
 
     NOT the `hikes` table, which stays exactly what `app/models/hike.py` says
-    it is - the durable start/end reference the wrong-way alert reads
-    server-side. That table is complete CRUD over a COLLECTION with ids, so
+    it is - the durable start/end reference originally built for the
+    wrong-way alert (removed, #93/#308) and kept for API compatibility. That
+    table is complete CRUD over a COLLECTION with ids, so
     syncing a singleton through it would mean every device remembering which
     row is "the" one: a second identifier to keep in step, and a second
     `updated_at` clock for one hiker's state. #247 is the feature that wants

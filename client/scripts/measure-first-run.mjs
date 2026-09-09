@@ -52,7 +52,8 @@ const flag = (name, fallback) => {
 if (url === undefined) {
   console.error(
     'usage: node scripts/measure-first-run.mjs <url> [--warm | --returning] [--cpu=4] ' +
-      '[--pause=800] [--settle=20000] [--maps=<dir of .js.map files>] [--stub-tiles]',
+      '[--pause=800] [--settle=20000] [--maps=<dir of .js.map files>] [--stub-tiles] ' +
+      '[--json=<path>]',
   )
   process.exit(2)
 }
@@ -82,6 +83,17 @@ const pauseMs = Number(flag('pause', '800'))
 /** Where to find `<chunk>.js.map`, so the profile names functions instead of
  *  minified letters. `dist/assets` after a local build. */
 const mapsDir = flag('maps', null)
+/**
+ * Also write what was measured as JSON, for a reader that is not a person
+ * (#1299): scripts/check-launch-speed.mjs turns it into a verdict against
+ * features/LAUNCH_BUDGET.md §3, and .github/workflows/check-launch-speed.yml
+ * runs the pair against production every morning.
+ *
+ * The JSON is a second RENDERING of this run, never a second measurement -
+ * everything in it is a value already printed above it, so a number in a
+ * tracking issue and a number a person read off this output cannot disagree.
+ */
+const jsonPath = flag('json', null)
 
 const sourceMaps = new Map()
 async function originalName(scriptUrl, line, column) {
@@ -278,6 +290,11 @@ if (warm) {
           const db = open.result
           const tx = db.transaction('keyval', 'readwrite')
           tx.objectStore('keyval').delete('ourhike:preferences')
+          // And the launch mirror of it (lib/launchMirror.ts, #1301): left in
+          // place, the replayed first run would open on Today for a tick and
+          // then fall back to the steps when the deleted record came back
+          // empty, which is not the launch being measured.
+          localStorage.removeItem('ourhike:launch')
           tx.oncomplete = () => {
             db.close()
             resolve()
@@ -391,6 +408,32 @@ const paint = await page.evaluate(() =>
 )
 for (const entry of paint) console.log(`${entry.name.padEnd(31)} ${entry.at} ms`)
 
+// The app's own marks (#1299, src/lib/launchMarks.ts), read from the page so
+// this prints the SAME five moments Settings -> About this build shows on a
+// phone and the bug-report prefill carries. That is the whole point of the
+// marks: a number from a hiker's device and a number from this profile name
+// the same events, so the two can finally be compared.
+//
+// A moment the launch never reached prints as such rather than being left
+// out, for the reason the screen says it: an omitted row reads as instant.
+const marks = await page.evaluate(() =>
+  [
+    ['ourhike:script', 'app code started'],
+    ['ourhike:shell', 'tab bar rendered'],
+    ['ourhike:preferences', 'settings read'],
+    ['ourhike:today', 'waypoints ready'],
+    ['ourhike:index', 'trail index ready'],
+  ].map(([name, label]) => {
+    const entry = performance.getEntriesByName(name, 'mark')[0]
+    return { label, at: entry === undefined ? null : Math.round(entry.startTime) }
+  }),
+)
+for (const mark of marks) {
+  console.log(
+    `${mark.label.padEnd(31)} ${mark.at === null ? 'not reached' : `${mark.at} ms`}`,
+  )
+}
+
 const perf = await page.evaluate(() => window.__ourhikePerf)
 
 if (returning) {
@@ -459,6 +502,42 @@ if (mapsDir === null) {
 }
 for (const [key, ms] of [...byFunction].sort((a, b) => b[1] - a[1]).slice(0, 15)) {
   console.log(`  ${String(Math.round(ms)).padStart(6)} ms  ${key}`)
+}
+
+if (jsonPath !== null) {
+  const { writeFileSync } = await import('node:fs')
+  writeFileSync(
+    jsonPath,
+    `${JSON.stringify(
+      {
+        url,
+        mode: returning ? 'returning' : warm ? 'warm' : 'cold',
+        cpu_throttle: cpuThrottle,
+        viewport: '390x844',
+        tiles_stubbed: stubTiles,
+        paint: Object.fromEntries(paint.map((entry) => [entry.name, entry.at])),
+        marks: Object.fromEntries(marks.map((mark) => [mark.label, mark.at])),
+        taps: returning
+          ? tabTaps.map((tap) => ({
+              at: tap.at,
+              label: tap.label,
+              accepted_ms: tap.accepted,
+              selected_ms: tap.selected,
+            }))
+          : stepChanges.map((change, index) => ({
+              step: index + 1,
+              accepted_ms: change.accepted,
+              changed_ms: change.changed,
+            })),
+        long_tasks: long.length,
+        longest_task_ms: Math.round(Math.max(0, ...long.map((task) => task.duration))),
+        total_blocking_ms: Math.round(blocking),
+      },
+      null,
+      2,
+    )}\n`,
+  )
+  console.log(`\nwrote ${jsonPath}`)
 }
 
 console.log(

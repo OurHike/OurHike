@@ -26,6 +26,17 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 > `pipeline/export_nearby_trails.py`'s `write_overview`), and the dot rank stops at the pin seam
 > with the pins. `features/mockups/opening-map.html` is the drawn record of the options and the
 > measurements behind that call.
+>
+> **And narrowed, 2026-09-08 ([#1292](https://github.com/OurHike/OurHike/issues/1292) — Below
+> the seam the map draws marks that read as waypoints; the opening camera should draw trail
+> lines only).** The boundary ticks and the highlight marks (#858) came off the canvas: on the
+> whole-corridor camera, with the line itself seconds late
+> ([#1291](https://github.com/OurHike/OurHike/issues/1291)), they read as a chain of waypoints
+> along the trail. Below the seam the map now draws trail lines only — the A.T., the network
+> sketch, the unattributed grey runs, closure tape — and no point mark of any kind; ATC notices,
+> serious warnings, workdays and dispute marks all start at the seam too. The highlight data, the
+> sheet and the tap path stay in the code, reachable from no mark: whether highlights get a band
+> above the seam or are retired is still the maintainer's to decide.
 
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
 corridor, which lands at **z4.87** on a phone — `fitBounds` over `[[-84.73, 34.2], [-68.3, 46.34]]`

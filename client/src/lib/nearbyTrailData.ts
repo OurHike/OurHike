@@ -1,6 +1,20 @@
 // The trail lines other organizations maintain (#950,
 // features/NEARBY_TRAILS.md, pipeline/export_nearby_trails.py).
 //
+// SINCE #1257 THE LINES THEMSELVES DO NOT COME THROUGH HERE. Everything below
+// about fetching, hashing and storing the network artifact whole was true
+// until 2026-09-07, when that artifact was promoted at 228,820,578 bytes
+// (nationwide USFS trails, #1231) and every phone that fetched it crashed its
+// map (#1254). The lines now reach the map as vector tiles read by byte range
+// (map/networkTiles.ts, lib/config.ts's NEARBY_TRAILS_TILES_KEY), and this
+// module's mechanism carries ONE artifact: the corridor-view sketch the
+// opening camera draws (#1135), which is still one file, still hashed, still
+// stored. The header is kept as written because every argument in it - the
+// licence, the hash, the silent failure, the cache that is not coverage -
+// governs the sketch exactly as it governed the lines; read "the artifact"
+// as the sketch. The one thing this module still does for the old whole-file
+// copy is delete it (forgetNearbyTrails).
+//
 // WHAT ARRIVES HERE
 //
 // One GeoJSON artifact of somebody else's trails - NYS OPRHP's, NYNJTC's,
@@ -93,34 +107,31 @@
 // captive portal that says "online" while carrying nothing must not silence
 // this module for the rest of the day.
 
-import { get, set } from 'idb-keyval'
-import {
-  dataUrl,
-  DATA_CONFIGURED,
-  NEARBY_TRAILS_KEY,
-  NETWORK_OVERVIEW_KEY,
-} from './config'
-import { publishedHash } from './dataManifest'
+import { del, get, set } from 'idb-keyval'
+import { dataUrl, DATA_CONFIGURED, NETWORK_OVERVIEW_KEY } from './config'
+import { oversized, warnOversized } from './artifactBudget'
+import { publishedSnapshot } from './dataManifest'
 import { sha256Of } from './trailData'
 
 /**
- * The one record this module keeps per artifact: the bytes and the published
- * hash they matched when they were fetched (#197). The hash is stored so a
- * later launch can answer "is this still what is published?" with a string
- * comparison against the manifest - the bytes are NOT re-hashed on read,
- * which is the standard lib/trailData.ts already sets for its own stored
- * blobs: verification happens where bytes cross the network.
+ * Where releases before #1257 kept the whole network artifact. Nothing is
+ * written here any more and nothing reads it; the constant survives so
+ * {@link forgetNearbyTrails} can delete what an earlier release left, and so
+ * no later record can be given this name by accident and inherit a stale copy.
  */
 export const NEARBY_TRAILS_STORE_KEY = 'ourhike:nearby-trails'
 
 /**
- * The corridor-view sketch of the same network (#1135), under the same
- * mechanism because it has the same needs for the same reasons: verified
- * against the manifest where bytes cross the network, served from the store
- * with or without signal, and re-fetched only when a publish moves the hash.
- * It is the OPENING view's trail lines - the one range of zooms where the
- * artifact above does not draw - so an offline launch that lost it would open
- * on an A.T.-only map that the last online launch did not show.
+ * The one record this module keeps: the corridor-view sketch's bytes and the
+ * published hash they matched when they were fetched (#197, #1135). The hash
+ * is stored so a later launch can answer "is this still what is published?"
+ * with a string comparison against the manifest - the bytes are NOT re-hashed
+ * on read, which is the standard lib/trailData.ts already sets for its own
+ * stored blobs: verification happens where bytes cross the network.
+ *
+ * The sketch is the OPENING view's trail lines - the one range of zooms the
+ * tiles above the seam do not cover - so an offline launch that lost it would
+ * open on an A.T.-only map that the last online launch did not show.
  */
 export const NETWORK_OVERVIEW_STORE_KEY = 'ourhike:network-overview'
 
@@ -156,13 +167,32 @@ export type NearbyTrailsAnswer = {
   revalidated: boolean
 }
 
-async function readStored(storeKey: string): Promise<StoredNearbyTrails | null> {
+async function readStored(
+  key: string,
+  storeKey: string,
+): Promise<StoredNearbyTrails | null> {
   try {
     const record = (await get(storeKey)) as StoredNearbyTrails | undefined
     // Shape-checked because this store is written by every past version of
     // this module there will ever be: a record that is not exactly a blob and
     // a hash is treated as absent, and the next verified fetch rewrites it.
     if (record?.bytes instanceof Blob && typeof record.hash === 'string') {
+      // Weighed on the way out too (#1254), because a launch that had no
+      // budget to refuse it may have stored a copy this phone cannot hold -
+      // the 228,820,578-byte nearby_trails.geojson of 2026-09-07, verified
+      // and written by every phone that fetched it before this line existed.
+      // Served, it crashes the map exactly as the fetch did; kept, it is a
+      // quarter of a gigabyte nothing will ever draw. So it goes, and the
+      // next verified fetch that fits rewrites the slot.
+      if (oversized(record.bytes.size)) {
+        warnOversized(key, record.bytes.size, 'store')
+        try {
+          await del(storeKey)
+        } catch {
+          // A store that will not delete is the no-store case too.
+        }
+        return null
+      }
       return record
     }
   } catch {
@@ -177,28 +207,32 @@ function urlFor(stored: StoredNearbyTrails, revalidated: boolean): NearbyTrailsA
 }
 
 /**
- * Loads the nearby-trail network: from the store when there is no signal,
- * and against the published manifest when there is - re-fetching the
- * artifact only when the manifest names a hash the stored copy does not
- * carry. See the module header for what is stored, what stale means, and
- * what `revalidated` promises. Looping on a failure that never resolves is
- * the CALLER's problem to prevent, and lib/useTrailData.ts does - one
- * attempt per online spell - which is what frees every failure path here to
- * answer `revalidated: false` honestly.
+ * Deletes the whole-file copy of the network that releases before #1257
+ * stored under {@link NEARBY_TRAILS_STORE_KEY}. The lines it held are tiles
+ * now (map/networkTiles.ts) and nothing draws from this record - but a phone
+ * that fetched 2026-09-07's 228.8 MB artifact before #1254's budget existed
+ * is still holding it, and IndexedDB gives nothing back unasked. Called once
+ * per launch by lib/useTrailData.ts; deleting nothing is free.
  */
-export async function loadNearbyTrails(
-  online: boolean,
-  signal?: AbortSignal,
-): Promise<NearbyTrailsAnswer | null> {
-  return loadVerifiedArtifact(NEARBY_TRAILS_KEY, NEARBY_TRAILS_STORE_KEY, online, signal)
+export async function forgetNearbyTrails(): Promise<void> {
+  try {
+    await del(NEARBY_TRAILS_STORE_KEY)
+  } catch {
+    // The no-store case - private mode, a browser refusing IndexedDB - is the
+    // one where there is nothing to forget, and it is answered like every
+    // read here: as nothing there.
+  }
 }
 
 /**
- * Loads the network's corridor-view sketch (#1135), under exactly the
- * contract above - same store shape, same manifest question, same honesty
- * about `revalidated` - because it is the same kind of thing: somebody
- * else's trails, verified where they crossed the network, drawn from the
- * store when there is no signal.
+ * Loads the network's corridor-view sketch (#1135): from the store when there
+ * is no signal, and against the published manifest when there is -
+ * re-fetching the artifact only when the manifest names a hash the stored
+ * copy does not carry. See the module header for what is stored, what stale
+ * means, and what `revalidated` promises. Looping on a failure that never
+ * resolves is the CALLER's problem to prevent, and lib/useTrailData.ts does -
+ * one attempt per online spell - which is what frees every failure path here
+ * to answer `revalidated: false` honestly.
  */
 export async function loadNetworkOverview(
   online: boolean,
@@ -220,13 +254,14 @@ async function loadVerifiedArtifact(
 ): Promise<NearbyTrailsAnswer | null> {
   if (!DATA_CONFIGURED) return null
 
-  const stored = await readStored(storeKey)
+  const stored = await readStored(key, storeKey)
   if (!online) {
     return stored === null ? null : urlFor(stored, false)
   }
 
   try {
-    const expected = await publishedHash(key, { signal })
+    const published = await publishedSnapshot({ signal })
+    const expected = published.hashes[key] ?? null
     if (expected === null) {
       // No manifest, or a manifest naming no hash. Fresh bytes would be
       // unverifiable and are not drawn (the header's #197 stance) - but the
@@ -241,6 +276,18 @@ async function loadVerifiedArtifact(
       return urlFor(stored, true)
     }
 
+    // Weighed before it is fetched (#1254): the manifest says what the
+    // artifact decodes to, and one this phone cannot hold is not fetched,
+    // hashed, stored or drawn. The stored copy - which passed the same
+    // budget on its way out of the store - stands, unrevalidated, exactly as
+    // it does when a refresh fails: the asking resumes when the phone next
+    // comes online, and a smaller publish is what answers it.
+    const decodedBytes = published.decodedSizes[key] ?? null
+    if (oversized(decodedBytes)) {
+      warnOversized(key, decodedBytes, 'manifest')
+      return stored === null ? null : urlFor(stored, false)
+    }
+
     const response = await fetch(dataUrl(key), { signal })
     // A release exported before this artifact existed, or a bucket a publish
     // has not reached. Not a failure - see the header. The stored copy, where
@@ -251,6 +298,13 @@ async function loadVerifiedArtifact(
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
+    // The manifest can predate `size_bytes`, or be wrong about it, and the
+    // bytes in hand are the backstop: over the budget they are not hashed,
+    // not stored and not drawn, for the reason the check above gives.
+    if (oversized(bytes.byteLength)) {
+      warnOversized(key, bytes.byteLength, 'response')
+      return stored === null ? null : urlFor(stored, false)
+    }
     if ((await sha256Of(bytes)) !== expected) {
       // Bytes that are not what was published are not drawn - and not
       // stored. The last verified copy stands, unrevalidated.

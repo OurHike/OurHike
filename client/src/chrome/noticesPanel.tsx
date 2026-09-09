@@ -264,9 +264,9 @@ export function useNoticesPanel({
    * ONE BANNER ACROSS ORGANIZATIONS rather than one each. features/
    * ORG_NOTICES.md §5 calls the banner "a scarce surface rather than a record"
    * and §9 leaves open "how many notice sources the banner can carry before it
-   * stops being a warning and becomes a feed". A second banner is a third of
-   * the chrome the wrong-way alert competes with, so the count merges and the
-   * list keeps every row.
+   * stops being a warning and becomes a feed". A second banner is more chrome
+   * this screen doesn't have room for, so the count merges and the list keeps
+   * every row.
    */
   const newNotices = useMemo(
     // silenceVersion is not read inside - it is the dependency that re-runs

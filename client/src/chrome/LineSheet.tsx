@@ -47,14 +47,43 @@ export function LineSheet({ detail, onClose, onAddToDayHike }: LineSheetProps) {
   return (
     <div className="closure-sheet" role="dialog" aria-label="Trail line">
       <div className="legend__head">
-        <h2 className="legend__title">{detail.heading}</h2>
+        <h2 className="legend__title">
+          {/* The trail's own mark beside the heading when the heading IS the
+              trail - the through-route, whose name is not repeated below.
+              Decorative: the name is the words, the mark is the same fact
+              drawn, so a screen reader hears it once. */}
+          {detail.trailMark !== null && detail.name === null && (
+            <img
+              className="line-sheet__trail-mark"
+              src={detail.trailMark}
+              alt=""
+              aria-hidden="true"
+            />
+          )}
+          {detail.heading}
+        </h2>
         <button type="button" className="legend__close" onClick={onClose}>
           <span className="visually-hidden">Close</span>
           <span aria-hidden="true">×</span>
         </button>
       </div>
 
-      {detail.name !== null && <p className="closure-sheet__status">{detail.name}</p>}
+      {/* The name, and beside it the trail's mark where lib/trails.ts knows
+          one (#1288 - the Long Path's, from NYNJTC). A line with no known
+          mark gets no mark, not a placeholder. */}
+      {detail.name !== null && (
+        <p className="closure-sheet__status">
+          {detail.trailMark !== null && (
+            <img
+              className="line-sheet__trail-mark"
+              src={detail.trailMark}
+              alt=""
+              aria-hidden="true"
+            />
+          )}
+          {detail.name}
+        </p>
+      )}
 
       {detail.destinationLine !== null && (
         <p className="closure-sheet__range">{detail.destinationLine}</p>

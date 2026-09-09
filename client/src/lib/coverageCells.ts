@@ -37,7 +37,13 @@
 
 import { get, set } from 'idb-keyval'
 import { useEffect, useState } from 'react'
-import { BASEMAP_CELLS_KEY, DATA_CONFIGURED, dataUrl } from './config'
+import {
+  BASEMAP_CELLS_KEY,
+  DATA_CONFIGURED,
+  dataUrl,
+  NEARBY_TRAILS_CELLS_KEY,
+  TRAIL_GRAPH_CELLS_KEY,
+} from './config'
 import { publishedHash } from './dataManifest'
 import { sha256Of } from './trailData'
 import { useOnline } from './useOnline'
@@ -70,18 +76,103 @@ export interface CellIndex {
   cells: readonly CoverageCell[]
 }
 
-/** Where a cell's archive lives in IndexedDB. One key per cell, under the
- *  same suffix scheme every package's download records derive from. */
-export const CELL_PACKAGE_PREFIX = 'ourhike:basemap-cell:'
-
-export function cellPackageKey(name: string): string {
-  return `${CELL_PACKAGE_PREFIX}${name}`
+/**
+ * One family of cells: everything about a cut that is a NAME rather than
+ * geometry (#1257 stage 2). The geometry below is family-neutral - every
+ * family is cut on the same graticule by the same cutter - but each family
+ * has its own published index, its own store record for it, and its own
+ * IndexedDB keys for the archives, because two families' cells share a cell
+ * name (`n41w075` is the same ground whichever sheet holds it) and a single
+ * key space would let the basemap's Harriman overwrite the network's.
+ */
+export interface CellFamily {
+  /** The published index's bucket key (lib/config.ts). */
+  indexKey: string
+  /** Where a cell's archive lives in IndexedDB: `${packagePrefix}${name}`,
+   *  under the same suffix scheme every package's download records derive
+   *  from. */
+  packagePrefix: string
+  /** The shared context archive's key. Fetched with the first piece and
+   *  never offered as a decision - it is what makes a piece legible when a
+   *  hiker zooms out past it (OFFLINE_COVERAGE.md §6). */
+  contextPackageKey: string
+  /** The last verified copy of the index, whole, so a phone with a stretch
+   *  on it can place itself with no signal. */
+  indexStoreKey: string
 }
 
-/** The shared context archive's key. Fetched with the first piece and never
- *  offered as a decision - it is what makes a piece legible when a hiker zooms
- *  out past it (OFFLINE_COVERAGE.md §6). */
-export const CONTEXT_PACKAGE_KEY = 'ourhike:basemap-context'
+/** The hiking sheet's cells - the first family, and the default everywhere a
+ *  family is not named, so the code written before there were two reads as
+ *  it did. */
+export const BASEMAP_CELLS: CellFamily = {
+  indexKey: BASEMAP_CELLS_KEY,
+  packagePrefix: 'ourhike:basemap-cell:',
+  contextPackageKey: 'ourhike:basemap-context',
+  indexStoreKey: 'ourhike:basemap-cells-index',
+}
+
+/** The other organizations' trail lines as tiles, cut into the same cells
+ *  (#1257 stage 2, config.ts's NEARBY_TRAILS_CELLS_KEY) - what
+ *  map/networkTiles.ts asks before the bucket. Its index carries no context
+ *  today (the cut is made one below the tiles' minimum zoom), and nothing
+ *  here assumes that: a context published later is read like the basemap's. */
+export const NETWORK_CELLS: CellFamily = {
+  indexKey: NEARBY_TRAILS_CELLS_KEY,
+  packagePrefix: 'ourhike:network-cell:',
+  contextPackageKey: 'ourhike:network-context',
+  indexStoreKey: 'ourhike:network-cells-index',
+}
+
+/** The junction graph in the same cells (#1257 stage 3, config.ts's
+ *  TRAIL_GRAPH_CELLS_KEY) - JSON shards a phone parses rather than archives it
+ *  reads by range, so the two package keys here name nothing: a graph cell is
+ *  kept by lib/trailGraphStore.ts under its own keys, never by
+ *  lib/archiveStore.ts. The index, the geometry and `cellsAlong` are the same
+ *  as every other family's, which is the point of it being one. */
+export const GRAPH_CELLS: CellFamily = {
+  indexKey: TRAIL_GRAPH_CELLS_KEY,
+  packagePrefix: 'ourhike:graph-cell:',
+  contextPackageKey: 'ourhike:graph-context',
+  indexStoreKey: 'ourhike:graph-cells-index',
+}
+
+/** The basemap family's prefix, kept under its old name for the callers and
+ *  tests written when it was the only one. */
+export const CELL_PACKAGE_PREFIX = BASEMAP_CELLS.packagePrefix
+
+export function cellPackageKey(name: string, family: CellFamily = BASEMAP_CELLS): string {
+  return `${family.packagePrefix}${name}`
+}
+
+/** The basemap family's context key, likewise. */
+export const CONTEXT_PACKAGE_KEY = BASEMAP_CELLS.contextPackageKey
+
+/**
+ * Every cell and the shared context as download requests
+ * (lib/useArchiveDownload.ts's shape), so a shell can register a whole family
+ * the moment its index is known and read the markers on mount like every
+ * sheet's. Empty for no index, which is every phone on a release without
+ * that family's cells. Registering starts nothing.
+ */
+export function cellDownloadRequests(
+  index: CellIndex | null,
+  family: CellFamily,
+): { packageKey: string; url: string; artifactKey: string }[] {
+  if (index === null) return []
+  const requests = index.cells.map((cell) => ({
+    packageKey: cellPackageKey(cell.name, family),
+    url: dataUrl(cell.key),
+    artifactKey: cell.key,
+  }))
+  if (index.context !== null) {
+    requests.push({
+      packageKey: family.contextPackageKey,
+      url: dataUrl(index.context),
+      artifactKey: index.context,
+    })
+  }
+  return requests
+}
 
 /**
  * How far past the hike's own ground a stretch reaches, in kilometres - the
@@ -283,10 +374,49 @@ export function priceStretch(
   context: string | null,
   held: (packageKey: string) => boolean,
   sizes: PublishedSizes,
+  family: CellFamily = BASEMAP_CELLS,
 ): StretchPrice {
-  const missingCells = cells.filter((cell) => !held(cellPackageKey(cell.name)))
-  const artifacts = missingCells.map((cell) => cell.key)
-  if (context !== null && !held(CONTEXT_PACKAGE_KEY)) artifacts.push(context)
+  return priceStretches([{ cells, context, family }], held, sizes)
+}
+
+/** One family's share of a stretch: the cells under the hike from ITS index,
+ *  and its context, if the cut published one. */
+export interface StretchPart {
+  cells: readonly CoverageCell[]
+  context: string | null
+  family: CellFamily
+}
+
+/**
+ * One price for a stretch that is several families of cells (#1257 stage 2:
+ * the basemap's and the network's, taken as one decision).
+ *
+ * A PIECE IS A SQUARE OF GROUND, not an archive. Two families' cells over the
+ * same square are one piece to a hiker - "3 pieces" is three squares of the
+ * trail, whatever is published for each - so `pieces` counts distinct cell
+ * names across the parts, and a piece is `missing` while ANY family's cell for
+ * it is. The bytes are every missing archive across every part, contexts
+ * included, on priceStretch's all-or-nothing rule: one unpriced archive
+ * anywhere and the total is withheld rather than understated.
+ */
+export function priceStretches(
+  parts: readonly StretchPart[],
+  held: (packageKey: string) => boolean,
+  sizes: PublishedSizes,
+): StretchPrice {
+  const pieces = new Set<string>()
+  const missing = new Set<string>()
+  const artifacts: string[] = []
+  for (const { cells, context, family } of parts) {
+    for (const cell of cells) {
+      pieces.add(cell.name)
+      if (!held(cellPackageKey(cell.name, family))) {
+        missing.add(cell.name)
+        artifacts.push(cell.key)
+      }
+    }
+    if (context !== null && !held(family.contextPackageKey)) artifacts.push(context)
+  }
 
   let bytes: number | null = 0
   for (const artifact of artifacts) {
@@ -298,7 +428,7 @@ export function priceStretch(
     bytes += size
   }
 
-  return { pieces: cells.length, missing: missingCells.length, bytes }
+  return { pieces: pieces.size, missing: missing.size, bytes }
 }
 
 /** One straight edge of the downloaded area, as the two ends of a line. */
@@ -356,9 +486,8 @@ export function seamEdges(
   return edges
 }
 
-/** The last verified copy of the index, whole, so a phone with a stretch on
- *  it can place itself with no signal. */
-export const CELL_INDEX_STORE_KEY = 'ourhike:basemap-cells-index'
+/** The basemap family's index record, under its old name. */
+export const CELL_INDEX_STORE_KEY = BASEMAP_CELLS.indexStoreKey
 
 interface StoredCellIndex {
   /** The published document as it arrived, re-parsed on every read - a value
@@ -369,9 +498,11 @@ interface StoredCellIndex {
   hash: string | null
 }
 
-export async function readStoredCellIndex(): Promise<CellIndex | null> {
+export async function readStoredCellIndex(
+  family: CellFamily = BASEMAP_CELLS,
+): Promise<CellIndex | null> {
   try {
-    const stored = (await get(CELL_INDEX_STORE_KEY)) as StoredCellIndex | undefined
+    const stored = (await get(family.indexStoreKey)) as StoredCellIndex | undefined
     if (stored === undefined || stored === null) return null
     return parseCellIndex(stored.index)
   } catch {
@@ -393,32 +524,66 @@ export async function readStoredCellIndex(): Promise<CellIndex | null> {
  */
 export async function fetchCellIndex({
   signal,
-}: { signal?: AbortSignal } = {}): Promise<CellIndex | null> {
-  if (!DATA_CONFIGURED) return null
+  family = BASEMAP_CELLS,
+}: { signal?: AbortSignal; family?: CellFamily } = {}): Promise<CellIndex | null> {
+  return (await fetchCellIndexOutcome({ signal, family })).index
+}
+
+/**
+ * The same fetch, saying WHY there is no index when there is none: whether
+ * the bucket answered (a release without this family's cells, or bytes that
+ * are not what was published - settled, nothing on this phone changes it) or
+ * the request never completed (no signal, a refused origin - the one absence
+ * a connection cures). The junction graph's door needs the difference
+ * (lib/useTrailGraph.ts): "needs a connection" over a release that has no
+ * cells is #1048's bug one surface over.
+ */
+export async function fetchCellIndexOutcome({
+  signal,
+  family = BASEMAP_CELLS,
+}: { signal?: AbortSignal; family?: CellFamily } = {}): Promise<{
+  index: CellIndex | null
+  unreachable: boolean
+}> {
+  if (!DATA_CONFIGURED) return { index: null, unreachable: false }
 
   try {
-    const expected = await publishedHash(BASEMAP_CELLS_KEY, { signal })
-    const response = await fetch(dataUrl(BASEMAP_CELLS_KEY), { signal })
-    if (!response.ok) return null
+    const expected = await publishedHash(family.indexKey, { signal })
+    const response = await fetch(dataUrl(family.indexKey), { signal })
+    if (!response.ok) return { index: null, unreachable: false }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
-    if (expected !== null && (await sha256Of(bytes)) !== expected) return null
+    if (expected !== null && (await sha256Of(bytes)) !== expected) {
+      return { index: null, unreachable: false }
+    }
 
     const raw: unknown = JSON.parse(new TextDecoder().decode(bytes))
     const index = parseCellIndex(raw)
-    if (index === null) return null
+    if (index === null) return { index: null, unreachable: false }
 
-    await set(CELL_INDEX_STORE_KEY, {
+    await set(family.indexStoreKey, {
       index: raw,
       hash: expected,
     } satisfies StoredCellIndex)
-    return index
+    return { index, unreachable: false }
   } catch (error) {
     // An abort is the caller unmounting, not a missing index - the same
     // matching, and the same reason for it, as lib/dataManifest.ts.
     if ((error as { name?: string } | null)?.name === 'AbortError') throw error
-    return null
+    return { index: null, unreachable: true }
   }
+}
+
+/** What {@link useCellIndexState} knows about one family's index. */
+export interface CellIndexState {
+  index: CellIndex | null
+  /** Whether the store has answered and, with signal, the bucket has too -
+   *  before this, a null index is "not asked yet", not "there is none". */
+  settled: boolean
+  /** Whether the reason there is no index is one a connection would cure:
+   *  no signal, or a fetch that never completed. False for a bucket that
+   *  answered "no such index". */
+  unreachable: boolean
 }
 
 /**
@@ -429,41 +594,80 @@ export async function fetchCellIndex({
  * a launch with signal that reads the store slowly must not replace today's
  * index with last month's.
  */
-export function useCellIndex(): CellIndex | null {
+export function useCellIndex(
+  family: CellFamily = BASEMAP_CELLS,
+  ready = true,
+): CellIndex | null {
+  return useCellIndexState(family, 0, ready).index
+}
+
+/**
+ * {@link useCellIndex} with its two other answers: whether it has answered at
+ * all, and whether a connection would change the answer. `attempt` re-asks
+ * the bucket when bumped - a "Try again" control's handle.
+ */
+/**
+ * @param ready Whether the launch is past its first frame (#1302). Both the
+ *   store read and the fetch wait for it - a cell list changes nothing on
+ *   the first frame, and the fetch is followed by a SHA-256 and a parse on
+ *   the thread that frame is drawn on. `settled` stays false until then, so
+ *   nothing downstream mistakes "not asked yet" for "no cells".
+ */
+export function useCellIndexState(
+  family: CellFamily = BASEMAP_CELLS,
+  attempt = 0,
+  ready = true,
+): CellIndexState {
   const [index, setIndex] = useState<CellIndex | null>(null)
+  const [storeRead, setStoreRead] = useState(false)
+  const [fetched, setFetched] = useState<{ done: boolean; unreachable: boolean }>({
+    done: false,
+    unreachable: false,
+  })
   const online = useOnline()
 
   useEffect(() => {
+    if (!ready) return
     let wanted = true
-    void readStoredCellIndex().then((stored) => {
-      if (wanted && stored !== null) setIndex((current) => current ?? stored)
+    void readStoredCellIndex(family).then((stored) => {
+      if (!wanted) return
+      if (stored !== null) setIndex((current) => current ?? stored)
+      setStoreRead(true)
     })
     return () => {
       wanted = false
     }
-  }, [])
+  }, [family, ready])
 
   useEffect(() => {
     // Never with no signal, and never on a build with no bucket - the same
     // gate lib/usePublishedSizes.ts keeps, for the same reason: a phone
     // offline at a trailhead must reach the network zero times.
-    if (!DATA_CONFIGURED || !online) return
+    if (!DATA_CONFIGURED || !online || !ready) return
 
     const controller = new AbortController()
     let wanted = true
-    fetchCellIndex({ signal: controller.signal })
-      .then((fetched) => {
-        if (wanted && fetched !== null) setIndex(fetched)
+    setFetched({ done: false, unreachable: false })
+    fetchCellIndexOutcome({ signal: controller.signal, family })
+      .then((outcome) => {
+        if (!wanted) return
+        if (outcome.index !== null) setIndex(outcome.index)
+        setFetched({ done: true, unreachable: outcome.unreachable })
       })
       .catch(() => {
-        // The abort path; fetchCellIndex resolves null on everything else.
+        // The abort path; fetchCellIndexOutcome answers everything else.
       })
 
     return () => {
       wanted = false
       controller.abort()
     }
-  }, [online])
+  }, [online, family, attempt, ready])
 
-  return index
+  // Offline the store is the whole answer; with signal the bucket's word is
+  // waited for, so a phone with an old index stored is not told "no cells"
+  // in the seconds before this release's list arrives.
+  const settled = storeRead && (!online || !DATA_CONFIGURED || fetched.done)
+  const unreachable = index === null && settled && (!online || fetched.unreachable)
+  return { index, settled, unreachable }
 }

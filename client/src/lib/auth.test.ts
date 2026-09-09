@@ -73,7 +73,7 @@ describe('redirectUrl', () => {
 
 describe('with no project configured', () => {
   beforeEach(() => {
-    mockedGetClient.mockReturnValue(null)
+    mockedGetClient.mockResolvedValue(null)
   })
 
   it.each([
@@ -279,7 +279,7 @@ describe('currentAccount', () => {
 })
 
 describe('subscribeToAccount', () => {
-  it('reports the account whenever the session changes', () => {
+  it('reports the account whenever the session changes', async () => {
     let emit: ((event: string, session: Session | null) => void) | undefined
     const unsubscribe = vi.fn()
     mockedGetClient.mockReturnValue(
@@ -295,6 +295,8 @@ describe('subscribeToAccount', () => {
     const seen: Array<{ email: string } | null> = []
 
     const stop = subscribeToAccount((account) => seen.push(account))
+    // The client is awaited before the listener is attached (#1302).
+    await new Promise((resolve) => setTimeout(resolve, 0))
     emit?.('SIGNED_IN', sessionWith('hiker@example.com'))
     emit?.('SIGNED_OUT', null)
 

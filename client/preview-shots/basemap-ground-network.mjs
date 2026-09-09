@@ -20,14 +20,19 @@
 // double-click would zoom around a pixel, and which piece of Virginia that
 // pixel is over depends on the viewport.
 //
-// WHAT THIS SHOT SHOWS, AND WHERE IT WILL BE THIN. The basemap tiles in CI
-// are real - the style fetches OpenFreeMap, so the roads, tracks and OSM
-// footpaths this change re-draws are all genuinely on the canvas. The A.T.
-// itself is NOT: the preview build carries an empty VITE_DATA_BASE_URL
-// (#1024), so the blaze line that the ground network is supposed to sit
-// behind is missing from the comparison. Read this shot for the road weight
-// and the ink; the trail-against-road half is in the PR body's renders, which
-// were shot against a build that has both.
+// WHAT THIS SHOT SHOWS, AND WHERE IT WAS THIN. The basemap tiles in CI are
+// real - the style fetches OpenFreeMap, so the roads, tracks and OSM
+// footpaths this change re-draws are all genuinely on the canvas. When this
+// was written the A.T. itself was NOT, and the reason recorded here - "the
+// preview build carries an empty VITE_DATA_BASE_URL (#1024)" - was wrong:
+// the camera's own origin was failing the bucket's CORS allowlist, and #1096
+// fixed the camera (2026-08-27; .claude/skills/pr-screenshot/SKILL.md has
+// the measurement). The blaze line comes from the release's trails.geojson,
+// which arrives now - measured 2026-09-08 on #1268's preview, where the
+// cased white line runs through the town and over the bridge in this very
+// frame. If a later frame loses it, that is a finding about the camera's
+// data path and not about the ground network. Read this shot for the road
+// weight and the ink either way.
 export const caption =
   'The live sheet at Harpers Ferry — roads as single strokes, other trails quieted (#1074)'
 export const alt =

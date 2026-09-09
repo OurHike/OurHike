@@ -106,7 +106,8 @@ describe('formatDistance', () => {
 
 describe('formatShortDistance', () => {
   it('reads in feet or metres, never in miles', () => {
-    // The wrong-way cue: how far off the blazes somebody has wandered.
+    // A short distance, formatted for display: how far off-trail a hiker
+    // might have wandered.
     expect(formatShortDistance(240, 'imperial')).toBe('240 ft')
     expect(formatShortDistance(240, 'metric')).toBe('73 m')
   })

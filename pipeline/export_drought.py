@@ -66,6 +66,7 @@ from shapely.geometry import MultiLineString, mapping, shape
 from shapely.ops import unary_union
 
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 RAW_DIR = ROOT / "data" / "raw" / "drought"
@@ -361,7 +362,7 @@ def write_manifest(stamp: date, generated_at: datetime, count: int) -> dict:
     manifest = {
         "artifacts": {
             PAYLOAD: {
-                "path": str(OUT_PATH),
+                "path": to_manifest_path(OUT_PATH),
                 "sha256": sha256_file(OUT_PATH),
                 "count": count,
                 "generated_at": _stamp_utc(generated_at),

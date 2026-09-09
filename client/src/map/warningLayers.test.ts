@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 // Explicitly imported rather than used as a global: tsconfig.app.json keeps
 // node out of `types` so browser code cannot reach for it and still typecheck.
-// Same reason lib/push.test.ts asks for it by name.
 import { cwd } from 'node:process'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_LAYER_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
@@ -45,12 +44,14 @@ describe('the layer', () => {
     expect(buildWarningLayer().layout).not.toHaveProperty('icon-ignore-placement')
   })
 
-  it('draws at every zoom, unlike the waypoints', () => {
-    // The waypoints start at z9 because 800 pins on the whole corridor is a
-    // texture. Serious warnings are moderator-escalated and rare, and zoomed
-    // out to plan a week is exactly when someone wants to see where they are.
-    expect(buildWarningLayer()).not.toHaveProperty('minzoom')
-    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(0)
+  it('starts at the seam, like the waypoints (#1292)', () => {
+    // It drew at every zoom until 2026-09-08 - "zoomed out to plan a week is
+    // exactly when someone wants to see where they are" - and the
+    // maintainer's call that the opening camera shows trail lines only
+    // reversed that. Below the seam a 44 px pin covered a hundred trail miles
+    // and said "somewhere here"; the route banner still counts warnings at
+    // every zoom. The module header carries the safety-path note.
+    expect(buildWarningLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
   it('holds its size instead of shrinking toward a minzoom', () => {
@@ -206,14 +207,13 @@ describe('pushing warnings onto a live map', () => {
 })
 
 describe('the rule that this never pushes', () => {
-  it('reaches nothing in lib/push.ts, at the level of the source text', () => {
-    // lib/push.ts makes the wrong-way alert the only notification this app
-    // sends and push.test.ts scans the tree to keep that true. This is the
-    // module that finally mounts the warning path, so it is the one most
-    // likely to become the exception - HIKER_SAFETY.md §1 is explicit that a
-    // warning about a named person arriving as a phone notification is a
-    // different and much worse thing than the same words on a map somebody
-    // chose to open.
+  it('imports nothing from a push module, at the level of the source text', () => {
+    // OurHike sends no push notifications at all, and this test reads the
+    // source of the module that finally mounts the warning path to keep it
+    // that way - it is the one most likely to become the exception.
+    // HIKER_SAFETY.md §1 is explicit that a warning about a named person
+    // arriving as a phone notification is a different and much worse thing
+    // than the same words on a map somebody chose to open.
     //
     // Read as text rather than asserted through behaviour because that is the
     // only way to catch the import before it has a call site.

@@ -31,6 +31,9 @@ class DeletionReceipt(BaseModel):
 
     trips_deleted: int
     day_hikes_deleted: int
+    #: The long hikes that grouped them (#1317). The pointer at whichever one
+    #: was leading has no count - see `delete_account`.
+    long_hikes_deleted: int
     planned_hikes_deleted: int
     hikes_deleted: int
     preferences_deleted: int

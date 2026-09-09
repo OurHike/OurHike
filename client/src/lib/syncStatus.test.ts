@@ -31,6 +31,11 @@ const CLEAN_TRIPS: TripSyncState = {
   since: null,
   hikeDirty: false,
   hikeSeen: null,
+  hikesDirty: [],
+  hikesDeleted: [],
+  hikesSeen: {},
+  activeHikeDirty: false,
+  activeHikeSeen: null,
 }
 const CLEAN_PREFS: PreferencesSyncState = { dirty: false, syncedAt: null }
 

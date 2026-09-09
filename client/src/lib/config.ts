@@ -9,6 +9,20 @@
 // Keys are flat at the bucket root and must match publish.py's artifact
 // names exactly - a mismatch here is a 404 on a mountain, which is why the
 // background tier names are spelled the same way in both places.
+//
+// EVERY `*_KEY` BELOW CARRIES AN `@release` LINE saying `required` or
+// `optional`, and `expected_client_keys` (pipeline/verify_release.py) RAISES
+// on one that does not. That is the point of putting the declaration here
+// rather than in the pipeline: this file is where an artifact is added, so
+// this is the only home where adding one cannot skip the question.
+//
+// It answers "must a release built from THIS CHECKOUT carry it", which is not
+// the same question as "does the app survive its absence" - the app survives
+// every one of them, deliberately, because a hiker on an older release must
+// not be shown an error (lib/trailData.ts's fetchOptionalArtifact). `optional`
+// here means publish.py can decline to write it for a reason outside the code:
+// a steward's `reaches_hikers` in sources.json, or a sheet whose cut has not
+// run. Name that reason on the line.
 
 import type { DetailLevel } from './downloadDetail'
 
@@ -57,12 +71,24 @@ export function archiveKey(level: DetailLevel): string {
  * A 404 is an ordinary answer - a release cut before the cells existed, or a
  * bucket a publish has not reached (production holds none while the cells
  * are UA-only) - and reads as "no pieces on offer": the whole sheet stays one
- * tap, and nothing the app had before is lost. Deliberately NOT in
- * `expected_client_keys`'s contract (pipeline/verify_release.py), for that
- * reason: an optional artifact must not fail the release gate by its absence.
+ * tap, and nothing the app had before is lost. It used to be held out of
+ * `expected_client_keys`'s contract (pipeline/verify_release.py) for that
+ * reason - an optional artifact must not fail the release gate by its absence.
+ * Since #1048 it is IN the contract and declared optional there, which buys
+ * the same immunity and says so out loud: absence is now a named SKIPPED in
+ * the verdict rather than a key the gate never mentions.
+ *
+ * @release optional - published by whichever sheet's cut ran
+ * (publish.py's CELL_FAMILIES loop), so a release holding none is the
+ * partial-checkout posture that loop is written for rather than a gap.
  */
 export const BASEMAP_CELLS_KEY = 'at_basemap_cells.json'
 
+/**
+ * @release required - publish.py:527 writes it from trails_manifest.json with
+ * nothing in front of it, and it is the one key the client fetches through
+ * `fetchArtifact` ("an artifact this release must have", lib/trailData.ts:724).
+ */
 export const TRAILS_KEY = 'trails.geojson'
 
 /**
@@ -74,6 +100,8 @@ export const TRAILS_KEY = 'trails.geojson'
  * Optional the way spurs.json is: a release exported before it existed has
  * none, and the phone measures the line itself as it always did - with the
  * two-axis anchors lib/route.ts keeps for exactly that release.
+ *
+ * @release required - publish.py:553, ungated, beside the file it measures.
  */
 export const TRAIL_MILES_KEY = 'trail_miles.json'
 
@@ -98,42 +126,143 @@ export const TRAIL_MILES_KEY = 'trail_miles.json'
  * Absent from a release exported before it existed, which reads as "no
  * overview" rather than as a failure - the same rule spurs.json and
  * elevation_profile.json already follow.
+ *
+ * @release required - publish.py:537 writes it whenever the trails manifest
+ * carries an overview, with no gate in front. Absent from a release built
+ * here, it is the promotion gap #1048 describes rather than an old release.
  */
 export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
 
 /**
  * The trail lines other organizations maintain - NYS OPRHP's, NYNJTC's,
  * Mohonk Preserve's and NYS DEC's (#950, #992, #1019,
- * pipeline/export_nearby_trails.py, features/NEARBY_TRAILS.md).
+ * pipeline/export_nearby_trails.py, features/NEARBY_TRAILS.md) - as vector
+ * tiles (#1257, export_nearby_trails.py's write_tiles): what map/style.ts's
+ * NEARBY_TRAILS_SOURCE_ID draws above the pin seam, through
+ * map/networkTiles.ts.
  *
- * ITS OWN ARTIFACT BECAUSE OF A LICENCE, not because of its size. Five
+ * THEIR OWN ARTIFACT BECAUSE OF A LICENCE, not because of their size. Five
  * stewards, three different bases: ATC's centerline ships on recorded
  * permission, NYS OPRHP's on their own published terms (reuse permitted,
  * attribution REQUIRED - see map/credits.ts), and NYNJTC's, Mohonk Preserve's
  * and NYS DEC's on the maintainer's authorisation, since none of the three
  * states any terms at all. Keeping these lines out of `trails.geojson` is what
  * lets any one of those be held without touching the others, which is what
- * `reaches_hikers` exists to make possible per source.
+ * `reaches_hikers` exists to make possible per source. Both outstanding
+ * licences resolved on 2026-08-24.
  *
- * Both outstanding licences resolved on 2026-08-24 and this key publishes. A
- * 404 is still an ordinary answer rather than a failure - a release exported
- * before the artifact existed, or a bucket a publish has not reached yet - and
- * lib/nearbyTrailData.ts reads it as "no nearby trails", the same reading
- * spurs.json and trails_overview.geojson get.
+ * THE FILE THIS IS CUT FROM IS NO LONGER A KEY HERE. `nearby_trails.geojson`
+ * was the phone's artifact until 2026-09-07, when it was promoted at
+ * 228,820,578 bytes with nationwide USFS trails in it (#1231) and every phone
+ * that took it whole crashed its map (#1254). It stays published - it is what
+ * these tiles are cut from, and pipeline/build_trail_graph.py and
+ * fetch_trail_water.py read it - but no phone on this build asks for it, and
+ * a key nothing fetches must not be declared here: verify_release.py's check
+ * 22 weighs what config.ts declares, and would keep the gate red on a file no
+ * phone parses. lib/nearbyTrailData.ts deletes the copy earlier releases
+ * stored.
+ *
+ * READ BY BYTE RANGE, NEVER WHOLE, and that is the entire reason it exists. A
+ * PMTiles archive is a header, directories and tiles; a phone reads the header
+ * and root directory once, then one leaf directory and one tile per request,
+ * each a ranged GET the bucket answers with the bytes asked for. So the
+ * 228.8 MB above becomes some kilobytes a tile, however many organizations
+ * the export grows to hold - the way the hiking sheet has shipped since it
+ * existed, and these lines never did.
+ *
+ * Measured against that day's real file: 112,378 features tiled z9-z14 in
+ * 92 s into 132,995,363 bytes and 173,209 tiles, 388 bytes of header and root
+ * directory to open. Uploaded uncompressed (pipeline/lib/content_types.py's
+ * BINARY_TYPES), because a gzipped body has no byte ranges to ask for.
+ *
+ * NOT STORED ON THE PHONE AS A WHOLE, said plainly: a tile read from the
+ * bucket lives in the browser's HTTP cache and nowhere else. What a phone
+ * keeps is the stretch it took - the 1° cells of these tiles under the hike
+ * (NEARBY_TRAILS_CELLS_KEY below, #1257 stage 2), which map/networkTiles.ts
+ * answers from before it asks the bucket. Off the stretch and with no
+ * signal, the map above the seam draws no nearby trails: the state before
+ * #1082 cached the whole file, and the state #1254's budget already left
+ * every phone in from 2026-09-07.
+ *
+ * Absent from a release exported before write_tiles existed, which reads as
+ * "no network above the seam" rather than as a failure: map/networkTiles.ts
+ * asks latest.json before it asks the bucket, answers every tile empty when
+ * the manifest names no archive, and the sketch below the seam still draws.
+ *
+ * @release optional - inside its parent's `reaches_hikers` branch in
+ * publish.py's collect_artifacts, held back and shipped as one decision with
+ * the lines it is cut from.
  */
-export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
+export const NEARBY_TRAILS_TILES_KEY = 'nearby_trails.pmtiles'
+
+/**
+ * The zoom range that archive is cut to - the one contract a tileset has that
+ * a GeoJSON does not. A vector source asked for a zoom its archive does not
+ * hold draws nothing, silently, with no error anywhere. So both ends are
+ * declared here for the source map/style.ts builds, export_nearby_trails.py
+ * declares its own pair (TILES_MIN_ZOOM, TILES_MAX_ZOOM) for the cut, and
+ * pipeline/tests/test_export_nearby_trails.py reads this file to hold the two
+ * pairs equal - the way verify_release.py reads the keys above.
+ *
+ * 9 is the pin seam (map/poiLayers.ts's POI_PIN_MIN_ZOOM), the zoom the full
+ * network's layers already start at; below it the corridor-view sketch
+ * (NETWORK_OVERVIEW_KEY) is the drawing of these trails, so tiles there would
+ * be tiles nothing asks for. 14 is where the Fine hiking sheet stops and
+ * MapLibre overzooms - a line simplified to 1 m (export_nearby_trails.py's
+ * tolerance) has nothing more to show past it.
+ */
+export const NEARBY_TRAILS_TILES_MIN_ZOOM = 9
+export const NEARBY_TRAILS_TILES_MAX_ZOOM = 14
+
+/**
+ * The same tiles cut into 1° coverage cells (#1257 stage 2): the index
+ * pipeline/cut_cells.py writes for its `nearby_trails` family, the exact
+ * shape of BASEMAP_CELLS_KEY's and read by the same lib/coverageCells.ts
+ * code, so a stretch download (screens/StretchCard.tsx) carries the network
+ * above the seam as well as the ground under it, and map/networkTiles.ts asks
+ * a held cell before it asks the bucket - the local-first order
+ * map/basemap.ts walks for the hiking sheet.
+ *
+ * No context archive, unlike the basemap's: the index's `context` is null,
+ * because z9 nationwide is 9,653,907 bytes (measured 2026-09-07) for a zoom
+ * the sketch already draws below and the cells draw above, so z9 rides in the
+ * cells and a first stretch costs nothing shared.
+ *
+ * @release optional - inside its parent's `reaches_hikers` branch in
+ * publish.py's collect_artifacts, the one gated cell family: held back and
+ * shipped as one decision with the lines its cells are cut from.
+ */
+export const NEARBY_TRAILS_CELLS_KEY = 'nearby_trails_cells.json'
 
 /**
  * The corridor-view sketch of that whole network (#1135,
  * pipeline/export_nearby_trails.py's write_overview) - trails_overview.geojson's
  * pattern applied to the artifact above, so the opening camera draws every
- * organization's trails without fetching or parsing the 7.3 MB file whose
- * lines only draw from the pin seam anyway.
+ * organization's trails without fetching or parsing the file whose lines only
+ * draw from the pin seam anyway.
  *
- * 255,263 gzipped bytes for all 7,669.7 line-miles as 31 features, measured
- * 2026-08-27 against the live nearby_trails.geojson
- * (pipeline/spike_network_overview.py) - beside the A.T. overview's 51,068,
- * about 306 KB for every line the opening camera can draw. Each feature
+ * WHAT BOTH OF THOSE WEIGH, and both figures here have moved by an order of
+ * magnitude since they were first written. Measured 2026-08-27 against the
+ * live artifacts, this said 255,263 gzipped bytes for all 7,669.7 line-miles
+ * as 31 features, beside the A.T. overview's 51,068 - about 306 KB for every
+ * line the opening camera can draw - and called its parent a 7.3 MB file.
+ * Re-measured 2026-09-04 off `latest.json`:
+ *
+ *   nearby_trails.geojson    228,820,578 raw   59,155,072 on the wire
+ *   network_overview.geojson  10,804,839 raw    3,042,884 on the wire (38 features)
+ *
+ * so the parent is 8x its stated size on the wire and this sketch is 12x its
+ * stated size. THE CAUSE IS ONE FEATURE. `usfs_trails` was registered
+ * nationwide (#1207), and `write_overview` unions each organization into one
+ * simplified geometry - so a single feature of 437,633 vertices spanning the
+ * country is 80.6% of this artifact's raw bytes and 2,577,012 of its 3,042,884
+ * gzipped. Every other organization together is under 500 KB gzipped, which is
+ * roughly the figure this comment used to claim for the whole thing.
+ *
+ * The sketch still saves a hiker the parent file, which is the argument for it
+ * and is unchanged. What is no longer true is that it is cheap in absolute
+ * terms, and whether nationwide USFS belongs in a corridor-view sketch at all
+ * is #1231's question rather than this file's. Each feature
  * carries the three properties the paint and the tape read - `source`,
  * `blaze_color`, `trail_status` - so it draws through the same expressions the
  * real lines do, ghosting included, and closed ground stays closed-looking
@@ -151,6 +280,9 @@ export const NEARBY_TRAILS_KEY = 'nearby_trails.geojson'
  * exported before the artifact existed, and a bucket where either steward's
  * `reaches_hikers` is false - pipeline/publish.py holds this sketch back with
  * the artifact it sketches, as one decision.
+ *
+ * @release optional - inside its parent's `reaches_hikers` branch
+ * (publish.py:587), held back and shipped as one decision with the lines.
  */
 export const NETWORK_OVERVIEW_KEY = 'network_overview.geojson'
 
@@ -180,82 +312,88 @@ export const NETWORK_OVERVIEW_KEY = 'network_overview.geojson'
  * reached. It is also what a hiker sees while either steward's `reaches_hikers`
  * is false — pipeline/publish.py holds the whole artifact back rather than
  * publishing part of it.
+ *
+ * @release optional - publish.py:622, the identical `reaches_hikers` gate the
+ * lines above carry, over the same registry.
  */
 export const NEARBY_POI_KEY = 'nearby_poi.geojson'
 
 /**
- * The junction graph a day hike is routed over (#974, #975).
+ * The junction graph a day hike is routed over (#974, #975), in 1° cells
+ * (#1257 stage 3, pipeline/cut_trail_graph.py): the index of the cells, in
+ * the exact shape of BASEMAP_CELLS_KEY's and NEARBY_TRAILS_CELLS_KEY's, read
+ * by lib/coverageCells.ts under its GRAPH_CELLS family.
  *
- * Derived from NEARBY_TRAILS_KEY's own lines by
- * pipeline/build_trail_graph.py, which is why the two cannot disagree about
- * which trails exist: one is the map's copy of the network and this is its
- * topology. Nodes and edges only - no geometry a map would draw, because the
- * map already has it.
+ * WHY CELLS. build_trail_graph.py derives the graph from the other
+ * organizations' lines and the A.T.'s own, so the map and the router cannot
+ * disagree about which trails exist - and with those lines nationwide since
+ * #1231 the whole graph was promoted at 78,595,556 bytes on 2026-09-07.
+ * Parsing it on the main thread was "the app is hanging on the first page"
+ * (#1254), and the budget that stopped that left the phone with no day hikes
+ * at all. So a phone now loads only the cells under the hike it is planning,
+ * where it is standing, where its camera is past the seam, and where it
+ * taps (lib/useTrailGraph.ts decides which), and nothing else: measured on
+ * that day's graph, the densest cell is 12.7 MB of edges, the median 28 KB,
+ * Harriman's 1.8 MB.
  *
- * A 404 is an ordinary answer, the same reading nearby_trails.geojson gets: a
- * release exported before this artifact existed, or a bucket a publish has not
- * reached. lib/trailGraphData.ts reads it as "no day hikes on this phone",
- * which chrome/PlanKindSheet.tsx says in a sentence rather than by offering a
- * control that does not work.
+ * FOUR HALVES PER CELL, one file each, named by {@link trailGraphCellKey}:
+ * the routing shard (`graph`: nodes, edges, lengths, attribution, plus the
+ * whole graph's ids for each), its edge vertices (`geometry`, fetched only
+ * when the builder opens - with the whole A.T. in the graph it is by far the
+ * heavier half), the climb along each edge (`elevation`, `[gain_ft, loss_ft]`
+ * or null, the sanctioned TOTAL a card prices a walk from), and the dense
+ * sampled `profile` a ribbon draws on a walk being followed (#1045) - fetched
+ * only when a chart opens, never with the builder. The last two answer
+ * different questions and must not be swapped: a per-edge profile cannot see
+ * across a node join, so its totals would disagree with the card's.
+ *
+ * EVERY HALF IS INDEX-ALIGNED WITH ITS CELL'S EDGES, and lib/trailGraphData.ts
+ * refuses a half whose length disagrees with the shard it was fetched for -
+ * edge 40 drawn from edge 41's vertices is a route on the wrong trail, and
+ * edge 40 priced from edge 41's climb is a plausible number against it. Two
+ * rules a reader of the profile must not get wrong, both measured by the
+ * pipeline: take the sample count from the array's own length, never from
+ * `length_m` divided by the interval (63 of 40,596 edges disagreed); and a
+ * null is unknown, never zero - a whole entry null is an edge the DEM never
+ * covered, a null inside an array is one missing sample with its place kept,
+ * and either means no ribbon for that walk.
+ *
+ * A 404 on the index is an ordinary answer: a release exported before the cut
+ * existed, or a bucket holding the graph back with the lines it derives from.
+ * lib/useTrailGraph.ts reads it as "no day hikes on this phone", which
+ * chrome/PlanKindSheet.tsx says in a sentence rather than by offering a
+ * control that does not work. A cell with no climb or profile half is "no
+ * figures for this hike" and "no ribbon", exactly as the whole artifacts'
+ * absence read - and on 2026-09-07 that is every cell, because the bucket's
+ * companions were written for an earlier graph and the cutter refuses to cut
+ * them against the wrong edges.
+ *
+ * THE WHOLE FILES ARE NO LONGER KEYS HERE. `trail_graph.json` and its three
+ * companions stay published as the cut's input and for older clients; no
+ * phone on this build asks for them, and a key nothing fetches must not be
+ * declared, for the reason NEARBY_TRAILS_TILES_KEY gives about its own source.
+ *
+ * @release optional - inside the graph's own `reaches_hikers` branch in
+ * publish.py's collect_artifacts, the same gate its lines carry: topology of
+ * data a steward has not licensed is still that steward's data.
  */
-export const TRAIL_GRAPH_KEY = 'trail_graph.json'
+export const TRAIL_GRAPH_CELLS_KEY = 'trail_graph_cells.json'
+
+/** The four files one graph cell is published as - see TRAIL_GRAPH_CELLS_KEY. */
+export type TrailGraphCellHalf = 'graph' | 'geometry' | 'elevation' | 'profile'
 
 /**
- * The graph's edge vertices, index-aligned with TRAIL_GRAPH_KEY's `edges` and
- * fetched only when the day-hike builder opens (#978). Split from the routing
- * half so "can I plan a day hike" stays cheap on every launch that never opens
- * the door - with the whole A.T. in the graph, this is by far the heavier
- * half. One manifest binds the pair; lib/trailGraphData.ts refuses a geometry
- * whose edge count disagrees with the graph it was fetched for.
+ * The bucket key of one half of one graph cell - pipeline/cut_trail_graph.py's
+ * cell_key, spelled the same way, and tests/test_cut_trail_graph.py reads this
+ * file to hold the two spellings equal. Not a `*_KEY` constant because there
+ * is one per cell per half; verify_release.py's check 22 weighs them by their
+ * shape instead.
  */
-export const TRAIL_GRAPH_GEOMETRY_KEY = 'trail_graph_geometry.json'
-
-/**
- * The climb along each graph edge - `[gain_ft, loss_ft]` or null - index-aligned
- * with TRAIL_GRAPH_KEY's `edges` (#1011, pipeline/export_network_elevation.py).
- *
- * Two scalars per edge, not a profile, because routing never reads this and the
- * card reads it once per open: summing a walk is tens of additions, where a
- * dense profile would be thousands of sample reads on a screen a hiker reopens
- * while deciding. It is the third file on the same shelf as the geometry above,
- * under the same alignment rule.
- *
- * A 404 is ordinary and means "no figures for this hike", which the card says
- * in a sentence. A null ENTRY is different and stronger: that edge's ground was
- * never measured, so a walk crossing it has no total at all rather than a
- * total missing one edge.
- */
-export const TRAIL_GRAPH_ELEVATION_KEY = 'trail_graph_elevation.json'
-
-/**
- * The SHAPE of the ground along each graph edge - a dense sampled profile,
- * index-aligned with TRAIL_GRAPH_KEY's `edges` (#1045,
- * pipeline/export_network_profile.py).
- *
- * THE FOURTH FILE ON THAT SHELF, AND IT ANSWERS A DIFFERENT QUESTION FROM THE
- * THIRD. `TRAIL_GRAPH_ELEVATION_KEY` above is the sanctioned TOTAL - what a
- * card prices a walk from. This is what a ribbon draws, on a walk somebody is
- * following, and the two must not be swapped: the totals here would disagree
- * with the card's, because a per-edge profile cannot see across a node join
- * (see below) and the scalars are measured whole.
- *
- * FETCHED ONLY WHEN A CHART OPENS, never with the builder. The pipeline
- * measured it at 3.47 MB raw / 1.22 MB over the wire at 25 m sampling, against
- * the geometry file's 17.29 / 4.70 - small, and still not something to spend
- * on every hiker who opens the builder and draws nothing.
- *
- * TWO RULES A READER MUST NOT GET WRONG, both measured by the pipeline:
- *
- * - **Take the sample count from the array's own length**, never by dividing
- *   `length_m` by the interval: 63 of 40,596 edges disagree, because the
- *   published length and the walked geometry differ by up to 1.5 m.
- * - **A null is unknown and never zero**, in both of its shapes: a whole
- *   entry null means the DEM covers no part of that edge, and a null INSIDE
- *   an array is one missing sample with its place on the axis kept. Either
- *   one means no ribbon for that walk, on the all-or-nothing rule the climb
- *   already follows.
- */
-export const TRAIL_GRAPH_PROFILE_KEY = 'trail_graph_profile.json'
+export function trailGraphCellKey(name: string, half: TrailGraphCellHalf): string {
+  return half === 'graph'
+    ? `trail_graph_cell_${name}.json`
+    : `trail_graph_${half}_cell_${name}.json`
+}
 
 // Where each blue-blazed spur leads, keyed by the trail id in trails.geojson.
 //
@@ -267,6 +405,8 @@ export const TRAIL_GRAPH_PROFILE_KEY = 'trail_graph_profile.json'
 // Published by pipeline/export_spurs.py. Absent from data releases built
 // before that existed, which lib/trailData.ts treats as "no spur detail" - not
 // as a failed download.
+//
+// @release required - publish.py:723, ungated.
 export const SPURS_KEY = 'spurs.json'
 
 // Who maintains which stretch of trail, published by
@@ -283,6 +423,8 @@ export const SPURS_KEY = 'spurs.json'
 // Absent from releases built before export_club_sections.py, which
 // lib/trailData.ts treats as "no attribution" rather than a failed download -
 // the same way spurs.json is treated.
+//
+// @release required - publish.py:733, ungated.
 export const CLUB_SECTIONS_KEY = 'club_sections.json'
 
 // Who the map's data belongs to, published by pipeline/export_sources.py
@@ -298,6 +440,8 @@ export const CLUB_SECTIONS_KEY = 'club_sections.json'
 // Absent from releases built before that exporter existed, which
 // lib/trailData.ts treats as "no steward list" rather than a failed download -
 // the same way club_sections.json above is treated.
+//
+// @release required - publish.py:745, ungated.
 export const STEWARDS_KEY = 'stewards.json'
 
 // Stretches of trail somebody says are worth going to, published by
@@ -310,6 +454,10 @@ export const STEWARDS_KEY = 'stewards.json'
 //
 // Absent from releases built before that exporter, which lib/trailData.ts
 // treats as "nothing to explore yet" rather than a failed download.
+//
+// @release required - publish.py:773, ungated. #940's own example: an
+// exporter, a reference file, tests, a place in the manifest list, and three
+// weeks in which nothing ran it.
 export const HIGHLIGHTS_KEY = 'highlights.json'
 
 // The along-the-trail elevation profile, published by
@@ -328,6 +476,8 @@ export const HIGHLIGHTS_KEY = 'highlights.json'
 // Absent from data releases built before export_elevation.py existed, which
 // lib/trailData.ts treats as "no profile" rather than a failed download - the
 // same way spurs.json is treated.
+//
+// @release required - publish.py:714, ungated.
 export const ELEVATION_KEY = 'elevation_profile.json'
 
 // The tombstones: every POI id that has ever been retired, published by
@@ -356,11 +506,48 @@ export const ELEVATION_KEY = 'elevation_profile.json'
 // Absent from releases built before that exporter, which lib/trailData.ts
 // treats as "nothing has been retired" rather than a failed download — the
 // same way spurs.json is treated.
+//
+// @release required - publish.py:784, ungated.
 export const RETIRED_POI_KEY = 'retired_poi.geojson'
 
-// 'crossing' is published but is currently an empty FeatureCollection; it is
-// listed anyway so it starts working the day the pipeline fills it, rather
-// than needing a client release to notice.
+// Routes somebody published - a maintaining club, a guidebook author, another
+// OurHike hiker, an editorial pick - for the Today shelf and the Find-a-hike
+// screen (#1284, features/SUGGESTED_HIKES.md). Read by
+// lib/suggestedHikesData.ts, which validates every record through the same
+// gate a saved day hike passes (lib/dayHikes.ts: ends only, never an
+// edgeIndex) and keeps the last copy that arrived in IndexedDB, so the shelf
+// works with no signal like everything else here.
+//
+// THE CLIENT HALF LANDED FIRST (#1284), and the pipeline half followed with
+// NYNJTC's Favorite Hikes (#1290): pipeline/export_suggested_hikes.py writes
+// this from the routes a person has signed off in
+// pipeline/reference/nynjtc_hike_routes.json, measured on the junction graph
+// by the twin of this app's own router. It is absent from a release for
+// three reasons the client reads alike - the source's reaches_hikers, no row
+// signed off yet, or a run that did not reach the exporter - and every one
+// is a phone with an empty shelf and no section, never a failed download.
+//
+// @release optional - gated in publish.py on a manifest the exporter writes
+// only when a reviewed row exists; see the paragraph above.
+export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
+
+// 'crossing' was listed here while it was still an empty FeatureCollection, so
+// that it would start working the day the pipeline filled it rather than
+// needing a client release to notice. IT WORKED, and the comment outlived the
+// fact: NHD ingestion has landed and production release 2026-09-04 publishes
+// **5,318** crossings, measured off the live artifact (PR #1247).
+//
+// 1,126 of those carry an A.T. mile and sit a median of 0 ft from the
+// centerline - they are line intersections, so they are as on-trail as a
+// waypoint gets. The other 4,192 carry `mile: null`, which is
+// export_poi.mark_off_trail_records (#1016) withholding it on purpose: a
+// crossing on somebody else's trail must not become a candidate stop in an
+// A.T. itinerary. Both halves draw; only the first can be planned around.
+//
+// `trailhead` is the empty-but-present layer now (0 features on that same
+// release), and #1218 is why - USFS's 7,358 trailheads ship as parking pins
+// today. So the argument for listing a key before it has data is unchanged and
+// is currently being made by a different poi_type.
 //
 // This list is the download list, so it is also the size of a hiker's first
 // fetch. 'viewpoint', 'parking' and 'privy' roughly double the POI count

@@ -21,7 +21,9 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { NETWORK_STILL_ARRIVING } from './lib/dayHikeDraft'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
-import { TRAIL_GRAPH_GEOMETRY_KEY, TRAIL_GRAPH_KEY } from './lib/config'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
+import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
+import { CAMERA_MEMORY_KEY } from './lib/cameraMemory'
 import { TRIPS_KEY } from './lib/trips'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
 import { appHarness, latOfMile, openMapTab } from './test/appHarness'
@@ -30,6 +32,7 @@ import { MockMap } from './test/mocks/maplibre-gl'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -110,6 +113,30 @@ const GRAPH = JSON.stringify({
       source: 'nynjtc_long_path',
       name: 'Seven Hills Trail',
       blaze_color: 'white',
+    },
+  ],
+  // The shard's half of the shape (#1257 stage 3): where each row sits in
+  // the whole graph. One cell, so the whole IS the cell.
+  node_ids: [0, 1, 2, 3],
+  edge_ids: [0, 1, 2],
+})
+
+/** The one cell all of Harriman falls in, and its four halves' keys. */
+const GRAPH_CELL = 'n41w075'
+const GRAPH_KEY = trailGraphCellKey(GRAPH_CELL, 'graph')
+const GEOMETRY_KEY = trailGraphCellKey(GRAPH_CELL, 'geometry')
+const CELLS_INDEX = JSON.stringify({
+  cell_degrees: 1.0,
+  seam_margin_km: 3.0,
+  context_zoom: 0,
+  context: null,
+  cells: [
+    {
+      name: GRAPH_CELL,
+      key: GRAPH_KEY,
+      bounds: [-75, 41, -74, 42],
+      edges: 3,
+      companions: { geometry: GEOMETRY_KEY, elevation: null, profile: null },
     },
   ],
 })
@@ -195,20 +222,41 @@ async function hashOf(body: string): Promise<string> {
 }
 
 /**
- * Serve the graph pair (hashed) and 404 everything else the shell asks for.
+ * Serve the graph's cell index, Harriman's cell and its geometry (all hashed),
+ * and 404 everything else the shell asks for.
  *
  * `withGeometry: false` is the phone that has the network's TOPOLOGY and not
  * its LINES (#1093) - a release that published one half, a hash that does not
  * match, or simply the seconds before the lazy fetch lands. It is a state the
  * builder has to be able to speak about, so it is a state this harness can
- * produce.
+ * produce. `withGraph: false` is a release with no graph in it at all: the
+ * index 404s, which is what production served before the cut (#1048).
+ *
+ * AND PUTS THE CAMERA ON HARRIMAN, past the pin seam. The graph is cells now
+ * (#1257 stage 3) and a cell is asked for where the hiker is planning -
+ * under the camera, the fix, the hike, a tap (App.tsx's `graphWanted`). The
+ * opening view, fitted to the whole corridor, wants no cell at all, so
+ * without this the routing half would arrive with the first tap rather than
+ * at launch, and the test that counts fetches before the door opens would
+ * be counting a different sequence. lib/cameraMemory.ts reads this the way
+ * a returning tab would; the harness clears it after every test.
  */
 async function serveGraph({ withGraph = true, withGeometry = true } = {}) {
+  window.sessionStorage.setItem(
+    CAMERA_MEMORY_KEY,
+    JSON.stringify({ center: [-74.09, 41.25], zoom: 12 }),
+  )
   const manifest = {
     artifacts: {
-      [TRAIL_GRAPH_KEY]: { sha256: await hashOf(GRAPH) },
-      [TRAIL_GRAPH_GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) },
+      [TRAIL_GRAPH_CELLS_KEY]: { sha256: await hashOf(CELLS_INDEX) },
+      [GRAPH_KEY]: { sha256: await hashOf(GRAPH) },
+      [GEOMETRY_KEY]: { sha256: await hashOf(GEOMETRY) },
     },
+  }
+  const bodies: Record<string, string | null> = {
+    [TRAIL_GRAPH_CELLS_KEY]: withGraph ? CELLS_INDEX : null,
+    [GRAPH_KEY]: withGraph ? GRAPH : null,
+    [GEOMETRY_KEY]: withGeometry ? GEOMETRY : null,
   }
   const requested: string[] = []
   vi.stubGlobal(
@@ -223,14 +271,9 @@ async function serveGraph({ withGraph = true, withGeometry = true } = {}) {
           json: () => Promise.resolve(manifest),
         } as unknown as Response)
       }
-      const body = key.includes(TRAIL_GRAPH_GEOMETRY_KEY)
-        ? withGeometry
-          ? GEOMETRY
-          : null
-        : key.includes(TRAIL_GRAPH_KEY)
-          ? GRAPH
-          : null
-      if (body === null || !withGraph) {
+      const name = Object.keys(bodies).find((candidate) => key.endsWith(`/${candidate}`))
+      const body = name === undefined ? null : bodies[name]
+      if (body === null) {
         return Promise.resolve({ ok: false, status: 404 } as unknown as Response)
       }
       return Promise.resolve({
@@ -593,8 +636,7 @@ describe('the day-hike builder, end to end', () => {
     await user.click(await screen.findByRole('button', { name: /A day hike/ }))
     const map = await liveMap()
 
-    const asked = () =>
-      requested.filter((url) => url.includes(TRAIL_GRAPH_GEOMETRY_KEY)).length
+    const asked = () => requested.filter((url) => url.includes(GEOMETRY_KEY)).length
     await waitFor(() => {
       expect(asked()).toBe(1)
     })
@@ -616,14 +658,15 @@ describe('the day-hike builder, end to end', () => {
     expect(door).toBeInTheDocument()
     await screen.findByRole('button', { name: /A day hike/ })
 
-    // The routing half loads at launch; the geometry half must not have been
-    // asked for yet - it is by far the heavier artifact.
-    expect(requested.some((url) => url.includes(TRAIL_GRAPH_KEY))).toBe(true)
-    expect(requested.some((url) => url.includes(TRAIL_GRAPH_GEOMETRY_KEY))).toBe(false)
+    // The routing half of the cell under the camera loads at launch; the
+    // geometry half must not have been asked for yet - it is by far the
+    // heavier artifact.
+    expect(requested.some((url) => url.includes(GRAPH_KEY))).toBe(true)
+    expect(requested.some((url) => url.includes(GEOMETRY_KEY))).toBe(false)
 
     await user.click(screen.getByRole('button', { name: /A day hike/ }))
     await waitFor(() => {
-      expect(requested.some((url) => url.includes(TRAIL_GRAPH_GEOMETRY_KEY))).toBe(true)
+      expect(requested.some((url) => url.includes(GEOMETRY_KEY))).toBe(true)
     })
   })
 
@@ -663,18 +706,23 @@ describe('the day-hike builder, end to end', () => {
     ).not.toBeInTheDocument()
 
     // Switching rooms puts the card away (#1008): a day-hike surface left
-    // floating over the trips room is the mode confusion the split exists
-    // to end, and switching rooms is navigation.
-    await user.click(screen.getByRole('button', { name: /Trips/ }))
+    // floating over the sections room is the mode confusion the split
+    // exists to end, and switching rooms is navigation. Since #1317 the
+    // room follows the app's mode, so the switch is that control.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await waitFor(() => {
       expect(
         screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
       ).not.toBeInTheDocument()
     })
-    expect(screen.getByRole('heading', { name: 'Trips' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sections' })).toBeInTheDocument()
 
     // Back to the day room, and the row is still there to reopen.
-    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(
       await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
     )
@@ -841,7 +889,15 @@ describe('the day-hike builder, end to end', () => {
           tripIds: ['trip-1'],
         },
       ],
+      // Already on this hike, so tapping Long hike is instant. Without it
+      // the "which long hike?" sheet opens over the screen and offers the
+      // same hike a second time, which is #1317's designed behaviour for a
+      // hiker who has not picked one - and not what this test is about.
+      activeHikeId: 'hike-1',
     })
+    // Since #1317 the Plan tab's room comes from the app's mode rather than
+    // from a guess at what the hiker has kept, so this phone is on Long hike.
+    app.store.set(HIKER_MODE_KEY, 'long')
     await serveGraph()
 
     const openHike = async () => {
@@ -855,11 +911,14 @@ describe('the day-hike builder, end to end', () => {
     await openHike()
     // Into a day hike, with points on it - the work that used to be silently
     // outlived by an invisible route draft. Since #1008 the way in from here
-    // is the day room's own action: home, the switch chip, then "Plan a day
-    // hike" - the same guarded door (openDayHike), which lands the hiker on
-    // the trail tab itself.
+    // is the day room's own action, and since #1317 the way into that room
+    // is the app's mode control rather than a chip of Plan's own: Day hike,
+    // then "Plan a day hike" - the same guarded door (openDayHike), which
+    // lands the hiker on the trail tab itself.
     await user.click(await screen.findByRole('button', { name: /All your plans/ }))
-    await user.click(await screen.findByRole('button', { name: /Day hikes/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
     const map = await liveMap()
     // `tapWhenRoutable` for the FIRST tap, not plain `tap`. This door is
@@ -880,12 +939,12 @@ describe('the day-hike builder, end to end', () => {
     await tap(map, -74.085, 41.25)
     expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
 
-    // Back to the timeline - the tab bar consults neither builder. The Plan
-    // tab reopens on the day room (the hiker's last pick sticks, #1008), so
-    // the way to the hike is the chip back to the trips room - and then in
-    // through the gap door, which calls openRouteBuilderFrom directly.
+    // Back to the timeline - the tab bar consults neither builder. The way
+    // to the hike is the app's mode control since #1317, and then in through
+    // the gap door, which calls openRouteBuilderFrom directly.
+    await user.click(await screen.findByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
-    await user.click(await screen.findByRole('button', { name: /Trips/ }))
     await user.click(
       await screen.findByRole('button', { name: /The whole thing, eventually/ }),
     )
@@ -1051,8 +1110,12 @@ describe('the day-hike builder, end to end', () => {
     await openDoor(user)
 
     // A sentence, not a dead control - and the other two doors still work.
+    // Since #1257 stage 3 the door reads the cell INDEX rather than waiting
+    // for a graph to arrive: no index in the release, no day hikes.
     expect(screen.queryByRole('button', { name: /A day hike/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /A multi-day section/ }),
+    ).toBeInTheDocument()
 
     // AND THE SENTENCE IS THE TRUE ONE (#1049). `withGraph: false` serves a
     // 404, which is exactly what production serves today (#1048) - so this is

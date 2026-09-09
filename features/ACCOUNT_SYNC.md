@@ -132,6 +132,22 @@ apart, so merging at day level invents plans neither device ever held. Each trip
 `updated_at` and a `deleted_at`; the sync sends what changed since its last watermark and
 takes back the same.
 
+**Long hikes and the active-hike pointer — per record, with tombstones, and last write
+wins.** Added 2026-09-09 ([#1317](https://github.com/OurHike/OurHike/issues/1317)), on the
+same exchange, and it is the one collection here that does **not** keep both. The
+difference is what the two documents are. A trip is planning a hiker cannot reconstruct —
+days, stops, resupply — and two trips over the same ground are both real. A hike is the
+*way of looking* at those trips, and its `tripIds` claim them: a section belongs to exactly
+one hike, so a kept-beside copy would put the same sections in two hikes at once, which is
+the one state this document's own tree model forbids. The irreplaceable half is already
+protected by the rule below. The cost is named rather than hidden: edit one hike on two
+devices and one point list is lost, which is `PlannedHike`'s trade at a slightly larger
+grain.
+
+`activeHikeId` rides with them as a pointer rather than a document — last write wins, being
+wrong costs one tap. It travels **only because the hikes do**: a pointer that synced alone
+would arrive on the second device naming a hike it had never heard of.
+
 **When two devices have both edited the same trip since the last sync, neither is
 discarded.** The newer one keeps the name and the older one is kept beside it, named for
 where and when it came from — *"Grayson Highlands (from the phone, 12 Aug)"*. The hiker
@@ -309,7 +325,12 @@ guard rather than the bug — but it is the phase that finds out whether the gua
 **B. Trips and the planned hike. Built** — `backend/app/core/trip_sync.py`,
 `app/routers/synced_trips.py`, `client/src/lib/tripsSync.ts`
 ([#892](https://github.com/OurHike/OurHike/issues/892)). The record grain, the tombstones,
-the keep-both conflict rule, and the watermark.
+the keep-both conflict rule, and the watermark. **Extended
+2026-09-09 with the long hikes and the active-hike pointer**
+([#1317](https://github.com/OurHike/OurHike/issues/1317)) — `synced_hikes` and
+`synced_active_hikes`, on the same envelope, with the last-write-wins rule argued above and
+in `app/models/synced_hike.py`. Expand, not contract: every new request field defaults, so a
+client on any shipped build keeps syncing its trips and simply says nothing about hikes.
 
 Four things the build decided that this document left open, each argued where it lives:
 
@@ -319,7 +340,8 @@ Four things the build decided that this document left open, each argued where it
 - **The planned hike rides in that envelope rather than reusing `POST /hikes`.** That table
   is a collection with ids and the planned hike is a singleton with none, so syncing it
   through `/hikes` would mean every device remembering which row is "the" one. `/hikes`
-  stays exactly what it is: the reference the wrong-way alert reads server-side.
+  stays exactly what it is: the reference the wrong-way alert read server-side before its
+  removal, kept now for API compatibility.
 - **The conflict rule is the server's**, because it is the only party that can see both
   versions — and because two devices implementing keep-both slightly differently would
   produce a divergence indistinguishable from the loss the rule prevents.

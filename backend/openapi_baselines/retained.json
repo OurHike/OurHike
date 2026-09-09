@@ -54,12 +54,36 @@
       "release": "v1.2.0",
       "document": "v1.2.0.json",
       "published": "2026-08-28",
-      "superseded": null,
+      "superseded": "2026-09-07",
       "pinned": false,
       "note": "Fontana Dam. Added on the release branch before the merge, which is where this step has to happen: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains. This branch IS v1.2.0 - the only files it adds are the notes, the version bump and this entry, none of which the OpenAPI document reads.",
       "refreshed": [
         "2026-08-28, added by the v1.2.0 release train, and the first time this file gained an entry as part of cutting a release rather than as a repair afterwards. v1.1.1's `superseded` is set to the same date by this change: the retention clock starts when a newer release takes over, not when that release was published, so the 90-day window for v1.1.1's clients runs from here.",
         "This release adds no Alembic revision - `git diff --name-status v1.1.1..HEAD -- backend/alembic/versions/` is empty - so the document moved only where a response or request model did, and there is no schema step behind it."
+      ]
+    },
+    {
+      "release": "v1.2.1",
+      "document": "v1.2.1.json",
+      "published": "2026-09-07",
+      "superseded": "2026-09-08",
+      "pinned": false,
+      "note": "Fontana Dam, patch. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains.",
+      "refreshed": [
+        "2026-09-07, added by the v1.2.1 release train. v1.2.0's `superseded` is set to the same date by this change - the retention clock starts when a newer release takes over, not when that release was published.",
+        "This release adds no Alembic revision - `git diff --name-status v1.2.0..HEAD -- backend/alembic/versions/` is empty - so the document moved only where a response or request model did, and there is no schema step behind it."
+      ]
+    },
+    {
+      "release": "v1.2.2",
+      "document": "v1.2.2.json",
+      "published": "2026-09-08",
+      "superseded": null,
+      "pinned": false,
+      "note": "Fontana Dam, patch. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains.",
+      "refreshed": [
+        "2026-09-08, added by the v1.2.2 release train. v1.2.1's `superseded` is set to the same date by this change - the retention clock starts when a newer release takes over, not when that release was published.",
+        "Byte-identical to v1.2.1.json (`diff` of the two, pretty-printed, is empty) - this release touched client/ and pipeline/ only, and `git diff --name-status v1.2.1..HEAD -- backend/` is empty too, so there is no API surface for a document to disagree about. Kept as its own entry rather than reusing v1.2.1's anyway, matching this file's own pattern of one entry per release regardless of whether that release moved the schema."
       ]
     }
   ]

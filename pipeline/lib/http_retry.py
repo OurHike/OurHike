@@ -87,9 +87,15 @@ def request_with_retry(
     retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
     throttle_seconds: float = 0.0,
     label: str | None = None,
+    headers: dict | None = None,
     sleep=None,
 ) -> requests.Response:
     """One request, retried over `backoff` on transient faults and statuses.
+
+    `headers` rides every attempt unchanged, the same as download_with_retry's
+    and for a third caller (#1288): fetch_nynjtc_long_path_guide.py sends
+    If-None-Match / If-Modified-Since per page, which a session-wide header
+    cannot carry because they differ per URL.
 
     Raises the underlying exception, or `raise_for_status()`, once the budget
     is spent - a run that quietly proceeded on a failed fetch would be worse
@@ -110,7 +116,7 @@ def request_with_retry(
 
     for attempt, delay in enumerate((*backoff, None)):
         try:
-            response = requester.request(method, url, params=params, timeout=timeout)
+            response = requester.request(method, url, params=params, timeout=timeout, headers=headers)
         except TRANSIENT_EXCEPTIONS as error:
             if delay is None:
                 raise

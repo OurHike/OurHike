@@ -73,7 +73,7 @@ Three shelves, and picking the wrong one is the one mistake that cannot be undon
 | `privies` | A.T. Privies | 316 | Point | Found via the FeatureServer root, not the public map |
 | `at_treadway` | A.T. Treadway | 30 | ? | Found via the FeatureServer root - not yet checked how this differs from `centerline` |
 
-**Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them. **Every POI a hiker sees was ATC's until 2026-08-27**, and what the other four orgs on the map publish for each of the eight types is surveyed and counted in [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md) (snapshot dated 2026-08-27, re-runnable via `spike_org_poi_coverage.py`), with the verdicts carried machine-readably in `sources.json`'s `poi_coverage` block. Headline: OPRHP publishes something for all eight types and DEC for six, both inside maintenance-asset inventories rather than POI layers. **`export_nearby_poi.py` now ships twelve of those cells** — 8,480 waypoints as `nearby_poi.geojson`, the sibling of `nearby_trails.geojson` and gated by the same per-source `reaches_hikers` check ([#1097](https://github.com/OurHike/OurHike/issues/1097)). Neither org's water is among them: DEC's is a measured refusal (`dec_water_holdback`), OPRHP's a holdback pending the seasonality its layer does not record (`oprhp_water_holdback`).
+**Which of these reach a hiker as waypoints:** `shelters`, `campsites`, `viewpoints`, `parking` and `privies` each become one `poi_type` in `export_poi.py`, and `communities` folds into `resupply` at low confidence. The other six are fetched for other reasons — `centerline` and `side_trails` are the trail lines, `half_mile_points_from_springer` the mile markers — and `bridges` and `at_treadway` are registered but feed nothing yet. `trail_club_sections` was in that group until 2026-08-13, when `export_club_sections.py` (#594) started reading it; it supplies club *names* and regions, while the club *attribution* comes off `centerline`'s own `Acronym` field, which is two years fresher and sits on the trail line (SOURCE_SURVEY.md §3e). Vistas, parking and privies were in that second group until 2026-08-09: registered on 2026-07-25 and downloaded by every run since, with nothing downstream reading them. **Every POI a hiker sees was ATC's until 2026-08-27**, and what the other four orgs on the map publish for each of the eight types is surveyed and counted in [POI_COVERAGE_SURVEY.md](POI_COVERAGE_SURVEY.md) (snapshot dated 2026-08-27, re-runnable via `spike_org_poi_coverage.py`), with the verdicts carried machine-readably in `sources.json`'s `poi_coverage` block. Headline: OPRHP publishes something for all eight types and DEC for six, both inside maintenance-asset inventories rather than POI layers. **`export_nearby_poi.py` now ships twelve of those cells** — 8,480 waypoints as `nearby_poi.geojson`, the sibling of `nearby_trails.geojson` and gated by the same per-source `reaches_hikers` check ([#1097](https://github.com/OurHike/OurHike/issues/1097)). Neither org's water is among them: DEC's is a measured refusal (`dec_water_holdback`), OPRHP's a holdback pending the seasonality its layer does not record (`oprhp_water_holdback`). **NYNJTC's waypoints turned out to be published as prose** — the forty pages of their Long Path End-to-End Section Guide, which `fetch_nynjtc_long_path_guide.py` caches and `lib/nynjtc_long_path_guide.py` reads into 271 waypoints (measured 2026-09-08: 120 parking lots, most at NYNJTC's own coordinates; 92 viewpoints, 21 water sources, 17 shelters, 17 campsites and 4 privies placed by walking the guide's mile along the registered line, with the estimate's error measured against the lots that carry both). `export_nearby_poi.py` carries them in `nearby_poi.geojson` behind the entry's own `reaches_hikers` gate, true since 2026-09-08 on the maintainer's authorisation recorded in `nynjtc_guide_licence` — facts and a link to the page, never the guide's prose ([#1288](https://github.com/OurHike/OurHike/issues/1288); POI_COVERAGE_SURVEY.md §6 has the counts and the licence reasoning).
 
 **Gap, now partially filled:** ATC's own data has no dedicated water-source or general resupply layer. `communities` is the resupply layer, and **it is now the whole of it** — `fetch_opentrail.py` (below) was the intended fill until [#806](https://github.com/OurHike/OurHike/issues/806) measured its `r` tag and found roads and gaps rather than shops, so that gap is open again. For water opentrail is one of two — `fetch_osm_water.py` (below, [#529](https://github.com/OurHike/OurHike/issues/529)) took the corridor's water layer from 174 points to 1,705.
 
@@ -182,6 +182,18 @@ Change-aware per entry (conditional GET against its own manifest, plus a body-ha
 
 Nothing rendered them until [#1083 — NYNJTC's notices are published and no screen shows them, because every notice surface is spelled "ATC"](https://github.com/OurHike/OurHike/issues/1083); the exporter had no workflow step until [#1108 — Fail when an exporter has no runner, and wire the one that had none](https://github.com/OurHike/OurHike/issues/1108). Both are closed, and this paragraph outliving both of them is the kind of thing [#940](https://github.com/OurHike/OurHike/issues/940) is about. [../features/ORG_NOTICES.md](../features/ORG_NOTICES.md) is the delivery design and owns everything this fetch deliberately does not settle.
 
+## Fetching another organization's hikes, and building the routes they do not publish (#1290)
+
+`fetch_nynjtc_hikes.py` reads NYNJTC's [Favorite Hikes](https://www.nynjtc.org/favorite-hikes/) into `data/raw/nynjtc_hikes.json` — the first entry of `kind: "published_hikes"` — off the same WordPress REST API their alerts come from, with each hike's photograph into the content-addressed store the POI cards already draw from. Measured 2026-09-09: 59 posts, **20 public and 39 behind NYNJTC's own password**, which the fetch counts and does not go through (the maintainer: "just do the 20 public ones"). `lib/nynjtc_hikes.py` is the reading: NYNJTC's five difficulty levels and the rest of their closed taxonomies, the overview, the dated turn-by-turn, the trailhead from the map embed's marker, and the photograph's credit in the three spellings the pages use. The permission is the maintainer's relay of NYNJTC's — "we have their permission ... Include everything, the description, the photos"; "We can use anything" — recorded in `sources.json`'s `nynjtc_hikes_licence`, the fourth NYNJTC block and the only one that ships their prose and pictures rather than facts about them.
+
+```
+.venv/Scripts/python fetch_nynjtc_hikes.py            # the 20 public hikes and their photographs
+.venv/Scripts/python route_nynjtc_hikes.py            # measure every reviewed row, write the sign-off sheet
+.venv/Scripts/python export_suggested_hikes.py        # the reviewed rows as suggested_hikes.json
+```
+
+**NYNJTC publishes a trailhead pin and a description, and no line** — no GPX, no KML, no layer. So the route is constructed here: each hike's ends are a row in [`reference/nynjtc_hike_routes.json`](reference/nynjtc_hike_routes.json), placed by hand from the description junction by junction with [`lib/trail_graph_route.py`](lib/trail_graph_route.py) — a Python twin of the phone's router (`client/src/lib/trailGraph.ts`), function for function, so the miles the pipeline prints beside a route are the miles the phone will redo when the card opens. `route_nynjtc_hikes.py` measures every row on the current graph and renders the sheet a person signs it off from; `export_suggested_hikes.py` ships **only rows whose status is `reviewed`**, as the ends-only records `lib/suggestedHikesData.ts` validates, with NYNJTC's prose, photograph, categorisation and their own stated length beside this build's measurement. On 2026-09-09, **7 of the 20 route on the published network** (Catfish Loop, Doris Duke, the Bullwheel loop, Stillman/Highlands/Bluebird, West Kill, Platte Clove to Overlook Mountain, and Bear Mountain's All Persons Trail) and 13 are `held` with the reason — every New Jersey state and county park until [#1293](https://github.com/OurHike/OurHike/issues/1293), four county and city parks with no registered source, one Minnewaska loop that walks a paved road, and a set of map PDFs. Every row reads `proposed` until the maintainer flips it.
+
 ## Fetching external-organization layers
 
 `fetch_external_layers.py` downloads the ArcGIS feature layers other organizations host on their own orgs, as `sources.json` registers them (`kind: "external_arcgis_layer"` — [#769 — Register the NYS OPRHP ArcGIS org: the trails, blazes and closures behind the Parks Explorer app](https://github.com/OurHike/OurHike/issues/769)). Registered so far — **fifteen `external_arcgis_layer` entries across four organizations**, where this sentence listed six across two until 2026-08-27: **NYS OPRHP's four Parks Explorer layers** — 16,641 trail segments statewide with names, up to three blaze colours, surfaces, per-use permissions and mileage, plus the temporary-closure polygons, facilities points and park-unit boundaries the State's own app draws (all counts measured 2026-08-18) — and **NYNJTC's two public extracts**, the Long Path (43 sections) and the Highlands Trail (12), added under [#950](https://github.com/OurHike/OurHike/issues/950) on the verdict [NYC_SOURCE_SURVEY.md](NYC_SOURCE_SURVEY.md) §4 recorded and nothing had acted on (counts re-measured live 2026-08-24); **Mohonk Preserve's trails and carriage roads** (304 segments, [#992](https://github.com/OurHike/OurHike/issues/992)); and **NYS DEC's eight layers** — hiking trails, lean-tos, primitive campsites, scenic vistas, firetowers, viewing areas, parking areas and backcountry features, registered under [#1019](https://github.com/OurHike/OurHike/issues/1019), which also removed the proposed ring around New York City so these ship statewide rather than clipped. NYNJTC's FULL network is not here and is not coming this way: SOURCE_SURVEY.md §5's verdict — *an agreement, not a scrape* — stands.
@@ -202,7 +214,7 @@ So **six** of the eight external sources now carry `reaches_hikers: true` and sh
 .venv/Scripts/python export_nearby_trails.py
 ```
 
-Writes `data/processed/nearby_trails.geojson` and its manifest. Every feature carries the five properties the client already reads off a trail line — `source`, `blaze_color`, `name`, `trail_status`, `id` — so these draw through the same expressions the A.T. does and **ghost automatically**, because `client/src/map/nearbyTrails.ts` dims every source outside the chosen system.
+Writes `data/processed/nearby_trails.geojson` and its manifest — and, since [#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257), `nearby_trails.pmtiles` beside it: the same lines as z9–z14 vector tiles, cut by GDAL's PMTiles driver through the DuckDB spatial extension every exporter here already loads (`write_tiles`). **The tiles are what a phone draws above the seam.** The GeoJSON is what the tiles are cut from and what `build_trail_graph.py` and `fetch_trail_water.py` read, but it reached 228,820,578 bytes on 2026-09-07 with nationwide USFS in it and the client no longer fetches it ([#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254)); `publish.py` uploads the archive uncompressed so byte ranges work, under the same `reaches_hikers` gate as the lines. Every feature carries the five properties the client already reads off a trail line — `source`, `blaze_color`, `name`, `trail_status`, `id` — so these draw through the same expressions the A.T. does and **ghost automatically**, because `client/src/map/nearbyTrails.ts` dims every source outside the chosen system.
 
 Three filters, each printing what it dropped (measured 2026-08-25 on a live fetch, **21,805 features out of 22,286 read**, 23.5 MB raw / 7.3 MB gzipped):
 
@@ -627,14 +639,58 @@ code. Those keys stay in the bucket (the manifest merge is additive-only, so a n
 only be abandoned) until somebody deletes them deliberately, which belongs after a cell cut
 has published and verified.
 
-Both build workflows cut after their package/archive step:
+Both build workflows cut after their package/archive step, and since
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) (stage 2) `publish-vector-data.yml` cuts a third family after
+`export_nearby_trails.py` writes its tiles:
 
 ```
 python cut_cells.py data/processed/at_basemap_package.pmtiles --family at_basemap
 python cut_cells.py data/processed/dem.pmtiles --family dem
+python cut_cells.py data/processed/nearby_trails.pmtiles --family nearby_trails --context-zoom 8
+python cut_trail_graph.py
 ```
 
-The client half — reading several units, the seam banner, the picker — is #557 and #558.
+**The network family differs from the sheets in two measured ways** (`cut_cells.py`'s
+docstring carries both): it publishes **no context archive** — `--context-zoom 8` is one
+below the tiles' minimum zoom, because z9 nationwide is 9,653,907 bytes (915 tiles,
+measured 2026-09-07) for a zoom the corridor-view sketch already draws below and the cells
+draw above, so z9 rides in the cells and a first stretch costs nothing shared — and it is
+**gated**: `publish.py` collects `nearby_trails_cells_manifest.json` inside
+`nearby_trails.geojson`'s own `reaches_hikers` branch (`NEARBY_TRAILS_CELL_FAMILY`), never
+through the ungated `CELL_FAMILIES` loop the two sheets use, so a steward held back holds
+back their lines, sketch, tiles and cells as one decision. `ALL_CELL_FAMILIES` is every
+family the cutter can be asked for; `verify_release.py`'s check 20 walks the same three.
+
+The client half — reading several units, the seam banner, the picker — is #557 and #558;
+the network cells ride the same stretch download (`client/src/lib/coverageCells.ts`'s
+`NETWORK_CELLS`) and `map/networkTiles.ts` asks a held cell before the bucket.
+
+### The junction graph, cut per cell (#1257 stage 3)
+
+`cut_trail_graph.py` is the fourth family and the one that is not an archive: the graph
+`build_trail_graph.py` writes is JSON a phone parses, and on 2026-09-07 it was published at
+78,595,556 bytes decoded — parsing it on the main thread was the frozen first page of
+[#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254). The cutter files every edge **whole** into every cell its bbox, widened by the
+seam margin, touches — an edge is never split, so a tap in a cell is answered by that cell
+alone and a route across a seam needs only the cells either side — and writes each cell's
+shard as its own graph plus `node_ids`/`edge_ids` saying where each row sits in the whole,
+which is what lets the client merge cells append-only. The geometry, climb and profile
+companions are cut beside it, aligned to each shard's edge order, and **only when they align
+with the graph**: production's elevation and profile carry 42,103 entries against 466,966
+edges (written for an earlier graph), so the cutter refuses them with a warning and the cells
+carry no climb until `include_elevation` reruns. Measured on the production graph, 2026-09-08:
+466,966 edges → 530,190 placements across 502 cells (13.5% seam duplication at 3 km), 29.9 s;
+index 166,721 bytes; densest cell `n44w072` 12,663,031 bytes of graph, median 28,406.
+
+The index is `trail_graph_cells.json` — the other families' shape with `context: null`,
+`context_zoom: 0` and, per cell, its edge count and companion keys — and `publish.py`
+collects `trail_graph_cells_manifest.json` inside the graph's own `reaches_hikers` branch
+(`TRAIL_GRAPH_CELL_FAMILY`), the same gate the network cells sit behind. The whole graph and
+its companions are still published (the manifest merge is additive; older clients ask for
+them) but no current client fetches them whole, so `verify_release.py`'s check 22 weighs only
+the keys `client/src/lib/config.ts` declares plus every cell shard by its shape, and skips the
+whole files by name with the reason. The client half is `client/src/lib/useTrailGraph.ts`
+(`features/HIKE_PLANNING.md`, *The graph a phone keeps is the cells it planned in*).
 
 ## The dbt transform layer (#100, Phase A)
 

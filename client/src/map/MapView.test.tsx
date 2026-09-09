@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TRAILS } from '../lib/trails'
+import {
+  CHOSEN_SYSTEM_SOURCES,
+  NEARBY_TRAIL_DASHARRAY,
+  chosenSystemFilter,
+  nearbyTrailFilter,
+  nearbyTrailOpacityExpression,
+} from './nearbyTrails'
 import { StrictMode } from 'react'
 import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
@@ -6,10 +14,22 @@ import { loadMapEngine, resetMapEngineForTests } from './mapEngineLoader'
 import { MapView } from './MapView'
 import {
   BACKDROP_LAYER_ID,
+  BLAZE_LAYER_ID,
   MAP_BACKDROP,
+  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  TAPPABLE_BLAZE_LAYER_IDS,
   TRAIL_OVERVIEW_SOURCE_ID,
   TRAILS_SOURCE_ID,
+  BLAZE_DOTTED_LAYER_ID,
+  TRAIL_OVERVIEW_LAYER_ID,
+  sketchWidthExpression,
 } from './style'
+import {
+  blazeChipImageId,
+  TRAIL_BADGE_LAYER_ID,
+  TRAIL_BADGE_PLATE_DAY,
+  TRAIL_BADGE_SOURCE_ID,
+} from './trailBadges'
 import { LIVE_TOPO_LAYER_IDS, TOPO_PALETTE_RED } from './liveTopo'
 import { poiIconImages } from './poiIconImages'
 import { buildPoiIcons, poiIconId } from './poiIcons'
@@ -49,9 +69,10 @@ import type { MapPoint } from '../lib/legendContents'
 // React StrictMode deliberately mounts -> unmounts -> remounts in development
 // precisely to expose that class of bug, so these tests run under it.
 
-const { registrationOrder, basemapOrder, workerOrder } = vi.hoisted(() => ({
+const { registrationOrder, basemapOrder, networkOrder, workerOrder } = vi.hoisted(() => ({
   registrationOrder: [] as number[],
   basemapOrder: [] as number[],
+  networkOrder: [] as number[],
   workerOrder: [] as number[],
 }))
 
@@ -78,6 +99,22 @@ vi.mock('./basemap', async () => {
   return {
     registerBasemapProtocol: vi.fn(() => {
       basemapOrder.push(Recorded.instances.length)
+    }),
+  }
+})
+
+// And the network:// scheme (#1257): the style declares the other
+// organizations' lines as a vector source over it, so a map built first would
+// ask for tiles through a scheme nothing answers - and a vector source that
+// errors its first tiles is one MapLibre has already given up on.
+vi.mock('./networkTiles', async () => {
+  const { MockMap: Recorded } = await import('../test/mocks/maplibre-gl')
+  return {
+    NETWORK_SCHEME: 'network',
+    NETWORK_TILES_URL: 'network://{z}/{x}/{y}',
+    NETWORK_TILES_LAYER: 'trails',
+    registerNetworkProtocol: vi.fn(() => {
+      networkOrder.push(Recorded.instances.length)
     }),
   }
 })
@@ -128,6 +165,7 @@ beforeEach(async () => {
 
   registrationOrder.length = 0
   basemapOrder.length = 0
+  networkOrder.length = 0
   workerOrder.length = 0
 })
 
@@ -256,6 +294,13 @@ describe('MapView', () => {
 
     expect(basemapOrder.length).toBeGreaterThan(0)
     expect(basemapOrder[0]).toBe(0)
+  })
+
+  it('registers the network tiles protocol before constructing any map (#1257)', () => {
+    render(<MapView {...PROPS} />)
+
+    expect(networkOrder.length).toBeGreaterThan(0)
+    expect(networkOrder[0]).toBe(0)
   })
 
   it('points MapLibre at its bundled worker before constructing any map', () => {
@@ -455,18 +500,84 @@ describe('the corridor-view sketch (#869)', () => {
     expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
   })
 
-  it('clears it the moment there is a real line, rather than leaving it under one', async () => {
+  it('keeps it while the shell holds real lines this map has not drawn yet (#1291)', () => {
+    // The shell holding an object URL for trails.geojson is not the map
+    // having drawn it: the worker still has to parse and tile 11.5 MB, and
+    // the sketch is for exactly those seconds. Every preview frame of #1285
+    // photographed the gap this used to leave.
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
+    map.emit('styledata')
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    map.emit('idle')
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
+  })
+
+  it('clears it once this map reports its own trails source loaded, rather than leaving it under the line', () => {
     // The sketch is 100 m of tolerance, drawn only below the pin seam
     // (map/style.ts). Leaving it on the map once the surveyed line is there
     // would mean two trails, one of them approximate, and nothing on screen
     // saying which is which.
-    const { rerender } = render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" />)
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />)
     const [map] = MockMap.live
-    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID]
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
     map.emit('styledata')
 
-    rerender(<MapView {...PROPS} overviewTrailsUrl={null} />)
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
 
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    })
+  })
+
+  it('clears it on attach when this map already has the real line drawn', () => {
+    // The sketch arriving at a map whose own line is already on screen - the
+    // Map tab tapped late on a phone that held the release, the sketch's
+    // fetch landing after the parse. The style seeds both sources, so the
+    // map is attached to at render; the sketch is handed over afterwards.
+    const { rerender } = render(<MapView {...PROPS} haveTrailLines />)
+    const [map] = MockMap.live
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+
+    rerender(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />)
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
+      type: 'FeatureCollection',
+      features: [],
+    })
+  })
+
+  it('does not mistake the placeholder the style is seeded with for the real line', () => {
+    // Before the shell holds lines the trails source is an empty collection,
+    // which loads instantly; counting it would clear the sketch on the first
+    // idle of every cold launch, before the real line was even requested.
+    render(<MapView {...PROPS} overviewTrailsUrl="blob:sketch" />)
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('styledata')
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
+    map.emit('idle')
+
+    expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toBe('blob:sketch')
+  })
+
+  it('stops watching the trails source once the sketch is taken away', () => {
+    const { rerender } = render(
+      <MapView {...PROPS} overviewTrailsUrl="blob:sketch" haveTrailLines />,
+    )
+    const [map] = MockMap.live
+    map.sourceIds = [TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID]
+    map.emit('styledata')
+    const watching = map.listenerCount('sourcedata')
+
+    rerender(<MapView {...PROPS} overviewTrailsUrl={null} haveTrailLines />)
+
+    expect(map.listenerCount('sourcedata')).toBe(watching - 1)
     expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
       type: 'FeatureCollection',
       features: [],
@@ -531,6 +642,77 @@ describe('POI pins', () => {
     ]
     map.emit('load')
   }
+
+  it('registers the badge images and fills the badge source once the style is up (#1283)', () => {
+    render(<MapView {...PROPS} pois={[]} />)
+    const [map] = MockMap.live
+
+    // The mock adopts the built style's layers and sources, so the badge
+    // layer and source are there from construction and the images land on
+    // attach. The points follow the settled frame: seeded, then `idle`.
+    expect(map.layerIds).toContain(TRAIL_BADGE_LAYER_ID)
+    expect(map.sourceIds).toContain(TRAIL_BADGE_SOURCE_ID)
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: { name: 'Appalachian National Scenic Trail', source: 'centerline' },
+        geometry: { type: 'LineString', coordinates: [[0, 0]] },
+      },
+    ])
+    act(() => map.emit('idle'))
+
+    expect(map.images.has(TRAIL_BADGE_PLATE_DAY.id)).toBe(true)
+    expect(map.images.has(blazeChipImageId('White'))).toBe(true)
+    const badges = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
+    expect(badges.features).toHaveLength(1)
+  })
+
+  it('reports the trails on screen to the shell, and re-reports as the camera settles', () => {
+    const onTrailsInView = vi.fn()
+    render(<MapView {...PROPS} pois={[]} onTrailsInView={onTrailsInView} />)
+    const [map] = MockMap.live
+
+    expect(map.layerIds).toEqual(expect.arrayContaining([...TAPPABLE_BLAZE_LAYER_IDS]))
+    expect(onTrailsInView).toHaveBeenLastCalledWith([])
+
+    map.renderedFeatures.set(NEARBY_BLAZE_DOTTED_LAYER_ID, [
+      {
+        properties: { name: 'Long Path', source: 'oprhp_trails', blaze_color: 'Aqua' },
+        geometry: { type: 'LineString', coordinates: [[0, 0]] },
+      },
+    ])
+    act(() => map.emit('idle'))
+    expect(
+      onTrailsInView.mock.calls.at(-1)?.[0].map((t: { name: string }) => t.name),
+    ).toEqual(['Long Path'])
+  })
+
+  it('hands the chrome insets to the badge anchor, so a badge is never picked under the plate', () => {
+    const insets = { top: 110, right: 0, bottom: 62, left: 0 }
+    render(<MapView {...PROPS} pois={[]} chromeInsets={insets} />)
+    const [map] = MockMap.live
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [
+      {
+        properties: { name: 'Appalachian National Scenic Trail', source: 'centerline' },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [0, 300],
+            [100, 200],
+            [150, 60],
+            [250, 40],
+            [390, 50],
+          ],
+        },
+      },
+    ])
+    act(() => map.emit('idle'))
+
+    const badges = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as {
+      features: Array<{ geometry: { coordinates: number[] } }>
+    }
+    expect(badges.features[0].geometry.coordinates).toEqual([100, 200])
+  })
 
   it('registers the pin images once the style is up', async () => {
     render(<MapView {...PROPS} pois={POIS} />)
@@ -728,6 +910,39 @@ describe('POI pins', () => {
     rerender(<MapView {...PROPS} corridor={EMPTY_CORRIDOR} />)
 
     expect(map.sourceData.get(CORRIDOR_SOURCE_ID)).toEqual(EMPTY_CORRIDOR)
+  })
+
+  it('rasterises no warning pin for a map that has no warning to draw (#1304)', () => {
+    // One pass of the scanline rasteriser, on the thread the entry steps'
+    // Skip button is waiting for, for a map that will draw nothing with it.
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.images.has(WARNING_ICON_ID)).toBe(false)
+  })
+
+  it('has the warning pin registered before the warning it draws (#1304)', () => {
+    // THE ORDERING IS THE SAFETY ARGUMENT. A symbol layer whose `icon-image`
+    // names an image the map has not been given draws nothing at all, and a
+    // serious warning that does not draw is the failure this app cannot have.
+    // So the assertion is not "the image arrives" but "the image is already
+    // there at the moment the warning's own data is set".
+    const { rerender } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    let imageWasThere: boolean | null = null
+    map.sources.set(WARNING_SOURCE_ID, {
+      setData: () => {
+        imageWasThere = map.images.has(WARNING_ICON_ID)
+      },
+    })
+
+    rerender(<MapView {...PROPS} warnings={WARNINGS} />)
+
+    expect(imageWasThere).toBe(true)
+    expect(map.images.has(WARNING_ICON_ID)).toBe(true)
   })
 
   it('draws the serious warnings it was given as pins', () => {
@@ -1043,5 +1258,47 @@ describe('keeping the opening camera inside what the download covers', () => {
     await waitFor(() => expect(onViewportChange).toHaveBeenCalled())
     expect(live.getZoom()).toBe(0)
     expect(live.cameraMoves).toHaveLength(0)
+  })
+})
+
+describe('the taken trail (#1306)', () => {
+  it('builds an untaken map with every line dotted and the sketch dotted', () => {
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    const style = map.options.style as {
+      layers: Array<{ id: string; paint?: Record<string, unknown>; filter?: unknown }>
+    }
+    const sketch = style.layers.find((layer) => layer.id === TRAIL_OVERVIEW_LAYER_ID)
+    const solid = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
+    expect(sketch?.paint?.['line-dasharray']).toEqual(NEARBY_TRAIL_DASHARRAY)
+    expect(sketch?.paint?.['line-width']).toEqual(sketchWidthExpression([]))
+    expect(solid?.filter).toEqual(chosenSystemFilter([]))
+  })
+
+  it('re-points every split in place when a trail is taken, without rebuilding the map', () => {
+    const { rerender } = render(<MapView {...PROPS} chosenTrailId={null} />)
+    const [map] = MockMap.live
+    const builtInitially = MockMap.instances.length
+    act(() => map.emit('load'))
+
+    rerender(<MapView {...PROPS} chosenTrailId={TRAILS.AT.id} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.filters.get(BLAZE_LAYER_ID)).toEqual(
+      chosenSystemFilter(CHOSEN_SYSTEM_SOURCES),
+    )
+    expect(map.filters.get(BLAZE_DOTTED_LAYER_ID)).toEqual(
+      nearbyTrailFilter(CHOSEN_SYSTEM_SOURCES),
+    )
+    expect(map.paintProperties.get(`${BLAZE_DOTTED_LAYER_ID}/line-opacity`)).toEqual(
+      nearbyTrailOpacityExpression(CHOSEN_SYSTEM_SOURCES),
+    )
+    expect(
+      map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-dasharray`),
+    ).toBeUndefined()
+    expect(map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-width`)).toEqual(
+      sketchWidthExpression(CHOSEN_SYSTEM_SOURCES),
+    )
   })
 })

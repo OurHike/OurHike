@@ -43,6 +43,7 @@ vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('./lib/ribbonView', { spy: true })
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   // `trailData.ts` commits a release in ONE transaction since #657, so any
   // double that reaches that path needs this call - without it the whole
@@ -956,9 +957,8 @@ describe('pressing and holding a spot on the map', () => {
 describe('preferences from the More screen', () => {
   it('saves a changed setting straight away, with no explicit save step', async () => {
     // The theme is the vehicle here because it is a live control. This test
-    // used to flip the wrong-way alert toggle, which is now marked Later and
-    // disabled like its neighbours - nothing implements the alert yet, and a
-    // live-looking safety switch that armed nothing was worse than none.
+    // used to flip the wrong-way alert toggle, before that feature was
+    // removed entirely (#93, #308).
     const user = userEvent.setup()
     hikerOnTrail({ theme: 'light' })
     render(<App />)

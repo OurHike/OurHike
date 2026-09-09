@@ -1,4 +1,5 @@
-// Keeping the junction graph on the phone (#1050).
+// Keeping the junction graph on the phone (#1050), one cell at a time since
+// #1257 stage 3.
 //
 // THE GAP THIS CLOSES, IN ONE SENTENCE: a hiker who downloaded the corridor at
 // home, drove to Harriman and opened the app at the trailhead with no signal
@@ -9,8 +10,20 @@
 // The service worker could not help: it precaches the bundle, the glyphs and
 // the UI fonts, and these are runtime JSON fetches from a different origin.
 //
-// ALL THREE ARTIFACTS, WHICH IS THE MAINTAINER'S DECISION OF 2026-08-27 AND
-// NOT THE OBVIOUS ONE.
+// WHAT IS STORED SINCE #1257: THE CELLS A PHONE LOADED, EACH HALF ITS OWN
+// RECORD. The graph is published in 1° cells (pipeline/cut_trail_graph.py,
+// lib/config.ts's TRAIL_GRAPH_CELLS_KEY) and lib/trailGraphData.ts loads only
+// the cells under the hike, the fix, the camera and the taps - so what a phone
+// keeps is exactly those, four halves each (graph, geometry, elevation,
+// profile), under `graphCellStoreKey`. A cell that was loaded once with signal
+// routes at the trailhead without it, which is the whole-graph store's promise
+// kept at the cell's grain. The four whole-file records earlier releases
+// wrote are deleted at launch (`forgetWholeGraph`): the 78,595,556-byte graph
+// of 2026-09-07 was verified, stored, and a frozen first page waiting for the
+// next launch to parse it, and nothing reads it any more.
+//
+// ALL FOUR HALVES, WHICH IS THE MAINTAINER'S DECISION OF 2026-08-27 AND NOT
+// THE OBVIOUS ONE.
 //
 // The issue proposed storing `trail_graph.json` alone as the cheap option -
 // "the first is the minimum, the third is nearly free, the second is the real
@@ -23,29 +36,16 @@
 // the geometry is never coming. The minimum set that works offline is graph
 // plus geometry.
 //
-// And the sizes in the issue are decoded rather than wire. Measured against
-// data.ourhike.org on 2026-08-27 with `Accept-Encoding: gzip`:
-//
-//   trail_graph.json            1,204,136 B wire   7,475,349 B decoded
-//   trail_graph_geometry.json   4,695,479 B wire  17,285,133 B decoded
-//   trail_graph_elevation.json     54,902 B wire     277,331 B decoded
-//   ------------------------------------------------------------------
-//   all three                        5.95 MB           25.04 MB
-//
-// So the download cost of taking everything is about 2% on top of a corridor
-// package that is already ~314 MB of tiles. What 25 MB actually costs is
-// IndexedDB, which is a different argument from the one the issue's body makes.
-//
 // WHAT IS STORED, AND WHY THE HASH TRAVELS WITH THE BYTES
 //
-// `{bytes, hash, version, fetchedAt}` per artifact, verified on write.
+// `{bytes, hash, version, fetchedAt}` per record, verified on write.
 //
 // A PHONE OFFLINE CANNOT REACH `latest.json`, so it cannot re-derive what the
 // bytes it holds SHOULD hash to. It has to trust a hash recorded at write
 // time - which is safe, because nothing is ever written that did not match the
 // manifest at the moment it was fetched. This is `lib/nearbyTrailData.ts`'s
-// shape, copied deliberately: that module already stores a 7.3 MB artifact
-// against its published hash and its read-through is the one this follows.
+// shape, copied deliberately: that module already stores an artifact against
+// its published hash and its read-through is the one this follows.
 //
 // It is NOT `lib/conditionsCache.ts`'s shape, which #1050's own comment names
 // as the template. That module stores `{document, storedAt}` - no bytes, no
@@ -55,24 +55,18 @@
 // WHY THE MANIFEST VERSION IS RECORDED
 //
 // `lib/dayHikes.ts` refuses to persist a `GraphPoint.edgeIndex` because
-// `build_trail_graph.py` renumbers edges between publishes. A cached graph
-// inherits that hazard one level up: the version is what lets a phone tell
-// "the graph I hold" from "the graph my saved hike was priced against", and
-// nothing in the resolve path asks that today because until now there has only
-// ever been one graph in memory at a time.
-//
-// Recorded rather than acted on. What it enables - a card that can say its
-// cached figures were computed against a different release - is a change to
-// what a screen SAYS, which wants its own before-and-after.
+// `build_trail_graph.py` renumbers edges between publishes - and since the
+// cells, because the merged graph's positions depend on which cells landed in
+// which order. A cached cell inherits that hazard: the version is what lets a
+// phone tell "the cells I hold" from "the graph my saved hike was priced
+// against". Recorded rather than acted on. What it enables - a card that can
+// say its cached figures were computed against a different release - is a
+// change to what a screen SAYS, which wants its own before-and-after.
 
-import { del, get, set } from 'idb-keyval'
+import { del, get, keys, set } from 'idb-keyval'
 
-import {
-  TRAIL_GRAPH_GEOMETRY_KEY,
-  TRAIL_GRAPH_ELEVATION_KEY,
-  TRAIL_GRAPH_KEY,
-  TRAIL_GRAPH_PROFILE_KEY,
-} from './config'
+import { oversized, warnOversized } from './artifactBudget'
+import type { TrailGraphCellHalf } from './config'
 
 /** One artifact's stored copy. */
 export interface StoredGraphArtifact {
@@ -87,15 +81,29 @@ export interface StoredGraphArtifact {
   fetchedAt: number
 }
 
-/** The store keys, one per published artifact. Spelled out rather than derived
- *  from the published key so that renaming the artifact does not silently
- *  orphan every phone's copy of it. */
-export const GRAPH_STORE_KEYS: Record<string, string> = {
-  [TRAIL_GRAPH_KEY]: 'ourhike:trail-graph',
-  [TRAIL_GRAPH_GEOMETRY_KEY]: 'ourhike:trail-graph-geometry',
-  [TRAIL_GRAPH_ELEVATION_KEY]: 'ourhike:trail-graph-elevation',
-  [TRAIL_GRAPH_PROFILE_KEY]: 'ourhike:trail-graph-profile',
+/** Every graph cell record starts with this, so the whole family can be
+ *  found, summed and cleared by prefix. */
+export const GRAPH_CELL_STORE_PREFIX = 'ourhike:trail-graph-cell:'
+
+/** Where one half of one cell lives. The half before the name, so a
+ *  family's halves sort together when a screen lists the store. */
+export function graphCellStoreKey(name: string, half: TrailGraphCellHalf): string {
+  return `${GRAPH_CELL_STORE_PREFIX}${half}:${name}`
 }
+
+/**
+ * The four whole-file records releases before #1257 stage 3 wrote, kept as
+ * names only so {@link forgetWholeGraph} can delete what they left. Nothing
+ * writes them and nothing reads them; a phone that fetched 2026-09-07's
+ * 78.6 MB graph before the budget existed is still holding it, plus 224 MB
+ * of geometry, and IndexedDB gives nothing back unasked.
+ */
+export const LEGACY_GRAPH_STORE_KEYS = [
+  'ourhike:trail-graph',
+  'ourhike:trail-graph-geometry',
+  'ourhike:trail-graph-elevation',
+  'ourhike:trail-graph-profile',
+] as const
 
 /**
  * How much room to leave free after writing.
@@ -108,25 +116,37 @@ export const GRAPH_STORE_KEYS: Record<string, string> = {
  * correctness. It is about not evicting a hiker's downloaded MAP to make room
  * for a routing graph, which a browser under pressure will do without asking.
  *
- * @unvalidated - 50 MB is roughly twice what all four artifacts decode to, so
- * a phone that cannot spare it is a phone with nothing to spare. Nobody has
- * measured what a real phone's headroom looks like after a 314 MB archive,
- * which is what would settle it.
+ * @unvalidated - 50 MB was roughly twice what the four whole artifacts decoded
+ * to in August; a cell's four halves are far smaller (Harriman's graph half is
+ * 1.8 MB), so a phone that cannot spare this is a phone with nothing to
+ * spare. Nobody has measured what a real phone's headroom looks like after a
+ * 314 MB archive, which is what would settle it.
  */
 export const GRAPH_STORE_HEADROOM_BYTES = 50 * 1024 * 1024
 
-/** A stored copy, or null when there is none this module trusts. */
+/** A stored copy under `storeKey`, or null when there is none this module
+ *  trusts. */
 export async function readStoredGraph(
-  publishedKey: string,
+  storeKey: string,
 ): Promise<StoredGraphArtifact | null> {
-  const storeKey = GRAPH_STORE_KEYS[publishedKey]
-  if (storeKey === undefined) return null
   try {
     const record = (await get(storeKey)) as StoredGraphArtifact | undefined
     // Shape-checked because this store is written by every past version of
     // this module there will ever be. A record that is not a blob and a hash
     // is treated as absent, and the next verified fetch rewrites it.
     if (record?.bytes instanceof Blob && typeof record.hash === 'string') {
+      // Weighed on the way out (#1254): a launch before the budget existed
+      // stored whatever it had verified, and on 2026-09-07 that was a
+      // 78,595,556-byte graph whose parse is the frozen first page the
+      // budget exists to prevent. lib/nearbyTrailData.ts makes the same call
+      // for the same reason. Forgotten rather than kept: a copy nothing will
+      // parse is storage taken from the map, and the next fetch that fits
+      // rewrites it.
+      if (oversized(record.bytes.size)) {
+        warnOversized(storeKey, record.bytes.size, 'store')
+        await forgetStoredGraph(storeKey)
+        return null
+      }
       return {
         bytes: record.bytes,
         hash: record.hash,
@@ -141,7 +161,7 @@ export async function readStoredGraph(
 }
 
 /**
- * Keep a verified copy, or decline quietly.
+ * Keep a verified copy under `storeKey`, or decline quietly.
  *
  * NEVER THROWS, and never costs the session the bytes in hand: a full store,
  * a refusing one, or one with no room to spare all end with the caller holding
@@ -149,11 +169,9 @@ export async function readStoredGraph(
  * condition of this one.
  */
 export async function writeStoredGraph(
-  publishedKey: string,
+  storeKey: string,
   record: Omit<StoredGraphArtifact, 'fetchedAt'> & { fetchedAt?: number },
 ): Promise<boolean> {
-  const storeKey = GRAPH_STORE_KEYS[publishedKey]
-  if (storeKey === undefined) return false
   try {
     if (!(await hasRoomFor(record.bytes.size))) return false
     await set(storeKey, {
@@ -189,9 +207,44 @@ async function hasRoomFor(bytes: number): Promise<boolean> {
   }
 }
 
-/** Forget every stored artifact - what "remove the trail data" has to reach. */
+/** Forget one stored record. Never throws: a key that will not delete is
+ *  the no-store case, and the caller has already decided not to read it. */
+export async function forgetStoredGraph(storeKey: string): Promise<void> {
+  try {
+    await del(storeKey)
+  } catch {
+    // See above.
+  }
+}
+
+/** Every graph cell record on this phone, by store key. Absent stores and
+ *  unreadable ones answer as empty - the list says "nothing here", which is
+ *  also what the router can route from. */
+async function graphCellStoreKeys(): Promise<string[]> {
+  try {
+    return (await keys())
+      .filter((key): key is string => typeof key === 'string')
+      .filter((key) => key.startsWith(GRAPH_CELL_STORE_PREFIX))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Delete the whole-file records earlier releases stored (#1257 stage 3). Called
+ * once per launch by lib/useTrailGraph.ts; deleting nothing is free, and the
+ * store carries no version to check first.
+ */
+export async function forgetWholeGraph(): Promise<void> {
+  for (const storeKey of LEGACY_GRAPH_STORE_KEYS) {
+    await forgetStoredGraph(storeKey)
+  }
+}
+
+/** Forget every stored record, cells and legacy alike - what "remove the
+ *  trail data" has to reach. */
 export async function clearStoredGraph(): Promise<void> {
-  for (const storeKey of Object.values(GRAPH_STORE_KEYS)) {
+  for (const storeKey of [...LEGACY_GRAPH_STORE_KEYS, ...(await graphCellStoreKeys())]) {
     try {
       await del(storeKey)
     } catch {
@@ -200,14 +253,14 @@ export async function clearStoredGraph(): Promise<void> {
   }
 }
 
-/** The bytes each stored artifact holds, for the Downloads window's row.
- *  Absent artifacts are absent from the result rather than zero: nothing
- *  stored is not the same claim as an empty file. */
+/** The bytes each stored cell half holds, by store key, for the Downloads
+ *  window's row. Absent records are absent from the result rather than zero:
+ *  nothing stored is not the same claim as an empty file. */
 export async function storedGraphBytes(): Promise<Record<string, number>> {
   const sizes: Record<string, number> = {}
-  for (const publishedKey of Object.keys(GRAPH_STORE_KEYS)) {
-    const stored = await readStoredGraph(publishedKey)
-    if (stored !== null) sizes[publishedKey] = stored.bytes.size
+  for (const storeKey of await graphCellStoreKeys()) {
+    const stored = await readStoredGraph(storeKey)
+    if (stored !== null) sizes[storeKey] = stored.bytes.size
   }
   return sizes
 }

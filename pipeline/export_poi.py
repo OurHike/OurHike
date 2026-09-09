@@ -246,6 +246,7 @@ from lib.atc_notes import clean_note
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS, build_corridor
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.photo_screen import gate_photos
 from lib.photo_screen import load_decisions as load_screen_decisions
 from lib.photo_store import photo_key
@@ -528,8 +529,16 @@ NHD_STREAM_SOURCE = "nhd_stream"
 # A crossing's identity is WHERE it is, not which reach it belongs to: NHD
 # splits reaches at confluences, so one reach can cross the trail twice and
 # a reach id alone would collide. Five decimal places is about a metre -
-# finer than the geometry, coarse enough that the id is stable while the
-# snapshot is frozen (which is forever, per fetch_trail_water.py).
+# finer than the geometry, coarse enough that the id is stable while BOTH
+# lines that make the point hold still. The stream half does: the NHD
+# snapshot is frozen forever (fetch_trail_water.py). The trail half does not
+# - a re-measure of the centerline moves the meeting point, and #1028 found
+# the one such move the 2026-08-25 ledger recorded had re-minted an unnamed
+# crossing 24.7 m from its retired self, because a nameless point had no
+# other evidence to be carried on. That is why the stream's own id rides
+# RAW_PROPERTIES_KEY below: reconcile_poi_identity.py carries a moved
+# crossing on the half of the meeting that cannot have moved
+# (SCORE_STREAM_INTACT there).
 CROSSING_ID_PRECISION = 5
 
 # How close an OSM water point must sit to an opentrail one to be its twin.
@@ -1077,6 +1086,13 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": {
                 "crossing_id": f"{lat:.{CROSSING_ID_PRECISION}f},{lon:.{CROSSING_ID_PRECISION}f}",
+                # The stream the crossing is made of - NHD's permanent
+                # identifier where USGS saw it, the OSM way id otherwise. Not
+                # a column (write_poi_type never publishes it); it rides
+                # RAW_PROPERTIES_KEY so reconcile_poi_identity.py can carry a
+                # nameless crossing across a trail re-measure on the one half
+                # of the intersection that cannot have moved (#1028).
+                "stream_id": crossing.get("stream_id"),
                 "sources": crossing.get("sources"),
                 "name": crossing.get("name"),
                 "flow": crossing.get("flow"),
@@ -1111,6 +1127,9 @@ def load_trail_water(path: Path, trail_id: str = TRAIL_ID) -> list[dict]:
                 # id stable: one reachable stream point per site by
                 # construction, so the site's own GlobalID names it.
                 "site_global_id": site["atc_global_id"],
+                # The same passport a crossing carries, for the same reader
+                # (#1028): a site's water point is derived from a stream too.
+                "stream_id": water.get("stream_id"),
                 "sources": water.get("sources"),
                 "name": water.get("name"),
                 "flow": water.get("flow"),
@@ -1342,10 +1361,17 @@ def attach_miles(con: duckdb.DuckDBPyConnection, records: list[dict], centerline
 
 def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[dict]) -> dict:
     """Write one poi_type's unified+clipped records to GeoJSON + FlatGeobuf
-    under OUT_DIR, even when records is empty (e.g. `crossing`, pending NHD
-    ingestion - this deliberately ships an empty-but-present layer rather
-    than omitting the poi_type or inventing data). Returns this poi_type's
-    manifest entry: per-artifact path/sha256/feature_count."""
+    under OUT_DIR, even when records is empty - this deliberately ships an
+    empty-but-present layer rather than omitting the poi_type or inventing
+    data. Returns this poi_type's manifest entry: per-artifact
+    path/sha256/feature_count.
+
+    The example used to be `crossing, pending NHD ingestion`. That ingestion
+    landed: production release 2026-09-04 publishes 5,318 crossings (measured
+    off the live artifact, PR #1247). `trailhead` is the empty one now, at 0
+    features on that same release, for the reason #1218 gives - USFS's 7,358
+    trailheads ship as parking pins. The rule is unchanged; only which
+    poi_type is currently demonstrating it."""
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     columns = ", ".join(f"{name} {sql_type}" for name, sql_type in POI_COLUMNS)
@@ -1415,8 +1441,8 @@ def write_poi_type(con: duckdb.DuckDBPyConnection, poi_type: str, records: list[
     con.execute(f"COPY poi_geom TO '{fgb_path.as_posix()}' WITH (FORMAT GDAL, DRIVER 'FlatGeobuf')")
 
     return {
-        "geojson": {"path": str(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
-        "fgb": {"path": str(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
+        "geojson": {"path": to_manifest_path(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
+        "fgb": {"path": to_manifest_path(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
     }
 
 

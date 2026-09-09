@@ -29,6 +29,25 @@ only `at_basemap` is cut, so a stretch is the basemap alone and the terrain stay
 archive. The cells are cut from the Fine (z14) package only, so the "one global level with
 a per-piece override" decision below has no pipeline behind it: the client reads whatever
 level the index publishes and promises none. And named pieces wait on open question 2.
+Since 2026-09-07 the other organizations' trail lines above the seam are vector tiles
+(`nearby_trails.pmtiles`, [#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) — the 228.8 MB GeoJSON they replaced crashed
+every phone that fetched it whole, [#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254)),
+and the same day's stage 2 cut them into cells of this grid as a second family
+(`nearby_trails_cells.json`, `client/src/lib/coverageCells.ts`'s `NETWORK_CELLS`): a
+stretch download carries the network above the seam with the ground under it, priced as one
+decision on the stretch card, and `map/networkTiles.ts` asks a held cell before the bucket.
+Stage 3 (2026-09-08) cut the junction graph into the same cells as a third family
+(`trail_graph_cells.json`, `GRAPH_CELLS`) — not downloaded with a stretch but loaded where a
+hiker plans and kept per cell by `lib/trailGraphStore.ts`; `features/HIKE_PLANNING.md`'s *The
+graph a phone keeps is the cells it planned in* is that half.
+Two things about that family are decided differently from the sheets and are worth knowing
+before reading §6: it publishes **no context** — z9 nationwide measured 9,653,907 bytes, for
+a zoom the sketch already draws below and the cells draw above, so the cut is made one zoom
+below the tiles and z9 rides in the cells — and it is **gated** with the lines it is cut from
+(`pipeline/publish.py`'s `NEARBY_TRAILS_CELL_FAMILY`). What is still not built there: a phone
+holding the **whole** hiking sheet is not offered the network cells, because the stretch
+card stands down when the whole sheet is here, and that phone draws no nearby trails above
+the seam without signal.
 
 Measurements below are dated. Everything read off the published bucket was fetched
 2026-08-28 against release `2026-08-28`, whose manifest carries a `size_bytes` per
@@ -180,10 +199,11 @@ mechanisms hold it, and none of them is "choose carefully":
 3. **The default is not a choice at all.** §5.
 
 **Neither direction of error is safe here, and that is worth stating plainly** because it
-is unlike `wrongWay.ts`. Over-cutting strands somebody without a map; over-shipping puts
-the app back to asking for a gigabyte, which is the harm #551 exists to end. There is no
-conservative direction to round toward — only a margin wide enough that the question stops
-being sharp.
+is unlike the wrong-way alert, whose design preferred false negatives over false positives
+(`wrongWay.ts`, before its removal - #93/#308). Over-cutting strands somebody without a
+map; over-shipping puts the app back to asking for a gigabyte, which is the harm #551
+exists to end. There is no conservative direction to round toward — only a margin wide
+enough that the question stops being sharp.
 
 ## 5. The whole trail stays one tap
 
@@ -287,7 +307,9 @@ seam takes away the *ground* and never the *hazard*. Three reasons:
 3. It is cheap in the only place it is expensive. The 0.7 MB gzipped figure for two parks'
    full trail geometry (#771) says geometry is not the problem; the 23.5 MB is a *parse and
    memory* problem, and the fix for that is a per-region cut of the artifact for **drawing**,
-   which is not the same thing as a per-region cut for **coverage**.
+   which is not the same thing as a per-region cut for **coverage**. (That cut exists since
+   [#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257): vector tiles, read by range. The
+   coverage cut does not, yet.)
 
 So: **pieces scope the sheet; they do not scope safety.** What a seam banner may say is
 "the map stops here", never "your water stops here".

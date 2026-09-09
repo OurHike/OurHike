@@ -325,7 +325,7 @@ It also gives [#931](https://github.com/OurHike/OurHike/issues/931) — *Roads a
 
 - **There is no elevation profile on this screen yet — and the reason first written here was wrong.** #1194 said the samples do not exist, citing `export_network_elevation.py`'s "worth publishing only if a chart is ever drawn for a network route, and then as a fourth artifact" — a sentence describing a decision taken *before* that artifact was built. It has been built since: `export_network_profile.py` publishes `trail_graph_profile.json`, the client fetches it, and `lib/walkProfile.ts` already turns a walk into ribbon samples on the walk's own mile axis (#1119, closing #1045). What is genuinely missing is narrower — `walkProfile` takes `WalkStep[]`, and `lib/dayHikeWalk.ts` builds those from a saved `ResolvedDayHike` rather than from a draft being tapped out. That is [#1210](https://github.com/OurHike/OurHike/issues/1210). The panel says "No profile drawn here yet", which is a claim about the screen rather than about the bucket.
 
-**Settled since: a tap is measured against the trail's own vertices, never against the chord between two junctions (#1093, 2026-08-27).** The published graph splits in two — `trail_graph.json` (nodes, lengths, attribution) at launch, `trail_graph_geometry.json` (every edge's vertices) only when the builder opens, because it is much the heavier half (7.5 MB against 17.3 MB, measured on the live bucket 2026-08-27). A phone in between holds the shape of the network and not where any of it runs, and the snap used to fall back to the straight line between an edge's junctions.
+**Settled since: a tap is measured against the trail's own vertices, never against the chord between two junctions (#1093, 2026-08-27).** The published graph splits in two — `trail_graph.json` (nodes, lengths, attribution) at launch, `trail_graph_geometry.json` (every edge's vertices) only when the builder opens, because it is much the heavier half (7.5 MB against 17.3 MB, measured on the live bucket 2026-08-27). A phone in between holds the shape of the network and not where any of it runs, and the snap used to fall back to the straight line between an edge's junctions. (Since #1257 stage 3 the two halves are per cell — `trail_graph_cell_<name>.json` and `trail_graph_geometry_cell_<name>.json` — and the same two-step holds for each cell; see *The graph a phone keeps is the cells it planned in* below.)
 
 Measured against the artifact that ships — both files as data.ourhike.org served them on 2026-08-27, release `a6292547`: 31,545 nodes, 40,596 edges, median edge 68 m, longest 58,615 m. Of **20,000 taps placed exactly on the drawn line** (five along each of 4,000 randomly chosen edges, seed 1093):
 
@@ -446,6 +446,66 @@ So taking everything costs about **2% on top of a corridor package that is alrea
 
 The edge-count check is not skipped for stored bytes, and it matters **more** offline than online: a phone can hold a graph from one release and a geometry file from the next, edge 40 drawn from edge 41's vertices is a route on the wrong trail, and offline there is no fresh copy coming to correct it.
 
+## The graph a phone keeps is the cells it planned in (#1257 stage 3, 2026-09-08)
+
+The section above was written when the whole graph was 7.5 MB. On 2026-09-07 it was
+published at **78,595,556 bytes** decoded — nationwide USFS trails, #1231 — and parsing it on
+the main thread was the frozen first page of [#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254). The
+budget that issue added stops a phone parsing it; it does not give the phone a graph.
+[#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) does, by changing the shape: the graph is
+published in the same 1° cells as the hiking sheet and the network tiles
+(`pipeline/cut_trail_graph.py`, `trail_graph_cells.json`), and a phone loads the cells it
+is planning in.
+
+**Which cells, and who decides.** The shell knows where a day hike could be wanted and
+`lib/useTrailGraph.ts` turns that into a graph. Wanted are the cells under the planned hike's
+centerline slice, under the fix, under the camera once it is past the pin seam (below it a tap
+cannot land within 150 ft of anything, and the corridor view would otherwise ask for every cell
+it shows), under every tap and stroke in the builder, and under the ends of the hike a card is
+showing or the hiker is following — a saved hike re-resolves from its coordinates, so its cells
+are what it needs to resolve at all. Cells are loaded **one at a time** — the densest is 12.7 MB
+of JSON, and four of those parsed together is the frozen page one artifact further down — and
+never unloaded within a session.
+
+**Edges are never cut.** An edge within 3 km of a seam is filed whole into both cells, so a tap
+anywhere in a cell is answered by that cell alone, and a route across the seam needs only the
+two cells either side. Merging is **append-only** (`mergeGraphShard`): every node and edge
+already merged keeps its position, unseen ones go on the end, and the seam edge both cells
+carry is merged once — which is what lets a `GraphPoint.edgeIndex` in a draft survive a cell
+landing mid-build. Measured on the production graph, 2026-09-08: 466,966 edges become 530,190
+placements across 502 cells, 13.5% seam duplication.
+
+**The door answers from the index, not from a load.** *"A day hike"* on the Plan door used to
+open when the whole graph's parse finished; it opens now on `trail_graph_cells.json` — 166,721
+bytes on the same data — being present and non-empty, and the sentences for its absence are the
+index's: not in this release, or unreachable. A tap in a cell that has not landed yet gets
+`lib/dayHikeDraft.ts`'s *"hasn't got this area's trail lines yet… Try again in a moment"* — the
+right sentence, and the same collapse that paragraph already records: it cannot tell a cell
+still arriving from one the bucket refused for good. The console says which; the door does not.
+
+**What a phone keeps is the cells it loaded, four halves each** (`lib/trailGraphStore.ts`):
+graph, geometry, elevation, profile, under `ourhike:trail-graph-cell:<half>:<name>`, stored
+verified exactly as the whole files were. A cell loaded once with signal routes at the trailhead
+without it — the promise of the section above, kept at the cell's grain. The four whole-file
+records earlier releases wrote are deleted at every launch; nothing reads them, and a phone
+that fetched 2026-09-07's graph before the budget existed is still holding 78.6 MB of it.
+
+| | wire-free measure (decoded bytes, 2026-09-08) |
+|---|---|
+| `trail_graph_cells.json` | 166,721 |
+| Harriman, `n41w075`, graph / geometry | 1,791,818 / 2,290,941 |
+| median cell, graph / geometry | 28,406 / 220,210 |
+| densest cell, `n44w072`, graph / geometry | 12,663,031 / 6,954,151 |
+
+**Two things this does not do, said plainly.** The climb and profile halves are cut only when
+the whole-file companions align with the graph, and production's do not today — 42,103 entries
+against 466,966 edges, written for an earlier graph — so the cutter refuses them with a warning
+and the cells carry no climb until `include_elevation` reruns; a card prints miles and no ±.
+And a phone that holds the whole hiking sheet is not offered network or graph cells, because
+cells ride the stretch download (stage 2) and the stretch is what a phone without the sheet
+takes — the graph is loaded where the hiker plans either way, so what that phone lacks is
+only the offline copy of cells it never planned in.
+
 ## The elevation under a walk that is not the A.T. (#1045, 2026-08-27)
 
 Decided by the maintainer: *"Show the elevation. B then C, and anything else that needs to show the gain/loss"* — and, on what to do about the ribbon that was already drawing, *"Treat it as a bug and fix it first… If a ribbon is drawing on a followed day hike from two scalars per edge, that's a picture of terrain nobody measured on the band a hiker uses to judge daylight. Blank it in the same branch, then build B and C properly."*
@@ -468,7 +528,7 @@ A zero day is not a walk and yields nothing — the ribbon shows whatever it sho
 
 ### C — the day-hike half, from the fourth artifact
 
-`pipeline/export_network_profile.py` publishes `trail_graph_profile.json`: one array of whole feet per edge, index-aligned with `trail_graph.json`'s `edges` like the geometry and elevation files already are. 694,955 samples at 25 m — 3.47 MB raw, 1.22 MB over the wire, measured. `lib/walkProfile.ts` is the client half, and it reads `lib/dayHikeWalk.ts`'s existing flattening rather than adding a fourth accumulation: the ribbon's x-axis is `WalkStep.beforeMetres`, which is the *same* axis the follow header prints `walkedMi` on and the turn list counts down, so the rule under the ribbon lands on the number written above it.
+`pipeline/export_network_profile.py` publishes `trail_graph_profile.json`: one array of whole feet per edge, index-aligned with `trail_graph.json`'s `edges` like the geometry and elevation files already are (and, since #1257 stage 3, cut per cell beside them as `trail_graph_profile_cell_<name>.json`, aligned to that cell's shard — the client fetches those). 694,955 samples at 25 m — 3.47 MB raw, 1.22 MB over the wire, measured. `lib/walkProfile.ts` is the client half, and it reads `lib/dayHikeWalk.ts`'s existing flattening rather than adding a fourth accumulation: the ribbon's x-axis is `WalkStep.beforeMetres`, which is the *same* axis the follow header prints `walkedMi` on and the turn list counts down, so the rule under the ribbon lands on the number written above it.
 
 **Fetched only once a walk is being followed** — never at launch, never with the builder. That is the artifact's own contract (`export_network_elevation.py`: *"a fourth artifact fetched when that chart opens"*), and it means a hiker who opens the builder, draws a loop and never walks it pays nothing for it.
 

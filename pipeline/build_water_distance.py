@@ -125,6 +125,7 @@ from pathlib import Path
 import requests
 
 from lib.spurs import distance_m
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
@@ -166,7 +167,6 @@ UNKNOWN_PROVENANCE = (
     "until a human reads what it derives from and adds it to PUBLISHABLE_PROVENANCES deliberately"
 )
 
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 TIMEOUT = 60
 PAGE_SIZE = 1000
 

@@ -254,8 +254,12 @@ function validEnd(candidate: unknown): DayHikeEnd | null {
  * reason is what the figures claim: a hike with an end silently dropped is a
  * DIFFERENT walk still wearing the old cached miles - a display outrunning
  * its source. Refusing the hike is honest; quietly rerouting it is not.
+ *
+ * Exported for lib/suggestedHikesData.ts, which reads a published route's
+ * ends through the same gate - so the CRITICAL rule above (no edgeIndex
+ * survives a load) has one home rather than a copy per record type.
  */
-function validSegments(candidate: unknown): DayHikeSegment[] | null {
+export function validSegments(candidate: unknown): DayHikeSegment[] | null {
   if (!Array.isArray(candidate) || candidate.length === 0) return null
   const segments: DayHikeSegment[] = []
   for (const entry of candidate) {
@@ -342,7 +346,7 @@ function validFigures(candidate: unknown): DayHikeFigures | null {
  * no invariant the rest of the record's arithmetic depends on, so a broken
  * one costs the field and never the hike.
  */
-function validClimb(candidate: unknown): RouteClimb | null | undefined {
+export function validClimb(candidate: unknown): RouteClimb | null | undefined {
   if (candidate === undefined) return undefined
   if (candidate === null) return null
   if (typeof candidate !== 'object') return undefined

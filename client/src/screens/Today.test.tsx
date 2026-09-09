@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Today, type TodayProps } from './Today'
+import { Today, type LongHikeToday, type TodayProps } from './Today'
 import { STANDARD_PACE } from '../lib/pace'
 
 // The Today screen's honesty contract, asserted where it renders: the mode
@@ -360,5 +360,253 @@ describe('the rest of the column', () => {
     render(<Today {...props()} />)
 
     expect(screen.getByText('Everything here works with no signal.')).toBeInTheDocument()
+  })
+})
+
+describe('the suggested hikes (#1284)', () => {
+  const NJ = { lon: -74.6, lat: 41.2 }
+  const suggestion = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    name: id,
+    miles: 6.2,
+    climb: { gainFt: 980, lossFt: 980 },
+    difficulty: 'moderate' as const,
+    author: { kind: 'club' as const, name: 'NY-NJ Trail Conference' },
+    segments: [
+      [
+        { coord: [NJ.lon, NJ.lat] as [number, number], poiId: null },
+        { coord: [NJ.lon + 0.01, NJ.lat] as [number, number], poiId: null },
+      ],
+    ],
+    ...overrides,
+  })
+  const SUGGESTED = [
+    suggestion('Sunrise Mtn loop', {
+      transit: { line: 'NJT 197', toStop: 'Culvers Gap', walkMiles: 0.3, source: 'NJT' },
+    }),
+    suggestion('Angels Rest', {
+      difficulty: 'strenuous',
+      author: { kind: 'guidebook', name: 'L. Adkins' },
+    }),
+    suggestion('Pochuck boardwalk', { difficulty: 'easy' }),
+    suggestion('Terrace Pond circular'),
+    suggestion('Wapiti to Docs Knob', { climb: null }),
+  ]
+
+  it('renders in every mode - mode re-ranks, it never hides', () => {
+    for (const mode of ['day', 'long', 'volunteer'] as const) {
+      const { unmount } = render(
+        <Today {...props({ mode, suggestedHikes: SUGGESTED, onFindHike: vi.fn() })} />,
+      )
+      expect(screen.getByText('Suggested hikes')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /find a hike/i })).toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it('leads the column in day mode, and sits last in the other two', () => {
+    const at = (mode: 'day' | 'long' | 'volunteer') => {
+      const { unmount } = render(
+        <Today {...props({ mode, suggestedHikes: SUGGESTED, onFindHike: vi.fn() })} />,
+      )
+      const sections = [
+        ...document.querySelectorAll('.today__paper .today__section'),
+      ].filter((section) => section.childElementCount > 0)
+      const index = sections.findIndex(
+        (section) => section.querySelector('.today__suggested-rail') !== null,
+      )
+      const journal = sections.findIndex(
+        (section) => section.textContent?.includes('Sartain Spring') ?? false,
+      )
+      unmount()
+      return { index, journal, last: sections.length - 1 }
+    }
+    expect(at('day').index).toBeLessThan(at('day').journal)
+    expect(at('long').index).toBe(at('long').last)
+    expect(at('volunteer').index).toBe(at('volunteer').last)
+  })
+
+  it('renders no rule and no gap when there is nothing to suggest', () => {
+    render(<Today {...props({ suggestedHikes: [], onFindHike: vi.fn() })} />)
+
+    expect(screen.queryByText('Suggested hikes')).not.toBeInTheDocument()
+    expect(document.querySelector('.today__suggested-rail')).toBeNull()
+    // The slot is there and empty, which .today__section:empty collapses.
+    expect(screen.queryByRole('button', { name: /find a hike/i })).not.toBeInTheDocument()
+  })
+
+  it('shows three on the shelf and counts the rest on the way to them', async () => {
+    const onFindHike = vi.fn()
+    const user = userEvent.setup()
+    render(<Today {...props({ suggestedHikes: SUGGESTED, onFindHike })} />)
+
+    expect(document.querySelectorAll('.today__suggested-card')).toHaveLength(3)
+    const find = screen.getByRole('button', { name: /find a hike/i })
+    expect(find).toHaveTextContent('2 more ›')
+    await user.click(find)
+    expect(onFindHike).toHaveBeenCalled()
+  })
+
+  it('prints a walking duration from the cached climb, and no time without one', () => {
+    render(
+      <Today
+        {...props({
+          suggestedHikes: [SUGGESTED[0], SUGGESTED[4]],
+          onFindHike: vi.fn(),
+        })}
+      />,
+    )
+
+    expect(screen.getByText('6.2 mi · ≈2h 30m')).toBeInTheDocument()
+    expect(screen.getByText('6.2 mi · no time — climb unmeasured')).toBeInTheDocument()
+    // A duration, never an arrival clock - the status strip's own clock is
+    // outside the rail, which is why the check is scoped to it.
+    const rail = document.querySelector('.today__suggested-rail')!
+    expect(rail.textContent).not.toMatch(/\d{1,2}:\d{2}/)
+  })
+
+  it('marks transit only where it was published, and names who wrote each route', () => {
+    render(
+      <Today
+        {...props({ suggestedHikes: SUGGESTED.slice(0, 2), onFindHike: vi.fn() })}
+      />,
+    )
+
+    expect(
+      screen.getAllByRole('img', { name: 'Reachable by public transport' }),
+    ).toHaveLength(1)
+    expect(screen.getByText(/NJT 197 → Culvers Gap/)).toBeInTheDocument()
+    expect(screen.getByText('NY-NJ Trail Conference')).toBeInTheDocument()
+    expect(screen.getByText('Guidebook route · L. Adkins')).toBeInTheDocument()
+    expect(screen.getByText('Strenuous')).toBeInTheDocument()
+  })
+
+  it('renders the cards as things to read until there is a detail to open', () => {
+    // Wireframe 1g is not designed; a card that looked pressable and went
+    // nowhere would be a dead control.
+    render(
+      <Today
+        {...props({ suggestedHikes: SUGGESTED.slice(0, 1), onFindHike: vi.fn() })}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /sunrise mtn loop/i })).toBeNull()
+    expect(screen.getByRole('article', { name: 'Sunrise Mtn loop' })).toBeInTheDocument()
+  })
+
+  it('keeps the provenance note under the row', () => {
+    render(<Today {...props({ suggestedHikes: SUGGESTED, onFindHike: vi.fn() })} />)
+
+    expect(
+      screen.getByText('Routes from community contributions. Check before traveling.'),
+    ).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The long hike leading Today (#1317).
+
+const LONG_HIKE: LongHikeToday = {
+  name: 'Springer → Katahdin',
+  figures: '412.0 mi walked · 1,785.4 mi to go',
+  dayNumber: 6,
+  awayLine: null,
+  resume: null,
+  day: {
+    title: 'Pine Swamp Branch → Bailey Gap',
+    planned: '11.2 mi planned',
+    resupply: 'Resupply: Pearisburg, 31.6 mi on',
+    last: false,
+    onOpen: vi.fn(),
+    onTakeZero: vi.fn(),
+    onSeeOnMap: vi.fn(),
+  },
+}
+
+describe('the long hike leading Today', () => {
+  it('puts the hike’s name and its two figures under the readout', () => {
+    render(<Today {...props({ mode: 'long', longHike: LONG_HIKE })} />)
+
+    expect(screen.getByText('Springer → Katahdin')).toBeInTheDocument()
+    expect(screen.getByText('412.0 mi walked · 1,785.4 mi to go')).toBeInTheDocument()
+  })
+
+  it('adds the day of the hike to the date eyebrow', () => {
+    render(<Today {...props({ mode: 'long', longHike: LONG_HIKE })} />)
+    expect(document.querySelector('.today__eyebrow')?.textContent).toMatch(/· DAY 6$/)
+  })
+
+  it('says the date alone when nothing in the hike is dated', () => {
+    // A day number nothing supports would be worse than no day number.
+    render(
+      <Today {...props({ mode: 'long', longHike: { ...LONG_HIKE, dayNumber: null } })} />,
+    )
+    expect(document.querySelector('.today__eyebrow')?.textContent).not.toMatch(/DAY/)
+  })
+
+  it('leads the paper column with the hike’s day, and still renders the alerts', () => {
+    // Mode re-ranks; nothing disappears (lib/hikerMode.ts).
+    render(
+      <Today
+        {...props({
+          mode: 'long',
+          longHike: LONG_HIKE,
+          closureAhead: 'A closure 3 mi ahead',
+        })}
+      />,
+    )
+
+    const sections = [
+      ...document.querySelectorAll('.today__paper .today__section'),
+    ].filter((section) => section.childElementCount > 0)
+    const card = sections.findIndex(
+      (section) => section.querySelector('.today__card--hike') !== null,
+    )
+
+    expect(card).toBe(0)
+    expect(screen.getByText('A closure 3 mi ahead')).toBeInTheDocument()
+  })
+
+  it('renders no hike card in the other two modes', () => {
+    for (const mode of ['day', 'volunteer'] as const) {
+      const { unmount } = render(<Today {...props({ mode, longHike: LONG_HIKE })} />)
+      expect(document.querySelector('.today__card--hike')).toBeNull()
+      unmount()
+    }
+  })
+
+  it('renders no hike card when nothing is planned for today', () => {
+    // Planning as you walk is the ordinary way to walk a long trail, so this
+    // is not a degraded state and nothing nags about it.
+    render(<Today {...props({ mode: 'long', longHike: { ...LONG_HIKE, day: null } })} />)
+
+    expect(document.querySelector('.today__card--hike')).toBeNull()
+    expect(screen.getByText('Springer → Katahdin')).toBeInTheDocument()
+  })
+
+  it('changes tone DOWN on the last of it - no countdown, no bar, no confetti', () => {
+    const { container } = render(
+      <Today
+        {...props({
+          mode: 'long',
+          longHike: {
+            ...LONG_HIKE,
+            day: { ...LONG_HIKE.day!, last: true },
+          },
+        })}
+      />,
+    )
+
+    expect(screen.getByText('The last of it')).toBeInTheDocument()
+    expect(screen.getByText(/Nothing here counts down for you/)).toBeInTheDocument()
+    expect(container.querySelector('progress')).toBeNull()
+    expect(container.textContent).not.toMatch(/%|to go until|congratulations/i)
+  })
+
+  it('prints no percentage, nothing behind and nothing on track', () => {
+    const { container } = render(
+      <Today {...props({ mode: 'long', longHike: LONG_HIKE })} />,
+    )
+    expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
   })
 })

@@ -834,8 +834,11 @@ function nearestVertex(
  * use for it.
  *
  * Worth its own function rather than a flag because of who calls which.
- * {@link locateOnTrail} is called once per GPS fix and feeds the wrong-way
- * alert, which needs `offTreadFeet` and must keep paying for it. This one is
+ * {@link locateOnTrail} is called once per GPS fix and feeds every live
+ * consumer that needs `offTreadFeet` - `gpsTrace.ts`'s recording and
+ * `dayHikeFollow.ts`'s off-route detection among them (the wrong-way alert
+ * was too, until its removal - #93/#308) - and must keep paying for it. This
+ * one is
  * for a tapped point, a report, a closure end - single places with no
  * precomputed answer. It is NOT for placing every waypoint on the phone: that
  * was 16,949 calls in one memo on the launch thread (#1192), and it now

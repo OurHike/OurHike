@@ -1,12 +1,22 @@
-"""The exporter's publish contract (#659): its manifest must work from any
-CWD and its main() must answer like its siblings.
+"""The exporter's publish contract (#659, revised by #1265): its manifest
+must resolve to the real artifact from any CWD, and its main() must answer
+like its siblings.
 
 The assembly logic itself is tested where it lives, in
 test_lib_club_sections.py - this file covers only the seam publish.py
 reads, which is where the audit found the faults: a relative manifest path
-(every sibling stores absolute, and publish.py resolves the string against
-its own CWD) and a main() returning the artifact body where every sibling
-returns its manifest.
+resolved against publish.py's CWD *at invocation time* rather than against
+pipeline/ itself, and a main() returning the artifact body where every
+sibling returns its manifest.
+
+#1265 replaced "every sibling stores absolute" with "every sibling stores
+relative to pipeline/, resolved against Path(__file__) rather than the
+CWD" (lib/manifest_paths.py) - the same CWD-independence #659 needed,
+without requiring build and publish to share a filesystem by coincidence of
+an absolute string. This fixture's artifact lives under tmp_path, outside
+pipeline/ entirely, so to_manifest_path() takes its absolute-path fallback
+here regardless - the property this test guards is that from_manifest_path()
+reaches the real file from any CWD, not which branch produced the string.
 """
 
 import hashlib
@@ -15,9 +25,10 @@ import os
 from pathlib import Path
 
 import export_club_sections
+from lib.manifest_paths import from_manifest_path
 
 
-def test_the_manifest_path_is_absolute_and_main_returns_the_manifest(tmp_path, monkeypatch):
+def test_the_manifest_path_resolves_from_any_cwd_and_main_returns_the_manifest(tmp_path, monkeypatch):
     out_path = tmp_path / "processed" / "club_sections.json"
     manifest_path = tmp_path / "processed" / "club_sections_manifest.json"
     monkeypatch.setattr(export_club_sections, "OUT_PATH", out_path)
@@ -28,14 +39,15 @@ def test_the_manifest_path_is_absolute_and_main_returns_the_manifest(tmp_path, m
         lambda: {"sources": {}, "clubs": [], "unattributed": []},
     )
     # Publishes happen from repo root, not pipeline/ - the CWD that made the
-    # old relative path crash publish.py mid-collect.
+    # old relative-to-CWD path crash publish.py mid-collect (#659).
     monkeypatch.chdir(tmp_path)
 
     returned = export_club_sections.main()
 
     manifest = json.loads(manifest_path.read_text())
-    assert Path(manifest["path"]).is_absolute(), "a relative manifest path resolves against publish.py's CWD, not pipeline/"
-    assert Path(manifest["path"]).exists(), "the path must reach the artifact from any CWD"
+    resolved = from_manifest_path(manifest["path"])
+    assert resolved.exists(), "the manifest's path must reach the artifact from any CWD, the way publish.py reads it"
+    assert resolved == out_path.resolve()
     assert manifest["sha256"] == hashlib.sha256(out_path.read_bytes()).hexdigest()
     assert returned == manifest, "main() answers with the manifest, like every sibling exporter"
     assert os.getcwd() != str(Path(export_club_sections.__file__).parent), (

@@ -63,6 +63,7 @@ import hashlib
 import json
 import sys
 import tempfile
+from collections.abc import Collection
 from pathlib import Path
 
 import requests
@@ -115,10 +116,22 @@ REACH_KEYS = ("poi_water.geojson", "trails.geojson", "poi_shelter.geojson", "poi
 # OPTIONAL rather than a fifth REACH_KEY: it is licence-gated in publish.py, so
 # a release that held every steward back has no such artifact, and requiring it
 # would turn this check from "measures the A.T.'s water" into "skipped" for
-# exactly the releases that still have A.T. water to measure. Present, it is
-# used; absent, this checks what it checked before, and a network water point
-# in a release whose network lines are unpublished would read as too far -
-# which cannot happen, because the same gate is what let it publish.
+# exactly the releases that still have A.T. water to measure.
+#
+# Present, it is used. ABSENT, ONLY THE A.T.'S OWN WATER IS MEASURED, and the
+# report says how many points it left alone. This paragraph used to promise
+# more - "absent, this checks what it checked before, and a network water
+# point in a release whose network lines are unpublished would read as too
+# far, which cannot happen, because the same gate is what let it publish" -
+# and that covered one of the two ways the file can be missing. The other is
+# PUBLISHED BUT NOT READ: on 2026-09-07 `nearby_trails.geojson` crossed the
+# hash budget at 228,820,578 bytes, check_hash() skipped it, it never reached
+# `keep_dir`, and every water point the pipeline had anchored to another
+# organization's trail was measured against the A.T. alone and reported as
+# unreachable - 118 of 201, the worst "further than 1 mi", against a bucket
+# whose water was correct (#1256). The exporter withholds an A.T. `mile` from
+# exactly those points (export_poi.py's mark_off_trail_records, attach_miles),
+# which is what lets this file tell them apart without a second artifact.
 OPTIONAL_REACH_KEY = "nearby_trails.geojson"
 
 
@@ -467,7 +480,36 @@ def check_hash(
     return _report("hash", key, OK, f"matches {actual[:16]}…")
 
 
-def check_reach(keep_dir: Path) -> dict:
+def _at_anchored_water(source: Path, target: Path) -> int:
+    """Write `source` minus every water point the pipeline anchored to another
+    organization's trail, to `target`; returns how many were left out.
+
+    The mark is the ABSENCE of a mile. export_poi.py's attach_miles projects
+    every A.T.-anchored point onto the axis and never declines, and
+    mark_off_trail_records is the one thing that stops it - so on a published
+    file, an osm_water point with `mile: null` is one whose only walk is on
+    somebody else's trail. Measuring that point against the A.T. is the
+    2026-09-07 false alarm (#1256); leaving it out and saying so is not.
+
+    A missing key reads the same as null, on purpose. The published file
+    carries the column on every point (POI_COLUMNS), so a file with no miles
+    at all is not the exporter's output - and the safe reading of that is
+    "nothing here is known to be on the A.T.", which makes the check SKIPPED
+    rather than a false verdict in either direction.
+    """
+    document = json.loads(source.read_text(encoding="utf-8"))
+    kept, left_out = [], 0
+    for feature in document.get("features") or []:
+        properties = feature.get("properties") or {}
+        if properties.get("source") == "osm_water" and properties.get("mile") is None:
+            left_out += 1
+            continue
+        kept.append(feature)
+    target.write_text(json.dumps({**document, "features": kept}), encoding="utf-8")
+    return left_out
+
+
+def check_reach(keep_dir: Path, published: Collection[str] = ()) -> dict:
     """Is every published OSM water point somewhere a hiker walks (#916)?
 
     THIS IS THE ONE CHECK IN THIS FILE THAT IS NOT ABOUT BYTES, and the
@@ -490,6 +532,12 @@ def check_reach(keep_dir: Path) -> dict:
     not run has already been reported by whichever check failed to get it, and
     a second failure naming the same outage would bury it. So does DuckDB being
     absent - see _water_reach_module.
+
+    The network lines are the exception, and `published` - the keys latest.json
+    names - is what lets this say WHY they are missing. Without them the check
+    measures the A.T.'s own water and names the points it did not measure; it
+    goes SKIPPED only when that leaves nothing to measure at all. See
+    OPTIONAL_REACH_KEY for the failure this shape replaced.
     """
     reach = _water_reach_module()
     if reach is None:
@@ -501,10 +549,15 @@ def check_reach(keep_dir: Path) -> dict:
 
     try:
         lines = [keep_dir / "trails.geojson"]
+        water = keep_dir / "poi_water.geojson"
+        left_out = 0
         if (keep_dir / OPTIONAL_REACH_KEY).exists():
             lines.append(keep_dir / OPTIONAL_REACH_KEY)
+        else:
+            water = keep_dir / "poi_water.at.geojson"
+            left_out = _at_anchored_water(keep_dir / "poi_water.geojson", water)
         result = reach.check_reach(
-            keep_dir / "poi_water.geojson",
+            water,
             lines,
             [keep_dir / "poi_shelter.geojson", keep_dir / "poi_campsite.geojson"],
             tolerance_m=reach.SIMPLIFIED_TRAILS_TOLERANCE_M,
@@ -514,15 +567,31 @@ def check_reach(keep_dir: Path) -> dict:
         # caller, and a crashed check is never a pass.
         return _report("reach", "poi_water.geojson", FAILED, f"the check crashed: {exc!r}")
 
+    # Named in every verdict below, because a green run that quietly measured
+    # half the water would claim more than it checked.
+    unmeasured = ""
+    if left_out:
+        why = (
+            "which latest.json names but this run did not read - over the hash budget, or its hash disagreed"
+            if OPTIONAL_REACH_KEY in published
+            else "which this release does not publish"
+        )
+        unmeasured = (
+            f"; {left_out} point(s) the pipeline anchored to another organization's trail were not measured, "
+            f"because that needs {OPTIONAL_REACH_KEY}, {why}"
+        )
+        if result["checked"] == 0:
+            return _report("reach", "poi_water.geojson", SKIPPED, f"nothing to measure against the A.T.{unmeasured}")
+
     radius = reach.MATCH_RADIUS_FT
     if not result["problems"]:
         n = result["checked"]
-        return _report("reach", "poi_water.geojson", OK, f"{n} osm_water point(s), every one inside {radius:.0f} ft")
+        return _report("reach", "poi_water.geojson", OK, f"{n} osm_water point(s), every one inside {radius:.0f} ft{unmeasured}")
 
     detail = (
         f"{len(result['past_gate'])} of {result['checked']} osm_water point(s) are further than "
         f"{radius:.0f} ft from any trail, side trail, shelter or campsite - "
-        f"the worst {result['worst']}. A water pin says *there is water here*. " + "; ".join(result["problems"][:3])
+        f"the worst {result['worst']}. A water pin says *there is water here*. " + "; ".join(result["problems"][:3]) + unmeasured
     )
     return _report("reach", "poi_water.geojson", FAILED, detail)
 
@@ -624,8 +693,9 @@ def check_all(
 
     The temporary directory is owned here rather than passed in, so the water
     check is not something a caller can forget to ask for. It holds at most the
-    four files in REACH_KEYS plus OPTIONAL_REACH_KEY, and is gone before this
-    returns.
+    four files in REACH_KEYS plus OPTIONAL_REACH_KEY (and the A.T.-only cut of
+    the water check_reach writes when the fifth is missing), and is gone before
+    this returns.
     """
     base = base.rstrip("/")
     reports: list[dict] = []
@@ -648,7 +718,7 @@ def check_all(
             if key.endswith(".pmtiles"):
                 reports.append(check_pmtiles(base, key, session))
 
-        reports.append(check_reach(keep_dir))
+        reports.append(check_reach(keep_dir, published=set((manifest.get("artifacts") or {}).keys())))
 
     return reports
 

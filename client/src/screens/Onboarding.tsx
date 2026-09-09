@@ -13,10 +13,8 @@
 //
 // What is NOT here matters as much as what is:
 //
-//  - No notification prompt. OurHike sends exactly one kind of push - the
-//    wrong-way alert - and it is asked for at hike start, when the reason is
-//    concrete. Spending that permission during onboarding, before anyone has
-//    seen the app work, is how an app gets denied notifications forever.
+//  - No notification prompt. OurHike sends no push notifications, so there
+//    is nothing here to ask permission for.
 //  - No account prompt. Reading the map never needs an account; sign-in is
 //    asked at the first contribution instead.
 //

@@ -75,6 +75,7 @@ import json
 from pathlib import Path
 
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.poi_identity import live_rows, resolve, retired_rows
 
 ROOT = Path(__file__).parent
@@ -165,7 +166,7 @@ def main() -> dict:
     OUT_PATH.write_text(json.dumps(collection, separators=(",", ":"), sort_keys=True))
 
     manifest = {
-        "path": str(OUT_PATH),
+        "path": to_manifest_path(OUT_PATH),
         "sha256": sha256_file(OUT_PATH),
         "retired_count": len(features),
         "superseded_count": superseded,

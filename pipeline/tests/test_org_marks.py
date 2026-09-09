@@ -191,35 +191,73 @@ class TestNoMarkShipsWithoutOne:
         assert not any(row["state"] == "granted" for row in MARKS["orgs"].values())
 
 
-class TestTheTrailMarkThatIsAlreadyHere:
+#: Where a TRAIL's mark lives - the A.T. marker, the Long Path's logo - as
+#: opposed to an organization's under ORG_MARK_DIR. Policed the other way
+#: round from that directory: every image here that is not OurHike's own
+#: drawing must be recorded on some org's `trail_mark_in_tree`.
+TRAIL_MARK_DIR = REPO / "client" / "src" / "design-system" / "assets" / "trails"
+
+#: The marks in that directory that are OurHike's own design and nobody's
+#: trademark - lib/trails.ts's header calls them "placeholder marks of
+#: OurHike's own design" for trails whose official art is not sourced here.
+#: Named so that the next file dropped in beside them is the one this test
+#: asks about.
+OURHIKE_OWN_TRAIL_MARKS = {"pct-logo.svg", "cdt-logo.svg"}
+
+
+def trail_mark_records() -> list[tuple[str, dict]]:
+    return [(org, row["trail_mark_in_tree"]) for org, row in MARKS["orgs"].items() if "trail_mark_in_tree" in row]
+
+
+class TestTheTrailMarksThatAreAlreadyHere:
     """A.T.-marker-shaped, and the reason the record had to exist before any org
-    replied. Not an org mark, so it does not live under ORG_MARK_DIR and the
-    check above does not police it - but it IS a third-party trademark in a
-    public AGPL tree, and #933's item 3 says the answer is recorded per source.
+    replied. Not org marks, so they do not live under ORG_MARK_DIR and the
+    check above does not police them - but each IS a third-party trademark in
+    a public AGPL tree, and #933's item 3 says the answer is recorded per
+    source. Two today: ATC's A.T. marker (2026-08-27) and NYNJTC's Long Path
+    logo (2026-09-08, #1288), each on the maintainer's own word.
     """
 
-    ATC_ROW = MARKS["orgs"]["ATC"]
-    LOGO = REPO / "client" / "src" / "design-system" / "assets" / "trails" / "at-logo.png"
+    def test_there_are_trail_mark_records_to_check(self):
+        """The guard on the guard: the parametrised tests below are vacuous
+        over an empty list, and the A.T. marker is in the tree today."""
+        assert {org for org, _ in trail_mark_records()} >= {"ATC", "NYNJTC"}
 
-    def test_the_at_marker_is_in_the_tree_and_the_registry_says_so(self):
-        assert self.LOGO.exists(), (
-            "if this file moved, the record in org_marks.orgs.ATC.trail_mark_in_tree moved with it or stopped being true"
+    @pytest.mark.parametrize("org,record", trail_mark_records())
+    def test_a_recorded_trail_mark_is_in_the_tree_and_says_its_basis(self, org: str, record: dict):
+        asset = REPO / record["asset"]
+        assert asset.exists(), (
+            f"{org}: if {record['asset']} moved, the record in org_marks.orgs.{org}.trail_mark_in_tree moved with it or stopped being true"
         )
+        assert asset.is_relative_to(TRAIL_MARK_DIR), f"{org}: a trail mark lives under {TRAIL_MARK_DIR.relative_to(REPO)}"
+        assert record["basis"].strip(), f"{org}: a trail mark with no basis rests on nothing"
+        assert record["scope"].strip(), f"{org}: a trail mark record has to say what it does not cover"
+        assert record.get("recorded_date"), f"{org}: a permission with no date cannot be aged or re-checked"
 
-        record = self.ATC_ROW["trail_mark_in_tree"]
-        assert record["asset"] == str(self.LOGO.relative_to(REPO))
-        assert record["basis"].strip()
-        assert record["scope"].strip()
-
-    def test_the_trail_mark_record_is_not_read_as_an_org_grant(self):
+    @pytest.mark.parametrize("org,record", trail_mark_records())
+    def test_a_trail_mark_record_is_not_read_as_an_org_grant(self, org: str, record: dict):
         """The distinction that has to survive somebody skim-reading the row.
-        ATC's state is `not_asked` for an ORG mark; a trail marker the
-        maintainer supplied is a different permission about a different asset on
-        a different surface, and letting it read as the first would put ATC's
-        logo on a steward card on nobody's authority."""
-        assert self.ATC_ROW["state"] == "not_asked"
-        assert "not a grant from ATC" in self.ATC_ROW["note"].lower().replace("  ", " ") or (
-            "NOT a grant from ATC" in self.ATC_ROW["note"]
+        The org's state stays `not_asked` for an ORG mark; a trail marker the
+        maintainer supplied is a different permission about a different asset
+        on a different surface, and letting it read as the first would put the
+        org's logo on a steward card on nobody's authority."""
+        row = MARKS["orgs"][org]
+        assert row["state"] != "granted"
+        assert f"not a grant from {org.lower()}" in row["note"].lower().replace("  ", " ")
+
+    def test_every_trail_mark_in_the_tree_is_recorded_or_ours(self):
+        """Reads the tree, not the registry, for the reason the org-mark check
+        above does: the registry is the thing somebody forgets to update. A
+        trademark dropped in beside the A.T. marker with no record is exactly
+        the pattern #933 exists to end."""
+        recorded = {REPO / record["asset"] for _, record in trail_mark_records()}
+        unrecorded = sorted(
+            str(p.relative_to(REPO))
+            for p in TRAIL_MARK_DIR.iterdir()
+            if p.suffix.lower() in IMAGE_SUFFIXES and p.name not in OURHIKE_OWN_TRAIL_MARKS and p not in recorded
+        )
+        assert unrecorded == [], (
+            f"these trail marks are in the bundle and no org_marks row records whose they are or on what basis: {unrecorded}"
         )
 
 

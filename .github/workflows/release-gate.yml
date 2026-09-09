@@ -54,7 +54,7 @@ jobs:
 
     steps:
       - name: Gate 11 - no open release-blocker
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           VERSION: ${{ inputs.version }}
         with:

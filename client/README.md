@@ -362,8 +362,6 @@ than guessed. **`shell` is not `fix_source`**: a native build still writes
   slot in.
 - **Sync, export, and the account row** in Settings are inert for the same
   reason.
-- **The wrong-way alert.** Its thresholds are unvalidated placeholders (see
-  `features/HIKER_SAFETY.md`) and it is deliberately not driving anything.
 - **Elevation ribbon and waypoint lanes.** Omitted rather than stubbed — an
   empty ribbon claims "nothing ahead of you," which is a different and worse
   statement than "we don't have the profile for this stretch."

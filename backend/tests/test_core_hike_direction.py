@@ -1,5 +1,6 @@
 """Tests for app.core.hike_direction.derive_direction - the pure function
-behind ../../../features/HIKER_SAFETY.md section 5's wrong-way alert, and a
+originally written for ../../../features/HIKER_SAFETY.md section 5's
+wrong-way alert (removed, #93/#308; kept for API compatibility), and a
 model-level check that direction is never itself persisted.
 """
 

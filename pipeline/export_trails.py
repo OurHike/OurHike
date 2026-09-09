@@ -55,6 +55,7 @@ from lib.completeness import count_problems, fail_if_incomplete
 from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 from lib.source_registry import is_external_arcgis_layer
 
 ROOT = Path(__file__).parent
@@ -595,8 +596,8 @@ def write_trails(con: duckdb.DuckDBPyConnection, records: list[dict]) -> dict:
     con.execute(f"COPY trails_geom TO '{fgb_path.as_posix()}' WITH (FORMAT GDAL, DRIVER 'FlatGeobuf')")
 
     return {
-        "geojson": {"path": str(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
-        "fgb": {"path": str(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
+        "geojson": {"path": to_manifest_path(geojson_path), "sha256": sha256_file(geojson_path), "feature_count": len(records)},
+        "fgb": {"path": to_manifest_path(fgb_path), "sha256": sha256_file(fgb_path), "feature_count": len(records)},
     }
 
 
@@ -713,7 +714,7 @@ def write_overview(records: list[dict]) -> dict:
     path.write_text(json.dumps(body, separators=(",", ":")))
 
     return {
-        "path": str(path),
+        "path": to_manifest_path(path),
         "sha256": sha256_file(path),
         "feature_count": 1,
         "line_count": len(lines),
@@ -883,7 +884,7 @@ def write_trail_miles(
     }
     path = OUT_DIR / TRAIL_MILES_NAME
     path.write_text(json.dumps(body, separators=(",", ":")))
-    return {"path": str(path), "sha256": sha256_file(path), **stats}
+    return {"path": to_manifest_path(path), "sha256": sha256_file(path), **stats}
 
 
 def _total_coordinates(records: list[dict]) -> int:

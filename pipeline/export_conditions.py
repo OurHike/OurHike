@@ -118,6 +118,7 @@ from pathlib import Path
 import psycopg
 
 from lib.hashing import sha256_file
+from lib.manifest_paths import to_manifest_path
 
 ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "data" / "processed" / "conditions"
@@ -631,7 +632,7 @@ def main() -> dict:
             continue
         path.write_text(json.dumps(build_document(key, rows, generated_at), indent=2) + "\n")
         artifacts[key] = {
-            "path": str(path),
+            "path": to_manifest_path(path),
             "sha256": sha256_file(path),
             "count": len(rows),
             "generated_at": _stamp_utc(generated_at),

@@ -131,7 +131,7 @@ For ratio metrics — uses per active device, say — aggregates alone lose the 
 
 A beta with NYNJTC members can find the first row and cannot find the third — not slowly, not at all. **So the default for a change that is probably an improvement is a staged rollout watched against guardrails, not an experiment**, and A/B is reserved for genuine disagreements about big effects. This also lands on the same practical footing FEATURE_GATING.md already noted from the other direction: GrowthBook's automated guardrails are Enterprise-only, so guardrail watching is a person reading a weekly summary either way.
 
-**No experiment arm may withhold, delay, or de-emphasise safety information.** Closures, serious warnings and the wrong-way alert are never the "off" arm of anything. Presentation can be tested — wording, placement, which of two equally prominent treatments reads faster — provided no arm shows a hiker *less* than control, or later than control. This is [OurHikeValues.md](../OurHikeValues.md) #4 stated as a schema constraint: a flag key marked `safety_surface` is refused an experiment, in the manifest, rather than trusted to a reviewer noticing.
+**No experiment arm may withhold, delay, or de-emphasise safety information.** Closures and serious warnings are never the "off" arm of anything. Presentation can be tested — wording, placement, which of two equally prominent treatments reads faster — provided no arm shows a hiker *less* than control, or later than control. This is [OurHikeValues.md](../OurHikeValues.md) #4 stated as a schema constraint: a flag key marked `safety_surface` is refused an experiment, in the manifest, rather than trusted to a reviewer noticing.
 
 ## 6. What is deliberately never collected
 

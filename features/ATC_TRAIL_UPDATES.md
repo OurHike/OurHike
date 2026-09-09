@@ -107,8 +107,9 @@ damage is patchy: *"The worst of the damage occurred along the section between�
 
 **So band length needs a ceiling, and above it an update becomes a list entry rather than a
 band.** Where exactly that ceiling sits is an open question below; that there must be one is
-not. This is the same instinct as `HIKER_SAFETY.md`'s conservative wrong-way alert — a
-warning that fires too broadly trains people to ignore warnings.
+not. This is the same instinct `HIKER_SAFETY.md`'s conservative wrong-way alert was built
+on, before its removal (#93/#308) — a warning that fires too broadly trains people to
+ignore warnings.
 
 The ceiling now exists in code, as `MAX_BAND_MILES` in `client/src/lib/closureSpan.ts` — one
 constant, provisional, with the reasoning for its current value beside it (#462). It governs
@@ -368,7 +369,11 @@ the pins to stay legible there; a mark left at 0.6 would have been 24px against 
 which is the fault inverted.) Below z9 the pins are gone and the only
 question is whether someone planning a week can see where the ATC has posted something; it is
 deliberately not a shrink to nothing, because unlike the pins this layer has no minzoom and
-zoomed out is exactly when that question gets asked.
+zoomed out is exactly when that question gets asked. **Amended 2026-09-08
+([#1292](https://github.com/OurHike/OurHike/issues/1292) — Below the seam the map draws marks
+that read as waypoints; the opening camera should draw trail lines only):** the point layer now
+stops at the seam like the pins, the z5 stop went with it, and below z9 the Trail notices list is
+where a planner finds a notice. The tape is trail line and stays at every zoom.
 
 All of these changes are size, shape and stacking order, never hue. `lib/atcUpdateStyle.ts` refuses a
 second barrier colour at length, and the reasoning survives intact: on a safety map two reds

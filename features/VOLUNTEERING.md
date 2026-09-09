@@ -43,7 +43,7 @@ The user's first instinct was **Volunteer**, then **Maintain**. Both were worth 
 - **A photo becomes the default, not the escalation.** Data Nudges optimises for one tap because it interrupts someone who did not ask. Someone who opted in has consented to the longer version, and a photo of a dry spring is worth more to the next hiker than the word "dry." Still skippable — never a required field. Depends on [#89](https://github.com/OurHike/OurHike/issues/89), the photo picker that currently discards photos.
 - **Priority, stated as a rule the code can apply.** Water first, then shelters and campsites, then everything else — the user's own ordering, and the same scoping Data Nudges already uses. A viewpoint with no data is not a gap; a spring with no data is a hiker carrying the wrong amount of water.
 
-**Nudging without notifications — four surfaces, all of them places the hiker already looks.** [HIKER_SAFETY.md](HIKER_SAFETY.md) pins the wrong-way alert as the only notification the app ever sends, and this feature must not become the second exception. It does not need to be:
+**Nudging without notifications — four surfaces, all of them places the hiker already looks.** OurHike sends no push notification of any kind (the wrong-way alert, which would have been the exception, was removed - [HIKER_SAFETY.md](HIKER_SAFETY.md) §5), and this feature must not become one. It does not need to be:
 
 1. **Map prominence.** Data Nudges' existing mechanism, unchanged.
 2. **The next-up rail.** [`client/src/chrome/NextUpRail.tsx`](../client/src/chrome/NextUpRail.tsx) already renders what is coming, as one card per waypoint in the order the hiker will meet them, alongside the elevation ribbon — the single most-looked-at strip of the app. A stale water source ahead carries the same tier styling there. This is the highest-value surface of the four, and it is now the cheapest: the rail takes a `stalenessFor` prop and routes the treatments through `lib/stalenessDisplay.ts`, so the styling this bullet asked for is already landed rather than still owed. *(Written against the three waypoint lanes, which [#1054](https://github.com/OurHike/OurHike/issues/1054) replaced with the rail.)*
@@ -243,7 +243,7 @@ The same shape [HIKE_PLANNING.md](HIKE_PLANNING.md) uses, and for the same reaso
 
 ## What this deliberately isn't
 
-No leaderboard. No public volunteer profile. No streaks. No comparison to other hikers. No composite score. No badge a hiker can show another hiker. No notification of any kind — [HIKER_SAFETY.md](HIKER_SAFETY.md)'s wrong-way alert remains the only one the app ever sends, and nothing in this feature is an exception to it.
+No leaderboard. No public volunteer profile. No streaks. No comparison to other hikers. No composite score. No badge a hiker can show another hiker. No notification of any kind — OurHike sends no push notification at all (the wrong-way alert, which would have been the exception, was removed - [HIKER_SAFETY.md](HIKER_SAFETY.md) §5), and nothing in this feature is an exception to that.
 
 And, per value #9's own warnings: no broadcasting of large gatherings, and nothing that turns a workday into an event to be amplified. Small, well-timed, and local is the whole point.
 

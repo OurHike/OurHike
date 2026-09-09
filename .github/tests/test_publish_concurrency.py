@@ -28,13 +28,23 @@ PUBLISH_GROUP = "publish-data"
 
 
 def publishing_jobs() -> list[tuple[str, str, dict, dict]]:
-    """(file, job id, workflow, job) for every job with a publish.py step."""
+    """(file, job id, workflow, job) for every job with a step that actually
+    invokes publish.py.
+
+    A whole-string search for "publish.py" over-matches: publish-vector-data.yml's
+    `build` job (#1265) has a diagnostic step that imports `from publish import
+    collect_photos` and comments on what "publish.py already orders" - neither
+    writes anything, and a substring match flagged the job anyway once #1265 gave
+    it a concurrency group of its own to disagree with the real publisher's. Every
+    actual invocation in this repository is the literal command on its own line,
+    so that is what is matched instead."""
     found = []
     for path in sorted(WORKFLOWS.glob("*.yml")):
         workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
         for job_id, job in (workflow.get("jobs") or {}).items():
             for step in job.get("steps") or []:
-                if "publish.py" in str(step.get("run", "")):
+                lines = (line.strip() for line in str(step.get("run", "")).splitlines())
+                if "python publish.py" in lines:
                     found.append((path.name, job_id, workflow, job))
                     break
     return found

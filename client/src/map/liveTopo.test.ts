@@ -13,8 +13,6 @@ import {
 } from './style'
 import { OSM_CREDIT } from './credits'
 import {
-  CORRIDOR_BOUNDARY_LAYER_ID,
-  CORRIDOR_HIGHLIGHT_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
   CORRIDOR_UNATTRIBUTED_LAYER_ID,
 } from './corridorLayers'
@@ -631,6 +629,10 @@ describe('the offline-only background', () => {
       // whose opening camera has to draw the network from the stored
       // overview, and the tape is the safety half - closed ground stays
       // closed-looking below the seam with no signal at all.
+      // Its dotted half under its solid half (#1283): every line outside
+      // the chosen system is a dot rhythm, on a layer of its own beneath
+      // the one the taken trail draws solid on.
+      'network-overview-line-dotted',
       'network-overview-line',
       'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
@@ -663,6 +665,11 @@ describe('the offline-only background', () => {
       // that matters: ghosting says which system a line belongs to, but where
       // two lines are coincident the last-drawn one owns the pixels whatever
       // its opacity, and it must not be the nearby one.
+      //
+      // Four since #1283: the dotted pair under the solid pair, the same
+      // split the chosen trail's own source gets below.
+      'nearby-trail-casing-dotted',
+      'nearby-trail-blaze-dotted',
       'nearby-trail-casing',
       'nearby-trail-blaze',
       // A nearby trail closed long-term gets the same barrier tape the A.T.'s
@@ -670,6 +677,8 @@ describe('the offline-only background', () => {
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
       'nearby-long-term-closure-band',
+      'trail-casing-dotted',
+      'trail-blaze-dotted',
       'trail-casing',
       'trail-blaze',
       // Trail names (#930) directly over the lines they name, and — the half
@@ -681,19 +690,21 @@ describe('the offline-only background', () => {
       // cannot be placed, the name of the trail the map is about survives.
       'nearby-trail-label',
       'trail-label',
+      // The through-route badge (#1283), after both label layers and before
+      // every pin - so it beats an along-line name for a contested spot and
+      // loses to anything a hiker acts on. Empty until map/trailsInView.ts
+      // has measured a frame, and in the stack either way.
+      'trail-badge',
       // The corridor view's attribution, over the blaze it covers and under
       // everything a hiker acts on (#598). It survives the subtraction for
       // the plainest reason of all: club_sections.json is ON THE PHONE, so
       // there is nothing about drawing it that needs signal, and the person
       // most likely to be reading the whole trail at once is the person
       // planning rather than walking.
+      // The runs only: the boundary ticks and the highlight marks came off
+      // the canvas with every other point mark below the seam (#1292).
       CORRIDOR_UNATTRIBUTED_CASING_LAYER_ID,
       CORRIDOR_UNATTRIBUTED_LAYER_ID,
-      CORRIDOR_BOUNDARY_LAYER_ID,
-      // The highlight marks, over the runs and the ticks they sit on (#858).
-      // corridorLayers.test.ts holds that ordering as a property; this case
-      // only has to agree with it.
-      CORRIDOR_HIGHLIGHT_LAYER_ID,
       // The route being built survives the subtraction too (#755): planning
       // an evening's next stretch at a shelter with no signal is a normal
       // use of it, not an edge case.

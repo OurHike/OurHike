@@ -38,8 +38,12 @@ const HIKE: Hike = {
   id: 'h1',
   name: 'Virginia, over a few years',
   type: 'section',
-  start: { name: 'Damascus', mile: 0 },
-  end: { name: 'Rockfish Gap', mile: 100 },
+  trailId: 'AT',
+  points: [
+    { name: 'Damascus', mile: 0 },
+    { name: 'Rockfish Gap', mile: 100 },
+  ],
+  status: 'walking',
   tripIds: ['a', 'b'],
 }
 
@@ -173,7 +177,12 @@ describe('the hike zoom', () => {
   })
 
   it('says when the figures rest on a reference this download has lost', () => {
-    render(<HikeZoom {...PROPS} hike={{ ...HIKE, start: { poiId: 'gone', mile: 0 } }} />)
+    render(
+      <HikeZoom
+        {...PROPS}
+        hike={{ ...HIKE, points: [{ poiId: 'gone', mile: 0 }, HIKE.points[1]] }}
+      />,
+    )
     expect(
       screen.getByText(/points at a place this download doesn’t have/),
     ).toBeInTheDocument()

@@ -18,6 +18,16 @@
   letter-spacing: 0.05em;
   color: var(--fg-3);
 }
+/* A heading INSIDE a group, for the launch timings under About this build
+ * (#1299). Smaller and quieter than the group's own heading, because it
+ * divides one section rather than starting another - the section is still
+ * "About this build", and a second full-weight heading would read as a
+ * second group in the list. */
+.settings__heading--minor {
+  margin-top: var(--space-4);
+  color: var(--fg-3);
+}
+
 .settings__row {
   display: flex;
   align-items: center;

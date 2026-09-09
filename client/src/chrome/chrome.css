@@ -126,6 +126,15 @@
   flex-shrink: 0;
 }
 
+/* A trail's mark beside its name on the line sheet (#1288) - the same 20px
+   the plate gives the chosen trail's, inline with the words it stands for. */
+.line-sheet__trail-mark {
+  width: 20px;
+  height: 20px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
 .map-plate__position {
   margin: 2px 0 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -999,6 +1008,41 @@
   color: var(--fg-2);
   font-size: 12px;
   pointer-events: none;
+}
+
+/* The "Trails in view" block (#1283), above the pin grid: one row per named
+   trail on screen, the line drawn as the map draws it (map/MapIcon.tsx's
+   TrailLineSwatch), the name, and `taken` where the row is the trail the map
+   is about. Same row geometry as the pin rows - the 24px slot, the 44px
+   touch floor, the mono slot on the right - because to a hiker they are the
+   same kind of row about a different kind of thing. One column, never two:
+   a trail name is longer than a category name and `Ramapo-Dunderberg Trail`
+   beside `Suffern-Bear Mountain Trail` at 150px each is two ellipses. */
+.legend__trails {
+  margin: var(--space-3, 12px) 0 0;
+}
+
+.legend__trail-rows {
+  margin: var(--space-2, 8px) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.legend__trail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  font-size: 13px;
+}
+
+/* The line, in the same 24px slot the pins fill. Reintroduced with the block
+   - the old blaze rows' swatch went with them on 2026-08-25, and this one is
+   the map's own line rather than a painted bar. */
+.legend__swatch {
+  flex: none;
+  width: 24px;
+  height: 24px;
 }
 
 /* features/NEARBY_TRAILS.md §1's sentence of state, above the blaze rows it
@@ -3579,57 +3623,6 @@ a.poi-card__credit::after {
   margin: 0;
   font-size: 15px;
   color: var(--fg-1);
-}
-
-/* ---------- Wrong-way cue ---------- */
-
-.wrong-way-cue {
-  position: absolute;
-  left: var(--space-2, 8px);
-  right: var(--space-2, 8px);
-  bottom: calc(var(--space-2, 8px) + 56px);
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2, 8px);
-  padding: var(--space-4, 16px);
-  background: var(--bg-surface);
-  border: 2px solid var(--accent-blaze-orange);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgb(0 0 0 / 18%);
-}
-
-.wrong-way-cue__text {
-  margin: 0;
-  font-size: 15px;
-  color: var(--fg-1);
-}
-
-.wrong-way-cue__actions {
-  display: flex;
-  gap: var(--space-2, 8px);
-}
-
-.wrong-way-cue__primary,
-.wrong-way-cue__secondary {
-  flex: 1;
-  min-height: var(--min-touch-target);
-  font-size: 14px;
-  font-weight: 600;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.wrong-way-cue__primary {
-  color: var(--fg-on-brand);
-  background: var(--brand-secondary);
-  border: 0;
-}
-
-.wrong-way-cue__secondary {
-  color: var(--fg-1);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-2);
 }
 
 /* The fallback a broken screen leaves behind (chrome/ErrorBoundary.tsx).

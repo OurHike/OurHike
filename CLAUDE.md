@@ -47,10 +47,12 @@ worse than a claim with no adjective at all:
 - **Reasoned** — it follows from something already established here. Carry the
   derivation, not the conclusion, so a reader can find the step they disagree with.
 - **Unvalidated** — picked, and nobody has checked it. Tag it `@unvalidated` and finish
-  the sentence with what would settle it. `wrongWay.ts` is the model: its three
-  thresholds are flagged as "WIREFRAMES.md UI-mockup placeholders, not a validated
-  HIKER_SAFETY.md spec", pointing at the field-testing under tree canopy that
-  HIKER_SAFETY.md §5 declines to guess at.
+  the sentence with what would settle it. `trailGraph.ts`'s `MAX_OFF_NETWORK_FEET` is the
+  model: "a fingertip on a phone at a planning zoom, not a measurement," naming exactly
+  what would settle it — "the smallest value at which taps on a drawn line stop being
+  refused in a real hand on a real device, which nobody has tried." (`wrongWay.ts` was
+  this section's example until the feature it belonged to was removed, #93/#308 — the
+  tag outlives any one file.)
 
 The tag exists to be greppable. `grep -rn '@unvalidated'` should answer "what does this
 build not actually know" in one command, which is a question worth being able to ask
@@ -71,10 +73,12 @@ not on "returns the parsed manifest".
 
 **Lost, out of water, in front of something dangerous, or unable to get off the trail
 quickly.** Everything OurHike ships either touches one of those or it does not, and the
-standard above tightens on the code that does: `trailPosition.ts`, `wrongWay.ts` and its
-alert wiring, the water distances from `build_water_distance.py` through `export_poi.py`
+standard above tightens on the code that does: `trailPosition.ts` and the map layers it
+feeds, the water distances from `build_water_distance.py` through `export_poi.py`
 to the card, staleness and confidence, closures, serious warnings, and the elevation and
-pace estimates a hiker uses to decide whether they beat the dark.
+pace estimates a hiker uses to decide whether they beat the dark. (The wrong-way alert
+lived in this set until it was removed, #93/#308, having shipped fully built but never
+mounted — see features/HIKER_SAFETY.md §5.)
 
 On those paths, **an honest unknown outranks a confident answer**, and this is a
 commitment the project has already made rather than a new one: value #4 ("honesty about
@@ -86,9 +90,11 @@ What that means concretely is already visible in the code, and is the pattern to
 - **Omit rather than guess.** A shelter whose capacity nobody stands behind exports no
   capacity — "a hiker deciding whether to push on to the next shelter is better served
   by no answer than by a made-up one." Absent means unknown, never zero and never "none".
-- **Miss rather than cry wolf.** `wrongWay.test.ts` states the asymmetry outright:
-  "False negatives are acceptable; false positives are the failure this whole module
-  exists to prevent." A safety alert nobody trusts has already failed.
+- **Miss rather than cry wolf.** The wrong-way alert's own test suite (removed with the
+  feature, #93/#308) stated the asymmetry outright: "False negatives are acceptable;
+  false positives are the failure this whole module exists to prevent." A safety alert
+  nobody trusts has already failed — the principle outlives the file it was first
+  written for, and applies to any alert-shaped feature this codebase builds next.
 - **Round toward caution, and say which way you rounded.** Naismith gets no descent
   credit — a known weakness of the rule, left in place deliberately and documented so
   the next agent does not "improve" it into an optimistic number.

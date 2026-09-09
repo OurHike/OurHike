@@ -4,10 +4,10 @@
 // THE TWO THINGS THIS SUITE IS REALLY ABOUT.
 //
 // The state must not flicker. A banner that appears and vanishes as a fix
-// wobbles under canopy is a banner nobody reads, which is the same trust the
-// wrong-way cue's persistence window exists to protect - so the hysteresis
-// below is tested from BOTH sides, at one distance that reads differently
-// depending on where the hiker just was.
+// wobbles under canopy is a banner nobody reads, which is the same trust a
+// persistence window exists to protect - so the hysteresis below is tested
+// from BOTH sides, at one distance that reads differently depending on
+// where the hiker just was.
 //
 // And it must never invent a way back. Off the route, the only things
 // reported are a distance, a bearing, and which point of the route they

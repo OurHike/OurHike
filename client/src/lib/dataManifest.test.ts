@@ -191,6 +191,31 @@ describe('publishedSnapshot (#919)', () => {
     expect((await publishedSnapshot()).sizes).toEqual({})
   })
 
+  it('carries the decoded size beside the wire cost, for the launch budget (#1254)', async () => {
+    // The other number, on purpose: `sizes` is what a hiker is shown before
+    // spending mobile data; this is what the phone pays in memory once the
+    // gzip is off, and lib/artifactBudget.ts weighs an artifact by it.
+    mockManifestResponse(manifest)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    const snapshot = await publishedSnapshot()
+
+    expect(snapshot.decodedSizes['poi_water.geojson']).toBe(300_000)
+    expect(snapshot.sizes['poi_water.geojson']).toBe(100_000)
+  })
+
+  it('has no decoded size for an artifact the manifest never measured', async () => {
+    mockManifestResponse({
+      version: 'v2',
+      artifacts: { 'poi_water.geojson': { sha256: HASH } },
+    })
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    // Absent, not zero: a launch reads absent as "unknown is not too large"
+    // and weighs the response on arrival instead.
+    expect((await publishedSnapshot()).decodedSizes).toEqual({})
+  })
+
   it('carries a well-formed change grade', async () => {
     mockManifestResponse(manifest)
     const { publishedSnapshot } = await loadWithBase(BASE)
@@ -240,5 +265,101 @@ describe('publishedSnapshot (#919)', () => {
 
     expect((await publishedSnapshot()).version).toBeNull()
     expect(fetched).not.toHaveBeenCalled()
+  })
+})
+
+describe('one manifest read for everyone asking at once (#1302)', () => {
+  const shared = {
+    version: 'shared-v1',
+    artifacts: { 'background.pmtiles': { sha256: 'B'.repeat(64) } },
+  }
+
+  // A launch with signal asked for the manifest from six places in the same
+  // commit, and the bucket serves `latest.json` with `cache-control: no-cache`
+  // (measured 2026-09-09 off production's own headers), so nothing deduped
+  // them: six round trips on the connection the first frame was sharing.
+
+  it('fetches once for callers that arrive together, and hands them all the same answer', async () => {
+    const fetched = mockManifestResponse(shared)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    const [a, b, c] = await Promise.all([
+      publishedSnapshot(),
+      publishedSnapshot(),
+      publishedSnapshot(),
+    ])
+
+    expect(fetched).toHaveBeenCalledTimes(1)
+    expect(a.version).toBe(b.version)
+    expect(b).toBe(c)
+  })
+
+  it('fetches again for a caller that arrives after the first read settled', async () => {
+    // Sharing an IN-FLIGHT read is not caching. A hiker who comes back to the
+    // app an hour later must be told about a release published in between,
+    // which is the whole job of lib/dataRefresh.ts.
+    const fetched = mockManifestResponse(shared)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    await publishedSnapshot()
+    await publishedSnapshot()
+
+    expect(fetched).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses a caller whose signal is already aborted, without fetching anything', async () => {
+    const fetched = mockManifestResponse(shared)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(publishedSnapshot({ signal: controller.signal })).rejects.toThrow(
+      'Aborted',
+    )
+    expect(fetched).not.toHaveBeenCalled()
+  })
+
+  it('rejects rather than hanging when the abort fires before its own listener is attached', async () => {
+    // The shape lib/nearbyTrailData.ts drives, and the one that hung: the
+    // fetch itself aborts the caller's controller, synchronously, in the same
+    // turn the shared read is started - so the abort event has already been
+    // dispatched by the time this caller has a listener for it. Settling
+    // neither way is worse than the round trip the sharing saves.
+    const { publishedSnapshot } = await loadWithBase(BASE)
+    const controller = new AbortController()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+      controller.abort()
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      return Promise.reject(error)
+    })
+
+    await expect(publishedSnapshot({ signal: controller.signal })).rejects.toThrow(
+      'Aborted',
+    )
+  })
+
+  it('lets one caller abort without ending the read the others are waiting on', async () => {
+    let answer: ((response: Response) => void) | undefined
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve
+        }),
+    )
+    const { publishedSnapshot } = await loadWithBase(BASE)
+    const controller = new AbortController()
+
+    const aborted = publishedSnapshot({ signal: controller.signal })
+    const patient = publishedSnapshot()
+    // Swallowed here so the rejection below is not unhandled while the other
+    // caller is still waiting.
+    const abortedSettled = expect(aborted).rejects.toThrow('Aborted')
+    controller.abort()
+    await abortedSettled
+
+    answer?.(new Response(JSON.stringify(shared)))
+
+    expect((await patient).version).toBe(shared.version)
   })
 })

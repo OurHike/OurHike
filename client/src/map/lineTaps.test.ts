@@ -4,7 +4,8 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
-import { BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
+import { BLAZE_DOTTED_LAYER_ID, BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
+import { TRAIL_BADGE_LAYER_ID } from './trailBadges'
 import { CORRIDOR_HIGHLIGHT_LAYER_ID, HIGHLIGHT_ID_PROPERTY } from './corridorLayers'
 import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
 
@@ -69,6 +70,7 @@ describe('tapping a line', () => {
       closureKind: null,
       closureReason: null,
       closureSource: null,
+      badge: false,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
       at: [120, 240],
@@ -140,6 +142,7 @@ describe('tapping a line', () => {
         closureKind: 'area',
         closureReason: 'Closed Until 2027',
         closureSource: 'oprhp_trail_closures',
+        badge: false,
       }),
     )
   })
@@ -251,6 +254,7 @@ describe('tapping a line', () => {
       closureKind: null,
       closureReason: null,
       closureSource: null,
+      badge: false,
       at: [10, 10],
     })
   })
@@ -420,5 +424,88 @@ describe('the trails a day hike is made of (#979)', () => {
     tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
 
     expect(map.featureQueries.at(-1)?.layers).toEqual([BLAZE_LAYER_ID])
+  })
+})
+
+describe('the through-route badge (#1283)', () => {
+  // A badge is a deliberate thumb target on its line, carrying the line's own
+  // published properties - so a tap on it opens the sheet the line opens.
+  // Not a switch: features/NEARBY_TRAILS.md §2's decision stands.
+  function badgeMap(): MockMap {
+    const map = buildMap()
+    map.layerIds = [...map.layerIds, TRAIL_BADGE_LAYER_ID, BLAZE_DOTTED_LAYER_ID]
+    return map
+  }
+
+  it('reports the line a badge names, snapped to the badge’s own vertex', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: {
+          id: 'centerline:chain:0',
+          source: 'centerline',
+          name: 'Appalachian National Scenic Trail',
+          blaze_color: 'White',
+          mark: 'trail-mark-AT',
+          chip: 'blaze-chip-White',
+        },
+        geometry: { type: 'Point', coordinates: [-74.1, 41.25] },
+      },
+    ])
+
+    const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+
+    expect(tapped).toMatchObject({
+      id: 'centerline:chain:0',
+      source: 'centerline',
+      name: 'Appalachian National Scenic Trail',
+      blazeColor: 'White',
+      at: [-74.1, 41.25],
+      // And says it was the badge (#1306): the shell takes an untaken trail
+      // from its badge, and opens the sheet from its line.
+      badge: true,
+    })
+  })
+
+  it('wins over the line under it, since the plate is wider than the line', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: { id: 'centerline:chain:0', source: 'centerline', name: 'A.T.' },
+        geometry: { type: 'Point', coordinates: [1, 1] },
+      },
+    ])
+    map.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
+
+    expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })?.id).toBe(
+      'centerline:chain:0',
+    )
+  })
+
+  it('still yields to a pin under the same thumb', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: { source: 'centerline', name: 'A.T.' },
+        geometry: { type: 'Point', coordinates: [1, 1] },
+      },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [
+      { properties: { [POI_ID_PROPERTY]: 'shelter-1' } },
+    ])
+
+    expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('reads the dotted layers too, where every line outside the chosen system now draws', () => {
+    const map = badgeMap()
+    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [
+      line('oprhp:42', 'oprhp_trails', 'Aqua', 'Long Path'),
+    ])
+
+    const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
+    expect(tapped?.name).toBe('Long Path')
+    const queried = map.featureQueries.map((q) => q.layers)
+    expect(queried).toContainEqual(expect.arrayContaining([BLAZE_DOTTED_LAYER_ID]))
   })
 })

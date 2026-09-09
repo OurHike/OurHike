@@ -41,12 +41,13 @@ registry entry holds the wording so the two cannot drift.
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.request
 from datetime import date, timedelta
 from pathlib import Path
 
+import requests
+
 from lib import fetch_receipts
+from lib.http_retry import request_with_retry
 
 ROOT = Path(__file__).resolve().parent
 OUT_DIR = ROOT / "data" / "raw" / "drought"
@@ -79,13 +80,22 @@ def candidate_stamps(today: date) -> list[date]:
 
 
 def fetch_release(stamp: date) -> dict | None:
-    """One week's polygons, or None if NDMC has not published that week."""
+    """One week's polygons, or None if NDMC has not published that week.
+
+    A 404 IS AN ANSWER, not a failure, and the retry must not blur the two.
+    Walking back through `candidate_stamps` is how this script finds the
+    latest published week, so most runs 404 at least once on purpose. 404 is
+    absent from `DEFAULT_RETRYABLE_STATUSES`, which means the shared helper
+    raises it immediately rather than spending five seconds and thirty more
+    to re-learn it - and that is why this moved onto `request_with_retry`
+    rather than growing its own loop (#1295). What it does absorb is NDMC's
+    host flaking, which used to end the hourly bake outright.
+    """
     url = USDM_DATED.format(stamp=stamp.strftime("%Y%m%d"))
     try:
-        with urllib.request.urlopen(url, timeout=300) as response:
-            raw = response.read()
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
+        raw = request_with_retry(url, timeout=300, label=f"usdm/{stamp:%Y%m%d}").content
+    except requests.HTTPError as error:
+        if error.response is not None and error.response.status_code == 404:
             return None
         raise
     if len(raw) < MIN_PLAUSIBLE_BYTES:

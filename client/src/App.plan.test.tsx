@@ -28,11 +28,13 @@ import { MIN_FLAT_PACE_MPH } from './lib/pace'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
 import { PLAN_KEY } from './lib/plan'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { hikeFigures } from './lib/hikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -89,7 +91,7 @@ async function throughPlanKind(user: ReturnType<typeof userEvent.setup>) {
   expect(
     await screen.findByRole('dialog', { name: 'What are you planning?' }),
   ).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: /A multi-day trip/ }))
+  await user.click(screen.getByRole('button', { name: /A multi-day section/ }))
 }
 
 async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
@@ -240,8 +242,12 @@ describe('the planning flow', () => {
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     // One saved day hike and no trips opens the day room by itself. Start a
     // route from the trips room, so there is a live draft to come back to.
-    await user.click(await screen.findByRole('button', { name: /^Trips/ }))
-    await user.click(await screen.findByRole('button', { name: 'Plan a new trip' }))
+    // #1317 deleted Plan's own ⇄ chip: the app's mode control is the door
+    // to the sections room now, and it is on the Today screen's chrome.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Plan a new section' }))
     await user.click(await screen.findByRole('button', { name: /Shelter, town, or/ }))
     await user.type(await screen.findByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
@@ -250,8 +256,9 @@ describe('the planning flow', () => {
 
     // Detour into the day room's list, mid-route. This is the state that used
     // to survive the trip being laid out.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
-    await user.click(await screen.findByRole('button', { name: /^Day hikes/ }))
     await user.click(await screen.findByRole('button', { name: 'All 1 ›' }))
     expect(await screen.findByText('Ready to walk')).toBeInTheDocument()
 
@@ -312,8 +319,9 @@ describe('the planning flow', () => {
         id: 'h',
         name: 'Test',
         type: 'section',
-        start: { mile: 0 },
-        end: { mile: 30 },
+        trailId: 'AT',
+        points: [{ mile: 0 }, { mile: 30 }],
+        status: 'walking',
         tripIds: store.trips.map((trip) => trip.id),
       },
       store.trips,
@@ -360,6 +368,7 @@ describe('the planning flow', () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
     app.store.set(TRIPS_KEY, {
       openId: 'trip-1',
       trips: [
@@ -415,6 +424,7 @@ describe('the planning flow', () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
     app.store.set(TRIPS_KEY, {
       openId: 'trip-1',
       trips: [
@@ -436,8 +446,12 @@ describe('the planning flow', () => {
           id: 'hike-1',
           name: 'The whole thing, eventually',
           type: 'section',
-          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
-          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          trailId: 'AT',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          status: 'walking',
           tripIds: ['trip-1'],
         },
       ],
@@ -475,6 +489,7 @@ describe('the planning flow', () => {
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
     app.store.set(TRIPS_KEY, {
       openId: 'trip-1',
       trips: [
@@ -496,8 +511,12 @@ describe('the planning flow', () => {
           id: 'hike-1',
           name: 'The whole thing, eventually',
           type: 'section',
-          start: { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
-          end: { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          trailId: 'AT',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          status: 'walking',
           tripIds: ['trip-1'],
         },
       ],

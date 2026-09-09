@@ -24,7 +24,19 @@
 // shot shows a DIFFERENT backdrop on every capture, which is the feature; the
 // stable part to review is the brand plate, whose whole job is to stay
 // legible over any of the seventeen.
-export const caption = 'First run — over a photo drawn from the pool (#1054)'
+// AND SINCE #1324 THERE IS NOTHING BEHIND IT, which is what this capture is
+// evidence for. A map was built behind these steps from #721 onward, at
+// 730-950 ms of MapLibre on the thread the Skip button waits for; the
+// photograph has covered it completely since #1054 (`.onboarding__hero` is
+// `inset: 0` over an opaque `--bg-chrome`, and painting the whole map screen
+// magenta puts 0 of the frame's 329,160 pixels in that colour), so the map
+// stopped being built.
+// The frame this recipe returns should be indistinguishable from the one
+// before that change, and being indistinguishable is the whole finding - a
+// reviewer comparing this shot against the previous run's is looking at the
+// proof that a second of work bought nothing anybody could see.
+export const caption =
+  'First run — over a photo drawn from the pool (#1054), and since #1324 over nothing else'
 export const alt =
   'The first-run entry card over a randomly drawn Appalachian Trail photograph, with the OurHike lockup, tagline and the photo’s credit on a dark plate in the top corner. Below it, step 1 of 3, “What OurHike is”: the map works with no bars and no data plan, and your money belongs with the people holding the tools — the ATC and other organizations who keep these trails open take members and donations directly, while OurHike takes no cut and holds no money. Then: no account, nothing to sign up for.'
 

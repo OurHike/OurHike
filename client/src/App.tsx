@@ -1171,6 +1171,19 @@ function App() {
    * Declared up here with the other unconditional hooks: the shell has early
    * returns further down, and a hook after one of them is a hook React
    * cannot count on.
+   *
+   * THIS IS A DESKTOP-ONLY EFFECT SINCE #1324, and the ref is what makes that
+   * true rather than a comment. No map is built behind the steps on a phone
+   * any more, so `entering && map !== null` never holds there, the latch never
+   * sets, and this never runs - which is the right answer rather than a gap:
+   * a phone's map is now built AFTER the steps, so it takes `FIT_PADDING`
+   * from the start and has no card-shaped camera to undo. A desktop still
+   * renders its map from launch (`mapNeededNow` below is not conditioned on
+   * `entering`), so it still gets `entryFitPadding` and still needs this.
+   *
+   * #1328 predicted this would be dead code and was wrong; it is narrower,
+   * not gone. Deleting it would leave a desktop opening on the corridor
+   * squeezed under the identity plate, which is the framing #1296 measured.
    */
   const fittedForEntry = useRef(false)
   useEffect(() => {
@@ -1606,23 +1619,59 @@ function App() {
    * of the report behind #1081: the build is cheap on an empty phone and
    * multi-second once the sheet and the trail release are on it.
    *
-   * So the shell remembers that the map was wanted - the first-run backdrop
-   * counts, which is what lets the map built behind the entry steps survive
-   * into the session instead of being thrown away on the way to Today - and
-   * after that the bottom of this component keeps it mounted, hidden and
-   * inert, underneath whichever tab screen is up. Phones only ever set this
-   * through that first need; a desktop renders the map from launch and the
-   * latch is simply always on.
+   * So the shell remembers that the map was wanted, and after that the bottom
+   * of this component keeps it mounted, hidden and inert, underneath
+   * whichever tab screen is up. Phones only ever set this through that first
+   * need; a desktop renders the map from launch and the latch is simply
+   * always on.
    *
    * What is deliberately NOT changed: a launch that stays on Today still
    * builds no map at all (the latch starts false), so the entry budget that
    * test enforces is untouched.
+   *
+   * AND THE FIRST-RUN BACKDROP NO LONGER COUNTS AS A NEED (#1324). It did
+   * from #721 until here, on the argument that every entry step is a claim
+   * about the map and the steps should be read against it. #1054 ended that
+   * and nothing reasoning about launch cost noticed: `.onboarding__hero` is
+   * `inset: 0` with an opaque `--bg-chrome`, so the map spends first run
+   * behind a wall.
+   *
+   * MEASURED 2026-09-09 in pixels, on the built app at 390x844: every layer
+   * of the map screen painted `rgb(255, 0, 255)` by injected CSS, first run
+   * rendered as it normally does, the frame screenshotted and counted. The
+   * map screen was present and so was its canvas; magenta pixels in the
+   * frame, 0 of 329,160. desktop.css ran the same experiment in red on
+   * 2026-08-27 for a different reason and filed the answer under the scrim.
+   *
+   * A `document.elementFromPoint` grid was tried first and is the wrong
+   * instrument, which is worth recording because it looked like the right
+   * one: `.onboarding__hero` is `pointer-events: none`, so a hit test walks
+   * straight past the element whose opacity IS the question and reports
+   * whatever is behind it. It answers "what does a finger reach", never
+   * "what does an eye see".
+   *
+   * What that cost, on three cold runs of the stopwatch against 659598a8:
+   * 730-950 ms of MapLibre self time inside the window a hiker is tapping
+   * Skip, which those runs accepted after 3,721-3,848 ms against a 100 ms
+   * budget. The one thing it bought - "the map is warm the moment the steps
+   * finish" - a phone never collects: `activeTab` starts on Today, nothing
+   * in `handleOnboardingComplete` moves it, and `tabOverMap` covers the map
+   * on Today anyway. It is paid while the hiker is tapping and redeemed
+   * whenever they reach the Map tab, which is any time at all.
+   *
+   * So the map is built when somebody can see it, and warmed on the idle
+   * callback below when a session has just walked out of the steps - which
+   * is the moment the old comment was reaching for, at the point the thread
+   * is free rather than the point it is busiest.
    */
-  // `entering` counts only once the preferences have actually been read:
-  // before that it is true on a launch with no mirror (the comment above),
-  // nothing is rendered on such a launch - `shellKnown` gates the tree below -
-  // and a latch set during that window would mount a map on a returning
-  // hiker's Today, which is exactly the launch the budget test keeps free.
+  // `entering` counted here until #1324 and no longer does; what the removal
+  // must not disturb is why it was qualified. It counts as true only once the
+  // preferences have been read: before that it is true on a launch with no
+  // mirror (the comment above), nothing is rendered on such a launch -
+  // `shellKnown` gates the tree below - and a latch set during that window
+  // would mount a map on a returning hiker's Today, which is exactly the
+  // launch the budget test keeps free. The warm-up effect below inherits that
+  // hazard whole, and answers it the same way.
   //
   // AND THE MAP WAITS FOR THE STORE TO ANSWER (#1301). `archivesRead` used to
   // gate the whole tree, for one decision: the background the map is built
@@ -1638,10 +1687,59 @@ function App() {
   // unmounts for that, and neither does the map.
   const [mapKept, setMapKept] = useState(false)
   const mapNeededNow =
-    (entering || isDesktop || activeTab === 'map') && preferencesLoaded && archivesRead
+    (isDesktop || activeTab === 'map') && preferencesLoaded && archivesRead
   useEffect(() => {
     if (mapNeededNow) setMapKept(true)
   }, [mapNeededNow])
+
+  /**
+   * The map warmed once the entry steps are done (#1324), on the thread's own
+   * time.
+   *
+   * THE REF IS WHAT SCOPES THIS TO FIRST RUN. `entering` is false on every
+   * returning launch too, so the effect alone would build a map on a Today
+   * that never asked for one - the regression `App.loadBudget.test.tsx`
+   * exists to catch. The ref is set only while the steps are actually up, so
+   * "this session walked out of the entry steps" is a thing that happened
+   * rather than a thing that is merely true now. It is deliberately NOT
+   * state: nothing renders differently for it, and a re-render on the way out
+   * of onboarding is the last thing this window needs.
+   *
+   * `preferencesLoaded` guards the set for the reason the block above gives -
+   * `entering` is true before the record has answered, on a launch that
+   * renders nothing, and latching there would make every mirror-less
+   * returning launch look like a first run.
+   *
+   * On idle rather than on a frame, which is the opposite of the choice
+   * lib/useAfterFirstFrame.ts makes for the launch fetches and for the same
+   * reason read the other way: those change what a hiker READS, so they are
+   * worth a frame's delay and no more, while this changes only how long a tap
+   * on Map will take later. A map is the most expensive thing this app
+   * builds - 2,353 ms of blocking work on a loaded phone (App.loadBudget) -
+   * and it has no business competing with Today's first paint or with the
+   * archive download the size step just started. `requestIdleCallback` is
+   * absent in Safari, where the second's grace is the whole mechanism; the
+   * same fallback pair `preloadScreens` uses above.
+   *
+   * If a hiker beats the callback to the Map tab, `mapNeededNow` builds the
+   * map itself and this becomes a no-op through the `mapKept` guard - the tap
+   * is what it always was on a cold map, not slower for this.
+   */
+  const steppedThroughEntry = useRef(false)
+  useEffect(() => {
+    if (entering && preferencesLoaded) steppedThroughEntry.current = true
+  }, [entering, preferencesLoaded])
+  useEffect(() => {
+    if (entering || !steppedThroughEntry.current || mapKept) return
+    if (!preferencesLoaded || !archivesRead) return
+    const idle =
+      window.requestIdleCallback ??
+      ((callback: () => void) => setTimeout(callback, 1_000))
+    const cancel = window.cancelIdleCallback ?? clearTimeout
+    const handle = idle(() => setMapKept(true))
+    return () => cancel(handle as number)
+  }, [entering, preferencesLoaded, archivesRead, mapKept])
+
   const mapMounted = mapNeededNow || mapKept
 
   // Whether something is drawn OVER the held map right now - one of the
@@ -6514,6 +6612,15 @@ function App() {
    * card is (`ENTRY_CARD_MAX_VIEWPORT_FRACTION`), so the two move together on a
    * short screen and a tall one alike. The left/right/top insets stay the plain
    * breathing room every fitted box gets.
+   *
+   * AND IT ONLY REACHES A DESKTOP NOW (#1324). This applies to a map that is
+   * mounted while `entering`, and on a phone none is: the steps build no map,
+   * so nothing is fitted around a card that covers nothing. A desktop still
+   * renders its map from launch and so still lands here - where the bottom
+   * inset is a phone's card measured on a laptop's viewport, which is why
+   * #1296's re-fit exists to undo it the moment the steps end. Neither this
+   * nor that is wrong; both are simply about a screen this budget is not
+   * about, and the phone arm is now unreachable rather than merely unused.
    */
   const entryFitPadding = entering
     ? {

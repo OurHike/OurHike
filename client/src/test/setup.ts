@@ -23,6 +23,32 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
     }) as MediaQueryList
 }
 
+// jsdom has no requestIdleCallback either, and since #1324 the shell warms
+// the map on one: the entry steps no longer build a map behind them, so what
+// mounts it for a hiker who has just finished first run is an idle callback.
+//
+// Polyfilled for the same reason as matchMedia above - the gap is jsdom's,
+// not the app's - but with a caveat matchMedia does not need. This runs the
+// callback on the next macrotask, which is NOT what an idle callback is: a
+// real browser waits for the frame to be free and can wait seconds on a busy
+// page. So a test using this proves the callback is REACHED and what it then
+// does; it proves nothing about when. The app's own fallback for browsers
+// without it (Safari) is a one-second timer, and a test running against that
+// would be a test racing `waitFor`'s default window.
+//
+// `deadline` reports an unlimited budget rather than a plausible one: a
+// caller that trims its work to fit would take the wrong branch in every
+// test, and this shim exists to run callbacks, not to model scheduling.
+if (typeof window !== 'undefined' && typeof window.requestIdleCallback !== 'function') {
+  window.requestIdleCallback = ((callback: IdleRequestCallback) =>
+    setTimeout(
+      () => callback({ didTimeout: false, timeRemaining: () => 50 }),
+      0,
+    ) as unknown as number) as typeof window.requestIdleCallback
+  window.cancelIdleCallback = ((handle: number) =>
+    clearTimeout(handle)) as typeof window.cancelIdleCallback
+}
+
 // Session storage is shared, mutable, per-FILE state in jsdom, and since #311
 // the shell writes to it: the camera is remembered there so a reload the hiker
 // did not ask for comes back to the view they left (lib/cameraMemory.ts).

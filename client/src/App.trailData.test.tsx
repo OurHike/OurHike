@@ -13,7 +13,6 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness, openMapTab } from './test/appHarness'
 import { liveMap } from './test/liveMap'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
-import { PREFERENCES_KEY } from './lib/preferences'
 import { TRAILS_KEY } from './lib/config'
 import { TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID } from './map/style'
 
@@ -139,18 +138,26 @@ describe('trail data on a phone that has downloaded nothing', () => {
     })
   })
 
-  it('draws the trail line behind the first-run steps, before the waypoints are fetched', async () => {
-    // #863, and the reason the download is ordered the way it is. The entry
-    // steps are a card over the map, and on a phone holding nothing there was
-    // no map behind them: the commit waited for the whole release, which is
-    // ~12 s on a 4x-throttled phone profile at 12 Mbps, against about eight
-    // seconds to click through three steps. So a newcomer read three sentences
-    // about a map over an empty background.
+  it('draws the trail line before the waypoints are fetched, rather than after', async () => {
+    // #863, and the reason the download is ordered the way it is: the commit
+    // used to wait for the whole release - ~12 s on a 4x-throttled phone
+    // profile at 12 Mbps - so a phone holding nothing showed a map with no
+    // trail on it for the whole of that.
+    //
+    // THE FIRST-RUN FRAMING IS GONE FROM THIS TEST AND THE ORDER IS NOT
+    // (#1324). #863 was written about the entry steps, which were a card over
+    // the map: three sentences about a map, read over an empty background. The
+    // steps have stood over an opaque photograph since #1054 and build no map
+    // at all since #1324, so a first-run assertion here would be about a map
+    // nobody has. What it was really pinning is `useTrailData` committing the
+    // centerline on its own rather than with the release, which is true on
+    // every launch - so it is asserted on the launch that has a map. That the
+    // line is on the phone by the time first run ends is the other half, and
+    // lives in App.mapLifecycle.test.tsx.
     //
     // The waypoints are held here rather than answered, which is what makes
     // this a statement about ORDER: the line is on the map while their fetches
     // are still outstanding, not merely by the end.
-    store.delete(PREFERENCES_KEY)
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
@@ -168,9 +175,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
       ),
     )
 
-    const { default: App } = await import('./App')
-    render(<App />)
-    await screen.findByText('What OurHike is')
+    await renderApp()
     const map = await liveMap()
 
     await waitFor(() =>
@@ -190,7 +195,12 @@ describe('trail data on a phone that has downloaded nothing', () => {
     // centerline is 51 KB of the same trail. This asserts the order that
     // makes that worth publishing: the sketch is on the map while the real
     // line is still outstanding.
-    store.delete(PREFERENCES_KEY)
+    //
+    // On the map screen rather than behind the entry steps, for #1324's
+    // reason: the steps build no map, so the sketch's whole audience is the
+    // map screen now. What the sketch is FOR is unchanged - a phone with the
+    // real line still in flight draws something true at 100 m rather than
+    // nothing.
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
@@ -208,9 +218,7 @@ describe('trail data on a phone that has downloaded nothing', () => {
       ),
     )
 
-    const { default: App } = await import('./App')
-    render(<App />)
-    await screen.findByText('What OurHike is')
+    await renderApp()
     const map = await liveMap()
 
     await waitFor(() =>
@@ -231,11 +239,12 @@ describe('trail data on a phone that has downloaded nothing', () => {
     // shell holding the bytes: the worker still has to parse 11.5 MB, and a
     // sketch dropped at the download was the frame with no trail on it that
     // every preview photographed.
-    store.delete(PREFERENCES_KEY)
-
-    const { default: App } = await import('./App')
-    render(<App />)
-    await screen.findByText('What OurHike is')
+    //
+    // On the map screen rather than behind the entry steps (#1324): the steps
+    // build no map now, so first run is no longer a launch this can be asked
+    // about. What #1291 pinned is unchanged - it is about when the sketch
+    // comes off, which is the map's business on whichever launch has one.
+    await renderApp()
     const map = await liveMap()
 
     // The whole release lands, so the real lines are handed to the map...

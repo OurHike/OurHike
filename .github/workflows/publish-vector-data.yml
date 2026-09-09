@@ -1065,7 +1065,16 @@ jobs:
     # places). See "Say what happened" above for the two cases this excludes.
     if: inputs.publish && !inputs.regenerate_identity_ledger
     runs-on: ubuntu-latest
-    environment: production
+    # Gated only for a real production dispatch (#1330) - a `ua` publish is
+    # the routine, disposable case (RELEASING.md §3b) and runs straight
+    # through once the `if:` above has already decided a write is happening
+    # at all. This IS a same-job `environment:` expression; the comment
+    # above is not a blanket rule against that shape, only against one
+    # mirroring a *second, independently-written* copy of the same
+    # predicate, which was #1262's actual bug. This expression answers a
+    # different question (which environment) that exists nowhere else in
+    # this job, so there is no second copy of it to drift from.
+    environment: ${{ inputs.data_environment == 'production' && 'production' || inputs.data_environment }}
     # Every writer of latest.json shares this group (publish-conditions.yml,
     # build-basemap.yml, build-dem.yml, build-raster.yml): publish() does a
     # read-modify-write of the manifest, and two concurrent publishes could

@@ -3439,3 +3439,27 @@
   flex-direction: column;
   gap: var(--space-2, 8px);
 }
+
+/* "Forget this hike" (#1317). The name carries the danger colour and the
+   note carries the reassurance, because the two are both true at once: it is
+   the one door here that cannot be undone, and every section survives it. */
+.plan-kind__door-name--danger {
+  color: var(--danger);
+}
+
+/* The confirm, in place of the door rather than over it - a dialog over a
+   sheet is two layers of "are you sure" for one question. */
+.plan-kind__door--confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px);
+  border: 1.5px solid var(--danger);
+  border-radius: 3px;
+  background: var(--bg-sunken);
+}
+
+.plan-kind__confirm-row {
+  display: flex;
+  gap: var(--space-2, 8px);
+}

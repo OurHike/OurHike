@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Today, type TodayProps } from './Today'
+import { Today, type LongHikeToday, type TodayProps } from './Today'
 import { STANDARD_PACE } from '../lib/pace'
 
 // The Today screen's honesty contract, asserted where it renders: the mode
@@ -506,10 +506,12 @@ describe('the suggested hikes (#1284)', () => {
 // ---------------------------------------------------------------------------
 // The long hike leading Today (#1317).
 
-const LONG_HIKE = {
+const LONG_HIKE: LongHikeToday = {
   name: 'Springer → Katahdin',
   figures: '412.0 mi walked · 1,785.4 mi to go',
   dayNumber: 6,
+  awayLine: null,
+  resume: null,
   day: {
     title: 'Pine Swamp Branch → Bailey Gap',
     planned: '11.2 mi planned',
@@ -587,7 +589,10 @@ describe('the long hike leading Today', () => {
       <Today
         {...props({
           mode: 'long',
-          longHike: { ...LONG_HIKE, day: { ...LONG_HIKE.day, last: true } },
+          longHike: {
+            ...LONG_HIKE,
+            day: { ...LONG_HIKE.day!, last: true },
+          },
         })}
       />,
     )

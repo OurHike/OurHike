@@ -143,6 +143,9 @@ export interface PlanScreenProps {
    * switch, and the shell is where the mode lives.
    */
   room: PlanRoom
+  /** Open the "add a day hike to this hike" sheet (#1317). Passed straight
+   *  through: the sheet is the shell's, like every other one here. */
+  onAddDayHikeToHike?: () => void
   /** Whether the full day-hike list is open, for the same reason: the map's
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
@@ -234,6 +237,7 @@ export function PlanScreen({
   onRetryNetwork,
   gpsAt,
   room,
+  onAddDayHikeToHike,
   dayListOpen,
   onDayListOpen,
   draftKind,
@@ -415,6 +419,7 @@ export function PlanScreen({
       <div className={room === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
           room={room}
+          onAddDayHikeToHike={onAddDayHikeToHike}
           trips={trips}
           hikes={hikes}
           dayHikes={dayHikes}

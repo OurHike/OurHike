@@ -32,6 +32,7 @@ import { useMemo, type ReactNode } from 'react'
 import shelterPhoto from '../design-system/assets/photos/section-shelter.jpg'
 import { StatusStrip } from '../chrome/StatusStrip'
 import { ModeSwitch } from '../chrome/ModeSwitch'
+import { WelcomeBackCard, type WelcomeBackCardProps } from '../chrome/WelcomeBackCard'
 import { ElevationRibbon, type RibbonSubject } from '../chrome/ElevationRibbon'
 import type { RibbonView } from '../lib/ribbonView'
 import type { HikerMode } from '../lib/hikerMode'
@@ -215,6 +216,20 @@ export interface LongHikeToday {
    *  start to count from - and then the eyebrow simply says the date, which
    *  is true, rather than a day number nothing supports. */
   dayNumber: number | null
+  /**
+   * Where the hiker is, when the answer is "not on this hike" - `paused 11
+   * days · last at mi 1,407.2`, or null.
+   *
+   * Under the position line rather than replacing the mile, because the mile
+   * is still true: the phone knows where it is, it is simply not on the
+   * corridor this hike follows, and overwriting a known position with a
+   * sentence would lose a fact to say a different one.
+   */
+  awayLine: string | null
+  /** The offer to pick the hike back up, or null. Rendered above everything
+   *  else in the column, because a hiker who has been away is not looking
+   *  for today's leg - they are looking for what happened. */
+  resume: WelcomeBackCardProps | null
   /** Today's leg, or null when there is no plan for today - a hike with no
    *  dated days is the ordinary case, not a broken one. */
   day: {
@@ -694,6 +709,7 @@ export function Today({
     // Null in every other mode, which is what keeps one ordered record
     // rather than three lists with a hole in two of them (#1317).
     hikeDay: hikeDayCard,
+    resume: longHike?.resume == null ? null : <WelcomeBackCard {...longHike.resume} />,
   }
   const order =
     mode === 'volunteer'
@@ -704,6 +720,10 @@ export function Today({
           // still render, one slot down. Nothing disappears; what changes is
           // what a hiker's eye lands on first (#1317, lib/hikerMode.ts).
           [
+            // Above the day's own leg: a hiker who has been away for a
+            // fortnight is not looking for today's miles, they are looking
+            // for what happened while they were gone.
+            'resume',
             'hikeDay',
             'alerts',
             'journal',
@@ -753,6 +773,9 @@ export function Today({
           <p className="today__position-sentence">{readout.sentence}</p>
         )}
         <p className="today__greeting">{greeting}</p>
+        {longHike?.awayLine != null && (
+          <p className="today__away-line">{longHike.awayLine}</p>
+        )}
         {longHike != null && (
           <>
             <p className="today__hike-name">{longHike.name}</p>

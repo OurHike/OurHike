@@ -82,6 +82,9 @@ export function planRoomFor(mode: HikerMode): PlanRoom {
 
 export interface PlanHomeProps {
   room: PlanRoom
+  /** Open the "add a day hike to this hike" sheet (#1317). Undefined when
+   *  the app is not in a long hike. */
+  onAddDayHikeToHike?: () => void
   trips: readonly Trip[]
   hikes: readonly Hike[]
   /** The saved day hikes (#980) - listed from their cached figures, which is
@@ -127,6 +130,7 @@ const RECENT_DAY_HIKES = 3
 
 export function PlanHome({
   room,
+  onAddDayHikeToHike,
   trips,
   hikes,
   dayHikes,
@@ -163,6 +167,7 @@ export function PlanHome({
     />
   ) : (
     <TripsHome
+      onAddDayHikeToHike={onAddDayHikeToHike}
       trips={trips}
       hikes={hikes}
       groups={groups}
@@ -377,6 +382,10 @@ interface TripsHomeProps {
   onAllTrips: () => void
   onNewTrip: () => void
   onResumeDraft: () => void
+  /** Open the "add a day hike to this hike" sheet (#1317), or undefined when
+   *  the app is not in a long hike - and then the row is absent rather than
+   *  present and dead. */
+  onAddDayHikeToHike?: () => void
 }
 
 function TripsHome({
@@ -393,6 +402,7 @@ function TripsHome({
   onAllTrips,
   onNewTrip,
   onResumeDraft,
+  onAddDayHikeToHike,
 }: TripsHomeProps) {
   // Newest first, by the dates the trips already carry (#805). Undated
   // trips sort last rather than being hidden - they are plans somebody has
@@ -505,8 +515,20 @@ function TripsHome({
 
       {trips.length === 0 && hikes.length === 0 && (
         <p className="plan-home__quiet-note">
-          No trips yet. A trip follows one trail and breaks into days, zeros and resupply.
+          No sections yet. A section follows one trail and breaks into days, zeros and
+          resupply.
         </p>
+      )}
+
+      {/* A day hike on this trail counts toward the hike like any section
+          does (#1317). Dashed like `route-stops__add`, because it adds a row
+          to a list rather than going down a level - which is what separates
+          it from the primary action below. */}
+      {onAddDayHikeToHike !== undefined && (
+        <button type="button" className="route-stops__add" onClick={onAddDayHikeToHike}>
+          <span>Add a day hike to this hike</span>
+          <span aria-hidden="true">+</span>
+        </button>
       )}
 
       {/* The mirror of the day room's, and the same cost: `openDayHike`

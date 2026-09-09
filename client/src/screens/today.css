@@ -727,3 +727,39 @@
   line-height: 1.5;
   color: var(--fg-3);
 }
+
+/* A sentence that is also a door - the quiet offer under the welcome-back
+   card. Styled as text rather than as a button because it is an aside, and a
+   third pill beside "Move them" and "Leave it" would read as a third answer
+   to the same question when it is a different question. */
+.today__quiet-line {
+  margin-top: var(--space-3, 12px);
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The one destructive action on the step-away sheet. Danger in the WORD,
+   never in a swipe - see chrome/StepAwaySheet.tsx. */
+.today__action--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* "paused 11 days · last at mi 1,407.2" - under the position line rather
+   than replacing it. The mile is still true; the hiker is simply not on this
+   hike's corridor, and overwriting a known position to say so would lose a
+   fact in order to state a different one. */
+.today__away-line {
+  margin: 4px 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-chrome-3);
+}

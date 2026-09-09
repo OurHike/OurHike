@@ -63,6 +63,7 @@ from lib.fetch_receipts import record
 from lib.http_retry import request_with_retry
 from lib.nynjtc_long_path_guide import INDEX_URL, SOURCE_KEY, parse_index, parse_section
 from lib.source_registry import find_source, load_registry
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
@@ -70,7 +71,6 @@ OUT_DIR = ROOT / "data" / "raw" / "nynjtc_long_path_guide"
 MANIFEST_PATH = OUT_DIR / "manifest.json"
 SECTIONS_PATH = OUT_DIR / "sections.json"
 
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 THROTTLE_SECONDS = 0.5
 
 

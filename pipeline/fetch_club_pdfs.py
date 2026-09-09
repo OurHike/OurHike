@@ -51,13 +51,13 @@ import requests
 from lib.club_pdfs import PARSERS
 from lib.fetch_receipts import record
 from lib.source_registry import club_pdf_sources, load_registry
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
 OUT_DIR = ROOT / "data" / "raw" / "club_pdfs"
 MANIFEST_PATH = OUT_DIR / "manifest.json"
 
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 TIMEOUT = 120
 
 FETCHER_NAME = "fetch_club_pdfs"

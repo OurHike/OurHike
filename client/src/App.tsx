@@ -72,6 +72,9 @@ import {
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
 import { FIT_PADDING } from './map/MapView'
+import { trailIdForSource } from './map/trailBadges'
+import { chosenSystemSources } from './map/nearbyTrails'
+import type { TappedLine } from './map/lineTaps'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -977,6 +980,11 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
+  /** The taken trail, or null for nothing taken - first launch's all-dotted
+   *  map (#1306). Decides the lines and the legend's `taken`, nothing else:
+   *  the trail the rest of this shell is about is TRAIL_NAME's. */
+  const chosenTrailId = preferences.chosen_trail_id
+  const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
 
   /**
    * The corridor re-fitted once the entry steps end (#1296).
@@ -4808,6 +4816,38 @@ function App() {
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
+  /**
+   * Taking a trail (#1306): the one write `chosen_trail_id` gets, from a
+   * badge tap or a legend row. False where there is nothing to do - a source
+   * the registry has no trail for, or the trail already taken - so the
+   * caller can fall through to what the tap would otherwise have meant.
+   */
+  const takeTrail = useCallback(
+    (source: string | null): boolean => {
+      const id = trailIdForSource(source)
+      if (id === null || id === chosenTrailId) return false
+      updatePreferences({ chosen_trail_id: id })
+      return true
+    },
+    [chosenTrailId, updatePreferences],
+  )
+  const handleTakeTrail = useCallback(
+    (trail: TrailInView) => {
+      takeTrail(trail.source)
+    },
+    [takeTrail],
+  )
+  /** A badge tap takes an untaken trail and opens nothing; every other tap -
+   *  a line, or the badge of the trail already taken - is the sheet's, as
+   *  features/NEARBY_TRAILS.md §2 decides for lines (#1306). */
+  const handleSelectLine = useCallback(
+    (tapped: TappedLine | null) => {
+      if (tapped?.badge === true && takeTrail(tapped.source)) return
+      line.mapScreen.onSelectLine?.(tapped)
+    },
+    [takeTrail, line.mapScreen.onSelectLine],
+  )
+
   // How many of the waypoints in view the map actually drew (#528). Measured on
   // `idle` rather than derived, because the collision engine decides it and only
   // MapLibre knows what it decided - see lib/useDrawnPoiCounts.ts.
@@ -4815,7 +4855,7 @@ function App() {
     counts: drawnPoiCounts,
     belowPoiZoom,
     ghostedTrailsDrawn,
-  } = useDrawnPoiCounts(map)
+  } = useDrawnPoiCounts(map, chosenSources)
 
   // The named trails the map is drawing (#1283), for the legend's "Trails in
   // view" block. Reported by the map off its settled frame (map/trailsInView.ts)
@@ -6713,6 +6753,7 @@ function App() {
               // features never reaches this file at all.
               {...atc.mapScreen}
               {...line.mapScreen}
+              onSelectLine={handleSelectLine}
               {...workday.mapScreen}
               // The route builder's three, from the same kind of hook (#991).
               {...routeBuilder.mapScreen}
@@ -6933,6 +6974,8 @@ function App() {
               ghostedTrailsDrawn={ghostedTrailsDrawn}
               trailsInView={trailsInView}
               onTrailsInView={setTrailsInView}
+              chosenTrailId={chosenTrailId}
+              onTakeTrail={handleTakeTrail}
               drawnCounts={drawnPoiCounts}
               belowPoiZoom={belowPoiZoom}
               {...filters.mapScreen}

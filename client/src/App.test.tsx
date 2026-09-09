@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FIT_PADDING } from './map/MapView'
+import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
+import { BLAZE_DOTTED_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, set, setMany, update } from 'idb-keyval'
@@ -1016,6 +1018,93 @@ describe('App shell', () => {
     // would be the one after it.
     const requested = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
     expect(requested.some((url) => url.includes('.pmtiles'))).toBe(false)
+  })
+})
+
+describe('taking a trail (#1306)', () => {
+  const AT_LINE = {
+    properties: {
+      id: 'centerline:chain:0',
+      source: 'centerline',
+      name: 'Appalachian National Scenic Trail',
+      blaze_color: 'White',
+    },
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [10, 400],
+        [200, 400],
+        [380, 400],
+      ],
+    },
+  }
+
+  it('takes nothing on first launch: the map is built with every line dotted', async () => {
+    returningHiker()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    const style = map.options.style as { layers: Array<{ id: string; filter?: unknown }> }
+    const dotted = style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)
+    // The dotted side's filter is the negation of an empty membership: every
+    // line, the A.T. included.
+    expect(JSON.stringify(dotted?.filter)).toContain('"literal",[]')
+  })
+
+  it('takes the A.T. from a tap on its badge, and remembers it', async () => {
+    returningHiker()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: {
+          ...AT_LINE.properties,
+          mark: 'trail-mark-AT',
+          chip: 'blaze-chip-White',
+        },
+        geometry: { type: 'Point', coordinates: [200, 400] },
+      },
+    ])
+
+    await act(async () => {
+      map.emit('click', { point: { x: 200, y: 400 }, lngLat: { lng: 200, lat: 400 } })
+    })
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as
+        { chosen_trail_id: string | null } | undefined
+      expect(saved?.chosen_trail_id).toBe('AT')
+    })
+  })
+
+  it('takes the A.T. from its legend row', async () => {
+    returningHiker()
+    const user = userEvent.setup()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    // A settled frame with the A.T. across it, as map/trailsInView.ts reads
+    // one: identity projection, the line inside the viewport.
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
+    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [AT_LINE])
+    await act(async () => {
+      map.emit('idle')
+    })
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /Appalachian National Scenic Trail/ }),
+    )
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as
+        { chosen_trail_id: string | null } | undefined
+      expect(saved?.chosen_trail_id).toBe('AT')
+    })
   })
 })
 

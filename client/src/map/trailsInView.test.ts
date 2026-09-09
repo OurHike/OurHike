@@ -418,6 +418,15 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(at.anchor).toEqual([190, 400])
   })
 
+  it('marks no row chosen when nothing is taken, and the A.T. chosen when it is (#1306)', () => {
+    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS] })
+    const [untaken] = trailsInView(map as unknown as MapLibreMap, undefined, [])
+    const [taken] = trailsInView(map as unknown as MapLibreMap)
+    expect(untaken.chosen).toBe(false)
+    expect(untaken.throughRoute).toBe(true)
+    expect(taken.chosen).toBe(true)
+  })
+
   it('walks outward from the middle to the first vertex with a free plate position', () => {
     // A shelter on the trail just short of the middle, its box reaching
     // from x = 161 to 209: every position round the middle vertex overlaps

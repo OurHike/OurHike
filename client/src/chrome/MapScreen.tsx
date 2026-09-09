@@ -410,6 +410,13 @@ export interface MapScreenProps {
    *  straight through to MapView. MapScreen decides nothing about either. */
   trailsInView?: readonly TrailInView[]
   onTrailsInView?: (trails: readonly TrailInView[]) => void
+  /** The taken trail (#1306), for the canvas's line splits and the legend's
+   *  rows - lib/userPreferences.ts's `chosen_trail_id`, passed through. */
+  chosenTrailId?: string | null
+  /** Takes a trail from its legend row (#1306). The rows are plain without
+   *  it, per the legend's rule that a control is drawn only where it goes
+   *  somewhere. */
+  onTakeTrail?: (trail: TrailInView) => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -814,6 +821,8 @@ export function MapScreen({
   ghostedTrailsDrawn,
   trailsInView,
   onTrailsInView,
+  chosenTrailId = null,
+  onTakeTrail,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -1418,6 +1427,7 @@ export function MapScreen({
               onViewportChange={onViewportChange}
               onTrailsInView={onTrailsInView}
               chromeInsets={chromeInsets}
+              chosenTrailId={chosenTrailId}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
             />
@@ -1532,6 +1542,7 @@ export function MapScreen({
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
             trailsInView={trailsInView}
+            onTakeTrail={onTakeTrail}
             // The sheet the canvas beside it is drawn in, so each row's swatch
             // inks its line the way the map does (#1283).
             sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}

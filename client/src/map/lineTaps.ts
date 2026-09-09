@@ -72,6 +72,9 @@ export interface TappedLine {
   closureKind: string | null
   closureReason: string | null
   closureSource: string | null
+  /** Whether the tap landed on the trail's BADGE rather than its line
+   *  (#1306): a badge takes an untaken trail, a line only ever informs. */
+  badge: boolean
   /**
    * A point ON the tapped line, nearest the touch - not the touch itself.
    *
@@ -173,8 +176,10 @@ function nearestVertex(geometry: unknown, near: [number, number]): [number, numb
 function asTappedLine(
   feature: { properties?: Record<string, unknown> | null; geometry?: unknown },
   near: [number, number],
+  badge = false,
 ): TappedLine {
   return {
+    badge,
     id: stringProp(feature.properties, 'id'),
     source: stringProp(feature.properties, 'source'),
     name: stringProp(feature.properties, 'name'),
@@ -222,19 +227,18 @@ export function tappedLineAt(
   // because the plate is wider than the line under it: a tap on the far end
   // of a long name may be a thumb's width from the vertex it anchors to.
   //
-  // Not a switch. features/NEARBY_TRAILS.md §2's standing decision is that a
-  // tap on the map informs and does not change which trail the app is about
-  // - the handoff's "tap a badge to take that trail" waits on that decision
-  // being re-argued, and #1283 says so. Until then the badge opens the sheet
-  // the line opens, which is the one thing the app can honestly do with a
-  // trail today.
+  // A badge TAKES an untaken trail (#1306, the maintainer's re-argument of
+  // features/NEARBY_TRAILS.md §2, whose case was against a one-tap switch at
+  // a junction - a badge is the thumb target the design chose for exactly
+  // this). This resolver only says which it was: `badge` is set on the
+  // result, and the shell decides between taking and opening the sheet.
   if (map.getLayer(TRAIL_BADGE_LAYER_ID) !== undefined) {
     const badges = map.queryRenderedFeatures(lineTapBox(point), {
       layers: [TRAIL_BADGE_LAYER_ID],
     })
     if (badges.length > 0) {
       const touch = map.unproject([point.x, point.y])
-      return asTappedLine(badges[0], [touch.lng, touch.lat])
+      return asTappedLine(badges[0], [touch.lng, touch.lat], true)
     }
   }
 

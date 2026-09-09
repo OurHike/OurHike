@@ -8,7 +8,7 @@
 // surface exactly that, so the effect below is written to survive it: build
 // once per effect run, and fully undo the build on cleanup.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 // MapLibre's own stylesheet, and not optional. Everything the map puts on
 // itself - compass, locate, the scale bar, the zoom buttons - is positioned by
@@ -25,9 +25,10 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { readTrailsMerged } from '../lib/trailShape'
 import {
+  attachChosenTrail,
   attachMapAppearance,
-  attachTrailData,
   attachNetworkOverview,
+  attachTrailData,
   attachTrailOverview,
   buildMapStyle,
 } from './style'
@@ -66,6 +67,7 @@ import {
 } from './workdayLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
+import { chosenSystemSources } from './nearbyTrails'
 import { attachTrailBadgeImages } from './trailBadges'
 import { attachTrailsInView, type TrailInView, type ViewInsets } from './trailsInView'
 import { attachPoiTaps } from './poiTaps'
@@ -137,6 +139,14 @@ export interface MapViewProps {
    * bucket holding it back with its parent.
    */
   networkOverviewUrl?: string | null
+  /**
+   * The taken trail, by lib/trails.ts registry id, or null for nothing taken
+   * (#1306) - lib/userPreferences.ts's `chosen_trail_id`. Built into the
+   * style and re-pointed in place when it changes (map/style.ts's
+   * attachChosenTrail), never a rebuild. Null is first launch: every line
+   * dotted, nothing ghosted.
+   */
+  chosenTrailId?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -486,6 +496,7 @@ export function MapView({
   overviewTrailsUrl = null,
   haveTrailLines = false,
   networkOverviewUrl = null,
+  chosenTrailId = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -642,6 +653,7 @@ export function MapView({
         style: buildMapStyle({
           topoArchiveUrl,
           trailsUrl,
+          chosenTrailId,
           background,
           terrain,
           units,
@@ -940,14 +952,28 @@ export function MapView({
     return attachTrailBadgeImages(map)
   }, [map])
 
+  /** The sources the taken trail draws solid, for the rows and badges to
+   *  mark `chosen` by (#1306) - memoised so the attach below does not re-run
+   *  on every render for an equal list. */
+  const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+
   // And the badges' points, plus the legend's list, off the same pass over
   // the settled frame (map/trailsInView.ts). Its own effect on the map's
   // clock and the callback's: a shell that starts listening does not cost a
   // WebGL context.
   useEffect(() => {
     if (map === null) return
-    return attachTrailsInView(map, onTrailsInView, chromeInsets)
-  }, [map, onTrailsInView, chromeInsets])
+    return attachTrailsInView(map, onTrailsInView, chromeInsets, chosenSources)
+  }, [map, onTrailsInView, chromeInsets, chosenSources])
+
+  // The taken trail (#1306), re-pointed in place: every split's filters, the
+  // ghosting, the labels' priority and the badge. Its own effect on its own
+  // clock - a preference write - and never a rebuild, per the lifecycle
+  // regression the appearance effect cites.
+  useEffect(() => {
+    if (map === null) return
+    return attachChosenTrail(map, chosenTrailId)
+  }, [map, chosenTrailId])
 
   // Its own effect rather than folded into the closures above: the two arrive
   // on completely different schedules - closures from the network whenever

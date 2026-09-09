@@ -65,7 +65,7 @@ import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from '../
 import { TRAILS } from '../lib/trails'
 import { LABEL_TIER } from './labelLadder'
 import { sheetVariant, type SheetAppearance } from './liveTopo'
-import { nearbyTrailOpacityExpression } from './nearbyTrails'
+import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
 import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
 import { whenStyleReady } from './styleReady'
 import { TRAIL_LABEL_MIN_ZOOM } from './trailLabels'
@@ -97,6 +97,16 @@ export const BADGE_MARK_BY_SOURCE: Readonly<Record<string, string>> = {
 }
 
 /** The mark's image id, or null where the source wears the blaze chip. */
+/**
+ * The registry trail a badge's source stands for, or null - what a tap on
+ * the badge TAKES (#1306). The same lookup the mark uses, so a badge can
+ * never be taken as one trail and drawn with another's mark.
+ */
+export function trailIdForSource(source: string | null | undefined): string | null {
+  if (source === null || source === undefined) return null
+  return BADGE_MARK_BY_SOURCE[source] ?? null
+}
+
 export function trailMarkImageId(source: string | null | undefined): string | null {
   const trail =
     source === null || source === undefined ? undefined : BADGE_MARK_BY_SOURCE[source]
@@ -587,7 +597,10 @@ export function buildTrailBadgeSource(): {
  * and where the layer sits in the stack (style.ts) is what decides it beats
  * an along-line name and loses to every pin.
  */
-export function buildTrailBadgeLayer(appearance: SheetAppearance): LayerSpecification {
+export function buildTrailBadgeLayer(
+  appearance: SheetAppearance,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): LayerSpecification {
   return {
     id: TRAIL_BADGE_LAYER_ID,
     type: 'symbol',
@@ -649,8 +662,8 @@ export function buildTrailBadgeLayer(appearance: SheetAppearance): LayerSpecific
       'text-halo-width': 2,
       // The ghosting rule, on both halves of the symbol, so a badge for a
       // through-route outside the chosen system dims with its line.
-      'icon-opacity': nearbyTrailOpacityExpression() as never,
-      'text-opacity': nearbyTrailOpacityExpression() as never,
+      'icon-opacity': nearbyTrailOpacityExpression(chosen) as never,
+      'text-opacity': nearbyTrailOpacityExpression(chosen) as never,
     },
   }
 }

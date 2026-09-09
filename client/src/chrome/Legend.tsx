@@ -50,7 +50,8 @@
 // decision that a tap must not switch the chosen trail; until that is
 // re-argued nothing in the app takes a trail, and a button that goes
 // nowhere is worse than a row (this file's own rule for every other
-// control). `onTakeTrail` is the seam it plugs into the day it exists.
+// control). `onTakeTrail` is that seam, and since #1306 it exists: a tap on
+// a through-route's row takes the trail, the same write a badge tap makes.
 //
 // NO BLAZE ROWS, AND WHAT THAT COSTS (maintainer's call, 2026-08-25).
 //
@@ -498,6 +499,13 @@ export function Legend({
                       the map is about. No mileage on the others - the header
                       says why the number is absent rather than estimated. */}
                   {taken && <span className="legend__count">taken</span>}
+                  {/* And the affordance where a row can take its trail and
+                      has not (#1306): a through-route's row is a button
+                      then, and a button that looks like a row is a control
+                      nobody finds. */}
+                  {onTakeTrail !== undefined && trail.throughRoute && !taken && (
+                    <span className="legend__count">take</span>
+                  )}
                 </>
               )
               return (
@@ -506,7 +514,10 @@ export function Legend({
                   className="legend__trail-row"
                   aria-label={taken ? `${trail.name} · taken` : trail.name}
                 >
-                  {onTakeTrail === undefined ? (
+                  {onTakeTrail === undefined || !trail.throughRoute ? (
+                    // Only a through-route's row is a control: a side trail
+                    // has no registry trail to take (#1306), and a button that
+                    // does nothing is worse than a row.
                     face
                   ) : (
                     <button

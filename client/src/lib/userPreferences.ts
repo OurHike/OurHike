@@ -234,6 +234,17 @@ export interface UserPreferences {
   onboarding_completed: boolean
   download_choice_made: boolean
   location_permission_requested: boolean
+
+  /**
+   * The taken trail (#1306): which trail the map draws solid, by
+   * lib/trails.ts registry id, or null - nothing taken, which is first launch
+   * and the all-dotted opening view the handoff's z4 frame draws. Taken from
+   * a badge or a legend row; never switched by a tap on a line
+   * (features/NEARBY_TRAILS.md §2). What it decides is the LINES and the
+   * legend's `taken`: the app's trail - Today, the miles, the waypoints, the
+   * plate - is the A.T. whether or not it is taken.
+   */
+  chosen_trail_id: string | null
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
@@ -277,6 +288,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   onboarding_completed: false,
   download_choice_made: false,
   location_permission_requested: false,
+
+  chosen_trail_id: null,
 }
 
 /** The complete key set, so invariants can be asserted against the schema

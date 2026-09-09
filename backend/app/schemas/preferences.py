@@ -245,6 +245,14 @@ class PreferencesIn(BaseModel):
     download_choice_made: bool = False
     location_permission_requested: bool = False
 
+    # The taken trail (#1306): which trail the map draws solid, by
+    # client/src/lib/trails.ts registry id, or None - nothing taken, which is
+    # first launch and the all-dotted opening view. A display choice like the
+    # theme, synced so a hiker who takes a trail on one phone has it taken on
+    # the next. A row stored before this key existed reads back as None, which
+    # is the honest default: nothing was taken on it.
+    chosen_trail_id: str | None = None
+
 
 class PreferencesOut(PreferencesIn):
     """`PreferencesIn` plus the server-assigned sync timestamp."""

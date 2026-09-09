@@ -70,6 +70,7 @@ describe('tapping a line', () => {
       closureKind: null,
       closureReason: null,
       closureSource: null,
+      badge: false,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
       at: [120, 240],
@@ -141,6 +142,7 @@ describe('tapping a line', () => {
         closureKind: 'area',
         closureReason: 'Closed Until 2027',
         closureSource: 'oprhp_trail_closures',
+        badge: false,
       }),
     )
   })
@@ -252,6 +254,7 @@ describe('tapping a line', () => {
       closureKind: null,
       closureReason: null,
       closureSource: null,
+      badge: false,
       at: [10, 10],
     })
   })
@@ -458,6 +461,9 @@ describe('the through-route badge (#1283)', () => {
       name: 'Appalachian National Scenic Trail',
       blazeColor: 'White',
       at: [-74.1, 41.25],
+      // And says it was the badge (#1306): the shell takes an untaken trail
+      // from its badge, and opens the sheet from its line.
+      badge: true,
     })
   })
 

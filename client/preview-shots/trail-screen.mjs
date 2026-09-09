@@ -57,10 +57,25 @@
 // marks and boundary ticks, which the alt text used to name, are gone with
 // every other point mark below the seam: the opening camera is trail lines
 // only, by the maintainer's call.
+// NOTHING TAKEN (#1306). First run takes no trail, so this frame - first
+// run skipped, nothing taken - has the A.T. as a dotted dark line like every
+// other, at the same 1.5 px the network's dots take at this camera: the
+// tenth build drew the network as a haze at 0.8 px, and the eleventh drew
+// the A.T.'s dots at its 4.5 px tier, which on a 51,068-vertex line at z4
+// is a black rope (style.ts's sketchWidthExpression).
 export const caption =
-  'The opening map — trail lines only below the seam (#1292): the A.T. from its corridor-view sketch until the real line lands (#1291), no waypoints and no marks of any kind, and the other organizations’ trails dotted around its New York miles once network_overview.geojson is in the bucket this preview reads'
+  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a dot rhythm at one fine weight, the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails dotted in their own hues around its New York miles — the Long Path in aqua — and no waypoints or marks of any kind'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single dark line from Georgia to Maine over the basemap, with no pins, dots or marks anywhere on it, and — once the artifact publishes — the other organizations’ trails dotted faintly around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single fine dotted dark line from Georgia to Maine over the basemap, with no pins or marks anywhere on it, and the other organizations’ trails as dotted threads of the same weight in their own colours around its New York miles'
+
+/** The network overview is one 10.8 MB GeoJSON (lib/config.ts's
+ *  NETWORK_OVERVIEW_KEY) that the map cuts into tiles in a worker after it
+ *  lands, and that cut is what the photographer's 3.5 s default missed on
+ *  ten builds: in the agent sandbox its dots appeared between 6 and 10 s
+ *  after the Map tap (frames at 3.5, 6, 10 and 20 s, 2026-09-09), with the
+ *  file itself fetched 1.8 s after load. A runner is not a sandbox, so
+ *  this is the sandbox's upper bound rather than a measurement of CI. */
+export const wait = 10000
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Map' }).click()

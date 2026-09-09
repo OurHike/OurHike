@@ -75,12 +75,18 @@ const FONT = ['Noto Sans Regular']
 export const CHOSEN_LABEL_SORT_KEY = 0
 export const NEARBY_LABEL_SORT_KEY = 1
 
-export const TRAIL_LABEL_SORT_KEY_EXPRESSION = [
-  'case',
-  ['in', ['get', 'source'], ['literal', [...CHOSEN_SYSTEM_SOURCES]]],
-  CHOSEN_LABEL_SORT_KEY,
-  NEARBY_LABEL_SORT_KEY,
-]
+export function trailLabelSortKeyExpression(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown[] {
+  return [
+    'case',
+    ['in', ['get', 'source'], ['literal', [...chosen]]],
+    CHOSEN_LABEL_SORT_KEY,
+    NEARBY_LABEL_SORT_KEY,
+  ]
+}
+
+export const TRAIL_LABEL_SORT_KEY_EXPRESSION = trailLabelSortKeyExpression()
 
 /**
  * Sources drawn at the through-route width - map/style.ts's
@@ -223,6 +229,7 @@ export function buildTrailLabelLayer(
   haloColor: string,
   minzoom: number,
   layerId: string = TRAIL_LABEL_LAYER_ID,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): LayerSpecification {
   return {
     id: layerId,
@@ -248,7 +255,7 @@ export function buildTrailLabelLayer(
       // Small, because this layer is orientation rather than subject. The map
       // is about the lines; the names say which line is which.
       'text-letter-spacing': 0.02,
-      'symbol-sort-key': TRAIL_LABEL_SORT_KEY_EXPRESSION as never,
+      'symbol-sort-key': trailLabelSortKeyExpression(chosen) as never,
     },
     paint: {
       'text-color': color,
@@ -260,7 +267,7 @@ export function buildTrailLabelLayer(
       // §1's requirement, and the whole reason this layer waited on #783: ONE
       // expression shared with the line's own opacity, so a label can never
       // drift away from the line it names. Not a copy of the rule - the rule.
-      'text-opacity': nearbyTrailOpacityExpression() as never,
+      'text-opacity': nearbyTrailOpacityExpression(chosen) as never,
     },
   }
 }

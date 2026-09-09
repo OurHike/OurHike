@@ -28,7 +28,7 @@ import {
   NETWORK_OVERVIEW_DOTTED_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
 } from './style'
-import { isNearbyTrail } from './nearbyTrails'
+import { CHOSEN_SYSTEM_SOURCES, isNearbyTrail } from './nearbyTrails'
 
 /** The real MapLibre map — see map/drawnPois.ts for why not a structural
  *  stand-in. */
@@ -56,7 +56,14 @@ export const TRAIL_SOURCE_PROPERTY = 'source'
  * a cold start: the legend says nothing about ghosting rather than explaining
  * a state the map has not drawn.
  */
-export function drawsNearbyTrails(map: DrawnBlazeMap): boolean {
+export function drawsNearbyTrails(
+  map: DrawnBlazeMap,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): boolean {
+  // Nothing taken, nothing ghosted (#1306): the sentence this answers for
+  // explains a dimming that is not happening, so it is false before any
+  // layer is asked.
+  if (chosen.length === 0) return false
   // The layers whose EVERY feature is another system's line - the full
   // network above the seam (#950) and its corridor-view sketch below it
   // (#1135), each in both halves of its split (#1283). One rendered feature
@@ -88,6 +95,9 @@ export function drawsNearbyTrails(map: DrawnBlazeMap): boolean {
   )
   const features = map.queryRenderedFeatures(undefined, { layers })
   return features.some((feature) =>
-    isNearbyTrail((feature.properties ?? {})[TRAIL_SOURCE_PROPERTY] as string | null),
+    isNearbyTrail(
+      (feature.properties ?? {})[TRAIL_SOURCE_PROPERTY] as string | null,
+      chosen,
+    ),
   )
 }

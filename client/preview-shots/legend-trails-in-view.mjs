@@ -27,10 +27,16 @@
 // question network-above-the-seam.mjs's frame already asks. The panel
 // blanks the canvas behind it under this camera (#1138), so the map half of
 // the change is that recipe's frame, not this one's.
+// TAKEN IN THE DRIVE (#1306). Nothing is taken on first launch, so the rows
+// open with every swatch dotted and `take` on the A.T.'s; the drive taps that
+// row, which is the legend's half of the handoff's "tap a badge to take that
+// trail", and waits for `taken` to come back off the re-measured frame. So
+// this frame shows the state AFTER the take - the through-route solid and
+// marked - and the tap itself is what the recipe exercises on real ground.
 export const caption =
-  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283): the A.T. solid and marked taken, every other trail on screen a dotted row in its own blaze hue; the A.T. alone until nearby_trails.pmtiles is in the bucket this preview reads'
+  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), after the drive takes the A.T. from its row (#1306): the A.T. solid and marked taken, every other trail on screen a dotted row in its own blaze hue; the A.T. and its side trails alone until nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The legend sheet over the map screen, opening with a "Trails in view" heading over a column of rows: a solid dark line swatch beside "Appalachian National Scenic Trail" with "taken" on the right, then dotted swatches in aqua, red and blue beside the names of the park’s other trails, above the waypoint category grid'
+  'The legend sheet over the map screen, opening with a "Trails in view" heading over a column of rows: a solid dark line swatch beside "Appalachian National Scenic Trail" with "taken" on the right, then dotted swatches in their own hues beside the names of the other trails on screen, above the waypoint category grid'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */
@@ -62,4 +68,10 @@ export default async function drive(page) {
   // The block is at the top of the sheet, which opens scrolled to the top;
   // waiting for the heading is the settle.
   await page.getByRole('heading', { name: 'Trails in view' }).waitFor()
+
+  // Take the A.T. from its row (#1306), and wait for the frame to be
+  // re-measured with it taken: `taken` replaces `take` on the row once the
+  // map has re-pointed its splits and settled.
+  await page.getByRole('button', { name: /Appalachian National Scenic Trail/ }).click()
+  await page.getByText('taken', { exact: true }).waitFor({ timeout: 15000 })
 }

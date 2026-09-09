@@ -452,6 +452,7 @@ function clearViewOf(map: TrailsInViewMap, insets: ViewInsets, view: Bounds): Bo
 export function trailsInView(
   map: TrailsInViewMap,
   insets: ViewInsets = NO_INSETS,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): TrailInView[] {
   const layers = TAPPABLE_BLAZE_LAYER_IDS.filter((id) => map.getLayer(id) !== undefined)
   if (layers.length === 0) return []
@@ -498,7 +499,7 @@ export function trailsInView(
     if (name === null) continue
     const source = stringProp(properties, 'source') ?? ''
     const throughRoute = BADGE_SOURCES.includes(source)
-    const chosen = CHOSEN_SYSTEM_SOURCES.includes(source)
+    const inChosenSystem = chosen.includes(source)
 
     let best: Run | null = null
     let bestClear: Run | null = null
@@ -520,7 +521,7 @@ export function trailsInView(
         source,
         blazeColor: stringProp(properties, 'blaze_color'),
         throughRoute,
-        chosen,
+        chosen: inChosenSystem,
         anchor: null,
         badgeFit: 'full',
         properties,
@@ -546,7 +547,7 @@ export function trailsInView(
       existing.blazeColor = stringProp(properties, 'blaze_color')
       existing.properties = properties
     }
-    existing.chosen = existing.chosen || chosen
+    existing.chosen = existing.chosen || inChosenSystem
   }
 
   return [...byName.values()]
@@ -615,12 +616,13 @@ export function attachTrailsInView(
   map: TrailsInViewMap,
   onChange?: (trails: readonly TrailInView[]) => void,
   insets: ViewInsets = NO_INSETS,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): () => void {
   let last = ''
   let listening = false
 
   const update = () => {
-    const trails = trailsInView(map, insets)
+    const trails = trailsInView(map, insets, chosen)
     const key = JSON.stringify(trails)
     if (key === last) return
     last = key

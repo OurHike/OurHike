@@ -1,4 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { TRAILS } from '../lib/trails'
+import {
+  CHOSEN_SYSTEM_SOURCES,
+  NEARBY_TRAIL_DASHARRAY,
+  chosenSystemFilter,
+  nearbyTrailFilter,
+  nearbyTrailOpacityExpression,
+} from './nearbyTrails'
 import { StrictMode } from 'react'
 import { act, render, cleanup, screen, waitFor } from '@testing-library/react'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
@@ -12,6 +20,9 @@ import {
   TAPPABLE_BLAZE_LAYER_IDS,
   TRAIL_OVERVIEW_SOURCE_ID,
   TRAILS_SOURCE_ID,
+  BLAZE_DOTTED_LAYER_ID,
+  TRAIL_OVERVIEW_LAYER_ID,
+  sketchWidthExpression,
 } from './style'
 import {
   blazeChipImageId,
@@ -1214,5 +1225,47 @@ describe('keeping the opening camera inside what the download covers', () => {
     await waitFor(() => expect(onViewportChange).toHaveBeenCalled())
     expect(live.getZoom()).toBe(0)
     expect(live.cameraMoves).toHaveLength(0)
+  })
+})
+
+describe('the taken trail (#1306)', () => {
+  it('builds an untaken map with every line dotted and the sketch dotted', () => {
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    const style = map.options.style as {
+      layers: Array<{ id: string; paint?: Record<string, unknown>; filter?: unknown }>
+    }
+    const sketch = style.layers.find((layer) => layer.id === TRAIL_OVERVIEW_LAYER_ID)
+    const solid = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
+    expect(sketch?.paint?.['line-dasharray']).toEqual(NEARBY_TRAIL_DASHARRAY)
+    expect(sketch?.paint?.['line-width']).toEqual(sketchWidthExpression([]))
+    expect(solid?.filter).toEqual(chosenSystemFilter([]))
+  })
+
+  it('re-points every split in place when a trail is taken, without rebuilding the map', () => {
+    const { rerender } = render(<MapView {...PROPS} chosenTrailId={null} />)
+    const [map] = MockMap.live
+    const builtInitially = MockMap.instances.length
+    act(() => map.emit('load'))
+
+    rerender(<MapView {...PROPS} chosenTrailId={TRAILS.AT.id} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.filters.get(BLAZE_LAYER_ID)).toEqual(
+      chosenSystemFilter(CHOSEN_SYSTEM_SOURCES),
+    )
+    expect(map.filters.get(BLAZE_DOTTED_LAYER_ID)).toEqual(
+      nearbyTrailFilter(CHOSEN_SYSTEM_SOURCES),
+    )
+    expect(map.paintProperties.get(`${BLAZE_DOTTED_LAYER_ID}/line-opacity`)).toEqual(
+      nearbyTrailOpacityExpression(CHOSEN_SYSTEM_SOURCES),
+    )
+    expect(
+      map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-dasharray`),
+    ).toBeUndefined()
+    expect(map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-width`)).toEqual(
+      sketchWidthExpression(CHOSEN_SYSTEM_SOURCES),
+    )
   })
 })

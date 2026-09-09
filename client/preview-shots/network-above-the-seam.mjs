@@ -57,8 +57,13 @@
 // map/trailBadges.ts's header argues for, and the full plate with the name
 // is what a less crowded stretch gets. The caption claims the plate and the
 // mark; whether the name is beside them is what the frame answers.
+// TAKEN IN THE DRIVE (#1306). Nothing is taken on first launch - the A.T.
+// would be a dotted dark line like every other - so the drive opens the
+// legend, takes the A.T. from its row, and closes the legend again before the
+// frame. What the caption claims about "the one solid line" is a claim about
+// the taken state, and this is how the recipe reaches it.
 export const caption =
-  'Harriman at zoom 12 — the A.T. is the one solid line, inked dark with no casing and wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
+  'Harriman at zoom 12, the A.T. taken from its legend row in the drive (#1306) — the A.T. is the one solid line, inked dark with no casing and wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
   'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid dark line with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
 
@@ -83,4 +88,14 @@ export default async function drive(page) {
   // through an init script on the CONTEXT (scripts/screenshot.mjs's
   // skipFirstRun), which re-runs on every document rather than only the first.
   await page.getByRole('tab', { name: 'Map' }).click()
+
+  // Take the A.T. (#1306): the legend's row is the one control a driver can
+  // reach - the badge is WebGL. Wait for the rows to be measured off the
+  // settled frame before tapping, then close the legend so the canvas is the
+  // frame; the map re-points its splits in place, no rebuild.
+  await page.getByRole('button', { name: 'Legend' }).click()
+  await page
+    .getByRole('button', { name: /Appalachian National Scenic Trail/ })
+    .click({ timeout: 15000 })
+  await page.getByRole('button', { name: 'Close legend' }).click()
 }

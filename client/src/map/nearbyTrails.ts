@@ -67,6 +67,8 @@
  * on this canvas so it can be argued with, not a value these frames decide."
  * Treat a number arrived at here as a starting point a reviewer may move.
  */
+import { TRAILS } from '../lib/trails'
+
 export const NEARBY_TRAIL_OPACITY = 0.45
 
 /** What the chosen trail draws at. Full strength, stated rather than implied,
@@ -105,12 +107,32 @@ export const CHOSEN_TRAIL_OPACITY = 1
  * settle it is the same #105 pass the opacity constant waits on - whether a
  * hiker reads two full-strength widths as one system or as two trails.
  *
- * This list is static today because a hiker cannot yet choose a different
- * trail; **#558 — Let a hiker take the stretch they are walking, without
- * picking it off a list** is where the choice arrives, and this becomes a
- * lookup against the chosen system rather than a constant when it does.
+ * This list used to be static because a hiker could not choose a trail. Since
+ * #1306 the choice exists - a trail is TAKEN from its badge or its legend
+ * row, or nothing is, which is first launch - and chosenSystemSources() below
+ * is the lookup; this list is what it answers for the A.T., the one trail
+ * with a system today. **#558 — Let a hiker take the stretch they are
+ * walking, without picking it off a list** is still where a second trail's
+ * choice arrives.
  */
 export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_trails']
+
+/**
+ * The sources drawn as the chosen system for one taken trail, or none
+ * (#1306 - the handoff's `chosenSystemSources`, "was a constant").
+ *
+ * Null - nothing taken, which is first launch - answers an EMPTY list, and
+ * that is the all-dotted state: no line passes chosenSystemFilter(), every
+ * line falls to the dotted side, and nothing is ghosted, because ghosting
+ * says which system a line belongs to and there is no system to belong to.
+ * Reasoned from the prototype rather than measured on a phone: it draws
+ * every line at 0.92 with nothing taken against 0.82 once one is. The A.T.
+ * is the only trail with a system today; a second entry here is a second
+ * registry trail with sources of its own (#1307).
+ */
+export function chosenSystemSources(chosenTrailId: string | null): readonly string[] {
+  return chosenTrailId === TRAILS.AT.id ? CHOSEN_SYSTEM_SOURCES : []
+}
 
 /**
  * Whether one line is ghosted, from the `source` attribute the pipeline
@@ -131,9 +153,15 @@ export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_tra
  * default in style.ts, where an unknown source takes the side-trail width
  * rather than claiming the through-route tier.
  */
-export function isNearbyTrail(source: string | null | undefined): boolean {
+export function isNearbyTrail(
+  source: string | null | undefined,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): boolean {
   if (source === null || source === undefined || source === '') return false
-  return !CHOSEN_SYSTEM_SOURCES.includes(source)
+  // Nothing taken, nothing nearby: "nearby" is relative to a chosen system,
+  // and with none every line is simply a line (#1306).
+  if (chosen.length === 0) return false
+  return !chosen.includes(source)
 }
 
 /**
@@ -148,8 +176,11 @@ export function isNearbyTrail(source: string | null | undefined): boolean {
  * worst an over-prominent line, and it is visible - which is how it gets
  * fixed.
  */
-export function nearbyTrailOpacity(source: string | null | undefined): number {
-  return isNearbyTrail(source) ? NEARBY_TRAIL_OPACITY : CHOSEN_TRAIL_OPACITY
+export function nearbyTrailOpacity(
+  source: string | null | undefined,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): number {
+  return isNearbyTrail(source, chosen) ? NEARBY_TRAIL_OPACITY : CHOSEN_TRAIL_OPACITY
 }
 
 /**
@@ -181,15 +212,18 @@ export function nearbyTrailOpacity(source: string | null | undefined): number {
  * case collapse into one comparison instead of needing a `has` guard that
  * would still let a null-valued property through.
  */
-export function nearbyTrailOpacityExpression(): unknown[] {
+export function nearbyTrailOpacityExpression(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown {
+  // Nothing taken: full strength everywhere, as a plain number rather than
+  // an expression that would ghost every sourced line against an empty
+  // system (#1306, and isNearbyTrail above for why that is the right way
+  // round).
+  if (chosen.length === 0) return CHOSEN_TRAIL_OPACITY
   const source = ['to-string', ['get', 'source']]
   return [
     'case',
-    [
-      'all',
-      ['!=', source, ''],
-      ['!', ['in', source, ['literal', [...CHOSEN_SYSTEM_SOURCES]]]],
-    ],
+    ['all', ['!=', source, ''], ['!', ['in', source, ['literal', [...chosen]]]]],
     NEARBY_TRAIL_OPACITY,
     CHOSEN_TRAIL_OPACITY,
   ]
@@ -228,12 +262,19 @@ export const NEARBY_TRAIL_DASHARRAY: readonly number[] = [0, 2]
  * how it gets fixed. What the dotted side must never do is claim a line is the
  * chosen trail, and a line nobody can source has not earned that.
  */
-export function chosenSystemFilter(): unknown[] {
-  return ['in', ['to-string', ['get', 'source']], ['literal', [...CHOSEN_SYSTEM_SOURCES]]]
+export function chosenSystemFilter(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown[] {
+  // An empty list matches nothing, so with nothing taken every line is on
+  // the dotted side - the all-dotted first launch (#1306) falls out of the
+  // same two filters rather than needing a third state.
+  return ['in', ['to-string', ['get', 'source']], ['literal', [...chosen]]]
 }
 
-export function nearbyTrailFilter(): unknown[] {
-  return ['!', chosenSystemFilter()]
+export function nearbyTrailFilter(
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): unknown[] {
+  return ['!', chosenSystemFilter(chosen)]
 }
 
 // LABELS DIM WITH THEIR LINES, AND THE EXPRESSION IS SHARED, NOT COPIED

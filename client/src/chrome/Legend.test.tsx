@@ -1542,6 +1542,37 @@ describe('the "Trails in view" block (#1283)', () => {
     ).toBeTruthy()
   })
 
+  it('offers `take` on an untaken through-route and takes it on tap (#1306)', async () => {
+    // Nothing is taken on first launch; the row is the legend's half of the
+    // handoff's "tap a badge to take that trail", and it says so in the slot
+    // `taken` fills afterwards.
+    const onTakeTrail = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <Legend
+        {...PROPS}
+        trailsInView={[{ ...TRAILS[0], chosen: false }, TRAILS[1]]}
+        onTakeTrail={onTakeTrail}
+      />,
+    )
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const at = within(block).getByRole('button', {
+      name: /Appalachian National Scenic Trail/,
+    })
+    expect(within(at).getByText('take')).toBeInTheDocument()
+    expect(within(block).queryByText('taken')).toBeNull()
+    // A side trail is not a through-route and has nothing to take: its row
+    // is a row, not a control.
+    expect(within(block).queryByRole('button', { name: /Long Path/ })).toBeNull()
+    expect(within(block).getByText('Long Path')).toBeInTheDocument()
+
+    await user.click(at)
+
+    expect(onTakeTrail).toHaveBeenCalledWith(
+      expect.objectContaining({ source: 'centerline' }),
+    )
+  })
+
   it('draws the taken trail solid and every other row dotted, as the map does', () => {
     render(<Legend {...PROPS} trailsInView={TRAILS} />)
     const block = screen.getByRole('region', { name: 'Trails in view' })
@@ -1573,15 +1604,17 @@ describe('the "Trails in view" block (#1283)', () => {
     expect(within(block).queryAllByRole('button')).toEqual([])
     unmount()
 
+    // With the seam plugged in, only the through-route's row is a control
+    // (#1306): the Long Path is a side trail here and has nothing to take.
     const onTakeTrail = vi.fn()
     render(<Legend {...PROPS} trailsInView={TRAILS} onTakeTrail={onTakeTrail} />)
     const buttons = within(
       screen.getByRole('region', { name: 'Trails in view' }),
     ).getAllByRole('button')
-    expect(buttons).toHaveLength(2)
+    expect(buttons).toHaveLength(1)
     expect(buttons[0]).toHaveAttribute('aria-pressed', 'true')
-    await userEvent.click(buttons[1])
-    expect(onTakeTrail).toHaveBeenCalledWith(TRAILS[1])
+    await userEvent.click(buttons[0])
+    expect(onTakeTrail).toHaveBeenCalledWith(TRAILS[0])
   })
 
   it('keeps the ghosting sentence directly under the rows it explains', () => {

@@ -118,6 +118,21 @@ WEEKLY_POLYGONS = "weekly_polygons"
 # a schedule, and fetch_all.py skips it like everything not ArcGIS.
 GUIDE_PAGES = "guide_pages"
 
+# Day hikes an organization writes up for people to walk - NYNJTC's Favorite
+# Hikes first (#1290): a name, an overview, a dated turn-by-turn, a credited
+# photograph, and the trailhead as a pin on a map, published as WordPress
+# posts of a custom type behind the REST API. Fetched by fetch_nynjtc_hikes.py
+# into data/raw/nynjtc_hikes.json and parsed by lib/nynjtc_hikes.py into
+# facts; the ROUTE each one walks is not published anywhere and is built here
+# from the description, reviewed row by row in reference/nynjtc_hike_routes
+# .json, and shipped by export_suggested_hikes.py behind the entry's own
+# `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
+# thing a reader gets is a hike, not a waypoint, and the exporter that reads
+# it is a different one; and rather than PUBLISHED_NOTICES because these are
+# fetched on a schedule, not reviewed by hand into git. fetch_all.py skips it
+# like everything not ArcGIS.
+PUBLISHED_HIKES = "published_hikes"
+
 KNOWN_KINDS = frozenset(
     {
         ARCGIS_FEATURE_LAYER,
@@ -128,6 +143,7 @@ KNOWN_KINDS = frozenset(
         WEEKLY_POLYGONS,
         EXTERNAL_ARCGIS_LAYER,
         GUIDE_PAGES,
+        PUBLISHED_HIKES,
     }
 )
 

@@ -611,13 +611,14 @@ class TestTheRegistryTheConsoleReads:
     def test_lists_every_organization_once_with_its_id(self):
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 11
+        assert len(orgs) == 12
         assert {org["steward_id"] for org in orgs} == {
             "org:atc",
             "org:gatc",
             "org:mohonk",
             "org:ndmc",
             "org:nhgranit",
+            "org:njdep",
             "org:nynjtc",
             "org:nysdec",
             "org:nysoprhp",

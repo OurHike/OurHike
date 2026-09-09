@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest'
+import { TRAILS } from '../lib/trails'
 import {
   CHOSEN_SYSTEM_SOURCES,
   CHOSEN_TRAIL_OPACITY,
+  NEARBY_TRAIL_DASHARRAY,
   NEARBY_TRAIL_OPACITY,
+  chosenSystemFilter,
   isNearbyTrail,
+  nearbyTrailFilter,
   nearbyTrailOpacity,
   nearbyTrailOpacityExpression,
+  chosenSystemSources,
 } from './nearbyTrails'
 import {
   BLAZE_LAYER_ID,
@@ -40,7 +45,8 @@ function paintOf(layerId: string): Record<string, unknown> {
  * structure would have agreed with the bug.
  */
 function evaluateOpacityExpression(source: string | null): number {
-  const [op, condition, whenGhosted, whenChosen] = nearbyTrailOpacityExpression()
+  const [op, condition, whenGhosted, whenChosen] =
+    nearbyTrailOpacityExpression() as unknown[]
   expect(op).toBe('case')
 
   const [allOp, notEmpty, notChosen] = condition as unknown[]
@@ -118,7 +124,7 @@ describe('the expression and the function agree', () => {
   })
 
   it('builds its membership list from CHOSEN_SYSTEM_SOURCES rather than a copy', () => {
-    const [, condition] = nearbyTrailOpacityExpression()
+    const [, condition] = nearbyTrailOpacityExpression() as unknown[]
     const notChosen = (condition as unknown[])[2] as unknown[]
     const inExpr = notChosen[1] as unknown[]
     const members = (inExpr[2] as ['literal', string[]])[1]
@@ -130,7 +136,7 @@ describe('the expression and the function agree', () => {
     // the condition grows into, the branch a feature falls into when the
     // condition cannot answer for it must be the chosen trail's opacity - a
     // fault is over-prominent and visible, never quietly dimmed.
-    const expression = nearbyTrailOpacityExpression()
+    const expression = nearbyTrailOpacityExpression() as unknown[]
     expect(expression[expression.length - 1]).toBe(CHOSEN_TRAIL_OPACITY)
   })
 })
@@ -173,5 +179,114 @@ describe('the style actually paints it', () => {
     for (const source of atOnlySources) {
       expect(evaluateOpacityExpression(source)).toBe(CHOSEN_TRAIL_OPACITY)
     }
+  })
+})
+
+describe('the layer split (#1283): two filters that are exact complements', () => {
+  /**
+   * MapLibre semantics for the operators the filters use, interpreted the
+   * way evaluateOpacityExpression above is: `to-string` renders a missing
+   * property as "", `in` is set membership, `!` negates.
+   */
+  function passes(filter: unknown[], source: string | null): boolean {
+    const [op, ...rest] = filter
+    if (op === '!') return !passes(rest[0] as unknown[], source)
+    expect(op).toBe('in')
+    const members = (rest[1] as ['literal', string[]])[1]
+    return members.includes(source ?? '')
+  }
+
+  const cases = [
+    ...CHOSEN_SYSTEM_SOURCES,
+    'oprhp_trails',
+    'usfs_trails',
+    'unheard_of',
+    '',
+    null,
+  ]
+
+  it('puts every source in exactly one of the two layers', () => {
+    // Neither in both (a line drawn solid AND dotted over itself) nor in
+    // neither (a line that vanishes). The split is only honest as a
+    // partition.
+    for (const source of cases) {
+      const solid = passes(chosenSystemFilter(), source)
+      const dotted = passes(nearbyTrailFilter(), source)
+      expect(solid).not.toBe(dotted)
+    }
+  })
+
+  it('draws the chosen system solid and everything else dotted', () => {
+    for (const source of CHOSEN_SYSTEM_SOURCES) {
+      expect(passes(chosenSystemFilter(), source)).toBe(true)
+    }
+    expect(passes(nearbyTrailFilter(), 'oprhp_trails')).toBe(true)
+    expect(passes(nearbyTrailFilter(), 'unheard_of')).toBe(true)
+  })
+
+  it('sends a source-less feature to the dotted side, and says why', () => {
+    // The one place the split rounds the other way from the opacity rule: a
+    // line nobody can source has not earned the claim of being the chosen
+    // trail. It still paints at full opacity on that layer, so the fault is
+    // visible rather than quietly dimmed - the module says so.
+    expect(passes(nearbyTrailFilter(), null)).toBe(true)
+    expect(passes(nearbyTrailFilter(), '')).toBe(true)
+  })
+
+  it('builds both from CHOSEN_SYSTEM_SOURCES rather than a copy', () => {
+    const members = (chosenSystemFilter()[2] as ['literal', string[]])[1]
+    expect(members).toEqual([...CHOSEN_SYSTEM_SOURCES])
+    expect(nearbyTrailFilter()).toEqual(['!', chosenSystemFilter()])
+  })
+
+  it('is a dot rhythm in dash units - zero-length dashes two widths apart', () => {
+    // Round caps turn the zero-length dash into a dot of the line's own
+    // diameter. Dash units, so the rhythm scales with each width tier
+    // rather than being right at one of them.
+    expect(NEARBY_TRAIL_DASHARRAY).toEqual([0, 2])
+  })
+})
+
+describe('nothing taken (#1306)', () => {
+  // The handoff's `chosenSystemSources`, "was a constant": null on first
+  // launch is the all-dotted state, and the A.T. is the only trail with a
+  // system to answer for today.
+  it('answers the A.T. system for the A.T. and nothing for nothing', () => {
+    expect(chosenSystemSources(TRAILS.AT.id)).toEqual(CHOSEN_SYSTEM_SOURCES)
+    expect(chosenSystemSources(null)).toEqual([])
+    expect(chosenSystemSources('PCT')).toEqual([])
+  })
+
+  it('puts every line on the dotted side when nothing is taken', () => {
+    // An empty membership list matches nothing, so the two filters stay
+    // complements and the solid side is simply empty.
+    const solid = chosenSystemFilter([]) as unknown[]
+    expect((solid[2] as ['literal', string[]])[1]).toEqual([])
+    expect(nearbyTrailFilter([])).toEqual(['!', chosenSystemFilter([])])
+  })
+
+  it('ghosts nothing when nothing is taken, since there is no system to belong to', () => {
+    expect(nearbyTrailOpacityExpression([])).toBe(CHOSEN_TRAIL_OPACITY)
+    for (const source of [
+      'centerline',
+      'side_trails',
+      'oprhp_trails',
+      'unknown',
+      '',
+      null,
+    ]) {
+      expect(isNearbyTrail(source, [])).toBe(false)
+      expect(nearbyTrailOpacity(source, [])).toBe(CHOSEN_TRAIL_OPACITY)
+    }
+  })
+
+  it('still ghosts against the taken system, as before', () => {
+    expect(isNearbyTrail('oprhp_trails', CHOSEN_SYSTEM_SOURCES)).toBe(true)
+    expect(nearbyTrailOpacity('oprhp_trails', CHOSEN_SYSTEM_SOURCES)).toBe(
+      NEARBY_TRAIL_OPACITY,
+    )
+    expect(nearbyTrailOpacityExpression(CHOSEN_SYSTEM_SOURCES)).toEqual(
+      nearbyTrailOpacityExpression(),
+    )
   })
 })

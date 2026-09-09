@@ -121,6 +121,16 @@ export interface MoreProps extends SettingsProps {
    */
   hikeSummary?: string | null
   onEditHike?: () => void
+  /**
+   * The long hike the app is in (#1317), or null.
+   *
+   * Distinct from `hikeSummary` above, which is `PlannedHike`'s two numbers
+   * - "where I am walking today". This is the multi-year object those two
+   * numbers were never able to be, and it is here because stepping away from
+   * one is a settings-shaped act rather than something to meet mid-walk.
+   */
+  longHikeName?: string | null
+  onStepAwayFromHike?: () => void
   /** Waiting for signal. Excludes anything in `stuckReports`. */
   queuedReportCount: number
   /**
@@ -299,6 +309,8 @@ export function More({
   onOpenRegistry,
   hikeSummary = null,
   onEditHike,
+  longHikeName = null,
+  onStepAwayFromHike,
   queuedReportCount,
   stuckReports = [],
   onRetryReport,
@@ -417,6 +429,25 @@ export function More({
     if (page === 'you') {
       panel = (
         <>
+          {longHikeName !== null && onStepAwayFromHike !== undefined && (
+            <section className="settings__group">
+              <h2 className="settings__heading">Your long hike</h2>
+              <button
+                type="button"
+                className="settings__action"
+                onClick={onStepAwayFromHike}
+              >
+                {longHikeName}
+              </button>
+              {/* What the doors behind this do, before they are opened - a
+                  hiker should not have to open a sheet to find out whether
+                  it is somewhere safe to look. */}
+              <p className="settings__note">
+                A zero, a night in town, a pause until next year, turning around, or
+                finishing it. Every section you walked stays in Plan whatever you choose.
+              </p>
+            </section>
+          )}
           {onEditHike !== undefined && (
             <section className="settings__group">
               <h2 className="settings__heading">Your hike</h2>

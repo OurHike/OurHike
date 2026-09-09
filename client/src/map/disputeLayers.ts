@@ -28,6 +28,7 @@ import type {
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { buildDisputeMark, DISPUTE_MARK_ID, DISPUTE_MARK_SIZE } from './disputeMark'
 import { POI_PIN_SIZE } from './poiIcons'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { whenStyleReady } from './styleReady'
 
 export const DISPUTE_SOURCE_ID = 'poi-disputes'
@@ -82,6 +83,9 @@ export function buildDisputeLayer(
     id: DISPUTE_LAYER_ID,
     type: 'symbol',
     source: sourceId,
+    // The pin this annotates starts at the seam, so this does too (#1292): a
+    // footnote with no sentence under it is a mark on nothing.
+    minzoom: POI_PIN_MIN_ZOOM,
     layout: {
       'icon-image': DISPUTE_MARK_ID,
       'icon-size': 1,

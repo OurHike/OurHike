@@ -54,3 +54,14 @@
   color: var(--fg-on-brand);
   font-weight: 700;
 }
+
+/* Chosen, not yet settled (#1317).
+
+   The "which long hike?" sheet is open over this, and closing it without
+   picking puts the mode back - the one place a segment tap is not
+   instantaneous. .55 is the prototype's value and is deliberately well short
+   of the unselected segments' own weight, so the segment still reads as the
+   one chosen rather than as one of three. */
+.mode-switch__segment--pending {
+  opacity: 0.55;
+}

@@ -1170,9 +1170,45 @@ export interface SyncedHike {
   updated_at: string
 }
 
+/** One long hike as this device is offering it (#1317). `document` is null
+ *  when the hiker forgot it - `removeHike`'s act, travelling. */
+export interface LongHikeUpload {
+  id: string
+  document: unknown | null
+  base_updated_at: string | null
+  deleted: boolean
+}
+
+/** One long hike as the server holds it now. A null `document` with a
+ *  `deleted_at` is a tombstone, and a row to ACT on. */
+export interface SyncedLongHikeRow {
+  id: string
+  document: unknown | null
+  updated_at: string
+  deleted_at: string | null
+}
+
+/** Which long hike the account says the hiker is in. A null `hike_id` is a
+ *  real answer - they left the long-hike state - where the whole object
+ *  being null means no device has ever said. */
+export interface SyncedActiveHike {
+  hike_id: string | null
+  updated_at: string
+}
+
 export interface TripSyncRequest {
   since: string | null
   trips: TripUpload[]
+  /** The long hikes this device changed (#1317). Omitted when there are
+   *  none, which every build before #1317 does implicitly. */
+  hikes?: LongHikeUpload[]
+  /** Omitted entirely when this device has nothing to say about which hike
+   *  it is in - distinct from a null `hike_id`, which is the hiker leaving
+   *  the long-hike state. */
+  active_hike?: {
+    hike_id: string | null
+    base_updated_at: string | null
+  }
   /** Omitted entirely when this device has nothing to say about the planned
    *  hike. Distinct from a hike with both miles null, which is the hiker
    *  having cleared it - the server treats the two differently on purpose. */
@@ -1187,6 +1223,10 @@ export interface TripSyncResponse {
   now: string
   trips: SyncedTripRow[]
   hike: SyncedHike | null
+  /** Long hikes changed elsewhere since the watermark, tombstones included.
+   *  Absent from a server that predates #1317, hence the optional. */
+  hikes?: SyncedLongHikeRow[]
+  active_hike?: SyncedActiveHike | null
   /** How many trips this exchange kept beside an existing one rather than
    *  overwriting. A conflict is a thing that HAPPENED to a hiker's planning,
    *  and #894 is the surface that will say so. */

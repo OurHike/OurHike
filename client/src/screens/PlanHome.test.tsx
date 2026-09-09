@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { PlanHome, type PlanHomeProps } from './PlanHome'
+import { PlanHome, planRoomFor, type PlanHomeProps } from './PlanHome'
 import { PlanKindSheet } from '../chrome/PlanKindSheet'
 import type { DayHike } from '../lib/dayHikes'
 import type { Trip } from '../lib/trips'
@@ -47,8 +47,7 @@ function trip(id: string): Trip {
 
 const PROPS: PlanHomeProps = {
   network: { kind: 'ready' },
-  mode: 'day',
-  onSwitchMode: vi.fn(),
+  room: 'day' as const,
   trips: [],
   hikes: [],
   dayHikes: [],
@@ -74,26 +73,29 @@ afterEach(() => {
 })
 
 describe('the mode band', () => {
-  it('names the day room, and its chip goes to the trips room', async () => {
-    const user = userEvent.setup()
-    const onSwitchMode = vi.fn()
-    render(<PlanHome {...PROPS} mode="day" onSwitchMode={onSwitchMode} />)
+  it('names the day room, and offers no switch of its own', () => {
+    render(<PlanHome {...PROPS} room="day" />)
 
     expect(screen.getByText(/you.{0,3}re planning/i)).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Day hikes' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: /Trips/ }))
-    expect(onSwitchMode).toHaveBeenCalledWith('trips')
+    // #1317: the app's mode control is the door. A chip beside it would be a
+    // second answer to a question the hiker has already given.
+    expect(screen.queryByRole('button', { name: /⇄/ })).not.toBeInTheDocument()
   })
 
-  it('names the trips room, and its chip goes to the day room', async () => {
-    const user = userEvent.setup()
-    const onSwitchMode = vi.fn()
-    render(<PlanHome {...PROPS} mode="trips" onSwitchMode={onSwitchMode} />)
+  it('names the sections room, and offers no switch of its own', () => {
+    render(<PlanHome {...PROPS} room="sections" />)
 
-    expect(screen.getByRole('heading', { name: 'Trips' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
-    expect(onSwitchMode).toHaveBeenCalledWith('day')
+    expect(screen.getByRole('heading', { name: 'Sections' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /⇄/ })).not.toBeInTheDocument()
+  })
+
+  it('takes its room from the app’s mode, and gives volunteer the day room', () => {
+    // Not a third room: "today I'm volunteering" is a statement about the
+    // day's work, not a kind of planning.
+    expect(planRoomFor('long')).toBe('sections')
+    expect(planRoomFor('day')).toBe('day')
+    expect(planRoomFor('volunteer')).toBe('day')
   })
 })
 
@@ -104,7 +106,7 @@ describe('the day room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="day"
+        room="day"
         dayHikes={[
           dayHike('Pine Meadow loop', { date: '2026-09-12' }),
           dayHike('Seven Hills, out and back'),
@@ -127,12 +129,12 @@ describe('the day room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="day"
+        room="day"
         trips={[trip('Damascus → Pearisburg')]}
         dayHikes={[dayHike('Pine Meadow loop')]}
       />,
     )
-    expect(screen.queryByText('Recent trips')).not.toBeInTheDocument()
+    expect(screen.queryByText('Recent sections')).not.toBeInTheDocument()
     expect(screen.queryByText('Your groups')).not.toBeInTheDocument()
     expect(screen.queryByText(/Damascus/)).not.toBeInTheDocument()
   })
@@ -140,7 +142,7 @@ describe('the day room', () => {
   it('its one action opens the day-hike builder, saying so', async () => {
     const user = userEvent.setup()
     const onNewDayHike = vi.fn()
-    render(<PlanHome {...PROPS} mode="day" onNewDayHike={onNewDayHike} />)
+    render(<PlanHome {...PROPS} room="day" onNewDayHike={onNewDayHike} />)
 
     await user.click(screen.getByRole('button', { name: 'Plan a day hike' }))
     expect(onNewDayHike).toHaveBeenCalled()
@@ -150,7 +152,7 @@ describe('the day room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="day"
+        room="day"
         onNewDayHike={null}
         network={{ kind: 'absent', because: 'not-in-release' }}
       />,
@@ -167,7 +169,7 @@ describe('the day room', () => {
     // and the test stays, because what it really guards is that a hiker sees
     // ONE claim about one missing artifact wherever they meet it.
     const network = { kind: 'absent', because: 'not-in-release' } as const
-    render(<PlanHome {...PROPS} mode="day" onNewDayHike={null} network={network} />)
+    render(<PlanHome {...PROPS} room="day" onNewDayHike={null} network={network} />)
     const home = screen.getByRole('note').textContent
     cleanup()
     // The sheet carries a SECOND note - the walked door's "isn't built yet" -
@@ -201,7 +203,7 @@ describe('the day room', () => {
       render(
         <PlanHome
           {...PROPS}
-          mode="day"
+          room="day"
           onNewDayHike={null}
           network={{ kind: 'absent', because }}
         />,
@@ -215,7 +217,7 @@ describe('the day room', () => {
     // so this is a guard rather than a bug fix - but a screen that INFERRED
     // the reason would start blaming the network the day a second reason
     // exists, on a phone whose network is fine.
-    render(<PlanHome {...PROPS} mode="day" onNewDayHike={null} />)
+    render(<PlanHome {...PROPS} room="day" onNewDayHike={null} />)
 
     expect(screen.queryByRole('note')).not.toBeInTheDocument()
   })
@@ -224,7 +226,7 @@ describe('the day room', () => {
     const user = userEvent.setup()
     const onResumeDraft = vi.fn()
     render(
-      <PlanHome {...PROPS} mode="day" draftKind="day" onResumeDraft={onResumeDraft} />,
+      <PlanHome {...PROPS} room="day" draftKind="day" onResumeDraft={onResumeDraft} />,
     )
     await user.click(screen.getByRole('button', { name: 'Back to your route' }))
     expect(onResumeDraft).toHaveBeenCalled()
@@ -240,7 +242,7 @@ describe('the day room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="day"
+        room="day"
         draftKind="trip"
         onNewDayHike={onNewDayHike}
         onResumeDraft={onResumeDraft}
@@ -262,13 +264,13 @@ describe('the trips room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="trips"
+        room="sections"
         trips={[trip('Damascus → Pearisburg')]}
         onNewTrip={onNewTrip}
       />,
     )
-    expect(screen.getByText('Recent trips')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Plan a new trip' }))
+    expect(screen.getByText('Recent sections')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Plan a new section' }))
     expect(onNewTrip).toHaveBeenCalled()
   })
 
@@ -279,13 +281,13 @@ describe('the trips room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="trips"
+        room="sections"
         draftKind="day"
         onNewTrip={onNewTrip}
         onResumeDraft={onResumeDraft}
       />,
     )
-    await user.click(screen.getByRole('button', { name: 'Plan a new trip' }))
+    await user.click(screen.getByRole('button', { name: 'Plan a new section' }))
     expect(onNewTrip).toHaveBeenCalled()
     expect(onResumeDraft).not.toHaveBeenCalled()
   })
@@ -294,7 +296,7 @@ describe('the trips room', () => {
     render(
       <PlanHome
         {...PROPS}
-        mode="trips"
+        room="sections"
         trips={[trip('Damascus → Pearisburg')]}
         dayHikes={[dayHike('Pine Meadow loop')]}
       />,
@@ -306,11 +308,11 @@ describe('the trips room', () => {
 
 describe('what neither home may say', () => {
   it('no score, no behind, no arrival clock - the standing guard', () => {
-    for (const mode of ['day', 'trips'] as const) {
+    for (const room of ['day', 'sections'] as const) {
       render(
         <PlanHome
           {...PROPS}
-          mode={mode}
+          room={room}
           trips={[trip('Damascus → Pearisburg')]}
           dayHikes={[dayHike('Pine Meadow loop', { date: '2026-09-12' })]}
         />,

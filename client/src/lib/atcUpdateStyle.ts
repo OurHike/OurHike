@@ -160,11 +160,17 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  *    on `map/`, and the relationship is enforced by that test file, which
  *    exists precisely because neither half of the comparison can be made where
  *    either side lives.
- *  - **z5, 0.4.** Below the pins entirely, where the only question is whether
- *    a hiker planning a week can see WHERE the ATC has posted something. About
- *    18px of ink answers that. It is deliberately NOT a further shrink to
- *    nothing: unlike the pins, this layer has no minzoom and never stops being
- *    drawn, and "zoomed out to plan" is exactly when someone wants to know.
+ *  - **Below z9, not drawn at all** - the maintainer's call of 2026-09-08
+ *    that the opening camera shows trail lines only (#1292). There WAS a
+ *    third stop here, 0.4 at z5, on the argument that a hiker planning a
+ *    week wants to see where the ATC has posted something. On the
+ *    whole-corridor camera that read as a rash of two dozen marks along the
+ *    southern half (the built app against the production bucket, that day's
+ *    conditions), indistinguishable at that scale from the waypoints #1135
+ *    took off the view - and 18px of ink over a hundred trail miles said
+ *    "somewhere here" and nothing a hiker could act on. The Trail notices
+ *    list carries every notice at every zoom, and from the seam up the mark
+ *    draws exactly as before.
  *
  * So this is the opposite of the choice map/warningLayers.ts makes for its pin
  * ("one size at every zoom, because a warning drawn small has stopped
@@ -175,10 +181,18 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  * precisely what zoom means.
  */
 export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: number]> = [
-  [5, 0.4],
   [9, 0.8],
   [13, 1],
 ]
+
+/**
+ * Where the notice point stops being drawn, going out: the pin seam
+ * (map/poiLayers.ts's POI_PIN_MIN_ZOOM), since #1292 - below it the map
+ * draws trail lines only. The number is repeated here rather than imported,
+ * for the reason the 0.8 above gives: `lib/` does not depend on `map/`, and
+ * src/test/atcAlertProminence.test.ts holds the two equal.
+ */
+export const ATC_UPDATE_POINT_MIN_ZOOM = 9
 
 /**
  * What the symbol layer is given instead of a number.
@@ -451,6 +465,8 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
       id: ATC_UPDATE_POINT_LAYER_ID,
       type: 'symbol',
       source: sourceId,
+      // The seam, like every other point mark on this map (#1292).
+      minzoom: ATC_UPDATE_POINT_MIN_ZOOM,
       layout: {
         'icon-image': ATC_NOTICE_ICON_ID,
         'icon-size': ATC_UPDATE_POINT_SIZE_EXPRESSION as unknown as number,

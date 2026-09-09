@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react'
 import { drawnPoiCounts, type DrawnPoiMap } from '../map/drawnPois'
 import { drawsNearbyTrails } from '../map/drawnBlazes'
+import { CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
 import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 
 /** The real MapLibre map - see map/drawnPois.ts for why this is not a
@@ -45,7 +46,12 @@ export interface DrawnPois {
   ghostedTrailsDrawn: boolean
 }
 
-export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
+export function useDrawnPoiCounts(
+  map: IdleMap | null,
+  /** The taken trail's sources (#1306): what "another network's" is
+   *  relative to. Empty - nothing taken - and no line is ghosted. */
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): DrawnPois {
   const [drawn, setDrawn] = useState<DrawnPois>({
     counts: undefined,
     belowPoiZoom: false,
@@ -68,7 +74,7 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
       setDrawn({
         counts: drawnPoiCounts(map),
         belowPoiZoom: map.getZoom() < POI_PIN_MIN_ZOOM,
-        ghostedTrailsDrawn: drawsNearbyTrails(map),
+        ghostedTrailsDrawn: drawsNearbyTrails(map, chosen),
       })
 
     // Once up front: the map may already be idle by the time this runs, and
@@ -79,7 +85,7 @@ export function useDrawnPoiCounts(map: IdleMap | null): DrawnPois {
     return () => {
       map.off('idle', measure)
     }
-  }, [map])
+  }, [map, chosen])
 
   return drawn
 }

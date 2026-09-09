@@ -605,6 +605,28 @@ def test_referenced_photo_keys_reads_the_card_key_and_the_gallery(tmp_path):
     assert publish.referenced_photo_keys(artifacts) == {"photos/aaa.jpg", "photos/bbb.jpg"}
 
 
+def test_referenced_photo_keys_reads_the_suggested_hikes_photographs(tmp_path):
+    """#1290: a published route's photo is a `photos/<digest>.jpg` key in the
+    same store, and the same promise - verify_photo_promises() must settle
+    it against the bucket, or a card would resolve a key nobody uploaded."""
+    path = tmp_path / "suggested_hikes.json"
+    path.write_text(
+        json.dumps(
+            {
+                "hikes": [
+                    {"id": "a", "photo": {"url": "photos/ccc.jpg", "credit": "c", "licence": "l"}},
+                    {"id": "b"},
+                    {"id": "c", "photo": {"url": "https://elsewhere.test/hosted.jpg", "credit": "c", "licence": "l"}},
+                ]
+            }
+        )
+    )
+
+    keys = publish.referenced_photo_keys({publish.SUGGESTED_HIKES_KEY: {"path": str(path), "sha256": "irrelevant"}})
+
+    assert keys == {"photos/ccc.jpg"}
+
+
 def test_referenced_photo_keys_ignores_artifacts_that_are_not_poi_layers(tmp_path):
     path = tmp_path / "trails.geojson"
     path.write_text(json.dumps({"type": "FeatureCollection", "features": [{"properties": {"photo_key": "photos/x.jpg"}}]}))

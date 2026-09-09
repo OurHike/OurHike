@@ -231,21 +231,38 @@ describe('trail data on a phone that has downloaded nothing', () => {
     expect(map.sourceData.get(TRAILS_SOURCE_ID)).toBeUndefined()
   })
 
-  it('drops the sketch as soon as the real centerline is on the phone', async () => {
+  it('keeps the sketch until the map has drawn the real centerline, then drops it (#1291)', async () => {
     // Held to a deadline rather than left as a second trail line: it is 100 m
     // of tolerance, and the map stops drawing it the moment it has something
     // better (lib/config.ts's TRAILS_OVERVIEW_KEY for what 100 m means at
-    // each zoom).
+    // each zoom). "Something better" is the map's own line ON SCREEN, not the
+    // shell holding the bytes: the worker still has to parse 11.5 MB, and a
+    // sketch dropped at the download was the frame with no trail on it that
+    // every preview photographed.
+    //
+    // On the map screen rather than behind the entry steps (#1324): the steps
+    // build no map now, so first run is no longer a launch this can be asked
+    // about. What #1291 pinned is unchanged - it is about when the sketch
+    // comes off, which is the map's business on whichever launch has one.
     await renderApp()
     const map = await liveMap()
 
-    // The whole release lands, so the real lines are drawn...
+    // The whole release lands, so the real lines are handed to the map...
     await waitFor(() =>
       expect(map.sourceData.get(TRAILS_SOURCE_ID)).toEqual(
         expect.stringContaining('blob:'),
       ),
     )
-    // ...and the sketch is taken off, whether or not it ever arrived.
+    // ...and the sketch stays on while the map is still parsing them.
+    await waitFor(() =>
+      expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual(
+        expect.stringContaining('blob:'),
+      ),
+    )
+
+    // The map reports its trails source loaded: the sketch comes off.
+    map.loadedSources.add(TRAILS_SOURCE_ID)
+    map.emit('sourcedata', { sourceId: TRAILS_SOURCE_ID })
     await waitFor(() =>
       expect(map.sourceData.get(TRAIL_OVERVIEW_SOURCE_ID)).toEqual({
         type: 'FeatureCollection',

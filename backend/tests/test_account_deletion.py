@@ -32,6 +32,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.synced_day_hike import SyncedDayHike
+from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from tests.factories import make_closure, make_profile
@@ -51,6 +52,8 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
     db.add(club)
     db.add(SyncedTrip(id=f"trip-{profile_id}", profile_id=profile_id, document={"name": "Grayson"}))
     db.add(SyncedDayHike(id=f"day-hike-{profile_id}", profile_id=profile_id, document={"name": "McAfee Knob"}))
+    db.add(SyncedHike(id=f"long-hike-{profile_id}", profile_id=profile_id, document={"name": "Springer to Katahdin"}))
+    db.add(SyncedActiveHike(profile_id=profile_id, hike_id=f"long-hike-{profile_id}"))
     db.add(SyncedPlannedHike(profile_id=profile_id, start_mile=1.0, end_mile=9.0))
     db.add(Hike(user_id=profile_id, overall_start_reference=0.0, overall_end_reference=100.0))
     db.add(UserPreferences(profile_id=profile_id, data={"units": "imperial"}))
@@ -277,6 +280,11 @@ _TABLES_EMPTIED = {
     # The same claim as synced_trips, decided with #976: a synced day hike
     # is private planning nobody else has acted on.
     "synced_day_hikes",
+    # A hiker's own long hikes and the pointer at the one they were on
+    # (#1317). The same claim as synced_trips: their own record of where
+    # they walked, relied on by nobody else.
+    "synced_active_hikes",
+    "synced_hikes",
     "synced_planned_hikes",
     "hikes",
     "user_preferences",

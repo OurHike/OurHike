@@ -82,6 +82,12 @@ export function planRoomFor(mode: HikerMode): PlanRoom {
 
 export interface PlanHomeProps {
   room: PlanRoom
+  /** The long hike the app is on, or null. Its presence is what turns the
+   *  sections room into the HIKE's room (#1329, handoff §4). */
+  activeHike: Hike | null
+  /** Open "Which hike are you on?" - the pick sheet, as a switch. Undefined
+   *  where there is nothing to switch between. */
+  onSwitchHike?: () => void
   /** Open the "add a day hike to this hike" sheet (#1317). Undefined when
    *  the app is not in a long hike. */
   onAddDayHikeToHike?: () => void
@@ -130,6 +136,8 @@ const RECENT_DAY_HIKES = 3
 
 export function PlanHome({
   room,
+  activeHike,
+  onSwitchHike,
   onAddDayHikeToHike,
   trips,
   hikes,
@@ -151,6 +159,34 @@ export function PlanHome({
   network,
   onRetryNetwork,
 }: PlanHomeProps) {
+  // THREE HOMES, TWO ROOMS. `room` still answers "day hikes or sections",
+  // and the sections room answers a second question the mode has already
+  // settled: whether there is a hike to be the room ABOUT. Long with no hike
+  // picked is transient by design (the pick sheet opens on the way in) and
+  // reachable anyway, and the honest answer there is everything the hiker
+  // has kept rather than a room about a hike they have not named - the same
+  // reasoning `planRoomFor` gives for sending that state here at all.
+  if (room === 'sections' && activeHike !== null) {
+    return (
+      <HikeRoom
+        hike={activeHike}
+        trips={trips}
+        dayHikes={dayHikes}
+        pois={pois}
+        units={units}
+        draftKind={draftKind}
+        onSwitchHike={onSwitchHike}
+        onOpenHike={onOpenHike}
+        onOpenTrip={onOpenTrip}
+        onOpenDayHike={onOpenDayHike}
+        onAllTrips={onAllTrips}
+        onAddDayHikeToHike={onAddDayHikeToHike}
+        onNewTrip={onNewTrip}
+        onResumeDraft={onResumeDraft}
+      />
+    )
+  }
+
   return room === 'day' ? (
     <DayHikesHome
       dayHikes={dayHikes}
@@ -208,6 +244,301 @@ function ModeBand({ room }: { room: PlanRoom }) {
       </div>
     </header>
   )
+}
+
+interface HikeRoomProps {
+  hike: Hike
+  trips: readonly Trip[]
+  dayHikes: readonly DayHike[]
+  pois: readonly StoredPoi[]
+  units: UnitSystem
+  draftKind: 'day' | 'trip' | null
+  onSwitchHike?: () => void
+  onOpenHike: () => void
+  onOpenTrip: (id: string) => void
+  onOpenDayHike: (id: string) => void
+  onAllTrips: () => void
+  onAddDayHikeToHike?: () => void
+  onNewTrip: () => void
+  onResumeDraft: () => void
+}
+
+/**
+ * PLAN, IN THE LONG-HIKE STATE (handoff §4, built by #1329).
+ *
+ * #1317 bound this tab to `hikerMode` and stopped there: picking Long hike
+ * moved a hiker into the sections room, which is the same generic "Your
+ * hikes / Recent sections" list it was before, and says nothing about the
+ * hike they are on. A maintainer's report of that was "when I save a long
+ * hike, it is not displaying anywhere" - and it was two defects wearing one
+ * sentence. The other was a contrast bug on Today (desktop.css); this is the
+ * missing room.
+ *
+ * WHAT THE ROOM IS FOR: a hiker on a long hike opening Plan is not browsing
+ * a library, they are looking at one hike. So the band carries its NAME, the
+ * shelves are its own sections and the day hikes on its trail, and the
+ * figures are the two this app is allowed to print.
+ *
+ * TWO FIGURES AND A TWO-BAND BAR, and no third band. `features/SEGMENTS.md`
+ * has a derived-gap idea; the handoff overrides it here in as many words -
+ * "Gaps are never computed. No gap rows, no gap arithmetic, no dashed gap
+ * band" - and the bar below is walked and to-go, nothing else. The
+ * anti-gamification rule (OurHikeValues.md #1) is the same rule seen from
+ * the other side: a percentage, a streak, an "on track" or another hiker's
+ * hike would all be this bar wearing a number, and Plan's guard test covers
+ * this surface.
+ */
+function HikeRoom({
+  hike,
+  trips,
+  dayHikes,
+  pois,
+  units,
+  draftKind,
+  onSwitchHike,
+  onOpenHike,
+  onOpenTrip,
+  onOpenDayHike,
+  onAllTrips,
+  onAddDayHikeToHike,
+  onNewTrip,
+  onResumeDraft,
+}: HikeRoomProps) {
+  const figures = hikeFigures(hike, trips, pois)
+  const sections = trips.filter((trip) => hike.tripIds.includes(trip.id))
+  /**
+   * The sections that are NOT in this hike, on their own shelf.
+   *
+   * The handoff draws one list here and assumes the other is empty. It is
+   * not, and cannot be yet: nothing in the app puts a PLANNED section into a
+   * hike. `assignTrip` exists and has exactly one caller - the "add a day
+   * hike to this hike" sheet - so a hiker who takes this room's own primary
+   * action, lays out the next section and comes back finds it nowhere.
+   * Which is the report this whole issue started from, one level down.
+   *
+   * The fix is NOT to attach it automatically on the way out of the route
+   * builder. `unassignTrip` has no caller at all, so an automatic join would
+   * be a one-way door: the only way back out would be "Forget this hike",
+   * which ungroups every section in it. Better a shelf that shows a hiker
+   * their own trip than a claim about it they cannot take back.
+   *
+   * The missing pair - a row that adds a section to the hike, and one that
+   * takes it out - is named in #1329's body rather than built here.
+   */
+  const loose = trips.filter((trip) => !hike.tripIds.includes(trip.id))
+
+  return (
+    <div className="plan-home plan-home--trips">
+      <header className="plan-band plan-band--trips">
+        <div className="plan-band__words">
+          <span className="plan-band__eyebrow">you&rsquo;re planning</span>
+          {/* The HIKE'S name, not the room's word. It is the one thing on
+              this screen that says which of somebody's hikes they are
+              looking at, and #1317 left it off every Plan surface. */}
+          <h1 className="plan-band__word">{hike.name}</h1>
+        </div>
+        {/* THE SWITCH THE HANDOFF DREW, POINTED SOMEWHERE ELSE, and the
+            deviation is deliberate rather than a mis-transcription. §4 gives
+            this button "The hike ›" and opens the hike's own detail - which
+            is real and already built (`HikeZoom`, #790), and is what "Carry
+            on with" below opens, one row down and with the hike's name on
+            it rather than an 11px chip.
+            
+            What had no door at all was moving BETWEEN hikes. `activeHikeId`
+            could be set exactly once, by the pick sheet, and the pick sheet
+            only opened where no hike was active - so a hiker with two hikes
+            was stuck on whichever they picked first. That is the gap this
+            button fills, and it opens the same sheet rather than a second
+            list of the same hikes. */}
+        {onSwitchHike !== undefined && (
+          <button type="button" className="plan-band__switch" onClick={onSwitchHike}>
+            Switch hike ›
+          </button>
+        )}
+      </header>
+
+      <section className="plan-home__section">
+        <span className="plan-home__title">Carry on with</span>
+        <button type="button" className="plan-home__open" onClick={onOpenHike}>
+          <span className="plan-home__open-name">{hike.name}</span>
+          <span className="plan-home__meta">{hikeStateLine(hike, sections.length)}</span>
+        </button>
+      </section>
+
+      <section className="plan-home__section">
+        <span className="plan-home__title">This hike, end to end</span>
+        <div className="plan-home__row plan-home__row--figures">
+          <span className="plan-home__meta">
+            {formatDistance(figures.walkedMi, units)} walked ·{' '}
+            {formatDistance(figures.leftMi, units)} to go
+          </span>
+          {/* TWO BANDS, and it is a picture of those two figures rather
+              than a second claim. Drawn only where the hike HAS an end to
+              end: a hike whose points nobody could resolve has no total, and
+              a full-width grey bar under two zeroes would be an illustration
+              of an absence. `aria-hidden` because the line above it already
+              says everything this says, in words. */}
+          {figures.totalMi > 0 && (
+            <span className="plan-home__bar" aria-hidden="true">
+              <span
+                className="plan-home__bar-walked"
+                style={{ flex: figures.walkedMi }}
+              />
+              <span className="plan-home__bar-left" style={{ flex: figures.leftMi }} />
+            </span>
+          )}
+          {figures.uncertain && (
+            // #788's rule, said where the figure is: a point that could not
+            // be re-resolved against this phone's POIs is a mile the total
+            // may be wrong about, and an unqualified total would be the
+            // display outrunning its source.
+            <span className="plan-home__meta">
+              One of this hike&rsquo;s points isn&rsquo;t on this phone&rsquo;s map yet,
+              so the total is what the miles say rather than the places.
+            </span>
+          )}
+        </div>
+      </section>
+
+      {sections.length > 0 && (
+        <section className="plan-home__section">
+          <div className="plan-home__section-head">
+            <span className="plan-home__title">Sections in this hike</span>
+            <button type="button" className="plan-home__all" onClick={onAllTrips}>
+              All {trips.length} ›
+            </button>
+          </div>
+          {sections.map((trip) => (
+            <button
+              type="button"
+              className="plan-home__row"
+              key={trip.id}
+              onClick={() => onOpenTrip(trip.id)}
+            >
+              <span className="plan-home__row-name">{trip.name}</span>
+              <span className="plan-home__meta">
+                {[
+                  tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
+                    'no dates yet',
+                  // The provenance line the handoff asks for, at the grain
+                  // the model actually holds: `recorded` is a real field
+                  // (#789) and says the walking was remembered rather than
+                  // logged. "walking now · day 6 of 14" is not - nothing
+                  // stores which section is under way - so it is left unsaid
+                  // rather than guessed at.
+                  trip.recorded === true ? 'recorded from memory' : null,
+                ]
+                  .filter((part) => part !== null)
+                  .join(' · ')}
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
+
+      {sections.length === 0 && (
+        <p className="plan-home__quiet-note">
+          No sections on this hike yet. Plan one below, or add a day hike you have already
+          walked on this trail.
+        </p>
+      )}
+
+      {loose.length > 0 && (
+        <section className="plan-home__section">
+          <div className="plan-home__section-head">
+            <span className="plan-home__title">Your other sections</span>
+            <button type="button" className="plan-home__all" onClick={onAllTrips}>
+              All {trips.length} ›
+            </button>
+          </div>
+          {loose.slice(0, RECENT_TRIPS).map((trip) => (
+            <button
+              type="button"
+              className="plan-home__row"
+              key={trip.id}
+              onClick={() => onOpenTrip(trip.id)}
+            >
+              <span className="plan-home__row-name">{trip.name}</span>
+              <span className="plan-home__meta">
+                {tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
+                  'no dates yet'}
+              </span>
+            </button>
+          ))}
+        </section>
+      )}
+
+      {dayHikes.length > 0 && (
+        <section className="plan-home__section">
+          <div className="plan-home__title">Day hikes on this trail</div>
+          {[...splitDayHikes(dayHikes).walked, ...splitDayHikes(dayHikes).toWalk]
+            .slice(0, RECENT_DAY_HIKES)
+            .map((dayHike) => (
+              <button
+                type="button"
+                className="plan-home__row"
+                key={dayHike.id}
+                onClick={() => onOpenDayHike(dayHike.id)}
+              >
+                <span className="plan-home__row-name">{dayHike.name}</span>
+                <span className="plan-home__meta">
+                  {formatDistance(dayHike.figures.miles, units)} ·{' '}
+                  {dayHike.date !== null ? dayLongDateLabel(dayHike.date) : 'no date yet'}
+                </span>
+              </button>
+            ))}
+        </section>
+      )}
+
+      {/* A day hike on this trail counts toward the hike like any section
+          does (#1317). Dashed like `route-stops__add`, because it adds a row
+          to a list rather than going down a level - which is what separates
+          it from the primary action below. */}
+      {onAddDayHikeToHike !== undefined && (
+        <button type="button" className="route-stops__add" onClick={onAddDayHikeToHike}>
+          <span>Add a day hike to this hike</span>
+          <span aria-hidden="true">+</span>
+        </button>
+      )}
+
+      {draftKind === 'day' && (
+        <p className="plan-home__refused" role="note">
+          There&rsquo;s an unfinished day hike on the map. Starting a section drops it.
+        </p>
+      )}
+      <button
+        type="button"
+        className="plan__primary"
+        onClick={draftKind === 'trip' ? onResumeDraft : onNewTrip}
+      >
+        {draftKind === 'trip' ? 'Back to your route' : 'Plan the next section'}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * `walking · 4 sections`, `paused at mi 1,407.2`, `finished`.
+ *
+ * The hike's own state in the words the rest of the app uses for it, and
+ * NOT the handoff's `day 6 of 14 · 3-16 Sep`: nothing in the model stores
+ * which day of a hike today is, so that line would be arithmetic on dates a
+ * hike is not required to carry. A hike with no dated points is normal
+ * rather than incomplete (decision #10), and a made-up day number on the one
+ * row whose job is to say which hike this is would be the display outrunning
+ * its source.
+ */
+function hikeStateLine(hike: Hike, sectionCount: number): string {
+  if (hike.status === 'paused' && hike.pausedAtMile !== undefined) {
+    return `paused at mi ${hike.pausedAtMile.toLocaleString('en-US', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })}`
+  }
+  const sections = `${sectionCount} ${sectionCount === 1 ? 'section' : 'sections'}`
+  return hike.status === 'finished'
+    ? `finished · ${sections}`
+    : `${hike.status} · ${sections}`
 }
 
 interface DayHikesHomeProps {

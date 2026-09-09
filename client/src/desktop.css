@@ -28,6 +28,7 @@
  *                     chrome" is not what this is)
  *   input             hover, focus rings, relaxed touch targets   done
  *   builder           the day-hike builder gets a rail            done (#1194)
+ *   long hike         its nine surfaces become windows            done (#1329)
  *   elevation         the full interactive chart                  done (#135)
  *   download UX       reframed for a machine with signal          done
  *   routing           deep links, back button                     NOT done
@@ -276,6 +277,33 @@
      the component is untouched. */
   .map-screen__journal .today__chrome {
     background: none;
+
+    /* THE INK FOLLOWS THE GROUND, and it is re-pointed rather than listed
+       (#1329). This used to be an allowlist below - six class names, each
+       given a paper colour by hand - and an allowlist cannot know about the
+       seventh. #1323 added three lines to this header
+       (`.today__hike-name`, `.today__hike-figures`, `.today__away-line`) and
+       all three kept their chrome ink: `--fg-chrome-1` is #fffdf7 and this
+       ground is #f7f3e9, so a hiker's own hike name and its
+       `mi walked / mi to go` figures rendered as white on cream. The report
+       was "when I save a long hike, it is not displaying anywhere" - and the
+       guess that came with it, "I think the white font simply is not
+       visible", was exactly right.
+
+       These three lines reproduce that allowlist EXACTLY - every one of the
+       six took the paper colour this maps its alias to - and cover the three
+       new lines and the ones nobody has written yet, which is the difference
+       between a repair and the same repair again next release. Re-pointing
+       an alias for a subtree is what the aliases are for: the whole dark
+       theme is this operation at :root.
+
+       Mapped by ROLE rather than by lightness. `--fg-chrome-1` is this
+       block's strongest ink and so is `--fg-1`; it is not "the light one
+       becomes the dark one", which would be a coincidence that stops holding
+       the first time somebody adds a mid-weight line. */
+    --fg-chrome-1: var(--fg-1);
+    --fg-chrome-2: var(--fg-2);
+    --fg-chrome-3: var(--fg-3);
   }
 
   /* The strip and the switch are not re-inked but withdrawn, each because
@@ -288,25 +316,12 @@
     display: none;
   }
 
-  .map-screen__journal .today__eyebrow,
-  .map-screen__journal .today__mile-unit,
-  .map-screen__journal .today__pace-line {
-    color: var(--fg-3);
-  }
-
+  /* The one rule the re-point cannot carry, because it is not a colour: the
+     readout at 44px against the phone's 52, having a column to anchor rather
+     than a whole screen. Its ink comes from the block above like everything
+     else here. */
   .map-screen__journal .today__mile {
-    /* 44px against the phone's 52: the readout no longer has a whole screen
-       to anchor, only a column. */
     font-size: 44px;
-    color: var(--fg-1);
-  }
-
-  .map-screen__journal .today__position-sentence {
-    color: var(--fg-1);
-  }
-
-  .map-screen__journal .today__greeting {
-    color: var(--fg-2);
   }
 
   /* ---------- The plan bench (#971): one plan, three views ---------- */
@@ -925,6 +940,68 @@
        body is what would otherwise square them off when it scrolls. */
     overflow: hidden;
     box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
+  }
+
+  /* ---------- The long hike: windows, not takeovers (#1329) ---------- */
+
+  /* THE HANDOFF ASKED FOR THIS AND #1317 SHIPPED THE PHONE'S ANSWER TWICE.
+     Its Responsive note reads "above the desktop breakpoint ... the frames
+     here become the content column"; what shipped was three sheets welded to
+     the bottom edge of a 1440px browser and five screens that replaced the
+     whole app. A maintainer's report of it - "having them full screen makes
+     it hard for me to remember where I am" - is #1133's own sentence for the
+     report window, arrived at independently: a dialog leaves the screen you
+     were already on visible around it, and that is what says you have not
+     gone anywhere.
+
+     So both modifiers converge here. `--sheet` stops being bottom-docked and
+     `--screen` stops being full-bleed, and they become the same window.
+
+     THE SCRIM IS DECLARED FOR BOTH, including `--screen`, which has none on
+     a phone because it covers the viewport. Here it does not cover anything,
+     so the ground behind it needs dimming or the window has no edge.
+
+     One consequence is load-bearing rather than cosmetic: the map behind
+     stays visible and hit-testable, which is the whole of why the set-up
+     window's "Choose on the map" can reach a map at all (App.tsx's
+     `hikePointOnMap`). */
+  .hike-window {
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-5, 20px);
+    background: rgb(20 19 15 / 55%);
+  }
+
+  .hike-window > * {
+    flex: 0 1 auto;
+    /* 26rem for a sheet of doors, 30rem for a screen with a points list and
+       an elevation ribbon in it. Both narrower than the content column they
+       float over, which is what keeps them reading as windows - the report
+       window's 334px argument at two sizes. */
+    width: min(26rem, 100%);
+    max-height: min(46rem, 100%);
+    overflow-y: auto;
+    border: 1px solid var(--border-1);
+    /* All four corners: the phone's sheet rounds only its top two because
+       its bottom two are off the screen, and they are not off this one. */
+    border-radius: var(--radius-l, 14px);
+    box-shadow: 0 12px 40px rgb(0 0 0 / 24%);
+  }
+
+  .hike-window--screen > * {
+    width: min(30rem, 100%);
+    /* Undoes the phone's `flex: 1`, which would stretch the window to the
+       full height of the scrim whatever it holds. */
+    flex: 0 1 auto;
+  }
+
+  /* The window's own ground. On a phone each screen paints this itself and
+     `min-height: 100%` makes it the page; here the page is behind the scrim,
+     so the ground has to stop at the window's edge. */
+  .hike-window--screen .hike-setup,
+  .hike-window--screen .hike-day,
+  .hike-window--screen .finished-hike {
+    min-height: 0;
   }
 
   /* ---------- The opened waypoint card: a column, not a sheet ---------- */

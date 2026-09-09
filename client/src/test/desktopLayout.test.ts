@@ -217,6 +217,49 @@ describe('desktop layout contract', () => {
     ).toMatch(/var\(--accent-chrome\)/)
   })
 
+  it('re-inks the journal by re-pointing the chrome aliases, not by listing classes', () => {
+    // #1329's defect, held here because it is a defect of SHAPE rather than
+    // of any one line. The journal column re-inks Today's header - on a phone
+    // that header is pine, here it is paper - and it used to do it with an
+    // allowlist of six class names. #1323 added three more lines to the same
+    // header and every one of them kept `--fg-chrome-1` / `--fg-chrome-3`,
+    // which is #fffdf7 and #96b98c on #f7f3e9: a hiker's own hike name and
+    // its `walked / to go` figures, rendered as white on cream. The report
+    // was "when I save a long hike, it is not displaying anywhere".
+    //
+    // What is asserted is that the allowlist is GONE, because an allowlist
+    // that has been topped up is one line behind the next author. The
+    // re-point covers a class nobody has written yet; a list cannot.
+    const block = declarationsOf('.map-screen__journal .today__chrome')
+
+    expect(block).toMatch(/--fg-chrome-1:\s*var\(--fg-1\)/)
+    expect(block).toMatch(/--fg-chrome-2:\s*var\(--fg-2\)/)
+    expect(block).toMatch(/--fg-chrome-3:\s*var\(--fg-3\)/)
+
+    // No per-class colour left in the journal's header. `.today__mile` keeps
+    // a rule and is allowed one, because what it changes is a font size.
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, '')
+    const journalRules =
+      bare.match(/\.map-screen__journal \.today__[\w-]+ \{[^}]*\}/g) ?? []
+    for (const rule of journalRules) {
+      expect(rule, `${rule} sets a colour by class name`).not.toMatch(/[^-]color:/)
+    }
+  })
+
+  it('makes the long-hike surfaces windows rather than takeovers', () => {
+    // The handoff's Responsive note - "the frames here become the content
+    // column" - and the reason a maintainer asked for it: "having them full
+    // screen makes it hard for me to remember where I am". Both modifiers
+    // converge on one window here, and the phone keeps its own two shapes
+    // (screens/plan.css), which the §8 guarantee above already enforces by
+    // making every rule in this file unreachable below 900px.
+    const frame = declarationsOf('.hike-window > *')
+
+    expect(declarationsOf('.hike-window')).toMatch(/justify-content:\s*center/)
+    expect(frame).toMatch(/max-height/)
+    expect(frame).toMatch(/border-radius/)
+  })
+
   it('restates the focus ring on the chrome, where the global ring is invisible', () => {
     // The unguarded rule at the foot of desktop.css draws --brand-primary
     // rings: forest on pine is 1.9:1. The chrome zones restate the colour -

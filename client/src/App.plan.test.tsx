@@ -237,6 +237,32 @@ describe('the planning flow', () => {
       ],
       openId: null,
     })
+    // A hike to be on, so tapping Long hike is instant - App.dayHike.test's
+    // fixture keeps one for the same reason. Without it the "which long
+    // hike?" sheet opens over the screen with nothing to pick, and since
+    // #1329 that sheet is a modal that means it: what is behind is inert,
+    // so the six taps below would be taps a hiker could not make. On main
+    // they landed anyway, jsdom having no layout to stop them.
+    app.store.set(TRIPS_KEY, {
+      trips: [],
+      openId: null,
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'The whole thing, eventually',
+          type: 'section',
+          trailId: 'AT',
+          status: 'planning',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          tripIds: [],
+        },
+      ],
+      groups: [],
+      activeHikeId: 'hike-1',
+    })
 
     render(<App />)
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
@@ -247,7 +273,9 @@ describe('the planning flow', () => {
     await user.click(screen.getByRole('tab', { name: 'Today' }))
     await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
-    await user.click(await screen.findByRole('button', { name: 'Plan a new section' }))
+    // The hike's own room since #1329, so its primary names the next section
+    // rather than a new one.
+    await user.click(await screen.findByRole('button', { name: 'Plan the next section' }))
     await user.click(await screen.findByRole('button', { name: /Shelter, town, or/ }))
     await user.type(await screen.findByLabelText('Search for a stop'), 'front')
     await user.click(await screen.findByRole('button', { name: /Front Shelter/ }))
@@ -278,8 +306,12 @@ describe('the planning flow', () => {
     expect(
       (await screen.findAllByText(/Front Shelter → Beyond Shelter/)).length,
     ).toBeGreaterThan(0)
+    // "Ready to walk" is the day-hike LIST's own state word, so its absence
+    // is what says the list screen is gone - which is this test's subject.
+    // The day hike's NAME is no longer a proxy for that: #1329's hike room
+    // has a "Day hikes on this trail" shelf, where a walk on this trail
+    // appearing is the room working rather than the list surviving.
     expect(screen.queryByText('Ready to walk')).toBeNull()
-    expect(screen.queryByText('A walk from an earlier session')).toBeNull()
 
     const store = app.store.get(TRIPS_KEY) as TripStore
     expect(store.trips).toHaveLength(1)

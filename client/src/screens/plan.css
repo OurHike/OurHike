@@ -1690,9 +1690,13 @@
 }
 
 /* Drawn at 38px like every header button, hit at 44 - chrome.css's idiom for
-   anything under the effective touch target. This one is the ONLY route
-   between the two Plan homes, so a thumb that misses it has nowhere else to
-   go. */
+   anything under the effective touch target.
+
+   It used to say "the ONLY route between the two Plan homes", which stopped
+   being true at #1317: that chip is gone and the app's mode switch is the
+   door between the rooms. Since #1329 this slot carries "Switch hike ›" in
+   the hike's room, and it is the only route between one hike and another -
+   so a thumb that misses it still has nowhere else to go. */
 .plan-band__switch::after {
   content: '';
   position: absolute;
@@ -2257,6 +2261,38 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--fg-2);
+}
+
+/* "This hike, end to end" (#1329, handoff §4). A row's box with no tap in it
+   - a card holding two figures and a picture of them - so it takes
+   `.plan-home__row`'s anatomy without its cursor. */
+.plan-home__row--figures {
+  gap: var(--space-2, 8px);
+  cursor: default;
+}
+
+/* TWO BANDS, WALKED AND TO GO, and there is no third one. The handoff
+   overrides features/SEGMENTS.md's derived-gap idea for these screens in as
+   many words - "no gap rows, no gap arithmetic, no dashed gap band" - and
+   this is where that would have gone.
+
+   Sized by `flex` from the two miles rather than by a percentage width, so
+   nothing in the DOM or the stylesheet ever holds a percentage of the hike:
+   the ratio is drawn, never printed, which is OurHikeValues.md #1 at the
+   grain a stylesheet can keep. */
+.plan-home__bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.plan-home__bar-walked {
+  background: var(--brand-primary);
+}
+
+.plan-home__bar-left {
+  background: var(--border-1);
 }
 
 /* ---------- The day summary (#966, wireframe 2c frame 1) ---------- */
@@ -3768,33 +3804,52 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Docking a sheet over WHATEVER screen the hiker is on (#1317).
+   THE HIKE WINDOW (#1317, rebuilt by #1329) - one chrome for every long-hike
+   surface, over WHATEVER screen the hiker is on.
 
    `.plan-kind` itself is an in-flow block - the planning sheet sits at the
    bottom of the Plan screen's own column, which is right there and wrong
    here. The mode switch that opens "Which long hike?" lives on Today, in
    Settings and in the desktop sidebar, and stepping away is reached from
-   More, so these three have no single column to sit in and have to float.
+   More, so these have no single column to sit in and have to float.
 
-   Fixed rather than absolute, so the sheet is docked to the VIEWPORT: an
+   Fixed rather than absolute, so the surface is docked to the VIEWPORT: an
    absolutely-positioned one would be placed against whichever ancestor
    happened to be positioned, which differs per tab and is how a sheet ends
    up half a screen down a scrolled column.
+
+   TWO MODIFIERS, ONE BLOCK, AND THE SECOND ONE IS #1329'S WHOLE CHANGE.
+   #1317 shipped the three sheets docked here and the five screens as
+   `flowScreen`s - two different arrangements for what a hiker experiences as
+   one feature, and the screens' arrangement took the map out of the
+   accessibility tree, which is why "Choose on the map" had no map to choose
+   on. Both are this block now, and both are OVERLAYS: what is behind stays
+   mounted, which is what lets `--screen` become a window at desktop.css's
+   breakpoint rather than only ever being a page.
+
+   What is NOT changed is the phone, deliberately. `--sheet` still docks to
+   the bottom edge (a thumb-reach decision, and the thumb is still there) and
+   `--screen` still fills the viewport. Every difference lives in desktop.css,
+   under WEBSITE.md §8's rule that the layout used on a mountain is the one
+   that must not move.
 */
 
-.hike-sheet-dock {
+.hike-window {
   position: fixed;
   inset: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
+}
+
+/* A scrim, not a blur: what is behind stays legible, which matters when the
+   sheet is asking a hiker to choose between hikes they can see. */
+.hike-window--sheet {
   justify-content: flex-end;
-  /* A scrim, not a blur: what is behind stays legible, which matters when
-     the sheet is asking a hiker to choose between hikes they can see. */
   background: rgb(18 32 22 / 45%);
 }
 
-.hike-sheet-dock > * {
+.hike-window--sheet > * {
   max-height: 85dvh;
   overflow-y: auto;
   padding-top: var(--space-3, 12px);
@@ -3802,4 +3857,49 @@
   border-top-right-radius: var(--radius-l, 14px);
   background: var(--bg-surface);
   box-shadow: var(--shadow-raised, 0 -6px 24px rgb(0 0 0 / 18%));
+}
+
+/* No scrim on a phone: this fills the viewport, so a scrim would be painting
+   under an opaque screen. The screens carry their own ground
+   (`.hike-setup`, `.hike-day`, `.hike-finish`, `.finished-hike`,
+   `.share-hike`), which is why this rule sets none. */
+.hike-window--screen > * {
+  flex: 1;
+  /* Flex items floor at their content height; without this the screen cannot
+     be shorter than what is inside it and the page grows a second scrollbar
+     instead - `.app__screen > :first-child`'s rule, same reason (#631). */
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* The hike you are already on, inside its own door's name (#1329). Quiet -
+   `--fg-3` at the door note's size rather than a badge - because it is a
+   fact about the list, not a call to press this one. */
+.plan-kind__door-here {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--fg-3);
+}
+
+/* The stop picker, given the window as its frame.
+
+   `.stop-picker` is `position: absolute; inset: 0` because in the route
+   builder it fills the panel it belongs to. Here its own layer IS the frame,
+   so it becomes an ordinary flex child instead - which is what lets
+   desktop.css size it like every other window rather than having it resolve
+   against the fixed scrim and fill the viewport. */
+.hike-window--picker > .stop-picker {
+  position: static;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Held open, but out of the way, while the hiker is choosing a point on the
+   map behind it (#1329). Hidden rather than unmounted: the set-up screen is
+   holding a draft nobody has saved, and re-mounting it to take one tap is
+   how a half-described hike gets lost. `visibility` rather than `display`
+   keeps that subtree's scroll position and its focus history intact. */
+.hike-window--stood-aside {
+  visibility: hidden;
 }

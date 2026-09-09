@@ -116,6 +116,7 @@ This is a script, not a service — it's rerun periodically (e.g. weekly, per th
 - **GPS:** browser Geolocation API for "you are here," foreground use — sufficient for MVP (see trade-off below). *(A 2026-07-28 note here reconciled this against the wrong-way alert's MVP promotion; the alert was removed rather than shipped, so nothing depends on that reconciliation any more.)*
 - **Packaging:** the same web build is wrapped with **Capacitor** to produce installable iOS and Android app-store builds. The web version and the app-store versions are the same codebase, not parallel implementations.
 - **No purchases in the wrapped app** — any payment/donation UI is only rendered in the unwrapped web context.
+- **Launch budget:** how long a launch may take to put a usable screen up, what it may do before that, and what stops the number creeping back — [features/LAUNCH_BUDGET.md](features/LAUNCH_BUDGET.md). Written 2026-09-09 against a measured 1.2 s to first content on the throttled profile and a first run whose Skip taps had regressed to 3–5 s; the stopwatch is `client/scripts/measure-first-run.mjs` (TESTING.md §21).
 
 **Known trade-off:** continuous background GPS track-recording (while the phone is locked/backgrounded) is weaker here than in a fully native app. Fine for MVP's foreground "check the map, see nearby water/shelters" use case. If always-on background tracking becomes a priority later, Capacitor supports native GPS plugins to close most of that gap without a rewrite.
 

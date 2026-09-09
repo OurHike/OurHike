@@ -19,7 +19,12 @@ import {
   recallSuggestedHikes,
 } from './suggestedHikesData'
 
-export function useSuggestedHikes(online: boolean): readonly SuggestedHike[] {
+/** @param ready Whether the launch is past its first frame (#1302); the kept
+ *  copy and the fetch both wait for it. Defaults to true. */
+export function useSuggestedHikes(
+  online: boolean,
+  ready = true,
+): readonly SuggestedHike[] {
   const [hikes, setHikes] = useState<readonly SuggestedHike[]>(NO_SUGGESTED_HIKES)
   // Whether the bucket has answered this session. The kept copy is read
   // asynchronously and can resolve AFTER a fast fetch; when it does, the
@@ -27,6 +32,7 @@ export function useSuggestedHikes(online: boolean): readonly SuggestedHike[] {
   const fetched = useRef(false)
 
   useEffect(() => {
+    if (!ready) return
     let wanted = true
     // Guarded on both sides: idb-keyval throws synchronously where there is
     // no IndexedDB at all (a test without the shim), and rejects where there
@@ -40,10 +46,10 @@ export function useSuggestedHikes(online: boolean): readonly SuggestedHike[] {
     return () => {
       wanted = false
     }
-  }, [])
+  }, [ready])
 
   useEffect(() => {
-    if (!DATA_CONFIGURED || !online) return
+    if (!DATA_CONFIGURED || !online || !ready) return
     const controller = new AbortController()
     let wanted = true
     void fetchSuggestedHikes(controller.signal)
@@ -57,7 +63,7 @@ export function useSuggestedHikes(online: boolean): readonly SuggestedHike[] {
       wanted = false
       controller.abort()
     }
-  }, [online])
+  }, [online, ready])
 
   return hikes
 }

@@ -141,6 +141,7 @@ from lib import fetch_receipts
 from lib.corridor import count_features
 from lib.http_retry import download_with_retry
 from lib.source_registry import load_registry
+from lib.user_agent import USER_AGENT
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -348,7 +349,6 @@ SITE_WATER_MERGE_M = 20.0
 M_PER_FT = 0.3048
 M_PER_DEG_LAT = 111_132.0
 
-USER_AGENT = "OurHike-pipeline/1.0 (+https://github.com/OurHike/OurHike)"
 TIMEOUT = 90
 TRIES = 5
 

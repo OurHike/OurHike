@@ -331,7 +331,7 @@ describe('sending an app-failure report', () => {
 
 describe('accessToken', () => {
   it('is null when this build has no Supabase project', async () => {
-    mockedGetAuthClient.mockReturnValue(null)
+    mockedGetAuthClient.mockResolvedValue(null)
 
     expect(await accessToken()).toBeNull()
   })

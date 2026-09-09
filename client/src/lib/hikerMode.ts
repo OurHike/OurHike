@@ -19,10 +19,10 @@
 // device on a different day.
 //
 // Persisted the way lib/preferences.ts persists the blob - idb-keyval, read
-// once at app start (App.tsx loads it in the same bootstrap gate as the
-// preferences, so nothing renders against a default that is about to be
-// corrected and there is no first-paint flash), unknown stored values treated
-// as absent rather than trusted. The repair argument is preferences.ts's
+// once at app start with the preferences, and mirrored beside them in
+// localStorage (lib/launchMirror.ts, #1301) so the Today header's first frame
+// shows the mode the phone chose rather than a default that is corrected a
+// tick later; unknown stored values treated as absent rather than trusted. The repair argument is preferences.ts's
 // KNOWN_ENUM_VALUES table's, one key at a time: a build that renames a mode
 // leaves the old word in IndexedDB on every phone that chose it, and a value
 // nothing recognises must fall back to the default rather than reach a

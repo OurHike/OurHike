@@ -43,6 +43,7 @@ vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('./lib/ribbonView', { spy: true })
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   // `trailData.ts` commits a release in ONE transaction since #657, so any
   // double that reaches that path needs this call - without it the whole

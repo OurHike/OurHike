@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { del, get, keys, update } from 'idb-keyval'
+import { del, get, getMany, keys, update } from 'idb-keyval'
 import {
   addOwnPhoto,
   chooseOwnPhoto,
@@ -18,6 +18,7 @@ import {
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   update: vi.fn(),
   del: vi.fn(),
   keys: vi.fn(),
@@ -34,6 +35,12 @@ const mockedKeys = vi.mocked(keys)
 function withStore(initial: Record<string, unknown> = {}) {
   const stored = new Map(Object.entries(initial))
   mockedGet.mockImplementation(async (key) => stored.get(key as string))
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   mockedUpdate.mockImplementation(async (key, updater) => {
     stored.set(key as string, updater(stored.get(key as string)))
   })

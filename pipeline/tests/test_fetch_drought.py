@@ -14,12 +14,15 @@ Three behaviours carry the weight here, and none of them is the download:
 from __future__ import annotations
 
 import json
-import urllib.error
 from datetime import date
 
 import pytest
+import requests
 
 import fetch_drought
+from lib import http_retry
+
+STAMP_URL = fetch_drought.USDM_DATED.format(stamp="20260811")
 
 
 @pytest.fixture
@@ -106,49 +109,54 @@ class TestSkippingWhatIsAlreadyHere:
 
 
 class TestRefusingBadBodies:
-    def test_a_short_body_is_refused(self, monkeypatch):
+    def test_a_short_body_is_refused(self, monkeypatch, requests_mock):
         monkeypatch.setattr(fetch_drought, "MIN_PLAUSIBLE_BYTES", 1_000)
-        monkeypatch.setattr(fetch_drought.urllib.request, "urlopen", _responding(b"nope"))
+        requests_mock.get(STAMP_URL, content=b"nope")
         with pytest.raises(SystemExit) as exit_info:
             fetch_drought.fetch_release(date(2026, 8, 11))
         assert "map of nothing" in str(exit_info.value)
 
-    def test_a_body_with_no_features_is_refused(self, monkeypatch):
+    def test_a_body_with_no_features_is_refused(self, monkeypatch, requests_mock):
         body = json.dumps({"type": "FeatureCollection", "features": []}).encode()
         monkeypatch.setattr(fetch_drought, "MIN_PLAUSIBLE_BYTES", 1)
-        monkeypatch.setattr(fetch_drought.urllib.request, "urlopen", _responding(body))
+        requests_mock.get(STAMP_URL, content=body)
         with pytest.raises(SystemExit) as exit_info:
             fetch_drought.fetch_release(date(2026, 8, 11))
         assert "no features" in str(exit_info.value)
 
-    def test_a_404_is_a_missing_week_and_not_a_crash(self, monkeypatch):
-        def raise_404(url, timeout=None):
-            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+    def test_a_404_is_a_missing_week_and_not_a_crash(self, requests_mock):
+        """And it costs one request, not three.
 
-        monkeypatch.setattr(fetch_drought.urllib.request, "urlopen", raise_404)
+        Walking back through candidate_stamps 404s on purpose most runs, so
+        a retry ladder spent on each one would turn the common path into
+        105 seconds of sleeping. 404 is absent from
+        DEFAULT_RETRYABLE_STATUSES, and the call count is what proves it.
+        """
+        requests_mock.get(STAMP_URL, status_code=404)
         assert fetch_drought.fetch_release(date(2026, 8, 11)) is None
+        assert requests_mock.call_count == 1
 
-    def test_any_other_http_error_still_raises(self, monkeypatch):
-        def raise_500(url, timeout=None):
-            raise urllib.error.HTTPError(url, 500, "Server Error", {}, None)
+    def test_a_transient_500_is_absorbed_rather_than_ending_the_bake(self, monkeypatch, requests_mock):
+        """The reason this moved off urllib at all (#1295).
 
-        monkeypatch.setattr(fetch_drought.urllib.request, "urlopen", raise_500)
-        with pytest.raises(urllib.error.HTTPError):
+        NDMC flaking once used to fail the hourly conditions bake outright,
+        which is #536's shape in the one fetcher that still had no retry.
+        """
+        monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+        monkeypatch.setattr(fetch_drought, "MIN_PLAUSIBLE_BYTES", 1)
+        requests_mock.get(
+            STAMP_URL,
+            [{"status_code": 500}, {"content": json.dumps(release()).encode()}],
+        )
+        document = fetch_drought.fetch_release(date(2026, 8, 11))
+        assert len(document["features"]) == 3
+        assert requests_mock.call_count == 2
+
+    def test_a_persistent_500_still_raises_once_the_budget_is_spent(self, monkeypatch, requests_mock):
+        """Retrying is not the same as swallowing. A publish built on a week
+        nobody could fetch would be worse than one that stops."""
+        monkeypatch.setattr(http_retry.time, "sleep", lambda seconds: None)
+        requests_mock.get(STAMP_URL, status_code=500)
+        with pytest.raises(requests.HTTPError):
             fetch_drought.fetch_release(date(2026, 8, 11))
-
-
-def _responding(body: bytes):
-    class Response:
-        def read(self):
-            return body
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *exc):
-            return False
-
-    def urlopen(url, timeout=None):
-        return Response()
-
-    return urlopen
+        assert requests_mock.call_count == 3  # the (5, 30) ladder is three attempts

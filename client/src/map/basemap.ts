@@ -58,7 +58,10 @@
 // subscribe to anything, so the shell pokes it the way MapView pokes a live
 // map. Still nothing detected: an unheld cell is simply never asked.
 
-import { addProtocol } from 'maplibre-gl'
+// A type only - the engine seam passes the real `addProtocol` in, so this
+// module never pulls the library into the shell's eager chunk (#1300; the
+// reasoning is map/protocol.ts's header).
+import type { addProtocol as AddProtocol } from 'maplibre-gl'
 import { PMTiles } from 'pmtiles'
 import { BASEMAP_PACKAGE } from '../lib/packages'
 import {
@@ -279,7 +282,7 @@ let registered = false
  * mid-session, which is exactly the class of surprise that call exists to
  * prevent.
  */
-export function registerBasemapProtocol(): void {
+export function registerBasemapProtocol(addProtocol: typeof AddProtocol): void {
   if (registered) return
   addProtocol(BASEMAP_SCHEME, (params, abortController) =>
     loadTile(params.url, abortController.signal),

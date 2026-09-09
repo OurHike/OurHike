@@ -91,6 +91,7 @@ import requests
 from lib import fetch_receipts
 from lib.completeness import fail_if_incomplete
 from lib.corridor import build_corridor
+from lib.http_retry import request_with_retry
 
 # One cheap metadata request per corridor cell, and the only requests this
 # script makes. See stamp_last_modified().
@@ -279,14 +280,33 @@ def stamp_last_modified(index: list[dict], *, head=None) -> list[dict]:
     return index
 
 
+#: One retry, two seconds, and impatient on purpose - the opposite posture
+#: from every other caller of `request_with_retry` in this pipeline, which is
+#: exactly the per-caller policy `lib/http_retry.py` says it exists to allow.
+#: This HEAD runs once per corridor tile, ~110 of them, and what it buys is
+#: freshness DETAIL rather than the elevation profile; nothing downstream
+#: stops if it comes back None. The default (5, 30) ladder against a USGS
+#: outage would be up to 64 minutes of sleeping to learn nothing, so the
+#: budget is small enough to absorb a single flake and no more (#1295).
+HEAD_BACKOFF_SECONDS = (2,)
+
+
 def _head(url: str) -> str | None:
     try:
-        response = requests.head(url, timeout=HEAD_TIMEOUT)
-        if response.status_code >= 400:
-            return None
-        return response.headers.get("Last-Modified")
+        response = request_with_retry(
+            url,
+            method="head",
+            timeout=HEAD_TIMEOUT,
+            backoff=HEAD_BACKOFF_SECONDS,
+        )
     except requests.RequestException:
+        # Still non-fatal, and this is the property that had to survive the
+        # move: `capture_markers`'s docstring records that a tile whose HEAD
+        # fails writes None, which freshness_state keeps as "we did not find
+        # out" rather than rounding to fresh. Retrying changes how often we
+        # land here, never what happens when we do.
         return None
+    return response.headers.get("Last-Modified")
 
 
 def _env_flag_set(name: str) -> bool:

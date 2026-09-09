@@ -22,27 +22,26 @@ no credential, a merged pull request is what releases rows. Refusing is the
 normal case, not an error path - an unreviewed file publishes nothing and
 exits 0, a reviewed file with a bad row publishes nothing and exits 1.
 
-THE ONE THING THIS EXPORTER DOES THAT ITS SIBLING DOES NOT: it asks which
-environment it is baking for. Maintainer decision 2026-08-20 (on #760): the
-sample rows publish to UA and dev only, so the mechanism is rehearsable end
-to end while production carries exactly what a real club has supplied -
-today, nothing. The environment comes from $OURHIKE_DATA_ENV, the same
-variable publish.py refuses to run without; HERE unset is read as
-production, because the conservative reading of "nobody said" is the one
-that publishes less.
+ONE LIST, EVERY ENVIRONMENT. This exporter used to ask $OURHIKE_DATA_ENV
+which environment it was baking for, because the reviewed file's
+`ua_sample_rows` published to UA and dev only (maintainer decision
+2026-08-20, on #760). Maintainer decision 2026-09-09 retired those rows -
+"no invented workday may reach a hiker" is a claim about the map, not about
+production's copy of it - so there is nothing left for the environment to
+select between, and the question is gone rather than answered. Every
+environment's artifact now carries the reviewed `rows` and only those;
+lib/work_projects.py refuses the retired key outright.
 
-    OURHIKE_DATA_ENV=ua python export_work_projects.py
+    python export_work_projects.py
 """
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from lib.data_env import ENVIRONMENT_VAR
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 from lib.work_projects import file_problems, is_reviewed, published_rows
@@ -87,13 +86,8 @@ def main() -> int:
             print(f"REFUSED: {problem}", file=sys.stderr)
         return 1
 
-    # Unset reads as production - the direction that publishes less. The
-    # var's absence is publish.py's problem to refuse; this script's job is
-    # only to keep samples out of anything that might be production.
-    environment = os.environ.get(ENVIRONMENT_VAR, "").strip() or None
-
     now = datetime.now(timezone.utc)
-    rows = published_rows(document, environment=environment, today=now.date())
+    rows = published_rows(document)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(
@@ -128,8 +122,7 @@ def main() -> int:
         + "\n"
     )
 
-    sampled = " (UA samples included)" if environment in ("ua", "dev") else ""
-    print(f"Wrote {len(rows)} work project(s) to {OUT_PATH}{sampled}.")
+    print(f"Wrote {len(rows)} work project(s) to {OUT_PATH}.")
     return 0
 
 

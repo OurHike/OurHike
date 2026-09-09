@@ -24,8 +24,8 @@
 // rule, and the reason is that a corrected value is a number the hiker never
 // entered, presented as though they had.
 
-import { hikeLegs, isUsableHike, trailHasMileAxis, type Hike } from '../lib/hikes'
-import { pointMeta } from '../lib/hikeText'
+import { hikeLegs, type Hike } from '../lib/hikes'
+import { pointMeta, setupRefusal } from '../lib/hikeText'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -220,35 +220,6 @@ export function HikeSetup({
       </div>
     </div>
   )
-}
-
-/**
- * Why this hike cannot be started yet, or null.
- *
- * Exported so the refusal can be argued with directly, and so the shell can
- * ask the same question this screen prints - one answer, not two that can
- * disagree about whether a button should be pressable.
- */
-export function setupRefusal(hike: Hike, totalMiles: number | null): string | null {
-  if (!isUsableHike(hike)) {
-    return 'A long hike needs two ends before it can be walked.'
-  }
-  if (!trailHasMileAxis(hike.trailId)) {
-    // Storing it is fine; measuring it is not. `trailHasMileAxis` carries
-    // the reasoning - one published mile axis, and a figure on any other
-    // trail would be an A.T. mileage wearing somebody else's name.
-    return 'This build can only measure a hike on the Appalachian Trail.'
-  }
-  if (totalMiles !== null) {
-    const past = hike.points.find((point) => point.mile > totalMiles)
-    if (past !== undefined) {
-      return `A point at mi ${past.mile.toLocaleString('en-US', {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-      })} is past the end of the trail in this download.`
-    }
-  }
-  return null
 }
 
 /** `walked · 2024 · 469.5 mi` - a recorded stretch's provenance and size.

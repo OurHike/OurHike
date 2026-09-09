@@ -17,7 +17,7 @@
 // every key added after today, and a passing run would mean less each week.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 
 import { OUTBOX_KEY, listQueued } from './outbox'
 import { PREFERENCES_KEY, loadPreferences } from './preferences'
@@ -65,6 +65,7 @@ import {
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -85,6 +86,12 @@ function phoneStore(): Record<string, unknown> {
 beforeEach(() => {
   const store = phoneStore()
   mockedGet.mockImplementation(async (key: IDBValidKey) => store[key as string])
+  // `getMany` follows whatever `get` is doing right now (#1303's one
+  // transaction in lib/trailData.ts), so a test that re-points `get`
+  // mid-file does not have to re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
 
   // cameraMemory reads sessionStorage, not IndexedDB.
   window.sessionStorage.setItem(

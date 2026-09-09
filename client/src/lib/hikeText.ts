@@ -17,7 +17,7 @@
 // useful thing to print; "unknown" would suggest the app had lost track of
 // something rather than that nothing had happened yet.
 
-import { hikeFigures, type Hike } from './hikes'
+import { hikeFigures, isUsableHike, trailHasMileAxis, type Hike } from './hikes'
 import type { StoredPoi } from './trailData'
 import type { Trip } from './trips'
 import { formatDistance, type UnitSystem } from './units'
@@ -144,4 +144,39 @@ export function shortDate(iso: string): string {
     month: 'short',
     timeZone: 'UTC',
   })
+}
+
+/**
+ * Why this hike cannot be started yet, or null.
+ *
+ * One answer, not two that can disagree about whether a button should be
+ * pressable: the set-up screen prints it and the shell's `handleStartHike`
+ * gates on it.
+ *
+ * IN THIS MODULE RATHER THAN IN THE SCREEN, and that is #1302's constraint
+ * rather than tidiness. `screens/HikeSetup.tsx` is deferred, and a static
+ * `import { setupRefusal } from './screens/HikeSetup'` in the shell would
+ * load the whole module - component, CSS and all - on every launch, quietly
+ * undoing the deferral for the one screen that imports it.
+ */
+export function setupRefusal(hike: Hike, totalMiles: number | null): string | null {
+  if (!isUsableHike(hike)) {
+    return 'A long hike needs two ends before it can be walked.'
+  }
+  if (!trailHasMileAxis(hike.trailId)) {
+    // Storing it is fine; measuring it is not. `trailHasMileAxis` carries
+    // the reasoning - one published mile axis, and a figure on any other
+    // trail would be an A.T. mileage wearing somebody else's name.
+    return 'This build can only measure a hike on the Appalachian Trail.'
+  }
+  if (totalMiles !== null) {
+    const past = hike.points.find((point) => point.mile > totalMiles)
+    if (past !== undefined) {
+      return `A point at mi ${past.mile.toLocaleString('en-US', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })} is past the end of the trail in this download.`
+    }
+  }
+  return null
 }

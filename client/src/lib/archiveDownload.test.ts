@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { get, set, del } from 'idb-keyval'
+import { del, get, getMany, set } from 'idb-keyval'
 import {
   downloadArchive,
   deleteArchive,
@@ -38,6 +38,7 @@ import { Sha256, sha256Hex, type Sha256State } from './sha256'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -63,6 +64,12 @@ const ARTIFACT = 'background.pmtiles'
 function withStore(initial: Record<string, unknown> = {}) {
   const store: Record<string, unknown> = { ...initial }
   mockedGet.mockImplementation(async (key) => store[key as string])
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   mockedSet.mockImplementation(async (key, value) => {
     store[key as string] = value
   })

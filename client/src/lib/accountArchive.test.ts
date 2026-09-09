@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { get } from 'idb-keyval'
+import { get, getMany } from 'idb-keyval'
 
 import { buildAccountArchive, archiveFilename, ARCHIVE_FORMAT } from './accountArchive'
 import { ApiNotConfiguredError, NotSignedInError, fetchAccountExport } from './api'
@@ -25,6 +25,7 @@ import { WALKED_STORAGE_KEY } from './walkedMiles'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   setMany: vi.fn(),
   del: vi.fn(),
@@ -41,6 +42,12 @@ const NOW = new Date('2026-08-22T12:00:00Z')
 beforeEach(() => {
   store.clear()
   vi.mocked(get).mockImplementation(async (key: IDBValidKey) => store.get(String(key)))
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(fetchAccountExport).mockResolvedValue({ exported_for: 'me' })
   localStorage.clear()
 })

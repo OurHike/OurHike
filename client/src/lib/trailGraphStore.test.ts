@@ -14,12 +14,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   keys: vi.fn(),
 }))
 
-import { del, get, keys, set } from 'idb-keyval'
+import { del, get, getMany, keys, set } from 'idb-keyval'
 
 import { LAUNCH_ARTIFACT_BUDGET_BYTES } from './artifactBudget'
 import {
@@ -255,6 +256,12 @@ describe('what a screen can ask it', () => {
             ? { bytes: new Blob(['x'.repeat(9000)]), hash: 'old' }
             : undefined,
       ),
+    )
+    // `getMany` follows whatever `get` is doing right now, so #1303's one
+    // transaction in lib/trailData.ts reads this file's store like every other
+    // read, and a test that re-points `get` need not re-point both.
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
     )
 
     const sizes = await storedGraphBytes()

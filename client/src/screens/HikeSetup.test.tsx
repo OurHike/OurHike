@@ -8,7 +8,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { HikeSetup, setupRefusal } from './HikeSetup'
+import { HikeSetup } from './HikeSetup'
+// Lifted into the lib so the screen can stay deferred (#1302) - see its
+// header there.
+import { setupRefusal } from '../lib/hikeText'
 import type { Hike } from '../lib/hikes'
 import type { StoredPoi } from '../lib/trailData'
 import type { Trip } from '../lib/trips'

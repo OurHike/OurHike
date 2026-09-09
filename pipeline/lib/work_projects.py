@@ -15,22 +15,29 @@ early-partner clubs, and it does not have to". Club admin tooling
 (VOLUNTEERING.md Phase E) replaces this file's production rows; the shape
 below is the shape that tooling will emit, so the client never learns two.
 
-THE SAMPLE ROWS ARE A SECOND CITIZEN, DELIBERATELY. Maintainer decision
-2026-08-20 (recorded on #760): the mechanism ships end to end with clearly
-marked sample rows that publish to the UA environment only - production gets
-this file's `rows`, which stay empty until a real club supplies real
-workdays. No invented workday may reach a hiker: a person driving to a
-trailhead for an event nobody scheduled is this feature's own failure mode,
-self-inflicted. Samples therefore live under a separate key, carry relative
-dates (`starts_in_days`) so UA always has rows inside the fourteen-day
-window however long ago the file was edited, and are excluded whenever the
-environment is production - or unknown, because the conservative reading of
-"nobody said" is the one that publishes less.
+NO INVENTED WORKDAY MAY REACH A HIKER, IN ANY ENVIRONMENT. A person driving
+to a trailhead for an event nobody scheduled is this feature's own failure
+mode, self-inflicted - so the reviewed file's `rows` are the whole published
+set, and they stay empty until a real club supplies real workdays.
+
+That rule used to stop at production. Between 2026-08-20 and 2026-09-09 the
+reviewed file also carried `ua_sample_rows`: two '[Sample]' workdays that
+published to UA and dev so the mechanism was rehearsable end to end, and
+this module resolved their relative dates against bake time. Maintainer
+decision 2026-09-09 removed them - a UA tester reading a map is reading a
+map, and a '[Sample]' label was the only thing separating an invented pin
+from a real one. `file_problems` now REFUSES the key rather than ignoring it, so
+re-adding samples fails the bake instead of quietly publishing them again;
+that refusal is the mechanism, and this paragraph is why it exists.
+
+What it costs: nothing exercises the workday path against a live bucket any
+more. The suites cover it against fixtures, and the first real club row will
+cover it for real.
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 
 # lib/atc_updates.py's trail extent, for the same reason it records: a mile
 # outside the trail is not a location, it is a mistake with a decimal point.
@@ -102,28 +109,6 @@ def row_problems(row: dict) -> list[str]:
     return problems
 
 
-def _sample_row_problems(row: dict) -> list[str]:
-    """Sample rows swap absolute dates for relative ones and must say they
-    are samples out loud - a UA tester reading `[Sample]` cannot mistake the
-    row for a real club's ask."""
-    problems: list[str] = []
-    row_id = row.get("id", "<no sample id>")
-
-    if not isinstance(row.get("starts_in_days"), int) or not isinstance(row.get("ends_in_days"), int):
-        problems.append(f"{row_id}: sample rows carry starts_in_days/ends_in_days (whole days from bake time)")
-    elif row["ends_in_days"] < row["starts_in_days"]:
-        problems.append(f"{row_id}: ends_in_days is before starts_in_days")
-
-    if not str(row.get("title", "")).startswith("[Sample]"):
-        problems.append(f"{row_id}: a sample row's title starts with '[Sample]', so nothing downstream can drop the label")
-
-    checked = {**row, "starts_on": "2026-01-01", "ends_on": "2026-01-01"}
-    checked.pop("starts_in_days", None)
-    checked.pop("ends_in_days", None)
-    problems.extend(row_problems(checked))
-    return problems
-
-
 def file_problems(document: dict) -> list[str]:
     """Everything wrong with the reviewed file, or empty. One bad row fails
     the whole file - lib/atc_updates.py's stance, for its reason: a partial
@@ -132,15 +117,21 @@ def file_problems(document: dict) -> list[str]:
 
     rows = document.get("rows")
     if not isinstance(rows, list):
-        problems.append("rows must be a list (empty is fine - that is production's honest state today)")
+        problems.append("rows must be a list (empty is fine - that is the file's honest state today)")
         rows = []
-    samples = document.get("ua_sample_rows", [])
-    if not isinstance(samples, list):
-        problems.append("ua_sample_rows must be a list")
-        samples = []
+
+    # The retired sample list, refused rather than ignored. Ignoring it would
+    # make re-adding samples a silent no-op that reads like it worked; this
+    # way the bake stops and says which rule it stopped for. See the module
+    # docstring for the decision.
+    if "ua_sample_rows" in document:
+        problems.append(
+            "ua_sample_rows is retired (maintainer decision 2026-09-09): no invented workday may reach a hiker "
+            "in ANY environment, so `rows` is the only list. Move a real club's row into `rows`, or delete the key"
+        )
 
     seen: set[str] = set()
-    for row in [*rows, *samples]:
+    for row in rows:
         row_id = row.get("id")
         if isinstance(row_id, str) and row_id in seen:
             problems.append(f"{row_id}: duplicate id - the client keys and dedupes on it")
@@ -149,8 +140,6 @@ def file_problems(document: dict) -> list[str]:
 
     for row in rows:
         problems.extend(row_problems(row))
-    for row in samples:
-        problems.extend(_sample_row_problems(row))
 
     return problems
 
@@ -169,25 +158,16 @@ def is_reviewed(document: dict) -> bool:
     return True
 
 
-def _resolved_sample(row: dict, today: date) -> dict:
-    resolved = {key: value for key, value in row.items() if key not in ("starts_in_days", "ends_in_days")}
-    resolved["starts_on"] = (today + timedelta(days=row["starts_in_days"])).isoformat()
-    resolved["ends_on"] = (today + timedelta(days=row["ends_in_days"])).isoformat()
-    return resolved
+def published_rows(document: dict) -> list[dict]:
+    """The rows the artifact carries - `rows`, everywhere, and nothing else.
 
-
-def published_rows(document: dict, *, environment: str | None, today: date) -> list[dict]:
-    """The rows one environment's artifact carries.
-
-    Production - and an UNSET environment, read conservatively - gets `rows`
-    alone. UA and dev get the samples too, with their relative dates resolved
-    against bake time so the fourteen-day window always has something in it
-    to rehearse against. `status` defaults to `upcoming` on the way out so
-    the client never meets an absent field.
+    Every environment gets the same list, which is the whole point of the
+    2026-09-09 decision in the module docstring: there is no longer a copy of
+    this artifact anywhere that carries a workday nobody scheduled. `status`
+    defaults to `upcoming` on the way out so the client never meets an absent
+    field.
     """
     rows = [dict(row) for row in document.get("rows", [])]
-    if environment in ("ua", "dev"):
-        rows.extend(_resolved_sample(row, today) for row in document.get("ua_sample_rows", []))
     for row in rows:
         row.setdefault("status", "upcoming")
         row.setdefault("capacity", None)

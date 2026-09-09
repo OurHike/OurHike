@@ -20,6 +20,7 @@ import { TRAIL_OVERVIEW_SOURCE_ID, TRAILS_SOURCE_ID } from './map/style'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),

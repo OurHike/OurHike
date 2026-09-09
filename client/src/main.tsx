@@ -5,6 +5,14 @@ import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { applyTheme, systemPrefersDark } from './lib/theme'
+import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
+
+// The first line of this app's own code to run, and the first of the five
+// moments features/LAUNCH_BUDGET.md §3 budgets (#1299, lib/launchMarks.ts).
+// Everything before it - the document, this module's download and parse - is
+// the half a hiker waits through that a laptop never sees, and marking here
+// against `performance.timeOrigin` is what keeps it in the number.
+markLaunch(LAUNCH_MARKS.script)
 
 // Before anything renders, and deliberately not inside a component.
 //

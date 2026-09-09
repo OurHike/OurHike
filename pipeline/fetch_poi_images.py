@@ -53,13 +53,13 @@ from lib.corridor import build_corridor
 from lib.photo_screen import screen_bytes
 from lib.photo_store import local_photo_path, photo_digest
 
+# The Wikimedia API etiquette page requires a descriptive User-Agent with a
+# way to reach whoever runs the client - the repository is that contact.
+from lib.user_agent import CONTACTABLE_USER_AGENT as USER_AGENT
+
 API_URL = "https://commons.wikimedia.org/w/api.php"
 RAW_DIR = Path(__file__).parent / "data" / "raw"
 OUT_PATH = RAW_DIR / "poi_images.json"
-
-# The Wikimedia API etiquette page requires a descriptive User-Agent with a
-# way to reach whoever runs the client - the repository is that contact.
-USER_AGENT = "OurHike-pipeline/1.0 (https://github.com/OurHike/OurHike; contact via repository issues)"
 
 # The freshness bar: a photo's EXIF capture date must be within four years
 # of the run. A photo of a shelter that has since burned, moved or grown a

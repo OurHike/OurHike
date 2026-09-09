@@ -755,6 +755,39 @@ describe('POI pins', () => {
     expect(map.sourceData.get(CORRIDOR_SOURCE_ID)).toEqual(EMPTY_CORRIDOR)
   })
 
+  it('rasterises no warning pin for a map that has no warning to draw (#1304)', () => {
+    // One pass of the scanline rasteriser, on the thread the entry steps'
+    // Skip button is waiting for, for a map that will draw nothing with it.
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    expect(map.images.has(WARNING_ICON_ID)).toBe(false)
+  })
+
+  it('has the warning pin registered before the warning it draws (#1304)', () => {
+    // THE ORDERING IS THE SAFETY ARGUMENT. A symbol layer whose `icon-image`
+    // names an image the map has not been given draws nothing at all, and a
+    // serious warning that does not draw is the failure this app cannot have.
+    // So the assertion is not "the image arrives" but "the image is already
+    // there at the moment the warning's own data is set".
+    const { rerender } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+    loadStyle(map)
+    let imageWasThere: boolean | null = null
+    map.sources.set(WARNING_SOURCE_ID, {
+      setData: () => {
+        imageWasThere = map.images.has(WARNING_ICON_ID)
+      },
+    })
+
+    rerender(<MapView {...PROPS} warnings={WARNINGS} />)
+
+    expect(imageWasThere).toBe(true)
+    expect(map.images.has(WARNING_ICON_ID)).toBe(true)
+  })
+
   it('draws the serious warnings it was given as pins', () => {
     render(<MapView {...PROPS} warnings={WARNINGS} />)
     const [map] = MockMap.live

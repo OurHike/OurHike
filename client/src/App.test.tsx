@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { get, set, setMany, update } from 'idb-keyval'
+import { get, getMany, set, setMany, update } from 'idb-keyval'
 import App from './App'
 import { MockMap, NavigationControl, resetMapLibreMock } from './test/mocks/maplibre-gl'
 import { loadMapEngine } from './map/mapEngineLoader'
@@ -26,6 +26,7 @@ import type { ArchiveZooms } from './lib/archiveCoverage'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   // `trailData.ts` commits a release in ONE transaction since #657, so any
   // double that reaches that path needs this call - without it the whole
@@ -62,6 +63,12 @@ beforeEach(async () => {
   // the engine closes over the mock rather than the real library.
   await loadMapEngine()
   vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(set).mockImplementation((key, value) => {
     store.set(key as string, value)
     return Promise.resolve()

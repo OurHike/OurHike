@@ -33,7 +33,11 @@ import { isUsableHike, validateHike, type Hike, type HikePoint } from './hikes'
 import { validateTripGroup, type TripGroup } from './tripGroups'
 import { stopLabel } from './planDisplay'
 import { loadPlan, validatePlan, type HikePlan } from './plan'
-import { recordTripEdits } from './tripSyncState'
+import {
+  recordActiveHikeEdit,
+  recordLongHikeEdits,
+  recordTripEdits,
+} from './tripSyncState'
 
 export const TRIPS_KEY = 'ourhike:trips'
 
@@ -255,6 +259,17 @@ export async function saveTrips(store: TripStore): Promise<void> {
   const before = validateTripStore(await get(TRIPS_KEY))
   await set(TRIPS_KEY, store)
   await recordTripEdits(before?.trips ?? [], store.trips)
+  // The long hikes and the pointer ride the same exchange (#1317), and are
+  // recorded here for `recordTripEdits`' reason: at the moment the hiker
+  // performs the act, so a forget travels as their own forget and never as
+  // an absence inferred from a read that came back empty.
+  await recordLongHikeEdits(before?.hikes ?? [], store.hikes)
+  // Only when it actually moved. The pointer is one value rather than a
+  // collection, so there is nothing to diff per id - and marking it dirty on
+  // every save would upload it on every save.
+  if ((before?.activeHikeId ?? null) !== store.activeHikeId) {
+    await recordActiveHikeEdit()
+  }
 }
 
 /**
@@ -284,6 +299,12 @@ export async function clearTrips(): Promise<void> {
   const before = (await get(TRIPS_KEY)) as TripStore | undefined
   await del(TRIPS_KEY)
   await recordTripEdits(before?.trips ?? [], [])
+  // The hikes go the same way, and as the hiker's own act - dropping the key
+  // and letting the next sync work it out is the inference
+  // features/ACCOUNT_SYNC.md forbids, and here the account would simply hand
+  // every hike straight back.
+  await recordLongHikeEdits(before?.hikes ?? [], [])
+  if ((before?.activeHikeId ?? null) !== null) await recordActiveHikeEdit()
 }
 
 // ---------------------------------------------------------------------------

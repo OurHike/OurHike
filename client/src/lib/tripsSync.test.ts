@@ -2,15 +2,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, del } from 'idb-keyval'
 import { syncTrips } from './api'
 import {
+  applyActiveHike,
+  hikeStampsAfter,
+  hikeUploadsFor,
+  mergeServerHikes,
   mergeServerTrips,
   stampsAfter,
   syncTripsWithAccount,
   uploadsFor,
 } from './tripsSync'
+import type { Hike } from './hikes'
 import { EMPTY_STORE, removeTrip, TRIPS_KEY, type Trip, type TripStore } from './trips'
 import { buildPlan, type HikePlan } from './plan'
 import { PLANNED_HIKE_KEY } from './plannedHike'
-import { recordTripEdits, TRIPS_SYNC_KEY, tripSyncState } from './tripSyncState'
+import {
+  recordTripEdits,
+  TRIPS_SYNC_KEY,
+  tripSyncState,
+  type TripSyncState,
+} from './tripSyncState'
 
 // Trips following the account (#892), from this device's side.
 //
@@ -98,6 +108,11 @@ describe('what this device offers', () => {
     since: null,
     hikeDirty: false,
     hikeSeen: null,
+    hikesDirty: [],
+    hikesDeleted: [],
+    hikesSeen: {},
+    activeHikeDirty: false,
+    activeHikeSeen: null,
   }
 
   it('offers nothing when nothing changed here', () => {
@@ -293,13 +308,18 @@ describe('a conflict copy survives as its own trip (#1036)', () => {
 })
 
 describe('the stamps carried forward', () => {
-  const state = {
+  const state: TripSyncState = {
     dirty: [],
     deleted: ['old'],
     seen: { 'trip-1': EARLIER, old: EARLIER, untouched: EARLIER },
     since: null,
     hikeDirty: false,
     hikeSeen: null,
+    hikesDirty: [],
+    hikesDeleted: [],
+    hikesSeen: {},
+    activeHikeDirty: false,
+    activeHikeSeen: null,
   }
 
   it('takes the server’s new stamp for a trip it sent', () => {
@@ -515,5 +535,173 @@ describe('the silences', () => {
 
     await expect(syncTripsWithAccount()).resolves.toBeNull()
     expect(console.error).toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Long hikes and the pointer (#1317). The pointer is the reason the hikes
+// travel at all: an id arriving on a device that has never heard of the hike
+// names nothing.
+
+function hike(id = 'hike-1', name = 'Springer → Katahdin'): Hike {
+  return {
+    id,
+    name,
+    type: 'thru',
+    trailId: 'AT',
+    points: [
+      { name: 'Springer', mile: 0 },
+      { name: 'Katahdin', mile: 2197.4 },
+    ],
+    status: 'walking',
+    tripIds: [],
+  }
+}
+
+function hikeRow(id = 'hike-1', name = 'Springer → Katahdin', over = {}) {
+  return { id, document: hike(id, name), updated_at: NOW, deleted_at: null, ...over }
+}
+
+function storeWithHike(...hikes: Hike[]): TripStore {
+  return { ...EMPTY_STORE, hikes }
+}
+
+describe('what this device offers of its long hikes', () => {
+  const clean: TripSyncState = {
+    dirty: [],
+    deleted: [],
+    seen: {},
+    since: null,
+    hikeDirty: false,
+    hikeSeen: null,
+    hikesDirty: [],
+    hikesDeleted: [],
+    hikesSeen: {},
+    activeHikeDirty: false,
+    activeHikeSeen: null,
+  }
+
+  it('offers nothing when nothing changed here', () => {
+    expect(hikeUploadsFor(storeWithHike(hike()), clean)).toEqual([])
+  })
+
+  it('offers a changed hike with the stamp it was working from', () => {
+    const changed = hike()
+    const uploads = hikeUploadsFor(storeWithHike(changed), {
+      ...clean,
+      hikesDirty: ['hike-1'],
+      hikesSeen: { 'hike-1': EARLIER },
+    })
+
+    expect(uploads).toEqual([
+      { id: 'hike-1', document: changed, base_updated_at: EARLIER, deleted: false },
+    ])
+  })
+
+  it('never sends a forget the hiker did not perform', () => {
+    // Dirty with no hike behind it: the ledger and the store disagree, which
+    // a half-written save produces. An upload with no document would read as
+    // a forget, and forgetting somebody's hike is not something to infer.
+    expect(hikeUploadsFor(EMPTY_STORE, { ...clean, hikesDirty: ['hike-1'] })).toEqual([])
+  })
+
+  it('sends the forget rather than the edit when the hiker did both', () => {
+    const uploads = hikeUploadsFor(storeWithHike(hike()), {
+      ...clean,
+      hikesDirty: ['hike-1'],
+      hikesDeleted: ['hike-1'],
+    })
+
+    expect(uploads).toEqual([
+      { id: 'hike-1', document: null, base_updated_at: null, deleted: true },
+    ])
+  })
+})
+
+describe('folding the account’s long hikes back in', () => {
+  it('adds a hike this device has never seen', () => {
+    const merged = mergeServerHikes(EMPTY_STORE, [hikeRow()])
+    expect(merged.hikes.map((h) => h.name)).toEqual(['Springer → Katahdin'])
+  })
+
+  it('replaces one it already has', () => {
+    const merged = mergeServerHikes(storeWithHike(hike()), [
+      hikeRow('hike-1', 'The whole thing'),
+    ])
+    expect(merged.hikes).toHaveLength(1)
+    expect(merged.hikes[0].name).toBe('The whole thing')
+  })
+
+  it('applies a forget from another device, and releases the pointer with it', () => {
+    // removeHike's own guarantee, arriving from somewhere else: the app must
+    // not be left in a long-hike state naming a hike that is gone.
+    const store = { ...storeWithHike(hike()), activeHikeId: 'hike-1' }
+    const merged = mergeServerHikes(store, [
+      hikeRow('hike-1', 'gone', { document: null, deleted_at: NOW }),
+    ])
+
+    expect(merged.hikes).toEqual([])
+    expect(merged.activeHikeId).toBeNull()
+  })
+
+  it('skips a hike whose document this build cannot read', () => {
+    const merged = mergeServerHikes(EMPTY_STORE, [
+      { id: 'hike-1', document: { nonsense: true }, updated_at: NOW, deleted_at: null },
+    ])
+    expect(merged.hikes).toEqual([])
+  })
+
+  it('files the record under the ROW id, as tripFrom does', () => {
+    const merged = mergeServerHikes(EMPTY_STORE, [
+      { ...hikeRow('row-id'), document: hike('document-id') },
+    ])
+    expect(merged.hikes.map((h) => h.id)).toEqual(['row-id'])
+  })
+})
+
+describe('the pointer at the hike the app is in', () => {
+  it('says nothing when the account has never said', () => {
+    const store = { ...storeWithHike(hike()), activeHikeId: 'hike-1' }
+    expect(applyActiveHike(store, null)).toBe(store)
+  })
+
+  it('leaves the long-hike state when the account says null', () => {
+    const store = { ...storeWithHike(hike()), activeHikeId: 'hike-1' }
+    expect(applyActiveHike(store, { hike_id: null }).activeHikeId).toBeNull()
+  })
+
+  it('refuses a pointer at a hike this device does not have', () => {
+    // setActiveHike's rule from the other direction: the app must not enter
+    // a long hike it cannot show. The next sync brings the hike.
+    expect(applyActiveHike(EMPTY_STORE, { hike_id: 'hike-1' }).activeHikeId).toBeNull()
+  })
+
+  it('lands when the hike arrives in the same exchange', () => {
+    const merged = mergeServerHikes(EMPTY_STORE, [hikeRow()])
+    expect(applyActiveHike(merged, { hike_id: 'hike-1' }).activeHikeId).toBe('hike-1')
+  })
+})
+
+describe('the long-hike stamps carried forward', () => {
+  const state: TripSyncState = {
+    dirty: [],
+    deleted: [],
+    seen: {},
+    since: null,
+    hikeDirty: false,
+    hikeSeen: null,
+    hikesDirty: [],
+    hikesDeleted: ['old'],
+    hikesSeen: { 'hike-1': EARLIER, old: EARLIER, untouched: EARLIER },
+    activeHikeDirty: false,
+    activeHikeSeen: null,
+  }
+
+  it('takes the server’s new stamp, keeps what it knew, and drops what is gone', () => {
+    const after = hikeStampsAfter(state, [hikeRow()])
+
+    expect(after['hike-1']).toBe(NOW)
+    expect(after.untouched).toBe(EARLIER)
+    expect(after.old).toBeUndefined()
   })
 })

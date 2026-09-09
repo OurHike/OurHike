@@ -81,6 +81,62 @@ class PlannedHikeOut(BaseModel):
     updated_at: UtcDatetime
 
 
+class SyncedHikeUpload(BaseModel):
+    """One long hike a device is offering (#1317).
+
+    `TripUpload`'s shape, and carried just as opaquely: the hike document is
+    `client/src/lib/hikes.ts`'s `Hike`, a structure the client owns,
+    validates on read and changes more often than this schema wants
+    migrating. Re-declaring `points` here would create a second definition to
+    drift from the first, and the drift would surface as a hiker's own hike
+    being rejected by their own account.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    #: The hike as the client holds it. Null when this upload is the hiker's
+    #: own "forget this hike".
+    document: dict | None = None
+    #: The server stamp this device last saw. Null means it believes the hike
+    #: is new. See `app/core/trip_sync.py` on why this is the test rather
+    #: than any comparison of clocks.
+    base_updated_at: UtcDatetime | None = None
+    deleted: bool = False
+
+
+class SyncedHikeOut(BaseModel):
+    """One long hike as the server holds it now."""
+
+    id: str
+    #: Null on a tombstone - a row a device must ACT on rather than ignore,
+    #: since it is how the hiker's own "forget this hike" travels.
+    document: dict | None
+    updated_at: UtcDatetime
+    deleted_at: UtcDatetime | None
+
+
+class ActiveHikeSync(BaseModel):
+    """Which long hike the app is in, with the stamp that orders it.
+
+    A null `hike_id` is a real answer - the hiker leaving the long-hike state
+    - where the whole object being null is a device saying nothing about it.
+    The same distinction `PlannedHikeSync` draws, for the same reason, and
+    why this is nullable at the envelope rather than defaulted here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    hike_id: str | None = None
+    #: What the device last saw. Null when it has never synced one.
+    base_updated_at: UtcDatetime | None = None
+
+
+class ActiveHikeOut(BaseModel):
+    hike_id: str | None
+    updated_at: UtcDatetime
+
+
 class TripSyncIn(BaseModel):
     """A device's whole side of the exchange."""
 
@@ -97,6 +153,19 @@ class TripSyncIn(BaseModel):
     #: Distinct from a hike whose miles are both null, which is the hiker
     #: having cleared it.
     hike: PlannedHikeSync | None = None
+    #: The long hikes this device changed (#1317). Defaulted rather than
+    #: required, which is what lets every shipped client keep syncing its
+    #: trips through this endpoint while saying nothing about hikes
+    #: (RELEASING.md §8c's expand step).
+    #:
+    #: The same 500 ceiling as trips, and it is generous rather than
+    #: measured: a hiker has a handful of long hikes where they may have
+    #: hundreds of trips.
+    hikes: list[SyncedHikeUpload] = Field(default_factory=list, max_length=500)
+    #: Omitted when the device has nothing to say about which hike it is in.
+    #: Distinct from a pointer that is null, which is the hiker leaving the
+    #: long-hike state.
+    active_hike: ActiveHikeSync | None = None
 
 
 class TripSyncOut(BaseModel):
@@ -111,6 +180,12 @@ class TripSyncOut(BaseModel):
     now: UtcDatetime
     trips: list[TripOut]
     hike: PlannedHikeOut | None
+    #: Long hikes changed elsewhere since the watermark, tombstones included
+    #: (#1317). Additive: a client built before this field ignores it.
+    hikes: list[SyncedHikeOut] = Field(default_factory=list)
+    #: Which hike the account says the hiker is in, or null when no device
+    #: has ever said.
+    active_hike: ActiveHikeOut | None = None
     #: How many trips this exchange kept beside an existing one rather than
     #: overwriting it. Reported because a conflict is a thing that HAPPENED to
     #: a hiker's data, and a sync that resolves one silently is a sync nobody

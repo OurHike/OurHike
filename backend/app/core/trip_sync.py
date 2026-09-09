@@ -199,3 +199,91 @@ def resolve_upload(
             is_conflict_copy=True,
         )
     ]
+
+
+# ---------------------------------------------------------------------------
+# Hikes (#1317). The same exchange, a deliberately different rule.
+
+
+@dataclass(frozen=True)
+class UploadedHike:
+    """One long hike as a device is offering it."""
+
+    id: str
+    #: The hike as the client holds it, or None when this upload is the
+    #: hiker's own "forget this hike".
+    document: dict | None
+    #: The server stamp this device last saw; None when it believes the hike
+    #: is new.
+    base_updated_at: datetime | None
+    deleted: bool = False
+
+
+@dataclass(frozen=True)
+class StoredHike:
+    """The row as it stands, reduced to what the rule reads."""
+
+    id: str
+    document: dict | None
+    updated_at: datetime
+    deleted_at: datetime | None
+
+
+@dataclass(frozen=True)
+class HikeWrite:
+    """The one row the caller should write, if any."""
+
+    id: str
+    document: dict | None
+    deleted: bool
+
+
+def resolve_hike_upload(uploaded: UploadedHike, stored: StoredHike | None) -> HikeWrite | None:
+    """What to write for one uploaded hike. Never more than one row.
+
+    LAST WRITE WINS, WHERE `resolve_upload` ABOVE KEEPS BOTH, and the two
+    sitting side by side in one module is the point rather than an accident:
+    the difference is in what the two documents ARE.
+
+    A trip is planning a hiker cannot reconstruct - days, stops, resupply -
+    so losing one to a conflict loses work, and two trips over the same
+    ground are both real. A hike is the way of LOOKING at those trips, and
+    its `tripIds` claim them: a section belongs to exactly one hike
+    (features/SEGMENTS.md's tree has one parent per node, and the client's
+    `addHike` actively releases any section a new hike claims). A copy would
+    put the same sections in two hikes at once - the one state the model says
+    cannot exist - and `hikeOfTrip` would then answer "which hike is this
+    section in" with whichever it happened to find first.
+
+    So the stored row stands and the device adopts it from the response. The
+    cost is real and is not hidden: a hiker who lays out a flip-flop's points
+    on a laptop while their phone edits the same hike loses one of those
+    edits, and re-enters a point list. `app/models/synced_hike.py` weighs it
+    against the alternative.
+
+    The base-stamp test is the trips rule's, unchanged - "last write" is
+    never decided by comparing two devices' clocks, only by whether this
+    device had seen what the server holds.
+    """
+    if stored is None:
+        # A forget of a hike the server never saw still writes the tombstone:
+        # it is what stops ANOTHER device that does have it re-uploading for
+        # ever. The trips rule's reasoning, unchanged.
+        return HikeWrite(id=uploaded.id, document=uploaded.document, deleted=uploaded.deleted)
+
+    if uploaded.base_updated_at is not None and uploaded.base_updated_at == stored.updated_at:
+        return HikeWrite(id=uploaded.id, document=uploaded.document, deleted=uploaded.deleted)
+
+    # Already forgotten here and forgotten again by a device that had not
+    # heard: the same act twice, not a disagreement.
+    if stored.deleted_at is not None and uploaded.deleted:
+        return None
+
+    # An unchanged re-upload is somebody syncing twice. Compared by content,
+    # because the stamp is exactly what is out of date.
+    if not uploaded.deleted and stored.document == uploaded.document:
+        return None
+
+    # The conflict: somebody moved it since this device looked. The stored
+    # answer stands.
+    return None

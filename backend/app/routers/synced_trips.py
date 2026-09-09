@@ -27,12 +27,22 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.time import to_naive_utc, utc_now
-from app.core.trip_sync import StoredTrip, UploadedTrip, resolve_upload
+from app.core.trip_sync import (
+    StoredHike,
+    StoredTrip,
+    UploadedHike,
+    UploadedTrip,
+    resolve_hike_upload,
+    resolve_upload,
+)
 from app.db.session import get_db
 from app.models.profile import Profile
+from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.schemas.synced_trip import (
+    ActiveHikeOut,
     PlannedHikeOut,
+    SyncedHikeOut,
     TripOut,
     TripSyncIn,
     TripSyncOut,
@@ -143,6 +153,8 @@ def sync_trips(
                 target.deleted_at = written_at
 
     _apply_hike(db, current_user, payload, written_at)
+    _apply_hikes(db, current_user, payload, written_at)
+    _apply_active_hike(db, current_user, payload, written_at)
     db.commit()
 
     # AFTER the uploads and after the commit, so a device's own writes come
@@ -160,7 +172,17 @@ def sync_trips(
         .order_by(SyncedTrip.updated_at)
     ).all()
 
+    changed_hikes = db.scalars(
+        select(SyncedHike)
+        .where(
+            SyncedHike.profile_id == current_user.id,
+            *([] if payload.since is None else [SyncedHike.updated_at > to_naive_utc(payload.since)]),
+        )
+        .order_by(SyncedHike.updated_at)
+    ).all()
+
     hike_row = db.get(SyncedPlannedHike, current_user.id)
+    active_row = db.get(SyncedActiveHike, current_user.id)
 
     return TripSyncOut(
         now=now,
@@ -182,6 +204,16 @@ def sync_trips(
                 updated_at=hike_row.updated_at,
             )
         ),
+        hikes=[
+            SyncedHikeOut(
+                id=row.id,
+                document=row.document,
+                updated_at=row.updated_at,
+                deleted_at=row.deleted_at,
+            )
+            for row in changed_hikes
+        ],
+        active_hike=(None if active_row is None else ActiveHikeOut(hike_id=active_row.hike_id, updated_at=active_row.updated_at)),
         conflicts=conflicts,
     )
 
@@ -221,4 +253,130 @@ def _apply_hike(db: Session, profile: Profile, payload: TripSyncIn, written_at) 
 
     row.start_mile = payload.hike.start_mile
     row.end_mile = payload.hike.end_mile
+    row.updated_at = written_at
+
+
+def _owned_hikes(db: Session, profile: Profile, ids: list[str]) -> dict[str, SyncedHike]:
+    """This hiker's hike rows among the ids offered. `_owned`'s reasoning."""
+    if not ids:
+        return {}
+    rows = db.scalars(
+        select(SyncedHike).where(
+            SyncedHike.profile_id == profile.id,
+            SyncedHike.id.in_(ids),
+        )
+    ).all()
+    return {row.id: row for row in rows}
+
+
+def _foreign_hike_ids(db: Session, profile: Profile, ids: list[str]) -> set[str]:
+    """Hike ids that exist and belong to somebody else. See `_owned`."""
+    if not ids:
+        return set()
+    rows = db.scalars(
+        select(SyncedHike.id).where(
+            SyncedHike.id.in_(ids),
+            SyncedHike.profile_id != profile.id,
+        )
+    ).all()
+    return set(rows)
+
+
+def _apply_hikes(db: Session, profile: Profile, payload: TripSyncIn, written_at) -> None:
+    """The long hikes a device changed (#1317).
+
+    The trips loop above, with one row per upload instead of up to two -
+    `app/core/trip_sync.resolve_hike_upload` explains why a hike does not
+    keep both where a trip does. A hike is not counted in `conflicts`
+    deliberately: that number is what #894 will surface as "your data was
+    kept twice", and a hike that lost a last-write-wins race produced no
+    second copy to point at.
+    """
+    if not payload.hikes:
+        return
+
+    ids = [hike.id for hike in payload.hikes]
+    mine = _owned_hikes(db, profile, ids)
+    theirs = _foreign_hike_ids(db, profile, ids)
+
+    for upload in payload.hikes:
+        if upload.id in theirs:
+            # Somebody else's id. See `_owned` on why this is silent.
+            continue
+
+        row = mine.get(upload.id)
+        stored = (
+            None
+            if row is None
+            else StoredHike(
+                id=row.id,
+                document=row.document,
+                updated_at=row.updated_at,
+                deleted_at=row.deleted_at,
+            )
+        )
+        write = resolve_hike_upload(
+            UploadedHike(
+                id=upload.id,
+                document=upload.document,
+                # Naive-UTC before the rule sees it, for the reason the trips
+                # loop states at length: an aware value never equals a naive
+                # one, so without this every ordinary edit reads as a
+                # conflict and silently loses to the stored row.
+                base_updated_at=to_naive_utc(upload.base_updated_at),
+                deleted=upload.deleted,
+            ),
+            stored,
+        )
+        if write is None:
+            continue
+
+        target = mine.get(write.id)
+        if target is None:
+            target = SyncedHike(id=write.id, profile_id=profile.id)
+            db.add(target)
+            mine[write.id] = target
+        target.document = write.document
+        target.updated_at = written_at
+        # Set once and never cleared: a tombstone a slow device could un-set
+        # would be a "forget this hike" that syncing could undo.
+        if write.deleted and target.deleted_at is None:
+            target.deleted_at = written_at
+
+
+def _apply_active_hike(db: Session, profile: Profile, payload: TripSyncIn, written_at) -> None:
+    """Which hike the app is in - `_apply_hike`'s rule, on a pointer.
+
+    Last write wins for the reason the handoff gives in one line: a hiker is
+    on one hike, and offering them two would be the app asking a question it
+    invented. Being wrong costs one tap.
+
+    The pointer is NOT checked against the hikes this exchange just wrote.
+    A device can legitimately send a pointer at a hike it is uploading in the
+    same payload, and a device that has left the long-hike state sends null,
+    which names nothing by design. The client refuses a pointer it cannot
+    honour on the way in (`setActiveHike`) and falls back to null on the way
+    out (`validateTripStore`), so a dangling id costs one tap rather than an
+    error nobody can act on.
+    """
+    if payload.active_hike is None:
+        return
+
+    row = db.get(SyncedActiveHike, profile.id)
+    if row is None:
+        db.add(
+            SyncedActiveHike(
+                profile_id=profile.id,
+                hike_id=payload.active_hike.hike_id,
+                updated_at=written_at,
+            )
+        )
+        return
+
+    if to_naive_utc(payload.active_hike.base_updated_at) != row.updated_at:
+        # Somebody else moved it since this device looked. The stored answer
+        # stands, and the device adopts it from the response.
+        return
+
+    row.hike_id = payload.active_hike.hike_id
     row.updated_at = written_at

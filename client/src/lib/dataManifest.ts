@@ -41,9 +41,15 @@
 // verification is a gate on corruption, not a second thing to be offline
 // from.
 
-import { DATA_BASE_URL, dataUrl } from './config'
+import { DATA_BASE_URL, releaseManifestUrl } from './config'
 
-/** publish.py's MANIFEST_KEY. */
+/** publish.py's MANIFEST_KEY - the ROOT pointer.
+ *
+ *  Kept because it is still the name publish.py writes and the one
+ *  `verify_release.py` and the smoke tests look for, but this module no
+ *  longer fetches it: a pinned build reads its own release's manifest
+ *  instead (config.releaseManifestUrl, and dataRelease.RELEASE_MANIFEST_PATH
+ *  for why). */
 export const MANIFEST_KEY = 'latest.json'
 
 interface DataManifest {
@@ -350,7 +356,7 @@ async function readSnapshot(): Promise<PublishedSnapshot> {
   const controller = new AbortController()
   const deadline = setTimeout(() => controller.abort(), MANIFEST_READ_TIMEOUT_MS)
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal: controller.signal })
+    const response = await fetch(releaseManifestUrl(), { signal: controller.signal })
     if (!response.ok) return NOTHING_READABLE
     return snapshotInto((await response.json()) as DataManifest)
   } catch {
@@ -375,7 +381,7 @@ export async function publishedHashes({
   if (DATA_BASE_URL === '') return NOTHING_PUBLISHED
 
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal })
+    const response = await fetch(releaseManifestUrl(), { signal })
     if (!response.ok) return NOTHING_PUBLISHED
     return lookupInto((await response.json()) as DataManifest)
   } catch (error) {

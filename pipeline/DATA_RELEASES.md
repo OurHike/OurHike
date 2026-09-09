@@ -269,6 +269,14 @@ The weekly build's last job opens a **draft PR** on `data-release/<version>` cha
 
 `pages.yml` gains one guard next to its existing grep proving `DATA_BASE_URL` was inlined: assert `releases/<DATA_RELEASE>/manifest.json` returns 200, so a build can never deploy pinned to a folder that is not there.
 
+**Amended 2026-09-09 by [#1333](https://github.com/OurHike/OurHike/issues/1333), which built this section.** Three things above are true as written and incomplete, and each was found by trying to implement it literally.
+
+**`dataUrl()` cannot take a blanket prefix.** It is not only used for release artifacts. `lib/publishedConditions.ts` fetches `conditions/*`, which `lib/releases.is_release_artifact` deliberately excludes from every release folder — safety data is rewritten in place, and a closure that has reopened must stop being served, which an immutable folder cannot express. `lib/dataManifest.ts` fetches the root pointer. `lib/suggestedHikesData.ts` and every POI `photo_key` fetch `photos/*`, which are content-addressed and so already immutable. Measured against the live `releases/2026-09-08/manifest.json`: **0** of its 262 artifacts are under either prefix. So the rule is an *exclusion* — `conditions/`, `photos/`, `latest.json` at the root, everything else versioned by default — mirroring the shape `is_release_artifact` is already written in, and pinned at both ends by `pipeline/tests/test_release_pin_contract.py`.
+
+**The client must read the release's own manifest, not `latest.json`.** This section did not say which, and the wrong one is a latent break rather than a visible one. `latest.json` describes the **flat** keys, which move on every publish; a pinned build's bytes do not. Measured 2026-09-09, all 262 hashes agreed — because `2026-09-08` *was* the most recent publish. The next production publish is what would have fired it: every artifact whose bytes changed would fail the hash `trailData.ts` holds it to, and the app would reject data it had downloaded correctly. `releases/<id>/manifest.json` carries the same `artifacts` shape, so only the URL changes.
+
+**One committed constant has to name a folder that exists in both data environments.** This section predates [../features/DATA_ENVIRONMENTS.md](../features/DATA_ENVIRONMENTS.md). UA is a prefix in the same bucket with its own `releases/` tree, written by its own publishes, so the id sets drift — measured 2026-09-09, production held 14 releases and UA 31, with only 10 in common. The guard is what makes this safe rather than a thing to remember: `pages.yml` **and `ua.yml`** each assert the pin against *their own* base, so a pin one environment lacks costs that environment a red deploy instead of costing a hiker their map.
+
 ## Retention
 
 **Decided 2026-07-31: 90 days, with the clock starting when a release is superseded, and a floor of the 3 most recent released folders.**

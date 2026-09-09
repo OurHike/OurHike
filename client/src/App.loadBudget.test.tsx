@@ -165,6 +165,60 @@ describe('what first run may do before the steps are done', () => {
   })
 })
 
+describe('what the shell paints before the phone has answered (#1301)', () => {
+  it('puts the tab bar and the Today header on screen before any IndexedDB read has resolved', async () => {
+    // THE THIRD BUDGET. The tree used to render nothing - not the tab bar, not
+    // the Today header - until the preferences and a status for every archive
+    // package had come back from IndexedDB, and re-blanked twice more as the
+    // coverage cells arrived. Measured 2026-09-09 against production: first
+    // content at 1,152-1,572 ms on the throttled profile, behind a blank page
+    // painted at ~120 ms. The launch mirror (lib/launchMirror.ts) answers what
+    // the first frame needs synchronously, so the shell paints from the first
+    // commit and the store is asked afterwards.
+    //
+    // Proven the strong way: every IndexedDB read hangs forever, and the shell
+    // is on screen anyway. A test that merely raced a fast mock would pass
+    // against the old gate too.
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    vi.mocked(get).mockImplementation(() => new Promise(() => {}))
+
+    render(<App />)
+
+    const today = await screen.findByRole('tab', { name: 'Today' })
+    expect(today).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
+    expect(vi.mocked(get).mock.calls.length).toBeGreaterThan(0)
+  })
+
+  it('still waits for the record on a phone that holds no mirror of it', async () => {
+    // The first launch after #1301 shipped, or storage that was cleared: the
+    // slow path, and the honest one - a returning hiker must never see the
+    // first-run steps flash by, and without the mirror the record is the only
+    // thing that says they are a returning hiker.
+    app.onboard({}, { mirror: false })
+    app.putTrailData({ pois: POIS })
+    const original = vi.mocked(get).getMockImplementation()!
+    const pending: Array<() => void> = []
+    vi.mocked(get).mockImplementation(
+      (key) =>
+        new Promise((resolve) => {
+          pending.push(() => resolve(original(key)))
+        }),
+    )
+
+    render(<App />)
+    await waitFor(() => expect(pending.length).toBeGreaterThan(0))
+    expect(screen.queryByRole('tab', { name: 'Today' })).toBe(null)
+    expect(screen.queryByText('What OurHike is')).toBe(null)
+
+    // The record lands: every held read answers, and later reads answer at once.
+    vi.mocked(get).mockImplementation(original)
+    for (const release of pending.splice(0)) release()
+    await screen.findByRole('tab', { name: 'Today' })
+  })
+})
+
 describe('what a launch does once, and must not do twice', () => {
   it('reads the waypoints once when the steps release them', async () => {
     // Held, not dropped - and held ONCE. An effect that re-ran on every render

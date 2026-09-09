@@ -287,6 +287,41 @@ describe('holding several packages at once', () => {
   })
 })
 
+describe('when the package set grows after mount (#1301)', () => {
+  it('reads the packages it already knows once, and only the new one again', async () => {
+    // App.tsx registers every coverage cell the moment a cell index arrives,
+    // so the set grows from the offered sheets to several dozen packages,
+    // twice, on a launch with signal. Re-reading the sheets each time was
+    // three IndexedDB round trips per known package on the thread the first
+    // frame was waiting for.
+    withStore()
+    mockFetch({})
+
+    const { result, rerender } = renderHook(
+      ({ requests }: { requests: typeof BOTH }) => useArchiveDownloads(requests),
+      { initialProps: { requests: [SHEET] } },
+    )
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+    const sheetReadsAfterMount = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
+    expect(sheetReadsAfterMount).toBeGreaterThan(0)
+
+    rerender({ requests: BOTH })
+    await waitFor(() => expect(result.current.statusesKnown).toBe(true))
+
+    const sheetReadsAfterGrowth = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(SHEET.packageKey)).length
+    const terrainReads = vi
+      .mocked(get)
+      .mock.calls.filter(([key]) => String(key).includes(TERRAIN.packageKey)).length
+    expect(sheetReadsAfterGrowth).toBe(sheetReadsAfterMount)
+    expect(terrainReads).toBeGreaterThan(0)
+    expect(result.current.statusFor(TERRAIN.packageKey).state).toBe('not-downloaded')
+  })
+})
+
 describe('whether the phone has been read yet', () => {
   it('says no until every package has answered, then yes', async () => {
     // `statusFor` answers 'not-downloaded' for a package it has not read yet,

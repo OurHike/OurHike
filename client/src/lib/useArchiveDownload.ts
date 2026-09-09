@@ -135,10 +135,22 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
   // On mount, reflect what is already on the phone for every package: a
   // finished archive, an interrupted one worth resuming, an archive that was
   // here and is gone, or nothing at all.
+  //
+  // EACH PACKAGE IS READ ONCE, HOWEVER THE SET GROWS (#1301). The set is not
+  // fixed at mount: App.tsx registers every coverage cell the moment a cell
+  // index arrives, so it goes from the offered sheets to several dozen more
+  // packages, twice, on a launch with signal. This effect re-runs on each
+  // growth, and it used to start every package's reads over - three IndexedDB
+  // round trips per package, for packages whose status it already held - on
+  // the same thread the first frame was waiting on. A package whose status
+  // has landed is skipped; one whose reads were cancelled mid-flight by a
+  // growth has no status yet and is asked again on the next run.
+  const answered = useRef(new Set<string>())
   useEffect(() => {
     let cancelled = false
 
     for (const packageKey of packageKeys) {
+      if (answered.current.has(packageKey)) continue
       void (async () => {
         try {
           // The marker's own byte count, not an assembled Blob: this runs for
@@ -148,6 +160,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
           const finishedBytes = await readArchiveSize(packageKey)
           if (cancelled) return
           if (finishedBytes !== null) {
+            answered.current.add(packageKey)
             setStatus(packageKey, {
               state: 'downloaded',
               totalBytes: finishedBytes,
@@ -159,6 +172,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
           const partial = await readDownloadProgress(packageKey)
           if (cancelled) return
           if (partial !== null) {
+            answered.current.add(packageKey)
             setStatus(packageKey, { state: 'failed', ...partial })
             return
           }
@@ -167,6 +181,7 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
           // archive finished here, this is an eviction, and saying "not
           // downloaded" would be the FarOut failure: a map that silently
           // vanished offered back as if it had never existed (#190).
+          answered.current.add(packageKey)
           setStatus(packageKey, absentStatus(packageKey))
         } catch {
           // The reads above are IndexedDB, which can fail outright - storage
@@ -180,7 +195,9 @@ export function useArchiveDownloads(requests: readonly ArchiveDownloadRequest[])
           // Deliberately not surfaced as an error: this runs before the hiker
           // has asked for anything. A failure they DID ask for still reports
           // itself - see the catch in `run`.
-          if (!cancelled) setStatus(packageKey, absentStatus(packageKey))
+          if (cancelled) return
+          answered.current.add(packageKey)
+          setStatus(packageKey, absentStatus(packageKey))
         }
       })()
     }

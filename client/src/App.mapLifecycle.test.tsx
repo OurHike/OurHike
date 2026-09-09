@@ -205,14 +205,21 @@ describe('what a cold start costs', () => {
     expect(MockMap.live).toHaveLength(1)
   })
 
-  it('waits for the archive store before drawing anything at all', async () => {
+  it('paints the tab bar at once, and waits for the archive store before drawing a map', async () => {
     // The half of the fix that is not about counting. `statusFor` answers
     // "not downloaded" for a package it has not READ yet, which is the same
     // answer it gives for one that is genuinely absent - so the shell used to
     // conclude "no download, draw the live sheet" before the question had been
     // asked, and reverse itself a beat later.
+    //
+    // Since #1301 the wait is the MAP's alone: the tab bar is on screen before
+    // the store has answered anything (the launch mirror says this phone is
+    // past onboarding), and the map is still not built until it has.
     aPhoneThatHasBeenUsed()
     render(<App />)
+
+    expect(screen.getByRole('tab', { name: 'Today' })).toBeInTheDocument()
+    expect(MockMap.instances).toHaveLength(0)
 
     await land(isPreferences)
     expect(MockMap.instances).toHaveLength(0)

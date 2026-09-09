@@ -348,6 +348,7 @@ import {
   saveHikerMode,
   type HikerMode,
 } from './lib/hikerMode'
+import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
@@ -538,12 +539,39 @@ function App() {
   // behaviour change: the two values anything read before the load completes
   // (location_permission_requested, max_background_zoom) were already falling
   // back to exactly these defaults.
-  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES)
+  //
+  // THE MIRROR (#1301, lib/launchMirror.ts). The record is in IndexedDB and
+  // cannot be read synchronously, so the three values the FIRST FRAME depends
+  // on - whether onboarding is done, the theme, the hiker mode - are mirrored
+  // to localStorage on every read and write of the record, and read here
+  // before the first render. A returning hiker's launch therefore starts from
+  // the answer it will get, renders the tab bar and the Today header at once,
+  // and lets the record's own read overwrite the rest a tick later. A phone
+  // with no mirror (the first launch after this shipped, or cleared storage)
+  // starts from the defaults and waits, exactly as every launch used to.
+  const [launchMirror] = useState(readLaunchMirror)
+  const [preferences, setPreferences] = useState<UserPreferences>(() =>
+    launchMirror === null
+      ? DEFAULT_PREFERENCES
+      : {
+          ...DEFAULT_PREFERENCES,
+          onboarding_completed: launchMirror.onboardingCompleted,
+          theme: launchMirror.theme,
+        },
+  )
+  /** Whether the RECORD has been read - not whether enough is known to paint.
+   *  The map's background is decided on the record (see `mapNeededNow`), and
+   *  the shell's first frame on the mirror (`shellKnown` below). */
   const [preferencesLoaded, setPreferencesLoaded] = useState(false)
-  // The "today I'm…" mode (#1054, lib/hikerMode.ts) - loaded in the same
-  // bootstrap gate as the preferences, saved on every change. It re-ranks
+  /** Enough to paint the shell: the record, or the mirror of it. False only on
+   *  a launch with neither, which renders nothing until the record lands. */
+  const shellKnown = preferencesLoaded || launchMirror !== null
+  // The "today I'm…" mode (#1054, lib/hikerMode.ts) - mirrored like the two
+  // preferences above, loaded with them, saved on every change. It re-ranks
   // the Today screen and never gates anything.
-  const [hikerMode, setHikerMode] = useState<HikerMode>(DEFAULT_HIKER_MODE)
+  const [hikerMode, setHikerMode] = useState<HikerMode>(
+    () => launchMirror?.hikerMode ?? DEFAULT_HIKER_MODE,
+  )
   // Today is the home (#1054): the default tab, and where finishing first run
   // lands. During first run the tab branches below are skipped entirely -
   // `entering` renders the map screen as the steps' backdrop whatever this
@@ -992,75 +1020,6 @@ function App() {
    */
   const entering = !preferences.onboarding_completed
 
-  /**
-   * Whether this session has ever needed the map, because the map is built at
-   * most once per session (#1081). v1.0.0 kept one map for a whole session by
-   * making it the home tab; #1054 moved the home to Today, and the map -
-   * unmounted by every tab branch that renders without it - was being torn
-   * down and rebuilt on every return. One data-loaded build is 2,353 ms of
-   * blocking work on the throttled-phone profile (App.loadBudget.test.tsx's
-   * measurement), which is the "extremely slow after downloading the data"
-   * of the report behind #1081: the build is cheap on an empty phone and
-   * multi-second once the sheet and the trail release are on it.
-   *
-   * So the shell remembers that the map was wanted - the first-run backdrop
-   * counts, which is what lets the map built behind the entry steps survive
-   * into the session instead of being thrown away on the way to Today - and
-   * after that the bottom of this component keeps it mounted, hidden and
-   * inert, underneath whichever tab screen is up. Phones only ever set this
-   * through that first need; a desktop renders the map from launch and the
-   * latch is simply always on.
-   *
-   * What is deliberately NOT changed: a launch that stays on Today still
-   * builds no map at all (the latch starts false), so the entry budget that
-   * test enforces is untouched.
-   */
-  // `entering` counts only once the preferences have actually been read:
-  // before that it is true on EVERY launch (the comment above), nothing is
-  // rendered - `preferencesLoaded` gates the whole tree below - and a latch
-  // set during that window would mount a map on a returning hiker's Today,
-  // which is exactly the launch the budget test keeps free.
-  const [mapKept, setMapKept] = useState(false)
-  const mapNeededNow = (entering && preferencesLoaded) || isDesktop || activeTab === 'map'
-  useEffect(() => {
-    if (mapNeededNow) setMapKept(true)
-  }, [mapNeededNow])
-  const mapMounted = mapNeededNow || mapKept
-
-  // Whether something is drawn OVER the held map right now - one of the
-  // full-screen flows (each is somewhere a hiker is typing or deciding, so
-  // it wins over any tab), or a tab screen on the form factors where that
-  // tab replaces the map. The return at the bottom renders these over the
-  // held-map wrapper; this pair of facts is computed up here because two
-  // hooks below need them, and hooks cannot sit under the render-time
-  // branches that build the actual screens.
-  const flowOpen =
-    authFlow !== null ||
-    collectingIdentity ||
-    reportingFailure ||
-    reportingClosure ||
-    reporting !== null
-  const tabOverMap =
-    !entering &&
-    (activeTab === 'more' ||
-      activeTab === 'plan' ||
-      (activeTab === 'today' && !isDesktop))
-  const mapShownNow = mapMounted && !flowOpen && !tabOverMap
-
-  // The map boundary's reset, counted in ARRIVALS at the map rather than in
-  // tab changes. With the map permanently mounted (#1081), a resetKey of
-  // `activeTab` would clear a caught map crash - and re-run the whole
-  // multi-second map build, hidden and inert - on every tab switch for the
-  // rest of the session. Keyed this way, a crashed map retries exactly once,
-  // when the hiker actually returns to it and can see the result - which is
-  // what the old unmount-per-tab structure did by accident.
-  const [mapArrivals, setMapArrivals] = useState(0)
-  const mapWasShown = useRef(false)
-  useEffect(() => {
-    if (mapShownNow && !mapWasShown.current) setMapArrivals((n) => n + 1)
-    mapWasShown.current = mapShownNow
-  }, [mapShownNow])
-
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
   // nothing else writes them.
@@ -1163,25 +1122,36 @@ function App() {
   const resolvedTheme = useTheme(preferences.theme)
   const install = useInstallPrompt()
   useEffect(() => {
-    // The mode rides the same gate as the preferences (lib/hikerMode.ts's
+    // The mode rides the same read as the preferences (lib/hikerMode.ts's
     // "read once, no flash"): the Today header renders the switch on first
     // paint, and a default that flips a tick later is exactly the flash the
-    // gate exists to prevent.
+    // mirror exists to prevent - so the mirror carries the mode too.
     void Promise.all([loadPreferences(), loadHikerMode()]).then(
       ([stored, mode]) => {
         setPreferences(stored)
         setHikerMode(mode)
         setPreferencesLoaded(true)
+        // The record has spoken; the next launch's first frame starts here.
+        writeLaunchMirror(stored, mode)
       },
       // A storage read that rejects - private browsing, an evicted database -
-      // must not keep the gate below closed: `preferencesLoaded` false renders
-      // NOTHING, and a rejection here left the app a permanently blank page
-      // with the map a tick away the whole time. Defaults are the honest
-      // fallback; the preferences another session stored are unreachable
-      // either way.
+      // must not keep the gate below closed: on a launch with no mirror,
+      // `preferencesLoaded` false renders NOTHING, and a rejection here left
+      // the app a permanently blank page with the map a tick away the whole
+      // time. Defaults are the honest fallback; the preferences another
+      // session stored are unreachable either way.
       () => setPreferencesLoaded(true),
     )
   }, [])
+
+  // The mirror follows the record (#1301): every change to what the first
+  // frame depends on is written where the next launch can read it without
+  // waiting. Keyed on the three fields rather than on the whole blob, so a
+  // change to a unit or a map style does not touch localStorage.
+  useEffect(() => {
+    if (!preferencesLoaded) return
+    writeLaunchMirror(preferences, hikerMode)
+  }, [preferencesLoaded, preferences.onboarding_completed, preferences.theme, hikerMode])
 
   // The mode is saved as it changes - there is no form to submit, and a mode
   // that survived the session but not the relaunch would make the switch a
@@ -1402,6 +1372,93 @@ function App() {
     remove: removePackage,
     persistence: archivePersistence,
   } = useArchiveDownloads(downloadRequests)
+
+  // The map's own mount decision lives HERE, below the archive store's hook,
+  // because since #1301 it reads that hook's answer (`archivesRead`): the map
+  // is the one consumer that must wait for every package's marker, and the
+  // tab bar above it no longer does.
+  /**
+   * Whether this session has ever needed the map, because the map is built at
+   * most once per session (#1081). v1.0.0 kept one map for a whole session by
+   * making it the home tab; #1054 moved the home to Today, and the map -
+   * unmounted by every tab branch that renders without it - was being torn
+   * down and rebuilt on every return. One data-loaded build is 2,353 ms of
+   * blocking work on the throttled-phone profile (App.loadBudget.test.tsx's
+   * measurement), which is the "extremely slow after downloading the data"
+   * of the report behind #1081: the build is cheap on an empty phone and
+   * multi-second once the sheet and the trail release are on it.
+   *
+   * So the shell remembers that the map was wanted - the first-run backdrop
+   * counts, which is what lets the map built behind the entry steps survive
+   * into the session instead of being thrown away on the way to Today - and
+   * after that the bottom of this component keeps it mounted, hidden and
+   * inert, underneath whichever tab screen is up. Phones only ever set this
+   * through that first need; a desktop renders the map from launch and the
+   * latch is simply always on.
+   *
+   * What is deliberately NOT changed: a launch that stays on Today still
+   * builds no map at all (the latch starts false), so the entry budget that
+   * test enforces is untouched.
+   */
+  // `entering` counts only once the preferences have actually been read:
+  // before that it is true on a launch with no mirror (the comment above),
+  // nothing is rendered on such a launch - `shellKnown` gates the tree below -
+  // and a latch set during that window would mount a map on a returning
+  // hiker's Today, which is exactly the launch the budget test keeps free.
+  //
+  // AND THE MAP WAITS FOR THE STORE TO ANSWER (#1301). `archivesRead` used to
+  // gate the whole tree, for one decision: the background the map is built
+  // around must be the downloaded one where there is one, or the map draws
+  // the live sheet for a beat, then throws itself away and rebuilds - a
+  // blink, and ~2 MB of somebody's data (the note at the render gate below
+  // has the history). That decision is the map's, so the wait is the map's:
+  // the tab bar and Today paint while the markers are still being read, and
+  // no map is built until every package has answered AND the record of the
+  // preferences (which names the background) has landed. `mapKept` is what
+  // keeps a built map up when the package set grows and `archivesRead` goes
+  // false again while the new cells' markers are read - the tree no longer
+  // unmounts for that, and neither does the map.
+  const [mapKept, setMapKept] = useState(false)
+  const mapNeededNow =
+    (entering || isDesktop || activeTab === 'map') && preferencesLoaded && archivesRead
+  useEffect(() => {
+    if (mapNeededNow) setMapKept(true)
+  }, [mapNeededNow])
+  const mapMounted = mapNeededNow || mapKept
+
+  // Whether something is drawn OVER the held map right now - one of the
+  // full-screen flows (each is somewhere a hiker is typing or deciding, so
+  // it wins over any tab), or a tab screen on the form factors where that
+  // tab replaces the map. The return at the bottom renders these over the
+  // held-map wrapper; this pair of facts is computed up here because two
+  // hooks below need them, and hooks cannot sit under the render-time
+  // branches that build the actual screens.
+  const flowOpen =
+    authFlow !== null ||
+    collectingIdentity ||
+    reportingFailure ||
+    reportingClosure ||
+    reporting !== null
+  const tabOverMap =
+    !entering &&
+    (activeTab === 'more' ||
+      activeTab === 'plan' ||
+      (activeTab === 'today' && !isDesktop))
+  const mapShownNow = mapMounted && !flowOpen && !tabOverMap
+
+  // The map boundary's reset, counted in ARRIVALS at the map rather than in
+  // tab changes. With the map permanently mounted (#1081), a resetKey of
+  // `activeTab` would clear a caught map crash - and re-run the whole
+  // multi-second map build, hidden and inert - on every tab switch for the
+  // rest of the session. Keyed this way, a crashed map retries exactly once,
+  // when the hiker actually returns to it and can see the result - which is
+  // what the old unmount-per-tab structure did by accident.
+  const [mapArrivals, setMapArrivals] = useState(0)
+  const mapWasShown = useRef(false)
+  useEffect(() => {
+    if (mapShownNow && !mapWasShown.current) setMapArrivals((n) => n + 1)
+    mapWasShown.current = mapShownNow
+  }, [mapShownNow])
 
   /**
    * The sheets that get a card in the download window - which is not the same
@@ -5681,29 +5738,33 @@ function App() {
     if (account !== null && authFlow?.afterReport === true) askForIdentity()
   }, [account, authFlow, askForIdentity])
 
-  // Nothing renders until the phone has answered about itself: its stored
-  // preferences, so a returning hiker never sees a flash of the first-run
-  // onboarding, and what is in its archive store, so the map is built around
-  // the right background the first time (App.mapLifecycle.test.tsx).
+  // Nothing renders until enough is known to choose the first frame: whether
+  // onboarding is done, so a returning hiker never sees a flash of the
+  // first-run steps. Since #1301 that answer comes from the launch mirror
+  // (lib/launchMirror.ts) on every launch but the first after it was written,
+  // so this gate is open before the first render and the tab bar and the Today
+  // header paint from the app's own markup while IndexedDB is still being
+  // asked. A launch with no mirror waits here for the record, as every launch
+  // used to - slower, and never wrong.
   //
-  // The second half is the same argument as the first, one screen further in.
-  // `archiveStatusFor` answers "not downloaded" for a package it has not read
-  // yet, which is the same answer it gives for one that genuinely is not
-  // there - and effectiveBackground() below turns that into "draw the live
-  // sheet". So a phone WITH the corridor on it used to open on the live sheet,
-  // start pulling vector and DEM tiles over the network, and then throw the
-  // whole map away and rebuild it around the archive when the read landed a
-  // beat later. A blink, a re-frame, and roughly 2 MB of somebody's data
-  // allowance spent on a background they had already downloaded their way out
-  // of - which is precisely the spend lib/dataSaver.ts exists to prevent.
-  //
-  // Both reads start on mount and run in parallel, so what this waits for is
-  // the slower of the two rather than their sum, and both are IndexedDB reads
-  // of small things - an object of preferences, and blob HANDLES whose bytes
-  // are not touched. Neither can hang the app open: loadPreferences() falls
-  // back to defaults if it rejects, and every path through the archive read,
-  // including its catch, sets a status.
-  if (!preferencesLoaded || !archivesRead) return null
+  // THIS GATE USED TO WAIT FOR THE ARCHIVE STORE TOO, and the reason is worth
+  // keeping because the wait moved rather than vanished. `archiveStatusFor`
+  // answers "not downloaded" for a package it has not read yet, which is the
+  // same answer it gives for one that genuinely is not there - and
+  // effectiveBackground() below turns that into "draw the live sheet". So a
+  // phone WITH the corridor on it used to open on the live sheet, start
+  // pulling vector and DEM tiles over the network, and then throw the whole
+  // map away and rebuild it around the archive when the read landed a beat
+  // later. A blink, a re-frame, and roughly 2 MB of somebody's data allowance
+  // spent on a background they had already downloaded their way out of -
+  // which is precisely the spend lib/dataSaver.ts exists to prevent
+  // (App.mapLifecycle.test.tsx). That is a decision about the MAP, so the map
+  // now waits for it (`mapNeededNow` above) and the tab bar does not. Measured
+  // 2026-09-09 against production, the whole tree sat behind that read for
+  // every archive package - the offered sheets, then every coverage cell as
+  // the cell indexes arrived, re-blanking the tree twice on a launch with
+  // signal - which is what #1301 is about.
+  if (!shellKnown) return null
 
   /**
    * Where the opening view has room to be, which during first run is not the

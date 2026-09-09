@@ -278,6 +278,11 @@ if (warm) {
           const db = open.result
           const tx = db.transaction('keyval', 'readwrite')
           tx.objectStore('keyval').delete('ourhike:preferences')
+          // And the launch mirror of it (lib/launchMirror.ts, #1301): left in
+          // place, the replayed first run would open on Today for a tick and
+          // then fall back to the steps when the deleted record came back
+          // empty, which is not the launch being measured.
+          localStorage.removeItem('ourhike:launch')
           tx.oncomplete = () => {
             db.close()
             resolve()

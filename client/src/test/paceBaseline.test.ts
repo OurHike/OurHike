@@ -121,6 +121,72 @@ describe('the pace baseline standard', () => {
     expect(excused).toEqual([])
   })
 
+  it('lets no surface print an adjusted time and keep its baseline back', () => {
+    // THE OTHER HALF OF THE RULE, AND THE ONE THAT NOW BITES (#1194 fallout).
+    //
+    // The scan above catches a surface that formats minutes BY HAND, which
+    // was the only way to break #851 while call sites still reached for
+    // `formatNaismithMinutes`. The planning audit converted every one of them
+    // to `paceEstimate`, and in doing so it moved the failure: the remaining
+    // way to print an adjusted time with no baseline is to hold the pair and
+    // render half of it. That is not a bypass of `paceEstimate` - it is the
+    // correct call, followed by dropping `relativeLine` on the floor - so the
+    // scan above cannot see it and ran green over three surfaces that did it.
+    //
+    // Measured when this was written: `chrome/DayHikePanel.tsx` (the day-hike
+    // builder's main Walking figure, on both breakpoints),
+    // `chrome/DayHikesHere.tsx` (the trailhead door) and
+    // `screens/DayHikeList.tsx` (the saved walks) each printed `estimate.text`
+    // with `relativeLine` appearing nowhere in the file.
+    //
+    // The rule: a file that HOLDS a PaceEstimate and renders a `.text` off
+    // something must also mention `relativeLine`. It is a coarse test and
+    // deliberately so - it cannot tell which `.text` belongs to the estimate,
+    // and it does not need to, because the answer to "did this surface
+    // remember the baseline at all" is the whole question. Measured across
+    // the tree when written: eleven files hold an estimate and render a
+    // `.text`, and ten already passed - so the rule costs nothing that was
+    // not already a defect.
+    const offenders: string[] = []
+
+    for (const file of sourceFiles()) {
+      const name = relative(ROOT, file)
+      if (MAY_FORMAT_PACE_MINUTES.includes(name)) continue
+      if (/\.test\.tsx?$/.test(name)) continue
+
+      const source = readFileSync(file, 'utf8')
+      // Does this file hold an estimate at all? Either it names the type or
+      // it calls something that returns one.
+      const holdsEstimate =
+        source.includes('PaceEstimate') ||
+        source.includes('paceEstimate(') ||
+        source.includes('cachedEstimate(')
+      if (!holdsEstimate) continue
+
+      const renders = source
+        .split('\n')
+        .map((line, index) => ({ line, at: index + 1 }))
+        .filter(
+          ({ line }) =>
+            /\.text\b/.test(line) && !/^\s*(\/\/|\*|\/\*)/.test(line.trimEnd()),
+        )
+      if (renders.length === 0) continue
+      if (source.includes('relativeLine')) continue
+
+      offenders.push(`${name}:${renders[0].at} — ${renders[0].line.trim()}`)
+    }
+
+    expect(
+      offenders,
+      'These hold a PaceEstimate and print its figure without its baseline. ' +
+        "#851's decision is that no surface shows an adjusted time without " +
+        'showing what it was adjusted from - a pace set optimistic in week ' +
+        'one must not quietly become the number somebody plans their evening ' +
+        'around. Render `estimate.relativeLine` beside the figure; it is null ' +
+        'at the standard pace, so most hikers see nothing extra.',
+    ).toEqual([])
+  })
+
   it('is a guard that can actually fire', () => {
     // The failure mode this whole file exists to avoid: a scanner that finds
     // no files, passes, and is believed. If lib/pace.ts is ever renamed, this

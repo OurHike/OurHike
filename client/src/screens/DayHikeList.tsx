@@ -142,31 +142,44 @@ export function DayHikeList({
         {toWalk.length > 0 && (
           <section className="plan-home__section">
             <span className="plan-home__title">Ready to walk</span>
-            {toWalk.map((hike) => (
-              <button
-                type="button"
-                className="plan-home__row"
-                key={hike.id}
-                onClick={() => onOpen(hike.id)}
-              >
-                <span className="plan-home__row-name">{hike.name}</span>
-                {/* Cached figures on purpose - see the header. The ≈time is
+            {toWalk.map((hike) => {
+              // Priced once, not twice: the same answer decides whether to
+              // print a time, produces it, and carries the baseline below.
+              const estimate = cachedEstimate(hike, pace)
+              return (
+                <button
+                  type="button"
+                  className="plan-home__row"
+                  key={hike.id}
+                  onClick={() => onOpen(hike.id)}
+                >
+                  <span className="plan-home__row-name">{hike.name}</span>
+                  {/* Cached figures on purpose - see the header. The ≈time is
                   cached too and is absent rather than approximated when the
                   record holds no climb: this row still may not load the
                   routing graph, and may not invent a walking time either. */}
-                <span className="plan-home__meta">
-                  {formatDistance(hike.figures.miles, units)}
-                  {hike.figures.legs.length > 0 &&
-                    ` · ${hike.figures.legs.length} ${
-                      hike.figures.legs.length === 1 ? 'leg' : 'legs'
-                    }`}
-                  {cachedEstimate(hike, pace) !== null &&
-                    ` · ${cachedEstimate(hike, pace)?.text} walking`}
-                  {' · '}
-                  {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
-                </span>
-              </button>
-            ))}
+                  <span className="plan-home__meta">
+                    {formatDistance(hike.figures.miles, units)}
+                    {hike.figures.legs.length > 0 &&
+                      ` · ${hike.figures.legs.length} ${
+                        hike.figures.legs.length === 1 ? 'leg' : 'legs'
+                      }`}
+                    {estimate !== null && ` · ${estimate.text} walking`}
+                    {' · '}
+                    {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
+                  </span>
+                  {/* What the ≈time was adjusted from (#851). A row saying "≈2h
+                    walking" at a pace the hiker nudged once is the figure they
+                    pick tomorrow's walk on; the baseline is what stops it
+                    passing as Naismith's own. Absent at the standard pace. */}
+                  {estimate?.relativeLine != null && (
+                    <span className="plan-home__row-baseline">
+                      {estimate.relativeLine}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </section>
         )}
 

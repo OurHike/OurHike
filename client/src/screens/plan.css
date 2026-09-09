@@ -2052,6 +2052,19 @@
   color: var(--fg-2);
 }
 
+/* The same quiet provenance the builder's panel and bar carry: what the
+   walking time above was adjusted from (#851). Its own line rather than
+   appended to the meta row, which already carries three facts joined by
+   middots and would run to three lines on a phone with a fourth. */
+.hikes-here__row-baseline {
+  display: block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
+}
+
 .hikes-here__note {
   margin: 0;
   font-size: 12px;
@@ -2257,6 +2270,17 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--fg-2);
+}
+
+/* The baseline under a row's ≈time (#851) - the same quiet provenance the
+   builder's panel, its bar and the trailhead door carry. */
+.plan-home__row-baseline {
+  display: block;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
 }
 
 /* ---------- The day summary (#966, wireframe 2c frame 1) ---------- */
@@ -3146,6 +3170,20 @@
 
 .day-hike-panel__stat--climb dd {
   color: var(--accent-blaze-orange);
+}
+
+/* Whose estimate the walking time is (#851), in the quiet provenance voice
+   day-hike-bar__baseline and closure-sheet__pace already use - never a
+   warning, and absent entirely at the standard pace. Smaller and lighter than
+   the figure it qualifies, because it is the caveat and not the number. */
+.day-hike-panel__baseline {
+  margin: 0.1rem 0 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.625rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-3);
 }
 
 .day-hike-panel__body {

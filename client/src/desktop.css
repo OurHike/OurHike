@@ -203,12 +203,26 @@
      name and can be long ("Neels Gap → Dicks Creek Gap"), and a 13rem column
      has no room to put it next to anything. `text-align: left` because a
      button centres its label and this column does not. */
+  /* Separated from the mode block above by the same rule that separates that
+     block from the tabs - see TabBar's note on why a shared column was not
+     enough on its own. */
+  .tab-bar__hike-block {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 8px);
+    padding: var(--space-3, 12px) var(--space-4, 16px);
+    border-top: 1px solid var(--border-chrome);
+  }
+
   .tab-bar__hike {
     display: block;
     width: 100%;
     padding: var(--space-2, 8px) 14px;
     border: 1px solid var(--border-chrome);
-    border-radius: var(--radius-m, 8px);
+    /* Squarer than the mode segments' pills, deliberately: two controls in
+       one narrow column that differ only in their label are two controls a
+       hiker has to read to tell apart. */
+    border-radius: var(--radius-s, 4px);
     background: none;
     color: var(--fg-chrome-1);
     font: inherit;

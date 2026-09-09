@@ -99,6 +99,24 @@ export function TabBar({ active, onSelect, modeSwitch, hikeSwitch }: TabBarProps
             Today I’m
           </p>
           {modeSwitch}
+        </div>
+      )}
+
+      {/* ITS OWN BLOCK, WITH ITS OWN EYEBROW, and the first attempt is why.
+          Dropped straight in under the mode segments it read as a FOURTH
+          segment - same column, same width, same rounded outline - which is
+          the exact confusion the slot was split to avoid, arrived at anyway
+          because splitting the prop did nothing about the picture. The rule
+          above it and the eyebrow are what make it a different question.
+
+          Same aria-hidden reason as the mode block's: the control inside
+          names itself, and a visible label plus an accessible one announces
+          it twice. */}
+      {hikeSwitch !== undefined && (
+        <div className="tab-bar__hike-block">
+          <p className="tab-bar__mode-label" aria-hidden="true">
+            On the hike
+          </p>
           {hikeSwitch}
         </div>
       )}

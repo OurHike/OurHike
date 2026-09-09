@@ -11,6 +11,13 @@
 // full-screen flows too: "having them full screen makes it hard for me to
 // remember where I am."
 //
+// SINCE #1344 IT IS ALSO THE SHOT FOR THE SWITCH BEING EVERYWHERE. The
+// sidebar's "On the hike" block is on all four screens by construction, and
+// it sits under its own rule with its own eyebrow for a reason the first
+// attempt earned: dropped straight under the mode segments it read as a
+// FOURTH mode, which is what splitting the prop was supposed to prevent and
+// did not, because a prop split changes no pixels.
+//
 // WHAT TO LOOK FOR: the sidebar and the map are still there, dimmed by the
 // scrim, on all four sides of the window. That is the whole change. The
 // phone's own shapes are unmoved and long-hike-pick.mjs still photographs
@@ -20,7 +27,7 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 
 export const caption = 'The long hike on a desktop — a window, not a takeover (#1329)'
 export const alt =
-  'A centred dialog headed "Which hike are you on?" floating over a dimmed wide browser window, with the OurHike sidebar down the left and the trail map behind it still visible on every side'
+  'A centred dialog headed "Which hike are you on?" floating over a dimmed wide browser window, with the OurHike sidebar down the left \u2014 carrying the tabs, a "Today I\u2019m" block of three mode pills, and under its own rule an "On the hike" block naming Springer to Katahdin \u2014 and the Plan tab behind the dialog still visible on every side'
 
 // The wide layout, which is the entire subject.
 export const desktop = true

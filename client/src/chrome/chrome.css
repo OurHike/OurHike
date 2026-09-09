@@ -347,6 +347,49 @@
   display: flex;
   flex: 1;
 }
+/* The mode read-out above the tabs (#1373, R11): a slim sunken row saying
+   which of the three modes you are in, on every phone screen. The bar itself
+   is a column now so the row can sit above the tabs; the phone's flex-row of
+   tabs is unchanged inside .tab-bar__tabs, and the desktop sidebar (which
+   never receives `mode`) is untouched. */
+.tab-bar {
+  flex-wrap: wrap;
+}
+.tab-bar__readout {
+  flex: 1 0 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border-1);
+  background: var(--bg-sunken);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  box-sizing: border-box;
+}
+.tab-bar__readout--opens {
+  cursor: pointer;
+}
+.tab-bar__mode-icon {
+  color: var(--brand-primary);
+}
+.tab-bar__mode-caret {
+  color: var(--fg-2);
+}
+.tab-bar__mode-hint {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+}
 
 /* On a phone: the icon alone, at the left end of the bar - which is the
  * bottom-left corner of the page, and the only corner here that is not either

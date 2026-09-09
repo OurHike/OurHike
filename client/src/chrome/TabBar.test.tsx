@@ -138,3 +138,40 @@ describe('the mode slot', () => {
     ).toBeNull()
   })
 })
+
+// The mode read-out (#1373, review rule R11): every phone screen carries the
+// four tabs and, above them, which of the three modes you are in - a read-out
+// that opens the one control, never a second switch.
+describe('the mode read-out', () => {
+  it('renders nothing extra when no mode is handed over, which is first run and the desktop', () => {
+    const { container } = render(<TabBar {...PROPS} />)
+
+    expect(container.querySelector('.tab-bar__readout')).toBeNull()
+  })
+
+  it('reads the mode out as one button that opens the one switch', async () => {
+    const onOpenMode = vi.fn()
+    const user = userEvent.setup()
+    render(<TabBar {...PROPS} mode="long" onOpenMode={onOpenMode} />)
+
+    await user.click(screen.getByRole('button', { name: /today i’m long hike/i }))
+
+    expect(onOpenMode).toHaveBeenCalledTimes(1)
+    // A read-out, never a second switch: no radiogroup joins the bar.
+    expect(screen.queryByRole('radiogroup')).toBeNull()
+  })
+
+  it('reads as text when nothing opens the switch', () => {
+    render(<TabBar {...PROPS} mode="volunteer" />)
+
+    expect(screen.queryByRole('button', { name: /switch mode/i })).toBeNull()
+    expect(screen.getByText('Volunteer')).toHaveClass('tab-bar__mode-word')
+  })
+
+  it('keeps the read-out out of the tablist', () => {
+    render(<TabBar {...PROPS} mode="day" onOpenMode={vi.fn()} />)
+
+    expect(screen.getByRole('tablist').querySelector('.tab-bar__readout')).toBeNull()
+    expect(screen.getAllByRole('tab')).toHaveLength(TABS.length)
+  })
+})

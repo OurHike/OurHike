@@ -36,6 +36,8 @@
 
 import type { ReactNode } from 'react'
 import { TABS, type TabId } from './tabs'
+import { HIKER_MODE_LABELS, type HikerMode } from '../lib/hikerMode'
+import { ModeIcon } from './ModeIcon'
 import logoIcon from '../design-system/assets/logo-icon.svg'
 
 export interface TabBarProps {
@@ -67,11 +69,68 @@ export interface TabBarProps {
    * header instead.
    */
   hikeSwitch?: ReactNode
+  /**
+   * Which of the three modes the hiker is in, read out in a slim row above
+   * the tabs (#1373, review rule R11): "Four tabs and the mode, on every
+   * screen … a read-out that opens the one control, never a second switch."
+   *
+   * A READ-OUT, NOT A SWITCH. The phone's bar is a strip of thumb targets and
+   * App.test.tsx pins that no radiogroup lives in it; this row is one button
+   * that opens the one ModeSwitch (on Today's header) rather than a copy of
+   * it. The shell passes it on the phone only - the desktop sidebar carries
+   * the switch itself through `modeSwitch`, and a read-out under a switch
+   * would answer the same question twice. First run passes nothing: the
+   * shell does not exist yet.
+   */
+  mode?: HikerMode
+  /** Open the one mode control. Without it the row still reads, as text. */
+  onOpenMode?: () => void
 }
 
-export function TabBar({ active, onSelect, modeSwitch, hikeSwitch }: TabBarProps) {
+export function TabBar({
+  active,
+  onSelect,
+  modeSwitch,
+  hikeSwitch,
+  mode,
+  onOpenMode,
+}: TabBarProps) {
+  const readout =
+    mode === undefined ? null : (
+      <>
+        <ModeIcon mode={mode} size={18} className="tab-bar__mode-icon" />
+        <span className="tab-bar__mode-word">{HIKER_MODE_LABELS[mode]}</span>
+        {onOpenMode !== undefined && (
+          <>
+            <span className="tab-bar__mode-caret" aria-hidden="true">
+              ▾
+            </span>
+            <span className="tab-bar__mode-hint" aria-hidden="true">
+              tap to switch
+            </span>
+          </>
+        )}
+      </>
+    )
+
   return (
     <nav className="tab-bar" aria-label="Main">
+      {readout !== null &&
+        (onOpenMode === undefined ? (
+          <div className="tab-bar__readout">
+            <span className="visually-hidden">Today I’m </span>
+            {readout}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="tab-bar__readout tab-bar__readout--opens"
+            onClick={onOpenMode}
+            aria-label={`Today I’m ${HIKER_MODE_LABELS[mode!].toLowerCase()}. Switch mode`}
+          >
+            {readout}
+          </button>
+        ))}
       <div className="tab-bar__tabs" role="tablist">
         {TABS.map((tab) => (
           <button

@@ -34,6 +34,18 @@ export const HIKER_MODE_VALUES = ['day', 'long', 'volunteer'] as const
 export type HikerMode = (typeof HIKER_MODE_VALUES)[number]
 
 /**
+ * The three words, in one home (#1373). The switch, the read-out above the
+ * phone's tab bar and the sidebar's block all print them, and three copies
+ * of a label is how one of them quietly reads "Thru-hike" a release after
+ * the others stopped (#1127).
+ */
+export const HIKER_MODE_LABELS: Record<HikerMode, string> = {
+  day: 'Day hike',
+  long: 'Long hike',
+  volunteer: 'Volunteer',
+}
+
+/**
  * 'day' rather than 'long', because it assumes the least. A day hike is the
  * mode whose ranking needs no plan, no section and no history to be useful,
  * which makes it the honest answer for a phone that has never said otherwise.

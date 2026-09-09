@@ -7,6 +7,7 @@
 // mocking config there would quietly change the subject of every test in it.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { RELEASE_MANIFEST_PATH } from './lib/dataRelease'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { get } from 'idb-keyval'
 import { MockMap } from './test/mocks/maplibre-gl'
@@ -32,13 +33,21 @@ vi.mock('./map/protocol', () => ({
 // Only the base URL and the two helpers keyed off it. Spreading the real
 // module keeps POI_TYPES and the file-name constants exactly as they ship, so
 // this stays a test about a configured build rather than about a fake one.
-vi.mock('./lib/config', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./lib/config')>()),
-  DATA_BASE_URL: 'https://data.example',
-  DATA_CONFIGURED: true,
-  dataUrl: (key: string) => `https://data.example/${key}`,
-  archiveUrl: () => 'https://data.example/corridor.pmtiles',
-}))
+vi.mock('./lib/config', async (importOriginal) => {
+  // The release layout is the real one, not a flattened stand-in: a mock
+  // that put artifacts at the root while the module under test read the
+  // manifest from releases/<pin>/ would agree with neither the bucket nor
+  // itself. Only the base is substituted.
+  const { releasePath, RELEASE_MANIFEST_PATH } = await import('./lib/dataRelease')
+  return {
+    ...(await importOriginal<typeof import('./lib/config')>()),
+    DATA_BASE_URL: 'https://data.example',
+    DATA_CONFIGURED: true,
+    dataUrl: (key: string) => `https://data.example/${releasePath(key)}`,
+    releaseManifestUrl: () => `https://data.example/${RELEASE_MANIFEST_PATH}`,
+    archiveUrl: () => 'https://data.example/corridor.pmtiles',
+  }
+})
 
 import { RELEASE_KEY } from './lib/dataRefresh'
 
@@ -510,7 +519,7 @@ describe('a refused trail-data download, told apart by type (#238)', () => {
     const user = userEvent.setup()
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.endsWith('latest.json')) {
+      if (url.endsWith(RELEASE_MANIFEST_PATH)) {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -562,11 +571,12 @@ describe('a phone holding a superseded release (#919)', () => {
     store.set(RELEASE_KEY, { version, hashes, at: 1_700_000_000_000 })
   }
 
-  /** `latest.json` as the bucket serves it, and every artifact fetch after it. */
+  /** The release manifest as the bucket serves it, and every artifact fetch
+   *  after it. */
   function publishing(manifest: unknown) {
     vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
       const url = String(input)
-      const body = url.endsWith('/latest.json') ? JSON.stringify(manifest) : TRAILS
+      const body = url.endsWith(RELEASE_MANIFEST_PATH) ? JSON.stringify(manifest) : TRAILS
       return Promise.resolve({
         ok: true,
         status: 200,
@@ -631,7 +641,7 @@ describe('a phone holding a superseded release (#919)', () => {
 
     await renderApp()
     await waitFor(() =>
-      expect(requested().some((url) => url.endsWith('/latest.json'))).toBe(true),
+      expect(requested().some((url) => url.endsWith(RELEASE_MANIFEST_PATH))).toBe(true),
     )
 
     expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument()

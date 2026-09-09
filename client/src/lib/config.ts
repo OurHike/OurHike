@@ -6,9 +6,17 @@
 // pipeline/publish.py's output. Set VITE_DATA_BASE_URL at build time; see
 // client/README.md.
 //
-// Keys are flat at the bucket root and must match publish.py's artifact
-// names exactly - a mismatch here is a 404 on a mountain, which is why the
-// background tier names are spelled the same way in both places.
+// Keys must match publish.py's artifact names exactly - a mismatch here is a
+// 404 on a mountain, which is why the background tier names are spelled the
+// same way in both places.
+//
+// The keys are what publish.py writes; WHERE they are fetched from is
+// dataRelease.ts's (DATA_RELEASES.md section 4). Since #1333 a release
+// artifact resolves under `releases/<DATA_RELEASE>/`, immutable and pinned by
+// a committed constant, while `conditions/`, `photos/` and `latest.json` stay
+// at the root - safety data has to be rewritable, photos are already
+// content-addressed, and the pointer cannot version itself. `dataUrl` below
+// applies that split; nothing calling it needs to know.
 //
 // EVERY `*_KEY` BELOW CARRIES AN `@release` LINE saying `required` or
 // `optional`, and `expected_client_keys` (pipeline/verify_release.py) RAISES
@@ -25,6 +33,7 @@
 // run. Name that reason on the line.
 
 import type { DetailLevel } from './downloadDetail'
+import { RELEASE_MANIFEST_PATH, releasePath } from './dataRelease'
 
 const RAW_BASE: string = import.meta.env.VITE_DATA_BASE_URL ?? ''
 
@@ -35,7 +44,13 @@ export const DATA_BASE_URL = RAW_BASE.replace(/\/+$/, '')
 export const DATA_CONFIGURED = DATA_BASE_URL !== ''
 
 export function dataUrl(key: string): string {
-  return `${DATA_BASE_URL}/${key}`
+  return `${DATA_BASE_URL}/${releasePath(key)}`
+}
+
+/** The manifest for the pinned release - see dataRelease.RELEASE_MANIFEST_PATH
+ *  for why this is not the root `latest.json`. */
+export function releaseManifestUrl(): string {
+  return `${DATA_BASE_URL}/${RELEASE_MANIFEST_PATH}`
 }
 
 /** Mirrors publish.py's BACKGROUND_ARCHIVES. */

@@ -41,10 +41,7 @@
 // verification is a gate on corruption, not a second thing to be offline
 // from.
 
-import { DATA_BASE_URL, dataUrl } from './config'
-
-/** publish.py's MANIFEST_KEY. */
-export const MANIFEST_KEY = 'latest.json'
+import { DATA_BASE_URL, releaseManifestUrl } from './config'
 
 interface DataManifest {
   version?: string
@@ -350,7 +347,7 @@ async function readSnapshot(): Promise<PublishedSnapshot> {
   const controller = new AbortController()
   const deadline = setTimeout(() => controller.abort(), MANIFEST_READ_TIMEOUT_MS)
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal: controller.signal })
+    const response = await fetch(releaseManifestUrl(), { signal: controller.signal })
     if (!response.ok) return NOTHING_READABLE
     return snapshotInto((await response.json()) as DataManifest)
   } catch {
@@ -375,7 +372,7 @@ export async function publishedHashes({
   if (DATA_BASE_URL === '') return NOTHING_PUBLISHED
 
   try {
-    const response = await fetch(dataUrl(MANIFEST_KEY), { signal })
+    const response = await fetch(releaseManifestUrl(), { signal })
     if (!response.ok) return NOTHING_PUBLISHED
     return lookupInto((await response.json()) as DataManifest)
   } catch (error) {

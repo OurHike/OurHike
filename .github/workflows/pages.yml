@@ -632,7 +632,7 @@ jobs:
       issues: write
     steps:
       - name: Open the incident issue, or add this run to it
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           VERSION: ${{ github.ref_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

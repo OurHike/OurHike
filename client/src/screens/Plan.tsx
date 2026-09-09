@@ -70,7 +70,7 @@ import { ElevationChart } from '../chrome/ElevationChart'
 import { DayHikeList } from './DayHikeList'
 import { DaySummary } from './DaySummary'
 import { HikeZoom } from './HikeZoom'
-import { PlanHome, type PlanMode } from './PlanHome'
+import { PlanHome, type PlanRoom } from './PlanHome'
 import { WhatsLeft } from './WhatsLeft'
 import './plan.css'
 
@@ -135,11 +135,17 @@ export interface PlanScreenProps {
   /** The GPS fix, or null - the day-hike list's "nearest me" sort exists
    *  only while this does. */
   gpsAt: LonLat | null
-  /** Which home the tab shows (#1008). Held by the shell rather than here,
-   *  because the map's trailhead door also sets it and this screen unmounts
-   *  on every tab switch. */
-  mode: PlanMode
-  onSwitchMode: (mode: PlanMode) => void
+  /**
+   * Which home the tab shows (#1008), derived from `hikerMode` since #1317
+   * rather than held as a second switch of Plan's own.
+   *
+   * Still passed in rather than read here: this screen unmounts on every tab
+   * switch, and the shell is where the mode lives.
+   */
+  room: PlanRoom
+  /** Open the "add a day hike to this hike" sheet (#1317). Passed straight
+   *  through: the sheet is the shell's, like every other one here. */
+  onAddDayHikeToHike?: () => void
   /** Whether the full day-hike list is open, for the same reason: the map's
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
@@ -230,8 +236,8 @@ export function PlanScreen({
   network,
   onRetryNetwork,
   gpsAt,
-  mode,
-  onSwitchMode,
+  room,
+  onAddDayHikeToHike,
   dayListOpen,
   onDayListOpen,
   draftKind,
@@ -410,10 +416,10 @@ export function PlanScreen({
       )
     }
     return (
-      <div className={mode === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
+      <div className={room === 'day' ? 'plan plan--day' : 'plan plan--trips'}>
         <PlanHome
-          mode={mode}
-          onSwitchMode={onSwitchMode}
+          room={room}
+          onAddDayHikeToHike={onAddDayHikeToHike}
           trips={trips}
           hikes={hikes}
           dayHikes={dayHikes}

@@ -58,8 +58,12 @@ import {
   DownloadsDialog,
   EmailSignIn,
   FindHike,
+  FinishedHike,
   GroupScreen,
+  HikeDay,
+  HikeFinish,
   HikePicker,
+  HikeSetup,
   IdentitySetup,
   InstallPrompt,
   MapScreen,
@@ -70,6 +74,7 @@ import {
   preloadScreens,
   Registry,
   ReportForm,
+  ShareHike,
   SignInPrompt,
   TripList,
   Volunteer,
@@ -208,7 +213,10 @@ import {
 } from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
-import { ribbonWindow } from './lib/elevationProfile'
+import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
+import { ascentBetween } from './lib/todayJournal'
+import { loadLastOnTrail, noteOnTrail } from './lib/lastOnTrail'
+import { dayHikeOnTrail, overlaps } from './lib/dayHikeOnTrail'
 import { ribbonLanes, ribbonView, type TodaysWalk } from './lib/ribbonView'
 import { walkProfile } from './lib/walkProfile'
 import { viewportMiles } from './lib/viewportMiles'
@@ -220,7 +228,10 @@ import {
 } from './lib/route'
 import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
-import { type RouteStopChoice } from './chrome/RouteStopPicker'
+import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
+import { mileMarker, stopLabel } from './lib/planDisplay'
+import { longDate } from './lib/hikeText'
+import { formatDistance, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   currentDayIndex,
@@ -236,6 +247,13 @@ import {
   EMPTY_STORE,
   addGroup,
   addHike,
+  assignTrip,
+  finishHike,
+  removeHike,
+  pauseHike,
+  resumeHike,
+  setActiveHike,
+  turnHikeAround,
   addToGroup,
   addTrip,
   loadTrips,
@@ -248,9 +266,24 @@ import {
   renameTrip,
   saveTrips,
   updateTrip,
+  type Trip,
   type TripStore,
 } from './lib/trips'
-import { hikeFromTrips, hikeOfTrip, recordedPlan } from './lib/hikes'
+import {
+  DEFAULT_TRAIL_ID,
+  hikeBounds,
+  hikeEnds,
+  hikeFigures,
+  hikeLegs,
+  MIN_GAP_MI,
+  hikeFromTrips,
+  hikeOfTrip,
+  recordedPlan,
+  type Hike,
+} from './lib/hikes'
+import { hikeFiguresLine, setupRefusal } from './lib/hikeText'
+import { dayNumber, endsTheHike, hikeDayToday, type HikeDayAt } from './lib/hikeToday'
+import { datedDaysAhead, pausedDays, resumeOffer } from './lib/hikeResume'
 import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
@@ -315,7 +348,12 @@ import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
-import type { PlanMode } from './screens/PlanHome'
+import { planRoomFor } from './screens/PlanHome'
+import { HikePickSheet } from './chrome/HikePickSheet'
+import { StepAwaySheet } from './chrome/StepAwaySheet'
+import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
+import { hikeShareText } from './lib/hikeShareText'
+import type { LongHikeToday } from './screens/Today'
 import type { DayHikeDrawing } from './map/dayHikeLayers'
 import { startTracking, trackDirection, type DirectionTracker } from './lib/hikeDirection'
 import { beginContribution, stepAfterSaving } from './lib/contributionFlow'
@@ -789,14 +827,10 @@ function App() {
    * junction instead. Keyed to the turn, it closes itself on both.
    */
   const [turnOpenAt, setTurnOpenAt] = useState<number | null>(null)
-  /**
-   * Which home the Plan tab shows (#1008): the day-hike room or the trips
-   * room. Null until the hiker (or the trailhead door) picks one, so the
-   * default can be derived from stores that load after mount - a useState
-   * initialiser here would run against empty stores and freeze the wrong
-   * answer.
-   */
-  const [planMode, setPlanMode] = useState<PlanMode | null>(null)
+  // Which home the Plan tab shows was `planMode` until #1317, a switch of
+  // Plan's own that could disagree with the mode the hiker had already
+  // chosen. It is derived from `hikerMode` now - see `planRoomFor` and
+  // screens/PlanHome.tsx's header.
   /**
    * Whether the Plan tab shows the full day-hike list (frame D7).
    *
@@ -837,8 +871,45 @@ function App() {
    * store, which is what keeps this callback stable and lets the doors below
    * list it as a dependency.
    */
+  /**
+   * Which long-hike sheet is open, or null (#1317).
+   *
+   * `'pick'` is "which long hike?", opened by tapping Long hike with nothing
+   * active. `'setup'` is the full-screen set-up over a draft. Held here
+   * rather than inside a screen because the mode switch that opens the first
+   * one lives in three places and none of them is the Plan tab.
+   */
+  const [hikeSheet, setHikeSheet] = useState<'pick' | 'setup' | null>(null)
+  /** The hike being set up, before it is kept. Held so a trip into the stop
+   *  picker and back does not lose what has been entered. */
+  const [hikeDraft, setHikeDraft] = useState<Hike | null>(null)
+
+  /**
+   * Write the app's mode (#1317).
+   *
+   * Separate from the SWITCH's handler on purpose: tapping the Long hike
+   * segment with no active hike opens the pick sheet, and that belongs to
+   * the tap rather than to every internal mode change. Opening the route
+   * builder puts the app in the long-hike state without asking which hike,
+   * because the hiker did not ask to be asked - they asked to build a route.
+   *
+   * Declared here rather than beside `handleChangeMode` below because
+   * `enterTripsRoom` lists it as a dependency, and a dependency array is
+   * evaluated where it is written.
+   */
+  const applyHikerMode = useCallback((mode: HikerMode) => {
+    // #1301's guard, and it belongs HERE rather than on the tap handler
+    // because since #1317 every mode write funnels through this function -
+    // the switch, entering the sections room, opening the day-hike builder,
+    // and cancelling the pick sheet. On the handler alone, `enterTripsRoom`
+    // would write 'long' without setting it, and the stored record landing a
+    // moment later would undo a change the hiker watched happen.
+    mirroredTouched.current = true
+    setHikerMode(mode)
+    void saveHikerMode(mode)
+  }, [])
   const enterTripsRoom = useCallback(() => {
-    setPlanMode('trips')
+    applyHikerMode('long')
     setDayListOpen(false)
     void loadDayHikes().then((store) => {
       if (store.openId === null) return
@@ -846,7 +917,7 @@ function App() {
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
-  }, [])
+  }, [applyHikerMode])
   /**
    * The trailhead door (frame D8), put away - by the hikes it was offering
    * rather than outright.
@@ -1274,14 +1345,39 @@ function App() {
     writeLaunchMirror(preferences, hikerMode)
   }, [preferencesLoaded, preferences.onboarding_completed, preferences.theme, hikerMode])
 
-  // The mode is saved as it changes - there is no form to submit, and a mode
-  // that survived the session but not the relaunch would make the switch a
-  // label rather than a setting.
-  const handleChangeMode = useCallback((mode: HikerMode) => {
-    mirroredTouched.current = true
-    setHikerMode(mode)
-    void saveHikerMode(mode)
-  }, [])
+  // The mode is saved as it changes (see `applyHikerMode` above) - there is
+  // no form to submit, and a mode that survived the session but not the
+  // relaunch would make the switch a label rather than a setting.
+  /**
+   * What a tap on the mode switch does (#1317).
+   *
+   * Entering the long-hike state is an ARRIVAL in the sections room, not
+   * just a change of word, so it lands the same way every other door into
+   * that room does - `enterTripsRoom` closes the day-hike card and the day
+   * list. Without that, a day-hike surface floats over the sections room,
+   * which is precisely the mode confusion #1008 split the two rooms to end.
+   * The other two modes need none of it: the day room's list and card are
+   * that room's own furniture.
+   */
+  const handleChangeMode = useCallback(
+    (mode: HikerMode) => {
+      if (mode === 'long') {
+        enterTripsRoom()
+        // Long hike means "the hike I'm on", and with nothing active there
+        // is no such thing to mean - so the sheet asks. The mode is written
+        // first and the switch draws it pending, so what the hiker tapped is
+        // on screen while they answer and the revert on cancel is not a
+        // surprise (#1317's one deliberate exception to an instant mode).
+        if (tripStore.activeHikeId === null) setHikeSheet('pick')
+        return
+      }
+      // Day hike or Volunteer keeps `activeHikeId`: the hike is not
+      // abandoned, just not leading.
+      setHikeSheet(null)
+      applyHikerMode(mode)
+    },
+    [applyHikerMode, enterTripsRoom, tripStore.activeHikeId],
+  )
 
   // Nothing waits on this. A hike changes what the banners can say and
   // nothing about whether the app renders, so unlike preferences it gets no
@@ -2894,6 +2990,507 @@ function App() {
     })
   }, [])
 
+  /** Close the pick sheet without picking - the mode goes back to Day hike,
+   *  because a long-hike state with no hike in it is every screen varying to
+   *  an empty answer. */
+  const handleCancelHikePick = useCallback(() => {
+    setHikeSheet(null)
+    setHikeDraft(null)
+    applyHikerMode('day')
+  }, [applyHikerMode])
+
+  const handlePickHike = useCallback(
+    (hikeId: string) => {
+      applyTripStore((store) => setActiveHike(store, hikeId))
+      setHikeSheet(null)
+      // A finished hike opens its RECORD rather than its day: there is no
+      // next day on it, and landing a hiker on a Today screen with nothing
+      // planned would be the app pretending the walk is still going.
+      const picked = tripStore.hikes.find((hike) => hike.id === hikeId)
+      if (picked?.status === 'finished') setFinishScreen('record')
+    },
+    [applyTripStore, tripStore.hikes],
+  )
+
+  /** Start a new one. The draft is two unnamed points rather than none, so
+   *  the list has the shape of the thing being built from the first frame -
+   *  a hiker looking at an empty box has to guess what goes in it. */
+  /** "Add a stretch you remember" - the recorded-walk flow (#789), which
+   *  already exists behind the planning sheet's third door. Setting up is
+   *  left rather than layered under it: two full screens over each other is
+   *  a back button nobody can predict. */
+  const handleRecordStretchFromSetup = useCallback(() => {
+    setHikeSheet(null)
+    setPlanKindOpen(true)
+  }, [])
+
+  const handleNewHike = useCallback(() => {
+    setHikeDraft({
+      id: crypto.randomUUID(),
+      name: 'A new long hike',
+      type: 'section',
+      trailId: DEFAULT_TRAIL_ID,
+      points: [],
+      status: 'planning',
+      tripIds: [],
+    })
+    setHikeSheet('setup')
+  }, [])
+
+  /**
+   * Editing the draft's points.
+   *
+   * The stop picker this opens is the route builder's own
+   * (`chrome/RouteStopPicker.tsx`), which is what the handoff asks for and
+   * what stops a second stop editor existing: a point on a hike and a stop
+   * on a route are the same act - naming somewhere on the centerline - and
+   * two pickers would drift into naming it two different ways.
+   *
+   * Held here rather than inside the screen because the picker is a sheet
+   * the shell owns, and a screen that opened it would have to own the sheet
+   * too.
+   */
+  const [hikePointAt, setHikePointAt] = useState<number | null>(null)
+
+  const handleEditHikePoint = useCallback((index: number) => {
+    setHikePointAt(index)
+  }, [])
+
+  /**
+   * Where the picker measures from, and which way.
+   *
+   * Appending measures from the last point; editing one measures from the
+   * point before it. Null at the very first point, where there is nothing to
+   * measure from yet and the distance door says so itself.
+   *
+   * The direction is the LAST LEG's, not the hike's - the same rule the list
+   * prints, applied to the question "which way is a day's walk from here".
+   * A hike that has turned around is heading the other way now, and offering
+   * distances up-trail after a turn would be measuring from the wrong end.
+   */
+  const previousHikePoint = useMemo(() => {
+    if (hikeDraft === null || hikePointAt === null) return null
+    const at = hikePointAt < 0 ? hikeDraft.points.length : hikePointAt
+    const before = hikeDraft.points[at - 1]
+    if (before === undefined) return null
+    return { mile: before.mile, label: stopLabel(before) }
+  }, [hikeDraft, hikePointAt])
+
+  const hikePointSouth = useMemo(() => {
+    if (hikeDraft === null || hikePointAt === null) return false
+    const at = hikePointAt < 0 ? hikeDraft.points.length : hikePointAt
+    const before = hikeDraft.points[at - 1]
+    const twoBack = hikeDraft.points[at - 2]
+    if (before === undefined || twoBack === undefined) return false
+    return before.mile < twoBack.mile
+  }, [hikeDraft, hikePointAt])
+
+  const handleAddHikePoint = useCallback(() => {
+    setHikePointAt(-1)
+  }, [])
+
+  /** Take the last point back, one at a time - `RouteStopsPanel`'s undo, on
+   *  a shorter list. */
+  const handleUndoHikePoint = useCallback(() => {
+    setHikeDraft((draft) =>
+      draft === null || draft.points.length === 0
+        ? draft
+        : { ...draft, points: draft.points.slice(0, -1) },
+    )
+  }, [])
+
+  /**
+   * A point chosen in the picker, written into the draft.
+   *
+   * `-1` appends; anything else replaces in place. The reference travels
+   * with it - `poiId` and the name as resolved - so the point re-resolves
+   * later like every other one rather than freezing today's mile.
+   */
+  const handleHikePointChosen = useCallback(
+    (point: { mile: number; poiId?: string; name?: string }) => {
+      setHikeDraft((draft) => {
+        if (draft === null) return draft
+        const next = {
+          mile: point.mile,
+          ...(point.poiId === undefined ? {} : { poiId: point.poiId }),
+          ...(point.name === undefined ? {} : { name: point.name }),
+        }
+        const at = hikePointAt
+        const points =
+          at === null || at < 0
+            ? [...draft.points, next]
+            : draft.points.map((existing, index) =>
+                index === at
+                  ? {
+                      ...next,
+                      ...(existing.date === undefined ? {} : { date: existing.date }),
+                    }
+                  : existing,
+              )
+        return { ...draft, points }
+      })
+      setHikePointAt(null)
+    },
+    [hikePointAt],
+  )
+
+  /** The long hike the app is in, or null. */
+  const activeHike = useMemo(
+    () => tripStore.hikes.find((hike) => hike.id === tripStore.activeHikeId) ?? null,
+    [tripStore.hikes, tripStore.activeHikeId],
+  )
+
+  /** Whether the day screen is open over the hike (#1317). */
+  const [hikeDayOpen, setHikeDayOpen] = useState(false)
+
+  /**
+   * The last day this phone had a fix on the trail (#1317), for the resume
+   * offer's "noticed" trigger.
+   *
+   * Read once at mount and kept in state, then written forward as fixes
+   * land - `noteOnTrail` writes only when the day changes, so a hiker
+   * walking for nine hours pays one IndexedDB write rather than thousands.
+   */
+  const [lastCorridorDay, setLastCorridorDay] = useState<string | null>(null)
+
+  useEffect(() => {
+    let live = true
+    void loadLastOnTrail().then((day) => {
+      if (live) setLastCorridorDay(day)
+    })
+    return () => {
+      live = false
+    }
+  }, [])
+
+  useEffect(() => {
+    // A mile on the trail is the whole test: this records THAT the phone was
+    // on the trail, never where, which is the minimum the offer needs.
+    if (fixMile === null || fixMile === undefined) return
+    const today = localDay(now)
+    if (lastCorridorDay === today) return
+    void noteOnTrail(today).then(setLastCorridorDay)
+  }, [fixMile, now, lastCorridorDay])
+
+  /**
+   * The day hikes offerable to the active hike, with the ones that are not
+   * carried WITH THEIR REASON rather than hidden (#1317).
+   *
+   * Hiding an ineligible walk would leave a hiker hunting for something they
+   * can see on the day-hike list one screen away; a dead button would teach
+   * them the app is broken. So each says which it is - chrome/LineSheet.ts's
+   * rule, applied here.
+   */
+  const dayHikeCandidates = useMemo((): DayHikeCandidate[] => {
+    if (activeHike === null) return []
+    const bounds = hikeBounds(activeHike, pois)
+    const already = new Set(activeHike.tripIds)
+
+    return dayHikeStore.hikes
+      .filter((dayHike) => !already.has(dayHike.id))
+      .map((dayHike) => {
+        const stretch = trailIndex === null ? null : dayHikeOnTrail(dayHike, trailIndex)
+        const eligible = stretch !== null && overlaps(stretch, bounds)
+        return {
+          id: dayHike.id,
+          name: dayHike.name,
+          eligible,
+          meta: eligible
+            ? [
+                formatDistance(dayHike.figures.miles, units),
+                dayHike.date === null ? null : `walked ${dayHike.date}`,
+                `mi ${mileMarker(stretch.fromMile)}–${mileMarker(stretch.toMile)} on this trail`,
+              ]
+                .filter((part) => part !== null)
+                .join(' · ')
+            : trailIndex === null
+              ? 'No trail data on this phone yet, so nothing can be placed on the trail.'
+              : 'None of this walk is on this hike’s trail.',
+        }
+      })
+  }, [activeHike, pois, dayHikeStore.hikes, trailIndex, units])
+
+  /** Put a day hike in the hike. `assignTrip` refuses an id the store does
+   *  not hold, so a walk that vanished between the sheet opening and the tap
+   *  changes nothing rather than creating an empty section. */
+  const handleAddDayHikeToHike = useCallback(
+    (id: string) => {
+      if (activeHike === null) return
+      applyTripStore((store) => assignTrip(store, activeHike.id, id))
+      setAddDayHikeOpen(false)
+    },
+    [activeHike, applyTripStore],
+  )
+
+  /**
+   * Which of the finish screens is open (#1317).
+   *
+   * `'finish'` is the celebratory one, offered rather than declared - a
+   * hiker at the terminus with no fix must still be able to say so
+   * themselves, so nothing here opens it without a tap. `'record'` is the
+   * hike as it lives in Plan afterwards, and `'share'` is over either.
+   */
+  const [finishScreen, setFinishScreen] = useState<'finish' | 'record' | 'share' | null>(
+    null,
+  )
+
+  /**
+   * The facts the finish screen, the record and the share card all read.
+   *
+   * ONE derivation for three surfaces, deliberately: they print the same
+   * hike, and three separate readings of the store is how the card a hiker
+   * sends somebody comes to disagree with the screen they sent it from.
+   */
+  const finishedFacts = useMemo(() => {
+    if (activeHike === null) return null
+    const figures = hikeFigures(activeHike, tripStore.trips, pois)
+    const mine = activeHike.tripIds
+      .map((id) => tripStore.trips.find((trip) => trip.id === id))
+      .filter((trip) => trip !== undefined)
+    const dates = mine
+      .flatMap((trip) => trip.plan.days.map((day) => day.date))
+      .filter((date) => date !== undefined)
+      .sort()
+
+    return {
+      hike: activeHike,
+      figures,
+      sections: mine,
+      startedOn: dates[0] ?? null,
+      // The hike's own finish date where it has one; otherwise the last day
+      // anything in it was dated. Never today's date as a fallback - that
+      // would put a date on a finish nobody recorded.
+      finishedOn: activeHike.finishedOn ?? dates[dates.length - 1] ?? null,
+      directions: hikeLegs(activeHike, pois).map((leg) => leg.direction),
+    }
+  }, [activeHike, tripStore.trips, pois])
+
+  /** The step-away sheet, and whether its one destructive door is armed. */
+  const [stepAwayOpen, setStepAwayOpen] = useState(false)
+  const [confirmingForget, setConfirmingForget] = useState(false)
+  /** Hikes whose resume offer this session has already made. Per hike, not
+   *  global: two hikes are two different absences (lib/hikeResume.ts). */
+  const [resumeDismissed, setResumeDismissed] = useState<readonly string[]>([])
+  const [addDayHikeOpen, setAddDayHikeOpen] = useState(false)
+
+  const closeStepAway = useCallback(() => {
+    setStepAwayOpen(false)
+    // Never leave a half-armed confirm behind for the next time it opens.
+    setConfirmingForget(false)
+  }, [])
+
+  const handlePauseHike = useCallback(() => {
+    if (activeHike === null) return
+    // The mile the hiker stopped at, from position rather than from a
+    // typed number - and the hike's own last point when there is no fix,
+    // which is the honest fallback: it is where they said they were going.
+    const at = fixMile ?? hikeEnds(activeHike, pois).low?.mile ?? 0
+    applyTripStore((store) => pauseHike(store, activeHike.id, at, localDay(now)))
+    closeStepAway()
+  }, [activeHike, fixMile, pois, applyTripStore, now, closeStepAway])
+
+  const handleResumeHike = useCallback(() => {
+    if (activeHike === null) return
+    applyTripStore((store) => resumeHike(store, activeHike.id))
+    setResumeDismissed((seen) => [...seen, activeHike.id])
+  }, [activeHike, applyTripStore])
+
+  /** Leave the plan exactly as it is - which is what doing nothing does too,
+   *  and the point of the button is that a hiker can say so and stop being
+   *  asked rather than having to ignore a card. */
+  const handleLeaveHikePlan = useCallback(() => {
+    if (activeHike === null) return
+    setResumeDismissed((seen) => [...seen, activeHike.id])
+  }, [activeHike])
+
+  const handleTurnHikeAround = useCallback(() => {
+    if (activeHike === null) return
+    const at = fixMile ?? hikeEnds(activeHike, pois).low?.mile ?? 0
+    applyTripStore((store) => turnHikeAround(store, activeHike.id, at))
+    closeStepAway()
+  }, [activeHike, fixMile, pois, applyTripStore, closeStepAway])
+
+  const handleFinishHike = useCallback(() => {
+    if (activeHike === null) return
+    applyTripStore((store) => finishHike(store, activeHike.id, localDay(now)))
+    closeStepAway()
+    // Offered, never declared - and this IS the hiker saying so, so the
+    // screen follows the tap rather than appearing on its own.
+    setFinishScreen('finish')
+  }, [activeHike, applyTripStore, now, closeStepAway])
+
+  /** First press arms, second press forgets. Never a swipe - see
+   *  chrome/StepAwaySheet.tsx. */
+  const handleForgetHike = useCallback(() => {
+    if (activeHike === null) return
+    if (!confirmingForget) {
+      setConfirmingForget(true)
+      return
+    }
+    applyTripStore((store) => removeHike(store, activeHike.id))
+    closeStepAway()
+    // The hike is gone, so the long-hike state has nothing to mean.
+    applyHikerMode('day')
+  }, [activeHike, confirmingForget, applyTripStore, closeStepAway, applyHikerMode])
+
+  /**
+   * What Today says about the hike leading it.
+   *
+   * Built here, once, so the Today card and the day screen cannot come to
+   * describe the same day differently - the alert sentences' own rule, at a
+   * different grain.
+   */
+  const longHikeToday = useMemo((): LongHikeToday | null => {
+    if (activeHike === null || hikerMode !== 'long') return null
+    const today = localDay(now)
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, today)
+    const ends = hikeEnds(activeHike, pois)
+
+    const offer = resumeOffer(activeHike, lastCorridorDay, today, resumeDismissed)
+    const paused = pausedDays(activeHike, today)
+
+    return {
+      name: activeHike.name,
+      figures: hikeFiguresLine(activeHike, tripStore.trips, pois, units),
+      dayNumber: dayNumber(tripStore.trips, activeHike.tripIds, today),
+      awayLine:
+        activeHike.status !== 'paused'
+          ? null
+          : [
+              paused === null ? 'paused' : `paused ${paused} days`,
+              activeHike.pausedAtMile === undefined
+                ? null
+                : `last at mi ${mileMarker(activeHike.pausedAtMile)}`,
+            ]
+              .filter((part) => part !== null)
+              .join(' · '),
+      resume:
+        offer === null
+          ? null
+          : {
+              dated: datedDaysAhead(
+                activeHike.tripIds
+                  .map((id) => tripStore.trips.find((trip) => trip.id === id))
+                  .filter((trip) => trip !== undefined)
+                  .map((trip) => trip.plan),
+                today,
+              ),
+              // Empty until the closure and staleness feeds are scoped to
+              // this hike's stretch, which is its own piece of work. Empty
+              // renders NO card rather than one saying "nothing happened",
+              // which would be a claim this build cannot make.
+              changes: [],
+              onMoveToToday: handleResumeHike,
+              onLeaveIt: handleLeaveHikePlan,
+              onSetWhereIAm: () => setActiveTab('map'),
+              onSeeOnMap: () => setActiveTab('map'),
+            },
+      day:
+        at === null
+          ? null
+          : {
+              title: `${stopLabel(at.trip.plan.stops[at.index])} → ${stopLabel(
+                at.trip.plan.stops[at.index + 1],
+              )}`,
+              planned: `${formatDistance(
+                Math.abs(
+                  at.trip.plan.stops[at.index + 1].mile -
+                    at.trip.plan.stops[at.index].mile,
+                ),
+                units,
+              )} planned`,
+              // The next resupply is a stop's own flag (`PlanStop.resupply`),
+              // so this is a lookup rather than a guess. Null when none is
+              // marked, and then the card simply does not say - "no
+              // resupply" would be a claim about the trail rather than about
+              // the plan.
+              resupply: nextResupplyLine(at, units),
+              last:
+                ends.high !== null && endsTheHike(at.trip.plan, at.index, ends.high.mile),
+              onOpen: () => setHikeDayOpen(true),
+              onTakeZero: () => setHikeDayOpen(true),
+              onSeeOnMap: () => setActiveTab('map'),
+            },
+    }
+  }, [
+    activeHike,
+    hikerMode,
+    now,
+    tripStore.trips,
+    pois,
+    units,
+    lastCorridorDay,
+    resumeDismissed,
+    handleResumeHike,
+    handleLeaveHikePlan,
+  ])
+
+  /**
+   * Everything the day screen draws, or null when there is no day to draw.
+   *
+   * The profile is sliced from the SAME published samples the map's ribbon
+   * reads (`ribbonSamples`), and the ascent from `ascentBetween`, which
+   * returns null rather than a number when the window runs past what the
+   * download measured. Both matter: a day screen that computed its own climb
+   * would be a second opinion about the same ground, and one that summed a
+   * partial window would print an optimistic figure for a day a hiker is
+   * deciding whether they can finish before dark.
+   */
+  const hikeDayView = useMemo(() => {
+    if (activeHike === null) return null
+    const at = hikeDayToday(tripStore.trips, activeHike.tripIds, localDay(now))
+    if (at === null) return null
+
+    const from = at.trip.plan.stops[at.index]
+    const to = at.trip.plan.stops[at.index + 1]
+    const domain = {
+      startMile: Math.min(from.mile, to.mile),
+      endMile: Math.max(from.mile, to.mile),
+    }
+    const samples = elevation === null ? [] : ribbonSamples(elevation, domain)
+
+    return {
+      hikeName: activeHike.name,
+      title: `${dayLabelFor(at, now)}`,
+      subtitle: `${stopLabel(from)} → ${stopLabel(to)} · ${formatDistance(
+        Math.abs(to.mile - from.mile),
+        units,
+      )}`,
+      samples,
+      domain,
+      ascentFt: ascentBetween(samples, domain.startMile, domain.endMile),
+      currentMile: fixMile ?? null,
+      // The day's own stretch, from the same POI store the map draws - never
+      // a second list, and never redrawn glyphs (map/poiIcons.ts).
+      waypoints: pois
+        .filter(
+          (poi) =>
+            poi.mile !== undefined &&
+            poi.mile >= domain.startMile &&
+            poi.mile <= domain.endMile &&
+            poi.name !== '',
+        )
+        .map((poi) => ({
+          id: poi.id,
+          type: poi.type,
+          name: poi.name,
+          mile: poi.mile as number,
+        }))
+        .sort((a, b) => a.mile - b.mile),
+    }
+  }, [activeHike, tripStore.trips, now, elevation, pois, units, fixMile])
+
+  /** Keep the draft and walk it. Refused where the screen refuses, so the
+   *  button and the store cannot disagree about whether this is a hike. */
+  const handleStartHike = useCallback(() => {
+    if (hikeDraft === null) return
+    if (setupRefusal(hikeDraft, trailIndex?.totalMiles ?? null) !== null) return
+    const started: Hike = { ...hikeDraft, status: 'walking' }
+    applyTripStore((store) => setActiveHike(addHike(store, started), started.id))
+    setHikeDraft(null)
+    setHikeSheet(null)
+  }, [hikeDraft, applyTripStore, trailIndex])
+
   /**
    * Keep a drafted stretch as ground already walked (#789).
    *
@@ -2980,8 +3577,8 @@ function App() {
     // build a route after a visit to the day room and the Plan tab still
     // opens on Day hikes, where the one primary button is "Plan a day hike"
     // - and that button reaches this same sweep, discarding the route.
-    setPlanMode('trips')
-  }, [])
+    applyHikerMode('long')
+  }, [applyHikerMode])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -3177,8 +3774,8 @@ function App() {
     setDayHike((draft) => draft ?? EMPTY_DRAFT)
     // The mirror of `sweepForBuilder`'s last line, and for the same reason:
     // the draft a hiker is building is what the Plan tab is about.
-    setPlanMode('day')
-  }, [routeBuilder])
+    applyHikerMode('day')
+  }, [routeBuilder, applyHikerMode])
 
   /**
    * Whether the map is taking a DRAWN line rather than taps (#983, frame 1k).
@@ -3955,36 +4552,14 @@ function App() {
   const savedDayHikeCardNode = dayHikeReview === null ? dayHikeCardNode : null
 
   /**
-   * Which Plan home to show (#1008): the hiker's own last pick wins; until
-   * they make one, the day side when a day-hike card is open or day hikes
-   * are all they have, the trips side otherwise.
+   * Which Plan home to show (#1008), from the app's mode since #1317.
+   *
+   * The stores-based default this used to compute is gone with it, and that
+   * is the point: guessing which room a hiker wants from what they happen to
+   * have kept was only ever standing in for asking, and the mode control
+   * asks.
    */
-  const effectivePlanMode: PlanMode =
-    planMode ??
-    (cardDayHike !== null
-      ? 'day'
-      : tripStore.trips.length > 0 || tripStore.hikes.length > 0
-        ? 'trips'
-        : dayHikeStore.hikes.length > 0
-          ? 'day'
-          : 'trips')
-
-  /**
-   * The switch chip. Crossing into the trips room is the same arrival as any
-   * other door's, so it lands the same way - see `enterTripsRoom`. Switching
-   * back to the day room needs none of that: the list and the card it would
-   * close are that room's own furniture.
-   */
-  const handleSwitchPlanMode = useCallback(
-    (mode: PlanMode) => {
-      if (mode === 'trips') {
-        enterTripsRoom()
-        return
-      }
-      setPlanMode(mode)
-    },
-    [enterTripsRoom],
-  )
+  const effectivePlanRoom = planRoomFor(hikerMode)
 
   /** The trailhead door's candidates (frame D8): saved starts near the fix,
    *  less the ones this session has already been told no about. */
@@ -4028,12 +4603,12 @@ function App() {
         today={localDay(now)}
         onOpen={(id) => {
           handleOpenDayHike(id)
-          setPlanMode('day')
+          applyHikerMode('day')
           setDayListOpen(false)
           setActiveTab('plan')
         }}
         onAll={() => {
-          setPlanMode('day')
+          applyHikerMode('day')
           setDayListOpen(true)
           setActiveTab('plan')
         }}
@@ -5995,7 +6570,145 @@ function App() {
   // typing or deciding - and while one is up the downloads window is not
   // rendered, which is the behaviour the early returns gave it.
   let flowScreen: ReactNode = null
-  if (authFlow !== null) {
+  if (finishScreen !== null && finishedFacts !== null) {
+    // Sharing renders OVER whichever of the other two opened it, so closing
+    // the share sheet returns to the screen it was opened from rather than
+    // dropping the hiker back into Plan.
+    const under =
+      finishScreen === 'record' ? (
+        <FinishedHike
+          hikeName={finishedFacts.hike.name}
+          header={finishedHeader(finishedFacts, units)}
+          photo={null}
+          sections={finishedSections(finishedFacts, units)}
+          totalSections={finishedFacts.sections.length}
+          someUnpriced={false}
+          units={units}
+          onOpenSection={handleOpenTrip}
+          onAllSections={() => setTripsOpen(true)}
+          onShare={() => setFinishScreen('share')}
+          // Export is FEATURES.md's existing commitment and its own piece of
+          // work. Until it lands the door must not look like it did
+          // something - so it says what it will do and does nothing yet,
+          // which is the honest version of "not built".
+          onExport={() => undefined}
+          onStartAnother={handleNewHike}
+          onBack={() => setFinishScreen(null)}
+        />
+      ) : (
+        <HikeFinish
+          hikeName={finishedFacts.hike.name}
+          sentence={finishedSentence(finishedFacts, units)}
+          finishedOn={finishedFacts.finishedOn ?? localDay(now)}
+          walkedMi={finishedFacts.figures.walkedMi}
+          daysWalking={finishedFacts.figures.daysWalked}
+          climbedFt={null}
+          sections={finishedFacts.figures.tripCount}
+          seasons={null}
+          photos={[]}
+          crews={null}
+          units={units}
+          onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
+          onShare={() => setFinishScreen('share')}
+          onKeepTheRecord={() => setFinishScreen('record')}
+        />
+      )
+
+    flowScreen =
+      finishScreen === 'share' ? (
+        <ShareHike
+          hikeName={finishedFacts.hike.name}
+          cardText={hikeShareText(
+            {
+              name: finishedFacts.hike.name,
+              trailName: TRAILS[finishedFacts.hike.trailId]?.name ?? 'One trail',
+              walkedMi: finishedFacts.figures.walkedMi,
+              toGoMi: finishedFacts.figures.leftMi,
+              startedOn: finishedFacts.startedOn,
+              finishedOn: finishedFacts.finishedOn,
+              daysWalking: finishedFacts.figures.daysWalked,
+              sections: finishedFacts.figures.tripCount,
+              directions: finishedFacts.directions,
+            },
+            units,
+          )}
+          // Mutual connections are AUTHENTICATION.md's and
+          // COMMUNITY_BUILDING.md's own feature and nothing builds them yet.
+          // Empty means the section shows only its invite row and its
+          // no-public-link note, which is true rather than a placeholder.
+          recipients={[]}
+          units={units}
+          onInvite={() => undefined}
+          onClose={() => setFinishScreen('record')}
+        />
+      ) : (
+        under
+      )
+  } else if (hikeDayOpen && hikeDayView !== null) {
+    flowScreen = (
+      <HikeDay
+        {...hikeDayView}
+        units={units}
+        onBack={() => setHikeDayOpen(false)}
+        onOpenWaypoint={handleOpenPassedPlace}
+        // The three edits and the explicit end-of-day are #1317's next
+        // slice; until they land the screen must not offer a control that
+        // silently does nothing, so each closes back to the hike - the
+        // honest version of "not yet", and the same rule LineSheet keeps.
+        onStopShort={() => setHikeDayOpen(false)}
+        onPushOn={() => setHikeDayOpen(false)}
+        onTakeZero={() => setHikeDayOpen(false)}
+        onCallItADay={() => setHikeDayOpen(false)}
+      />
+    )
+  } else if (hikeSheet === 'setup' && hikeDraft !== null) {
+    // A flow rather than a sheet: it is a whole screen with its own Cancel,
+    // and the map underneath stays mounted exactly as every other flow's
+    // does. First in the chain because nothing else may outrank a hiker
+    // halfway through describing their own hike.
+    flowScreen = (
+      <>
+        <HikeSetup
+          hike={hikeDraft}
+          recorded={tripStore.trips.filter((trip) => trip.recorded === true)}
+          pois={pois}
+          units={units}
+          totalMiles={trailIndex?.totalMiles ?? null}
+          onEditPoint={handleEditHikePoint}
+          onAddPoint={handleAddHikePoint}
+          onUndo={hikeDraft.points.length > 0 ? handleUndoHikePoint : null}
+          onRecordStretch={handleRecordStretchFromSetup}
+          onOpenRecorded={handleOpenTrip}
+          onStart={handleStartHike}
+          onCancel={handleCancelHikePick}
+        />
+        {/* The route builder's own stop picker, over the set-up screen -
+            NOT a second one. A point on a hike and a stop on a route are the
+            same act, naming somewhere on the centerline, and two pickers
+            would drift into naming it two different ways. */}
+        {hikePointAt !== null && (
+          <RouteStopPicker
+            choices={routeStopChoices}
+            pois={pois}
+            // The point before the slot being filled, so the distance door
+            // has somewhere to measure from. Appending measures from the
+            // last point; editing measures from the one before it.
+            previous={previousHikePoint}
+            south={hikePointSouth}
+            // A hike's points are never "removed" from the picker: the ends
+            // are the hike, and a point on the way is taken back with the
+            // undo above, which is the control the list already offers.
+            removable={false}
+            units={units}
+            onPick={handleHikePointChosen}
+            onMapPick={() => setHikePointAt(null)}
+            onRemove={() => setHikePointAt(null)}
+            onClose={() => setHikePointAt(null)}
+          />
+        )}
+      </>
+    )
+  } else if (authFlow !== null) {
     flowScreen =
       authFlow.screen === 'email' ? (
         <EmailSignIn
@@ -6297,6 +7010,7 @@ function App() {
       trailLinesMissing={!haveTrailLines && dataError !== null}
       mode={hikerMode}
       onChangeMode={handleChangeMode}
+      longHike={longHikeToday}
       pois={searchablePois}
       currentMile={fix?.mile}
       direction={direction?.direction}
@@ -6486,6 +7200,8 @@ function App() {
                   downloadActivity={downloadActivity}
                   onOpenDownloads={openDownloads}
                   hikeSummary={hike === null ? null : hikeSummary(hike)}
+                  longHikeName={activeHike?.name ?? null}
+                  onStepAwayFromHike={() => setStepAwayOpen(true)}
                   onEditHike={() => setPickingHike(true)}
                   onStartReport={() => setReporting({ step: 'window' })}
                   onReportFailure={() => setReportingFailure(true)}
@@ -6610,8 +7326,10 @@ function App() {
                 network={trailNetwork}
                 onRetryNetwork={retryTrailNetwork}
                 gpsAt={gps.status === 'located' ? gps.at : null}
-                mode={effectivePlanMode}
-                onSwitchMode={handleSwitchPlanMode}
+                room={effectivePlanRoom}
+                onAddDayHikeToHike={
+                  activeHike === null ? undefined : () => setAddDayHikeOpen(true)
+                }
                 onChangeTarget={handleChangeTarget}
                 onInsertZeroAfter={(index) =>
                   applyPlanEdit((current) => insertZeroAfter(current, index))
@@ -6797,6 +7515,58 @@ function App() {
             active={activeTab}
             onSelect={selectTab}
             modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
+          />
+        </div>
+      )}
+      {/* Stepping away (#1317) - over whatever screen it was opened from,
+          because the row that opens it is in More and the sheet has to
+          appear where it was tapped. Outside the tab screens for that
+          reason, and after the fallback above so an overlay is never drawn
+          under the thing it overlays. */}
+      {stepAwayOpen && activeHike !== null && (
+        <div className="hike-sheet-dock">
+          <StepAwaySheet
+            hikeName={activeHike.name}
+            status={activeHike.status}
+            confirmingForget={confirmingForget}
+            // A zero and a town night edit the day rather than the hike, and
+            // that editing is #1317's next slice - so for now each closes
+            // rather than pretending to act. A control that looks like it did
+            // something and did not is worse than one that says "not yet".
+            onZero={closeStepAway}
+            onTownNight={closeStepAway}
+            onPause={handlePauseHike}
+            onTurnAround={handleTurnHikeAround}
+            onFinish={handleFinishHike}
+            onForget={handleForgetHike}
+            onCancelForget={() => setConfirmingForget(false)}
+            onClose={closeStepAway}
+          />
+        </div>
+      )}
+      {addDayHikeOpen && activeHike !== null && (
+        <div className="hike-sheet-dock">
+          <AddDayHikeSheet
+            candidates={dayHikeCandidates}
+            onAdd={handleAddDayHikeToHike}
+            onClose={() => setAddDayHikeOpen(false)}
+          />
+        </div>
+      )}
+      {/* "Which long hike?" (#1317) - over whatever screen the hiker is on,
+          because the mode switch that opens it lives on Today, in Settings
+          and in the sidebar. */}
+      {hikeSheet === 'pick' && (
+        <div className="hike-sheet-dock">
+          <HikePickSheet
+            hikes={tripStore.hikes}
+            trips={tripStore.trips}
+            pois={pois}
+            units={units}
+            today={localDay(now)}
+            onPick={handlePickHike}
+            onNew={handleNewHike}
+            onClose={handleCancelHikePick}
           />
         </div>
       )}
@@ -7370,3 +8140,116 @@ function App() {
 }
 
 export default App
+
+/**
+ * The next resupply on this day's stretch, as a line - or null.
+ *
+ * A stop's own `resupply` flag, looked up rather than guessed. Null when
+ * none is marked, and then the card says nothing: "no resupply" would be a
+ * claim about the trail where the flag is a claim about the plan.
+ */
+function nextResupplyLine(at: HikeDayAt, units: UnitSystem): string | null {
+  const from = at.trip.plan.stops[at.index].mile
+  const next = at.trip.plan.stops.find(
+    (stop, index) => index > at.index && stop.resupply && stop.name !== undefined,
+  )
+  if (next === undefined) return null
+  return `Resupply: ${next.name}, ${formatDistance(Math.abs(next.mile - from), units)} on`
+}
+
+/**
+ * `Day 6 · Tue 8 Sep`, or `Tue 8 Sep` when the hike has no dated day to
+ * count from.
+ *
+ * The day number is the hike's, not the section's: a hiker four sections
+ * into the Appalachian Trail is on day 96 of their hike and day 3 of this
+ * trip, and the first is what they call it.
+ */
+function dayLabelFor(at: HikeDayAt, now: Date): string {
+  const date = at.trip.plan.days[at.index]?.date
+  const label =
+    date === undefined
+      ? now.toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+        })
+      : new Date(`${date}T00:00:00Z`).toLocaleDateString('en-GB', {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          timeZone: 'UTC',
+        })
+  return label
+}
+
+/** The facts every finish surface reads, from one derivation. */
+type FinishedFacts = {
+  hike: Hike
+  figures: ReturnType<typeof hikeFigures>
+  sections: readonly Trip[]
+  startedOn: string | null
+  finishedOn: string | null
+  directions: readonly ('NOBO' | 'SOBO' | null)[]
+}
+
+/** `14 Mar 2024 – 12 Aug 2026 · 2,198.4 mi · 0 mi to go`.
+ *
+ *  Zero rather than "unknown" for what is left, which is decision #7: miles
+ *  not yet walked read 0, and a finished hike has none. */
+function finishedHeader(facts: FinishedFacts, units: UnitSystem): string {
+  const dates = [facts.startedOn, facts.finishedOn]
+    .filter((date) => date !== null)
+    .map((date) => longDate(date))
+  return [
+    dates.length === 0 ? null : dates.join(' – '),
+    formatDistance(facts.figures.walkedMi, units),
+    `${formatDistance(facts.figures.leftMi, units)} to go`,
+  ]
+    .filter((part) => part !== null)
+    .join(' · ')
+}
+
+/** "You walked the whole Appalachian Trail, 14 Mar 2024 to 12 Aug 2026."
+ *
+ *  "the whole" only where nothing is left, because it is a claim: a hiker
+ *  who finished a section did not walk the whole trail and must not be told
+ *  they did. */
+function finishedSentence(facts: FinishedFacts, units: UnitSystem): string {
+  const trail = TRAILS[facts.hike.trailId]?.name ?? 'the trail'
+  const whole = facts.figures.leftMi < MIN_GAP_MI
+  // "the" on both branches: the registry publishes "Appalachian Trail" as a
+  // name, and "You walked Appalachian Trail" is not a sentence anybody says.
+  const what = whole ? `You walked the whole ${trail}` : `You walked part of the ${trail}`
+  const when =
+    facts.startedOn === null || facts.finishedOn === null
+      ? null
+      : `${longDate(facts.startedOn)} to ${longDate(facts.finishedOn)}`
+  return when === null
+    ? `${what}, ${formatDistance(facts.figures.walkedMi, units)}.`
+    : `${what}, ${when}.`
+}
+
+/** The sections list, newest first - the order a hiker looks for the one
+ *  they just walked. */
+function finishedSections(facts: FinishedFacts, units: UnitSystem) {
+  return [...facts.sections].reverse().map((trip) => {
+    const miles = trip.plan.stops.map((stop) => stop.mile)
+    const spanMi = miles.length < 2 ? 0 : Math.max(...miles) - Math.min(...miles)
+    const year = trip.plan.days.find((day) => day.date !== undefined)?.date?.slice(0, 4)
+    return {
+      id: trip.id,
+      name: trip.name,
+      figures: formatDistance(spanMi, units),
+      provenance: [
+        'walked',
+        year,
+        // A stretch recalled from memory is not a claim that anybody walked
+        // 300 miles in a day, and nothing may print it as one (Trip.recorded).
+        trip.recorded === true ? 'recorded from memory' : null,
+      ]
+        .filter((part) => part !== undefined && part !== null)
+        .join(' · '),
+    }
+  })
+}

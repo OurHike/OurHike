@@ -67,6 +67,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
 from app.models.synced_day_hike import SyncedDayHike
+from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 
@@ -96,6 +97,9 @@ class DeletionSummary:
 
     trips_deleted: int = 0
     day_hikes_deleted: int = 0
+    #: The long hikes that grouped them (#1317). The pointer at whichever one
+    #: was leading has no count of its own - see `delete_account`.
+    long_hikes_deleted: int = 0
     planned_hikes_deleted: int = 0
     hikes_deleted: int = 0
     preferences_deleted: int = 0
@@ -142,6 +146,15 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # Same claim as trips, same answer: a synced day hike is the hiker's own
     # private planning (#976), published to nobody and relied on by nobody.
     day_hikes = db.query(SyncedDayHike).filter(SyncedDayHike.profile_id == profile_id).delete(synchronize_session=False)
+    # The long hikes themselves (#1317), and the pointer at whichever one
+    # the app was in. Same claim again: a hiker's own record of where they
+    # have walked, published to nobody. The POINTER is deleted without a
+    # count of its own - it is one id saying which hike was leading, not a
+    # thing anybody would miss - where the hikes are counted, because a
+    # receipt that lists trips and day hikes and silently omits the object
+    # holding years of them is a receipt that understates itself.
+    long_hikes = db.query(SyncedHike).filter(SyncedHike.profile_id == profile_id).delete(synchronize_session=False)
+    db.query(SyncedActiveHike).filter(SyncedActiveHike.profile_id == profile_id).delete(synchronize_session=False)
     planned = db.query(SyncedPlannedHike).filter(SyncedPlannedHike.profile_id == profile_id).delete(synchronize_session=False)
     # Originally the wrong-way alert's server-side reference to which
     # direction they were walking (feature removed, #93/#308). Nobody reads
@@ -195,6 +208,7 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     return DeletionSummary(
         trips_deleted=trips,
         day_hikes_deleted=day_hikes,
+        long_hikes_deleted=long_hikes,
         planned_hikes_deleted=planned,
         hikes_deleted=hikes,
         preferences_deleted=preferences,

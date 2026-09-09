@@ -64,6 +64,7 @@ from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
 from app.models.synced_day_hike import SyncedDayHike
+from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import VolunteerHoursRecord
 
@@ -128,6 +129,7 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
 
     preferences = db.get(UserPreferences, profile_id)
     planned_hike = db.get(SyncedPlannedHike, profile_id)
+    active_hike = db.get(SyncedActiveHike, profile_id)
 
     photos = db.query(PoiPhoto).filter(PoiPhoto.contributor_id == profile_id).all()
 
@@ -139,6 +141,13 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "preferences": _row(preferences) if preferences is not None else None,
         "trips": _rows(db, SyncedTrip, SyncedTrip.profile_id == profile_id),
         "day_hikes": _rows(db, SyncedDayHike, SyncedDayHike.profile_id == profile_id),
+        # The long hikes a hiker walked or is walking (#1317) - their points,
+        # status and which sections are in each. The pointer rides in the
+        # same section rather than its own: on its own it is one id nobody
+        # could read, and beside the hikes it names it is the answer to
+        # "which of these was I on".
+        "long_hikes": _rows(db, SyncedHike, SyncedHike.profile_id == profile_id),
+        "long_hike_you_were_on": (_row(active_hike) if active_hike is not None else None),
         "planned_hike": _row(planned_hike) if planned_hike is not None else None,
         "hikes": _rows(db, Hike, Hike.user_id == profile_id),
         "condition_reports": _rows(db, Report, Report.reporter_id == profile_id),

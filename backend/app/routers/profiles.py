@@ -89,6 +89,7 @@ def delete_my_account(
     return DeletionReceipt(
         trips_deleted=summary.trips_deleted,
         day_hikes_deleted=summary.day_hikes_deleted,
+        long_hikes_deleted=summary.long_hikes_deleted,
         planned_hikes_deleted=summary.planned_hikes_deleted,
         hikes_deleted=summary.hikes_deleted,
         preferences_deleted=summary.preferences_deleted,

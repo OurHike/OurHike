@@ -32,9 +32,25 @@ export interface ModeSwitchProps {
   onChange: (mode: HikerMode) => void
   /** 'chrome' on pine (Today header, sidebar), 'paper' on light surfaces. */
   variant?: 'chrome' | 'paper'
+  /**
+   * The selection is not settled yet (#1317).
+   *
+   * True only while the "which long hike?" sheet is open, which is the one
+   * place in the app where tapping a segment is not instantaneous: closing
+   * that sheet without picking puts the mode back. Showing the segment
+   * selected at full strength and then quietly reverting it would teach a
+   * hiker the control lies, so it is drawn as chosen-but-pending instead and
+   * the revert is not a surprise arriving after the fact.
+   */
+  pending?: boolean
 }
 
-export function ModeSwitch({ mode, onChange, variant = 'chrome' }: ModeSwitchProps) {
+export function ModeSwitch({
+  mode,
+  onChange,
+  variant = 'chrome',
+  pending = false,
+}: ModeSwitchProps) {
   return (
     <div
       className={`mode-switch mode-switch--${variant}`}
@@ -49,7 +65,9 @@ export function ModeSwitch({ mode, onChange, variant = 'chrome' }: ModeSwitchPro
           aria-checked={value === mode}
           className={
             value === mode
-              ? 'mode-switch__segment mode-switch__segment--selected'
+              ? pending
+                ? 'mode-switch__segment mode-switch__segment--selected mode-switch__segment--pending'
+                : 'mode-switch__segment mode-switch__segment--selected'
               : 'mode-switch__segment'
           }
           // Fires even when already selected - a no-op, and cheaper than a

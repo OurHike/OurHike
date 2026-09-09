@@ -48,6 +48,17 @@ taps answered in 11, 4 and 220 ms.
 | Skip 1 · 2 · 3 accepted after | **3,211–7,286 · 4,785–5,331 · 330–2,997 ms** | 3,182–4,290 · 80–97 · 305–383 ms | 11 · 4 · 220 ms |
 | long tasks · longest · total blocking time | 25–28 · 1,600–1,986 ms · **9,556–10,409 ms** | 18 · 617–706 ms · 4,507–4,584 ms | — · 434 ms · 3,673 ms |
 
+**A caveat these two columns need, added 2026-09-09 after it was found the hard way.**
+The production column is a phone with a real release on it — 16,949 waypoints, 11.5 MB
+of trail lines. The `main` column is not: this sandbox's Chromium cannot reach
+`data.ourhike.org` at all (`TypeError: Failed to fetch` from the page, while `curl` from
+the same container gets a 200), so a locally served build downloads nothing and its
+`--returning` mode replays a launch whose release is empty. **The two columns are
+therefore not comparable to each other.** What the `main` column is good for is
+comparing against another locally served build, which is what §1.1 does; what it cannot
+show is any of the work that scales with the waypoint list. Production is the only
+number here that has ever had that work in it.
+
 Two things to hold onto from those tables:
 
 - **First run has regressed to roughly three times the figure #857 — *Skip on the
@@ -65,6 +76,37 @@ Two things to hold onto from those tables:
   every run. The two builds differ by three merged pull requests and by the host that
   serves them. Which of those it is remains an open question below, and it is the
   reason the plan's first job is an instrument rather than a fix.
+
+### 1.1 After #1300 to #1304, measured the same way
+
+Same profile, same flags, a build of the branch carrying production's public build
+values, served locally — so this is the `main` column's successor and carries its
+caveat: **no release on the phone**, which is why the last two marks read "not reached"
+and why the waypoint work #1303 is about does not appear here at all.
+
+| returning hiker | `main` @ 52fdf08 | after |
+|---|---:|---:|
+| first contentful paint | 612–820 ms | **276–448 ms** |
+| tab bar rendered (the app's own mark) | not instrumented | **474 ms** |
+| a tap on Plan at 0.8 s accepted after | 254–328 ms | **185–300 ms** |
+| long tasks · longest · total blocking | 3 · 78–97 ms · 54–88 ms | **1 · 55–63 ms · 5–13 ms** |
+
+| first run | `main` @ 52fdf08 | after |
+|---|---:|---:|
+| first entry step reachable | 1,648 ms | 1,229–1,431 ms |
+| long tasks · longest · total blocking | 18 · 617–706 ms · 4,507–4,584 ms | 18–20 · 632–1,202 ms · 4,219–7,081 ms |
+
+**First run is where this stops.** The returning launch is inside every §3 row on this
+profile; first run is not, and the second Skip tap still waits seconds. #1304 removed
+the two named main-thread costs — the pin rasteriser and the date formatter — and what
+remains is MapLibre building the map behind the entry card and the release landing
+mid-flow, which §4.6 describes and none of this work does. The run-to-run spread on the
+first-run rows is wide enough that no claim smaller than "unchanged, and still over" is
+honest.
+
+Deterministic, and therefore subject to none of the above: eager JavaScript is **437 KB
+compressed before this work and 215 KB after**, MapLibre is out of the eagerly loaded
+closure, and `scripts/check-build-output.mjs` fails the build on either regression.
 
 **What the stopwatch cannot see.** The maintainer's phone reports about six seconds
 and the throttled profile reports 1.2–1.6 s to first content. The profile is a desktop
@@ -198,7 +240,7 @@ carries how it was arrived at, per CLAUDE.md's three grades.
 
 | | budget | today (production) | how the number was arrived at |
 |---|---:|---:|---|
-| **Shell frame** — tab bar and Today header painted from the app's own markup, returning launch | **≤ 500 ms** after navigation start | 1,152 ms (first content) | **Picked** — the maintainer's ask. `@unvalidated` against a real phone: what settles it is §4.1's readout on the maintainer's own device |
+| **Shell frame** — tab bar and Today header rendered from the app's own markup, returning launch (the app's own mark is React's commit and lands a few tens of milliseconds ahead of `first-contentful-paint`, which the readout shows beside it) | **≤ 500 ms** after navigation start | 1,152 ms (first content) | **Picked** — the maintainer's ask. `@unvalidated` against a real phone: what settles it is §4.1's readout on the maintainer's own device |
 | Any tab-bar tap, from the shell frame on | ≤ 100 ms to accepted | 933 ms at 0.8 s | **Reasoned** from the 100 ms input-response figure Chrome's RAIL model uses; not measured against this app's hikers |
 | Longest task in the first 15 s | ≤ 100 ms | 275 ms | **Reasoned**: a 50 ms task is the long-task definition; 100 ms allows one frame's worth |
 | Total blocking time in the first 15 s | ≤ 200 ms | 534 ms | **Reasoned** from Lighthouse's "good" threshold, which is the same 200 ms; not derived from anything measured here |

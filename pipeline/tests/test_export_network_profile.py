@@ -59,18 +59,29 @@ def _write_ramp_tile(path, *, bounds=(WEST, SOUTH, EAST, NORTH), size=400, base=
 
 def _index_for(tmp_path, *tiles):
     """The {url, bounds} index index_elevation_tiles() reads, pointed at local
-    fixture tiles."""
+    fixture tiles.
+
+    STAMPED WITH A `last_modified`, which fetch_elevation.stamp_last_modified()
+    puts on every cell whose HEAD answers. It is not decoration: a cell with no
+    stamped edition has nothing for the sample cache's marker to pin, so
+    export_elevation.py holds its points out of the file entirely rather than
+    risk serving ground that was re-flown while the marker stood still. An
+    unstamped fixture would therefore make every cache test here silently
+    assert nothing.
+    """
     entries = []
     for tile in tiles:
         with rasterio.open(tile) as src:
-            entries.append({"url": tile.as_posix(), "bounds": list(src.bounds)})
+            entries.append({"url": tile.as_posix(), "bounds": list(src.bounds), "last_modified": "Wed, 15 Feb 2023 00:00:00 GMT"})
     out = tmp_path / "tile_index.json"
     out.write_text(json.dumps(entries))
     return out
 
 
-def _sampler(index_path):
-    return network_profile.ElevationSampler(network_profile.index_elevation_tiles(index_path))
+def _sampler(index_path, *, cache=False):
+    """The sampler these tests read through - see the equivalent in
+    test_export_network_elevation.py for why the cache is off by default."""
+    return network_profile.ElevationSampler.for_index(index_path, cache=cache)
 
 
 def _graph(edges):
@@ -480,3 +491,75 @@ class TestMain:
             network_profile.main(
                 ["--graph", str(graph), "--geometry", str(geometry), "--tile-index", str(tmp_path / "absent.json")]
             )
+
+
+class TestTheSharedSampleCache:
+    """The two artifacts are sampled at the same points by construction
+    (`edge_sample_points` is shared), which used to mean the second exporter
+    to run re-read every point the first had just read. On the graph #1287 was
+    met on - 468,743 edges - that is the same work twice, and both halves of
+    it were what the 120-minute job timeout killed.
+
+    So the sampler carries a per-point cache, written beside the tile index it
+    was sampled against. These are the two claims that matter: the second run
+    reads nothing, and the numbers it publishes are the same numbers.
+    """
+
+    def _forbid_raster_opens(self, monkeypatch):
+        def refuse(*args, **kwargs):
+            raise AssertionError("a DEM tile was opened for points the cache already had answers for")
+
+        monkeypatch.setattr(rasterio, "open", refuse)
+
+    def test_the_profile_exporter_reads_nothing_after_the_climb_exporter_ran(self, tmp_path, monkeypatch):
+        tile = _write_ramp_tile(tmp_path / "ramp.tif")
+        index_path = _index_for(tmp_path, tile)
+        geometry = [[[-74.15, 41.30], [-74.05, 41.30]], [[-74.05, 41.31], [-74.12, 41.31]]]
+        graph = _graph([(0, 1, "oprhp_trails"), (1, 2, "oprhp_trails")])
+
+        first = network_elevation.ElevationSampler.for_index(index_path)
+        try:
+            climbs, _stats = network_elevation.build(graph, geometry, first)
+        finally:
+            first.close()
+
+        # Everything the second run needs is now in tmp_path/samples.json, so
+        # opening a tile at all is the failure.
+        self._forbid_raster_opens(monkeypatch)
+        second = network_profile.ElevationSampler.for_index(index_path)
+        try:
+            profiles, _stats, _seam = network_profile.build(graph, geometry, second)
+        finally:
+            second.close()
+
+        assert (tmp_path / "samples.json").exists()
+        assert all(profile is not None for profile in profiles)
+        # Same points, same ground: the cached profile still agrees with the
+        # scalars to within the dead band, which is the most that can be
+        # claimed of whole-foot samples (see the sibling test above).
+        for profile, climb in zip(profiles, climbs):
+            gain = cumulative_gain_over_gaps(profile, DEFAULT_THRESHOLD_FT)
+            assert gain == pytest.approx(climb[0], abs=DEFAULT_THRESHOLD_FT)
+
+    def test_a_cached_run_publishes_the_same_profile_as_an_uncached_one(self, tmp_path, monkeypatch):
+        """The cache is only worth having if it is invisible in the output.
+        Same fixture, same edges, once cold and once entirely from the file."""
+        tile = _write_ramp_tile(tmp_path / "ramp.tif")
+        index_path = _index_for(tmp_path, tile)
+        geometry = [[[-74.15, 41.30], [-74.05, 41.30]]]
+        graph = _graph([(0, 1, "oprhp_trails")])
+
+        cold = network_profile.ElevationSampler.for_index(index_path)
+        try:
+            cold_profiles, _stats, _seam = network_profile.build(graph, geometry, cold)
+        finally:
+            cold.close()
+
+        self._forbid_raster_opens(monkeypatch)
+        warm = network_profile.ElevationSampler.for_index(index_path)
+        try:
+            warm_profiles, _stats, _seam = network_profile.build(graph, geometry, warm)
+        finally:
+            warm.close()
+
+        assert warm_profiles == cold_profiles

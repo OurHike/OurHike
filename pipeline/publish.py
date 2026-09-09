@@ -46,10 +46,14 @@ import json
 import os
 import shutil
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
 
 import boto3
+from boto3.s3.transfer import TransferConfig
+from botocore.config import Config as BotocoreConfig
 
 from lib import data_change, data_env, releases
 from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
@@ -271,6 +275,123 @@ ARTIFACT_CACHE_CONTROL = "public, max-age=300, must-revalidate"
 MANIFEST_CACHE_CONTROL = "no-cache"
 
 
+# How many objects one stage of a publish moves at a time.
+#
+# WHY THIS EXISTS, measured. Run #88 of publish-vector-data.yml (2026-09-08)
+# spent 35:47 - 2,147 s - in "Publish to R2", which moved 1,267.68 MB in 1,715
+# artifact uploads and asked after ~3,016 photos one HEAD at a time, every one
+# of them a sequential round trip. The same runner wrote 422 MB into the
+# Actions cache at 172 MB/s in 1.3 s, so what that step was short of was not
+# bandwidth: it was paying per OBJECT rather than per byte. That is root cause
+# 3 of #1311 - "The vector build went from 20 to 108 minutes in twelve days: a
+# corridor union over 466k lines paid twice, every external layer re-fetched
+# every run, and a publish that pays a round-trip per object".
+#
+# "0.45 S PER OBJECT" IS 2,147 / 4,731 AND IS AN UPPER BOUND on what a round
+# trip costs, not a measurement of one. Those 4,731 are the uploads and the
+# photo HEADs; `describe_changes` read the previous copy of every changed
+# vector artifact in the same step and those reads are on top (see
+# UNDESCRIBED_PREFIXES for the graph shards that dominated them), so the true
+# per-request figure is lower by however many of them there were - a count
+# nobody has pulled out of that log. The finding does not move either way:
+# the step's wall clock tracked the request count and not the bytes.
+#
+# WHAT NOBODY HAS MEASURED, and it is the thing this constant is betting on:
+# whether that per-object cost is request latency or R2 throttling the
+# account. #1311 records the question as open. If it is latency, sixteen in
+# flight divides the step by roughly sixteen; if it is throttling, the
+# requests queue at the far end and this buys much less than it looks like it
+# should. The first CI publish after this lands is what settles it, and the
+# step's own wall clock is the measurement - so do not restate a speed-up here
+# until there is one to restate.
+#
+# A 429 COSTS TIME, NOT THE PUBLISH, which is what makes trying sixteen a
+# cheap bet rather than a risky one. botocore's default retry mode is
+# "legacy" - the config below sets a pool size and nothing else - and its
+# default policy retries any HTTP 429 and any 5xx up to five attempts with
+# randomised exponential backoff (botocore 1.43.78, `data/_retry.json`,
+# `retry.__default__`, read 2026-09-09). So a throttled publish gets slower,
+# and only an object still refused after five tries raises - which
+# `_in_parallel` turns into a failed run rather than a half-publish.
+#
+# THE NUMBER 16 IS @unvalidated - picked, not measured. The reasoning behind
+# the pick: at a round trip of the order of the upper bound above, sixteen
+# requests in flight is about where the ~1.65 GB actually being moved
+# would become the thing the step waits on rather than the latency in front of
+# it, and it is small enough that a publish is not a burst either end has to
+# think about. What would settle it is timing this step at 8, 16 and 32 on the
+# runner that produced the figures above; the knee could be anywhere in that
+# range, and if the throttling answer above turns out to be the right one the
+# knee may be below 8.
+#
+# SIXTEEN IS NOT THE NUMBER OF REQUESTS IN FLIGHT, and anyone reasoning about
+# the load this puts on R2 needs the other factor. `upload_file` is a managed
+# transfer, not one PUT: boto3's default TransferConfig splits anything over
+# 8 MiB into 8 MiB parts and sends up to 10 of them at once, per call (boto3
+# as installed, read 2026-09-09; the fan-out is read off TransferConfig below
+# rather than restated, so that half cannot drift). trail_graph_geometry.json
+# alone was 224.4 MB on run #88, so the artifact stage can have up to 16 x 10
+# requests open at once. That was already true per-file before anything here ran in
+# parallel; what is new is sixteen of them at a time.
+PUBLISH_CONCURRENCY = 16
+
+# The connection pool for the client publish() builds itself - sized to the
+# ceiling above rather than to PUBLISH_CONCURRENCY, and derived rather than
+# picked, so a boto3 that changes its fan-out moves this with it.
+#
+# botocore's default is 10 (`httpsession.MAX_POOL_CONNECTIONS`, 1.43.78), and
+# what a pool smaller than the requests in flight does is NOT queue them:
+# botocore builds its urllib3 pools without `block=True`
+# (`URLLib3Session._get_pool_manager_kwargs`, same version), so every request
+# past the ceiling opens a connection of its own and drops it on release,
+# logging "Connection pool is full, discarding connection". The cost is a
+# fresh TLS handshake per 8 MiB part, paid exactly where the bytes are.
+#
+# Raising the ceiling therefore changes nothing about how hard R2 is being
+# hit - the threads decide that - only whether the connections those threads
+# use are reused or rebuilt. A client passed in by a caller is that caller's
+# to size, pool included. 160, with the values above.
+PUBLISH_POOL_CONNECTIONS = PUBLISH_CONCURRENCY * TransferConfig().max_concurrency
+
+
+def _in_parallel(work: list) -> list:
+    """Run every zero-argument callable in `work` at PUBLISH_CONCURRENCY and
+    return their results in the order they were given.
+
+    Sharing one boto3 client across the threads rather than building one each
+    is deliberate and is what boto3's own concurrency guidance allows: a
+    client is thread-safe for *making API calls*, which is all these workers
+    do - what is not thread-safe is mutating the client or its `meta`. It is
+    also what keeps a client a caller injected (moto, in tests/test_publish.py)
+    the client that actually gets used.
+
+    A FAILURE IN ANY WORKER FAILS THE PUBLISH. Results are gathered in
+    submission order, so the exception a caller sees is the earliest-submitted
+    failure rather than whichever thread happened to finish first - a failing
+    publish then names the same object every time it is re-run. Nothing is
+    swallowed and no short result list is returned for a caller to misread as
+    success.
+
+    The queue is cancelled on the way out for the reason every other ordering
+    rule in this module exists: half a publish is already bad, and 1,700
+    uploads queued behind a failure is worse. What is already in flight is
+    not abandoned, though - `with` closes the pool with `shutdown(wait=True)`
+    after the `except` has cancelled the queue, so by the time the exception
+    reaches the caller no worker of this stage is still running against the
+    bucket. A stage that failed does not go on writing behind the stage that
+    replaces it.
+    """
+    if not work:
+        return []
+    with ThreadPoolExecutor(max_workers=min(PUBLISH_CONCURRENCY, len(work))) as pool:
+        futures = [pool.submit(item) for item in work]
+        try:
+            return [future.result() for future in futures]
+        except BaseException:
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+
+
 def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, dict]:
     """The path to actually upload for `name`, and its ExtraArgs.
 
@@ -329,8 +450,38 @@ def upload_args(name: str, path: str, *, compress: bool = True) -> tuple[str, di
 #                      baked `generated_at` moves the hash even when no row
 #                      changed. Describing it would produce a "changed" every
 #                      day that means nothing.
+#   `trail_graph`      the junction graph and everything cut from it:
+#                      trail_graph.json, its geometry/elevation/profile
+#                      siblings, the `trail_graph_cells.json` index and the
+#                      `trail_graph*_cell_*.json` shards. NOT ONE OF THEM IS A
+#                      FeatureCollection - they are keyed documents of nodes
+#                      and edges - so `data_change.classify` answers "not a
+#                      FeatureCollection with identified features" for every
+#                      one, and it answers it *after* the download. Measured
+#                      on run #88 (2026-09-08): 78.9 MB of trail_graph.json,
+#                      224.4 MB of trail_graph_geometry.json and 1,004 cell
+#                      shards fetched back out of the bucket to produce that
+#                      same sentence 1,006 times.
+#
+#                      What a hiker loses by this is nothing today, and that
+#                      is checkable rather than assumed: no graph key appears
+#                      in the client's REFRESHABLE_KEYS
+#                      (client/src/lib/config.ts, read 2026-09-09), so no
+#                      phone stores a hash for one, and `availableRefresh`
+#                      grades only the keys a phone stored. If a graph key
+#                      ever joins that list, the fix is a structural diff for
+#                      a keyed document - deleting this line would only buy
+#                      back the `unreadable` verdict the download already
+#                      produces.
+#
+# Matched with `str.startswith` against the artifact NAME, so `conditions/` is
+# a key prefix and `trail_graph` is a filename stem. Nothing else this module
+# publishes begins with those eleven characters - `trails.geojson`,
+# `trails_overview.geojson`, `trail_miles.json` and the `nearby_trails*`
+# family all miss it - and `poi_*.geojson` and `trails.geojson`, which are what
+# the phone's "what changed" prompt is actually built from, are untouched.
 DESCRIBED_SUFFIXES = (".geojson", ".json")
-UNDESCRIBED_PREFIXES = ("conditions/",)
+UNDESCRIBED_PREFIXES = ("conditions/", "trail_graph")
 
 
 def describes_change(name: str) -> bool:
@@ -374,17 +525,23 @@ def describe_changes(s3_client, bucket: str, prefix: str, changed: dict[str, dic
     nobody could produce as CONSEQUENTIAL - so the phone still asks the hiker,
     it just cannot say what changed. Losing a release over a sentence would be
     the wrong trade in the obvious direction.
+
+    The reads run PUBLISH_CONCURRENCY at a time. They are independent of one
+    another and every one of them is a round trip to the bucket, which is the
+    shape that constant exists for; the per-artifact `except` stays INSIDE the
+    worker so this function keeps failing one description at a time rather
+    than losing the batch, which is the whole of the paragraph above.
     """
-    described: dict[str, dict] = {}
-    for name, entry in changed.items():
-        if not describes_change(name):
-            continue
+    names = [name for name in changed if describes_change(name)]
+
+    def describe(name: str) -> dict:
         try:
             previous = _published_bytes(s3_client, bucket, f"{prefix}{name}")
-            described[name] = data_change.classify(previous, from_manifest_path(entry["path"]).read_bytes())
+            return data_change.classify(previous, from_manifest_path(changed[name]["path"]).read_bytes())
         except Exception as exc:  # noqa: BLE001 - see the docstring
-            described[name] = data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
-    return described
+            return data_change.unreadable(f"{exc.__class__.__name__} reading the published copy")
+
+    return dict(zip(names, _in_parallel([partial(describe, name) for name in names]), strict=True))
 
 
 def collect_sidecars() -> dict[str, dict]:
@@ -428,38 +585,90 @@ def collect_photos() -> dict[str, str]:
     return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
 
 
-def upload_photos(s3_client, bucket: str, photos: dict[str, str], prefix: str = "") -> list[str]:
+def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
+    """Every photo object this environment's prefix already holds, as unscoped
+    keys - one paginated listing rather than a question per photo.
+
+    WHY A LISTING. The two callers below both used to ask the bucket object by
+    object, and the corpus is now large enough that the question costs more
+    than the answer is worth: run #88 (2026-09-08) sent ~3,016 photo HEADs,
+    one per cached photo, which with the 1,715 artifact uploads is the 4,731
+    round trips PUBLISH_CONCURRENCY's comment divides the step's 2,147 s by.
+    The promise check below then HEADs a second time - but only a referenced
+    key that is NOT in the local store, so on a warm machine it asks for
+    almost nothing and on the cleared `data/` tree #465 exists to allow it
+    asks once per referenced key. One `list_objects_v2` walk answers both
+    questions in pages of a thousand.
+
+    SCOPED TO `prefix`, which is the whole reason the listing is not
+    bucket-wide. `photos/` is the one hiker-facing prefix objects are *deleted*
+    from - a withdrawal is a promise made to whoever shared the photograph -
+    so a UA publish must not see production's photos as present, or a
+    withdrawal rehearsed in UA could take the picture out of production. The
+    prefix is stripped back off on the way out because a key is a fact about
+    what, and the environment is a fact about where.
+    """
+    keys: set[str] = set()
+    token: str | None = None
+    while True:
+        page = s3_client.list_objects_v2(
+            Bucket=bucket,
+            Prefix=f"{prefix}{PHOTO_PREFIX}/",
+            **({"ContinuationToken": token} if token else {}),
+        )
+        keys.update(item["Key"][len(prefix) :] for item in page.get("Contents", []))
+        token = page.get("NextContinuationToken")
+        # Both conditions, and the token is the one that matters: continuing
+        # on the flag alone would re-list page one for ever if a truncated
+        # page ever arrived without a token, so this stops instead - and
+        # what it then returns is a SHORT set, which is the harmless
+        # direction. A photo missing from this set is re-uploaded (its key is
+        # its hash, so the bytes are the same ones) or, if it is only
+        # referenced and not local, fails the publish by name in
+        # `verify_photo_promises`. The direction that would matter - a photo
+        # the bucket does not hold read as present - is not reachable from a
+        # short listing.
+        if not page.get("IsTruncated") or not token:
+            break
+    return keys
+
+
+def upload_photos(
+    s3_client, bucket: str, photos: dict[str, str], prefix: str = "", *, published: set[str] | None = None
+) -> list[str]:
     """Upload any photo the bucket does not already hold, and return what
     was uploaded - under `prefix`, which is the publishing environment's
     (lib/data_env.prefix_for).
 
     Existence is the whole check - no hash comparison, because the key IS
     the hash: an object already at `photos/<digest>.jpg` is by construction
-    the bytes we were about to send. One cheap HEAD per photo per run beats
-    both re-uploading everything and carrying a manifest of them.
+    the bytes we were about to send. Which keys exist comes from
+    `published_photo_keys`, whose docstring has why that is one listing rather
+    than one HEAD per photo, and why it is per environment rather than
+    bucket-wide (a non-production environment's first publish pays for the
+    whole corpus, ~75 MB per features/POI_PHOTOS.md, and every later one pays
+    for nothing).
 
-    That check is per environment rather than bucket-wide, which is what makes
-    a non-production environment's first publish pay for the whole corpus
-    (~75 MB, features/POI_PHOTOS.md) and every later one pay for nothing. The
-    duplication is deliberate: `photos/` is the one hiker-facing prefix objects
-    are *deleted* from - a withdrawal is a promise made to whoever shared the
-    photograph - and a shared prefix would let a withdrawal rehearsed in UA
-    take the picture out of production.
+    `published` lets a caller hand in a listing it already has - publish()
+    does, because the promise check below asks the same question of the same
+    prefix and there is no reason to sweep it twice.
+
+    The uploads run PUBLISH_CONCURRENCY at a time; a failure in any of them
+    raises rather than being counted as an upload that happened.
 
     Returned unscoped, because the caller reports what was published and the
     prefix is a fact about where rather than about what.
     """
-    uploaded: list[str] = []
-    for key, path in photos.items():
-        try:
-            s3_client.head_object(Bucket=bucket, Key=f"{prefix}{key}")
-            continue
-        except Exception as exc:
-            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
-                raise
-        s3_client.upload_file(path, bucket, f"{prefix}{key}", ExtraArgs={"ContentType": "image/jpeg"})
-        uploaded.append(key)
-    return uploaded
+    if published is None:
+        published = published_photo_keys(s3_client, bucket, prefix)
+    pending = {key: path for key, path in photos.items() if key not in published}
+    _in_parallel(
+        [
+            partial(s3_client.upload_file, path, bucket, f"{prefix}{key}", ExtraArgs={"ContentType": "image/jpeg"})
+            for key, path in pending.items()
+        ]
+    )
+    return list(pending)
 
 
 def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
@@ -494,28 +703,34 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     return keys
 
 
-def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, photos: dict[str, str]) -> None:
+def verify_photo_promises(
+    s3_client, bucket: str, prefix: str, artifacts: dict, photos: dict[str, str], *, published: set[str] | None = None
+) -> None:
     """Fail loudly when an exported photo_key has neither a local file nor a
     bucket object (#465).
 
     This is the check that let the fetches stop requiring local bytes: a
     durable outcome record vouches that a photo was obtained ONCE, and this
     is where that trust is settled against reality - by the one component
-    that already holds credentials and already HEADs every photo key. A
+    that already holds credentials and already knows what the prefix holds. A
     cleared data/ tree publishing a photo_key nobody ever uploaded used to
     be cached_photo_missing()'s job to prevent, at the cost of a ~30-minute
     re-fetch of a corpus the bucket already held.
+
+    Settled against `published_photo_keys`' listing rather than a HEAD per
+    referenced key, which is the same set the upload above already diffed
+    against - `published` is how publish() hands over the one it took, so the
+    prefix is walked once per run instead of twice. NOTHING ABOUT THE
+    FAILURE CHANGES: a key that is in neither the local store nor the listing
+    raises, naming what is missing, before the manifest can make the promise
+    reachable. That is the check standing between a card and a 404.
     """
-    missing: list[str] = []
-    for key in sorted(referenced_photo_keys(artifacts)):
-        if key in photos:
-            continue  # in the local store; upload_photos settled it
-        try:
-            s3_client.head_object(Bucket=bucket, Key=f"{prefix}{key}")
-        except Exception as exc:
-            if "404" not in str(exc) and "NoSuchKey" not in str(exc) and "Not Found" not in str(exc):
-                raise
-            missing.append(key)
+    if published is None:
+        published = published_photo_keys(s3_client, bucket, prefix)
+    # `photos` first: a key in the local store was settled by upload_photos a
+    # moment ago, which is also why a listing taken BEFORE that upload is
+    # still the right one to read here.
+    missing = [key for key in sorted(referenced_photo_keys(artifacts)) if key not in photos and key not in published]
     if missing:
         shown = ", ".join(missing[:5]) + (f" (+{len(missing) - 5} more)" if len(missing) > 5 else "")
         raise RuntimeError(
@@ -1027,7 +1242,13 @@ def _stage_release(
     A failed copy raises rather than warning. It means the flat key named by
     the manifest is not in the bucket, which is a real fault - and half a
     release folder is worse than none, because the index would then advertise
-    something incomplete as somewhere to roll back to.
+    something incomplete as somewhere to roll back to. That is also why the
+    copies run PUBLISH_CONCURRENCY at a time rather than one after another
+    (1,715 of them on a full publish, each a round trip): they are independent
+    of one another, `_in_parallel` re-raises the first failure rather than
+    returning a short list, and the ONE ordering that matters here - the
+    folder's own manifest written after every copy has returned - is a stage
+    boundary rather than something inside the batch.
     """
     names = [name for name in sorted([*manifest["artifacts"], *sidecar_names]) if releases.is_release_artifact(name)]
 
@@ -1039,14 +1260,15 @@ def _stage_release(
     # could later resolve.
     assert_valid_keys([f"{prefix}{releases.release_key(release_id, name)}" for name in [*names, releases.RELEASE_MANIFEST_NAME]])
 
-    staged: list[str] = []
-    for name in names:
+    def copy_one(name: str) -> str:
         s3_client.copy_object(
             Bucket=bucket,
             CopySource={"Bucket": bucket, "Key": f"{prefix}{name}"},
             Key=f"{prefix}{releases.release_key(release_id, name)}",
         )
-        staged.append(name)
+        return name
+
+    staged: list[str] = _in_parallel([partial(copy_one, name) for name in names])
 
     # The folder's own manifest, written last of the folder's contents, so it
     # never describes bytes that have not landed yet.
@@ -1125,6 +1347,12 @@ def publish(
             endpoint_url=os.environ["R2_ENDPOINT_URL"],
             aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
             aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"],
+            # Sized to the requests the stages below can have open at
+            # once, which is the thread count times what a managed upload
+            # fans out to - see PUBLISH_POOL_CONNECTIONS for why the default
+            # of 10 costs handshakes rather than queueing. Only the client
+            # this function builds: one passed in belongs to its caller.
+            config=BotocoreConfig(max_pool_connections=PUBLISH_POOL_CONNECTIONS),
         )
     if bucket is None:
         bucket = os.environ["R2_BUCKET"]
@@ -1143,10 +1371,19 @@ def publish(
     # nothing references yet - is invisible and harmless. Ordering is the
     # only thing making that safe, since photos are outside the manifest and
     # so cannot be diffed into the same transaction as the artifacts.
-    uploaded_photos = upload_photos(s3_client, bucket, photos, prefix)
+    #
+    # ONE LISTING OF THE PREFIX, read by both halves. The upload and the
+    # promise check are asking the same question - which photo keys does this
+    # environment already hold - and each used to ask it one object at a time
+    # (~3,016 HEADs, then a second sweep). Taken BEFORE the uploads, and that
+    # is safe rather than lucky: verify_photo_promises skips anything in the
+    # local store, and everything upload_photos just sent came out of the
+    # local store, so nothing the listing missed can be read as absent.
+    published_photos = published_photo_keys(s3_client, bucket, prefix)
+    uploaded_photos = upload_photos(s3_client, bucket, photos, prefix, published=published_photos)
     # And immediately settle every photo promise the artifacts make - the
     # loud half of #465's trust-the-record design; see verify_photo_promises.
-    verify_photo_promises(s3_client, bucket, prefix, artifacts, photos)
+    verify_photo_promises(s3_client, bucket, prefix, artifacts, photos, published=published_photos)
 
     skipped = sorted(
         name
@@ -1160,8 +1397,11 @@ def publish(
     # first `upload_file` overwrites the side being diffed against (#919).
     changes = describe_changes(s3_client, bucket, prefix, changed)
 
-    uploaded: list[str] = []
-    for name, entry in changed.items():
+    # PUBLISH_CONCURRENCY at a time, and inside this stage only. Everything
+    # ordered around these uploads stays ordered around them: the photos
+    # landed above, the descriptions were read above, and the manifest that
+    # names all of it is written below, after the last of these has returned.
+    def upload_one(name: str, entry: dict) -> tuple[str, int]:
         upload_path, extra = upload_args(name, str(from_manifest_path(entry["path"])))
         # What a phone actually spends on this artifact, as against `size_bytes`
         # above, which is the DECODED size (#919).
@@ -1172,9 +1412,22 @@ def publish(
         # whether to spend it on mobile data. Rounding up to the decoded size
         # would be the cautious direction for a threshold and a plainly wrong
         # figure to print, and `dataRefresh.ts` prints it.
-        entry["transfer_bytes"] = Path(upload_path).stat().st_size
+        #
+        # Handed back to the caller rather than written into `entry` here.
+        # Each worker owns a different artifact, so writing it in place would
+        # in fact be safe - but "in fact safe" is a property a reader has to
+        # re-derive every time they touch this loop, and the size landing on
+        # the wrong artifact is a wrong number printed to a hiker rather than
+        # a crash. Recorded below, on one thread, against the name the worker
+        # returned it with.
+        measured = Path(upload_path).stat().st_size
         s3_client.upload_file(upload_path, bucket, f"{prefix}{name}", ExtraArgs=extra)
-        uploaded.append(name)
+        return name, measured
+
+    transfers = _in_parallel([partial(upload_one, name, entry) for name, entry in changed.items()])
+    for name, transfer_bytes in transfers:
+        changed[name]["transfer_bytes"] = transfer_bytes
+    uploaded: list[str] = [name for name, _ in transfers]
 
     if not uploaded:
         return {

@@ -105,10 +105,22 @@ jobs:
         working-directory: client
         run: npm ci
 
+      # `install-deps` separately and non-fatally, never `--with-deps`
+      # (#1361). The flag has Playwright run apt itself and abort the whole
+      # install when any repository preinstalled on the runner image has a
+      # bad index - one this project never uses can then stop the check.
+      # Splitting it means the system libraries are installed when apt is
+      # healthy and skipped when it is not, while the DOWNLOAD, which touches
+      # no apt repository, is what this job depends on. pr-preview.yml holds
+      # the measured case; the pattern is that pull request's, adopted here
+      # because these two calls have the same exposure and it did not reach
+      # them.
       - name: Install Chromium
         if: steps.can.outputs.go == 'true'
         working-directory: client
-        run: npx playwright install --with-deps chromium
+        run: |
+          npx playwright install-deps chromium || true
+          npx playwright install chromium
 
       # The same instrument a person runs by hand, in the same mode, writing a
       # second rendering of the same numbers as JSON. `--stub-tiles` because a

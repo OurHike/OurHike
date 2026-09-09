@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from lib.corridor import NETWORK_BUFFER_FEET, build_corridor, count_features
+from lib.corridor import NETWORK_BUFFER_FEET, NETWORK_TABLE, build_corridor, count_features, keep_within_corridor
 from tests.conftest import spatial_connection
 from tests.synthetic import CENTERLINE_COORDS, write_centerline
 
@@ -113,7 +113,17 @@ def _network(path, coords=NETWORK_COORDS, features=None):
 
 
 def _contains(con, lon, lat) -> bool:
+    """Whether the `corridor` POLYGON contains the point - the A.T.'s own
+    thirty miles, and since #1311 nothing else."""
     return bool(con.execute(f"SELECT ST_Contains(geom, ST_Point({lon}, {lat})) FROM corridor").fetchone()[0])
+
+
+def _reaches(con, lon, lat) -> bool:
+    """Whether the corridor as a whole reaches the point - the polygon or the
+    network ring - which is the question every clip asks."""
+    con.execute("CREATE OR REPLACE TABLE probe (id INTEGER, lon DOUBLE, lat DOUBLE)")
+    con.execute("INSERT INTO probe VALUES (1, ?, ?)", [lon, lat])
+    return keep_within_corridor(con, "probe", "id", "lon", "lat") == 1
 
 
 def test_no_network_path_builds_the_corridor_it_always_built(tmp_path, con):
@@ -125,6 +135,7 @@ def test_no_network_path_builds_the_corridor_it_always_built(tmp_path, con):
 
     assert build_corridor(con, centerline_path) is False
     assert _contains(con, *NETWORK_COORDS[0]) is False
+    assert _reaches(con, *NETWORK_COORDS[0]) is False
 
 
 def test_the_corridor_reaches_ground_only_a_network_line_touches(tmp_path, con):
@@ -136,7 +147,7 @@ def test_the_corridor_reaches_ground_only_a_network_line_touches(tmp_path, con):
     network_path = _network(tmp_path / "nearby_trails.geojson")
 
     assert build_corridor(con, centerline_path, network_path) is True
-    assert _contains(con, *NETWORK_COORDS[0]) is True
+    assert _reaches(con, *NETWORK_COORDS[0]) is True
 
 
 def test_the_widening_still_holds_the_at_corridor(tmp_path, con):
@@ -150,6 +161,69 @@ def test_the_widening_still_holds_the_at_corridor(tmp_path, con):
     build_corridor(con, centerline_path, network_path)
 
     assert _contains(con, *CENTERLINE_COORDS[0]) is True
+    assert _reaches(con, *CENTERLINE_COORDS[0]) is True
+
+
+def test_the_polygon_stays_the_at_s_and_the_ring_is_a_join(tmp_path, con):
+    """#1311's decision, pinned. The network is not unioned into the
+    `corridor` polygon any more - 112,439 buffered lines made that a
+    20-minute ST_Union_Agg paid twice per build - it is an R-tree-indexed
+    line table beside it, and only `keep_within_corridor` reaches both. A
+    caller reading the polygon directly gets the A.T.'s ground, which is
+    what every such caller wants."""
+    centerline_path = tmp_path / "centerline.geojson"
+    write_centerline(centerline_path)
+    network_path = _network(tmp_path / "nearby_trails.geojson")
+
+    build_corridor(con, centerline_path, network_path)
+
+    assert _contains(con, *NETWORK_COORDS[0]) is False
+    assert _reaches(con, *NETWORK_COORDS[0]) is True
+    assert con.execute(f"SELECT count(*) FROM {NETWORK_TABLE}").fetchone()[0] == 1
+
+
+def test_the_ring_keeps_a_point_inside_it_and_drops_one_just_past_it(tmp_path, con):
+    """The join answers the same set the union did: a point within
+    NETWORK_BUFFER_FEET of a line is kept, one past it is not. Offsets are
+    due south of the line's first vertex, where the nearest point on the
+    line IS that vertex, so the distance is the offset itself
+    (one degree of latitude is ~111 km)."""
+    centerline_path = tmp_path / "centerline.geojson"
+    write_centerline(centerline_path)
+    network_path = _network(tmp_path / "nearby_trails.geojson")
+    build_corridor(con, centerline_path, network_path)
+
+    lon, lat = NETWORK_COORDS[0]
+    inside_ft, outside_ft = NETWORK_BUFFER_FEET * 0.8, NETWORK_BUFFER_FEET * 1.2
+    degrees_per_foot = 0.3048 / 111_000
+
+    assert _reaches(con, lon, lat - inside_ft * degrees_per_foot) is True
+    assert _reaches(con, lon, lat - outside_ft * degrees_per_foot) is False
+
+
+def test_keep_within_corridor_answers_many_rows_at_once_with_their_own_ids(tmp_path, con):
+    """The shape both clips use: a table of candidates in, `corridor_hits`
+    out, ids untouched - a string id stays a string, which is what lets
+    build_osm_water_reach.py join it straight back to its rows."""
+    centerline_path = tmp_path / "centerline.geojson"
+    write_centerline(centerline_path)
+    network_path = _network(tmp_path / "nearby_trails.geojson")
+    build_corridor(con, centerline_path, network_path)
+
+    con.execute("CREATE TABLE candidates (osm_id VARCHAR, lon DOUBLE, lat DOUBLE)")
+    con.executemany(
+        "INSERT INTO candidates VALUES (?, ?, ?)",
+        [
+            ("on_the_at", *CENTERLINE_COORDS[0]),
+            ("on_a_park_trail", *NETWORK_COORDS[0]),
+            ("a_mile_off_the_park_trail", NETWORK_COORDS[0][0], NETWORK_COORDS[0][1] - 1.0 / 69.0),
+            ("nowhere_near", -70.0, 38.0),
+        ],
+    )
+
+    assert keep_within_corridor(con, "candidates", "osm_id", "lon", "lat") == 2
+    kept = {row[0] for row in con.execute("SELECT id FROM corridor_hits ORDER BY id").fetchall()}
+    assert kept == {"on_the_at", "on_a_park_trail"}
 
 
 def test_the_network_ring_is_narrow_rather_than_thirty_miles(tmp_path, con):
@@ -166,7 +240,7 @@ def test_the_network_ring_is_narrow_rather_than_thirty_miles(tmp_path, con):
     build_corridor(con, centerline_path, network_path)
 
     lon, lat = NETWORK_COORDS[0]
-    assert _contains(con, lon, lat - 1.0 / 69.0) is False
+    assert _reaches(con, lon, lat - 1.0 / 69.0) is False
 
 
 def test_the_ring_is_wider_than_the_gate_that_has_to_pass_through_it():

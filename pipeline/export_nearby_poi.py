@@ -114,7 +114,7 @@ from pathlib import Path
 import duckdb
 
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.corridor import GEOGRAPHIC_CRS, NETWORK_BUFFER_FEET, PROJECTED_CRS, count_features
+from lib.corridor import NETWORK_BUFFER_FEET, load_network_lines, near_network_sql
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 from lib.nynjtc_long_path_guide import LINE_SOURCE_KEY as GUIDE_LINE_KEY
@@ -584,16 +584,12 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
-    if not count_features(con, network_path):
+    # The same indexed line table and the same ring query lib/corridor.py
+    # clips POIs and water with (#1311) - this file had them first, and
+    # sharing them is what stopped the corridor building a nationwide union.
+    if not load_network_lines(con, network_path):
         stats["reason"] = f"{network_path.name} holds no lines, so there is no ring to measure against"
         return records, stats
-
-    con.execute(f"""
-        CREATE TABLE network AS
-        SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
-        FROM ST_Read('{network_path.as_posix()}')
-    """)
-    con.execute("CREATE INDEX network_ring ON network USING RTREE (g)")
 
     # Only the types the ring applies to are measured - the exempt ones never
     # reach this table, so an exemption costs no query time and cannot be
@@ -605,24 +601,7 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
         [(at, record["lon"], record["lat"]) for at, record in candidates],
     )
 
-    radius_m = NETWORK_BUFFER_FEET * METERS_PER_FOOT
-    inside = {
-        row[0]
-        for row in con.execute(f"""
-            SELECT c.idx
-            FROM candidate c
-            JOIN network n
-              ON ST_Intersects(
-                   n.g,
-                   ST_Buffer(
-                     ST_Transform(ST_Point(c.lon, c.lat), '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}',
-                                  always_xy := true),
-                     {radius_m}
-                   )
-                 )
-            GROUP BY c.idx
-        """).fetchall()
-    }
+    inside = {row[0] for row in con.execute(near_network_sql("candidate", "idx", "lon", "lat")).fetchall()}
 
     dropped_by: dict[str, int] = {}
     kept: list[dict] = []

@@ -276,7 +276,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler, index_elevation_tiles
+from export_elevation import SAMPLE_INTERVAL_METERS, ElevationSampler
 
 # Imported, including the underscored one, rather than re-implemented. Both are
 # how the two-scalar artifact walks an edge, and this file has to walk it
@@ -397,8 +397,17 @@ def build(graph: dict, geometry: list[list[list[float]]], sampler: ElevationSamp
 
     EVERY EDGE'S POINTS GO TO THE SAMPLER IN ONE CALL, for the reason that
     module's own `build` gives: `sample_many` groups points by covering tile
-    and does one windowed read per tile, so batching across the whole graph
-    turns thousands of remote range reads into a handful.
+    and reads only the blocks those points land in, so batching across the
+    whole graph turns hundreds of thousands of separate range reads into one
+    pass per tile.
+
+    AND THIS RUN SHOULD READ ALMOST NOTHING. Sharing `edge_sample_points` with
+    export_network_elevation.py means the two modules ask for the SAME points,
+    so whichever runs second finds them in the sample cache the first left
+    beside the tile index (#1287). The sampler's own log line says how many
+    points were cached and how many were read, which is the only way to notice
+    that stopping - a geometry rebuild moves every point and every one of them
+    is read again, correctly and slowly.
     """
     edges = graph["edges"]
     if len(geometry) != len(edges):
@@ -536,7 +545,10 @@ def main(argv: list[str] | None = None) -> dict:
 
     graph = json.loads(args.graph.read_text())
     geometry = json.loads(args.geometry.read_text())
-    sampler = ElevationSampler(index_elevation_tiles(args.tile_index))
+    # `for_index` rather than a bare constructor, so this run reads the
+    # shared sample cache beside the tile index instead of re-reading every
+    # point its sibling exporter just read (#1287). See that classmethod.
+    sampler = ElevationSampler.for_index(args.tile_index)
     try:
         profiles, stats, seam = build(graph, geometry, sampler)
     finally:

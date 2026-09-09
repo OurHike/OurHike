@@ -119,3 +119,51 @@ def get_field_coded_domain(layer_url: str, field_name: str) -> dict[int, str] | 
                 return {cv["code"]: cv["name"] for cv in domain.get("codedValues", [])}
             return None
     return None
+
+
+def get_layer_max_field(layer_url: str, field_name: str) -> str | None:
+    """The layer's `max(field_name)`, as one statistics query, or None.
+
+    The substitute change marker for a layer whose server exposes no
+    `editingInfo` (#1311). An on-prem ArcGIS server - NYS DEC's, the Forest
+    Service's - answers `get_layer_edit_date` with None, and until this
+    existed that meant the layer was re-fetched on every run: 21,470
+    back-country features for DEC alone, unchanged since 2026-08-18 by the
+    field this reads. `sources.json` records the field per entry as
+    `freshness.kind: arcgis_max_field`, with the measurement that chose it.
+
+    Returned as a STRING, whatever the server's type, because the value is
+    only ever compared verbatim against the one recorded on the last fetch -
+    the same rule lib/freshness_state.compare_marker keeps for every other
+    marker, so an epoch-millisecond integer and its JSON round-trip cannot
+    manufacture a change.
+
+    None when the server returns no statistics row, which the caller reads
+    as "no marker" and fetches. Never rounded to "unchanged".
+    """
+    query_url = layer_url.rstrip("/") + "/query"
+    statistics = [{"statisticType": "max", "onStatisticField": field_name, "outStatisticFieldName": "marker"}]
+    params = {"where": "1=1", "outStatistics": json.dumps(statistics), "f": "json"}
+    resp = request_with_retry(query_url, params=params, timeout=30)
+    features = resp.json().get("features") or []
+    if not features:
+        return None
+    value = (features[0].get("attributes") or {}).get("marker")
+    return None if value is None else str(value)
+
+
+def get_service_etag(url: str) -> str | None:
+    """The ETag a HEAD on `url` answers with, or None if it answers none.
+
+    The other substitute marker (#1311): the Forest Service's EDW server has
+    no `editingInfo` AND no date column, so the only thing that can move
+    when its data does is the ETag on the service description document.
+    `sources.json` tags that as @unvalidated - an ETag on the METADATA has
+    not been shown to move when the FEATURES do - which is why the caller
+    records both sides of every comparison rather than trusting this alone.
+
+    Compared verbatim, weak validators included: the question is only
+    "did it move", exactly as check_freshness.py asks ATC's feed.
+    """
+    resp = request_with_retry(url, method="head", timeout=30)
+    return resp.headers.get("ETag")

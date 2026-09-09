@@ -138,6 +138,20 @@ def test_every_fetcher_output_is_carried_between_runs(fetcher, outputs, cached_p
         )
 
 
+def test_the_external_layers_are_carried_between_runs(cached_paths):
+    """No receipt names these - fetch_external_layers.py runs continue-on-error
+    and writes none - so the roster above cannot catch them, and that is the
+    gap that re-fetched all 18 layers on every run (#1311): the list carried
+    `pipeline/data/raw/*.geojson`, and a glob does not reach into external/,
+    so the manifest each layer's skip compares against never survived a
+    runner."""
+    import fetch_external_layers
+
+    for path in (fetch_external_layers.MANIFEST_PATH, fetch_external_layers.RAW_DIR / "usfs_trails.geojson"):
+        relative = path.relative_to(REPO_ROOT)
+        assert _covered(relative, cached_paths), f"{relative} is not in FETCH_OUTPUTS"
+
+
 def test_the_receipts_themselves_are_carried(cached_paths):
     """The other half, and the one that makes the rest matter: without the
     receipts, every run looks like a run where nothing was ever fetched."""

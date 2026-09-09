@@ -3,7 +3,13 @@ raises on any unmocked request, which is the isolation guarantee this suite
 relies on (see TESTING.md)."""
 
 from lib import arcgis
-from lib.arcgis import fetch_layer_geojson, get_field_coded_domain, get_layer_edit_date
+from lib.arcgis import (
+    fetch_layer_geojson,
+    get_field_coded_domain,
+    get_layer_edit_date,
+    get_layer_max_field,
+    get_service_etag,
+)
 
 LAYER_URL = "https://services1.arcgis.com/fake/arcgis/rest/services/Fake/FeatureServer/0"
 
@@ -193,3 +199,39 @@ def test_a_custom_page_size_still_stops_only_on_an_empty_page(requests_mock):
 
     assert len(fc["features"]) == 4
     assert requests_mock.call_count == 3
+
+
+# --- the substitute markers (#1311) -----------------------------------------
+
+SERVICE_URL = "https://apps.fs.usda.gov/arcx/rest/services/EDW/Fake/MapServer?f=json"
+
+
+def test_get_layer_max_field_asks_one_statistics_query_and_answers_a_string(requests_mock):
+    requests_mock.get(LAYER_URL + "/query", json={"features": [{"attributes": {"marker": 1755475200000}}]})
+
+    assert get_layer_max_field(LAYER_URL, "UPDATED") == "1755475200000"
+
+    sent = requests_mock.last_request.qs
+    assert "outstatistics" in sent
+    assert "updated" in sent["outstatistics"][0].lower()
+    assert requests_mock.call_count == 1
+
+
+def test_get_layer_max_field_is_none_when_the_server_answers_no_row(requests_mock):
+    """An empty answer is "no marker", never "unchanged" - the caller fetches."""
+    requests_mock.get(LAYER_URL + "/query", json={"features": []})
+
+    assert get_layer_max_field(LAYER_URL, "UPDATED") is None
+
+
+def test_get_service_etag_reads_the_header_off_a_head(requests_mock):
+    requests_mock.head(SERVICE_URL, headers={"ETag": 'W/"1a7709d0"'})
+
+    assert get_service_etag(SERVICE_URL) == 'W/"1a7709d0"'
+    assert requests_mock.last_request.method == "HEAD"
+
+
+def test_get_service_etag_is_none_when_the_service_sends_none(requests_mock):
+    requests_mock.head(SERVICE_URL, headers={})
+
+    assert get_service_etag(SERVICE_URL) is None

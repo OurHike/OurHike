@@ -129,6 +129,7 @@ jobs:
         pipeline/data/raw/poi_images_atc.json
         pipeline/data/raw/elevation
         pipeline/data/raw/nynjtc_long_path_guide
+        pipeline/data/raw/nynjtc_hikes.json
 
     steps:
       - uses: actions/checkout@v7
@@ -446,6 +447,20 @@ jobs:
         continue-on-error: true
         run: python fetch_nynjtc_long_path_guide.py
 
+      # NYNJTC's Favorite Hikes (#1290): the twenty public write-ups, with
+      # their photographs, into data/raw/nynjtc_hikes.json (in FETCH_OUTPUTS
+      # above) and the content-addressed photo store. One listing request
+      # and one per photograph the cache does not already hold. The export
+      # that reads this cache runs far below, after the junction graph is
+      # built, because a published route is measured on that graph.
+      #
+      # continue-on-error for the same reason as the guide fetch above: a
+      # website's bad afternoon must not fail an A.T. publish, and the
+      # export reads whatever the restore left on disk.
+      - name: Fetch NYNJTC's Favorite Hikes
+        continue-on-error: true
+        run: python fetch_nynjtc_hikes.py
+
       - name: Export the waypoints other organizations publish
         run: python export_nearby_poi.py
 
@@ -759,6 +774,20 @@ jobs:
       - name: Export the shape of the ground along each graph edge
         if: inputs.include_elevation
         run: python export_network_profile.py
+
+      # The routes somebody wrote up (#1290, features/SUGGESTED_HIKES.md):
+      # NYNJTC's Favorite Hikes, each one's ends signed off by a person in
+      # reference/nynjtc_hike_routes.json and measured here on this run's
+      # own junction graph by lib/trail_graph_route.py, the twin of the
+      # phone's router. AFTER the two elevation steps and NOT gated on
+      # include_elevation: the export needs the graph, and prices climb only
+      # when this run also wrote a climb sidecar that fits it - a run
+      # without elevation ships the routes with their climb absent, which
+      # the card reads as unknown. Three gates decide what it writes, none of
+      # them this workflow's (the script's docstring); a run where no row
+      # is reviewed yet writes nothing, and publish.py collects nothing.
+      - name: Export the routes NYNJTC publishes
+        run: python export_suggested_hikes.py
 
       # The graph and whatever companions this run wrote, cut into 1-degree
       # cells (#1257 stage 3, cut_trail_graph.py) - what a phone actually

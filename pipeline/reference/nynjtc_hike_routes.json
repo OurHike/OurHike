@@ -5,7 +5,8 @@
     "STATUS VOCABULARY. `proposed`: built and measured, waiting for a person to sign it off - nothing ships. `reviewed`: a person has read the review sheet and stands behind these ends; set `reviewed` to the date. `held`: no route can be built on this build's lines, with `reason` saying why and which issue would change it - the maintainer's rule, 2026-09-09: 'hold any hikes that you can't make a route on'.",
     "EVERY `proposed` ROW WAS PLACED BY HAND on 2026-09-09 from the description and the graph as published to production that day, junction by junction, and `basis` says how; `measured_miles` is what lib/trail_graph_route.py priced then, kept beside NYNJTC's own `published_miles` so the two can disagree in the open. The review sheet re-measures on every run; a row whose measurement drifts from this figure by more than a few percent has had the ground under it republished, and is worth re-reading.",
     "`ends` are [lon, lat] pairs snapped onto the trail line, in walking order; `closed: true` means the walk returns to its first end (a loop, or an out-and-back through its far point). A `published_miles` override carries NYNJTC's own figure where lib/nynjtc_hikes.py's parse of the overview picked the wrong number, with `published_miles_note` saying why.",
-    "This file lives in reference/ because every row is a judgement a reviewer signs, and its diff is that review (.github/tests/test_no_committed_data.py)."
+    "This file lives in reference/ because every row is a judgement a reviewer signs, and its diff is that review (.github/tests/test_no_committed_data.py).",
+    "`hiker_note` is the one sentence a HIKER reads on the card about how this route differs from NYNJTC's page - what is not drawn and why, where the route starts if not at their pin, and a measured length that sits well off theirs. `basis` is the reviewer's; this is the hiker's, and export_suggested_hikes.py ships it as `hikerNote`."
   ],
   "routes": {
     "catskill-fire-towers": {
@@ -36,7 +37,8 @@
       "proposed": "2026-09-09",
       "reviewed": null,
       "published_miles": 0.75,
-      "published_miles_note": "the overview says '0.35-mile' for the one-way accessible section and 'roughly 0.75-mile out-and-back' in the description; the route built is the out-and-back"
+      "published_miles_note": "the overview says '0.35-mile' for the one-way accessible section and 'roughly 0.75-mile out-and-back' in the description; the route built is the out-and-back",
+      "hiker_note": "This is the accessible All Persons Trail out and back, 0.35 mi each way. The optional summit loop in NYNJTC's description is not drawn: on this build's trail lines its blue connector does not join the A.T."
     },
     "hike-buttermilk-falls-in-rockland-county": {
       "status": "held",
@@ -71,7 +73,8 @@
       "measured_miles": 4.43,
       "basis": "the start on the A.T. by Dennytown Road, then four points along the red-blazed Catfish Loop in the clockwise order the description walks it, so the shortest path cannot shortcut across the loop on the A.T. (which crosses it once, at the cairn junction)",
       "proposed": "2026-09-09",
-      "reviewed": null
+      "reviewed": null,
+      "hiker_note": "Measured 4.4 mi on this build's lines against NYNJTC's 4.6."
     },
     "hike-cranberry-lake-preserve-loop": {
       "status": "held",
@@ -103,7 +106,8 @@
       "measured_miles": 3.81,
       "basis": "the kiosk end of the Doris Duke Trail, then its two junctions with the Allis/Highlands Trail in counterclockwise order (the DD Loop sign sends the hiker right); the shortest path between them is the ridge on the Allis Trail southwest, as described",
       "proposed": "2026-09-09",
-      "reviewed": null
+      "reviewed": null,
+      "hiker_note": "Measured 3.8 mi on this build's lines against NYNJTC's 4.0."
     },
     "hike-duck-pond-multi-use-trail": {
       "status": "held",
@@ -152,7 +156,8 @@
       "proposed": "2026-09-09",
       "reviewed": null,
       "published_miles": 13.0,
-      "published_miles_note": "the overview names three lengths (4.5, 8.8 and 13 mi) and the parse took the first; the route built is the 13-mile variant NYNJTC files under 10+ miles / Full-Day"
+      "published_miles_note": "the overview names three lengths (4.5, 8.8 and 13 mi) and the parse took the first; the route built is the 13-mile variant NYNJTC files under 10+ miles / Full-Day",
+      "hiker_note": "The 13-mile out-and-back to Overlook Mountain, with the Echo Lake spur on the way out. Not drawn, because no trail line carries them: the Plattekill Falls path, the short spur to Codfish Point, and the walk to the Overlook Mountain House ruins."
     },
     "hike-short-and-scenic-loop-hike-on-bullwheel-high-peters-kill-and-red-trails": {
       "status": "proposed",
@@ -209,7 +214,8 @@
       "measured_miles": 3.61,
       "basis": "the Mountain Road lot on the Stillman Trail, the Bluebird Trail north junction (turn right), the Bluebird Trail south junction (turn left, uphill), and the By-Pass Trail junction where the Stillman/Highlands turns sharply left for the viewpoints; the return is the Stillman/Highlands descent to the Bluebird junction and the gravel road back. MEASURED 20% UNDER NYNJTC: 3.61 against 4.5. The Highlands line here is NYNJTC own extract and OPRHP copy of it, welded every few metres; whether the shortfall is a simplified line or a different loop shape is for the reviewer.",
       "proposed": "2026-09-09",
-      "reviewed": null
+      "reviewed": null,
+      "hiker_note": "Measured 3.6 mi on this build's lines against NYNJTC's 4.5; the Highlands Trail line here may be simplified, so allow for the longer figure."
     },
     "hike-van-cortlandt-park-history-loop": {
       "status": "held",
@@ -237,7 +243,8 @@
       "measured_miles": 6.59,
       "basis": "out and back. The start is the Diamond Notch trailhead at the cable barrier, 0.2 mi up the road from the lot NYNJTC pins (the road walk is not on the trail lines). The far end is placed 2.7 mi along the Devil Path west of the Diamond Notch Falls junction - NYNJTC 3.4 mi from the road less the 0.7 mi of Diamond Notch Trail - which is where their description puts the summit sign and cairn; nobody has checked that point against the summit on the ground.",
       "proposed": "2026-09-09",
-      "reviewed": null
+      "reviewed": null,
+      "hiker_note": "The route starts at the cable barrier 0.2 mi up Spruceton Road from the parking area; that road walk is not on the trail lines. The far end sits where NYNJTC's mileage puts the summit sign, 3.4 mi from the road."
     }
   }
 }

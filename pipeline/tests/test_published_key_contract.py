@@ -181,6 +181,11 @@ def client_keys() -> dict[str, str]:
         # card to draw them with. Listed here so a rename on either end is a
         # failing test rather than a 404 on a mountain.
         _string_const(config, "RETIRED_POI_KEY"): "config.ts RETIRED_POI_KEY",
+        # The routes somebody wrote up (#1290). Optional on the phone like
+        # spurs.json, and the client half shipped a release before any
+        # exporter wrote it (#1284) - so a respelling on either end would
+        # read as "nobody has published a route" for ever.
+        _string_const(config, "SUGGESTED_HIKES_KEY"): "config.ts SUGGESTED_HIKES_KEY",
         # The corridor-view sketch of the other organizations' lines (#1135) -
         # what the opening camera draws so the whole network shows without
         # fetching the whole-file artifact, which no client declares a key
@@ -301,6 +306,9 @@ def published(tmp_path, monkeypatch) -> set[str]:
     )
 
     (tmp_path / "elevation_manifest.json").write_text(json.dumps(manifest_entry("elevation_profile.json")))
+    # The suggested hikes (#1290): one manifest, one root artifact, the
+    # shape highlights_manifest.json takes.
+    (tmp_path / "suggested_hikes_manifest.json").write_text(json.dumps(manifest_entry("suggested_hikes.json")))
     (tmp_path / "spurs_manifest.json").write_text(json.dumps(manifest_entry("spurs.json")))
     # The tombstones (#673). This fixture is "one of every artifact" and was
     # missing this one, so the key looked unpublished the moment the client

@@ -56,7 +56,7 @@ from lib.content_types import BINARY_TYPES, COMPRESSIBLE_TYPES
 from lib.hashing import sha256_file
 from lib.manifest_paths import from_manifest_path, to_manifest_path
 from lib.photo_screen import load_decisions, unpublishable_digests
-from lib.photo_store import PHOTO_EXTENSION, PHOTOS_DIRNAME, photo_key
+from lib.photo_store import PHOTO_EXTENSION, PHOTO_PREFIX, PHOTOS_DIRNAME, photo_key
 from lib.r2_keys import assert_valid_keys
 
 ROOT = Path(__file__).parent
@@ -469,6 +469,17 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     the artifact is what a hiker's card resolves against."""
     keys: set[str] = set()
     for name, entry in artifacts.items():
+        # The suggested hikes' photographs ride the same store (#1290):
+        # each record's `photo.url` is a `photos/<digest>.jpg` key, and the
+        # detail screen resolves it against the bucket exactly as a card
+        # resolves a POI's photo_key - so the same promise is settled here.
+        if name == SUGGESTED_HIKES_KEY:
+            document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
+            for hike in document.get("hikes", []):
+                url = (hike.get("photo") or {}).get("url")
+                if isinstance(url, str) and url.startswith(f"{PHOTO_PREFIX}/"):
+                    keys.add(url)
+            continue
         if not (name.startswith("poi_") and name.endswith(".geojson")):
             continue
         document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
@@ -518,6 +529,9 @@ def verify_photo_promises(s3_client, bucket: str, prefix: str, artifacts: dict, 
 # than inline so test_published_key_contract.py and the client's
 # lib/config.ts have one spelling to agree with.
 NEARBY_TRAILS_KEY = "nearby_trails.geojson"
+
+# export_suggested_hikes.py's artifact (#1290): config.ts's SUGGESTED_HIKES_KEY.
+SUGGESTED_HIKES_KEY = "suggested_hikes.json"
 
 # The published key for export_nearby_poi.py's artifact (#1097) - the POIs NYS
 # DEC and NYS OPRHP publish, the sibling of NEARBY_TRAILS_KEY and gated the
@@ -838,6 +852,19 @@ def collect_artifacts() -> dict[str, dict]:
     if highlights_manifest.exists():
         manifest = json.loads(highlights_manifest.read_text())
         artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The routes somebody wrote up, if export_suggested_hikes.py has run
+    # (#1290, features/SUGGESTED_HIKES.md) - NYNJTC's reviewed Favorite
+    # Hikes first. Same shape again. It is absent from a release for THREE
+    # reasons rather than one, and the client reads all three as an empty
+    # shelf rather than a failure: the entry's reaches_hikers, no row yet
+    # signed off in reference/nynjtc_hike_routes.json, or a run that did not
+    # reach the exporter. config.ts declares it `@release optional` for
+    # exactly that.
+    suggested_manifest = PROCESSED_DIR / "suggested_hikes_manifest.json"
+    if suggested_manifest.exists():
+        manifest = json.loads(suggested_manifest.read_text())
+        artifacts[SUGGESTED_HIKES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The tombstones: every POI id ever retired, so an id that has been
     # published once always resolves to something (#673,

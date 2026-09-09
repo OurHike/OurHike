@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { FIT_PADDING } from './map/MapView'
+import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
+import { BLAZE_DOTTED_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, getMany, set, setMany, update } from 'idb-keyval'
@@ -263,6 +266,44 @@ describe('App shell', () => {
       await screen.findByRole('tab', { name: 'Today', selected: true }),
     ).toBeInTheDocument()
     expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
+  })
+
+  it('re-fits the corridor when the steps end, because the card framed it (#1296)', async () => {
+    // The map behind the steps is fitted with the card's padding - the whole
+    // trail squeezed into the top fifth of the screen - and it is the same
+    // map instance the map screen keeps, so nothing else ever re-framed it.
+    // The first map a hiker opened after first run was the corridor under the
+    // identity plate at 300 mi, and with #1292 nothing else, which read as
+    // an empty map.
+    const user = userEvent.setup()
+    render(<App />)
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    const before = map.cameraMoves.length
+
+    await completeOnboarding(user)
+
+    await waitFor(() => {
+      const fit = map.cameraMoves.slice(before).find((move) => 'fitBounds' in move)
+      expect(fit).toBeDefined()
+      expect(fit?.fitBounds).toEqual(map.options.bounds)
+      expect(fit?.padding).toBe(FIT_PADDING)
+    })
+  })
+
+  it('never re-fits a returning hiker, whose map had no card to frame it', async () => {
+    // The re-fit is for a map built during the steps. A phone past them opens
+    // on the corridor already, or on the camera session storage put back -
+    // and a fit here would throw that camera away.
+    returningHiker()
+    render(<App />)
+    // Today is the home tab, so a returning hiker's map is built on the way
+    // to the map screen - fitted at construction, never by a later call.
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+
+    expect(map.cameraMoves.some((move) => 'fitBounds' in move)).toBe(false)
   })
 
   it('opens no window when the steps finish - the download already started on the step that asked', async () => {
@@ -984,6 +1025,93 @@ describe('App shell', () => {
     // would be the one after it.
     const requested = vi.mocked(fetch).mock.calls.map((c) => String(c[0]))
     expect(requested.some((url) => url.includes('.pmtiles'))).toBe(false)
+  })
+})
+
+describe('taking a trail (#1306)', () => {
+  const AT_LINE = {
+    properties: {
+      id: 'centerline:chain:0',
+      source: 'centerline',
+      name: 'Appalachian National Scenic Trail',
+      blaze_color: 'White',
+    },
+    geometry: {
+      type: 'LineString',
+      coordinates: [
+        [10, 400],
+        [200, 400],
+        [380, 400],
+      ],
+    },
+  }
+
+  it('takes nothing on first launch: the map is built with every line dotted', async () => {
+    returningHiker()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    const style = map.options.style as { layers: Array<{ id: string; filter?: unknown }> }
+    const dotted = style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)
+    // The dotted side's filter is the negation of an empty membership: every
+    // line, the A.T. included.
+    expect(JSON.stringify(dotted?.filter)).toContain('"literal",[]')
+  })
+
+  it('takes the A.T. from a tap on its badge, and remembers it', async () => {
+    returningHiker()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    map.renderedFeatures.set(TRAIL_BADGE_LAYER_ID, [
+      {
+        properties: {
+          ...AT_LINE.properties,
+          mark: 'trail-mark-AT',
+          chip: 'blaze-chip-White',
+        },
+        geometry: { type: 'Point', coordinates: [200, 400] },
+      },
+    ])
+
+    await act(async () => {
+      map.emit('click', { point: { x: 200, y: 400 }, lngLat: { lng: 200, lat: 400 } })
+    })
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as
+        { chosen_trail_id: string | null } | undefined
+      expect(saved?.chosen_trail_id).toBe('AT')
+    })
+  })
+
+  it('takes the A.T. from its legend row', async () => {
+    returningHiker()
+    const user = userEvent.setup()
+    render(<App />)
+    await openMapTab()
+    await waitFor(() => expect(MockMap.live.length).toBe(1))
+    const [map] = MockMap.live
+    // A settled frame with the A.T. across it, as map/trailsInView.ts reads
+    // one: identity projection, the line inside the viewport.
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
+    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [AT_LINE])
+    await act(async () => {
+      map.emit('idle')
+    })
+
+    await user.click(await screen.findByRole('button', { name: /legend/i }))
+    await user.click(
+      await screen.findByRole('button', { name: /Appalachian National Scenic Trail/ }),
+    )
+
+    await waitFor(() => {
+      const saved = store.get(PREFERENCES_KEY) as
+        { chosen_trail_id: string | null } | undefined
+      expect(saved?.chosen_trail_id).toBe('AT')
+    })
   })
 })
 

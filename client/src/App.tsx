@@ -95,6 +95,10 @@ import {
   type ReportWindowAnchor,
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
+import { FIT_PADDING } from './map/MapView'
+import { trailIdForSource } from './map/trailBadges'
+import { chosenSystemSources } from './map/nearbyTrails'
+import type { TappedLine } from './map/lineTaps'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
 import { DATA_CONFIGURED } from './lib/config'
 import {
@@ -132,6 +136,7 @@ import {
 } from './lib/downloadDetail'
 import { useArchiveDownloads } from './lib/useArchiveDownload'
 import { useDrawnPoiCounts } from './lib/useDrawnPoiCounts'
+import type { TrailInView } from './map/trailsInView'
 import { useAvailableBytes } from './lib/useAvailableBytes'
 import { usePublishedSizes } from './lib/usePublishedSizes'
 import { useSuggestedHikes } from './lib/useSuggestedHikes'
@@ -1067,6 +1072,44 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
+  /** The taken trail, or null for nothing taken - first launch's all-dotted
+   *  map (#1306). Decides the lines and the legend's `taken`, nothing else:
+   *  the trail the rest of this shell is about is TRAIL_NAME's. */
+  const chosenTrailId = preferences.chosen_trail_id
+  const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+
+  /**
+   * The corridor re-fitted once the entry steps end (#1296).
+   *
+   * The map behind the steps is fitted with `entryFitPadding` (below), and
+   * since #721 it is the same map instance the map screen keeps, so nothing
+   * rebuilds it with a fresh fit when the card goes. Its first moveend has
+   * already reported the padded camera into `camera`, so `bounds` is not
+   * even passed any more. MEASURED 2026-09-09 on the built app, a fresh
+   * profile through Continue, Keep going and Skip: the Map tab opened on the
+   * whole corridor squeezed into the top fifth of the screen under the
+   * identity plate at a 300 mi scale - which, with nothing else drawn down
+   * there since #1292, reads as an empty map. The same framing on `main`.
+   *
+   * Only while the hiker has not taken the map: `mapTaken` latches on the
+   * first pan or pinch, and a view somebody chose is never re-framed. And
+   * only for a map that was built during the steps, which the ref latches:
+   * a returning hiker's map never had the card's padding, and re-fitting it
+   * would throw away the camera lib/cameraMemory.ts put back. No animation,
+   * because Today is showing when this runs and the Map tab is a tap away.
+   * Declared up here with the other unconditional hooks: the shell has early
+   * returns further down, and a hook after one of them is a hook React
+   * cannot count on.
+   */
+  const fittedForEntry = useRef(false)
+  useEffect(() => {
+    if (entering && map !== null) fittedForEntry.current = true
+  }, [entering, map])
+  useEffect(() => {
+    if (entering || map === null || mapTaken || !fittedForEntry.current) return
+    fittedForEntry.current = false
+    map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
+  }, [entering, map, mapTaken])
 
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
@@ -4930,6 +4973,38 @@ function App() {
 
   const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
 
+  /**
+   * Taking a trail (#1306): the one write `chosen_trail_id` gets, from a
+   * badge tap or a legend row. False where there is nothing to do - a source
+   * the registry has no trail for, or the trail already taken - so the
+   * caller can fall through to what the tap would otherwise have meant.
+   */
+  const takeTrail = useCallback(
+    (source: string | null): boolean => {
+      const id = trailIdForSource(source)
+      if (id === null || id === chosenTrailId) return false
+      updatePreferences({ chosen_trail_id: id })
+      return true
+    },
+    [chosenTrailId, updatePreferences],
+  )
+  const handleTakeTrail = useCallback(
+    (trail: TrailInView) => {
+      takeTrail(trail.source)
+    },
+    [takeTrail],
+  )
+  /** A badge tap takes an untaken trail and opens nothing; every other tap -
+   *  a line, or the badge of the trail already taken - is the sheet's, as
+   *  features/NEARBY_TRAILS.md §2 decides for lines (#1306). */
+  const handleSelectLine = useCallback(
+    (tapped: TappedLine | null) => {
+      if (tapped?.badge === true && takeTrail(tapped.source)) return
+      line.mapScreen.onSelectLine?.(tapped)
+    },
+    [takeTrail, line.mapScreen.onSelectLine],
+  )
+
   // How many of the waypoints in view the map actually drew (#528). Measured on
   // `idle` rather than derived, because the collision engine decides it and only
   // MapLibre knows what it decided - see lib/useDrawnPoiCounts.ts.
@@ -4937,7 +5012,14 @@ function App() {
     counts: drawnPoiCounts,
     belowPoiZoom,
     ghostedTrailsDrawn,
-  } = useDrawnPoiCounts(map)
+  } = useDrawnPoiCounts(map, chosenSources)
+
+  // The named trails the map is drawing (#1283), for the legend's "Trails in
+  // view" block. Reported by the map off its settled frame (map/trailsInView.ts)
+  // rather than derived here, for the reason the drawn counts above are: only
+  // MapLibre knows what it actually drew. The setter is the stable callback
+  // MapView asks for.
+  const [trailsInView, setTrailsInView] = useState<readonly TrailInView[]>([])
 
   // One thing open at a time. The waypoint card floats by its pin rather than
   // at the bottom where the legend sits, but the rule survives the move: two
@@ -6774,6 +6856,7 @@ function App() {
               topoArchiveUrl={CORRIDOR_ARCHIVE_URL}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              haveTrailLines={haveTrailLines}
               networkOverviewUrl={networkOverviewUrl}
               background={effectiveBackground(
                 preferences.background_source,
@@ -6890,6 +6973,7 @@ function App() {
               // features never reaches this file at all.
               {...atc.mapScreen}
               {...line.mapScreen}
+              onSelectLine={handleSelectLine}
               {...workday.mapScreen}
               // The route builder's three, from the same kind of hook (#991).
               {...routeBuilder.mapScreen}
@@ -7108,6 +7192,10 @@ function App() {
               onRibbonBackToMe={gps.status === 'located' ? handleBackToMe : undefined}
               viewportPoints={viewportPoints}
               ghostedTrailsDrawn={ghostedTrailsDrawn}
+              trailsInView={trailsInView}
+              onTrailsInView={setTrailsInView}
+              chosenTrailId={chosenTrailId}
+              onTakeTrail={handleTakeTrail}
               drawnCounts={drawnPoiCounts}
               belowPoiZoom={belowPoiZoom}
               {...filters.mapScreen}

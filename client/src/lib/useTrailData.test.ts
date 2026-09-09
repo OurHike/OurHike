@@ -192,6 +192,23 @@ describe('the launches that must not pay for the rule', () => {
     expect(downloadTrailData).not.toHaveBeenCalled()
   })
 
+  it('keeps handing the map the sketch after the real line is held, because the map decides when it is drawn (#1291)', async () => {
+    // This used to withdraw and revoke the sketch the moment `haveTrailLines`
+    // flipped, seconds before the map had parsed the line it was holding.
+    // Now the hook fetches the sketch on every launch and hands it over for
+    // the app's life; map/style.ts's attachTrailOverview clears it per map,
+    // off the map's own trails source.
+    vi.mocked(haveTrailData).mockResolvedValue(true)
+    vi.mocked(loadTrailLines).mockResolvedValue(new Blob(['{}']) as never)
+    vi.mocked(fetchTrailOverview).mockResolvedValue('blob:overview')
+
+    const { result } = renderHook(() => useTrailData(true))
+
+    await waitFor(() => expect(result.current.haveTrailLines).toBe(true))
+    await waitFor(() => expect(result.current.overviewTrailsUrl).toBe('blob:overview'))
+    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:overview')
+  })
+
   it('reads the stored network sketch with no signal, without waiting for anything', async () => {
     // Offline the gate is not applied at all, and that asymmetry is the
     // design: what waits is a refetch, never a store read. A phone on a ridge

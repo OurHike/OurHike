@@ -12,6 +12,7 @@ import {
   ATC_UPDATE_LINE_WIDTH,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
+  ATC_UPDATE_POINT_MIN_ZOOM,
   ATC_UPDATE_TAPE_CADENCE,
   ATC_UPDATE_TAPE_SCALE,
   atcNoticeRimWidths,
@@ -197,28 +198,27 @@ describe('a point notice', () => {
   })
 
   it('shrinks with the camera, because the ground a pixel covers does', () => {
-    // The fault two rounds of shaving the full-size number could not reach: at
-    // z5 the whole corridor is on one screen and a walking-zoom mark is roughly
-    // the width of Maryland. Five notices drawn that way are five craters over
-    // four states.
+    // The fault two rounds of shaving the full-size number could not reach: a
+    // walking-zoom mark at the seam covers ground it is not about. The z5
+    // case that used to open this test went with the z5 stop: below the seam
+    // the point is not drawn at all (#1292).
     const walking = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, WALKING_ZOOM)
+    const atSeam = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, ATC_UPDATE_POINT_MIN_ZOOM)
 
-    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 5)).toBeLessThan(walking / 2)
-    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeLessThan(walking)
-    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 9)).toBeGreaterThan(
-      drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 5),
-    )
+    expect(atSeam).toBeLessThan(walking)
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 11)).toBeGreaterThan(atSeam)
   })
 
-  it('never shrinks to nothing, having no minzoom to hide behind', () => {
-    // Unlike the waypoint pins, this layer is drawn at every zoom there is -
-    // and zoomed out to plan a week is exactly when someone wants to know
-    // where the ATC has posted something. Clamped at the bottom stop, so the
-    // corridor view keeps a mark a hiker can actually find.
-    const smallest = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 0)
+  it('is drawn at its seam size from the seam, and never smaller', () => {
+    // The ramp's bottom stop is the seam itself: there is no zoom where this
+    // draws smaller than it does at z9, because there is no zoom below the
+    // seam where it draws at all (#1292). The case this replaces said the
+    // opposite - "no minzoom to hide behind" - and the maintainer's call that
+    // the opening camera shows trail lines only reversed it.
+    const atSeam = drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, ATC_UPDATE_POINT_MIN_ZOOM)
 
-    expect(smallest).toBe(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 5))
-    expect(smallest).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
+    expect(drawnWidthAt(ATC_UPDATE_POINT_LAYER_ID, 0)).toBe(atSeam)
+    expect(atSeam).toBeGreaterThan(ATC_UPDATE_LINE_WIDTH)
   })
 
   it('stops growing once everything else has', () => {
@@ -255,6 +255,19 @@ describe('a point notice', () => {
     // The other half of that: `icon-ignore-placement` stays at its default, so
     // a waypoint pin under a notice yields instead of being drawn through it.
     expect(layoutOf(ATC_UPDATE_POINT_LAYER_ID)['icon-ignore-placement']).toBeUndefined()
+  })
+
+  it('stops the point at the seam, like every other mark on the map (#1292)', () => {
+    // The opening camera shows trail lines only, by the maintainer's call of
+    // 2026-09-08. The tape stays: a closure band is trail line, not a mark.
+    const point = buildAtcUpdateLayers('atc-updates').find(
+      (candidate) => candidate.id === ATC_UPDATE_POINT_LAYER_ID,
+    )
+    const band = buildAtcUpdateLayers('atc-updates').find(
+      (candidate) => candidate.id === ATC_UPDATE_LAYER_ID,
+    )
+    expect(point?.minzoom).toBe(ATC_UPDATE_POINT_MIN_ZOOM)
+    expect(band).not.toHaveProperty('minzoom')
   })
 
   it('draws from the same source as the bands', () => {

@@ -75,6 +75,7 @@ import { MapAttribution } from './MapAttribution'
  *  band's ends off the very frame edge. */
 const CHART_FIT_PADDING = 48
 import type { ResolvedTheme } from '../lib/theme'
+import type { TrailInView, ViewInsets } from '../map/trailsInView'
 import type {
   BackgroundSource,
   LayerDetailLevel,
@@ -108,11 +109,15 @@ export interface MapScreenProps {
   modeSwitch?: ReactNode
   topoArchiveUrl: string
   trailsUrl: string
-  /** The corridor-view centerline, while there is no real one to draw (#869).
-   *  Passed straight through - which line the map is drawing is decided in
-   *  lib/useTrailData.ts, and a screen that second-guessed it could put both
-   *  on at once. */
+  /** The corridor-view centerline, drawn until the map has the real line on
+   *  screen (#869, #1291). Passed straight through with `haveTrailLines`
+   *  below - which line the map is drawing is the canvas's own call, made
+   *  off its trails source, and a screen that second-guessed it could put
+   *  both on at once or neither. */
   overviewTrailsUrl?: string | null
+  /** Whether `trailsUrl` is the real line rather than the seeded placeholder
+   *  (#1291) - the other half of the sketch's contract, passed through. */
+  haveTrailLines?: boolean
   /** The network's corridor-view sketch, forwarded to the canvas (#1135). */
   networkOverviewUrl?: string | null
   /** Which background the map draws; also decides what the corner has to
@@ -400,6 +405,18 @@ export interface MapScreenProps {
   /** Passed straight through to the Legend (#783) - MapScreen decides nothing
    *  about it. */
   ghostedTrailsDrawn?: boolean
+  /** The named trails on screen (#1283), passed straight through to the
+   *  Legend's "Trails in view" block; and the map's report of them, passed
+   *  straight through to MapView. MapScreen decides nothing about either. */
+  trailsInView?: readonly TrailInView[]
+  onTrailsInView?: (trails: readonly TrailInView[]) => void
+  /** The taken trail (#1306), for the canvas's line splits and the legend's
+   *  rows - lib/userPreferences.ts's `chosen_trail_id`, passed through. */
+  chosenTrailId?: string | null
+  /** Takes a trail from its legend row (#1306). The rows are plain without
+   *  it, per the legend's rule that a control is drawn only where it goes
+   *  somewhere. */
+  onTakeTrail?: (trail: TrailInView) => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -720,10 +737,21 @@ export interface MapScreenProps {
   entering?: boolean
 }
 
+/** chrome.css's `--map-control-size`: the zoom buttons at the foot of the
+ *  canvas. Restated, since a stylesheet token cannot be read from here
+ *  before layout; src/test/mapChromeContrast.test.ts is where the CSS is
+ *  pinned. */
+const MAP_CONTROL_SIZE_PX = 42
+/** MapLibre's own `.maplibregl-ctrl` margin (maplibre-gl.css). */
+const MAP_CONTROL_MARGIN_PX = 10
+/** Breathing room under the float column before a badge may anchor. */
+const CHROME_CLEARANCE_PX = 8
+
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
   overviewTrailsUrl = null,
+  haveTrailLines = false,
   networkOverviewUrl = null,
   background = 'hiking_topo_live',
   trailName,
@@ -791,6 +819,10 @@ export function MapScreen({
   bbox,
   viewportPoints,
   ghostedTrailsDrawn,
+  trailsInView,
+  onTrailsInView,
+  chosenTrailId = null,
+  onTakeTrail,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -853,6 +885,41 @@ export function MapScreen({
   // permanent panel it is neither. No media query can change what a component
   // tells a screen reader it is.
   const isDesktop = useDesktop()
+
+  // How much of the canvas the floating chrome covers (#1283), for the
+  // through-route badge's anchor. The top band is MEASURED off the float
+  // column - the identity plate plus whatever stacks under it, which grows
+  // with the flags and the alerts - because the second preview frame put
+  // the A.T.'s badge exactly there, under the plate, where MapLibre could
+  // not know a plate was. The foot is reasoned rather than measured: the
+  // zoom control is `--map-control-size` (42 px, chrome.css) inside
+  // MapLibre's own 10 px control margin, and the count chip and the scale
+  // bar sit within that band. `@unvalidated` only in the sense that nobody
+  // has watched a badge land beside the zoom buttons; what would settle it
+  // is a frame where one does.
+  const floatRef = useRef<HTMLDivElement | null>(null)
+  const [floatBottom, setFloatBottom] = useState(0)
+  useEffect(() => {
+    const float = floatRef.current
+    if (float === null) return
+    const measure = () => setFloatBottom(float.offsetTop + float.offsetHeight)
+    measure()
+    // jsdom has no ResizeObserver and no layout to observe; the one
+    // measurement above is what it gets, and it is zero there.
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver(measure)
+    observer.observe(float)
+    return () => observer.disconnect()
+  }, [])
+  const chromeInsets = useMemo<ViewInsets>(
+    () => ({
+      top: floatBottom + CHROME_CLEARANCE_PX,
+      right: 0,
+      bottom: MAP_CONTROL_SIZE_PX + MAP_CONTROL_MARGIN_PX * 2,
+      left: 0,
+    }),
+    [floatBottom],
+  )
 
   /**
    * Whether the day-hike builder owns this screen (#1194).
@@ -1199,7 +1266,7 @@ export function MapScreen({
                 alerts down rather than overlapping them. Inside the canvas
                 so the .map-screen--entering rules hide all of it during
                 first run without a list of names (chrome.css). */}
-            <div className="map-screen__float">
+            <div className="map-screen__float" ref={floatRef}>
               <Header
                 trailName={trailName}
                 trailLogo={trailLogo}
@@ -1314,6 +1381,7 @@ export function MapScreen({
               topoArchiveUrl={topoArchiveUrl}
               trailsUrl={trailsUrl}
               overviewTrailsUrl={overviewTrailsUrl}
+              haveTrailLines={haveTrailLines}
               networkOverviewUrl={networkOverviewUrl}
               background={background}
               pois={viewportPoints}
@@ -1357,6 +1425,9 @@ export function MapScreen({
               archiveZooms={archiveZooms}
               boundsPadding={boundsPadding}
               onViewportChange={onViewportChange}
+              onTrailsInView={onTrailsInView}
+              chromeInsets={chromeInsets}
+              chosenTrailId={chosenTrailId}
               onMapReady={handleMapReady}
               onLiveSourceHealth={onLiveSourceHealth}
             />
@@ -1470,6 +1541,11 @@ export function MapScreen({
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
+            trailsInView={trailsInView}
+            onTakeTrail={onTakeTrail}
+            // The sheet the canvas beside it is drawn in, so each row's swatch
+            // inks its line the way the map does (#1283).
+            sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}

@@ -102,6 +102,33 @@ export const HikePicker = deferredScreen(
   'HikePicker',
 )
 
+// The long hike's own screens (#1317). Every one is reached by starting a
+// flow - setting a hike up, opening the day inside it, finishing it, reading
+// the record afterwards, or handing it to somebody - so all five meet this
+// module's stated rule rather than being an exception to it. The three
+// SHEETS stay eager: they are shell-composed overlays, and one of them opens
+// from the mode switch that is on the first frame itself.
+export const HikeSetup = deferredScreen(
+  () => import('./HikeSetup').then((m) => m.HikeSetup),
+  'HikeSetup',
+)
+export const HikeDay = deferredScreen(
+  () => import('./HikeDay').then((m) => m.HikeDay),
+  'HikeDay',
+)
+export const HikeFinish = deferredScreen(
+  () => import('./HikeFinish').then((m) => m.HikeFinish),
+  'HikeFinish',
+)
+export const FinishedHike = deferredScreen(
+  () => import('./FinishedHike').then((m) => m.FinishedHike),
+  'FinishedHike',
+)
+export const ShareHike = deferredScreen(
+  () => import('./ShareHike').then((m) => m.ShareHike),
+  'ShareHike',
+)
+
 const ALL = [
   MapScreen,
   PlanScreen,
@@ -126,6 +153,11 @@ const ALL = [
   VolunteerImpact,
   FindHike,
   HikePicker,
+  HikeSetup,
+  HikeDay,
+  HikeFinish,
+  FinishedHike,
+  ShareHike,
 ]
 
 /**

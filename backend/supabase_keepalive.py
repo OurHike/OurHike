@@ -93,6 +93,11 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # volunteer_hours below, the whole design is that it is private, and the
     # trip document carries dated stops along a corridor, which is #252's
     # route-reconstruction pair with the route spelled out.
+    # A hiker's own long hikes and which one the app is in (#1317). The
+    # same private-planning claim as the pair below: a record of where
+    # somebody has walked and intends to walk, served to nobody else.
+    "synced_active_hikes",
+    "synced_hikes",
     "synced_planned_hikes",
     "synced_trips",
     "user_preferences",

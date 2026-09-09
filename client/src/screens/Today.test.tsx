@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Today, type TodayProps } from './Today'
+import { Today, type LongHikeToday, type TodayProps } from './Today'
 import { STANDARD_PACE } from '../lib/pace'
 
 // The Today screen's honesty contract, asserted where it renders: the mode
@@ -500,5 +500,113 @@ describe('the suggested hikes (#1284)', () => {
     expect(
       screen.getByText('Routes from community contributions. Check before traveling.'),
     ).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The long hike leading Today (#1317).
+
+const LONG_HIKE: LongHikeToday = {
+  name: 'Springer → Katahdin',
+  figures: '412.0 mi walked · 1,785.4 mi to go',
+  dayNumber: 6,
+  awayLine: null,
+  resume: null,
+  day: {
+    title: 'Pine Swamp Branch → Bailey Gap',
+    planned: '11.2 mi planned',
+    resupply: 'Resupply: Pearisburg, 31.6 mi on',
+    last: false,
+    onOpen: vi.fn(),
+    onTakeZero: vi.fn(),
+    onSeeOnMap: vi.fn(),
+  },
+}
+
+describe('the long hike leading Today', () => {
+  it('puts the hike’s name and its two figures under the readout', () => {
+    render(<Today {...props({ mode: 'long', longHike: LONG_HIKE })} />)
+
+    expect(screen.getByText('Springer → Katahdin')).toBeInTheDocument()
+    expect(screen.getByText('412.0 mi walked · 1,785.4 mi to go')).toBeInTheDocument()
+  })
+
+  it('adds the day of the hike to the date eyebrow', () => {
+    render(<Today {...props({ mode: 'long', longHike: LONG_HIKE })} />)
+    expect(document.querySelector('.today__eyebrow')?.textContent).toMatch(/· DAY 6$/)
+  })
+
+  it('says the date alone when nothing in the hike is dated', () => {
+    // A day number nothing supports would be worse than no day number.
+    render(
+      <Today {...props({ mode: 'long', longHike: { ...LONG_HIKE, dayNumber: null } })} />,
+    )
+    expect(document.querySelector('.today__eyebrow')?.textContent).not.toMatch(/DAY/)
+  })
+
+  it('leads the paper column with the hike’s day, and still renders the alerts', () => {
+    // Mode re-ranks; nothing disappears (lib/hikerMode.ts).
+    render(
+      <Today
+        {...props({
+          mode: 'long',
+          longHike: LONG_HIKE,
+          closureAhead: 'A closure 3 mi ahead',
+        })}
+      />,
+    )
+
+    const sections = [
+      ...document.querySelectorAll('.today__paper .today__section'),
+    ].filter((section) => section.childElementCount > 0)
+    const card = sections.findIndex(
+      (section) => section.querySelector('.today__card--hike') !== null,
+    )
+
+    expect(card).toBe(0)
+    expect(screen.getByText('A closure 3 mi ahead')).toBeInTheDocument()
+  })
+
+  it('renders no hike card in the other two modes', () => {
+    for (const mode of ['day', 'volunteer'] as const) {
+      const { unmount } = render(<Today {...props({ mode, longHike: LONG_HIKE })} />)
+      expect(document.querySelector('.today__card--hike')).toBeNull()
+      unmount()
+    }
+  })
+
+  it('renders no hike card when nothing is planned for today', () => {
+    // Planning as you walk is the ordinary way to walk a long trail, so this
+    // is not a degraded state and nothing nags about it.
+    render(<Today {...props({ mode: 'long', longHike: { ...LONG_HIKE, day: null } })} />)
+
+    expect(document.querySelector('.today__card--hike')).toBeNull()
+    expect(screen.getByText('Springer → Katahdin')).toBeInTheDocument()
+  })
+
+  it('changes tone DOWN on the last of it - no countdown, no bar, no confetti', () => {
+    const { container } = render(
+      <Today
+        {...props({
+          mode: 'long',
+          longHike: {
+            ...LONG_HIKE,
+            day: { ...LONG_HIKE.day!, last: true },
+          },
+        })}
+      />,
+    )
+
+    expect(screen.getByText('The last of it')).toBeInTheDocument()
+    expect(screen.getByText(/Nothing here counts down for you/)).toBeInTheDocument()
+    expect(container.querySelector('progress')).toBeNull()
+    expect(container.textContent).not.toMatch(/%|to go until|congratulations/i)
+  })
+
+  it('prints no percentage, nothing behind and nothing on track', () => {
+    const { container } = render(
+      <Today {...props({ mode: 'long', longHike: LONG_HIKE })} />,
+    )
+    expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
   })
 })

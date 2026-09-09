@@ -146,8 +146,9 @@ describe('the hike over those trips (#788)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { mile: 470.8 },
-    end: { mile: 620 },
+    trailId: 'AT',
+    points: [{ mile: 470.8 }, { mile: 620 }],
+    status: 'walking',
     tripIds: ['a', 'b'],
   }
 
@@ -174,7 +175,10 @@ describe('the hike over those trips (#788)', () => {
   })
 
   it('says when an end rests on a reference this download has lost', () => {
-    const stranded: Hike = { ...HIKE, start: { poiId: 'gone', mile: 470.8 } }
+    const stranded: Hike = {
+      ...HIKE,
+      points: [{ poiId: 'gone', mile: 470.8 }, HIKE.points[1]],
+    }
     render(<TripList {...PROPS} hikes={[stranded]} />)
 
     expect(

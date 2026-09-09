@@ -77,33 +77,55 @@ export const TRAIL_BADGE_LAYER_ID = 'trail-badge'
  * Who earns a badge: the through-routes. map/style.ts's PRIMARY_TRAIL_SOURCES,
  * restated for the reason map/trailLabels.ts restates THROUGH_ROUTE_SOURCES -
  * style.ts imports this module, so importing it back is a cycle.
- * trailBadges.test.ts imports both and fails if they drift.
+ * trailBadges.test.ts imports both and fails if they drift. Literal source
+ * keys rather than style.ts's CENTERLINE_SOURCE/LONG_PATH_SOURCE for the
+ * same cycle reason.
  *
  * A badge is a claim that the line is a destination, so exactly the tier the
  * map already keys width and sort order off wears one. That is what keeps the
  * badge count roughly constant as networks are added: a state park's forty
  * trails add forty dotted lines and forty along-line names, and no badges.
+ * The Long Path joined this tier at #1307, the first source promoted off
+ * export_nearby_trails.py's write_overview naming it below the seam.
  */
-export const BADGE_SOURCES: readonly string[] = ['centerline']
+export const BADGE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path']
 
 /**
  * Which registry mark a source wears - the gap named in the header. Keyed
  * off `source` because nothing publishes a `trail_id`; `centerline` is ATC's
- * centerline feed, which is the A.T. (lib/trails.ts). A source with no entry
+ * centerline feed, which is the A.T., and `nynjtc_long_path` is NYNJTC's
+ * Long Path feed (#1307) - both in lib/trails.ts. A source with no entry
  * takes the blaze chip.
  */
 export const BADGE_MARK_BY_SOURCE: Readonly<Record<string, string>> = {
   centerline: TRAILS.AT.id,
+  nynjtc_long_path: TRAILS.LP.id,
 }
+
+/**
+ * Which sources a badge tap TAKES (#1306) - deliberately narrower than
+ * BADGE_MARK_BY_SOURCE above, and not derived from its keys. Every takeable
+ * source needs a mark, but not every marked source is takeable yet: #1307
+ * named and badged the Long Path without making it takeable, because taking
+ * a trail is a claim about mileage, elevation and position
+ * (lib/hikes.ts's trailHasMileAxis, #1317) that only the A.T. can back
+ * today. Kept as its own list so the NEXT source to earn a mark does not
+ * have to reopen trailIdForSource to stay unmeasurable.
+ */
+const TAKEABLE_SOURCES: ReadonlySet<string> = new Set(['centerline'])
 
 /** The mark's image id, or null where the source wears the blaze chip. */
 /**
  * The registry trail a badge's source stands for, or null - what a tap on
- * the badge TAKES (#1306). The same lookup the mark uses, so a badge can
- * never be taken as one trail and drawn with another's mark.
+ * the badge TAKES (#1306). Reads the same mark lookup the badge draws from,
+ * so a badge can never be taken as one trail and drawn with another's mark,
+ * but gates on TAKEABLE_SOURCES first, so a marked-but-unmeasurable source
+ * (the Long Path, today) is never taken by a tap that only meant to open its
+ * sheet.
  */
 export function trailIdForSource(source: string | null | undefined): string | null {
-  if (source === null || source === undefined) return null
+  if (source === null || source === undefined || !TAKEABLE_SOURCES.has(source))
+    return null
   return BADGE_MARK_BY_SOURCE[source] ?? null
 }
 

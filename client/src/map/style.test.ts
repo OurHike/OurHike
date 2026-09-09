@@ -54,6 +54,8 @@ import {
   trailCasingColor,
   CHOSEN_TRAIL_SPLIT_LAYERS,
   NETWORK_OVERVIEW_FAR_WIDTH,
+  NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
+  NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
   NETWORK_OVERVIEW_WIDTH_EXPRESSION,
   TRAIL_WIDTH_EXPRESSION,
   sketchWidthExpression,
@@ -1953,6 +1955,30 @@ describe('nothing taken (#1306)', () => {
     // The prototype draws every untaken line at 1.5 px at the `us` scope
     // (Opening Map Options.html, frame 2a).
     expect(NETWORK_OVERVIEW_FAR_WIDTH).toBe(1.5)
-    expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
+    // The far stop is data-driven since #1307 - see the next test - so this
+    // checks the generic branch's own value rather than the stop itself.
+    expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toEqual(
+      NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
+    )
+    expect(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION[3]).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
+  })
+
+  it('gives a named through-route its own weight below the seam (#1307)', () => {
+    // export_nearby_trails.py's write_overview sets `through_route: true`
+    // only on a feature that cleared NAMED_TRAIL_THRESHOLD_MILES - the Long
+    // Path, not a park loop. Twice the generic haze's far width, still
+    // nested inside overviewTaper's `far` stop rather than wrapped around
+    // it: a zoom expression inside a `case` is a style error.
+    expect(NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH).toBe(NETWORK_OVERVIEW_FAR_WIDTH * 2)
+    expect(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION).toEqual([
+      'case',
+      ['==', ['get', 'through_route'], true],
+      NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
+      NETWORK_OVERVIEW_FAR_WIDTH,
+    ])
+    expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[0]).toBe('interpolate')
+    expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toEqual(
+      NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
+    )
   })
 })

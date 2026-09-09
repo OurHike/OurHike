@@ -35,13 +35,19 @@ export interface Trail {
   id: string
   name: string
   logo: string
+  /** What a through-route badge prints beside the mark when the full name
+   *  would not fit (map/trailBadges.ts's TRAIL_BADGE_TEXT_SIZE, #1307) - the
+   *  design handoff's own "L.P." for the Long Path, extended to the other
+   *  three registry trails on the same community-shorthand convention
+   *  rather than a mechanical truncation of the full name. */
+  shortName: string
 }
 
 export const TRAILS: Record<string, Trail> = {
-  AT: { id: 'AT', name: 'Appalachian Trail', logo: atLogo },
-  LP: { id: 'LP', name: 'Long Path', logo: lpLogo },
-  PCT: { id: 'PCT', name: 'Pacific Crest Trail', logo: pctLogo },
-  CDT: { id: 'CDT', name: 'Continental Divide Trail', logo: cdtLogo },
+  AT: { id: 'AT', name: 'Appalachian Trail', logo: atLogo, shortName: 'A.T.' },
+  LP: { id: 'LP', name: 'Long Path', logo: lpLogo, shortName: 'L.P.' },
+  PCT: { id: 'PCT', name: 'Pacific Crest Trail', logo: pctLogo, shortName: 'PCT' },
+  CDT: { id: 'CDT', name: 'Continental Divide Trail', logo: cdtLogo, shortName: 'CDT' },
 }
 
 /**

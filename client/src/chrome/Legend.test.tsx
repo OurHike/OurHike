@@ -1506,6 +1506,7 @@ describe('the "Trails in view" block (#1283)', () => {
       source: 'centerline',
       blazeColor: 'White',
       throughRoute: true,
+      takeable: true,
       chosen: true,
       anchor: [-74.1, 41.25] as [number, number],
       badgeFit: 'full' as const,
@@ -1516,6 +1517,7 @@ describe('the "Trails in view" block (#1283)', () => {
       source: 'oprhp_trails',
       blazeColor: 'Aqua',
       throughRoute: false,
+      takeable: false,
       chosen: false,
       anchor: null,
       badgeFit: 'full' as const,
@@ -1615,6 +1617,33 @@ describe('the "Trails in view" block (#1283)', () => {
     expect(buttons[0]).toHaveAttribute('aria-pressed', 'true')
     await userEvent.click(buttons[0])
     expect(onTakeTrail).toHaveBeenCalledWith(TRAILS[0])
+  })
+
+  it('gives a through-route no button when it earns a badge without earning TAKEABLE_SOURCES (#1307)', () => {
+    // The Long Path's real shape since #1307: a badge (throughRoute) with
+    // nothing behind a tap (takeable stays false, map/trailBadges.ts's
+    // TAKEABLE_SOURCES). A row this build cannot measure must stay a row -
+    // "a button that does nothing is worse than a row" is this file's own
+    // rule, and #1307 is the case that would have quietly broken it by
+    // reusing throughRoute for both questions.
+    const marked = {
+      ...TRAILS[1],
+      source: 'nynjtc_long_path',
+      throughRoute: true,
+      takeable: false,
+    }
+    const onTakeTrail = vi.fn()
+    render(
+      <Legend {...PROPS} trailsInView={[TRAILS[0], marked]} onTakeTrail={onTakeTrail} />,
+    )
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    const buttons = within(block).getAllByRole('button')
+    // Only the A.T.'s row, still - the Long Path's stays a plain row and
+    // never invites a tap that would silently do nothing.
+    expect(buttons).toHaveLength(1)
+    const longPathRow = within(block).getByText('Long Path').closest('li')
+    expect(longPathRow?.querySelector('button')).toBeNull()
+    expect(within(block).queryByText('take')).toBeNull()
   })
 
   it('keeps the ghosting sentence directly under the rows it explains', () => {

@@ -90,6 +90,7 @@ import {
   TRAIL_BADGE_TEXT_FIT_PADDING,
   TRAIL_BADGE_TEXT_SIZE,
   blazeChipImageId,
+  trailIdForSource,
   trailMarkImageId,
 } from './trailBadges'
 import { WARNING_LAYER_ID } from './warningLayers'
@@ -286,6 +287,12 @@ export interface TrailInView {
   blazeColor: string | null
   /** Whether the trail earns a badge - map/trailBadges.ts's BADGE_SOURCES. */
   throughRoute: boolean
+  /** Whether a tap on this trail's legend row or badge can TAKE it -
+   *  map/trailBadges.ts's trailIdForSource, deliberately narrower than
+   *  throughRoute (#1307: the Long Path earns a badge without being
+   *  takeable). A row this build cannot measure stays a row, never a
+   *  button with nothing behind it. */
+  takeable: boolean
   /** Whether the trail is in the chosen system, and so drawn solid. */
   chosen: boolean
   /** A vertex on the trail, in view, where its badge sits; null where none of
@@ -499,6 +506,7 @@ export function trailsInView(
     if (name === null) continue
     const source = stringProp(properties, 'source') ?? ''
     const throughRoute = BADGE_SOURCES.includes(source)
+    const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)
 
     let best: Run | null = null
@@ -521,6 +529,7 @@ export function trailsInView(
         source,
         blazeColor: stringProp(properties, 'blaze_color'),
         throughRoute,
+        takeable,
         chosen: inChosenSystem,
         anchor: null,
         badgeFit: 'full',
@@ -543,6 +552,7 @@ export function trailsInView(
     }
     if (throughRoute && !existing.throughRoute) {
       existing.throughRoute = true
+      existing.takeable = takeable
       existing.source = source
       existing.blazeColor = stringProp(properties, 'blaze_color')
       existing.properties = properties

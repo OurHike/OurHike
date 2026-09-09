@@ -105,6 +105,13 @@ on:
 permissions:
   contents: read
 
+# Lines reach the log when printed, not when the step exits - see
+# publish-vector-data.yml's own env block for the measurement (#1311). The
+# same block-buffering hid every step's timing here too, on the one
+# workflow that runs 48 times a day.
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   publish:
     name: Publish (${{ matrix.data_environment }})

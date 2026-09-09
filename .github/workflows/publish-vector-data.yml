@@ -79,6 +79,22 @@ concurrency:
 permissions:
   contents: read
 
+# Every line a step prints reaches the log the second it is printed, not
+# when the step exits.
+#
+# MEASURED 2026-09-08 on runs #88 and #92 (#1311): a runner's stdout is a
+# pipe, so Python block-buffers it, and every line a step printed landed in
+# the log in the same millisecond - the step's last. The 20-minute ledger
+# check, the 20-minute POI export and the 36-minute publish each produced
+# one flush at the end; the per-edge climb the 120-minute timeout killed had
+# printed nothing at all, which is what let its issue read as a hang. No
+# gap inside any step of either log exceeded a millisecond, so nothing in
+# them could say which sub-step owned a minute. With this set, each line
+# carries the second it was printed and the next run's log is a timing
+# record - the only way the fixes behind #1311 get measured.
+env:
+  PYTHONUNBUFFERED: "1"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -104,7 +120,17 @@ jobs:
     # alone are ~30 min of a 60-minute budget. Ticking include_elevation as
     # well (+~25 min by its own note) would have run right at the ceiling.
     # Nobody had hit it because photos did not exist until now.
-    timeout-minutes: 120
+    #
+    # Raised again, 120 to 180, on 2026-09-09 (#1311). Runs #91 and #92 of
+    # 2026-09-08 were both killed at 120:11 inside "Export the climb along
+    # each graph edge", after the other organizations' network went
+    # nationwide and the build with elevation OFF had already grown from
+    # ~20 to ~108 minutes (measured off the job API, both figures in the
+    # issue). The four regressions behind that are fixed on the branch this
+    # line landed with; this is the belt while the first run after the merge
+    # measures whether they brought the build back under the old ceiling,
+    # and it comes back down when that run says so.
+    timeout-minutes: 180
     defaults:
       run:
         working-directory: pipeline

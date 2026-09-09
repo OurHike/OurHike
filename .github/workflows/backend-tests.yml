@@ -156,28 +156,18 @@ jobs:
         # max_prepared_statements are the parts under test, and two copies of
         # them is one copy that goes stale.
         run: |
-          # Split, not `apt-get update && apt-get install`. `update` exits
-          # non-zero when ANY configured repository fails - including the
-          # vendor repositories preinstalled on the runner image that this
-          # project neither uses nor references - so the `&&` meant an
-          # unrelated repo's bad index stopped the install from running at all.
-          #
-          # Measured 2026-09-09 (#1361): Google's Chrome repository published a
-          # Release file at 17:16:59 UTC whose package index the CDN still
-          # served from 09:41:12, so every `apt-get update` on the runner failed
-          # with `Hash Sum mismatch`. This job then reported "pgbouncer is not
-          # installed" and went red HAVING RUN NO TESTS - and `pytest-postgres`
-          # is one of the six required checks in expected-protections.yml, so a
-          # third party's CDN could block a merge here. Re-running reproduced it
-          # with byte-identical hashes; it lasts as long as the mirror is
-          # inconsistent.
-          #
-          # apt's own message says it ignores the bad index and uses what it
-          # has ("old ones used instead"), so the install still succeeds. The
-          # trade: a genuinely broken update now surfaces as an INSTALL
-          # failure. That is the better error of the two - it names the package
-          # that could not be installed rather than the repository that could
-          # not be indexed - and the job still goes red.
+          # NOT `update && install` (#1361). `apt-get update` exits non-zero
+          # if ANY configured repository fails, including ones preinstalled
+          # on the runner image that this project never uses - and the `&&`
+          # then skipped the install, so `local-pooler.sh` found no pgbouncer
+          # and exited 1 with NO TEST HAVING RUN. Measured on PR #1360,
+          # 2026-09-09 17:34 and again at 17:41: Google's Chrome apt repo
+          # served an index whose SHA256 did not match its Release file.
+          # apt itself ignores the bad index and keeps the rest ("old ones
+          # used instead"), so the install below succeeds on exactly the runs
+          # the `&&` used to fail. A genuinely broken update now surfaces as
+          # the install failing, which names the package that could not be
+          # installed rather than the repository that could not be indexed.
           sudo apt-get update -qq || true
           sudo apt-get install -y -qq pgbouncer
           # The package starts its own service on 6432 with a config that

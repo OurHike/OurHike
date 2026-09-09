@@ -207,28 +207,32 @@ jobs:
       # pull request is open - which is when review happens, and is not when
       # somebody reads an old pull request to see what a screen used to look
       # like. The merged diff is the record; this is for the reviewer.
-      # No `--with-deps`. That flag has Playwright shell out to its own
-      # `apt-get`, which fails when ANY repository preinstalled on the runner
-      # image has a bad index - so a third party this project does not use
-      # could stop the camera. On 2026-09-09 Google's Chrome repository served
-      # an index whose hash did not match the Release file it had just
-      # published, and this job died at apt's exit 100 on three pull requests
-      # at once, none of which had touched the client (#1361). Downloading the
-      # browser itself needs no apt at all.
+      # SPLIT, AND continue-on-error, BECAUSE `--with-deps` MADE THIS STEP
+      # DECIDE WHETHER THE PREVIEW HAPPENS AT ALL (#1361).
       #
-      # @unvalidated that ubuntu-latest carries every shared library chromium
-      # needs. The image ships Chrome, so it plausibly does, but an agent
-      # sandbox is not the runner image and nobody has checked. What settles
-      # it is this job: a missing library means chromium fails to LAUNCH, so
-      # the failure lands loudly in the shot step below rather than quietly in
-      # a wrong picture. If that happens, restore `--with-deps` behind
-      # `sudo rm -f /etc/apt/sources.list.d/google-chrome.list` - narrower,
-      # but it hardcodes a vendor unrelated to this project and fixes only
-      # that one repository going bad.
+      # That flag has Playwright run apt itself, so a third-party repository
+      # preinstalled on the runner image - one this project never uses - can
+      # abort the install with a bad index before the browser is so much as
+      # downloaded. Measured on this pull request, 2026-09-09 17:34 and again
+      # at 17:41: Google's Chrome apt repo served a package index whose
+      # SHA256 did not match its own Release file, `apt-get update` exited
+      # non-zero, and Playwright stopped with "Failed to install browsers /
+      # code: 100". The whole job went red having photographed nothing.
+      #
+      # The system libraries are now allowed to fail (the runner image
+      # already carries Chromium's) and the DOWNLOAD, which touches no apt
+      # repository, is what this job actually needs. `continue-on-error`
+      # finishes the argument the next comment block started: a browser that
+      # will not install costs the pull request its pictures, never its
+      # testable build. Without it that sentence was true of the photograph
+      # step and false of the step that feeds it.
       - name: Install a browser to photograph it with
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        continue-on-error: true
         working-directory: client
-        run: npx playwright install chromium
+        run: |
+          npx playwright install-deps chromium || true
+          npx playwright install chromium
 
       # Which files this pull request touches, for the camera: every shot
       # recipe in the list (client/preview-shots/) gets photographed and leads

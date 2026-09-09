@@ -105,14 +105,14 @@ describe('AboutBuild', () => {
 describe('how long this launch took (#1299)', () => {
   const TIMELINE = [
     { name: 'ourhike:script', label: 'App code started', at: 210 },
-    { name: 'ourhike:shell', label: 'Tab bar on screen', at: 480 },
+    { name: 'ourhike:shell', label: 'Tab bar rendered', at: 480 },
     { name: 'ourhike:today', label: 'Waypoints ready', at: null },
   ]
 
   it('shows each moment in milliseconds from when the page began loading', () => {
     render(<AboutBuild build={RELEASE} launch={TIMELINE} />)
 
-    expect(screen.getByText('Tab bar on screen')).toBeInTheDocument()
+    expect(screen.getByText('Tab bar rendered')).toBeInTheDocument()
     expect(screen.getByText('480 ms')).toBeInTheDocument()
   })
 
@@ -137,7 +137,7 @@ describe('how long this launch took (#1299)', () => {
 
     const copied = await navigator.clipboard.readText()
     expect(copied).toContain('1.0.0')
-    expect(copied).toContain('Tab bar on screen 480')
+    expect(copied).toContain('Tab bar rendered 480')
     // Still one line - a line break is where a paste gets half-quoted.
     expect(copied).not.toContain('\n')
   })

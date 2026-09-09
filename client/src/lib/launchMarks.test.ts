@@ -71,7 +71,7 @@ describe('reading a launch back', () => {
 
     const summary = launchSummary()
 
-    expect(summary).toContain('Tab bar on screen')
+    expect(summary).toContain('Tab bar rendered')
     expect(summary).toContain('Waypoints ready not reached')
   })
 

@@ -61,13 +61,13 @@ if (measured === null) {
 const BUDGET = [
   {
     key: 'shell_frame',
-    what: 'the tab bar on screen',
+    what: 'the tab bar rendered',
     /** §3's shell-frame row is 500 ms. Tripled here: the doc's number is the
      *  target on a phone profile, and what this is watching for is the class
      *  of regression where the shell waited on storage or on a chunk it did
      *  not need - which cost 1,152-1,572 ms when it was measured. */
     limit: 1500,
-    read: (run) => run.marks?.['tab bar on screen'] ?? null,
+    read: (run) => run.marks?.['tab bar rendered'] ?? null,
   },
   {
     key: 'first_tap',

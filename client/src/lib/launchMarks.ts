@@ -37,8 +37,18 @@
 export const LAUNCH_MARKS = {
   /** `main.tsx` began evaluating - the app's own code is on the thread. */
   script: 'ourhike:script',
-  /** The shell committed a frame with the tab bar in it: the first thing a
-   *  hiker can see and tap. */
+  /**
+   * The shell RENDERED a frame with the tab bar in it - React's commit, not
+   * the browser's paint.
+   *
+   * The distinction is small and the honest name depends on it: an effect
+   * runs after the commit and before the frame is painted, so this mark
+   * regularly lands a few tens of milliseconds AHEAD of
+   * `first-contentful-paint` (measured on the preview build 2026-09-09: 179 ms
+   * against 272 ms). Calling it "on screen" would be a display outrunning its
+   * source by exactly that gap. The readout shows both, and the paint entry
+   * beside it is what says when a hiker could see anything.
+   */
   shell: 'ourhike:shell',
   /** The phone's own preferences came back from IndexedDB. */
   preferences: 'ourhike:preferences',
@@ -63,7 +73,7 @@ export const LAUNCH_MARK_ORDER: readonly LaunchMarkName[] = [
 /** What each mark is called on screen. Short enough for a settings row. */
 export const LAUNCH_MARK_LABELS: Record<LaunchMarkName, string> = {
   [LAUNCH_MARKS.script]: 'App code started',
-  [LAUNCH_MARKS.shell]: 'Tab bar on screen',
+  [LAUNCH_MARKS.shell]: 'Tab bar rendered',
   [LAUNCH_MARKS.preferences]: 'Your settings read',
   [LAUNCH_MARKS.today]: 'Waypoints ready',
   [LAUNCH_MARKS.index]: 'Trail index ready',

@@ -107,7 +107,7 @@ describe('BUG_REPORT_OPTIONS', () => {
 
 describe('how long the launch took, in the report (#1299)', () => {
   const software = BUG_REPORT_OPTIONS.find((option) => option.id === 'app')!
-  const TIMINGS = 'Launch timings (ms from navigation): Tab bar on screen 480'
+  const TIMINGS = 'Launch timings (ms from navigation): Tab bar rendered 480'
 
   it('carries the timings into the software form beside the build', () => {
     // "The app takes about six seconds to open" is a report nobody can act on
@@ -119,7 +119,7 @@ describe('how long the launch took, in the report (#1299)', () => {
     )
 
     expect(conditions).toContain('1.0.0')
-    expect(conditions).toContain('Tab bar on screen 480')
+    expect(conditions).toContain('Tab bar rendered 480')
   })
 
   it('sends them to no form that does not ask, exactly as the build is not', () => {

@@ -419,7 +419,7 @@ for (const entry of paint) console.log(`${entry.name.padEnd(31)} ${entry.at} ms`
 const marks = await page.evaluate(() =>
   [
     ['ourhike:script', 'app code started'],
-    ['ourhike:shell', 'tab bar on screen'],
+    ['ourhike:shell', 'tab bar rendered'],
     ['ourhike:preferences', 'settings read'],
     ['ourhike:today', 'waypoints ready'],
     ['ourhike:index', 'trail index ready'],

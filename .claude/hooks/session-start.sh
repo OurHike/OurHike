@@ -131,7 +131,29 @@ echo "[session-start] seeding the duckdb spatial extension"
 "${PY}" pipeline/seed_spatial_extension.py
 
 echo "[session-start] client deps"
-(cd client && npm install --no-audit --no-fund)
+# `npm ci`, NOT `npm install`, and the difference is the whole of #1354.
+#
+# `npm install` is free to rewrite package-lock.json to match whatever npm is
+# running, and here it does: the sandbox ships npm 10, which does not know the
+# `libc` field, so it stripped all 8 of them on every session start. Every web
+# session therefore began with an uncommitted 24-line deletion nobody made,
+# and the stop hook dutifully asked for it to be committed - a false positive
+# on the one signal that exists for work an agent forgot to push. Cleared
+# three times in one session before anybody looked at why.
+#
+# `npm ci` installs strictly from the lockfile and never writes it, which is
+# what client-tests.yml has always run. It is also the stricter command: it
+# fails loudly when package.json and the lockfile have drifted, which is worth
+# learning at session start rather than a CI round trip later.
+#
+# MEASURED here 2026-09-09: 609 packages in 23s, `git status --porcelain
+# client/package-lock.json` empty afterwards, typecheck and the suite unaffected.
+#
+# The engine warning this prints is real and NOT fixed here: client/package.json
+# asks for node >=24 and this container has 22.22.2, which is why its npm is old
+# enough to drop `libc` in the first place. The image chooses node, not this
+# repository, so #1354 records the mismatch rather than pretending it away.
+(cd client && npm ci --no-audit --no-fund)
 
 # THE GATE: prove what this script claims, or fail saying which part is missing.
 #

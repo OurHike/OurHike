@@ -196,6 +196,20 @@ lasts exactly as long as review does, and in exchange nothing permanent enters
 a public tree. Committing one costs 79,290 measured bytes that cannot be
 retracted, which is why the first version of this rule was replaced.
 
+## Be concise in chat, and never bury a question
+
+Chat replies default to short: answer, then stop — no restating context the user already
+has, no alternatives nobody asked for, no caveats a direct answer doesn't need.
+
+**A question for the user is not part of the prose.** If continuing needs an answer, ask
+with the poll tool (`AskUserQuestion`) rather than a sentence inside a paragraph — a
+question the reader has to notice and parse is a question that gets missed.
+
+This is about conversation, not the repository. The evidence grades, full issue titles,
+and the `## Screenshot` section above are still required in what gets written into the
+repo — a PR body is read later, by someone else, and earns its length; a chat reply is
+read now, by the person waiting on it, and doesn't.
+
 ## Claim the issue before you branch
 
 Sessions run concurrently and unsupervised, and nothing stops two of them from picking up

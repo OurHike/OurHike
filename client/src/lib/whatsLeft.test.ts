@@ -32,8 +32,12 @@ const HIKE: Hike = {
   id: 'h1',
   name: 'Virginia',
   type: 'section',
-  start: { name: 'Damascus', mile: 0 },
-  end: { name: 'Rockfish Gap', mile: 100 },
+  trailId: 'AT',
+  points: [
+    { name: 'Damascus', mile: 0 },
+    { name: 'Rockfish Gap', mile: 100 },
+  ],
+  status: 'walking',
   tripIds: ['a', 'b'],
 }
 

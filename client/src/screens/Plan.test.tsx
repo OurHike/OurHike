@@ -490,8 +490,12 @@ describe('the three zooms (#790)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { name: 'Damascus', mile: 470.8 },
-    end: { name: 'Rockfish Gap', mile: 860 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 470.8 },
+      { name: 'Rockfish Gap', mile: 860 },
+    ],
+    status: 'walking',
     tripIds: ['t1'],
   }
 
@@ -595,8 +599,12 @@ describe('the door to what’s left (#791)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { name: 'Damascus', mile: 470.8 },
-    end: { name: 'Rockfish Gap', mile: 860 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 470.8 },
+      { name: 'Rockfish Gap', mile: 860 },
+    ],
+    status: 'walking',
     tripIds: ['t1'],
   }
 
@@ -721,8 +729,12 @@ describe('the Plan home (#805)', () => {
     id: 'h1',
     name: 'Virginia, over a few years',
     type: 'section',
-    start: { name: 'Damascus', mile: 470.8 },
-    end: { name: 'Rockfish Gap', mile: 860 },
+    trailId: 'AT',
+    points: [
+      { name: 'Damascus', mile: 470.8 },
+      { name: 'Rockfish Gap', mile: 860 },
+    ],
+    status: 'walking',
     tripIds: ['t1'],
   }
 
@@ -878,8 +890,12 @@ describe('the day room and its list (#1008)', () => {
       id: 'h9',
       name: 'Virginia, over a few years',
       type: 'section' as const,
-      start: { name: 'Damascus', mile: 470.8 },
-      end: { name: 'Rockfish Gap', mile: 860 },
+      trailId: 'AT',
+      points: [
+        { name: 'Damascus', mile: 470.8 },
+        { name: 'Rockfish Gap', mile: 860 },
+      ],
+      status: 'walking' as const,
       tripIds: [],
     }
     render(
@@ -906,8 +922,12 @@ describe('the day room and its list (#1008)', () => {
       id: 'h9',
       name: 'Virginia, over a few years',
       type: 'section' as const,
-      start: { name: 'Damascus', mile: 470.8 },
-      end: { name: 'Rockfish Gap', mile: 860 },
+      trailId: 'AT',
+      points: [
+        { name: 'Damascus', mile: 470.8 },
+        { name: 'Rockfish Gap', mile: 860 },
+      ],
+      status: 'walking' as const,
       tripIds: [],
     }
     render(
@@ -985,8 +1005,12 @@ describe('the day room and its list (#1008)', () => {
       id: 'h9',
       name: 'Virginia, over a few years',
       type: 'section' as const,
-      start: { name: 'Damascus', mile: 470.8 },
-      end: { name: 'Rockfish Gap', mile: 860 },
+      trailId: 'AT',
+      points: [
+        { name: 'Damascus', mile: 470.8 },
+        { name: 'Rockfish Gap', mile: 860 },
+      ],
+      status: 'walking' as const,
       tripIds: [],
     }
     render(

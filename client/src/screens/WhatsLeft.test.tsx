@@ -40,8 +40,12 @@ const HIKE: Hike = {
   id: 'h1',
   name: 'The whole thing, eventually',
   type: 'thru',
-  start: { name: 'Springer', mile: 0 },
-  end: { name: 'Katahdin', mile: 500 },
+  trailId: 'AT',
+  points: [
+    { name: 'Springer', mile: 0 },
+    { name: 'Katahdin', mile: 500 },
+  ],
+  status: 'walking',
   tripIds: ['a'],
 }
 
@@ -142,7 +146,11 @@ describe('the days the hiker has', () => {
     render(
       <WhatsLeft
         {...PROPS}
-        hike={{ ...HIKE, end: { name: 'Katahdin', mile: 200 }, tripIds: ['a', 'b'] }}
+        hike={{
+          ...HIKE,
+          points: [HIKE.points[0], { name: 'Katahdin', mile: 200 }],
+          tripIds: ['a', 'b'],
+        }}
         trips={trips}
       />,
     )
@@ -200,7 +208,11 @@ describe('the slivers', () => {
     const { container } = render(
       <WhatsLeft
         {...PROPS}
-        hike={{ ...HIKE, end: { name: 'Katahdin', mile: 300 }, tripIds: ['a', 'b'] }}
+        hike={{
+          ...HIKE,
+          points: [HIKE.points[0], { name: 'Katahdin', mile: 300 }],
+          tripIds: ['a', 'b'],
+        }}
         trips={trips}
       />,
     )

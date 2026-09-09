@@ -27,19 +27,28 @@ import { PLAN_KEY, buildPlan, type HikePlan } from './plan'
 import {
   EMPTY_STORE,
   TRIPS_KEY,
+  addHike,
   addTrip,
   clearTrips,
+  finishHike,
   loadTrips,
   openTrip,
   openTripOf,
+  pauseHike,
+  removeHike,
   removeTrip,
   renameTrip,
+  resumeHike,
   saveTrips,
+  setActiveHike,
+  setHikePoints,
   tripName,
+  turnHikeAround,
   updateTrip,
   validateTripStore,
   type TripStore,
 } from './trips'
+import type { Hike } from './hikes'
 
 const store = (idb as unknown as { __store: Map<string, unknown> }).__store
 
@@ -161,7 +170,13 @@ describe('the migration off the single-plan key', () => {
 })
 
 describe('the edits', () => {
-  const base: TripStore = { trips: [], openId: null, hikes: [], groups: [] }
+  const base: TripStore = {
+    trips: [],
+    openId: null,
+    hikes: [],
+    groups: [],
+    activeHikeId: null,
+  }
 
   it('keeps a plan and opens it', () => {
     const one = addTrip(base, plan())
@@ -226,7 +241,13 @@ describe('the edits', () => {
     expect(openTripOf(one)?.name).toBe('Damascus → Atkins')
     expect(openTripOf(base)).toBeNull()
     expect(
-      openTripOf({ trips: one.trips, openId: 'gone', hikes: [], groups: [] }),
+      openTripOf({
+        trips: one.trips,
+        openId: 'gone',
+        hikes: [],
+        groups: [],
+        activeHikeId: null,
+      }),
     ).toBeNull()
   })
 })
@@ -268,5 +289,152 @@ describe('clearTrips', () => {
 
     expect(store.get(TRIPS_KEY)).toBeUndefined()
     expect(store.get(PLAN_KEY)).toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The long hike the app is IN, and how one moves through its life (#1317).
+
+describe('the active hike', () => {
+  const hike: Hike = {
+    id: 'h1',
+    name: 'Springer → Katahdin',
+    type: 'thru',
+    trailId: 'AT',
+    points: [
+      { name: 'Springer', mile: 0 },
+      { name: 'Katahdin', mile: 2197.4 },
+    ],
+    status: 'walking',
+    tripIds: [],
+  }
+
+  const withHike = addHike(EMPTY_STORE, hike)
+
+  it('enters a hike, and leaves the state without abandoning it', () => {
+    const inIt = setActiveHike(withHike, 'h1')
+    expect(inIt.activeHikeId).toBe('h1')
+
+    // Tapping Day hike keeps the hike - it is not abandoned, just not
+    // leading - so only an explicit null clears the pointer.
+    const out = setActiveHike(inIt, null)
+    expect(out.activeHikeId).toBeNull()
+    expect(out.hikes).toHaveLength(1)
+  })
+
+  it('refuses a pointer it cannot honour rather than writing and repairing it', () => {
+    expect(setActiveHike(withHike, 'nobody').activeHikeId).toBeNull()
+
+    // Fewer than two points is unusable as an active hike and is still a
+    // hike: the store keeps it, and only the pointer is refused.
+    const short = addHike(EMPTY_STORE, { ...hike, id: 'h2', points: [{ mile: 0 }] })
+    expect(setActiveHike(short, 'h2').activeHikeId).toBeNull()
+    expect(short.hikes).toHaveLength(1)
+  })
+
+  it('drops a pointer at a hike that did not survive the read', () => {
+    const store = validateTripStore({
+      trips: [],
+      openId: null,
+      hikes: [],
+      groups: [],
+      activeHikeId: 'h1',
+    })
+    expect(store?.activeHikeId).toBeNull()
+  })
+
+  it('does not enter a long hike on the hiker’s behalf', () => {
+    // openId falls back to the first trip so the Plan tab shows something
+    // recognisable. This must NOT: being in a long hike is a state the
+    // hiker entered deliberately.
+    const store = validateTripStore({ ...withHike, activeHikeId: 'gone' })
+    expect(store?.hikes).toHaveLength(1)
+    expect(store?.activeHikeId).toBeNull()
+  })
+
+  it('lets go of the pointer when the hike is forgotten, and keeps the sections', () => {
+    const one = addTrip(EMPTY_STORE, plan())
+    const grouped = addHike(one, { ...hike, tripIds: one.trips.map((t) => t.id) })
+
+    const forgotten = removeHike(setActiveHike(grouped, 'h1'), 'h1')
+    expect(forgotten.activeHikeId).toBeNull()
+    expect(forgotten.hikes).toEqual([])
+    // The whole reason forgetting is safe.
+    expect(forgotten.trips).toHaveLength(1)
+  })
+})
+
+describe('stepping away and coming back', () => {
+  const hike: Hike = {
+    id: 'h1',
+    name: 'Springer → Katahdin',
+    type: 'thru',
+    trailId: 'AT',
+    points: [
+      { name: 'Springer', mile: 0 },
+      { name: 'Katahdin', mile: 2197.4 },
+    ],
+    status: 'walking',
+    tripIds: [],
+  }
+  const withHike = addHike(EMPTY_STORE, hike)
+
+  it('keeps the mile it stopped at, and deletes nothing', () => {
+    const paused = pauseHike(withHike, 'h1', 1407.2, '2026-08-28')
+
+    expect(paused.hikes[0].status).toBe('paused')
+    expect(paused.hikes[0].pausedAtMile).toBe(1407.2)
+    expect(paused.hikes[0].pausedOn).toBe('2026-08-28')
+    expect(paused.hikes[0].points).toEqual(hike.points)
+  })
+
+  it('clears the pause when the hiker comes back', () => {
+    // A stale pausedAtMile on a walking hike is a fact waiting to be
+    // printed by mistake. What was actually walked lives in the sections.
+    const back = resumeHike(pauseHike(withHike, 'h1', 1407.2, '2026-08-28'), 'h1')
+
+    expect(back.hikes[0].status).toBe('walking')
+    expect(back.hikes[0].pausedAtMile).toBeUndefined()
+    expect(back.hikes[0].pausedOn).toBeUndefined()
+  })
+
+  it('turns around by appending, so the walked legs keep their directions', () => {
+    // Swapping the ends would silently reverse every leg already walked:
+    // 300 miles north would afterwards read as 300 miles south.
+    const turned = turnHikeAround(withHike, 'h1', 700, 'Damascus')
+
+    expect(turned.hikes[0].points.map((point) => point.mile)).toEqual([0, 2197.4, 700, 0])
+    expect(turned.hikes[0].points[2].name).toBe('Damascus')
+  })
+
+  it('closes a hike and keeps every section in it', () => {
+    const one = addTrip(EMPTY_STORE, plan())
+    const grouped = addHike(one, { ...hike, tripIds: one.trips.map((t) => t.id) })
+    const done = finishHike(grouped, 'h1', '2026-08-12')
+
+    expect(done.hikes[0].status).toBe('finished')
+    expect(done.hikes[0].finishedOn).toBe('2026-08-12')
+    expect(done.hikes[0].tripIds).toHaveLength(1)
+    expect(done.trips).toHaveLength(1)
+  })
+
+  it('edits the route without touching the walking', () => {
+    const one = addTrip(EMPTY_STORE, plan())
+    const grouped = addHike(one, { ...hike, tripIds: one.trips.map((t) => t.id) })
+    const rerouted = setHikePoints(grouped, 'h1', [
+      { mile: 0 },
+      { mile: 1023.4 },
+      { mile: 2197.4 },
+    ])
+
+    expect(rerouted.hikes[0].points).toHaveLength(3)
+    expect(rerouted.hikes[0].tripIds).toHaveLength(1)
+    expect(rerouted.trips).toHaveLength(1)
+  })
+
+  it('changes nothing for a hike it does not hold', () => {
+    expect(pauseHike(withHike, 'nobody', 10, '2026-08-28')).toEqual(withHike)
+    expect(finishHike(withHike, 'nobody', '2026-08-28')).toEqual(withHike)
+    expect(turnHikeAround(withHike, 'nobody', 10)).toEqual(withHike)
   })
 })

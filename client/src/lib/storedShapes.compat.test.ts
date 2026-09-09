@@ -292,7 +292,7 @@ describe('a stored phone from the baseline release', () => {
         },
       ]
 
-      const resolved = resolvePlace(store.hikes[0].start, pois)
+      const resolved = resolvePlace(store.hikes[0].points[0], pois)
       expect(resolved.mile).toBe(471.2)
       expect(resolved.from).toBe('reference')
       expect(resolved.movedMi).toBeCloseTo(0.4)

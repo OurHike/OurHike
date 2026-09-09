@@ -311,6 +311,114 @@ describe('renaming the hike, through the real shell (#1344)', () => {
   })
 })
 
+describe('a section moves both ways (#1367)', () => {
+  const withSection = () =>
+    hikeStore({
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'Damascus → Atkins',
+          plan: {
+            target: { miles: 12 },
+            stops: [
+              { mile: 3.2, resupply: false },
+              { mile: 22.2, resupply: false },
+            ],
+            days: [{ id: 'd1', pinned: false, generated: true }],
+          },
+        },
+      ],
+    })
+
+  it('takes a section out of the hike without touching the section', async () => {
+    // `unassignTrip` has been in the store since #788 with no caller, so the
+    // only way out was "Forget this hike", which ungroups EVERY section in
+    // it - a sledgehammer for a one-row mistake.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, {
+      ...withSection(),
+      hikes: [{ ...withSection().hikes[0], tripIds: ['trip-1'] }],
+    })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    expect(await screen.findByText('Sections in this hike')).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: /Take Damascus/ }))
+
+    await waitFor(() => {
+      const store = app.store.get(TRIPS_KEY) as TripStore
+      expect(store.hikes[0]?.tripIds).toEqual([])
+      // THE HALF THAT MATTERS: ungrouping is not deleting.
+      expect(store.trips).toHaveLength(1)
+      expect(store.trips[0]?.name).toBe('Damascus → Atkins')
+    })
+    expect(await screen.findByText('Your other sections')).toBeInTheDocument()
+  })
+
+  it('puts one back, which is what makes the two shelves a control', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, withSection())
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: /Add Damascus/ }))
+
+    await waitFor(() => {
+      const store = app.store.get(TRIPS_KEY) as TripStore
+      expect(store.hikes[0]?.tripIds).toEqual(['trip-1'])
+    })
+  })
+})
+
+describe('the Map tab names the hike and can change it (#1367)', () => {
+  it('puts the hike on the plate and the switch beside it', async () => {
+    // Every other screen had a door; this was the one that did not, because
+    // the plate is read-only (chrome/Header.tsx) and nobody had looked at
+    // the actions row next to it.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(TRIPS_KEY, hikeStore())
+    app.store.set(HIKER_MODE_KEY, 'long')
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Map' }))
+    await waitFor(() => {
+      expect(document.querySelector('.map-plate__eyebrow')?.textContent).toBe(
+        'Springer → Katahdin',
+      )
+    })
+
+    await user.click(await screen.findByRole('button', { name: /Change which hike/ }))
+    expect(
+      await screen.findByRole('dialog', { name: 'Which hike are you on?' }),
+    ).toBeInTheDocument()
+  })
+
+  it('leaves the plate naming the trail when there is no hike', async () => {
+    // The eyebrow is not a hike slot - it answers "what am I looking at",
+    // and off a long hike the trail is still that answer.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    render(<App />)
+
+    await user.click(await screen.findByRole('tab', { name: 'Map' }))
+    await waitFor(() => {
+      expect(document.querySelector('.map-plate__eyebrow')?.textContent).toMatch(
+        /Appalachian Trail/,
+      )
+    })
+    expect(screen.queryByRole('button', { name: /Change which hike/ })).toBeNull()
+  })
+})
+
 describe('the switch is on every screen (#1344)', () => {
   it('carries the hike in the sidebar, whichever tab is up', async () => {
     // `Switch hike ›` lived on the Plan band and nowhere else, so a hiker on

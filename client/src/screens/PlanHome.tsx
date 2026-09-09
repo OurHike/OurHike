@@ -101,6 +101,9 @@ export interface PlanHomeProps {
    * appears - in the column, where the primary was.
    */
   sectionPlanner?: ReactNode
+  /** Move a section into the active hike, or out of it (#1367). */
+  onAddSectionToHike?: (tripId: string) => void
+  onTakeSectionOut?: (tripId: string) => void
   /** Open the "add a day hike to this hike" sheet (#1317). Undefined when
    *  the app is not in a long hike. */
   onAddDayHikeToHike?: () => void
@@ -153,6 +156,8 @@ export function PlanHome({
   onSwitchHike,
   onRenameHike,
   sectionPlanner,
+  onAddSectionToHike,
+  onTakeSectionOut,
   onAddDayHikeToHike,
   trips,
   hikes,
@@ -193,6 +198,8 @@ export function PlanHome({
         onSwitchHike={onSwitchHike}
         onRenameHike={onRenameHike}
         sectionPlanner={sectionPlanner}
+        onAddSectionToHike={onAddSectionToHike}
+        onTakeSectionOut={onTakeSectionOut}
         onOpenHike={onOpenHike}
         onOpenTrip={onOpenTrip}
         onOpenDayHike={onOpenDayHike}
@@ -281,6 +288,22 @@ interface HikeRoomProps {
   onOpenDayHike: (id: string) => void
   onAllTrips: () => void
   onAddDayHikeToHike?: () => void
+  /**
+   * Move a section into this hike, or out of it (#1367).
+   *
+   * THE PAIR, NOT ONE HALF. `assignTrip` and `unassignTrip` have both been in
+   * the store since #788 and only the first was reachable, so a section could
+   * join a hike and never leave one - the only escape being "Forget this
+   * hike", which ungroups every section in it. A sledgehammer for a one-row
+   * mistake, and the exact asymmetry `unassignTrip`'s own docstring warns
+   * about.
+   *
+   * It is also what makes the two shelves below mean anything. "Sections in
+   * this hike" and "Your other sections" described a division a hiker could
+   * see and not change; with these they are two halves of one control.
+   */
+  onAddSectionToHike?: (tripId: string) => void
+  onTakeSectionOut?: (tripId: string) => void
   onNewTrip: () => void
   onResumeDraft: () => void
 }
@@ -320,6 +343,8 @@ function HikeRoom({
   onSwitchHike,
   onRenameHike,
   sectionPlanner,
+  onAddSectionToHike,
+  onTakeSectionOut,
   onOpenHike,
   onOpenTrip,
   onOpenDayHike,
@@ -484,29 +509,24 @@ function HikeRoom({
             </button>
           </div>
           {sections.map((trip) => (
-            <button
-              type="button"
-              className="plan-home__row"
+            <SectionRow
               key={trip.id}
-              onClick={() => onOpenTrip(trip.id)}
-            >
-              <span className="plan-home__row-name">{trip.name}</span>
-              <span className="plan-home__meta">
-                {[
-                  tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
-                    'no dates yet',
-                  // The provenance line the handoff asks for, at the grain
-                  // the model actually holds: `recorded` is a real field
-                  // (#789) and says the walking was remembered rather than
-                  // logged. "walking now · day 6 of 14" is not - nothing
-                  // stores which section is under way - so it is left unsaid
-                  // rather than guessed at.
-                  trip.recorded === true ? 'recorded from memory' : null,
-                ]
-                  .filter((part) => part !== null)
-                  .join(' · ')}
-              </span>
-            </button>
+              trip={trip}
+              onOpen={() => onOpenTrip(trip.id)}
+              move={
+                onTakeSectionOut === undefined
+                  ? null
+                  : {
+                      label: 'Take out',
+                      // Says what survives, because the neighbouring word for
+                      // removing things from a hike is "Forget this hike",
+                      // which is a much bigger act. Nothing about the section
+                      // itself changes - #788's rule, on the button.
+                      hint: `Take ${trip.name} out of this hike — the section stays in Plan`,
+                      onMove: () => onTakeSectionOut(trip.id),
+                    }
+              }
+            />
           ))}
         </section>
       )}
@@ -527,18 +547,20 @@ function HikeRoom({
             </button>
           </div>
           {loose.slice(0, RECENT_TRIPS).map((trip) => (
-            <button
-              type="button"
-              className="plan-home__row"
+            <SectionRow
               key={trip.id}
-              onClick={() => onOpenTrip(trip.id)}
-            >
-              <span className="plan-home__row-name">{trip.name}</span>
-              <span className="plan-home__meta">
-                {tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
-                  'no dates yet'}
-              </span>
-            </button>
+              trip={trip}
+              onOpen={() => onOpenTrip(trip.id)}
+              move={
+                onAddSectionToHike === undefined
+                  ? null
+                  : {
+                      label: 'Add',
+                      hint: `Add ${trip.name} to this hike`,
+                      onMove: () => onAddSectionToHike(trip.id),
+                    }
+              }
+            />
           ))}
         </section>
       )}
@@ -601,6 +623,63 @@ function HikeRoom({
             {draftKind === 'trip' ? 'Back to your route' : 'Plan a section'}
           </button>
         </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * One section on the hike room's two shelves (#1367).
+ *
+ * A CONTAINER RATHER THAN A BUTTON, which is the whole reason this exists.
+ * The rows were `<button>`s, and a row that can also be moved needs a second
+ * control - a button inside a button is not markup a browser will render.
+ * `TripList`'s `.trip-list__item` has had this shape since it grew a Rename,
+ * so this is that shape at the section's grain rather than a new idea.
+ *
+ * `move` is null where the shell offers no move: on a room with no hike to
+ * move into or out of, the row is exactly what it was. Never a control that
+ * does nothing (LineSheet's rule).
+ */
+function SectionRow({
+  trip,
+  onOpen,
+  move,
+}: {
+  trip: Trip
+  onOpen: () => void
+  move: { label: string; hint: string; onMove: () => void } | null
+}) {
+  return (
+    <div className="plan-home__row plan-home__row--movable">
+      <button type="button" className="plan-home__row-open" onClick={onOpen}>
+        <span className="plan-home__row-name">{trip.name}</span>
+        <span className="plan-home__meta">
+          {[
+            tripDateRange(planDayViews(trip.plan).map((day) => day.date)) ??
+              'no dates yet',
+            // The provenance line the handoff asks for, at the grain the
+            // model actually holds: `recorded` is a real field (#789) and
+            // says the walking was remembered rather than logged. "walking
+            // now · day 6 of 14" is not - nothing stores which section is
+            // under way - so it is left unsaid rather than guessed at.
+            trip.recorded === true ? 'recorded from memory' : null,
+          ]
+            .filter((part) => part !== null)
+            .join(' · ')}
+        </span>
+      </button>
+      {move !== null && (
+        <button
+          type="button"
+          className="plan-home__row-move"
+          // The visible word is two syllables because the row is narrow; the
+          // accessible name is the whole sentence, including what survives.
+          aria-label={move.hint}
+          onClick={move.onMove}
+        >
+          {move.label}
+        </button>
       )}
     </div>
   )

@@ -42,6 +42,31 @@ export interface HeaderProps {
    */
   position: string
   /**
+   * The hike this phone is on, or undefined (#1367).
+   *
+   * WITHIN THE PLATE'S RULE, NOT AN EXCEPTION TO IT. The header note above
+   * says the plate is read-only and "takes exactly this", citing
+   * WIREFRAMES.md §2's "Nothing else lives here" - and this is not a second
+   * slot, it is the eyebrow saying something else. That line already
+   * composes `trail · state`; on a long hike the hike's own name is the
+   * better answer to the same question the eyebrow was always asking, which
+   * is "what am I looking at".
+   *
+   * The trail is not lost with it: a hike names one trail by construction
+   * (`Hike.trailId`), so `Springer → Katahdin` says A.T. to anybody who
+   * would have read `Appalachian Trail` and says WHICH A.T. hike besides.
+   */
+  hikeName?: string
+  /**
+   * Change which hike, or undefined.
+   *
+   * In the ACTIONS zone rather than on the plate, which is the distinction
+   * the rule above actually draws: `.map-header__actions` is where the map's
+   * controls live and already holds two. A control on the plate would be the
+   * rule broken; a control beside it is the rule kept.
+   */
+  onSwitchHike?: () => void
+  /**
    * The status strip, rendered into the plate - the ONE slot this component
    * has, and it is typed by intent rather than left open: the strip is the
    * single owner of the flag logic and its suppression rules
@@ -60,6 +85,8 @@ export function Header({
   trailLogo,
   state,
   position,
+  hikeName,
+  onSwitchHike,
   strip,
   onOpenLegend,
   onOpenSearch,
@@ -78,7 +105,7 @@ export function Header({
           )}
           <div className="map-plate__read">
             <p className="map-plate__eyebrow">
-              {state === undefined ? trailName : `${trailName} · ${state}`}
+              {hikeName ?? (state === undefined ? trailName : `${trailName} · ${state}`)}
             </p>
             <p className="map-plate__position">{position}</p>
           </div>
@@ -87,6 +114,35 @@ export function Header({
       </header>
 
       <div className="map-header__actions">
+        {/* THE MAP TAB'S OWN DOOR TO A DIFFERENT HIKE (#1367). Every other
+            screen had one - the sidebar on a desktop, Today's header, the
+            Plan band, a Settings row - and this was the one that did not,
+            because the plate beside it is read-only and nobody had looked at
+            the actions row.
+
+            @unvalidated: the glyph. Two arrows turning back on each other is
+            this file's guess at "change which hike I'm on", and nothing has
+            established that a hiker reads it that way rather than as
+            something about the map. What would settle it is watching
+            somebody find it, which nobody has done - so the accessible name
+            carries the whole sentence and the plate beside it already says
+            the hike by name, which is what a hiker would be looking for. */}
+        {onSwitchHike !== undefined && (
+          <button type="button" className="map-header__button" onClick={onSwitchHike}>
+            <span className="visually-hidden">Change which hike you&rsquo;re on</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
+              <path
+                d="M4 8h13l-3-3M20 16H7l3 3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
+
         {/* --legend so the desktop layout can hide it: at that width the
             legend is a permanent panel, and a button that opens something
             already open does nothing. */}

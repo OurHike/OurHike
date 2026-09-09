@@ -3909,6 +3909,50 @@
   cursor: text;
 }
 
+/* A section row that can also be MOVED (#1367). `.plan-home__row` is a
+   column of name-over-meta; this turns the box into a row holding that
+   column plus the move control, so the two shelves stop being a division a
+   hiker can see and cannot change. */
+.plan-home__row--movable {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3, 12px);
+  cursor: default;
+}
+
+.plan-home__row-open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  /* The name is what a long section title squeezes; without this the flex
+     item floors at its content width and pushes the move control off the
+     card's right edge. */
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.plan-home__row-move {
+  flex: none;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  border: 1.5px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
 /* ---------- Planning a section in place (#1344) ---------- */
 
 /* Sits in the hike room's own column, where the primary was. Not a sheet and

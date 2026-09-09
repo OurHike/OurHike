@@ -252,6 +252,7 @@ import {
   addGroup,
   addHike,
   assignTrip,
+  unassignTrip,
   renameHike,
   finishHike,
   removeHike,
@@ -3136,6 +3137,40 @@ function App() {
   const handleSwitchHike = useCallback(() => {
     setHikeSheet('pick')
   }, [])
+
+  /**
+   * Move a section into the hike, or out of it (#1367).
+   *
+   * `unassignTrip` has been in the store since #788 with no caller at all,
+   * so a section could join a hike - two ways since #1344 - and never leave
+   * one. The only escape was "Forget this hike", which ungroups EVERY
+   * section in it: a sledgehammer for a one-row mistake, and the asymmetry
+   * `unassignTrip`'s own docstring warns about ("ungrouping is not deleting").
+   *
+   * Neither touches the section itself. `assignTrip` releases it from
+   * whichever hike had it, because a section belongs to at most one
+   * (SEGMENTS.md's tree has one parent per node), and `unassignTrip` takes
+   * it out of whatever holds it. The trip, its days and its walking are
+   * untouched either way - which is the whole reason this is safe to offer
+   * on a row rather than behind a confirm.
+   */
+  const handleAddSectionToHike = useCallback(
+    (tripId: string) => {
+      applyTripStore((store) =>
+        store.activeHikeId === null
+          ? store
+          : assignTrip(store, store.activeHikeId, tripId),
+      )
+    },
+    [applyTripStore],
+  )
+
+  const handleTakeSectionOut = useCallback(
+    (tripId: string) => {
+      applyTripStore((store) => unassignTrip(store, tripId))
+    },
+    [applyTripStore],
+  )
 
   /**
    * PLANNING A SECTION WITHOUT LEAVING THE HIKE ROOM (#1344).
@@ -7940,6 +7975,8 @@ function App() {
                 activeHike={activeHike}
                 onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
                 onRenameHike={handleRenameHike}
+                onAddSectionToHike={handleAddSectionToHike}
+                onTakeSectionOut={handleTakeSectionOut}
                 // Open, it takes the primary's place in the column; closed,
                 // undefined leaves the primary alone. Two shapes in one slot:
                 // the ends first, then `PlanTargetSheet` on the same ground
@@ -8660,6 +8697,17 @@ function App() {
               onTakeTrail={handleTakeTrail}
               drawnCounts={drawnPoiCounts}
               belowPoiZoom={belowPoiZoom}
+              // The Map tab's own two halves of #1367: the plate SAYS
+              // which hike, and the actions row beside it changes which.
+              // Both withheld off a long hike, and the switch withheld
+              // where there is nothing to switch to - never a control that
+              // does nothing.
+              hikeName={activeHike?.name}
+              onSwitchHike={
+                activeHike !== null && tripStore.hikes.length > 0
+                  ? handleSwitchHike
+                  : undefined
+              }
               {...filters.mapScreen}
               {...alerts.mapScreen}
               selectedPoi={selectedPoi}

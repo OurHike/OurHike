@@ -747,7 +747,16 @@ def published_records() -> list[dict]:
     --check). Each record also gains its inventory `fingerprint` (#672),
     read off the raw properties unify_poi kept for exactly this kind of
     composition - and, for a crossing or a site's water point, the
-    `stream_id` it is made of (#1028, stream_passport)."""
+    `stream_id` it is made of (#1028, stream_passport).
+
+    export_poi.build_enriched_records() also caches this call across process
+    invocations (#1331): this function and export_poi.main() used to each
+    pay for read_sources()+attach_sites()+the water-distance attach from
+    scratch, ~20 minutes apiece in production, back to back in the same
+    publish job. `record["id"]` comes back ledger-resolved as a side effect
+    (build_enriched_records applies it for main()'s sake) - harmless here,
+    since reconcile() below matches on `(source, source_feature_id)` and
+    never reads `id` at all."""
     import duckdb
 
     import export_poi
@@ -755,12 +764,7 @@ def published_records() -> list[dict]:
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
     try:
-        records = export_poi.read_sources(con)
-        export_poi.attach_sites(records)
-        distances = export_poi.load_water_distances(export_poi.WATER_DISTANCE_PATH)
-        if distances:
-            export_poi.attach_water_distance(records, distances)
-            export_poi.synthesize_csi_water(records)
+        records = export_poi.build_enriched_records(con)
     finally:
         con.close()
 

@@ -2048,6 +2048,135 @@ def test_export_poi_an_absent_trail_water_file_is_a_normal_state(tmp_path, monke
     assert manifest["crossing"]["geojson"]["feature_count"] == 0
 
 
+# --- build_enriched_records caching (#1331) -----------------------------------
+#
+# read_sources()+attach_sites()+the water-distance attach measured at 19-22
+# minutes in production, paid for twice a run (export_poi.main() and
+# reconcile_poi_identity.published_records() each recomputed it from
+# scratch) - see build_enriched_records' own comment for the CI numbers.
+# These prove the cache actually avoids the second read_sources() call, that
+# a changed input still gets a fresh one, and that use_cache=False bypasses
+# the cache in both directions.
+
+
+def _counting_read_sources(monkeypatch):
+    """Wrap export_poi.read_sources to count calls, returning the list every
+    call appends to - a call recomputed is a call this list grows by one."""
+    calls = []
+    real_read_sources = export_poi.read_sources
+
+    def counting(con):
+        calls.append(1)
+        return real_read_sources(con)
+
+    monkeypatch.setattr(export_poi, "read_sources", counting)
+    return calls
+
+
+def test_build_enriched_records_reuses_the_cache_when_nothing_changed(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    calls = _counting_read_sources(monkeypatch)
+
+    first = export_poi.build_enriched_records(con)
+    second = export_poi.build_enriched_records(con)
+
+    assert len(calls) == 1, "unchanged inputs must not pay for read_sources() twice"
+    assert first == second
+
+
+def test_build_enriched_records_invalidates_the_cache_when_a_source_changes(tmp_path, monkeypatch, con):
+    """The fingerprint has to catch an edit to any file the prefix reads, or
+    a re-fetch between the two callers would silently publish under a stale
+    read - exactly the failure mode CLAUDE.md calls "a display outrunning
+    its source."."""
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    calls = _counting_read_sources(monkeypatch)
+
+    export_poi.build_enriched_records(con)
+
+    # A re-fetch that changed a name - same shape, different bytes, the same
+    # kind of edit ATC's own refresh makes (features/POI_IDENTITY.md).
+    _write_fc(
+        raw_dir / "shelters.geojson",
+        [
+            _point_feature(
+                1,
+                -73.95,
+                41.05,
+                {
+                    "GlobalID": "shelter-glob-1",
+                    "OBJECTID": 1,
+                    "Name": "Test Shelter (rebuilt)",
+                    "Stories": 2,
+                    "Exterior_M": "5",
+                    "Chimneys": 1,
+                    "Year_Built": 1954,
+                },
+            )
+        ],
+    )
+
+    export_poi.build_enriched_records(con)
+
+    assert len(calls) == 2, "a changed input must invalidate the cache rather than serve a stale read"
+
+
+def test_build_enriched_records_use_cache_false_always_recomputes(tmp_path, monkeypatch, con):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", tmp_path / "processed" / "poi")
+    calls = _counting_read_sources(monkeypatch)
+
+    export_poi.build_enriched_records(con, use_cache=False)
+    export_poi.build_enriched_records(con, use_cache=False)
+
+    assert len(calls) == 2, "use_cache=False must skip the cache on both the read and the write side"
+
+
+def test_export_poi_main_and_published_records_publish_the_same_set(tmp_path, monkeypatch, con):
+    """The point of sharing build_enriched_records at all - published_records'
+    own docstring: "so the reconciled set and the published set cannot
+    drift." Checked against the real GeoJSON main() writes, not just another
+    in-memory call, with reconcile running SECOND so it reads the cache
+    main() just warmed - the order a real publish run uses."""
+    import reconcile_poi_identity
+
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_fixture_sources(raw_dir)
+    out_dir = tmp_path / "processed" / "poi"
+    monkeypatch.setattr(export_poi, "RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_poi, "OUT_DIR", out_dir)
+
+    export_poi.main()
+    published = set()
+    for poi_type in POI_TYPES:
+        fc = json.loads((out_dir / f"{poi_type}.geojson").read_text())
+        for feature in fc["features"]:
+            published.add((feature["properties"]["source"], str(feature["properties"]["source_feature_id"])))
+
+    # str() on both sides: GDAL's GeoJSON driver re-expands a numeric-looking
+    # VARCHAR (opentrail's `dbid`) into a bare JSON number on the way out -
+    # the same class of quirk this module's own docstrings note for `photos`
+    # and `nearby` - so the on-disk and in-memory forms of one id can differ
+    # in JSON type without differing in identity. Not this change's quirk to
+    # fix; str() is what makes the comparison test identity rather than
+    # incidentally testing GDAL's type inference too.
+    reconciled = {(r["source"], str(r["source_feature_id"])) for r in reconcile_poi_identity.published_records()}
+
+    assert reconciled == published
+
+
 # --- attach_miles (#753, #652) ------------------------------------------------
 #
 # The mile is NOBO-from-Springer position on the elevation profile's own axis:

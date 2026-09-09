@@ -10,9 +10,9 @@ anyio==4.14.2
     # via
     #   starlette
     #   watchfiles
-boto3==1.43.76
+boto3==1.43.88
     # via -r requirements.in
-botocore==1.43.78
+botocore==1.43.89
     # via
     #   boto3
     #   s3transfer
@@ -40,9 +40,9 @@ mako==1.4.1
     # via alembic
 markupsafe==3.0.3
     # via mako
-psycopg[binary]==3.3.4
+psycopg[binary]==3.3.5
     # via -r requirements.in
-psycopg-binary==3.3.4
+psycopg-binary==3.3.5
     # via psycopg
 pycparser==3.0
     # via cffi

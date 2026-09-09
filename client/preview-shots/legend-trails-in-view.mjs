@@ -40,10 +40,20 @@
 // - and a tap could not have shown it.
 import { seedLongHike } from './fixtures/longHike.mjs'
 
+// WHAT THE FRAME ACTUALLY HOLDS, checked against the photographed PNG
+// (2026-09-09): two rows, not a column of them - the A.T. marked `taken`,
+// and "Fingerboard Shelter Side Trail" SOLID in its blue blaze rather than
+// dotted. That is right and is worth the caption saying so rather than
+// glossing it: a side trail of the chosen system draws at full strength on
+// purpose (map/nearbyTrails.ts's CHOSEN_SYSTEM_SOURCES holds `side_trails`
+// beside `centerline`, and that file argues the decision at length). So the
+// frame shows the taken system whole - through-route and spur - which is a
+// better illustration than the dotted column the caption used to promise
+// and this preview's bucket cannot yet draw.
 export const caption =
-  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), with an active A.T. hike seeded and nothing tapped: since #1352 the row reads "taken" because the hiker is on that hike, not because the legend was tapped; every other trail on screen is a dotted row in its own blaze hue, and the A.T. and its side trails are alone until nearby_trails.pmtiles is in the bucket this preview reads'
+  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws solid rather than dotted, because a spur of the taken system is part of it (map/nearbyTrails.ts). The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
 export const alt =
-  'The legend sheet over the map screen, opening with a "Trails in view" heading over a column of rows: a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, then dotted swatches in their own hues beside the names of the other trails on screen, above the waypoint category grid'
+  'The legend sheet over the map screen, opening with a "Trails in view" heading over two rows: a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail", above the waypoint category grid'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

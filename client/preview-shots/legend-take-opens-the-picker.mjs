@@ -28,10 +28,22 @@
 // is both the state this button is interesting in and the state with no
 // account, no reports and no location fix in it.
 
+// WHAT THE FRAME ACTUALLY HOLDS, checked against the photographed PNG
+// rather than assumed from the drive (2026-09-09). The ground behind the
+// sheet is a flat blank, not the map with the legend on it: the legend
+// panel blanks the canvas under this camera (#1138) and the sheet's own
+// scrim covers the panel, so nothing of either survives into the picture.
+// The caption said "risen over the map screen with its legend behind it"
+// until the PNG was opened and it plainly was not - the exact "display
+// outruns its source" failure CLAUDE.md names, on the one artefact a
+// reviewer reads instead of running the branch. What this frame is evidence
+// for is the DOOR: the drive tapped the A.T.'s legend row and this is what
+// the tap reached. legend-trails-in-view.mjs is the frame with the map and
+// the rows in it.
 export const caption =
-  'The legend’s “take” on the A.T. opens “Which long hike?” (#1352) — the map’s taken trail is the active hike’s trail now, so taking one from the legend goes through the door that sets a hike rather than writing a second, map-only state beside it'
+  'What the legend’s “take” on the A.T. now opens (#1352): the same “Which long hike?” sheet the mode switch opens, reached by tapping the A.T.’s legend row. The map’s taken trail is the active hike’s trail now, so taking one from the legend goes through the door that sets a hike rather than writing a second, map-only state beside it. The ground behind is blank because the legend blanks the canvas under this camera (#1138) and the sheet covers the legend — this frame is evidence about the door, not about the map'
 export const alt =
-  'A bottom sheet titled "Which long hike?" risen over the map screen with its legend behind it, explaining that a long hike follows one trail, with one door reading "A new long hike"'
+  'A bottom sheet titled "Which long hike?" over a blank field, explaining that a long hike follows one trail and that closing it returns to Day hike, with one door reading "A new long hike"'
 
 /** The rows are measured off a settled frame, same as
  *  legend-trails-in-view.mjs: the button cannot be tapped before the map has

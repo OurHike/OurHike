@@ -47,7 +47,14 @@
 # ONE RUN PER DATA ENVIRONMENT (features/DATA_ENVIRONMENTS.md). Each reads its
 # own database and writes its own prefix, so the two never meet: a test closure
 # a UA moderator verified cannot reach a hiker's map, and production's verified
-# rows are not what a tester rehearses moderation against. The matrix jobs write
+# rows are not what a tester rehearses moderation against. That isolation is
+# real, and it is why the UA test closure below was never a production risk -
+# but it is not a licence to leave invented rows in UA either, because a UA
+# tester reading a map is reading a map. Maintainer decision 2026-09-09 took
+# the work-projects samples out of the reviewed file this workflow bakes; the
+# one invented row the repository cannot reach from here is
+# `ua-test-closure-verified` in the UA conditions database, which is a DELETE
+# a maintainer runs, not a step this workflow can take. The matrix jobs write
 # disjoint keys, so they never race each other - but each still joins the
 # publish-data group below, because the race that matters is with the other
 # four workflows, over the shared latest.json (#645).
@@ -288,16 +295,17 @@ jobs:
         run: python export_nynjtc_alerts.py
 
       # The volunteer workdays (#760), from the same kind of reviewed file as
-      # the ATC leg above and with the same refuse-unreviewed posture. The
-      # one difference: this exporter asks which environment it is baking
-      # for, because the reviewed file's sample rows publish to UA and dev
-      # only (maintainer decision 2026-08-20, recorded on #760) - production
+      # the ATC leg above, with the same refuse-unreviewed posture and now
+      # the same environment-blindness: both legs publish the identical
+      # reviewed content into their own tree. This step used to pass
+      # $OURHIKE_DATA_ENV because the reviewed file's '[Sample]' rows
+      # published to UA and dev only (maintainer decision 2026-08-20, on
+      # #760); maintainer decision 2026-09-09 retired those rows, so there is
+      # nothing for the environment to select between. Every environment
       # carries exactly what a real club has supplied, which today is an
       # empty list, published deliberately so the client's read path is live
       # before the first real row lands.
       - name: Export the reviewed volunteer work projects
-        env:
-          OURHIKE_DATA_ENV: ${{ matrix.data_environment }}
         run: python export_work_projects.py
 
       # THE DROUGHT LEG (#720), and its whole design is about being cheap

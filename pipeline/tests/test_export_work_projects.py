@@ -1,16 +1,19 @@
 """Tests for export_work_projects.py and lib/work_projects.py (#760).
 
 The two claims that matter most, held mechanically: **no invented workday
-can reach production** (the maintainer's 2026-08-20 decision - sample rows
-publish to UA and dev only, and an unset environment reads as production),
+reaches ANY environment's map** (the maintainer's 2026-09-09 decision, which
+widened 2026-08-20's production-only rule from production to everywhere),
 and **an unreviewed or broken file publishes nothing** rather than half a
 list of events people might drive to.
+
+The first claim is held from both ends: `rows` is the only list the bake
+reads, and the retired `ua_sample_rows` key is REFUSED rather than ignored,
+so a future re-add fails the bake instead of publishing quietly.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
 
 import export_work_projects
 from lib.work_projects import file_problems, is_reviewed, published_rows, row_problems
@@ -28,21 +31,6 @@ def _row(**overrides) -> dict:
         "ends_on": "2026-09-12",
         "signup_mode": "contact",
         "signup_contact": "mailto:volunteer@example.org",
-        **overrides,
-    }
-
-
-def _sample(**overrides) -> dict:
-    return {
-        "id": "sample:one",
-        "club_name": "[Sample] UA Test Crew",
-        "title": "[Sample] Rehearsal workday",
-        "lat": 41.31,
-        "lon": -73.99,
-        "starts_in_days": 4,
-        "ends_in_days": 4,
-        "signup_mode": "contact",
-        "signup_contact": "mailto:ua@example.invalid",
         **overrides,
     }
 
@@ -80,18 +68,21 @@ def test_a_contact_row_needs_its_contact():
     assert any("signup_contact" in problem for problem in problems)
 
 
-def test_a_sample_row_must_say_it_is_one():
-    document = {"reviewed_at": "2026-08-20", "rows": [], "ua_sample_rows": [_sample(title="Rehearsal workday")]}
+def test_the_retired_sample_list_is_refused_rather_than_ignored():
+    """The 2026-09-09 decision, held where re-adding samples would land.
 
-    assert any("[Sample]" in problem for problem in file_problems(document))
+    Ignoring the key would make a re-add a silent no-op that reads like it
+    worked; refusing it stops the bake and names the rule. An EMPTY list is
+    refused too - the key itself is what is retired, and a file carrying it
+    is a file somebody is about to fill in."""
+    for samples in ([_row(id="sample:one")], []):
+        document = {"reviewed_at": "2026-08-20", "rows": [], "ua_sample_rows": samples}
+
+        assert any("ua_sample_rows is retired" in problem for problem in file_problems(document))
 
 
-def test_duplicate_ids_are_refused_across_both_lists():
-    document = {
-        "reviewed_at": "2026-08-20",
-        "rows": [_row(id="one")],
-        "ua_sample_rows": [_sample(id="one")],
-    }
+def test_duplicate_ids_are_refused():
+    document = {"reviewed_at": "2026-08-20", "rows": [_row(id="one"), _row(id="one")]}
 
     assert any("duplicate id" in problem for problem in file_problems(document))
 
@@ -103,76 +94,70 @@ def test_an_unreviewed_file_is_not_reviewed():
     assert is_reviewed({"reviewed_at": "2026-08-20", "rows": []}) is True
 
 
-def test_production_never_sees_a_sample_row():
+def test_the_reviewed_rows_are_the_whole_published_set():
     """The decision this whole file exists to hold: an invented workday
-    reaching a hiker is the feature's own failure mode, self-inflicted."""
-    document = {"reviewed_at": "2026-08-20", "rows": [_row()], "ua_sample_rows": [_sample()]}
+    reaching anybody is the feature's own failure mode, self-inflicted. There
+    is no environment argument left to get wrong."""
+    document = {"reviewed_at": "2026-08-20", "rows": [_row()]}
 
-    production = published_rows(document, environment="production", today=date(2026, 8, 20))
-    unset = published_rows(document, environment=None, today=date(2026, 8, 20))
+    rows = published_rows(document)
 
-    assert [row["id"] for row in production] == ["nynjtc:2026-09-12-bear-mtn"]
-    # Unset reads as production - "nobody said" publishes LESS, never more.
-    assert [row["id"] for row in unset] == ["nynjtc:2026-09-12-bear-mtn"]
-
-
-def test_ua_gets_the_samples_with_their_dates_resolved_from_bake_time():
-    document = {"reviewed_at": "2026-08-20", "rows": [], "ua_sample_rows": [_sample()]}
-    today = date(2026, 8, 20)
-
-    [row] = published_rows(document, environment="ua", today=today)
-
-    # Relative dates are what keep UA's fourteen-day window populated
-    # however long ago the file was edited.
-    assert row["starts_on"] == (today + timedelta(days=4)).isoformat()
-    assert row["ends_on"] == row["starts_on"]
-    assert "starts_in_days" not in row
-    assert row["status"] == "upcoming"
+    assert [row["id"] for row in rows] == ["nynjtc:2026-09-12-bear-mtn"]
+    assert rows[0]["status"] == "upcoming"
 
 
-def test_the_shipped_reference_file_is_valid_and_production_empty():
-    """The file in git, held to its own rules: valid, reviewed, and with an
-    EMPTY production list until a real club supplies real workdays."""
+def test_the_shipped_reference_file_is_valid_and_carries_nothing_invented():
+    """The file in git, held to its own rules: valid, reviewed, EMPTY until a
+    real club supplies real workdays, and with no sample list to publish from
+    (the 2026-09-09 decision, checked against the shipped bytes rather than
+    only against the validator)."""
     document = json.loads(export_work_projects.REVIEWED_PATH.read_text())
 
     assert is_reviewed(document)
     assert file_problems(document) == []
     assert document["rows"] == []
-    assert len(document["ua_sample_rows"]) > 0
+    assert "ua_sample_rows" not in document
 
 
-def test_the_exporter_writes_artifact_and_manifest_for_ua(tmp_path, monkeypatch):
+def test_the_exporter_writes_artifact_and_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(export_work_projects, "OUT_DIR", tmp_path / "conditions")
     monkeypatch.setattr(export_work_projects, "OUT_PATH", tmp_path / "conditions" / "work_projects.json")
     monkeypatch.setattr(export_work_projects, "MANIFEST_PATH", tmp_path / "work_projects_manifest.json")
-    monkeypatch.setenv("OURHIKE_DATA_ENV", "ua")
 
     assert export_work_projects.main() == 0
 
     document = json.loads((tmp_path / "conditions" / "work_projects.json").read_text())
     manifest = json.loads((tmp_path / "work_projects_manifest.json").read_text())
-    assert document["work_projects"], "UA should carry the sample rows"
-    assert all(row["title"].startswith("[Sample]") for row in document["work_projects"])
+    # Empty today, and empty is the honest state rather than a failure: the
+    # artifact still publishes so the client's read path stays live.
+    assert document["work_projects"] == []
     assert document["generated_at"].endswith("Z")
     assert document["reviewed_at"]
-    assert manifest["artifacts"]["work_projects"]["count"] == len(document["work_projects"])
+    assert manifest["artifacts"]["work_projects"]["count"] == 0
 
 
-def test_the_exporter_keeps_production_empty_today(tmp_path, monkeypatch):
-    monkeypatch.setattr(export_work_projects, "OUT_DIR", tmp_path / "conditions")
-    monkeypatch.setattr(export_work_projects, "OUT_PATH", tmp_path / "conditions" / "work_projects.json")
-    monkeypatch.setattr(export_work_projects, "MANIFEST_PATH", tmp_path / "work_projects_manifest.json")
-    monkeypatch.setenv("OURHIKE_DATA_ENV", "production")
+def test_every_environment_gets_the_same_empty_list(tmp_path, monkeypatch):
+    """$OURHIKE_DATA_ENV no longer selects anything here. Set to the value
+    that used to add the samples, the artifact is the same one production
+    gets - which is the 2026-09-09 decision stated as an outcome rather than
+    as an absence of code."""
+    written = {}
+    for environment in ("ua", "dev", "production"):
+        out = tmp_path / environment
+        monkeypatch.setattr(export_work_projects, "OUT_DIR", out / "conditions")
+        monkeypatch.setattr(export_work_projects, "OUT_PATH", out / "conditions" / "work_projects.json")
+        monkeypatch.setattr(export_work_projects, "MANIFEST_PATH", out / "work_projects_manifest.json")
+        monkeypatch.setenv("OURHIKE_DATA_ENV", environment)
 
-    assert export_work_projects.main() == 0
+        assert export_work_projects.main() == 0
+        written[environment] = json.loads((out / "conditions" / "work_projects.json").read_text())["work_projects"]
 
-    document = json.loads((tmp_path / "conditions" / "work_projects.json").read_text())
-    assert document["work_projects"] == []
+    assert written == {"ua": [], "dev": [], "production": []}
 
 
 def test_an_unreviewed_file_publishes_nothing_and_exits_zero(tmp_path, monkeypatch):
     unreviewed = tmp_path / "reference.json"
-    unreviewed.write_text(json.dumps({"rows": [], "ua_sample_rows": []}))
+    unreviewed.write_text(json.dumps({"rows": []}))
     monkeypatch.setattr(export_work_projects, "REVIEWED_PATH", unreviewed)
     monkeypatch.setattr(export_work_projects, "OUT_PATH", tmp_path / "work_projects.json")
     monkeypatch.setattr(export_work_projects, "MANIFEST_PATH", tmp_path / "work_projects_manifest.json")
@@ -183,7 +168,7 @@ def test_an_unreviewed_file_publishes_nothing_and_exits_zero(tmp_path, monkeypat
 
 def test_a_broken_row_publishes_nothing_and_exits_nonzero(tmp_path, monkeypatch):
     broken = tmp_path / "reference.json"
-    broken.write_text(json.dumps({"reviewed_at": "2026-08-20", "rows": [_row(mile=9999.0)], "ua_sample_rows": []}))
+    broken.write_text(json.dumps({"reviewed_at": "2026-08-20", "rows": [_row(mile=9999.0)]}))
     monkeypatch.setattr(export_work_projects, "REVIEWED_PATH", broken)
     monkeypatch.setattr(export_work_projects, "OUT_PATH", tmp_path / "work_projects.json")
     monkeypatch.setattr(export_work_projects, "MANIFEST_PATH", tmp_path / "work_projects_manifest.json")

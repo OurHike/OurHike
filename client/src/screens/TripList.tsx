@@ -109,9 +109,9 @@ export function TripList({
   const [newGroup, setNewGroup] = useState<string | null>(null)
 
   return (
-    <div className="trip-list" role="dialog" aria-label="Your trips">
+    <div className="trip-list" role="dialog" aria-label="Your sections">
       <div className="legend__head">
-        <h2 className="legend__title">Your trips</h2>
+        <h2 className="legend__title">Your sections</h2>
         <button type="button" className="legend__close" onClick={onClose}>
           <span className="visually-hidden">Close</span>
           <span aria-hidden="true">×</span>

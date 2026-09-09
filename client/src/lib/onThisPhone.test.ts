@@ -14,10 +14,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   keys: vi.fn(),
 }))
 
-const { get, keys } = await import('idb-keyval')
+const { get, getMany, keys } = await import('idb-keyval')
 const { storedTrailData } = await import('./onThisPhone')
 const { TRAILS_BLOB_KEY, POIS_KEY, ELEVATION_STORE_KEY } = await import('./trailData')
 const { NETWORK_OVERVIEW_STORE_KEY } = await import('./nearbyTrailData')
@@ -35,6 +36,12 @@ beforeEach(() => {
  *  which is how the graph's cells are found (lib/trailGraphStore.ts). */
 function store(values: Record<string, unknown>): void {
   vi.mocked(get).mockImplementation((key) => Promise.resolve(values[String(key)]))
+  // `getMany` follows whatever `get` is doing right now, so #1303's one
+  // transaction in lib/trailData.ts reads this file's store like every other
+  // read, and a test that re-points `get` need not re-point both.
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
   vi.mocked(keys).mockResolvedValue(Object.keys(values))
 }
 

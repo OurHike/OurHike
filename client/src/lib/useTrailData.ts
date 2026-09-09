@@ -164,13 +164,18 @@ export interface TrailData {
   retiredPois: Tombstones
   trailsUrl: string
   /**
-   * The corridor-view centerline to draw INSTEAD, while there is no real one
-   * (#869) - and null the moment there is, which is what makes it a stand-in
-   * rather than a second trail line.
+   * The corridor-view centerline, for the map to draw until its own copy of
+   * the real line is on screen (#869, #1291) - and to draw again for the
+   * same seconds on any map built later.
    *
-   * Null too on a phone that has the release already, because it never had a
-   * gap to fill: this is worth 51 KB of somebody's data only on the launch
-   * where the alternative is an empty map for five seconds.
+   * Null only where there is none: offline, or a bucket without the
+   * artifact. It used to be null the moment this hook held the real lines,
+   * on the theory that a phone holding the release "never had a gap to
+   * fill"; the gap is the map's parse of those lines, it runs on every
+   * launch, and the effect that fetches this carries the measurement. Which
+   * line the map is drawing is the map's own answer now - map/style.ts's
+   * attachTrailOverview, with `haveTrailLines` beside this as the other half
+   * of it.
    */
   overviewTrailsUrl: string | null
   /**
@@ -363,10 +368,6 @@ export function useTrailData(
   const [trailsUrl, setTrailsUrl] = useState<string>(emptyTrailsUrl)
   const [haveTrailLines, setHaveTrailLines] = useState(false)
   const [overviewUrl, setOverviewUrl] = useState<string | null>(null)
-  /** Whether the phone has been asked whether it holds trail lines yet.
-   *  Distinct from holding none: for the first tick of every launch those two
-   *  look the same, and one of them is a reason to spend a hiker's data. */
-  const [centerlineRead, setCenterlineRead] = useState(false)
   const [error, setError] = useState<TrailDataError | null>(null)
   /**
    * Whether the launch fetch has stopped competing for the pipe (#1117).
@@ -424,10 +425,6 @@ export function useTrailData(
    */
   const drawCenterline = useCallback(async () => {
     const lines = await loadTrailLines()
-    // Answered either way, and before the early return: "no lines" is what
-    // sends the overview fetch below, and it is not the same answer as "not
-    // asked yet".
-    setCenterlineRead(true)
     if (lines === null) return
 
     setTrailsUrl(URL.createObjectURL(lines))
@@ -732,38 +729,45 @@ export function useTrailData(
   useEffect(() => () => URL.revokeObjectURL(trailsUrl), [trailsUrl])
 
   /**
-   * The corridor-view sketch, fetched once and only while it would be the
-   * only trail line on the map (#869).
+   * The corridor-view sketch, fetched once per launch and handed to the map
+   * for the life of the app (#869, #1291).
    *
-   * Gated on what the phone turned out to hold rather than on "is this a
-   * first run", because that is the actual question: a phone with the release
-   * already on it draws the real line within a tick of launching and never has
-   * a gap for this to fill, so fetching it would be 51 KB of somebody's data
-   * spent on a frame nobody sees. On an empty phone the real line is seconds
-   * away and this is the map the entry steps are talking about.
+   * THE MAP DECIDES WHEN THE SKETCH IS DONE, NOT THIS HOOK. This used to
+   * withdraw the sketch the moment `haveTrailLines` flipped - "the real line
+   * winning is what ends the sketch" - and revoke its URL. But holding an
+   * object URL for trails.geojson is not the map having drawn it: MapLibre's
+   * worker still has to fetch that blob and parse and tile 11.5 MB of
+   * coordinates, and a map mounted after the flip was handed no sketch and
+   * drew nothing until its own copy landed. MEASURED 2026-09-08 on the built
+   * app in the sandbox, the blob already local: a map mounted 3.5 s after
+   * launch had no line 3.5 s after mounting and had one by 6.4 s. A phone is
+   * slower. The older comment here - that a phone holding the release "never
+   * has a gap for this to fill" - was never measured; the parse is the gap,
+   * and it runs on every launch.
    *
-   * Which is why it waits for `centerlineRead` and not merely for
-   * `haveTrailLines` to be false. Those two are indistinguishable for the
-   * first tick of EVERY launch - the IndexedDB read has not answered yet - and
-   * starting on that tick would fetch the sketch on every launch a returning
-   * hiker ever makes. The wait costs nothing: the bytes are already in the
-   * HTTP cache by then, preloaded from the document head (vite.config.ts), so
-   * what this runs is a cache read.
-   *
-   * The abort is what makes the race safe rather than lucky: the real line can
-   * land while this is in flight, and the cleanup below both cancels the
-   * request and throws away an answer that arrives anyway.
+   * So the sketch is fetched on every launch - the bytes are preloaded from
+   * the document head (vite.config.ts), so this is a cache read, and the
+   * wait on "has the phone answered whether it holds lines" that used to
+   * keep warm launches from fetching it went with the reason for it - handed
+   * over whatever this hook holds, and emptied by map/style.ts's
+   * attachTrailOverview once the MAP's own trails source reports loaded.
+   * Per map instance, so a map rebuilt later (a background switch, a lost
+   * WebGL context) gets the sketch again for the same seconds. The URL is
+   * never revoked: it has to outlive any one map, and this hook lives as
+   * long as the app does, so what would be leaked is 195 KB until the page
+   * closes, which is when the browser releases it anyway.
    */
   useEffect(() => {
-    if (!DATA_CONFIGURED || !online || !centerlineRead || haveTrailLines) return
+    if (!DATA_CONFIGURED || !online || overviewUrl !== null) return
 
     const controller = new AbortController()
     let wanted = true
 
     void fetchTrailOverview(controller.signal).then((url) => {
       if (url === null) return
-      // Revoked rather than kept: an object URL nothing draws is a blob the
-      // page holds until it is closed, and by here the real line has won.
+      // Cancelled underneath - the hook unmounted, or `online` moved while
+      // this was in flight - and an object URL nothing will draw is a blob
+      // the page holds until it is closed.
       if (!wanted) {
         URL.revokeObjectURL(url)
         return
@@ -775,16 +779,7 @@ export function useTrailData(
       wanted = false
       controller.abort()
     }
-  }, [online, centerlineRead, haveTrailLines])
-
-  // Dropped as soon as there is a real line, and revoked with it. Both halves
-  // matter: the sketch is only true below the pin seam, and a blob URL that
-  // outlives its layer is a leak with nothing pointing at it.
-  useEffect(() => {
-    if (!haveTrailLines || overviewUrl === null) return
-    URL.revokeObjectURL(overviewUrl)
-    setOverviewUrl(null)
-  }, [haveTrailLines, overviewUrl])
+  }, [online, overviewUrl])
 
   // The whole-file copy of the other organizations' lines that releases
   // before #1257 stored (lib/nearbyTrailData.ts) - up to 228.8 MB of it, on a
@@ -850,10 +845,12 @@ export function useTrailData(
     stewards,
     highlights,
     retiredPois,
-    // Never both. The real line winning is what ends the sketch, and saying so
-    // here rather than in the shell means one place decides which line the map
-    // is drawing.
-    overviewTrailsUrl: haveTrailLines ? null : overviewUrl,
+    // Handed over whatever this hook holds. Which line the map is drawing is
+    // the MAP's answer (map/style.ts's attachTrailOverview, #1291): it is the
+    // only party that knows when its own copy of the real line is on screen,
+    // and the sketch is useful in exactly that window. `haveTrailLines`
+    // beside it says whether there is a real line to wait for at all.
+    overviewTrailsUrl: overviewUrl,
     // The url alone: whether it was revalidated is this hook's business (the
     // effect above), not a consumer's - the map draws a stored copy and a
     // fresh one identically.

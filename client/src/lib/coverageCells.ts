@@ -594,8 +594,11 @@ export interface CellIndexState {
  * a launch with signal that reads the store slowly must not replace today's
  * index with last month's.
  */
-export function useCellIndex(family: CellFamily = BASEMAP_CELLS): CellIndex | null {
-  return useCellIndexState(family).index
+export function useCellIndex(
+  family: CellFamily = BASEMAP_CELLS,
+  ready = true,
+): CellIndex | null {
+  return useCellIndexState(family, 0, ready).index
 }
 
 /**
@@ -603,9 +606,17 @@ export function useCellIndex(family: CellFamily = BASEMAP_CELLS): CellIndex | nu
  * all, and whether a connection would change the answer. `attempt` re-asks
  * the bucket when bumped - a "Try again" control's handle.
  */
+/**
+ * @param ready Whether the launch is past its first frame (#1302). Both the
+ *   store read and the fetch wait for it - a cell list changes nothing on
+ *   the first frame, and the fetch is followed by a SHA-256 and a parse on
+ *   the thread that frame is drawn on. `settled` stays false until then, so
+ *   nothing downstream mistakes "not asked yet" for "no cells".
+ */
 export function useCellIndexState(
   family: CellFamily = BASEMAP_CELLS,
   attempt = 0,
+  ready = true,
 ): CellIndexState {
   const [index, setIndex] = useState<CellIndex | null>(null)
   const [storeRead, setStoreRead] = useState(false)
@@ -616,6 +627,7 @@ export function useCellIndexState(
   const online = useOnline()
 
   useEffect(() => {
+    if (!ready) return
     let wanted = true
     void readStoredCellIndex(family).then((stored) => {
       if (!wanted) return
@@ -625,13 +637,13 @@ export function useCellIndexState(
     return () => {
       wanted = false
     }
-  }, [family])
+  }, [family, ready])
 
   useEffect(() => {
     // Never with no signal, and never on a build with no bucket - the same
     // gate lib/usePublishedSizes.ts keeps, for the same reason: a phone
     // offline at a trailhead must reach the network zero times.
-    if (!DATA_CONFIGURED || !online) return
+    if (!DATA_CONFIGURED || !online || !ready) return
 
     const controller = new AbortController()
     let wanted = true
@@ -650,7 +662,7 @@ export function useCellIndexState(
       wanted = false
       controller.abort()
     }
-  }, [online, family, attempt])
+  }, [online, family, attempt, ready])
 
   // Offline the store is the whole answer; with signal the bucket's word is
   // waited for, so a phone with an old index stored is not told "no cells"

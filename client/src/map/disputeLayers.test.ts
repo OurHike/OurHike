@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { SymbolLayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
-import { POI_LAYER_ID } from './poiLayers'
+import { POI_LAYER_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { DISPUTE_MARK_ID, DISPUTE_MARK_SIZE, buildDisputeMark } from './disputeMark'
 import {
   attachDisputeData,
@@ -60,6 +60,12 @@ describe('the layer', () => {
 
   it('asks for the image disputeMark.ts actually registers', () => {
     expect(buildDisputeLayer().layout).toMatchObject({ 'icon-image': DISPUTE_MARK_ID })
+  })
+
+  it('starts where the pins it annotates start (#1292)', () => {
+    // A footnote with no sentence under it: the waypoint pins draw from the
+    // seam up, so a mark on a pin's shoulder below it would sit on nothing.
+    expect(buildDisputeLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
   it('is its own layer, not a property on the waypoints', () => {

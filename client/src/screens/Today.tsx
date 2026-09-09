@@ -32,6 +32,7 @@ import { useMemo, type ReactNode } from 'react'
 import shelterPhoto from '../design-system/assets/photos/section-shelter.jpg'
 import { StatusStrip } from '../chrome/StatusStrip'
 import { ModeSwitch } from '../chrome/ModeSwitch'
+import { WelcomeBackCard, type WelcomeBackCardProps } from '../chrome/WelcomeBackCard'
 import { ElevationRibbon, type RibbonSubject } from '../chrome/ElevationRibbon'
 import type { RibbonView } from '../lib/ribbonView'
 import type { HikerMode } from '../lib/hikerMode'
@@ -94,6 +95,17 @@ export interface TodayProps {
 
   mode: HikerMode
   onChangeMode: (mode: HikerMode) => void
+
+  /**
+   * The long hike leading this screen (#1317), or null when the app is not
+   * in one.
+   *
+   * FINISHED LINES FROM THE SHELL, like the alert sentences above and for
+   * the same reason: the figures are `hikeFiguresLine`'s, computed once
+   * where the store is, so this screen and the Plan tab cannot come to
+   * describe the same hike differently.
+   */
+  longHike?: LongHikeToday | null
 
   /** Every searchable POI, client mile axis - the journal ranks a scoped
    *  subset (lib/todayJournal.ts). */
@@ -188,6 +200,59 @@ function dotClass(treatment: StalenessTreatment): string | null {
   return null
 }
 
+/**
+ * What the Today screen says about the long hike leading it (#1317).
+ *
+ * The card's lines arrive finished. This screen renders a hike's day; it
+ * does not work out which day that is, what is planned on it, or how far
+ * the next resupply is - those come from the store, once, where the store
+ * is.
+ */
+export interface LongHikeToday {
+  name: string
+  /** `412 mi walked · 1,786 mi to go`. Never anything else. */
+  figures: string
+  /** Which day of the hike today is, or null when the hike has no dated
+   *  start to count from - and then the eyebrow simply says the date, which
+   *  is true, rather than a day number nothing supports. */
+  dayNumber: number | null
+  /**
+   * Where the hiker is, when the answer is "not on this hike" - `paused 11
+   * days · last at mi 1,407.2`, or null.
+   *
+   * Under the position line rather than replacing the mile, because the mile
+   * is still true: the phone knows where it is, it is simply not on the
+   * corridor this hike follows, and overwriting a known position with a
+   * sentence would lose a fact to say a different one.
+   */
+  awayLine: string | null
+  /** The offer to pick the hike back up, or null. Rendered above everything
+   *  else in the column, because a hiker who has been away is not looking
+   *  for today's leg - they are looking for what happened. */
+  resume: WelcomeBackCardProps | null
+  /** Today's leg, or null when there is no plan for today - a hike with no
+   *  dated days is the ordinary case, not a broken one. */
+  day: {
+    title: string
+    /** `11.2 mi planned · +1,840 ft`. */
+    planned: string
+    /** `Resupply: Pearisburg, 31.6 mi on`, or null. */
+    resupply: string | null
+    /**
+     * This is the last of it.
+     *
+     * The one screen that changes tone, and it changes it DOWN: an 18px
+     * title and one sentence, with no countdown, no progress bar and no
+     * confetti. A hiker walking the last few miles of a two-year walk is
+     * not owed a number ticking to zero.
+     */
+    last: boolean
+    onOpen: () => void
+    onTakeZero: () => void
+    onSeeOnMap: () => void
+  } | null
+}
+
 export function Today({
   now,
   position,
@@ -200,6 +265,7 @@ export function Today({
   trailLinesMissing = false,
   mode,
   onChangeMode,
+  longHike = null,
   pois,
   currentMile,
   direction,
@@ -458,6 +524,72 @@ export function Today({
     </button>
   )
 
+  /**
+   * "Today on your hike" - the card that leads the column in long-hike mode.
+   *
+   * THE THUMBNAIL IS A DOOR, NOT A PICTURE, and that is a deliberate
+   * shortfall rather than the design. The handoff asks for the map's own
+   * canvas framed to the day's two ends, and is explicit that it must not be
+   * "a second drawing of the trail" - so rather than draw one, this is a
+   * labelled region that opens the Map tab framed the same way. A hiker gets
+   * the framing they were promised, one tap later, and nothing on screen
+   * claims to be a map that is not one.
+   *
+   * @unvalidated as a substitute. What would settle it is the map canvas
+   * being mountable in a second, small viewport at once - nothing in
+   * chrome/MapScreen.tsx does that today, and a second MapLibre instance on
+   * the home screen is a memory cost nobody has measured on a phone.
+   */
+  const hikeDayCard =
+    longHike?.day == null ? null : (
+      <section className="today__card today__card--hike" aria-label="Today on your hike">
+        <p className="today__rule-label">
+          {longHike.day.last ? 'The last of it' : 'Today on your hike'}
+        </p>
+        <h2
+          className={
+            longHike.day.last
+              ? 'today__hike-title today__hike-title--last'
+              : 'today__hike-title'
+          }
+        >
+          {longHike.day.title}
+        </h2>
+        {longHike.day.last ? (
+          <p className="today__hike-line">
+            The sign at the top is the end of the hike you started. Nothing here counts
+            down for you.
+          </p>
+        ) : (
+          <>
+            <p className="today__hike-line">{longHike.day.planned}</p>
+            {longHike.day.resupply !== null && (
+              <p className="today__hike-line">{longHike.day.resupply}</p>
+            )}
+          </>
+        )}
+        <button
+          type="button"
+          className="today__hike-map"
+          onClick={longHike.day.onSeeOnMap}
+        >
+          See this day on the map
+        </button>
+        <div className="today__actions">
+          <button type="button" className="today__action" onClick={longHike.day.onOpen}>
+            Open the day
+          </button>
+          <button
+            type="button"
+            className="today__action"
+            onClick={longHike.day.onTakeZero}
+          >
+            Take a zero
+          </button>
+        </div>
+      </section>
+    )
+
   const hikes =
     dayHikes.length > 0 ? (
       <>
@@ -574,13 +706,33 @@ export function Today({
     climb,
     hikes,
     suggested,
+    // Null in every other mode, which is what keeps one ordered record
+    // rather than three lists with a hole in two of them (#1317).
+    hikeDay: hikeDayCard,
+    resume: longHike?.resume == null ? null : <WelcomeBackCard {...longHike.resume} />,
   }
   const order =
     mode === 'volunteer'
       ? ['alerts', 'volunteer', 'soFar', 'journal', 'climb', 'hikes', 'suggested']
       : mode === 'day'
         ? ['alerts', 'suggested', 'hikes', 'journal', 'climb', 'soFar', 'volunteer']
-        : ['alerts', 'journal', 'climb', 'soFar', 'volunteer', 'hikes', 'suggested']
+        : // The hike's own day LEADS, above the alerts - and the alerts
+          // still render, one slot down. Nothing disappears; what changes is
+          // what a hiker's eye lands on first (#1317, lib/hikerMode.ts).
+          [
+            // Above the day's own leg: a hiker who has been away for a
+            // fortnight is not looking for today's miles, they are looking
+            // for what happened while they were gone.
+            'resume',
+            'hikeDay',
+            'alerts',
+            'journal',
+            'climb',
+            'soFar',
+            'volunteer',
+            'hikes',
+            'suggested',
+          ]
   const sections = order.map((key) => (
     <div key={key} className="today__section">
       {named[key]}
@@ -600,7 +752,18 @@ export function Today({
           backgroundOverride={backgroundOverride}
           trailLinesMissing={trailLinesMissing}
         />
-        <p className="today__eyebrow">{formatTodayEyebrow(now)}</p>
+        <p className="today__eyebrow">
+          {[
+            formatTodayEyebrow(now),
+            // "TUE 8 SEP · DAY 6". The day of the hike rather than a date
+            // twice: which day of the walk this is is the thing a hiker on a
+            // long hike is orienting by, and the calendar date is already
+            // there beside it.
+            longHike?.dayNumber == null ? null : `DAY ${longHike.dayNumber}`,
+          ]
+            .filter((part) => part !== null)
+            .join(' · ')}
+        </p>
         {readout.kind === 'mile' ? (
           <p className="today__readout">
             <span className="today__mile">{readout.mile}</span>
@@ -610,6 +773,18 @@ export function Today({
           <p className="today__position-sentence">{readout.sentence}</p>
         )}
         <p className="today__greeting">{greeting}</p>
+        {longHike?.awayLine != null && (
+          <p className="today__away-line">{longHike.awayLine}</p>
+        )}
+        {longHike != null && (
+          <>
+            <p className="today__hike-name">{longHike.name}</p>
+            {/* `miles walked · miles to go`, and nothing else - no
+                percentage, no "on track", no comparison with anybody. The
+                Plan tab's standing guard covers this surface too. */}
+            <p className="today__hike-figures">{longHike.figures}</p>
+          </>
+        )}
         {estimate !== null && estimate.relativeLine !== null && (
           // #851: no surface prints an adjusted time without what it was
           // adjusted from.

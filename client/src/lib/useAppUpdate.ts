@@ -52,6 +52,10 @@ import { useEffect, useRef } from 'react'
 export const UPDATE_CHECK_MS = 60 * 60 * 1000
 
 export interface AppUpdateOptions {
+  /** Whether the launch is past its first frame (#1302). The registration's
+   *  own `update()` is a network request the first frame does not need;
+   *  nothing here runs until this is true. Defaults to true. */
+  ready?: boolean
   /**
    * Whether something on screen would be destroyed by a reload right now -
    * a half-written report, an open window (#311).
@@ -67,7 +71,7 @@ export interface AppUpdateOptions {
 
 export function useAppUpdate(
   intervalMs: number = UPDATE_CHECK_MS,
-  { hold = false }: AppUpdateOptions = {},
+  { hold = false, ready = true }: AppUpdateOptions = {},
 ): void {
   // Both live in refs so that a change in either re-evaluates the pending
   // reload WITHOUT re-running the effect below - which would re-read
@@ -82,6 +86,7 @@ export function useAppUpdate(
   const reloadIfIdle = useRef<() => void>(() => {})
 
   useEffect(() => {
+    if (!ready) return
     if (!('serviceWorker' in navigator)) return
 
     // Whether this page is already under a worker's control decides what a
@@ -169,7 +174,7 @@ export function useAppUpdate(
       navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange)
       document.removeEventListener('visibilitychange', reloadIfIdleNow)
     }
-  }, [intervalMs])
+  }, [intervalMs, ready])
 
   // The hold being RELEASED is the other way a reload becomes possible, and it
   // fires no event of its own - submitting a report or closing a window is

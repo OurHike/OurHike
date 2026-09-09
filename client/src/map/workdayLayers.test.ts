@@ -38,12 +38,12 @@ describe('the layer', () => {
     expect(buildWorkdayLayer().layout).toMatchObject({ 'icon-image': WORKDAY_ICON_ID })
   })
 
-  it('draws at every zoom, unlike the waypoints', () => {
-    // Eight hundred waypoints on the corridor is a texture, so they start at
-    // z9. There are a handful of workdays on 2,197 miles, and zoomed out to
-    // plan a weekend is exactly when somebody is looking for one.
-    expect(buildWorkdayLayer()).not.toHaveProperty('minzoom')
-    expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(0)
+  it('starts at the seam, like the waypoints (#1292)', () => {
+    // It drew at every zoom - a handful of workdays on 2,197 miles, and
+    // zoomed out to plan a weekend is when somebody looks for one - until the
+    // maintainer's call that the opening camera shows trail lines only. The
+    // Volunteer tab is the surface that promises every workday.
+    expect(buildWorkdayLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
   it('submits to the collision engine, unlike the warning pins', () => {

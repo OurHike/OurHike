@@ -94,8 +94,8 @@ export function PlanKindSheet({
       </div>
 
       <p className="plan-kind__lede">
-        A day hike can use as many trails as you like. A trip follows one trail and breaks
-        into days.
+        A day hike can use as many trails as you like. A section follows one trail and
+        breaks into days.
       </p>
 
       {network.kind === 'ready' ? (
@@ -130,7 +130,7 @@ export function PlanKindSheet({
       )}
 
       <button type="button" className="plan-kind__door" onClick={onPickTrip}>
-        <span className="plan-kind__door-name">A multi-day trip</span>
+        <span className="plan-kind__door-name">A multi-day section</span>
         <span className="plan-kind__door-note">
           Stops along one trail, then days, zeros and resupply.
         </span>

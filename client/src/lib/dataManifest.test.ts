@@ -267,3 +267,99 @@ describe('publishedSnapshot (#919)', () => {
     expect(fetched).not.toHaveBeenCalled()
   })
 })
+
+describe('one manifest read for everyone asking at once (#1302)', () => {
+  const shared = {
+    version: 'shared-v1',
+    artifacts: { 'background.pmtiles': { sha256: 'B'.repeat(64) } },
+  }
+
+  // A launch with signal asked for the manifest from six places in the same
+  // commit, and the bucket serves `latest.json` with `cache-control: no-cache`
+  // (measured 2026-09-09 off production's own headers), so nothing deduped
+  // them: six round trips on the connection the first frame was sharing.
+
+  it('fetches once for callers that arrive together, and hands them all the same answer', async () => {
+    const fetched = mockManifestResponse(shared)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    const [a, b, c] = await Promise.all([
+      publishedSnapshot(),
+      publishedSnapshot(),
+      publishedSnapshot(),
+    ])
+
+    expect(fetched).toHaveBeenCalledTimes(1)
+    expect(a.version).toBe(b.version)
+    expect(b).toBe(c)
+  })
+
+  it('fetches again for a caller that arrives after the first read settled', async () => {
+    // Sharing an IN-FLIGHT read is not caching. A hiker who comes back to the
+    // app an hour later must be told about a release published in between,
+    // which is the whole job of lib/dataRefresh.ts.
+    const fetched = mockManifestResponse(shared)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+
+    await publishedSnapshot()
+    await publishedSnapshot()
+
+    expect(fetched).toHaveBeenCalledTimes(2)
+  })
+
+  it('refuses a caller whose signal is already aborted, without fetching anything', async () => {
+    const fetched = mockManifestResponse(shared)
+    const { publishedSnapshot } = await loadWithBase(BASE)
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(publishedSnapshot({ signal: controller.signal })).rejects.toThrow(
+      'Aborted',
+    )
+    expect(fetched).not.toHaveBeenCalled()
+  })
+
+  it('rejects rather than hanging when the abort fires before its own listener is attached', async () => {
+    // The shape lib/nearbyTrailData.ts drives, and the one that hung: the
+    // fetch itself aborts the caller's controller, synchronously, in the same
+    // turn the shared read is started - so the abort event has already been
+    // dispatched by the time this caller has a listener for it. Settling
+    // neither way is worse than the round trip the sharing saves.
+    const { publishedSnapshot } = await loadWithBase(BASE)
+    const controller = new AbortController()
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => {
+      controller.abort()
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      return Promise.reject(error)
+    })
+
+    await expect(publishedSnapshot({ signal: controller.signal })).rejects.toThrow(
+      'Aborted',
+    )
+  })
+
+  it('lets one caller abort without ending the read the others are waiting on', async () => {
+    let answer: ((response: Response) => void) | undefined
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          answer = resolve
+        }),
+    )
+    const { publishedSnapshot } = await loadWithBase(BASE)
+    const controller = new AbortController()
+
+    const aborted = publishedSnapshot({ signal: controller.signal })
+    const patient = publishedSnapshot()
+    // Swallowed here so the rejection below is not unhandled while the other
+    // caller is still waiting.
+    const abortedSettled = expect(aborted).rejects.toThrow('Aborted')
+    controller.abort()
+    await abortedSettled
+
+    answer?.(new Response(JSON.stringify(shared)))
+
+    expect((await patient).version).toBe(shared.version)
+  })
+})

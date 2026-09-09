@@ -99,9 +99,17 @@ real blaze hue — and add the one new value this feature introduces:
   (WIREFRAMES.md §2) gain one sentence of state". Those rows were removed as clutter at
   the maintainer's request, and the sentence outlived them — it now sits directly above
   the pin grid, and is the only thing the legend still says about the trail lines.)*
-- **Not a contradiction of §3, an extension.** Every line stays solid; the no-dash rule
-  holds; the through-route is still the widest and last-drawn. Ghosting adds a third
-  channel (opacity) for a distinction the AT-only map never had to draw.
+- **Not a contradiction of §3, an extension.** The through-route is still the widest and
+  last-drawn. Ghosting adds a third channel (opacity) for a distinction the AT-only map
+  never had to draw. *(Amended 2026-09-08,
+  [#1283](https://github.com/OurHike/OurHike/issues/1283): this said "every line stays
+  solid; the no-dash rule holds". It no longer does — a nearby trail is now also a
+  **dot rhythm**, a fourth channel on a layer of its own under the chosen system's solid
+  lines, because at the opening camera opacity alone could not say which of a
+  country's worth of threads the map was about. Ghosting is unchanged and applies to
+  both halves of the split; the argument above for opacity over a halo or a hue
+  survives a dash pattern untouched. WIREFRAMES.md §3 carries the amended rule, the
+  through-route badge, and the near-white ink that goes with them.)*
 
 The tradeoff this choice accepts, stated so nobody rediscovers it: blaze identity weakens
 on exactly the trails a hiker might be thinking of taking. Two things recover it — the hue
@@ -131,6 +139,17 @@ standing at a junction wanting to take the other trail — is served by two scre
 of one tap. **Revisit trigger, named**: if field testing (#106) shows hikers at junctions
 reaching for the sheet expecting a switch, this decision earns a re-argument with that
 evidence; until then it stands.
+
+**Re-argued 2026-09-09, for the badge only ([#1306](https://github.com/OurHike/OurHike/issues/1306) —
+First launch takes no trail: every line dotted until the hiker takes one from its badge or
+legend row).** The case above is against a one-tap switch on a *line* at a junction, and it
+still holds for lines: a tap on any line opens the sheet and switches nothing. A through-route's
+**badge** is a different thing — a deliberate thumb target the design chose over bare along-line
+names precisely so there would be one — and the maintainer's call is that a tap on it *takes* the
+trail, as does a tap on the trail's row in the legend's "Trails in view" block. Nothing is taken
+on first launch. What taking changes is the lines (solid against dotted) and the legend's
+`taken`; the mile frame, the ribbon, the numbers and the POI set stay the A.T.'s, which is what
+keeps this outside the argument above rather than a reversal of it.
 
 ## 3. Closed trails — the closure vocabulary, reused
 

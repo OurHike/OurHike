@@ -156,6 +156,7 @@ jobs:
         pipeline/data/raw/elevation
         pipeline/data/raw/nynjtc_long_path_guide
         pipeline/data/raw/external
+        pipeline/data/raw/nynjtc_hikes.json
 
     steps:
       - uses: actions/checkout@v7
@@ -481,6 +482,20 @@ jobs:
         continue-on-error: true
         run: python fetch_nynjtc_long_path_guide.py
 
+      # NYNJTC's Favorite Hikes (#1290): the twenty public write-ups, with
+      # their photographs, into data/raw/nynjtc_hikes.json (in FETCH_OUTPUTS
+      # above) and the content-addressed photo store. One listing request
+      # and one per photograph the cache does not already hold. The export
+      # that reads this cache runs far below, after the junction graph is
+      # built, because a published route is measured on that graph.
+      #
+      # continue-on-error for the same reason as the guide fetch above: a
+      # website's bad afternoon must not fail an A.T. publish, and the
+      # export reads whatever the restore left on disk.
+      - name: Fetch NYNJTC's Favorite Hikes
+        continue-on-error: true
+        run: python fetch_nynjtc_hikes.py
+
       - name: Export the waypoints other organizations publish
         run: python export_nearby_poi.py
 
@@ -795,6 +810,20 @@ jobs:
         if: inputs.include_elevation
         run: python export_network_profile.py
 
+      # The routes somebody wrote up (#1290, features/SUGGESTED_HIKES.md):
+      # NYNJTC's Favorite Hikes, each one's ends signed off by a person in
+      # reference/nynjtc_hike_routes.json and measured here on this run's
+      # own junction graph by lib/trail_graph_route.py, the twin of the
+      # phone's router. AFTER the two elevation steps and NOT gated on
+      # include_elevation: the export needs the graph, and prices climb only
+      # when this run also wrote a climb sidecar that fits it - a run
+      # without elevation ships the routes with their climb absent, which
+      # the card reads as unknown. Three gates decide what it writes, none of
+      # them this workflow's (the script's docstring); a run where no row
+      # is reviewed yet writes nothing, and publish.py collects nothing.
+      - name: Export the routes NYNJTC publishes
+        run: python export_suggested_hikes.py
+
       # The graph and whatever companions this run wrote, cut into 1-degree
       # cells (#1257 stage 3, cut_trail_graph.py) - what a phone actually
       # loads since the whole graph grew past what it can parse (78.6 MB on
@@ -935,8 +964,7 @@ jobs:
           # here: this block used to name four, which was every type that
           # could carry a photo when it was written. The day vistas, parking
           # and privies started publishing - three categories ATC has its own
-          # photographs for - they would have been silently outside both the
-          # count and the missing-bytes check below.
+          # photographs for - they would have been silently outside the count.
           referenced = set()
           for poi_type in POI_TYPES:
               exported = Path("data/processed/poi") / f"{poi_type}.geojson"
@@ -947,13 +975,46 @@ jobs:
               referenced.update(f["properties"]["photo_key"] for f in with_photo)
               print(f"  {poi_type}: {len(with_photo)}/{len(features)} features carry a photo")
 
-          # The one failure that would reach a hiker as a broken card: an
-          # exported feature pointing at an object this run is not uploading.
-          # publish.py already orders photos before artifacts, so this catches
-          # the other case - bytes that were never fetched at all.
-          missing = referenced - set(photos)
-          if missing:
-              raise SystemExit(f"{len(missing)} exported photo_key(s) have no local image to upload, e.g. {sorted(missing)[:3]}")
+          # NOT A GATE, and that is the fix rather than a weakening (#1319).
+          #
+          # This block used to raise on `referenced - set(photos)` - any
+          # exported photo_key with no local file. That was the right check
+          # when local disk was the only evidence a photo had ever been
+          # obtained. #465 ended that: a durable outcome record now vouches
+          # a photo was fetched ONCE, the fetches skip on the record alone,
+          # and publish.verify_photo_promises settles the record against
+          # reality by HEADing every key - passing a photo that is in the
+          # local store OR in the bucket.
+          #
+          # #465 saw this line and left it, calling it "a weaker version of
+          # this check". Weaker is not the problem; being in the WRONG JOB
+          # is. `build` holds no R2 credential by design, so it cannot ask
+          # the bucket and can only ever answer "is it on this runner's
+          # disk" - the question #465 established is the wrong one. On a warm
+          # cache it passed by accident. On a cold one it failed a publish
+          # whose photos were all present in R2, and because it runs in
+          # `build` it failed before the job that would have answered
+          # correctly ever started.
+          #
+          # MEASURED: runs #95 and #96 (2026-09-08/09) both died here after
+          # ~69 minutes, 1,487 keys reported "missing" against 1,620 the
+          # ledgers recorded as found. The Actions cache had missed, so the
+          # ledgers came back over HTTPS and the bytes did not - and with a
+          # monthly-ish publish cadence against GitHub's 7-day cache
+          # eviction, #465 measured that "the normal publish is always cold".
+          #
+          # So it reports, and publish.py gates. The count below is still
+          # worth printing: a large jump in it between runs means the local
+          # store emptied, which is not a failure but is worth seeing before
+          # a 36-minute upload step decides the same thing more slowly.
+          local = referenced & set(photos)
+          from_bucket = referenced - set(photos)
+          print(
+              f"{len(referenced)} referenced photo key(s): {len(local)} in the local store, "
+              f"{len(from_bucket)} expected to be in the bucket already."
+          )
+          if from_bucket:
+              print("  publish.py's verify_photo_promises HEADs each of those and fails the publish if any is absent.")
           PY
 
       # Kept short-lived: these are inspectable evidence for a dry run, not a

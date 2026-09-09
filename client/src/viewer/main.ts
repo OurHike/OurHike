@@ -2,14 +2,14 @@
 // coverage the way src/main.tsx is - every decision lives in
 // viewerController.ts and viewerStyle.ts, which are tested.
 
-import { Map as MapLibreMap } from 'maplibre-gl'
+import { addProtocol, Map as MapLibreMap } from 'maplibre-gl'
 import { registerPMTilesProtocol } from '../map/protocol'
 import { registerMapWorker } from '../map/mapWorker'
 import { buildViewerStyle } from './viewerStyle'
 import { createViewerController } from './viewerController'
 
 registerMapWorker()
-const protocol = registerPMTilesProtocol()
+const protocol = registerPMTilesProtocol(addProtocol)
 
 const status = document.getElementById('viewer-status')
 const input = document.getElementById('viewer-files') as HTMLInputElement | null

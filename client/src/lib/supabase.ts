@@ -10,7 +10,7 @@
 // first request, which would reach a hiker as a sign-in that hangs - the same
 // failure DATA_CONFIGURED exists to prevent for downloads.
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { AuthProvider } from '../screens/SignInPrompt'
 
 const PROJECT_URL: string = import.meta.env.VITE_SUPABASE_URL ?? ''
@@ -83,7 +83,7 @@ export const ENABLED_PROVIDERS = parseProviders(
   CONFIGURED_PROVIDERS.trim() === '' ? 'google' : CONFIGURED_PROVIDERS,
 )
 
-let client: SupabaseClient | null | undefined
+let client: Promise<SupabaseClient | null> | undefined
 
 /**
  * The Supabase client, or null when this build has no project configured.
@@ -92,27 +92,52 @@ let client: SupabaseClient | null | undefined
  * this file - `AUTH_CONFIGURED`, `parseProviders` - does not construct a
  * client as a side effect. Several screens read the flag without ever needing
  * the client.
+ *
+ * ASYNC, AND THE LIBRARY ARRIVES THROUGH import() (#1302). `@supabase/*` is
+ * some 200 KB raw in the built shell - auth, realtime, storage, postgrest,
+ * a Phoenix socket - and it was parsed before the first frame of every launch
+ * so that a session could be looked up on a Today screen that needs no
+ * account. Nothing that calls this is on the first frame: sign-in is a tap
+ * away, the moderator check and the outbox flush wait for an account, and
+ * lib/useAuth.ts already renders signed-out until the stored session is read.
+ * So the library loads when the first of them asks - from the service
+ * worker's precache on the web, from the binary in the shells - and the
+ * promise is shared so it loads once.
  */
-export function getAuthClient(): SupabaseClient | null {
+export function getAuthClient(): Promise<SupabaseClient | null> {
   if (client === undefined) {
     client = AUTH_CONFIGURED
-      ? createClient(PROJECT_URL, ANON_KEY, {
-          auth: {
-            // Both default to true; named here because this app depends on
-            // them in a way a reader should not have to infer.
-            //
-            // persistSession keeps a signed-in hiker signed in across the app
-            // being killed and relaunched, which on a phone in a pocket is
-            // routine rather than exceptional.
-            persistSession: true,
-            autoRefreshToken: true,
-            // The OAuth redirect comes back to the app's own origin carrying
-            // the code. There is no router (App.tsx), so nothing else is
-            // watching the URL for it.
-            detectSessionInUrl: true,
+      ? import('@supabase/supabase-js').then(
+          ({ createClient }) =>
+            createClient(PROJECT_URL, ANON_KEY, {
+              auth: {
+                // Both default to true; named here because this app depends on
+                // them in a way a reader should not have to infer.
+                //
+                // persistSession keeps a signed-in hiker signed in across the
+                // app being killed and relaunched, which on a phone in a pocket
+                // is routine rather than exceptional.
+                persistSession: true,
+                autoRefreshToken: true,
+                // The OAuth redirect comes back to the app's own origin
+                // carrying the code. There is no router (App.tsx), so nothing
+                // else is watching the URL for it.
+                detectSessionInUrl: true,
+              },
+            }),
+          (error: unknown) => {
+            // A CHUNK THAT DID NOT ARRIVE IS NOT AN ANSWER. Memoising the
+            // rejection would make one dropped request - a deploy swapping
+            // the assets mid-session, a tunnel at a trailhead - the state of
+            // this app until it is relaunched: no sign-in, no outbox flush,
+            // no live conditions, for the rest of the walk. Forgotten here,
+            // so the next ask starts a fresh import; the caller still sees
+            // this attempt fail.
+            client = undefined
+            throw error
           },
-        })
-      : null
+        )
+      : Promise.resolve(null)
   }
   return client
 }

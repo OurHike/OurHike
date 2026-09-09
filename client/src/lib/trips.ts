@@ -29,11 +29,15 @@
 // if this code is wrong.
 
 import { del, get, set } from 'idb-keyval'
-import { validateHike, type Hike } from './hikes'
+import { isUsableHike, validateHike, type Hike, type HikePoint } from './hikes'
 import { validateTripGroup, type TripGroup } from './tripGroups'
 import { stopLabel } from './planDisplay'
 import { loadPlan, validatePlan, type HikePlan } from './plan'
-import { recordTripEdits } from './tripSyncState'
+import {
+  recordActiveHikeEdit,
+  recordLongHikeEdits,
+  recordTripEdits,
+} from './tripSyncState'
 
 export const TRIPS_KEY = 'ourhike:trips'
 
@@ -86,6 +90,21 @@ export interface TripStore {
    * several. See lib/tripGroups.ts.
    */
   groups: TripGroup[]
+  /**
+   * The hike the app is currently in, or null (#1317).
+   *
+   * A POINTER, NOT A DOCUMENT, and that is what decides how it syncs: last
+   * write wins, exactly like `PlannedHike`'s two numbers, because a hiker is
+   * on one hike and offering them two would be the app asking a question it
+   * invented. Being wrong costs one tap.
+   *
+   * Deliberately NOT alongside `hikerMode` (lib/hikerMode.ts), which stays
+   * device-local. The two answer different questions: "today I'm on a long
+   * hike" is a statement about this phone today, while "and it is the
+   * Appalachian Trail one" is a fact about the hiker that a laptop should
+   * already know.
+   */
+  activeHikeId: string | null
 }
 
 export const EMPTY_STORE: TripStore = {
@@ -93,6 +112,7 @@ export const EMPTY_STORE: TripStore = {
   openId: null,
   hikes: [],
   groups: [],
+  activeHikeId: null,
 }
 
 /**
@@ -176,7 +196,19 @@ export function validateTripStore(candidate: unknown): TripStore | null {
     }
   }
 
-  return { trips, openId, hikes, groups }
+  // A pointer at a hike that did not survive is not a pointer - the same
+  // rule `openId` follows one line up, with a different fallback. Null
+  // rather than the first hike, because being IN a long hike is a state the
+  // hiker entered deliberately and the app must not enter it on their
+  // behalf; an unusable hike (fewer than two points) is kept in the list
+  // and refused as the active one, which is #1317's stated rule.
+  const usable = new Set(hikes.filter(isUsableHike).map((hike) => hike.id))
+  const activeHikeId =
+    typeof store.activeHikeId === 'string' && usable.has(store.activeHikeId)
+      ? store.activeHikeId
+      : null
+
+  return { trips, openId, hikes, groups, activeHikeId }
 }
 
 /**
@@ -198,7 +230,13 @@ export async function loadTrips(): Promise<TripStore> {
   if (legacy === null) return EMPTY_STORE
 
   const trip: Trip = { id: crypto.randomUUID(), name: tripName(legacy), plan: legacy }
-  const migrated: TripStore = { trips: [trip], openId: trip.id, hikes: [], groups: [] }
+  const migrated: TripStore = {
+    trips: [trip],
+    openId: trip.id,
+    hikes: [],
+    groups: [],
+    activeHikeId: null,
+  }
   await saveTrips(migrated)
   return migrated
 }
@@ -221,6 +259,17 @@ export async function saveTrips(store: TripStore): Promise<void> {
   const before = validateTripStore(await get(TRIPS_KEY))
   await set(TRIPS_KEY, store)
   await recordTripEdits(before?.trips ?? [], store.trips)
+  // The long hikes and the pointer ride the same exchange (#1317), and are
+  // recorded here for `recordTripEdits`' reason: at the moment the hiker
+  // performs the act, so a forget travels as their own forget and never as
+  // an absence inferred from a read that came back empty.
+  await recordLongHikeEdits(before?.hikes ?? [], store.hikes)
+  // Only when it actually moved. The pointer is one value rather than a
+  // collection, so there is nothing to diff per id - and marking it dirty on
+  // every save would upload it on every save.
+  if ((before?.activeHikeId ?? null) !== store.activeHikeId) {
+    await recordActiveHikeEdit()
+  }
 }
 
 /**
@@ -250,6 +299,12 @@ export async function clearTrips(): Promise<void> {
   const before = (await get(TRIPS_KEY)) as TripStore | undefined
   await del(TRIPS_KEY)
   await recordTripEdits(before?.trips ?? [], [])
+  // The hikes go the same way, and as the hiker's own act - dropping the key
+  // and letting the next sync work it out is the inference
+  // features/ACCOUNT_SYNC.md forbids, and here the account would simply hand
+  // every hike straight back.
+  await recordLongHikeEdits(before?.hikes ?? [], [])
+  if ((before?.activeHikeId ?? null) !== null) await recordActiveHikeEdit()
 }
 
 // ---------------------------------------------------------------------------
@@ -384,9 +439,16 @@ export function unassignTrip(store: TripStore, tripId: string): TripStore {
   }
 }
 
-/** Forget a hike, keeping its trips. Same reason as above. */
+/** Forget a hike, keeping its trips. Same reason as above - a hike is a way
+ *  of looking at sections, and throwing away the way of looking must never
+ *  throw away the walking. The pointer goes with it, so the app is not left
+ *  in a long-hike state naming a hike that is gone. */
 export function removeHike(store: TripStore, hikeId: string): TripStore {
-  return { ...store, hikes: store.hikes.filter((hike) => hike.id !== hikeId) }
+  return {
+    ...store,
+    hikes: store.hikes.filter((hike) => hike.id !== hikeId),
+    activeHikeId: store.activeHikeId === hikeId ? null : store.activeHikeId,
+  }
 }
 
 /**
@@ -466,5 +528,124 @@ export function renameHike(store: TripStore, hikeId: string, name: string): Trip
     hikes: store.hikes.map((hike) =>
       hike.id === hikeId ? { ...hike, name: name.trim() } : hike,
     ),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Which hike the app is in, and how one moves through its life (#1317).
+
+/**
+ * Enter a hike, or leave the long-hike state with `null`.
+ *
+ * An unknown id, or one naming a hike too short to walk, changes nothing.
+ * Refused rather than corrected, per `validatePlan()`'s discipline: a
+ * pointer the store cannot honour must not be written and then quietly
+ * repaired on the next read, because the repair is invisible and the tap
+ * that caused it is not.
+ */
+export function setActiveHike(store: TripStore, hikeId: string | null): TripStore {
+  if (hikeId === null) return { ...store, activeHikeId: null }
+  const hike = store.hikes.find((candidate) => candidate.id === hikeId)
+  if (hike === undefined || !isUsableHike(hike)) return store
+  return { ...store, activeHikeId: hikeId }
+}
+
+/** Replace a hike's way through. The sections in it are untouched: editing
+ *  the route you mean to walk is not a statement about the walking done. */
+export function setHikePoints(
+  store: TripStore,
+  hikeId: string,
+  points: readonly HikePoint[],
+): TripStore {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) =>
+      hike.id === hikeId ? { ...hike, points: [...points] } : hike,
+    ),
+  }
+}
+
+/**
+ * Step off the trail, keeping the mile.
+ *
+ * Nothing is deleted and no date moves - that is the entire promise the
+ * step-away sheet makes ("Keeps the mile you stopped at. Resume whenever,
+ * this year or next"), and it is kept here rather than on the screen so a
+ * second caller cannot make a different one.
+ */
+export function pauseHike(
+  store: TripStore,
+  hikeId: string,
+  atMile: number,
+  on: string,
+): TripStore {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) =>
+      hike.id === hikeId
+        ? { ...hike, status: 'paused' as const, pausedAtMile: atMile, pausedOn: on }
+        : hike,
+    ),
+  }
+}
+
+/**
+ * Come back to a paused hike.
+ *
+ * The pause's mile and date are DROPPED rather than kept as history,
+ * because nothing reads them once the hiker is walking again and a stale
+ * `pausedAtMile` on a walking hike is a fact waiting to be printed by
+ * mistake. What the hiker actually walked is in the sections either side of
+ * the gap, which is the record that matters and is not touched here.
+ */
+export function resumeHike(store: TripStore, hikeId: string): TripStore {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) => {
+      if (hike.id !== hikeId) return hike
+      const { pausedAtMile: _mile, pausedOn: _on, ...rest } = hike
+      return { ...rest, status: 'walking' as const }
+    }),
+  }
+}
+
+/** Close a hike, keeping every section in it. */
+export function finishHike(store: TripStore, hikeId: string, on: string): TripStore {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) =>
+      hike.id === hikeId
+        ? { ...hike, status: 'finished' as const, finishedOn: on }
+        : hike,
+    ),
+  }
+}
+
+/**
+ * Turn around at `atMile`.
+ *
+ * APPENDS a point rather than editing the ends, which is the handoff's own
+ * instruction and the only version that keeps the record honest: swapping
+ * the two ends would silently reverse the direction of every leg already
+ * walked, so a hiker who walked north for 300 miles and turned back would
+ * afterwards read as having walked south the whole way. Appending leaves
+ * the walked legs exactly as they were and adds the new one.
+ */
+export function turnHikeAround(
+  store: TripStore,
+  hikeId: string,
+  atMile: number,
+  name?: string,
+): TripStore {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) => {
+      if (hike.id !== hikeId) return hike
+      const turn: HikePoint = { mile: atMile, ...(name === undefined ? {} : { name }) }
+      // The way back ends where the hike began - which is what "turning
+      // around" means and what the hiker would otherwise have to type.
+      const back: HikePoint = { ...hike.points[0] }
+      return { ...hike, points: [...hike.points, turn, back] }
+    }),
   }
 }

@@ -271,3 +271,167 @@ def test_an_invented_key_is_refused_rather_than_dropped(client):
     )
 
     assert response.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Long hikes and the pointer at the one the app is in (#1317).
+
+
+def _hike(hike_id="hike-1", name="Springer → Katahdin", **over) -> dict:
+    return {
+        "id": hike_id,
+        "document": {
+            "id": hike_id,
+            "name": name,
+            "type": "thru",
+            "trailId": "AT",
+            "points": [{"mile": 0}, {"mile": 2197.4}],
+            "status": "walking",
+            "tripIds": [],
+        },
+        "base_updated_at": None,
+        "deleted": False,
+        **over,
+    }
+
+
+def _hike_names(payload) -> list[str]:
+    return sorted(row["document"]["name"] for row in payload["hikes"] if row["document"] is not None)
+
+
+def test_a_long_hike_reaches_the_second_device(client):
+    _sync(client, HIKER, since=None, hikes=[_hike()])
+
+    body = _sync(client, HIKER, since=None)
+    assert _hike_names(body) == ["Springer → Katahdin"]
+    assert body["hikes"][0]["document"]["points"] == [{"mile": 0}, {"mile": 2197.4}]
+
+
+def test_the_pointer_travels_with_the_hike_it_names(client):
+    """The whole reason both sync rather than the pointer alone: an id
+    arriving on a device that has never heard of the hike names nothing."""
+    _sync(
+        client,
+        HIKER,
+        since=None,
+        hikes=[_hike()],
+        active_hike={"hike_id": "hike-1", "base_updated_at": None},
+    )
+
+    body = _sync(client, HIKER, since=None)
+    assert body["active_hike"]["hike_id"] == "hike-1"
+    assert [row["id"] for row in body["hikes"]] == ["hike-1"]
+
+
+def test_leaving_the_long_hike_state_is_a_decision_rather_than_an_absence(client):
+    """A null pointer is the hiker tapping Day hike, which travels. A device
+    that says nothing about it is a different claim - see the next test."""
+    first = _sync(
+        client,
+        HIKER,
+        since=None,
+        hikes=[_hike()],
+        active_hike={"hike_id": "hike-1", "base_updated_at": None},
+    )
+
+    _sync(
+        client,
+        HIKER,
+        since=None,
+        active_hike={"hike_id": None, "base_updated_at": first["active_hike"]["updated_at"]},
+    )
+
+    body = _sync(client, HIKER, since=None)
+    assert body["active_hike"]["hike_id"] is None
+    # The hike itself is untouched: not leading is not the same as forgotten.
+    assert [row["id"] for row in body["hikes"]] == ["hike-1"]
+
+
+def test_a_device_that_says_nothing_about_the_pointer_does_not_clear_it(client):
+    _sync(
+        client,
+        HIKER,
+        since=None,
+        hikes=[_hike()],
+        active_hike={"hike_id": "hike-1", "base_updated_at": None},
+    )
+
+    body = _sync(client, HIKER, since=None, trips=[_trip()])
+    assert body["active_hike"]["hike_id"] == "hike-1"
+
+
+def test_a_forgotten_hike_travels_as_a_tombstone(client):
+    """`removeHike`'s act, reaching the other device. The sections are trips
+    and are not touched by any of this."""
+    first = _sync(client, HIKER, since=None, hikes=[_hike()], trips=[_trip()])
+    stamp = first["hikes"][0]["updated_at"]
+
+    _sync(
+        client,
+        HIKER,
+        since=None,
+        hikes=[{"id": "hike-1", "document": None, "base_updated_at": stamp, "deleted": True}],
+    )
+
+    body = _sync(client, HIKER, since=None)
+    assert body["hikes"][0]["deleted_at"] is not None
+    assert body["hikes"][0]["document"] is None
+    # The walking survives the way of looking at it.
+    assert _names(body) == ["Grayson Highlands"]
+
+
+def test_a_long_hike_does_not_keep_both_and_the_stale_device_loses(client):
+    """The decision, end to end.
+
+    Two trips edited offline both survive above
+    (`test_two_devices_editing_offline_both_survive_the_reconcile`). Two
+    edits to one HIKE do not, because a copy would put the same sections in
+    two hikes at once. app/models/synced_hike.py argues it; this asserts it,
+    including the cost - device B's name is gone.
+    """
+    first = _sync(client, HIKER, since=None, hikes=[_hike()])
+    stamp = first["hikes"][0]["updated_at"]
+
+    _sync(client, HIKER, since=None, hikes=[_hike(name="From the laptop", base_updated_at=stamp)])
+    _sync(client, HIKER, since=None, hikes=[_hike(name="From the phone", base_updated_at=stamp)])
+
+    body = _sync(client, HIKER, since=None)
+    assert _hike_names(body) == ["From the laptop"]
+    assert len(body["hikes"]) == 1
+
+
+def test_one_hikers_long_hike_id_is_not_writable_by_another(client):
+    _sync(client, HIKER, since=None, hikes=[_hike()])
+    _sync(client, SOMEBODY_ELSE, since=None, hikes=[_hike(name="Not yours")])
+
+    mine = _sync(client, HIKER, since=None)
+    assert _hike_names(mine) == ["Springer → Katahdin"]
+
+
+def test_one_hikers_long_hikes_are_never_returned_to_another(client):
+    _sync(client, HIKER, since=None, hikes=[_hike()])
+
+    theirs = _sync(client, SOMEBODY_ELSE, since=None)
+    assert theirs["hikes"] == []
+    assert theirs["active_hike"] is None
+
+
+def test_a_client_that_says_nothing_about_hikes_still_syncs_its_trips(client):
+    """RELEASING.md §8c's expand step, asserted: every shipped build posts a
+    body with no `hikes` and no `active_hike` at all."""
+    body = _sync(client, HIKER, since=None, trips=[_trip()])
+
+    assert _names(body) == ["Grayson Highlands"]
+    assert body["hikes"] == []
+    assert body["active_hike"] is None
+
+
+def test_a_watermark_asks_only_for_the_hikes_that_changed(client):
+    first = _sync(client, HIKER, since=None, hikes=[_hike()])
+
+    quiet = _sync(client, HIKER, since=first["now"])
+    assert quiet["hikes"] == []
+
+    _sync(client, HIKER, since=None, hikes=[_hike("hike-2", name="Long Trail")])
+    body = _sync(client, HIKER, since=first["now"])
+    assert _hike_names(body) == ["Long Trail"]

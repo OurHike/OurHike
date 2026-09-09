@@ -8,7 +8,7 @@
 // surface exactly that, so the effect below is written to survive it: build
 // once per effect run, and fully undo the build on cleanup.
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 // MapLibre's own stylesheet, and not optional. Everything the map puts on
 // itself - compass, locate, the scale bar, the zoom buttons - is positioned by
@@ -25,9 +25,10 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { readTrailsMerged } from '../lib/trailShape'
 import {
+  attachChosenTrail,
   attachMapAppearance,
-  attachTrailData,
   attachNetworkOverview,
+  attachTrailData,
   attachTrailOverview,
   buildMapStyle,
 } from './style'
@@ -66,6 +67,9 @@ import {
 } from './workdayLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
 import { attachLineTaps, type TappedLine } from './lineTaps'
+import { chosenSystemSources } from './nearbyTrails'
+import { attachTrailBadgeImages } from './trailBadges'
+import { attachTrailsInView, type TrailInView, type ViewInsets } from './trailsInView'
 import { attachPoiTaps } from './poiTaps'
 import {
   attachDayHikeData,
@@ -104,15 +108,26 @@ export interface MapViewProps {
    */
   trailsUrl: string
   /**
-   * The corridor-view centerline, while there is no real one (#869).
+   * The corridor-view centerline, drawn until this map has the real line on
+   * screen (#869, #1291).
    *
-   * Null once the shell has the real line - or has decided there is no sketch
-   * to draw - and clearing it is the point rather than an edge case: this is
-   * a line that is only true at the zooms it is drawn at, and it stops being
-   * drawn the moment something better arrives. lib/config.ts's
+   * Handed over for as long as the shell has one; null only where there is
+   * none. Clearing it is this component's own call, made per map instance
+   * off the trails source's loaded state (map/style.ts's attachTrailOverview),
+   * because the shell holding the real line is not the map having drawn it.
+   * It is a line that is only true at the zooms it is drawn at, and it stops
+   * being drawn the moment something better is on screen - lib/config.ts's
    * TRAILS_OVERVIEW_KEY has what "only true at those zooms" means in metres.
    */
   overviewTrailsUrl?: string | null
+  /**
+   * Whether `trailsUrl` is the real line rather than the empty placeholder
+   * the style is seeded with (#1291). The sketch above waits on the trails
+   * source loading only when this is true: the placeholder loads instantly,
+   * and counting it would clear the sketch before the real line was even
+   * requested.
+   */
+  haveTrailLines?: boolean
   /**
    * The corridor-view sketch of that whole network, as an object URL (#1135,
    * lib/config.ts's NETWORK_OVERVIEW_KEY).
@@ -124,6 +139,14 @@ export interface MapViewProps {
    * bucket holding it back with its parent.
    */
   networkOverviewUrl?: string | null
+  /**
+   * The taken trail, by lib/trails.ts registry id, or null for nothing taken
+   * (#1306) - lib/userPreferences.ts's `chosen_trail_id`. Built into the
+   * style and re-pointed in place when it changes (map/style.ts's
+   * attachChosenTrail), never a rebuild. Null is first launch: every line
+   * dotted, nothing ghosted.
+   */
+  chosenTrailId?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
   background?: BackgroundSource
   /**
@@ -400,6 +423,23 @@ export interface MapViewProps {
    */
   onViewportChange?: (bbox: BoundingBox, fromGesture: boolean) => void
   /**
+   * The named trails the map is drawing, for the legend's block (#1283,
+   * map/trailsInView.ts) - measured off the settled frame and reported on
+   * change. Must be stable across renders, like `onViewportChange`. The
+   * badge source is kept current on the same pass whether or not a shell
+   * listens.
+   */
+  onTrailsInView?: (trails: readonly TrailInView[]) => void
+  /**
+   * How much of each edge of the canvas the shell's chrome covers, in CSS
+   * px, so a through-route's badge is anchored where a hiker can see it
+   * (map/trailsInView.ts's header has the frame that taught this). Must be
+   * stable across renders (useMemo) - a fresh object would re-attach the
+   * badge listeners on every render of the parent. Omitted, the whole
+   * canvas counts as clear.
+   */
+  chromeInsets?: ViewInsets
+  /**
    * The live map, handed over on build and `null` on teardown, so the shell
    * can move the camera imperatively. `center` cannot do that job - it seeds
    * the opening view only, and the first GPS fix usually lands after it.
@@ -426,8 +466,10 @@ const DEFAULT_CENTER: [number, number] = [-77.1, 39.3]
 const DEFAULT_ZOOM = 12
 
 /** Breathing room around a fitted box, on every side, when the caller asks for
- *  nothing more specific. */
-const FIT_PADDING = 24
+ *  nothing more specific. Exported for the shell's re-fit of the corridor
+ *  once the entry steps end (#1296), so the map a hiker opens after first
+ *  run is framed exactly as a returning hiker's is. */
+export const FIT_PADDING = 24
 
 // Module-level, so the default is the SAME value on every render. A `= []`
 // default parameter would hand over a fresh identity each time and re-run the
@@ -452,7 +494,9 @@ export function MapView({
   trailsUrl,
   background = 'hiking_topo_live',
   overviewTrailsUrl = null,
+  haveTrailLines = false,
   networkOverviewUrl = null,
+  chosenTrailId = null,
   pois = NO_POIS,
   pinCondition,
   hiddenTypes = NOTHING_HIDDEN,
@@ -497,6 +541,8 @@ export function MapView({
   redLight = false,
   detail = 'standard',
   onViewportChange,
+  onTrailsInView,
+  chromeInsets,
   onMapReady,
   onLiveSourceHealth,
 }: MapViewProps) {
@@ -607,6 +653,7 @@ export function MapView({
         style: buildMapStyle({
           topoArchiveUrl,
           trailsUrl,
+          chosenTrailId,
           background,
           terrain,
           units,
@@ -799,11 +846,14 @@ export function MapView({
   // same seam as the lines above: a GeoJSON source takes a URL in place, and
   // takes an empty collection to say it is done. Its own effect because it
   // moves on a different clock from the real line - it is set once early and
-  // cleared once, where the real one is set once and stays.
+  // cleared once THIS map has drawn the real one (#1291), where the real one
+  // is set once and stays. Declared after the trail-lines effect above on
+  // purpose: when the shell's lines land, the source is re-pointed first and
+  // is mid-load by the time this asks whether it is drawn.
   useEffect(() => {
     if (map === null) return
-    return attachTrailOverview(map, overviewTrailsUrl)
-  }, [map, overviewTrailsUrl])
+    return attachTrailOverview(map, overviewTrailsUrl, haveTrailLines)
+  }, [map, overviewTrailsUrl, haveTrailLines])
 
   // The network's own sketch (#1135), on the nearby lines' clock rather than
   // the A.T. sketch's: it arrives once and stays, because nothing better
@@ -863,10 +913,29 @@ export function MapView({
   // network on their own schedules and refuse independently (App.tsx). Folding
   // them together would mean a closures read that came back re-rasterising a
   // 88px pin, and either read failing would hold the other off the map.
+  //
+  // ONCE THERE IS A WARNING TO DRAW, AND NOT BEFORE (#1304). The image is one
+  // pass of map/poiIcons.ts's scanline rasteriser - the same arithmetic the 46
+  // POI pins were moved to a worker for (#857) - and it ran on every map build
+  // whether or not this map would ever show a warning. On first run that is
+  // the map behind the entry card, where nothing is drawn and the thread is
+  // the one the Skip button is waiting for: measured 2026-09-09, 111-140 ms of
+  // main-thread self time in map/poiIcons.ts across the steps, which is this
+  // pin and the workday pin below.
+  //
+  // THE ORDERING IS THE SAFETY ARGUMENT, and it is kept rather than assumed: a
+  // symbol layer whose `icon-image` names an image the map has not been given
+  // draws NOTHING, and a serious warning that does not draw is the failure
+  // this app cannot have. This effect is declared before the data effect, so
+  // in the commit where the first warning arrives React runs it first, and
+  // both take the same `whenStyleReady` queue in that order. The image is
+  // never removed once added, so a warning list that empties and refills
+  // cannot leave the layer without one.
+  const haveWarnings = warnings.length > 0
   useEffect(() => {
-    if (map === null) return
+    if (map === null || !haveWarnings) return
     return attachWarningIcon(map)
-  }, [map])
+  }, [map, haveWarnings])
 
   // The barrier tape, which every closure layer and the ATC's own band point
   // at by name. Registered off `map` alone, like the pin images above and
@@ -893,6 +962,37 @@ export function MapView({
     if (map === null) return
     return attachClosureData(map, closures)
   }, [map, closures])
+
+  // The through-route badge's images (#1283) - two plates, the blaze chips,
+  // the registry marks - registered off `map` alone, like the tape above:
+  // constants and assets, never data, so nothing here re-runs on a tap.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailBadgeImages(map)
+  }, [map])
+
+  /** The sources the taken trail draws solid, for the rows and badges to
+   *  mark `chosen` by (#1306) - memoised so the attach below does not re-run
+   *  on every render for an equal list. */
+  const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+
+  // And the badges' points, plus the legend's list, off the same pass over
+  // the settled frame (map/trailsInView.ts). Its own effect on the map's
+  // clock and the callback's: a shell that starts listening does not cost a
+  // WebGL context.
+  useEffect(() => {
+    if (map === null) return
+    return attachTrailsInView(map, onTrailsInView, chromeInsets, chosenSources)
+  }, [map, onTrailsInView, chromeInsets, chosenSources])
+
+  // The taken trail (#1306), re-pointed in place: every split's filters, the
+  // ghosting, the labels' priority and the badge. Its own effect on its own
+  // clock - a preference write - and never a rebuild, per the lifecycle
+  // regression the appearance effect cites.
+  useEffect(() => {
+    if (map === null) return
+    return attachChosenTrail(map, chosenTrailId)
+  }, [map, chosenTrailId])
 
   // Its own effect rather than folded into the closures above: the two arrive
   // on completely different schedules - closures from the network whenever
@@ -950,10 +1050,11 @@ export function MapView({
   // The workday pins (#760): the image once, the data whenever the shell's
   // window or staleness verdict changes, and the tap. Same three-effect shape
   // as the warnings above.
+  const haveWorkdays = workdays.length > 0
   useEffect(() => {
-    if (map === null) return
+    if (map === null || !haveWorkdays) return
     return attachWorkdayIcon(map)
-  }, [map])
+  }, [map, haveWorkdays])
 
   useEffect(() => {
     if (map === null) return

@@ -93,6 +93,10 @@ export class MockMap {
    *  tests need to be able to produce both. */
   layerIds: string[] = []
   sourceIds: string[] = []
+  /** Which sources answer true to `isSourceLoaded` - test-only, where real
+   *  MapLibre answers from its tile cache. Empty by default, because a source
+   *  that was just handed data is exactly the one still loading it. */
+  readonly loadedSources = new Set<string>()
   /**
    * Explicit stand-ins for sources whose behaviour a test needs to observe,
    * by id - see MockVectorSource.
@@ -222,6 +226,10 @@ export class MockMap {
     if (typeof payload !== 'object' || payload === null) return payload
     if ('point' in payload) return payload
     return { ...payload, point: { x: 0, y: 0 } }
+  }
+
+  isSourceLoaded(id: string): boolean {
+    return this.loadedSources.has(id)
   }
 
   listenerCount(event: string): number {

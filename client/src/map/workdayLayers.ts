@@ -15,11 +15,13 @@
 // somebody to a trailhead for a workday cancelled on Thursday is this
 // feature's own failure mode.
 //
-// **NO MINZOOM, LIKE THE WARNING PINS AND UNLIKE THE WAYPOINTS.** The POI layer
-// starts at z9 because eight hundred pins on the whole corridor is a texture
-// rather than a map. There will be a handful of workdays on 2,197 miles, and
-// zoomed out to plan a weekend is precisely when somebody wants to see where
-// they are.
+// **THE WAYPOINTS' MINZOOM, since 2026-09-08 (#1292).** This layer had none,
+// like the warning pins: a handful of workdays on 2,197 miles, and zoomed out
+// to plan a weekend is precisely when somebody wants to see where they are.
+// The maintainer's call that the opening camera shows trail lines only takes
+// every point mark off the view below the seam, this one included; the
+// Volunteer tab lists every workday sorted by distance, which was already
+// the surface that promises completeness.
 //
 // **THE COLLISION ENGINE DECIDES, unlike the warning pins.** A serious warning
 // sets `icon-allow-overlap` because a warning dropped is a warning nobody was
@@ -40,6 +42,7 @@ import type {
   PointLike,
 } from 'maplibre-gl'
 import { POI_PIN_PIXEL_RATIO, POI_PIN_SIZE } from './poiIcons'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { buildWorkdayIcon, WORKDAY_ICON_ID } from './workdayPin'
 import { whenStyleReady } from './styleReady'
 
@@ -94,6 +97,7 @@ export function buildWorkdayLayer(
     id: WORKDAY_LAYER_ID,
     type: 'symbol',
     source: sourceId,
+    minzoom: POI_PIN_MIN_ZOOM,
     layout: {
       'icon-image': WORKDAY_ICON_ID,
       'icon-size': 1,

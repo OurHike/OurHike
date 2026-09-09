@@ -67,6 +67,8 @@ Companion to [FEATURES.md](../FEATURES.md), [TECHNICAL_ARCHITECTURE.md](../TECHN
 
 If a wrong-way or off-trail alert is built again, it should be designed against whatever GPS and notification story exists at that time - not resurrected from this section's placeholder thresholds or its never-built bearing mode.
 
+**And it must ask the LEG, not the hike** ([#1317](https://github.com/OurHike/OurHike/issues/1317)). A hike is an ordered list of points now, and its direction is a property of the pair being walked rather than of the whole walk: a flip-flopper reads northbound between two points and southbound between the next two, and there is no hike-level answer that is true of both. An alert that took a direction from the hike's outermost ends would fire continuously on one half of every flip-flop - which is the false-positive failure this whole feature was removed for, arriving by a different route. `lib/hikes.ts`'s `hikeLegs` is where a leg's direction comes from; nothing stores one.
+
 ## Data model additions
 
 ```

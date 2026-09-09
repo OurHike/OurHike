@@ -80,7 +80,13 @@ function validTransit(candidate: unknown): SuggestedHikeTransit | undefined {
 
 /** A photo, or undefined. The credit and the licence are what make a photo a
  *  data surface rather than decoration (features/POI_PHOTOS.md), so a photo
- *  that arrives without either is not shown. */
+ *  that arrives without either is not shown.
+ *
+ *  The pipeline publishes a photo as a BUCKET KEY - `photos/<digest>.jpg`,
+ *  the content-addressed store the POI cards already draw from
+ *  (pipeline/export_suggested_hikes.py, #1290) - so a key is resolved
+ *  against the data base URL here, exactly as a POI's `photo_key` is. An
+ *  absolute URL passes through unchanged, for a publisher that hosts its own. */
 function validPhoto(candidate: unknown): SuggestedHikePhoto | undefined {
   if (typeof candidate !== 'object' || candidate === null) return undefined
   const photo = candidate as Partial<SuggestedHikePhoto>
@@ -88,7 +94,7 @@ function validPhoto(candidate: unknown): SuggestedHikePhoto | undefined {
   const credit = nonEmptyString(photo.credit)
   const licence = nonEmptyString(photo.licence)
   if (url === null || credit === null || licence === null) return undefined
-  return { url, credit, licence }
+  return { url: /^[a-z]+:\/\//i.test(url) ? url : dataUrl(url), credit, licence }
 }
 
 /** One published route, or null when what is junk is the route itself. */

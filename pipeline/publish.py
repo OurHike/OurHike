@@ -678,6 +678,17 @@ def referenced_photo_keys(artifacts: dict[str, dict]) -> set[str]:
     the artifact is what a hiker's card resolves against."""
     keys: set[str] = set()
     for name, entry in artifacts.items():
+        # The suggested hikes' photographs ride the same store (#1290):
+        # each record's `photo.url` is a `photos/<digest>.jpg` key, and the
+        # detail screen resolves it against the bucket exactly as a card
+        # resolves a POI's photo_key - so the same promise is settled here.
+        if name == SUGGESTED_HIKES_KEY:
+            document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
+            for hike in document.get("hikes", []):
+                url = (hike.get("photo") or {}).get("url")
+                if isinstance(url, str) and url.startswith(f"{PHOTO_PREFIX}/"):
+                    keys.add(url)
+            continue
         if not (name.startswith("poi_") and name.endswith(".geojson")):
             continue
         document = json.loads(from_manifest_path(entry["path"]).read_text(encoding="utf-8"))
@@ -733,6 +744,9 @@ def verify_photo_promises(
 # than inline so test_published_key_contract.py and the client's
 # lib/config.ts have one spelling to agree with.
 NEARBY_TRAILS_KEY = "nearby_trails.geojson"
+
+# export_suggested_hikes.py's artifact (#1290): config.ts's SUGGESTED_HIKES_KEY.
+SUGGESTED_HIKES_KEY = "suggested_hikes.json"
 
 # The published key for export_nearby_poi.py's artifact (#1097) - the POIs NYS
 # DEC and NYS OPRHP publish, the sibling of NEARBY_TRAILS_KEY and gated the
@@ -1054,6 +1068,19 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(highlights_manifest.read_text())
         artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+    # The routes somebody wrote up, if export_suggested_hikes.py has run
+    # (#1290, features/SUGGESTED_HIKES.md) - NYNJTC's reviewed Favorite
+    # Hikes first. Same shape again. It is absent from a release for THREE
+    # reasons rather than one, and the client reads all three as an empty
+    # shelf rather than a failure: the entry's reaches_hikers, no row yet
+    # signed off in reference/nynjtc_hike_routes.json, or a run that did not
+    # reach the exporter. config.ts declares it `@release optional` for
+    # exactly that.
+    suggested_manifest = PROCESSED_DIR / "suggested_hikes_manifest.json"
+    if suggested_manifest.exists():
+        manifest = json.loads(suggested_manifest.read_text())
+        artifacts[SUGGESTED_HIKES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
     # The tombstones: every POI id ever retired, so an id that has been
     # published once always resolves to something (#673,
     # features/POI_IDENTITY.md). Deliberately NOT named `poi_retired.geojson`
@@ -1140,7 +1167,7 @@ def _collect_cells(family: str, artifacts: dict[str, dict]) -> None:
         artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
 
 
-def _verify_hashes(entries: dict[str, dict]) -> None:
+def verify_hashes(entries: dict[str, dict]) -> None:
     """Every collected sha256 must describe the bytes on disk NOW, not the
     bytes the exporter had when it wrote its manifest (#659). Most entries
     carry a hash copied from an exporter's manifest file, and nothing
@@ -1161,7 +1188,16 @@ def _verify_hashes(entries: dict[str, dict]) -> None:
         )
 
 
-def _load_remote_manifest(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+def load_remote_json(s3_client, bucket: str, manifest_key: str = MANIFEST_KEY) -> dict | None:
+    """A JSON object already in the bucket, or None if the key is not there.
+
+    Public since #1314: `stage_release.py` reads `releases/index.json` and the
+    previous release's `manifest.json` through exactly this, and the "not
+    found is None, anything else raises" distinction below is the part worth
+    having one copy of. A stager that read a transport error as "no previous
+    release" would stage a full folder every week and never copy anything
+    forward - which looks like it is working.
+    """
     try:
         body = s3_client.get_object(Bucket=bucket, Key=manifest_key)["Body"].read()
     except s3_client.exceptions.NoSuchKey:
@@ -1322,11 +1358,11 @@ def publish(
         bucket = os.environ["R2_BUCKET"]
 
     # Re-hash every artifact and sidecar against its collected hash before
-    # anything is uploaded - see _verify_hashes for why the gap between an
+    # anything is uploaded - see verify_hashes for why the gap between an
     # exporter's manifest and this upload cannot be trusted.
-    _verify_hashes({**artifacts, **sidecars})
+    verify_hashes({**artifacts, **sidecars})
 
-    remote_manifest = _load_remote_manifest(s3_client, bucket, manifest_key)
+    remote_manifest = load_remote_json(s3_client, bucket, manifest_key)
     remote_artifacts = remote_manifest["artifacts"] if remote_manifest else {}
 
     # Photos first, before any artifact that names them and well before the
@@ -1487,7 +1523,7 @@ def publish(
         # `releases/` is written, because the answer decides where it is
         # written.
         index_key = data_env.scope_key(environment, releases.RELEASE_INDEX_KEY)
-        release_index = _load_remote_manifest(s3_client, bucket, index_key)
+        release_index = load_remote_json(s3_client, bucket, index_key)
         release_id = releases.next_release_id(releases.index_ids(release_index))
 
         # The same manifest as the pointer's, minus what may not be frozen.

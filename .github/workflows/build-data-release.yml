@@ -1,0 +1,239 @@
+# The weekly candidate build - DATA_RELEASES.md section 2, its planning half.
+#
+# WHAT THIS ANSWERS, once a week: did anything upstream move, and if so what
+# would the next release be called. It writes nothing to R2 and holds no
+# credential that could. That is section 1's property carried one job further
+# along, and it is what makes an unattended weekly job safe against a bucket
+# real people download from.
+#
+# WHY ONLY THE PLANNING HALF (#1314). Section 2 designs six jobs. Four of them
+# are not here, for two different reasons, and both are worth stating so the
+# next person does not read this file as an unfinished attempt at all six.
+#
+#   mosaic, assemble - the raster half. build-raster.yml is switched off
+#     (#855 - "a rerun is a deliberate revival, not a routine dispatch"), and
+#     its guard job hard-fails every dispatch. The whole
+#     _internal/cells/<release>/cells_state.json per-cell reuse design exists
+#     only to make that switched-off leg affordable. Building it now would be
+#     writing incremental machinery for compute nobody is funding, and nothing
+#     could exercise it. What would bring them back: #855 being revisited.
+#
+#   stage, verify, propose - blocked on a build to stage, which is a real gap
+#     rather than a decision. pipeline/stage_release.py is written and tested
+#     (tests/test_stage_release.py), but publish.collect_artifacts() reads the
+#     exporter manifests under pipeline/data/processed/ - the output of the
+#     ~70-minute vector build that lives in publish-vector-data.yml's `build`
+#     job. This workflow has no such build, so `stage` would have nothing to
+#     upload and would copy the previous release forward unchanged, which is
+#     an expensive way to write the same folder twice.
+#
+#     Closing that needs a decision this file should not make quietly: either
+#     publish-vector-data.yml's build becomes a reusable `workflow_call` that
+#     both drive, or this workflow grows its own copy of forty export steps.
+#     The first is right and is its own change. Until then the honest shape is
+#     a planner that says whether a build is worth dispatching at all - which
+#     is the question a maintainer currently answers by guessing.
+#
+# SO WHAT IS IT FOR, today. It turns "should I dispatch the expensive build
+# this week" from a guess into a weekly report, and it is the thing that
+# collects the evidence the rebuild rule itself is missing:
+# plan_release.py's source-to-artifact mapping is tagged @unvalidated, and
+# what would settle it is a few weeks of this job's own output beside the
+# manifests the resulting builds produce. Nothing has collected that yet
+# because nothing has produced it.
+
+name: Build data release
+
+on:
+  schedule:
+    # 06:25 UTC on Mondays. Off the hour for the reason every cron in this
+    # directory records - GitHub queues everything submitted at :00 behind
+    # everyone else's - and clear of the two that fire every hour
+    # (check-pending-approvals at :07/:37, publish-conditions at :40) and of
+    # Monday's other slots (settings-configured 07:35, protections-check
+    # 07:45, smoke-published 09:40).
+    #
+    # Monday because DATA_RELEASES.md section 2 says Mondays. Early because
+    # the answer is most useful before the week's work is planned, not after.
+    - cron: "25 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      state_url:
+        description: "build_state.json to compare against. Defaults to the published one."
+        type: string
+        required: false
+      force_full_rebuild:
+        description: "Report a rebuild regardless of what upstream did."
+        type: boolean
+        default: false
+
+# Read the repo and nothing else. Not "chooses not to write to R2" - cannot:
+# no R2 secret is named anywhere in this file, so the job is structurally
+# incapable of changing what a hiker downloads. check-upstream-freshness.yml
+# is built on the same property and says so for the same reason.
+permissions:
+  contents: read
+
+# Deliberately NOT the publish-data group. That group exists to keep one
+# writer on the shared latest.json (#645), and this workflow writes nothing -
+# joining it would make a report block a publish for no reason. Its own group
+# only stops two planning runs overlapping.
+concurrency:
+  group: build-data-release
+  cancel-in-progress: false
+
+env:
+  # The public bucket base, the same value the client is built with. A repo
+  # variable rather than a secret because it is a public URL - the same call
+  # check-upstream-freshness.yml makes.
+  DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # No DuckDB step here, unlike every other pipeline workflow: nothing in
+      # this job's import graph touches it. check_freshness.py --state reads a
+      # published document over HTTPS and plan_release.py reads that plus the
+      # release index, so no spatial query happens and no fetched data is
+      # needed on the runner.
+      - name: Resolve what to compare against
+        id: sources
+        env:
+          OVERRIDE: ${{ inputs.state_url }}
+        run: |
+          if [ -n "$OVERRIDE" ]; then
+            echo "state=$OVERRIDE" >> "$GITHUB_OUTPUT"
+          elif [ -n "$DATA_BASE_URL" ]; then
+            echo "state=${DATA_BASE_URL%/}/build_state.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$DATA_BASE_URL" ]; then
+            echo "index=${DATA_BASE_URL%/}/releases/index.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "index=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --exit-zero because this is a reporter and not a gate: staleness is
+      # the normal state between weekly builds, and a red X for it every
+      # Monday trains people to ignore the one signal that matters
+      # (DATA_RELEASES.md section 1 makes the same argument for the daily
+      # check). The exit codes that survive it are the same three, and
+      # PIPESTATUS is how the tee does not swallow them.
+      #
+      # STATE_URL arrives via env rather than ${{ }} inside the script,
+      # because it can come verbatim from a dispatch input and an expression
+      # is pasted in as literal text before bash parses it.
+      - name: Ask every upstream what it says now
+        id: freshness
+        if: steps.sources.outputs.state != ''
+        env:
+          STATE_URL: ${{ steps.sources.outputs.state }}
+        run: |
+          set +e
+          python check_freshness.py \
+            --state "$STATE_URL" \
+            --json freshness.json \
+            --exit-zero | tee freshness.txt
+          status=${PIPESTATUS[0]}
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          case "$status" in
+            0) ;;
+            2) echo "no_state=true" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "::error::check_freshness.py exited $status, which --exit-zero reserves for a crash."
+              exit "$status"
+              ;;
+          esac
+
+      - name: Decide whether a build is worth dispatching
+        id: plan
+        if: steps.freshness.outputs.status == '0'
+        env:
+          INDEX_URL: ${{ steps.sources.outputs.index }}
+          FORCE: ${{ inputs.force_full_rebuild }}
+        # `shell: bash` for its `-o pipefail`, which is what lets the tee below
+        # keep the exit code rather than replacing it with its own. Unlike the
+        # freshness step above this is not a reporter - a planner that crashed
+        # and reported "nothing to do" is the false FRESH that whole design
+        # exists to prevent, so its failure has to be loud (#514).
+        shell: bash
+        run: |
+          args=(--verdict freshness.json --json release_plan.json)
+          if [ -n "$INDEX_URL" ]; then
+            args+=(--index-url "$INDEX_URL")
+          fi
+          if [ "$FORCE" = "true" ]; then
+            args+=(--force-full-rebuild)
+          fi
+          python plan_release.py "${args[@]}" | tee plan.txt
+
+      - name: Write the job summary
+        if: always()
+        env:
+          STATE_URL: ${{ steps.sources.outputs.state }}
+          NO_STATE: ${{ steps.freshness.outputs.no_state }}
+        run: |
+          {
+            echo "## Weekly data release plan"
+            echo
+            if [ -z "$STATE_URL" ]; then
+              echo "No \`DATA_BASE_URL\` repo variable is set, so there is nothing to compare against."
+            elif [ "$NO_STATE" = "true" ]; then
+              echo "No \`build_state.json\` has been published yet at $STATE_URL."
+              echo
+              echo "That is the absence of a verdict rather than one. Run **Publish vector data**"
+              echo "once with \`publish\` ticked and this arms itself."
+            elif [ -f plan.txt ]; then
+              echo '```'
+              cat plan.txt
+              echo '```'
+              echo
+              echo "<details><summary>Upstream detail</summary>"
+              echo
+              echo '```'
+              cat freshness.txt
+              echo '```'
+              echo
+              echo "</details>"
+              echo
+              echo "**Nothing was written to R2.** Staging a release folder needs a build to"
+              echo "stage, which this workflow does not yet have - see its header, and #1314."
+            else
+              echo "No plan was produced. See the step log above."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Short-lived: evidence for one run, not a data channel. It is also the
+      # record plan_release.py's @unvalidated rebuild rule needs - the
+      # question "which sources actually move which artifacts" is answerable
+      # from a few weeks of these beside the manifests the builds produce.
+      - name: Upload the plan
+        if: steps.plan.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: |
+            pipeline/release_plan.json
+            pipeline/freshness.json
+          retention-days: 30
+          if-no-files-found: warn

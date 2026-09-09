@@ -15,6 +15,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { execFileSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -45,7 +46,12 @@ function passingDist() {
     join(dist, 'assets', 'index-x.js'),
     `importScripts; new Worker('assets/${WORKER}')`,
   )
-  writeFileSync(join(dist, 'index.html'), '<script src="assets/index-x.js"></script>')
+  // A module script, as Vite emits it, so the eager-closure walk (check 8)
+  // has an entry to start from in every case below.
+  writeFileSync(
+    join(dist, 'index.html'),
+    '<script type="module" crossorigin src="/assets/index-x.js"></script>',
+  )
   writeFileSync(
     join(dist, 'assets', 'index-x.css'),
     '.maplibregl-canvas{position:absolute}.maplibregl-ctrl-bottom-right{right:0}',
@@ -269,5 +275,89 @@ describe('check-build-output.mjs', () => {
 
     expect(code).toBe(1)
     expect(output).toContain('Detector files precached')
+  })
+
+  // Check 8: the eager closure. Each of these is the #1300 regression in one
+  // of its shapes - the engine reachable from the document without an
+  // import() between them.
+  it('fails when MapLibre is in the module script the document loads', () => {
+    passingDist()
+    writeFileSync(
+      join(dist, 'assets', 'index-x.js'),
+      `new Worker('assets/${WORKER}'); const spec = {"fill-extrusion-vertical-gradient": true}`,
+    )
+
+    const { code, output } = runCheck()
+
+    expect(code).not.toBe(0)
+    expect(output).toContain(
+      'MapLibre is in a chunk the document loads before any import()',
+    )
+    expect(output).toContain('assets/index-x.js')
+  })
+
+  it('follows a static import out of the entry and fails on MapLibre there', () => {
+    passingDist()
+    writeFileSync(
+      join(dist, 'assets', 'shared-x.js'),
+      'export const cls = "maplibregl-canvas"',
+    )
+    writeFileSync(
+      join(dist, 'assets', 'index-x.js'),
+      `import{cls}from"./shared-x.js";new Worker('assets/${WORKER}')`,
+    )
+
+    const { code, output } = runCheck()
+
+    expect(code).not.toBe(0)
+    expect(output).toContain('assets/shared-x.js')
+  })
+
+  it('counts a modulepreload in the head as eagerly loaded', () => {
+    passingDist()
+    writeFileSync(
+      join(dist, 'assets', 'pre-x.js'),
+      'export const cls = "maplibregl-canvas"',
+    )
+    writeFileSync(
+      join(dist, 'index.html'),
+      '<script type="module" crossorigin src="/assets/index-x.js"></script>' +
+        '<link rel="modulepreload" crossorigin href="/assets/pre-x.js">',
+    )
+
+    const { code, output } = runCheck()
+
+    expect(code).not.toBe(0)
+    expect(output).toContain('assets/pre-x.js')
+  })
+
+  it('does not count a chunk reached only through import(), which is where the engine lives', () => {
+    passingDist()
+    writeFileSync(
+      join(dist, 'assets', 'engine-x.js'),
+      'export const cls = "maplibregl-canvas"',
+    )
+    writeFileSync(
+      join(dist, 'assets', 'index-x.js'),
+      `new Worker('assets/${WORKER}'); export const load = () => import("./engine-x.js")`,
+    )
+
+    const { code, output } = runCheck()
+
+    expect(code).toBe(0)
+    expect(output).toContain('with no MapLibre in them')
+  })
+
+  it('fails when the eager JavaScript is over the launch budget', () => {
+    passingDist()
+    // Random bytes do not compress, so 400 KB on disk is 400 KB over the
+    // wire - past the ceiling however the constant is staged.
+    writeFileSync(join(dist, 'assets', 'index-x.js'), randomBytes(400 * 1024))
+
+    const { code, output } = runCheck()
+
+    expect(code).not.toBe(0)
+    expect(output).toContain('over the')
+    expect(output).toContain('launch budget')
   })
 })

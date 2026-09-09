@@ -21,6 +21,7 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { NETWORK_STILL_ARRIVING } from './lib/dayHikeDraft'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
+import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
 import { CAMERA_MEMORY_KEY } from './lib/cameraMemory'
 import { TRIPS_KEY } from './lib/trips'
@@ -31,6 +32,7 @@ import { MockMap } from './test/mocks/maplibre-gl'
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
   update: vi.fn(),
@@ -704,18 +706,23 @@ describe('the day-hike builder, end to end', () => {
     ).not.toBeInTheDocument()
 
     // Switching rooms puts the card away (#1008): a day-hike surface left
-    // floating over the trips room is the mode confusion the split exists
-    // to end, and switching rooms is navigation.
-    await user.click(screen.getByRole('button', { name: /Trips/ }))
+    // floating over the sections room is the mode confusion the split
+    // exists to end, and switching rooms is navigation. Since #1317 the
+    // room follows the app's mode, so the switch is that control.
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await waitFor(() => {
       expect(
         screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
       ).not.toBeInTheDocument()
     })
-    expect(screen.getByRole('heading', { name: 'Trips' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Sections' })).toBeInTheDocument()
 
     // Back to the day room, and the row is still there to reopen.
-    await user.click(screen.getByRole('button', { name: /Day hikes/ }))
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(
       await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
     )
@@ -882,7 +889,15 @@ describe('the day-hike builder, end to end', () => {
           tripIds: ['trip-1'],
         },
       ],
+      // Already on this hike, so tapping Long hike is instant. Without it
+      // the "which long hike?" sheet opens over the screen and offers the
+      // same hike a second time, which is #1317's designed behaviour for a
+      // hiker who has not picked one - and not what this test is about.
+      activeHikeId: 'hike-1',
     })
+    // Since #1317 the Plan tab's room comes from the app's mode rather than
+    // from a guess at what the hiker has kept, so this phone is on Long hike.
+    app.store.set(HIKER_MODE_KEY, 'long')
     await serveGraph()
 
     const openHike = async () => {
@@ -896,11 +911,14 @@ describe('the day-hike builder, end to end', () => {
     await openHike()
     // Into a day hike, with points on it - the work that used to be silently
     // outlived by an invisible route draft. Since #1008 the way in from here
-    // is the day room's own action: home, the switch chip, then "Plan a day
-    // hike" - the same guarded door (openDayHike), which lands the hiker on
-    // the trail tab itself.
+    // is the day room's own action, and since #1317 the way into that room
+    // is the app's mode control rather than a chip of Plan's own: Day hike,
+    // then "Plan a day hike" - the same guarded door (openDayHike), which
+    // lands the hiker on the trail tab itself.
     await user.click(await screen.findByRole('button', { name: /All your plans/ }))
-    await user.click(await screen.findByRole('button', { name: /Day hikes/ }))
+    await user.click(await screen.findByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
     const map = await liveMap()
     // `tapWhenRoutable` for the FIRST tap, not plain `tap`. This door is
@@ -921,12 +939,12 @@ describe('the day-hike builder, end to end', () => {
     await tap(map, -74.085, 41.25)
     expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
 
-    // Back to the timeline - the tab bar consults neither builder. The Plan
-    // tab reopens on the day room (the hiker's last pick sticks, #1008), so
-    // the way to the hike is the chip back to the trips room - and then in
-    // through the gap door, which calls openRouteBuilderFrom directly.
+    // Back to the timeline - the tab bar consults neither builder. The way
+    // to the hike is the app's mode control since #1317, and then in through
+    // the gap door, which calls openRouteBuilderFrom directly.
+    await user.click(await screen.findByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
-    await user.click(await screen.findByRole('button', { name: /Trips/ }))
     await user.click(
       await screen.findByRole('button', { name: /The whole thing, eventually/ }),
     )
@@ -1095,7 +1113,9 @@ describe('the day-hike builder, end to end', () => {
     // Since #1257 stage 3 the door reads the cell INDEX rather than waiting
     // for a graph to arrive: no index in the release, no day hikes.
     expect(screen.queryByRole('button', { name: /A day hike/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /A multi-day trip/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /A multi-day section/ }),
+    ).toBeInTheDocument()
 
     // AND THE SENTENCE IS THE TRUE ONE (#1049). `withGraph: false` serves a
     // 404, which is exactly what production serves today (#1048) - so this is

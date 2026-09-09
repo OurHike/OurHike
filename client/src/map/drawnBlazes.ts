@@ -20,8 +20,15 @@
 // with the counting rather than being kept "just in case".
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID, NETWORK_OVERVIEW_LAYER_ID } from './style'
-import { isNearbyTrail } from './nearbyTrails'
+import {
+  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_LAYER_ID,
+  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_LAYER_ID,
+  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_LAYER_ID,
+} from './style'
+import { CHOSEN_SYSTEM_SOURCES, isNearbyTrail } from './nearbyTrails'
 
 /** The real MapLibre map — see map/drawnPois.ts for why not a structural
  *  stand-in. */
@@ -49,26 +56,48 @@ export const TRAIL_SOURCE_PROPERTY = 'source'
  * a cold start: the legend says nothing about ghosting rather than explaining
  * a state the map has not drawn.
  */
-export function drawsNearbyTrails(map: DrawnBlazeMap): boolean {
-  // The two layers whose EVERY feature is another system's line - the full
+export function drawsNearbyTrails(
+  map: DrawnBlazeMap,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): boolean {
+  // Nothing taken, nothing ghosted (#1306): the sentence this answers for
+  // explains a dimming that is not happening, so it is false before any
+  // layer is asked.
+  if (chosen.length === 0) return false
+  // The layers whose EVERY feature is another system's line - the full
   // network above the seam (#950) and its corridor-view sketch below it
-  // (#1135). One rendered feature on either is exactly the state the sentence
-  // explains, no property read needed: the exporters admit nothing but other
-  // organizations' trails to those artifacts.
-  for (const layerId of [NEARBY_BLAZE_LAYER_ID, NETWORK_OVERVIEW_LAYER_ID]) {
+  // (#1135), each in both halves of its split (#1283). One rendered feature
+  // on any is exactly the state the sentence explains, no property read
+  // needed: the exporters admit nothing but other organizations' trails to
+  // those artifacts.
+  for (const layerId of [
+    NEARBY_BLAZE_LAYER_ID,
+    NEARBY_BLAZE_DOTTED_LAYER_ID,
+    NETWORK_OVERVIEW_LAYER_ID,
+    NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  ]) {
     if (map.getLayer(layerId) === undefined) continue
     if (map.queryRenderedFeatures(undefined, { layers: [layerId] }).length > 0) {
       return true
     }
   }
 
-  // The chosen trail's own layer, asked the original #783 question: a feature
-  // there whose `source` is outside the chosen system is ghosted by the same
-  // expression wherever it is drawn from, so the sentence follows the paint.
+  // The chosen trail's own source, asked the original #783 question: a
+  // feature there whose `source` is outside the chosen system is ghosted by
+  // the same expression wherever it is drawn from, so the sentence follows
+  // the paint. Both halves of the split, and the property is still read on
+  // the dotted half: a source-less feature lands there too (nearbyTrails.ts
+  // says why), and it is a fault rather than a second network.
   if (map.getLayer(BLAZE_LAYER_ID) === undefined) return false
 
-  const features = map.queryRenderedFeatures(undefined, { layers: [BLAZE_LAYER_ID] })
+  const layers = [BLAZE_LAYER_ID, BLAZE_DOTTED_LAYER_ID].filter(
+    (layerId) => map.getLayer(layerId) !== undefined,
+  )
+  const features = map.queryRenderedFeatures(undefined, { layers })
   return features.some((feature) =>
-    isNearbyTrail((feature.properties ?? {})[TRAIL_SOURCE_PROPERTY] as string | null),
+    isNearbyTrail(
+      (feature.properties ?? {})[TRAIL_SOURCE_PROPERTY] as string | null,
+      chosen,
+    ),
   )
 }

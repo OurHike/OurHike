@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
+  getMany: vi.fn(),
   set: vi.fn(),
   del: vi.fn(),
 }))

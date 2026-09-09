@@ -688,6 +688,16 @@ jobs:
       - name: Export spur destinations
         run: python export_spurs.py
 
+      # The places a hiker can name on first run before anything is
+      # downloaded (#1371): parks from OPRHP's boundaries, towns from the
+      # published Communities, trailheads and parking from the published
+      # waypoints, and the long trails. AFTER the POIs for export_spurs.py's
+      # reason - a trailhead here carries the published waypoint's own id -
+      # and after both line exports, because "miles of trail held" is
+      # measured over the lines this run actually publishes.
+      - name: Export the places a hiker can name
+        run: python export_places.py
+
       # Reads only fetch_all.py's raw layers (centerline, club polygons,
       # mileposts), so it can run any time after the fetch. Until #659 no
       # workflow ran this exporter at all - the published club_sections.json

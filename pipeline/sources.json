@@ -321,12 +321,12 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` is false here for a different reason than it used to be: nothing exports this layer yet. Registered and not wired to anything, per reaches_hikers_comment.",
+      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` became true on 2026-09-09 (#1371) when export_places.py started reading this layer for the park rows of places.json - name, centroid, boundary box and the miles of published trail inside each boundary, never the polygon itself. It was false before for the reason its own note recorded - nothing exported it - and never as a licence judgement, the same move #1097 made for oprhp_facilities on the same terms. #769's open question, whether OurHike is non-commercial within OPRHP's stated terms, is NOT settled by this and is unchanged by it.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "The first layer every per-park 'Parks App' Web Map draws (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
       "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30).",
-      "reaches_hikers": false,
+      "reaches_hikers": true,
       "licence_basis": "stated_by_org"
     },
     {

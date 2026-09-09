@@ -92,6 +92,17 @@
 # days, the hypothesis was right; if it still vanishes, the eviction pressure
 # is somewhere else and this change bought only the smaller cache bill.
 #
+# ONE LIMIT ON THAT HYPOTHESIS, narrower than the arithmetic makes it look and
+# recorded because the arithmetic alone reads as proof. The vector build's own
+# comment expects its publishes a month apart - "DATA_RELEASES.md puts
+# releases on a monthly-ish cadence" - and on a monthly cadence the 7-day idle
+# rule reaches that entry first no matter what this workflow does. The churn
+# below can only be the deciding evictor while vector builds are days apart.
+# They are at the moment: #1311 - The vector build went from 20 to 108 minutes
+# in twelve days records twelve dispatches on 2026-09-08 alone. So the change
+# is worth making and the hypothesis is worth settling, but neither predicts
+# anything about a quiet month.
+#
 # WHAT A CONTENT HASH FIXES AND WHAT IT DOES NOT, because only one of the
 # three is actually fixed:
 #
@@ -103,22 +114,26 @@
 #    day becomes about 19 MB a week.
 #  - The ATC and NYNJTC entries are NOT fixed, and claiming otherwise would be
 #    the confident wrong answer. Both fetchers stamp `fetched_at` - this run's
-#    clock - into the payload they cache (`fetch_atc_updates.py:131`,
-#    `fetch_nynjtc_alerts.py:209`), so those files' bytes move every hour
+#    clock - into the payload they cache (`fetch_atc_updates.py:133` and
+#    `fetch_nynjtc_alerts.py:212`, each inside that script's one
+#    `CACHE_PATH.write_text`), so those files' bytes move hourly
 #    whether or not ATC or NYNJTC posted anything, and a hash of moving bytes
 #    moves too. They are small beside the drought entry, which is the only
 #    reason this is tolerable rather than a blocker. What content addressing
 #    does buy them is the hour a fetch fails: the restored copy is carried
-#    forward unchanged, and re-saving unchanged bytes now lands on the key
-#    that already holds them instead of opening a fresh entry. Stopping their
+#    forward unchanged, so the key it computes is the key that already holds
+#    those bytes, and the save is refused as a duplicate - a warning in the
+#    log and no second entry - instead of opening a fresh one. Stopping their
 #    churn outright means keeping the fetch clock out of the cached payload,
 #    which is a change to those two scripts and not to this file.
 #
 # CONSIDERED AND REJECTED, because the obvious way to make bytes stop moving
-# is to stop stamping them. Every artifact here carries a `generated_at` from
-# export_conditions.py's `build_document`, and that stamp is exactly what makes
-# an unchanged bake produce changed bytes. Two ways to stop it, both worse than
-# the cache bill:
+# is to stop stamping them. Every artifact here carries a `generated_at`, and
+# there is no one line to delete: each exporter writes its own, in its own
+# `build_document` - export_conditions.py, export_atc_updates.py,
+# export_nynjtc_alerts.py, export_drought.py, with export_work_projects.py
+# stamping inline. That stamp is exactly what makes an unchanged bake produce
+# changed bytes. Two ways to stop it, both worse than the cache bill:
 #
 #  - Drop it. client/src/lib/publishedConditions.ts refuses a document with no
 #    `generated_at` rather than defaulting one - "the one strict thing here" -
@@ -326,14 +341,29 @@ jobs:
       # away exactly when it is doing the most good - the run that could not
       # refetch is the run that most needs the copy it already had.
       #
-      # The `hashFiles(...) != ''` half of that condition is new, and it is the
-      # part `always()` on its own gets wrong: when the restore missed AND the
-      # fetch failed there is no file at all, and the old key saved that
-      # nothing anyway - under a key the `restore-keys: atc-updates-` prefix
-      # above then prefers, because a prefix lookup takes the most recent
-      # match. An empty entry that outranks a good one is the only way this
-      # cache can make a run worse than no cache, and hashFiles is empty
-      # exactly when nothing matched.
+      # The `hashFiles(...) != ''` half of that condition is new, and what it
+      # buys is smaller than the obvious story - "otherwise the empty hour
+      # saves an empty entry, and the prefix restore then prefers it" - which
+      # is not what the action does. Read out of actions/cache's own source,
+      # 2026-09-09: `@actions/cache`'s `saveCache` throws "Path Validation
+      # Error: Path(s) specified in the action for caching do(es) not exist,
+      # hence no cache is being saved" when none of the paths resolve, and
+      # cache/save's `saveImpl` catches every error into `core.warning`. So an
+      # hour that restored nothing and fetched nothing has been logging a
+      # yellow no-op, not storing a nothing. No empty entry was ever created
+      # here, and saying otherwise would be this file arguing for its own
+      # change with a mechanism nobody checked.
+      #
+      # What the guard prevents is a malformed KEY. hashFiles returns the
+      # empty string when nothing matched (GitHub's expressions reference,
+      # read 2026-09-09), so an unguarded content-addressed key evaluates to
+      # `atc-updates-` exactly - character for character the prefix the
+      # restore above searches on. A one-path step has nothing it could put
+      # under that key, so here the guard turns a warning into an honest skip
+      # and no more. The drought step below is the one that saves three paths
+      # under a key hashed from two of them, and it carries the argument for
+      # why the invariant is worth holding in all three places rather than
+      # re-reasoned per step.
       #
       # The key is a content hash, for the header's reason. Read that section
       # before assuming this stops the hourly churn: it does not, because
@@ -391,11 +421,13 @@ jobs:
         continue-on-error: true
         run: python fetch_nynjtc_alerts.py
 
-      # Same shape as the ATC save above, and the same two caveats: the guard
-      # is what stops a cold-and-failed hour saving nothing under a prefix a
-      # later restore would prefer, and the content hash does not stop this
-      # entry churning hourly because fetch_nynjtc_alerts.py stamps
-      # `fetched_at` into the payload too. It re-fetches every alert every run
+      # Same shape as the ATC save above, and the same two caveats. The guard
+      # keeps a cold-and-failed hour from computing the bare `nynjtc-alerts-`
+      # prefix as its key - read that step for why that is the honest
+      # description of what it does and "stops an empty entry being saved" is
+      # not. And the content hash does not stop this entry churning hourly,
+      # because fetch_nynjtc_alerts.py stamps `fetched_at` into the payload
+      # too. It re-fetches every alert every run
       # rather than planning which are due, the way the ATC fetcher does, so
       # every entry in the file carries the new clock and not just the
       # document's header - these bytes move on every successful hour without
@@ -524,11 +556,33 @@ jobs:
       # choice rather than the rescue: the key then means what produced the
       # entry, not when.
       #
-      # The guard is the ATC step's: hashFiles is empty only when neither
-      # input is on disk, which is a run that fetched nothing and has nothing
-      # worth a cache entry. A run that produced one input and not the other
-      # still saves, and self-heals - fetch_drought.py refetches a missing
-      # release, and the centerline step above refetches a missing centerline.
+      # The guard is the ATC step's, and this is the step where it is more
+      # than tidiness. hashFiles is empty only when neither INPUT is on disk -
+      # but the third path is an OUTPUT, which could in principle be there
+      # when they are not, so this is the one key that could carry a payload
+      # under the bare `drought-inputs-` prefix the restore above searches on.
+      # Nothing in today's scripts reaches that state (export_drought.py
+      # cannot write the artifact without a release to read), so this is an
+      # invariant held cheaply rather than a fix for something observed, and
+      # it is worth holding because the thing that would break it is a fourth
+      # path added by somebody reading the paths and not this comment.
+      #
+      # A run that produced one input and not the other still saves, and
+      # self-heals - fetch_drought.py refetches a missing release, and the
+      # centerline step above refetches a missing centerline.
+      #
+      # WHAT HASHING THE INPUTS COSTS, because the paragraph above says only
+      # what it buys. One key per USDM week is one ENTRY per USDM week, and
+      # `actions/cache/save` does not overwrite a key that exists - it warns
+      # and returns (actions/cache's `saveImpl`, read 2026-09-09). So a week
+      # whose first run saved before it had a good artifact - the export
+      # failed, or the job died between the fetch and the export - pins an
+      # artifact-less entry under that week's key, and every remaining hour of
+      # that week pays the ~43 s rebuild it was meant to skip. Nothing a hiker
+      # reads moves: export_drought.py decides from the artifact on disk
+      # (`already_published`), never from the cache, so those hours rebuild and
+      # publish the correct bands. It is runner time only, and it ends when
+      # USDM's week does.
       - name: Save the drought inputs
         if: always() && hashFiles('pipeline/data/raw/drought/**', 'pipeline/data/raw/centerline.geojson') != ''
         uses: actions/cache/save@v6

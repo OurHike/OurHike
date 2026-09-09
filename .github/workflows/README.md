@@ -1,6 +1,6 @@
 # The workflows
 
-31 files, 40 jobs. Each file's header comment is the design record for that
+34 files, 47 jobs (counted 2026-09-09). Each file's header comment is the design record for that
 workflow and is the place to find out *why* it is the way it is — this file is
 the level above: what exists, what makes each one run, and the three or four
 facts that are dangerous to learn by discovering them.
@@ -78,6 +78,7 @@ whether it holds credentials, and whether a failure reaches anyone.
 | `pr-issue-link.yml` | required check `PR has a linked issue`; reports green on a queue entry without checking, deliberately |
 | `settings-manifest.yml` | required check `Manifest agrees with the workflows` |
 | `pr-preview.yml` | builds the pull request and deploys it to `pr-<n>.ourhike-preview.pages.dev` |
+| `build-shells.yml` | jobs `android` and `ios` — compiles the two native shells, which nothing did before #1193. Not a required check |
 
 `shard-seam-spike.yml` also triggers on `pull_request`, filtered to its own
 paths — it is a spike, and lives in the last family.
@@ -222,6 +223,8 @@ gathered rather than restated.
 | `30 9 * * *` | daily | `check-deployed-app.yml` |
 | `45 9 * * *` | daily | `check-auth-redirects.yml` — after `check-deployed-app`, so an already-broken app is not a second alarm for the same cause |
 | `40 9 * * 1` | Mondays | `smoke-published.yml` |
+| `40 9 * * 2` | Tuesdays | `check-note-anchors.yml` — the same minute as `smoke-published.yml`, a day later, which is what keeps them off each other |
+| `50 9 * * 3` | Wednesdays | `route-disputes.yml` — behind both of the above, so a bucket that is simply down is reported by them first |
 | `50 */20 * * *` | 00:50 and 20:50 | `supabase-keepalive.yml` |
 
 ## The shared actions

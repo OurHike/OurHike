@@ -65,6 +65,7 @@ from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 from lib.nynjtc_hikes import SOURCE_KEY
 from lib.source_registry import find_source, load_registry
+from lib.stamps import utc_stamp
 from route_nynjtc_hikes import (
     STATUS_REVIEWED,
     base_slug,
@@ -91,11 +92,6 @@ AUTHOR_KIND = "club"
 #: (nynjtc_hikes_licence records the words), so it names who gave it and
 #: not a licence NYNJTC never wrote.
 PHOTO_LICENCE = "By permission of the New York-New Jersey Trail Conference"
-
-
-def _stamp(value: datetime) -> str:
-    aware = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-    return aware.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _term_names(hike: dict, taxonomy: str) -> list[str]:
@@ -202,7 +198,7 @@ def build_document(
             dropped.append((slug, "; ".join(measured["problems"])))
             continue
         hikes.append(record_for(slug, row, hike, measured["route"], measured["points"], steward))
-    document = {"generated_at": _stamp(generated_at), "source": SOURCE_KEY, "hikes": hikes}
+    document = {"generated_at": utc_stamp(generated_at), "source": SOURCE_KEY, "hikes": hikes}
     return document, dropped
 
 

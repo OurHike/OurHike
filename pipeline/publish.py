@@ -1090,8 +1090,11 @@ def collect_artifacts() -> dict[str, dict]:
     # (#1371). Same shape again, and absent for the same family of reasons:
     # a release exported before the script existed, or a run that did not
     # reach it. The park rows inside it ship behind oprhp_park_polygons's own
-    # reaches_hikers, which the exporter reads itself; the rest of the file
-    # is derived from artifacts this function already publishes.
+    # reaches_hikers, which the exporter reads itself, and its trail miles
+    # are measured over the line sources this function would publish - the
+    # exporter applies shipped_line_source_keys before it measures, so a
+    # held-back steward's lines count for nothing there either. Its manifest
+    # carries the same `sources` block the line manifests do.
     places_manifest = PROCESSED_DIR / "places_manifest.json"
     if places_manifest.exists():
         manifest = json.loads(places_manifest.read_text())

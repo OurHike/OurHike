@@ -30,6 +30,7 @@ import type { TabId } from './tabs'
 import { Legend } from './Legend'
 import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
+import type { HikerMode } from '../lib/hikerMode'
 import { Search } from './Search'
 import { ElevationRibbon, type RibbonControl } from './ElevationRibbon'
 import type { RibbonView } from '../lib/ribbonView'
@@ -88,6 +89,7 @@ import type {
 import {
   computeLegendContents,
   legendDropSummary,
+  pointsInView,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
@@ -110,6 +112,11 @@ export interface MapScreenProps {
   /** The sidebar's "today I'm…" control, handed through to the TabBar this
    *  screen renders - see TabBarProps.modeSwitch for the contract. */
   modeSwitch?: ReactNode
+  /** The phone's mode read-out in the bar (#1373, R11: "four tabs and the
+   *  mode, on every screen") - see TabBarProps.mode. Absent on a desktop,
+   *  where the sidebar carries the switch itself. */
+  mode?: HikerMode
+  onOpenMode?: () => void
   /** The hike a hiker is on, as a control - passed straight through to the
    *  sidebar for the same reason (#1344). See TabBarProps.hikeSwitch. */
   hikeSwitch?: ReactNode
@@ -301,6 +308,16 @@ export interface MapScreenProps {
    * feature to move into it (#937).
    */
   builderPanel?: ReactNode
+  /**
+   * A day-hike draft is live, at any step - the builder at step 2, or the
+   * review at step 3, which the phone shows as a sheet (`routeSheet`) and
+   * the desktop in the rail (`builderPanel`). What stands down for the
+   * builder - the legend, In view, the corridor's own ribbon and next-up
+   * rail, all about a different trail than the walk being built - stands
+   * down for the review on both breakpoints; read from the panel alone,
+   * the phone's step 3 brought the whole-A.T. profile back under the card.
+   */
+  dayHikeLive?: boolean
   /** The press-and-hold plate (#1137). A slot for the same reason as the
    *  sheets above - but unlike them it DOES anchor to a point on the
    *  canvas, so it positions itself and this screen only gives it the
@@ -846,6 +863,7 @@ export function MapScreen({
   pressPlateOpen,
   routeSheet,
   builderPanel,
+  dayHikeLive,
   pressPlate,
   followBand,
   followAnnouncement = null,
@@ -864,6 +882,8 @@ export function MapScreen({
   journal,
   modeSwitch,
   hikeSwitch,
+  mode,
+  onOpenMode,
   hikeName,
   onSwitchHike,
   onOpenLegend,
@@ -967,6 +987,12 @@ export function MapScreen({
   const [inViewOpen, setInViewOpen] = useState(false)
   /** The pinned workdays inside the viewport (#1373, frame 14d) - the same
    *  "in view" the legend and the waypoint list mean. */
+  // What the map is drawing inside the viewport, on the legend's own rule:
+  // the "In view" count and list (#1373, frame 12a).
+  const pointsShown = useMemo(
+    () => pointsInView(viewportPoints, bbox, verifiedOnly, hiddenTypes),
+    [viewportPoints, bbox, verifiedOnly, hiddenTypes],
+  )
   const workdaysInView = useMemo(
     () =>
       (workdayRows ?? []).filter(
@@ -1007,8 +1033,9 @@ export function MapScreen({
    * redesign was that its map was too small, and adding the rail alone made
    * that WORSE on a wide screen rather than better: measured on this pull
    * request's own preview at 1280x800, the tab sidebar (208px), the rail
-   * (348px) and the persistent legend (272px - desktop.css's 17rem; an earlier version of this note said 290) left the map 434px, with the
-   * elevation chart taking another 200px of height under it. A rail that
+   * (348px) and the persistent legend (272px, desktop.css's 17rem) left the
+   * map 452px, with the elevation chart taking another 200px of height
+   * under it. A rail that
    * buys the map room by taking it from the map is not the fix anybody asked
    * for.
    *
@@ -1030,7 +1057,8 @@ export function MapScreen({
    * whether a profile happened to download - so it may not depend on this
    * either.
    */
-  const buildingDayHike = builderPanel !== undefined && builderPanel !== null
+  const buildingDayHike =
+    dayHikeLive ?? (builderPanel !== undefined && builderPanel !== null)
 
   // The live map, kept here as well as reported upward, because the waypoint
   // card anchors to a pin by projecting its coordinates through the map - and
@@ -1353,14 +1381,32 @@ export function MapScreen({
                 position={position}
                 hikeName={hikeName}
                 onSwitchHike={onSwitchHike}
-                onOpenLegend={onOpenLegend}
+                // The legend and the In view list share the lower third
+                // (below): opening either closes the other, in both
+                // directions, rather than one hiding behind the other and
+                // reappearing when it closes.
+                onOpenLegend={() => {
+                  setInViewOpen(false)
+                  onOpenLegend()
+                }}
                 onOpenSearch={onOpenSearch}
                 // The list of what the map is drawing (#1373, frame 12a) -
                 // offered once there is anything to list, and not while a
-                // builder owns the canvas, where the pins are stops.
+                // builder owns the canvas, where the pins are stops. Not on
+                // a desktop: the sheet is absolute against the viewport,
+                // where it would cover the sidebar, the journal and the
+                // persistent legend beside the map, and the legend there is
+                // the standing answer to what is drawn. A desktop In view
+                // is a panel in that rail, which nobody has built.
                 inView={
-                  viewportPoints.length > 0 && !buildingDayHike
-                    ? { count: viewportPoints.length, onOpen: () => setInViewOpen(true) }
+                  pointsShown.length > 0 && !buildingDayHike && !isDesktop
+                    ? {
+                        count: pointsShown.length,
+                        onOpen: () => {
+                          onCloseLegend()
+                          setInViewOpen(true)
+                        },
+                      }
                     : undefined
                 }
                 strip={
@@ -1623,16 +1669,13 @@ export function MapScreen({
           </div>
 
           {/* What the map is drawing, as a list (#1373, frame 12a) - the same
-
               points the legend counts, named. Over the same slot as the legend
-
-              and never beside it: opening one closes the other, so the lower
-
-              third has one sheet. A row opens the same card a pin does. */}
-
+              and never beside it: opening one closes the other (the header's
+              two doors above), so the lower third has one sheet. A row opens
+              the same card a pin does. */}
           <InViewSheet
-            open={inViewOpen && !legendOpen && !buildingDayHike}
-            points={viewportPoints}
+            open={inViewOpen && !legendOpen && !buildingDayHike && !isDesktop}
+            points={pointsShown}
             total={waypointTotal}
             currentMile={hikerMile ?? null}
             mileOf={waypointMileOf}
@@ -1848,6 +1891,7 @@ export function MapScreen({
         onSelect={onSelectTab}
         modeSwitch={modeSwitch}
         hikeSwitch={hikeSwitch}
+        {...(mode === undefined ? {} : { mode, onOpenMode })}
       />
     </div>
   )

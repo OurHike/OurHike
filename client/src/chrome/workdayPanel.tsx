@@ -82,35 +82,40 @@ export function useWorkdayPanel({
    * Atlantic, which is the failure `describeLocation` already refuses on the
    * report form.
    */
-  const pins = useMemo<readonly WorkdayPoint[]>(() => {
-    if (projects === null || generatedAt === null) return []
-    if (!opportunitiesUsable(generatedAt, now)) return []
-
-    return upcomingWorkProjects(projects, now, window).flatMap((project) =>
-      project.lat === null || project.lon === null
-        ? []
-        : [{ id: project.id, lat: project.lat, lon: project.lon }],
-    )
-  }, [projects, generatedAt, now, window])
-
-  /** The pinned workdays as the map's list prints them (#1373, frame 14d),
-   *  and how many the widest window holds - the list is offered while any
+  const usable =
+    projects !== null && generatedAt !== null && opportunitiesUsable(generatedAt, now)
+  /** The workdays in the window, once - the pins, the rows and the count
+   *  below are three readings of this one list, not three passes. */
+  const upcoming = useMemo<readonly WorkProjectSummary[]>(
+    () => (usable ? upcomingWorkProjects(projects, now, window) : []),
+    [usable, projects, now, window],
+  )
+  /** The pinned workdays as the map's list prints them (#1373, frame 14d):
+   *  `workdayRow` is null exactly where a row has no coordinates, so the
+   *  pins are the rows with their words dropped. */
+  const rows = useMemo<readonly WorkdayRow[]>(
+    () =>
+      upcoming.flatMap((project) => {
+        const row = workdayRow(project, gpsPlanMile)
+        return row === null ? [] : [row]
+      }),
+    [upcoming, gpsPlanMile],
+  )
+  const pins = useMemo<readonly WorkdayPoint[]>(
+    () => rows.map(({ id, lat, lon }) => ({ id, lat, lon })),
+    [rows],
+  )
+  /** How many the widest window holds - the list is offered while any
    *  exist, so a hiker can widen the window to find them. */
-  const rows = useMemo<readonly WorkdayRow[]>(() => {
-    if (projects === null || generatedAt === null) return []
-    if (!opportunitiesUsable(generatedAt, now)) return []
-    return upcomingWorkProjects(projects, now, window).flatMap((project) => {
-      const row = workdayRow(project, gpsPlanMile)
-      return row === null ? [] : [row]
-    })
-  }, [projects, generatedAt, now, window, gpsPlanMile])
-  const held = useMemo(() => {
-    if (projects === null || generatedAt === null) return 0
-    if (!opportunitiesUsable(generatedAt, now)) return 0
-    return upcomingWorkProjects(projects, now, 'month').filter(
-      (project) => project.lat !== null && project.lon !== null,
-    ).length
-  }, [projects, generatedAt, now])
+  const held = useMemo(
+    () =>
+      usable
+        ? upcomingWorkProjects(projects, now, 'month').filter(
+            (project) => project.lat !== null && project.lon !== null,
+          ).length
+        : 0,
+    [usable, projects, now],
+  )
 
   /** The tapped workday itself, re-read from the live list every render: if a
    *  re-fetch drops it - cancelled, or out of the window - this goes null and

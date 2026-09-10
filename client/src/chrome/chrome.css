@@ -950,7 +950,7 @@
 }
 
 .in-view__window {
-  min-height: 32px;
+  min-height: var(--min-touch-target, 44px);
   padding: 0 var(--space-3, 12px);
   border: 1px solid var(--border-1);
   border-radius: 999px;

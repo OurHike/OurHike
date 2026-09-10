@@ -36,7 +36,7 @@
 // the same asymmetry validateTripStore states: losing one record is
 // survivable, losing every record is not.
 
-import { del, get, set } from 'idb-keyval'
+import { del, get, set, update } from 'idb-keyval'
 import { recordDayHikeEdits } from './dayHikeSyncState'
 import type { RouteClimb } from './trailGraph'
 
@@ -737,13 +737,26 @@ export async function adoptDayHikes(store: DayHikeStore): Promise<void> {
  * when the pointer already says this.
  */
 export async function saveDayHikeOpenId(openId: string | null): Promise<DayHikeStore> {
-  const store = await loadDayHikes()
-  const pointer =
-    openId !== null && store.hikes.some((hike) => hike.id === openId) ? openId : null
-  if (pointer === store.openId) return store
-  const next = { ...store, openId: pointer }
-  await set(DAY_HIKES_KEY, next)
-  return next
+  // `update()` rather than get → set: its read and write share one
+  // readwrite transaction (lib/outbox.ts's `mutateQueue` says why), so a
+  // sync adopting a hike between this tap's read and its write cannot be
+  // written over - and a hike lost that way was gone for good, because this
+  // write deliberately leaves no ledger trace (above) for the next exchange
+  // to repair from.
+  let written: DayHikeStore | null = null
+  await update(DAY_HIKES_KEY, (stored: unknown) => {
+    const store =
+      stored === undefined || stored === null
+        ? EMPTY_DAY_HIKES
+        : (validateDayHikeStore(stored) ?? EMPTY_DAY_HIKES)
+    const pointer =
+      openId !== null && store.hikes.some((hike) => hike.id === openId) ? openId : null
+    written = pointer === store.openId ? store : { ...store, openId: pointer }
+    return written
+  })
+  // A test double whose `update` never calls back leaves nothing written;
+  // the store as it stands is then the honest answer.
+  return written ?? loadDayHikes()
 }
 
 /** Forget every day hike. Recorded as the hiker deleting each of them,

@@ -3,8 +3,10 @@
 // "Anywhere a day is listed - a plan, a diff, what's left - it carries
 // distance, estimated time at the hiker's pace, and elevation gain, in one
 // shared row component. Never distance alone, and never a second copy of the
-// layout." Step 3's days, the cascade diff, What's left and the Plan timeline
-// all mount this.
+// layout." Step 3's days and the cascade diff mount this; the Plan timeline
+// still carries its own row (screens/Plan.tsx's local DayRow, with the
+// timeline's affordances on it), and folding that into this one is its own
+// change - the first version of this note claimed the fold had happened.
 //
 // FOUR THINGS THE TIMELINE'S ROW ENCODED ARE KEPT, because each one is a
 // decision with a test behind it and a rebuilt row that dropped any of them

@@ -735,6 +735,54 @@ describe('when today changes (#1373, F7)', () => {
     expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
   })
 
+  it('"Take a zero" on the day screen edits the trip today is on, not the open one (#1374 review)', async () => {
+    // Two sections: an earlier, undated one left open on the Plan tab, and
+    // the dated one the day screen is showing. The zero belongs to the
+    // second, which is then opened so the timeline shows it - the first
+    // version edited whichever trip was open.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    const earlier = {
+      id: 'trip-0',
+      name: 'Earlier section',
+      plan: {
+        target: { miles: 15 },
+        stops: [
+          { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+          { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+        ],
+        days: [{ id: 'e1', pinned: false, generated: true }],
+      },
+    }
+    app.store.set(
+      TRIPS_KEY,
+      datedStore({
+        trips: [earlier, ...datedStore().trips],
+        openId: 'trip-0',
+        hikes: [{ ...hikeStore().hikes[0], tripIds: ['trip-0', 'trip-1'] }],
+      }),
+    )
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open the day' }))
+    await user.click(
+      within(await screen.findByRole('region', { name: 'Change today' })).getByRole(
+        'button',
+        { name: 'Take a zero' },
+      ),
+    )
+
+    await waitFor(() => {
+      const stored = app.store.get(TRIPS_KEY) as TripStore
+      const dated = stored.trips.find((trip) => trip.id === 'trip-1')!
+      expect(dated.plan.days).toHaveLength(3)
+      expect(stored.trips.find((trip) => trip.id === 'trip-0')!.plan.days).toHaveLength(1)
+      expect(stored.openId).toBe('trip-1')
+    })
+  })
+
   it('"Move them to today" on the welcome-back card moves the dated days (the inventory’s P30)', async () => {
     const user = userEvent.setup()
     app.onboard()

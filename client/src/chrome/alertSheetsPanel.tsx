@@ -45,6 +45,10 @@ export interface AlertSheetsInput {
   placedWarnings: readonly WarningReport[] | null
   lastSyncedAt: Date | null
   now: Date
+  /** Called as a sheet opens, before it does: the shell closes the waypoint
+   *  card and the legend there, so a tap on the tape after a tap on a pin
+   *  leaves one thing up. */
+  onOpen?: () => void
 }
 
 export interface AlertSheetsMapProps {
@@ -60,6 +64,9 @@ export interface AlertSheetsPanel {
   /** Whether either sheet is open - the shell's app-update guard reads it,
    *  as it reads the notices panel's. */
   sheetOpen: boolean
+  /** Close whichever is open - what the shell calls when a waypoint card
+   *  opens, so the lower third holds one answer at a time. */
+  close: () => void
 }
 
 type Tapped = { kind: 'closure'; id: string } | { kind: 'warning'; id: string } | null
@@ -77,16 +84,23 @@ export function useAlertSheets({
   placedWarnings,
   lastSyncedAt,
   now,
+  onOpen,
 }: AlertSheetsInput): AlertSheetsPanel {
   const [tapped, setTapped] = useState<Tapped>(null)
   const close = useCallback(() => setTapped(null), [])
   const onSelectClosure = useCallback(
-    (id: string) => setTapped({ kind: 'closure', id }),
-    [],
+    (id: string) => {
+      onOpen?.()
+      setTapped({ kind: 'closure', id })
+    },
+    [onOpen],
   )
   const onSelectWarning = useCallback(
-    (id: string) => setTapped({ kind: 'warning', id }),
-    [],
+    (id: string) => {
+      onOpen?.()
+      setTapped({ kind: 'warning', id })
+    },
+    [onOpen],
   )
 
   const closureSheet = useMemo<ReactNode>(() => {
@@ -139,5 +153,9 @@ export function useAlertSheets({
     [onSelectClosure, closureSheet, onSelectWarning, warningSheet],
   )
 
-  return { mapScreen, sheetOpen: closureSheet !== null || warningSheet !== null }
+  return {
+    mapScreen,
+    sheetOpen: closureSheet !== null || warningSheet !== null,
+    close,
+  }
 }

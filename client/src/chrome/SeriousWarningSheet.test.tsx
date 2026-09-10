@@ -58,7 +58,13 @@ describe('SeriousWarningSheet', () => {
       />,
     )
 
-    expect(screen.getByText('Confirmed by club moderators')).toBeInTheDocument()
+    // Who stood behind it, and that the date is missing - the published
+    // baseline never carries one (export_conditions.py bakes no
+    // verified_at), so a badge that went quiet about the date would go
+    // quiet on every offline read.
+    expect(
+      screen.getByText('Confirmed by club moderators · date not on this download'),
+    ).toBeInTheDocument()
     expect(screen.queryByText(/July 24/)).toBeNull()
     expect(screen.queryByText(/^mi /)).toBeNull()
   })

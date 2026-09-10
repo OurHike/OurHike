@@ -53,7 +53,7 @@ import { formatTodayEyebrow, splitPosition, todayGreeting } from '../lib/todayTe
 import { formatDistance, formatElevation } from '../lib/units'
 import { localDay } from '../lib/passedToday'
 import { dayLongDateLabel } from '../lib/planDisplay'
-import { formatMile } from '../lib/positionLine'
+import { mileMarker } from '../lib/planDisplay'
 import { cachedEstimate } from '../lib/dayHikeShelf'
 import { typeLabel } from '../chrome/legendLabels'
 import {
@@ -76,7 +76,8 @@ import { HikeFinderIcon } from '../chrome/HikeFinderIcon'
 import { Notice } from '../chrome/Notice'
 import { PinnedBar } from '../chrome/PinnedBar'
 import { PoiRow } from '../chrome/PoiRow'
-import { FieldNoteSection, type FieldNoteContext } from '../chrome/FieldNoteSection'
+import type { FieldNoteContext } from '../chrome/FieldNoteSection'
+import { FieldNoteSection } from './deferred'
 import { isNoteScopedType } from '../lib/fieldNotes'
 import type { NightBehind } from '../lib/nightsBehind'
 import { Button } from '../design-system/components'
@@ -521,7 +522,7 @@ export function Today({
             title={place.name}
             // A mile marker on the trail's own axis - the position line's
             // spelling, not a distance to convert.
-            meta={`mi ${formatMile(place.mile)} · ${typeLabel(place.type)}`}
+            meta={`mi ${mileMarker(place.mile)} · ${typeLabel(place.type)}`}
             onOpen={() => onOpenPoi(place.id)}
           />
         ))}
@@ -708,7 +709,7 @@ export function Today({
               meta={
                 facts.mile === undefined
                   ? row.label
-                  : `${row.label} · mi ${formatMile(facts.mile)}`
+                  : `${row.label} · mi ${mileMarker(facts.mile)}`
               }
               {...(facts.unverified ? { confidence: 'low' as const } : {})}
             />
@@ -917,11 +918,13 @@ export function Today({
         <p className="today__setup-line">
           {suggestedHikes.length === 0
             ? 'A builder for a route of your own — and published walks, once this phone holds any.'
-            : placeName !== null
-              ? `Published walks, nearest ${placeName} first, and a builder if none of them is yours.`
-              : near !== null
-                ? 'Published walks, nearest you first, and a builder if none of them is yours.'
-                : 'Published walks to pick from, and a builder if none of them is yours.'}
+            : `Published walks${
+                placeName !== null
+                  ? `, nearest ${placeName} first,`
+                  : near !== null
+                    ? ', nearest you first,'
+                    : ' to pick from,'
+              } and a builder if none of them is yours.`}
         </p>
       </section>
     ) : mode === 'long' && longHike == null ? (

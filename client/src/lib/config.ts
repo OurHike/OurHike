@@ -548,7 +548,9 @@ export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
 
 // The places a hiker can name before anything is downloaded - parks, towns,
 // trailheads, parking areas and the long trails - published by
-// pipeline/export_places.py (#1371). Read by lib/placesData.ts for first
+// pipeline/export_places.py, which lands with PR #1372 (#1371) and is not
+// in this tree until it merges; until it is published, first run's place
+// field reads "not published yet" and offers Skip. Read by lib/placesData.ts for first
 // run's "where do you hike?" step (#1373, frame 1b), whose answer becomes the
 // map's fallback centre whenever GPS has no fix, and for every place search
 // after it. Kept in IndexedDB through the same cache the conditions ride, so

@@ -30,6 +30,7 @@ import type { GeolocationState } from './useGeolocation'
 import type { HikeDirection } from '../chrome/Header'
 import { followPosition, type FollowState } from './dayHikeFollow'
 import type { UnitSystem } from './units'
+import { mileMarker } from './planDisplay'
 
 export interface PositionLineInputs {
   /** What the watch is actually doing (lib/useGeolocation.ts). */
@@ -108,15 +109,10 @@ export interface PositionLineInputs {
  * Fixed precision keeps the number from changing width as the hiker walks,
  * which would otherwise make the whole header twitch.
  */
-/** A trail mile marker as the position line prints it - the trail's own
- *  axis, never a converted distance, which is why this is not in
- *  lib/units.ts (#1373's Today rows print "mi 713.8" from it). */
-export function formatMile(mile: number): string {
-  return mile.toLocaleString('en-US', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })
-}
+/** A trail mile marker as the position line prints it: lib/planDisplay.ts's
+ *  `mileMarker`, the one home for the trail's own axis - never a converted
+ *  distance, which is why neither is in lib/units.ts. */
+const formatMile = mileMarker
 
 export function positionLine({
   gps,

@@ -39,12 +39,25 @@ describe('nightsBehind', () => {
         name: 'High Point Shelter',
         mile: 1342.1,
       },
+      // The first stop is where the hiker slept BEFORE day 0 (dated Tue
+      // 8 Sep), so that night is Monday's - an earlier draft read it off
+      // day 0's own date and called it Tuesday.
       {
-        label: 'Tue night',
+        label: 'Mon night',
         poiId: 'atc_shelters:1',
         name: 'Gren Anderson Shelter',
         mile: 1331.2,
       },
+    ])
+  })
+
+  it('dates the night before last by the day that ended at it', () => {
+    // Day 2 (Thu): tonight is Unionville, last night Rutherford, and the
+    // night before that High Point - where day 0, dated Tuesday, ended.
+    expect(nightsBehind(PLAN, 2).map((night) => night.label)).toEqual([
+      'Tonight',
+      'Last night',
+      'Tue night',
     ])
   })
 

@@ -24,7 +24,11 @@
 // mile axis has no "trail mi away" line, rather than one measured from a
 // coordinate that was never surveyed against the centerline.
 
-import { workProjectDates, type WorkProjectSummary } from '../lib/workProjects'
+import {
+  workProjectDates,
+  type WorkProjectSummary,
+  workdayAwayLine,
+} from '../lib/workProjects'
 
 export interface WorkdaySheetProps {
   project: WorkProjectSummary
@@ -37,9 +41,7 @@ export interface WorkdaySheetProps {
 export function WorkdaySheet({ project, gpsMile, onClose }: WorkdaySheetProps) {
   const away =
     project.mile !== null && gpsMile !== null
-      ? `${Math.abs(project.mile - gpsMile).toLocaleString('en-US', {
-          maximumFractionDigits: 1,
-        })} trail mi away`
+      ? workdayAwayLine(Math.abs(project.mile - gpsMile))
       : null
 
   return (

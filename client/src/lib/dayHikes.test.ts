@@ -19,7 +19,12 @@ vi.mock('idb-keyval', () => {
     del: vi.fn(async (key: string) => {
       store.delete(key)
     }),
-    update: vi.fn(),
+    // The real update() reads and writes inside one transaction; here the
+    // updater is applied against the map, so saveDayHikeOpenId's write
+    // lands the way a get → set would have.
+    update: vi.fn(async (key: string, updater: (stored: unknown) => unknown) => {
+      store.set(key, updater(store.get(key)))
+    }),
   }
 })
 

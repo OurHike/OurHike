@@ -38,9 +38,18 @@
 //
 // A push is not an exit. A card or a sheet opened OVER step 2 leaves the
 // step on the stack and is not asked about; Back from that card returns to
-// the step. Tapping the tab you are already on is a no-op here, as it was
-// for `setActiveTab` - the design's rail carries the builder's own way out,
-// and a tab tap that silently bailed a route would be the defect D8 names.
+// the step. And a push of a More page that crossed tabs remembers where it
+// came from (`from`), so Back from Volunteer opened off Today's column
+// lands on Today, not on More's home - the tab was selected by the push,
+// and the pop that undoes the push undoes the selection with it. The
+// spine's steps do not: a step belongs to Plan, and leaving one by Cancel
+// lands in Plan's room whatever door opened it (features/PATHWAY.md), which
+// is `returnsToOrigin`'s one distinction.
+//
+// Tapping the tab you are already on is a tab selection like any other: it
+// returns the tab to its home, which is #1284's courtesy and also means a
+// re-tap on Plan from step 1 goes through the guard, so a route half-built
+// is asked about rather than silently dropped - the defect D8 names.
 //
 // NOT A ROUTER. Nothing here touches the URL or the history API - #970 (the
 // website links at /app/ and the app has no router) is a follow-up this
@@ -73,15 +82,24 @@ export type MorePageAway =
 export type Screen =
   /** Today's finder room (#1284), pushed from its shelf - with facets
    *  already applied when a chip on Today asked for them (#1373, F2). */
-  | { readonly kind: 'find'; readonly facets?: Partial<HikeFacets> }
-  /** One published route's detail (#1290), from a card on Today or the finder. */
-  | { readonly kind: 'hike'; readonly id: string }
-  /** One of More's pages (features/MORE_TAB.md). */
-  | { readonly kind: 'more'; readonly page: MorePageAway }
-  /** A step of the planning spine (#1373, F3-F5), under Plan. Not kept
-   *  across a tab selection: leaving the spine by the tab bar IS the exit
-   *  the guard asks about. */
-  | { readonly kind: 'step'; readonly step: PlanStep }
+  (
+    | { readonly kind: 'find'; readonly facets?: Partial<HikeFacets> }
+    /** One published route's detail (#1290), from a card on Today or the finder. */
+    | { readonly kind: 'hike'; readonly id: string }
+    /** One of More's pages (features/MORE_TAB.md). */
+    | { readonly kind: 'more'; readonly page: MorePageAway }
+    /** A step of the planning spine (#1373, F3-F5), under Plan. Not kept
+     *  across a tab selection: leaving the spine by the tab bar IS the exit
+     *  the guard asks about. */
+    | { readonly kind: 'step'; readonly step: PlanStep }
+  ) & {
+    /**
+     * The tab the push left, when it was not the one the screen lives under -
+     * what Back returns to. Set by `applyMove`, never by a caller: a screen
+     * pushed from its own tab has no `from`, and Back stays there.
+     */
+    readonly from?: TabId
+  }
 
 export type Move = (
   | { readonly to: 'tab'; readonly tab: TabId }
@@ -147,6 +165,13 @@ export function keptAcrossTabs(screen: Screen): boolean {
   return screen.kind === 'more'
 }
 
+/** Whether Back from the screen, pushed from another tab, returns to that
+ *  tab: More's pages are a detour from wherever they were opened; the
+ *  spine's steps belong to Plan, and Back from one lands there. */
+export function returnsToOrigin(screen: Screen): boolean {
+  return screen.kind === 'more'
+}
+
 export function sameScreen(a: Screen, b: Screen): boolean {
   if (a.kind !== b.kind) return false
   switch (a.kind) {
@@ -161,10 +186,15 @@ export function sameScreen(a: Screen, b: Screen): boolean {
   }
 }
 
+/** The screen showing on `tab`, or null at its home. */
+export function topOf<B>(state: NavState<B>, tab: TabId): Screen | null {
+  const stack = state.stacks[tab]
+  return stack.length === 0 ? null : stack[stack.length - 1]
+}
+
 /** The screen showing on the active tab, or null at the tab's home. */
 export function topScreen<B>(state: NavState<B>): Screen | null {
-  const stack = state.stacks[state.tab]
-  return stack.length === 0 ? null : stack[stack.length - 1]
+  return topOf(state, state.tab)
 }
 
 /** The move applied, with no guard consulted. Pure. */
@@ -179,28 +209,44 @@ export function applyMove<B>(state: NavState<B>, move: Move): NavState<B> {
     }
     case 'push': {
       const tab = screenTab(move.screen)
+      const screen =
+        tab === state.tab || !returnsToOrigin(move.screen)
+          ? move.screen
+          : { ...move.screen, from: state.tab }
       return {
         ...state,
         tab,
-        stacks: { ...state.stacks, [tab]: [...state.stacks[tab], move.screen] },
+        stacks: { ...state.stacks, [tab]: [...state.stacks[tab], screen] },
       }
     }
     case 'replace': {
       const tab = screenTab(move.screen)
       const stack = state.stacks[tab]
+      // The replaced screen's origin carries over: step 2 replacing step 1
+      // is still the spine that was entered from wherever step 1 was.
+      const replaced = stack.length === 0 ? undefined : stack[stack.length - 1]
+      const screen =
+        replaced?.from === undefined
+          ? move.screen
+          : { ...move.screen, from: replaced.from }
       return {
         ...state,
         tab,
         stacks: {
           ...state.stacks,
-          [tab]: [...stack.slice(0, Math.max(0, stack.length - 1)), move.screen],
+          [tab]: [...stack.slice(0, Math.max(0, stack.length - 1)), screen],
         },
       }
     }
     case 'back': {
       const stack = state.stacks[state.tab]
       if (stack.length === 0) return state
-      return { ...state, stacks: { ...state.stacks, [state.tab]: stack.slice(0, -1) } }
+      const leaving = stack[stack.length - 1]
+      return {
+        ...state,
+        tab: leaving.from ?? state.tab,
+        stacks: { ...state.stacks, [state.tab]: stack.slice(0, -1) },
+      }
     }
     case 'home':
       return { ...state, stacks: { ...state.stacks, [state.tab]: [] } }

@@ -59,6 +59,54 @@ describe('waterOnCourse', () => {
     expect(rows[0].offCourseFeet).toBeLessThan(WATER_ON_ROUTE_FEET)
   })
 
+  it('lists a point once per pass of the walk, so an out-and-back has it going and coming', () => {
+    // The same line walked out and back: the return leg is the outbound
+    // vertices reversed, with the mile still climbing.
+    const outAndBack: DayHikeCourse = {
+      points: [
+        ...COURSE.points,
+        ...[...COURSE.points]
+          .reverse()
+          .slice(1)
+          .map((point, index) => ({
+            ...point,
+            mile: 2.08 + 0.52 * (index + 1),
+          })),
+      ],
+      stretchStarts: [0],
+      miles: 4.16,
+    }
+
+    const rows = waterOnCourse(outAndBack, [poi('spring', 'water', -74.09, 41.25)])
+
+    // Going, 0.52 mi in; coming back, 0.52 mi from the end. The first
+    // version of this listed the outbound pass only, so a hiker past the
+    // turnaround was shown no water ahead at all.
+    expect(rows.map((row) => row.alongMi)).toEqual([0.52, 3.64])
+    expect(rows.every((row) => row.poiId === 'spring')).toBe(true)
+  })
+
+  it('lists a point at the turnaround once - one visit, not two', () => {
+    const outAndBack: DayHikeCourse = {
+      points: [
+        ...COURSE.points,
+        ...[...COURSE.points]
+          .reverse()
+          .slice(1)
+          .map((point, index) => ({
+            ...point,
+            mile: 2.08 + 0.52 * (index + 1),
+          })),
+      ],
+      stretchStarts: [0],
+      miles: 4.16,
+    }
+
+    const rows = waterOnCourse(outAndBack, [poi('end', 'water', -74.06, 41.25)])
+
+    expect(rows.map((row) => row.alongMi)).toEqual([2.08])
+  })
+
   it('is empty - never a sentence - with no water and with no walk', () => {
     expect(waterOnCourse(COURSE, [poi('s', 'shelter', -74.09, 41.25)])).toEqual([])
     expect(

@@ -80,7 +80,6 @@ export function pausedDays(hike: Hike, today: string): number | null {
  */
 export function datedDaysAhead(
   plans: readonly { days: readonly { date?: string; walked?: boolean }[] }[],
-  _today: string,
 ): { count: number; from: string } | null {
   // Every dated day not yet walked, whatever its date (#1373, frame 6d):
   // the count describes what "Move them to today" moves, and a hiker back
@@ -110,17 +109,46 @@ export function datedDaysAhead(
  * already says.
  */
 export function moveDatedDaysToToday(plan: HikePlan, today: string): HikePlan {
-  const first = walkedDayCount(plan)
-  const anchor = plan.days.slice(first).find((day) => day.date !== undefined)?.date
-  if (anchor === undefined) return plan
+  return moveHikeDatedDaysToToday([plan], today)[0]
+}
+
+/**
+ * The same move across a hike's trips at once (#1374 review): ONE anchor -
+ * the earliest unwalked dated day in any of them - and one delta for every
+ * dated unwalked day in every plan, so the spacing BETWEEN the trips is
+ * kept along with the spacing inside each. Moved plan by plan, each trip
+ * slid to start today on its own, and two sections dated a fortnight apart
+ * landed on the same week - the card had counted them as one figure and
+ * offered one move. Plans are returned in the order given, unchanged
+ * objects where nothing moves.
+ */
+export function moveHikeDatedDaysToToday(
+  plans: readonly HikePlan[],
+  today: string,
+): HikePlan[] {
+  const anchor = plans
+    .map((plan) => firstDatedAhead(plan))
+    .filter((date): date is string => date !== undefined)
+    .sort()[0]
+  if (anchor === undefined) return [...plans]
   const delta = daysBetween(anchor, today)
-  if (delta === null || delta === 0) return plan
-  return {
-    ...plan,
-    days: plan.days.map((day, index) =>
-      index < first || day.date === undefined
-        ? day
-        : { ...day, date: shiftDate(day.date, delta) },
-    ),
-  }
+  if (delta === null || delta === 0) return [...plans]
+  return plans.map((plan) => {
+    // Untouched, as the same object, where nothing ahead is dated.
+    if (firstDatedAhead(plan) === undefined) return plan
+    const first = walkedDayCount(plan)
+    return {
+      ...plan,
+      days: plan.days.map((day, index) =>
+        index < first || day.date === undefined
+          ? day
+          : { ...day, date: shiftDate(day.date, delta) },
+      ),
+    }
+  })
+}
+
+/** The date of the first unwalked day that carries one, or undefined. */
+function firstDatedAhead(plan: HikePlan): string | undefined {
+  return plan.days.slice(walkedDayCount(plan)).find((day) => day.date !== undefined)?.date
 }

@@ -284,6 +284,16 @@ describe('desktop layout contract', () => {
     // The sheet's ceiling is a fraction of the canvas; a rail has the body's
     // height and scrolls inside it.
     expect(block).toMatch(/max-height:\s*none/)
+
+    // The walked record's review lands in the same slot (App hands either
+    // component to builderPanel above the breakpoint) and sheds the same
+    // sheet frame; the first version styled only the day-hike card, and a
+    // walk recorded as already done sat in the rail as an 85%-tall sheet
+    // with rounded corners and an upward shadow.
+    const walked = declarationsOf('.map-screen__body > .walked-hike')
+    expect(walked).toMatch(/position:\s*relative/)
+    expect(walked).toMatch(/max-height:\s*none/)
+    expect(walked).toMatch(/box-shadow:\s*none/)
   })
 
   it('restates the focus ring on the chrome, where the global ring is invisible', () => {

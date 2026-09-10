@@ -22,6 +22,7 @@
 // the foot: "A walk I've already done", the same builder entered in the past
 // tense (#982), offered in day mode where that builder is.
 
+import { useMemo } from 'react'
 import { StepRail } from '../chrome/StepRail'
 import { HikeFinderIcon } from '../chrome/HikeFinderIcon'
 import { SuggestedHikeCard } from '../chrome/SuggestedHikeCard'
@@ -29,11 +30,11 @@ import { HIKER_MODE_LABELS, type HikerMode } from '../lib/hikerMode'
 import type { TrailNetworkState } from '../lib/trailGraphData'
 import { canRetryTrailNetwork, trailNetworkRefusal } from '../lib/trailNetworkText'
 import {
+  shelfPicks,
   timeBucketLabel,
   type HikeFacets,
   type SuggestedHike,
 } from '../lib/suggestedHikes'
-import { shelfPicks } from '../lib/suggestedHikes'
 import type { LonLat } from '../lib/trailGraph'
 import type { UnitSystem } from '../lib/units'
 import type { PaceProfile } from '../lib/pace'
@@ -96,7 +97,9 @@ export function PlanStart({
 }: PlanStartProps) {
   const planMode: 'day' | 'long' = mode === 'long' ? 'long' : 'day'
   const dayRefused = planMode === 'day' && network.kind !== 'ready'
-  const picks = shelfPicks(hikes, near)
+  // Memoised for Today.tsx's reason: this screen re-renders on every fix
+  // and clock tick, and the picks change only when the routes or the fix do.
+  const picks = useMemo(() => shelfPicks(hikes, near), [hikes, near])
 
   return (
     <div className="plan-start">
@@ -107,6 +110,9 @@ export function PlanStart({
           ? {}
           : {
               reached,
+              // The rail never calls back with its own step (StepRail.tsx);
+              // the guard is the type's - this screen's `onStep` takes the
+              // steps ahead of it, and the rail's takes any.
               onStep: (step) => {
                 if (step !== 1) onStep(step)
               },

@@ -448,7 +448,7 @@ export function Onboarding({
               settled={placesSettled}
               online={online}
               units={units}
-              picked={place === null ? null : snapshotPlace(place)}
+              picked={place}
               onPick={setPlace}
               label="Where do you hike"
             />

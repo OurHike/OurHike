@@ -32,17 +32,6 @@ const SRC = resolve(process.cwd(), 'src')
 const ROOT = join(SRC, 'main.tsx')
 const SCREEN_DIRS = ['screens', 'chrome', 'reporting'] as const
 
-/**
- * Modules built before their door, by the phase of #1373 that mounts each.
- *
- * Empty since F12 mounted the last two - the closure tap sheet (WIREFRAMES.md
- * §7) on the tape and the serious-warning sheet (§8) on the pin, both built
- * by #232 and left for a tap that took a year to arrive. The map stays so a
- * screen built ahead of its door has somewhere to be declared rather than
- * somewhere to hide.
- */
-const NOT_YET_MOUNTED: Readonly<Record<string, string>> = {}
-
 const IMPORT_SPECIFIERS = [
   // import x from './y' · import { x } from './y' · export { x } from './y'
   /(?:import|export)\s[^'"]*?\sfrom\s+['"]([^'"]+)['"]/g,
@@ -123,28 +112,14 @@ describe('every screen has a home', () => {
     expect(reached.has(join(SRC, 'screens/Plan.tsx'))).toBe(true)
   })
 
-  it('reaches every screen module from main.tsx, except the ones built ahead of their door', () => {
-    const orphans = unreached.filter((module) => !(module in NOT_YET_MOUNTED))
-
+  it('reaches every screen module from main.tsx', () => {
+    // A module built ahead of its door - F12's two sheets were, for a year
+    // - belongs in a ledger here with the phase that will mount it, and the
+    // ledger was retired the day it emptied: a screen with no door is a
+    // defect this test names, not a state it keeps a shelf for.
     expect(
-      orphans,
-      'A screen module nothing imports is code shipped to nobody. Give it a ' +
-        'door, or list it in NOT_YET_MOUNTED with the phase that will.',
+      unreached,
+      'A screen module nothing imports is code shipped to nobody. Give it a door.',
     ).toEqual([])
-  })
-
-  it('keeps the not-yet-mounted ledger honest: every entry is still unreached', () => {
-    const stale = Object.keys(NOT_YET_MOUNTED).filter((module) =>
-      reached.has(join(SRC, module)),
-    )
-
-    expect(
-      stale,
-      'These are mounted now. Delete their rows so the ledger says what is ' +
-        'still waiting on a door.',
-    ).toEqual([])
-    for (const module of Object.keys(NOT_YET_MOUNTED)) {
-      expect(existsSync(join(SRC, module)), `${module} is listed but gone`).toBe(true)
-    }
   })
 })

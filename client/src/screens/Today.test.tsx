@@ -1,7 +1,13 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Today, type LongHikeToday, type TodayProps } from './Today'
+import { preloadScreens } from './deferred'
+
+// The on-trail conditions rows mount a deferred section (screens/deferred.ts's
+// FieldNoteSection), loaded here once so it renders synchronously, the way
+// the App harness loads every deferred screen before a test.
+beforeAll(() => preloadScreens())
 import { STANDARD_PACE } from '../lib/pace'
 
 // The Today screen's honesty contract, asserted where it renders: the mode

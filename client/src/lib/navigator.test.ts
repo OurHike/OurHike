@@ -28,12 +28,38 @@ describe('applyMove', () => {
     expect(topScreen(HOME)).toBeNull()
   })
 
-  it('pushing a screen selects the tab it lives under', () => {
+  it('pushing a screen selects the tab it lives under, remembering the one it left', () => {
     const state = at(HOME, { to: 'push', screen: VOLUNTEER })
 
     expect(state.tab).toBe('more')
-    expect(topScreen(state)).toEqual(VOLUNTEER)
+    expect(topScreen(state)).toEqual({ ...VOLUNTEER, from: 'today' })
     expect(state.stacks.today).toEqual([])
+
+    // Pushed from its own tab, a screen has no origin to return to.
+    const own = at(HOME, { to: 'tab', tab: 'more' }, { to: 'push', screen: VOLUNTEER })
+    expect(topScreen(own)).toEqual(VOLUNTEER)
+  })
+
+  it('back from a screen pushed across tabs returns to the tab it left', () => {
+    const away = at(HOME, { to: 'push', screen: FIND }, { to: 'push', screen: VOLUNTEER })
+    expect(away.tab).toBe('more')
+
+    const back = applyMove(away, { to: 'back' })
+    expect(back.tab).toBe('today')
+    expect(back.stacks.more).toEqual([])
+    expect(topScreen(back)).toEqual(FIND)
+
+    // A replace on that page keeps the origin, so Back still goes home.
+    const you: Screen = { kind: 'more', page: 'you' }
+    const swapped = at(away, { to: 'replace', screen: you })
+    expect(applyMove(swapped, { to: 'back' }).tab).toBe('today')
+
+    // The spine's step 1, opened from Today's pinned bar, belongs to Plan:
+    // Back from it lands in Plan's room, not back on Today.
+    const step: Screen = { kind: 'step', step: 1 }
+    const onStep = at(HOME, { to: 'push', screen: step })
+    expect(topScreen(onStep)).toEqual(step)
+    expect(applyMove(onStep, { to: 'back' }).tab).toBe('plan')
   })
 
   it('a tab selection returns Today to the journal (#1284) and keeps More’s page (#1054)', () => {
@@ -47,7 +73,7 @@ describe('applyMove', () => {
 
     expect(state.tab).toBe('map')
     expect(state.stacks.today).toEqual([])
-    expect(state.stacks.more).toEqual([VOLUNTEER])
+    expect(state.stacks.more).toEqual([{ ...VOLUNTEER, from: 'today' }])
   })
 
   it('re-selecting Today from its finder is the same courtesy', () => {
@@ -76,7 +102,7 @@ describe('applyMove', () => {
     )
 
     expect(state.stacks.today).toEqual([])
-    expect(state.stacks.more).toEqual([VOLUNTEER])
+    expect(state.stacks.more).toEqual([{ ...VOLUNTEER, from: 'today' }])
   })
 
   it('replace swaps the top screen, or pushes when there is none', () => {
@@ -86,7 +112,8 @@ describe('applyMove', () => {
       { to: 'push', screen: VOLUNTEER },
       { to: 'replace', screen: you },
     )
-    expect(swapped.stacks.more).toEqual([you])
+    // The origin the replaced page carried is the replacement's too.
+    expect(swapped.stacks.more).toEqual([{ ...you, from: 'today' }])
 
     const pushed = at(HOME, { to: 'replace', screen: you })
     expect(pushed.stacks.more).toEqual([you])

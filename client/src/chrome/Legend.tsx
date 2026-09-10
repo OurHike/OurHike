@@ -1,4 +1,3 @@
-import { useState } from 'react'
 // The legend bottom sheet (WIREFRAMES.md §2).
 //
 // It answers "what am I looking at right now," so its COUNTS are derived from
@@ -116,6 +115,8 @@ import { useState } from 'react'
 // One row per category, never one per category per confidence: the reasoning
 // is on lib/legendContents.ts's LegendRow, and the consequence here is that
 // the pin drawn is the solid-rimmed one.
+
+import { useState } from 'react'
 
 import {
   computeLegendContents,

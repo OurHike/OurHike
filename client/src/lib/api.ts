@@ -245,11 +245,14 @@ export interface ReportSummary {
   /** ISO 8601, UTC-designated - the server stamps the `Z` on the way out. */
   timestamp: string
   /**
-   * When a moderator confirmed it, or null (#1373, F12). The wire has sent
-   * it since PR #647 and the bake carries it (export_conditions.py); the
-   * serious-warning sheet prints it as "Confirmed by club moderators · date".
-   * Optional as well as nullable for the reason `ClosureSummary`'s geometry
-   * gives: a baseline baked before the field existed omits the key.
+   * When a moderator confirmed it, or null (#1373, F12). The live wire has
+   * sent it since PR #647; the published baseline does NOT carry it -
+   * pipeline/export_conditions.py's PUBLIC_REPORTS_SQL selects no
+   * `verified_at` (read 2026-09-10), so every report read offline arrives
+   * without one, and the serious-warning sheet says so rather than printing
+   * a bare confirmation. Baking the field is the pipeline's change to make,
+   * not this file's claim to have made. Optional as well as nullable for the
+   * reason `ClosureSummary`'s geometry gives: a document without the key.
    */
   verified_at?: string | null
 }

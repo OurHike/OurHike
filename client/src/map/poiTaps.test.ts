@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
+import { CLOSURE_ID_PROPERTY } from './closureLayers'
+import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
@@ -109,6 +111,36 @@ describe('tapping a pin', () => {
     map.layerIds.push(WARNING_LAYER_ID)
     map.renderedFeatures.set(WARNING_LAYER_ID, [
       { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('does not yield to either mark while a builder owns the tap', () => {
+    // MapView attaches neither mark's handler during a build, so a stop pin
+    // beside a warning pin must still be the stop - otherwise the tap fell
+    // through to a dropped route point.
+    const map = buildMap()
+    map.layerIds.push(WARNING_LAYER_ID)
+    map.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
+
+    expect(
+      poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 }, { yieldToMarks: false }),
+    ).toBe('atc_shelters:abc')
+  })
+
+  it('yields to the closure tape too, so one touch has one interpreter (#1374 review)', () => {
+    // closureLayers.ts states the order: warning, tape, pin, band, line.
+    // A shelter pin on closed trail is a tap on the closure; the card is a
+    // second tap away, and the two never open together.
+    const map = buildMap()
+    map.layerIds.push(CLOSURE_LAYER_ID)
+    map.renderedFeatures.set(CLOSURE_LAYER_ID, [
+      { properties: { [CLOSURE_ID_PROPERTY]: 'c1' } },
     ])
     map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
 

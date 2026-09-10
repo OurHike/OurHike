@@ -40,9 +40,14 @@ export interface SeriousWarning {
   /** Where the pin was drawn, on the centerline - or null for a report the
    *  download could not place, which then prints no mile line (D13). */
   mile: number | null
-  /** When a moderator confirmed it (`verified_at`), or null where the wire
-   *  carries no date: the badge still says who stood behind the claim, and
-   *  says nothing about when rather than a date nobody stamped. */
+  /** When a moderator confirmed it (`verified_at`), or null where this
+   *  phone's copy carries no date - which is every copy read from the
+   *  published baseline, since export_conditions.py does not bake the
+   *  field (lib/api.ts). The badge still says who stood behind the claim,
+   *  and says that the date is missing rather than inventing one or
+   *  falling silent about it: a hiker weighing a claim about a person is
+   *  entitled to know when somebody last stood behind it, and "the download
+   *  does not say" is the honest answer here. */
   confirmedAt: Date | null
 }
 
@@ -64,7 +69,7 @@ export function SeriousWarningSheet({ warning, onClose }: SeriousWarningSheetPro
 
       <p className="warning-sheet__badge">
         {warning.confirmedAt === null
-          ? 'Confirmed by club moderators'
+          ? 'Confirmed by club moderators · date not on this download'
           : `Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
               'en-US',
               {

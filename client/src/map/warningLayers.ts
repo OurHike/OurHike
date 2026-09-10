@@ -40,6 +40,7 @@ import type {
   MapMouseEvent,
   PointLike,
 } from 'maplibre-gl'
+import { WARNING_PIN } from '../lib/seriousWarnings'
 import { POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { buildWarningIcon, WARNING_ICON_ID } from './warningPin'
@@ -109,10 +110,10 @@ export function buildWarningLayer(
   }
 }
 
-/** Registers the warning pin image on a live map, and returns a detach. */
-/** The pin's own hit box: the pin is 44px on the map (lib/seriousWarnings.ts's
- *  size ceiling) and is hit like every other 44px control. */
-const WARNING_TAP_SLOP_PX = 22
+/** The pin's own hit box: half the pin, read from the size the pin is
+ *  actually drawn at rather than written down beside it - the literal is
+ *  how lib/seriousWarnings.ts's own note says a size went stale before. */
+const WARNING_TAP_SLOP_PX = WARNING_PIN.sizePx / 2
 
 export function warningTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
   return [

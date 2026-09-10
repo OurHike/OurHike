@@ -45,7 +45,6 @@ export interface SentReportRow {
   id: string
   type: ReportTypeId
   place: string
-  authoredAt: string
   sentAt: string
   /** The live list's word for it, or null where the list has not been
    *  read or does not carry this id. */

@@ -1342,6 +1342,22 @@
     border-radius: 0;
     box-shadow: none;
   }
+
+  /* The same slot holds the walked record's review when the walk being
+     recorded is one already done (`recorded: 'walked'` hands the review to
+     WalkedHike rather than DayHikeCard) - the same sheet frame, shed the
+     same way. Written twice rather than as one grouped selector so the
+     layout test can read each block on its own. */
+  .map-screen__body > .walked-hike {
+    position: relative;
+    inset: auto;
+    flex: 0 0 21.75rem;
+    max-height: none;
+    padding: 1rem 1.25rem 1.1rem;
+    border-radius: 0;
+    box-shadow: none;
+    border-right: 1px solid var(--border-1);
+  }
 }
 
 /* Focus rings, everywhere, with no media query around them.

@@ -18,7 +18,7 @@
 // skip, and set it in More → You. The field never blocks the flow it sits
 // in.
 
-import { useId, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { HikeFinderIcon } from './HikeFinderIcon'
 import {
   placeKindLabel,
@@ -67,7 +67,10 @@ export function placeMeta(place: Place, units: UnitSystem, measured: boolean): s
   ) {
     return `${kind} · ${place.within}`
   }
-  if (place.trailMiles !== undefined) {
+  // Both flags: a residual per-row figure in a document that says it did
+  // not measure is not a measurement, whatever the exporter promises to
+  // clear (lib/places.ts's header) - the display checks its own source.
+  if (measured && place.trailMiles !== undefined) {
     const miles = formatDistance(place.trailMiles, units, 'whole')
     return place.kind === 'trail'
       ? `${kind} · ${miles}`
@@ -89,7 +92,10 @@ export function PlaceField({
 }: PlaceFieldProps) {
   const [query, setQuery] = useState('')
   const listId = useId()
-  const matches = searchPlaces(places.places, query)
+  const matches = useMemo(
+    () => searchPlaces(places.places, query),
+    [places.places, query],
+  )
   const nothingToSearch = places.places.length === 0
 
   let empty: string | null = null

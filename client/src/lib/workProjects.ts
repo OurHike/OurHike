@@ -78,11 +78,6 @@ function utcDay(value: string): number {
 }
 
 /**
- * The rows worth showing: upcoming, not yet over, and starting inside the
- * window. An event already running counts - a crew mid-weekend still takes
- * a walk-up pair of hands - which is why the near bound tests `ends_on`.
- */
-/**
  * The day windows the map's workday list offers (#1373, frame 14d): the
  * tab's own fortnight, the coming weekend, and a month. Three rather than a
  * date picker, because a crew is planned around a weekend or not at all,
@@ -123,6 +118,11 @@ export function workdayWindowSpan(
   return { from: now.getTime(), to: now.getTime() + days * DAY_MS }
 }
 
+/**
+ * The rows worth showing: upcoming, not yet over, and starting inside the
+ * window. An event already running counts - a crew mid-weekend still takes
+ * a walk-up pair of hands - which is why the near bound tests `ends_on`.
+ */
 export function upcomingWorkProjects(
   projects: readonly WorkProjectSummary[],
   now: Date,
@@ -205,6 +205,21 @@ export function sortWorkProjects(
     if (b.mile === null) return -1
     return Math.abs(a.mile - gpsMile) - Math.abs(b.mile - gpsMile) || soonest(a, b)
   })
+}
+
+/**
+ * "8.4 trail mi away": the distance from the hiker's own mile to the
+ * workday's, as the Volunteer tab, the pin's sheet and the map's In view
+ * list all print it - one string, so the three cannot drift.
+ *
+ * Trail miles rather than lib/units.ts: this is a difference of two mile
+ * markers on the pipeline's axis, which the repo prints as markers
+ * (lib/planDisplay.ts's rule), not a measured length a hiker would want in
+ * kilometres. Whether a metric hiker is served by that is an open question
+ * the three surfaces inherited together (#1374 review).
+ */
+export function workdayAwayLine(awayMi: number): string {
+  return `${awayMi.toLocaleString('en-US', { maximumFractionDigits: 1 })} trail mi away`
 }
 
 /** "Sep 12" or "Sep 12–13", in UTC for publishedConditions.ts's reason: a

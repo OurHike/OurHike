@@ -134,6 +134,16 @@ describe('the phone’s mode read-out', () => {
       within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('radiogroup'),
     ).toBeNull()
 
+    // The Map tab's bar too - it is the one screen with its own bar mount
+    // (MapScreen), and the first version left the read-out off it.
+    await user.click(screen.getByRole('tab', { name: 'Map' }))
+    await screen.findByRole('region', { name: /trail map/i })
+    expect(
+      within(screen.getByRole('navigation', { name: 'Main' })).getByRole('button', {
+        name: /Today I.m day hike\. Switch mode/i,
+      }),
+    ).toBeInTheDocument()
+
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await screen.findByRole('heading', { name: 'More' })
     // Queried again: each tab's screen mounts its own bar, and a button held

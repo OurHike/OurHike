@@ -10,104 +10,119 @@
 // itself. Everything a hiker reaches by a tap on another tab or by starting
 // a flow is here.
 
-import { deferredScreen } from '../lib/deferredScreen'
+import { deferredScreen, type DeferredScreen } from '../lib/deferredScreen'
+import type { ComponentType } from 'react'
 
-export const MapScreen = deferredScreen(
+/**
+ * Every screen declared below, in declaration order, for `preloadScreens`.
+ * Filled by `screen()` as each is declared rather than listed by hand: the
+ * hand list forgot two (#1374 review), and the only symptom was that those
+ * screens rendered asynchronously under test where every other one did not.
+ */
+const registry: Array<{ preload(): Promise<void> }> = []
+
+function screen<P extends object>(
+  load: () => Promise<ComponentType<P>>,
+  name: string,
+): DeferredScreen<P> {
+  const declared = deferredScreen(load, name)
+  registry.push(declared)
+  return declared
+}
+
+export const MapScreen = screen(
   () => import('../chrome/MapScreen').then((m) => m.MapScreen),
   'MapScreen',
 )
-export const PlanScreen = deferredScreen(
-  () => import('./Plan').then((m) => m.PlanScreen),
-  'Plan',
-)
-export const More = deferredScreen(() => import('./More').then((m) => m.More), 'More')
-export const Moderation = deferredScreen(
+export const PlanScreen = screen(() => import('./Plan').then((m) => m.PlanScreen), 'Plan')
+export const More = screen(() => import('./More').then((m) => m.More), 'More')
+export const Moderation = screen(
   () => import('./Moderation').then((m) => m.Moderation),
   'Moderation',
 )
-export const Registry = deferredScreen(
+export const Registry = screen(
   () => import('./Registry').then((m) => m.Registry),
   'Registry',
 )
-export const Downloads = deferredScreen(
+export const Downloads = screen(
   () => import('./Downloads').then((m) => m.Downloads),
   'Downloads',
 )
-export const DownloadsDialog = deferredScreen(
+export const DownloadsDialog = screen(
   () => import('./DownloadsDialog').then((m) => m.DownloadsDialog),
   'DownloadsDialog',
 )
-export const InstallPrompt = deferredScreen(
+export const InstallPrompt = screen(
   () => import('./InstallPrompt').then((m) => m.InstallPrompt),
   'InstallPrompt',
 )
-export const ClosureForm = deferredScreen(
+export const ClosureForm = screen(
   () => import('./ClosureForm').then((m) => m.ClosureForm),
   'ClosureForm',
 )
-export const ReportForm = deferredScreen(
+export const ReportForm = screen(
   () => import('./ReportForm').then((m) => m.ReportForm),
   'ReportForm',
 )
-export const GroupScreen = deferredScreen(
+export const GroupScreen = screen(
   () => import('./GroupScreen').then((m) => m.GroupScreen),
   'GroupScreen',
 )
-export const TripList = deferredScreen(
+export const TripList = screen(
   () => import('./TripList').then((m) => m.TripList),
   'TripList',
 )
-export const WalkedHike = deferredScreen(
+export const WalkedHike = screen(
   () => import('./WalkedHike').then((m) => m.WalkedHike),
   'WalkedHike',
 )
-export const PlanTargetSheet = deferredScreen(
+export const PlanTargetSheet = screen(
   () => import('./PlanTargetSheet').then((m) => m.PlanTargetSheet),
   'PlanTargetSheet',
 )
-export const IdentitySetup = deferredScreen(
+export const IdentitySetup = screen(
   () => import('./IdentitySetup').then((m) => m.IdentitySetup),
   'IdentitySetup',
 )
-export const SignInPrompt = deferredScreen(
+export const SignInPrompt = screen(
   () => import('./SignInPrompt').then((m) => m.SignInPrompt),
   'SignInPrompt',
 )
-export const EmailSignIn = deferredScreen(
+export const EmailSignIn = screen(
   () => import('./EmailSignIn').then((m) => m.EmailSignIn),
   'EmailSignIn',
 )
-export const AppFailureReport = deferredScreen(
+export const AppFailureReport = screen(
   () => import('./AppFailureReport').then((m) => m.AppFailureReport),
   'AppFailureReport',
 )
-export const Volunteer = deferredScreen(
+export const Volunteer = screen(
   () => import('./Volunteer').then((m) => m.Volunteer),
   'Volunteer',
 )
-export const VolunteerHours = deferredScreen(
+export const VolunteerHours = screen(
   () => import('./VolunteerHours').then((m) => m.VolunteerHours),
   'VolunteerHours',
 )
-export const VolunteerImpact = deferredScreen(
+export const VolunteerImpact = screen(
   () => import('./VolunteerImpact').then((m) => m.VolunteerImpact),
   'VolunteerImpact',
 )
-export const FindHike = deferredScreen(
+export const FindHike = screen(
   () => import('./FindHike').then((m) => m.FindHike),
   'FindHike',
 )
-export const HikeDetail = deferredScreen(
+export const HikeDetail = screen(
   () => import('./HikeDetail').then((m) => m.HikeDetail),
   'HikeDetail',
 )
-export const HikePicker = deferredScreen(
+export const HikePicker = screen(
   () => import('./HikePicker').then((m) => m.HikePicker),
   'HikePicker',
 )
 // Step 1 of the planning spine (#1373): reached by a tap on Plan, or the
 // pinned bar - never on the first frame.
-export const PlanStart = deferredScreen(
+export const PlanStart = screen(
   () => import('./PlanStart').then((m) => m.PlanStart),
   'PlanStart',
 )
@@ -118,67 +133,40 @@ export const PlanStart = deferredScreen(
 // module's stated rule rather than being an exception to it. The three
 // SHEETS stay eager: they are shell-composed overlays, and one of them opens
 // from the mode switch that is on the first frame itself.
-export const HikeSetup = deferredScreen(
+export const HikeSetup = screen(
   () => import('./HikeSetup').then((m) => m.HikeSetup),
   'HikeSetup',
 )
-export const HikeDay = deferredScreen(
-  () => import('./HikeDay').then((m) => m.HikeDay),
-  'HikeDay',
-)
-export const HikeFinish = deferredScreen(
+export const HikeDay = screen(() => import('./HikeDay').then((m) => m.HikeDay), 'HikeDay')
+export const HikeFinish = screen(
   () => import('./HikeFinish').then((m) => m.HikeFinish),
   'HikeFinish',
 )
-export const YourReports = deferredScreen(
+// The on-trail conditions peek Today mounts per stop (#1373, frame 2d) is
+// the waypoint card's own section, and the card lives in the map's chunk.
+// Imported statically from Today it rode into the eager bundle with its
+// note roll-up, photo and dispute readers behind it - measured 2026-09-10
+// at 254,104 of the 256,000-byte budget with it eager (#1374 review).
+export const FieldNoteSection = screen(
+  () => import('../chrome/FieldNoteSection').then((m) => m.FieldNoteSection),
+  'FieldNoteSection',
+)
+export const YourReports = screen(
   () => import('./YourReports').then((m) => m.YourReports),
   'YourReports',
 )
-export const YourWork = deferredScreen(
+export const YourWork = screen(
   () => import('./YourWork').then((m) => m.YourWork),
   'YourWork',
 )
-export const FinishedHike = deferredScreen(
+export const FinishedHike = screen(
   () => import('./FinishedHike').then((m) => m.FinishedHike),
   'FinishedHike',
 )
-export const ShareHike = deferredScreen(
+export const ShareHike = screen(
   () => import('./ShareHike').then((m) => m.ShareHike),
   'ShareHike',
 )
-
-const ALL = [
-  MapScreen,
-  PlanScreen,
-  More,
-  Moderation,
-  Registry,
-  Downloads,
-  DownloadsDialog,
-  InstallPrompt,
-  ClosureForm,
-  ReportForm,
-  GroupScreen,
-  TripList,
-  WalkedHike,
-  PlanTargetSheet,
-  IdentitySetup,
-  SignInPrompt,
-  EmailSignIn,
-  AppFailureReport,
-  Volunteer,
-  VolunteerHours,
-  VolunteerImpact,
-  FindHike,
-  HikeDetail,
-  HikePicker,
-  PlanStart,
-  HikeSetup,
-  HikeDay,
-  HikeFinish,
-  FinishedHike,
-  ShareHike,
-]
 
 /**
  * Every deferred screen's module, ahead of any tap.
@@ -191,5 +179,5 @@ const ALL = [
  * out at once.
  */
 export async function preloadScreens(): Promise<void> {
-  await Promise.all(ALL.map((screen) => screen.preload()))
+  await Promise.all(registry.map((declared) => declared.preload()))
 }

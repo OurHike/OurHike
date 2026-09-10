@@ -22,6 +22,7 @@ import type {
 } from 'maplibre-gl'
 import type { Closure } from '../lib/closureBanner'
 import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { warningIdAt } from './warningLayers'
 import { isBroadAdvisory } from '../lib/closureSpan'
 import { trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
@@ -157,14 +158,22 @@ export function closureIdAt(
  *
  * Only hits report, like the ATC band's handler and unlike the POI's: the
  * closure sheet is dismissed by its own close, and a tap on bare map is
- * left to the handlers that own bare map. The one-interpreter rule holds
- * because lineTaps.ts yields to this layer, as it yields to the ATC bands.
+ * left to the handlers that own bare map.
+ *
+ * ONE TOUCH, ONE INTERPRETER, in one order: the warning pin, then this
+ * tape, then a waypoint pin, then an ATC band, then a line. Each handler
+ * asks the layers above it and reports nothing where they win - this one
+ * yields to the warning pin, poiTaps.ts yields to both, lineTaps.ts to all
+ * three. The first version had each safety mark report every hit, so a
+ * warning pin on closed trail opened two sheets on one touch, and which
+ * landed on top was the order two effects happened to be declared in.
  */
 export function attachClosureTaps(
   map: MapLibreMap,
   onSelect: (closureId: string) => void,
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
+    if (warningIdAt(map, event.point) !== null) return
     const id = closureIdAt(map, event.point)
     if (id !== null) onSelect(id)
   }

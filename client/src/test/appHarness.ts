@@ -28,6 +28,7 @@ import { PREFERENCES_KEY } from '../lib/preferences'
 import { forgetLaunchMirror, writeLaunchMirror } from '../lib/launchMirror'
 import { preloadScreens } from '../screens/deferred'
 import { DEFAULT_HIKER_MODE } from '../lib/hikerMode'
+import { DESKTOP_MEDIA_QUERY } from '../lib/useDesktop'
 import { DEFAULT_PREFERENCES } from '../lib/userPreferences'
 import { POIS_KEY, TRAILS_BLOB_KEY } from '../lib/trailData'
 
@@ -129,6 +130,26 @@ export interface AppHarness {
  * file, so the day the navigation changes again there is one place that
  * knows how a test gets to the map.
  */
+/**
+ * A `matchMedia` that answers yes to the desktop breakpoint and no to
+ * everything else - matched on the query rather than answering true to all
+ * of them, because the shell asks matchMedia other questions too
+ * (standalone, fine pointer). Reads the breakpoint from lib/useDesktop.ts,
+ * so a moved breakpoint moves every desktop test with it rather than
+ * leaving seven copies of "900px" quietly asserting a phone.
+ */
+export function stubDesktop(): void {
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn((query: string) => ({
+      matches: query.includes(DESKTOP_MEDIA_QUERY),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })),
+  )
+}
+
 export async function openMapTab(): Promise<void> {
   fireEvent.click(await screen.findByRole('tab', { name: 'Map' }))
 }

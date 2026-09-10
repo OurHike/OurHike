@@ -193,7 +193,9 @@ export interface PlanScreenProps {
    * every choice on it. Acknowledged through `onCallTodayShown` so the ask
    * fires once.
    */
-  callToday?: boolean
+  /** The index of the day to open the call sheet on, when the shell asks
+   *  (frame 7c); null when it does not. */
+  callToday?: number | null
   onCallTodayShown?: () => void
   onDeletePlan: () => void
   /** The open trip's name, or null when nothing is open (#787). */
@@ -287,7 +289,7 @@ export function PlanScreen({
   onToggleEndResupply,
   onReplacePlan,
   onDeletePlan,
-  callToday = false,
+  callToday = null,
   onCallTodayShown,
   tripName,
   openTripId,
@@ -331,13 +333,14 @@ export function PlanScreen({
   // the current day. An effect because the request arrives as a prop from
   // the shell and the sheet is this screen's own state.
   useEffect(() => {
-    if (!callToday || plan === null) return
-    const today = currentDayIndex(plan)
+    if (callToday === null || plan === null) return
     onCallTodayShown?.()
-    if (today === null) return
+    // The shell names the day, on the trip it opened for this; a day the
+    // plan no longer has (edited underneath the request) is not called.
+    if (callToday < 0 || callToday >= plan.days.length) return
     setAtHome(false)
     setSelectedDay(null)
-    setCalling(today)
+    setCalling(callToday)
   }, [callToday, plan, onCallTodayShown])
   /** The walked day whose summary is open (#966), or null. Its own state
    *  rather than a mode on `selectedDay`, because the two are opened by
@@ -1904,6 +1907,16 @@ interface CascadeSheetProps {
  * miles could answer once enough recorded trips exist to read it off.
  */
 export const SLOWER_BY = { miles: 2, walkingHours: 1 } as const
+/**
+ * The floor "Slow the target from here" stops at, in each unit.
+ *
+ * @unvalidated. Five miles and three hours are picked as the least a day
+ * on a long hike can honestly be called a walking day rather than a zero,
+ * which the cascade offers separately; nothing measured it. What would
+ * settle it: the shortest days recorded trips actually log as walked
+ * (lib/dayReach.ts), read for where "a short day" ends and "a zero with a
+ * stroll" begins.
+ */
 const SLOWEST = { miles: 5, walkingHours: 3 } as const
 
 /** One move the cascade offers, with the plan it would make. */
@@ -1990,12 +2003,10 @@ function CascadeSheet({
     })
   }
   if (slower !== null && target !== null) {
-    const was =
-      targetUnit === 'miles' ? formatDistance(target, units, 'trimmed') : `${target} h`
-    const now =
-      targetUnit === 'miles'
-        ? formatDistance(slower.target, units, 'trimmed')
-        : `${slower.target} h`
+    const inTarget = (value: number) =>
+      targetUnit === 'miles' ? formatDistance(value, units, 'trimmed') : `${value} h`
+    const was = inTarget(target)
+    const now = inTarget(slower.target)
     moves.push({
       key: 'slow',
       name: 'Slow the target from here',
@@ -2011,7 +2022,7 @@ function CascadeSheet({
         <p className="plan__actions-title">{chosen.name}</p>
         <p className="plan__actions-note">What this moves</p>
         <ol className="plan__diff">
-          {diff.rows.map(({ day, state, wasDate, wasDistanceMi }) => (
+          {diff.rows.map(({ day, state, wasDate, wasDistanceMi, wasEnd }) => (
             <li key={day.id}>
               <SharedDayRow
                 label={day.dayNumber === null ? 'Zero' : `D${day.dayNumber}`}
@@ -2030,12 +2041,15 @@ function CascadeSheet({
                 units={units}
                 state={state === 'kept' ? (day.zero ? 'zero' : 'planned') : state}
                 note={[
-                  wasDate !== null && day.date !== null
-                    ? `was ${dayDateLabel(wasDate)} · now ${dayDateLabel(day.date)}`
+                  wasDate !== null
+                    ? day.date !== null
+                      ? `was ${dayDateLabel(wasDate)} · now ${dayDateLabel(day.date)}`
+                      : `was ${dayDateLabel(wasDate)} · now undated`
                     : null,
                   wasDistanceMi !== null
                     ? `was ${formatDistance(wasDistanceMi, units)}`
                     : null,
+                  wasEnd !== null ? `was → ${stopLabel(wasEnd)}` : null,
                   state === 'new' && day.date !== null
                     ? `new day · ${dayDateLabel(day.date)}`
                     : null,

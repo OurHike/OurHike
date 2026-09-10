@@ -282,6 +282,17 @@ describe('MapScreen', () => {
             confidence: 'high',
             name: 'A spring',
           },
+          // Outside the viewport (PROPS.bbox spans 39–40°N), so neither the
+          // count nor the list holds it: the first version listed every
+          // waypoint on the phone under "In view".
+          {
+            id: 'w2',
+            type: 'shelter',
+            lat: 41.2,
+            lon: -74.1,
+            confidence: 'high',
+            name: 'A far shelter',
+          },
         ]}
       />,
     )
@@ -292,10 +303,34 @@ describe('MapScreen', () => {
     expect(
       within(sheet).getByRole('heading', { name: 'In view · 1 of 23' }),
     ).toBeInTheDocument()
+    expect(within(sheet).queryByText(/A far shelter/)).toBeNull()
 
     await user.click(within(sheet).getByRole('button', { name: /A spring/ }))
     expect(onSelectPoi).toHaveBeenCalledWith('w1')
     expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+  })
+
+  it('closes In view when the legend opens, and does not bring it back when the legend closes', async () => {
+    // One sheet in the lower third, in both directions (#1374 review): the
+    // first version hid In view behind an open legend and showed it again,
+    // unasked, when the legend closed.
+    const user = userEvent.setup()
+    const { rerender } = render(<MapScreen {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    expect(screen.getByRole('dialog', { name: 'In view' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+    expect(PROPS.onOpenLegend).toHaveBeenCalled()
+    rerender(<MapScreen {...PROPS} legendOpen />)
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+
+    rerender(<MapScreen {...PROPS} legendOpen={false} />)
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+
+    // And the other way: opening In view asks the shell to close the legend.
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    expect(PROPS.onCloseLegend).toHaveBeenCalled()
   })
 
   it('lists a workday inside the viewport under In view, and not one outside it (#1373, frame 14d)', async () => {

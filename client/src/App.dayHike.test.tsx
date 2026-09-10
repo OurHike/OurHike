@@ -28,7 +28,7 @@ import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
 import { CAMERA_MEMORY_KEY } from './lib/cameraMemory'
 import { TRIPS_KEY } from './lib/trips'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
-import { appHarness, latOfMile, openMapTab } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab, stubDesktop } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -904,15 +904,7 @@ describe('the day-hike builder, end to end', () => {
     // Matched on the query rather than answering true to everything, for
     // App.test.tsx's reason: this shell also asks matchMedia whether it is
     // standalone and whether the pointer is fine.
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) => ({
-        matches: query.includes('min-width: 900px'),
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      })),
-    )
+    stubDesktop()
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData()
@@ -1254,15 +1246,7 @@ describe('step 3 on a desktop', () => {
     // first child of the map body - the rail step 2 wore - and the map
     // beside it shows the route the card describes. Matched on the query,
     // for the reason the journal-column case above gives.
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) => ({
-        matches: query.includes('min-width: 900px'),
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      })),
-    )
+    stubDesktop()
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData()

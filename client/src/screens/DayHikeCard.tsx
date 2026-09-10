@@ -57,6 +57,7 @@
 // comment is a display outrunning its source.
 
 import { useState } from 'react'
+import { useDraftField } from '../lib/useDraftField'
 
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import { distinctLegSources, type DayHike } from '../lib/dayHikes'
@@ -107,6 +108,16 @@ export interface DayHikeCardProps {
   /** review: Done pressed, nothing stored yet - Save is the primary action.
    *  saved: opened from the Plan tab, where delete lives. */
   mode: 'review' | 'saved'
+  /** Whether Today leads with a walk dated today - true in day mode, where
+   *  Today's order puts the walk first, and false in the other two, where a
+   *  dated day hike sits with the hiker's other hikes further down
+   *  (screens/Today.tsx's `order`). The just-saved line reads it, so a
+   *  long-hiker is not promised a top card Today will not give. */
+  leadsToday?: boolean
+  /** Whether the card is docked beside the map rather than a sheet over it
+   *  (desktop.css's rail, #1373 frame 16b): then it is a region, not a
+   *  dialog - the rule lib/useDesktop.ts states for the persistent legend. */
+  docked?: boolean
   onSave?: () => void
   onClose: () => void
   onDelete?: () => void
@@ -182,6 +193,8 @@ export function DayHikeCard({
   waterOnRoute = [],
   stops = [],
   justSaved = false,
+  leadsToday = true,
+  docked = false,
   today,
 }: DayHikeCardProps) {
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
@@ -192,10 +205,13 @@ export function DayHikeCard({
   // "Leave this with someone" (frame D6) replaces the card in the same
   // sheet frame - one surface continuing, the bar-to-card convention.
   const [leaving, setLeaving] = useState(false)
+  // The name as typed, handed over on blur or Enter (lib/useDraftField.ts).
+  const name = useDraftField(hike.name, (next) => onRename?.(next))
 
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
   const gaps = dayHikeGaps(hike)
+  const stopMinutes = stoppingMinutes(stops)
   // Grouped by stretch where the app can see the seams, flat where it
   // cannot. The live resolution routes each segment separately and keeps
   // them apart; the cache holds one flat list, so it can only be handed over
@@ -277,7 +293,11 @@ export function DayHikeCard({
   const ground = hike.looped ? 'loop' : 'route'
 
   return (
-    <div className="day-hike-card" role="dialog" aria-label={hike.name}>
+    <div
+      className="day-hike-card"
+      role={docked ? 'region' : 'dialog'}
+      aria-label={hike.name}
+    >
       <button type="button" className="route-stops__close" onClick={onClose}>
         <span className="visually-hidden">Close the day hike</span>
         <span aria-hidden="true">×</span>
@@ -312,9 +332,13 @@ export function DayHikeCard({
             <span className="day-hike-card__heading">Name</span>
             <input
               type="text"
-              value={hike.name}
+              value={name.draft}
               maxLength={80}
-              onChange={(event) => onRename(event.target.value)}
+              onChange={(event) => name.setDraft(event.target.value)}
+              onBlur={name.flush}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') name.flush()
+              }}
             />
           </label>
         )}
@@ -434,7 +458,7 @@ export function DayHikeCard({
           <h3 className="day-hike-card__heading">Water on route</h3>
           <ul className="day-hike-card__rows">
             {waterOnRoute.map((water) => (
-              <li key={water.poiId}>
+              <li key={`${water.poiId}:${water.alongMi}`}>
                 <PoiRow
                   kind="water"
                   title={water.name}
@@ -492,9 +516,9 @@ export function DayHikeCard({
               )
             })}
           </ul>
-          {stoppingMinutes(stops) !== null && (
+          {stopMinutes !== null && (
             <p className="day-hike-card__note">
-              Stops add about {stoppingMinutes(stops)} min, on top of the walking.
+              Stops add about {stopMinutes} min, on top of the walking.
             </p>
           )}
         </section>
@@ -639,10 +663,16 @@ export function DayHikeCard({
           {justSaved && (
             <p className="day-hike-card__note" role="status">
               {hike.date === null
-                ? 'Give it a date and it leads Today that day.'
+                ? leadsToday
+                  ? 'Give it a date and it leads Today that day.'
+                  : 'Give it a date and Today lists it that day.'
                 : hike.date === today
-                  ? 'This walk is now the top card on Today.'
-                  : `It leads Today on ${dayLongDateLabel(hike.date)}.`}
+                  ? leadsToday
+                    ? 'This walk is now the top card on Today.'
+                    : 'Today lists it with your other hikes.'
+                  : leadsToday
+                    ? `It leads Today on ${dayLongDateLabel(hike.date)}.`
+                    : `Today lists it on ${dayLongDateLabel(hike.date)}, with your other hikes.`}
             </p>
           )}
           {/* THE DOOR ONTO THE GROUND IS THE PRIMARY (frame 5c, D4's one

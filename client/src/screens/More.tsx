@@ -24,6 +24,7 @@
 // surface those reports serve.
 
 import { useState, type ReactNode } from 'react'
+import type { MorePageAway } from '../lib/navigator'
 import {
   YouSettings,
   AccountSyncSettings,
@@ -67,8 +68,7 @@ export interface StuckReport {
  * (App.tsx) - a deep link this screen could not honour if the page were its
  * own useState.
  */
-export type MorePage =
-  'home' | 'you' | 'map' | 'safety' | 'volunteer' | 'sources' | 'reports' | 'work'
+export type MorePage = 'home' | MorePageAway
 
 export interface MoreProps extends SettingsProps {
   /**

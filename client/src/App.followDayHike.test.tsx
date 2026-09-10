@@ -403,7 +403,9 @@ describe('following a day hike, end to end', () => {
     expect(await screen.findByText(/Waiting for GPS/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
     // And the header still says which mode this is, so the two agree.
-    expect(screen.getByText(/Day hike/)).toBeInTheDocument()
+    // Scoped to the plate: the tab bar under the map carries the mode
+    // read-out too (#1373, R11), and says it in the same words.
+    expect(within(screen.getByRole('banner')).getByText(/Day hike/)).toBeInTheDocument()
   })
 
   it('stops following when a builder opens, rather than covering it', async () => {

@@ -41,6 +41,7 @@
 // finished walk took is the app arguing with them about their afternoon.
 
 import { useState } from 'react'
+import { useDraftField } from '../lib/useDraftField'
 
 import type { ResolvedDayHike } from '../lib/dayHikeCard'
 import { distinctLegSources, MAX_NOTE_CHARS, type DayHike } from '../lib/dayHikes'
@@ -74,6 +75,8 @@ export function WalkedHike({
 }: WalkedHikeProps) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const orgLabel = orgLabelFrom(stewards)
+  // The line as typed, handed over on blur (lib/useDraftField.ts).
+  const note = useDraftField(hike.note, onSetNote)
 
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
@@ -115,11 +118,12 @@ export function WalkedHike({
       <label className="walked-hike__note">
         <span className="visually-hidden">A line about the day</span>
         <textarea
-          value={hike.note}
+          value={note.draft}
           maxLength={MAX_NOTE_CHARS}
           rows={3}
           placeholder="A line about the day…"
-          onChange={(event) => onSetNote(event.target.value)}
+          onChange={(event) => note.setDraft(event.target.value)}
+          onBlur={note.flush}
         />
       </label>
 

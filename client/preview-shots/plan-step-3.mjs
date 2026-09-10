@@ -49,7 +49,7 @@ export default async function drive(page) {
   await start.waitFor({ timeout: 5000 }).catch(() => {})
   if ((await start.count()) === 0) return
   await start.click()
-  const search = page.getByLabelText('Search for a stop')
+  const search = page.getByLabel('Search for a stop')
   await search.waitFor({ timeout: 5000 }).catch(() => {})
   if ((await search.count()) === 0) return
   await search.fill(SHELTER)

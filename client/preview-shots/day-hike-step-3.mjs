@@ -25,7 +25,17 @@ export const alt =
 
 export const wait = 6000
 
-export default async function drive(page) {
+/**
+ * Through the spine to step 3: Plan, "Start on the map", step 1's map door,
+ * the ring of taps in Harriman, and "Use this route". Exported so the
+ * desktop recipe drives the same way rather than copying this - the two
+ * shots differ only in viewport, and a drive copied twice drifts twice
+ * (both had to be rewritten when step 1 gained its heading).
+ *
+ * Every wait that can fail returns rather than throwing: the frame at that
+ * point - the empty builder, step 1's refusal - is the honest one.
+ */
+export async function reviewInHarriman(page) {
   await page.getByRole('tab', { name: 'Plan' }).click()
   await page.getByRole('button', { name: 'Start on the map' }).click()
   await page.getByRole('heading', { name: 'Where do you want to go?' }).waitFor()
@@ -45,4 +55,8 @@ export default async function drive(page) {
   if ((await on.count()) === 0) return
   await on.click()
   await page.getByRole('button', { name: 'Save this day hike' }).waitFor()
+}
+
+export default async function drive(page) {
+  await reviewInHarriman(page)
 }

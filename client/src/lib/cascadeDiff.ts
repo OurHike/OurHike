@@ -24,7 +24,7 @@
 // about the plan and the walked days are records (cascade.ts's "THE PAST IS
 // A RECORD"), printed as such.
 
-import { planDayViews, type HikePlan, type PlanDayView } from './plan'
+import { planDayViews, type HikePlan, type PlanDayView, type PlanStop } from './plan'
 
 export type DiffState = 'walked' | 'kept' | 'moved' | 'new'
 
@@ -36,6 +36,8 @@ export interface DiffRow {
   wasDate: string | null
   /** The length it had before, when the length moved. */
   wasDistanceMi: number | null
+  /** The stop it ended at before, when the end moved. */
+  wasEnd: PlanStop | null
 }
 
 export interface PlanDiff {
@@ -44,16 +46,20 @@ export interface PlanDiff {
   fewer: number
 }
 
-/** Two lengths the same day, within the rounding lib/units.ts prints at. */
+/** Two lengths the same day, within the rounding lib/units.ts prints at -
+ *  reasoned from the formatter's one decimal place, so a change this diff
+ *  calls "moved" is one the row's own figure would show. */
 const SAME_MI = 0.05
 
 export function diffPlans(before: HikePlan, after: HikePlan): PlanDiff {
   const was = planDayViews(before)
   const rows = planDayViews(after).map((day): DiffRow => {
-    if (day.walked) return { day, state: 'walked', wasDate: null, wasDistanceMi: null }
+    if (day.walked) {
+      return { day, state: 'walked', wasDate: null, wasDistanceMi: null, wasEnd: null }
+    }
     const earlier = was[day.index]
     if (earlier === undefined) {
-      return { day, state: 'new', wasDate: null, wasDistanceMi: null }
+      return { day, state: 'new', wasDate: null, wasDistanceMi: null, wasEnd: null }
     }
     const length = Math.abs(day.end.mile - day.start.mile)
     const earlierLength = Math.abs(earlier.end.mile - earlier.start.mile)
@@ -61,13 +67,18 @@ export function diffPlans(before: HikePlan, after: HikePlan): PlanDiff {
     const lengthMoved = Math.abs(length - earlierLength) > SAME_MI
     const endMoved = earlier.end.mile !== day.end.mile
     if (!dateMoved && !lengthMoved && !endMoved) {
-      return { day, state: 'kept', wasDate: null, wasDistanceMi: null }
+      return { day, state: 'kept', wasDate: null, wasDistanceMi: null, wasEnd: null }
     }
+    // Every row that says "moved" carries what moved (the header's promise
+    // of "a note in the plan's own terms"): the first version carried the
+    // date and the length, so a day whose END moved with neither was a
+    // word with nothing behind it (#1374 review).
     return {
       day,
       state: 'moved',
-      wasDate: dateMoved ? earlier.date : null,
+      wasDate: dateMoved ? (earlier.date ?? null) : null,
       wasDistanceMi: lengthMoved ? earlierLength : null,
+      wasEnd: endMoved ? earlier.end : null,
     }
   })
   return { rows, fewer: Math.max(0, was.length - rows.length) }

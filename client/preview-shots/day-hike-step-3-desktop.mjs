@@ -26,14 +26,15 @@
 // still in the card's own top-right corner - desktop.css keeps the card
 // positioned for exactly that, and test/desktopLayout.test.ts pins it.
 //
-// Driven through the builder exactly as day-hike-step-3.mjs is - the same
-// `walkInHarriman`, reused rather than copied - so it has that recipe's two
-// honest frames where the graph does not arrive, and a third where it does.
+// Driven through the builder exactly as day-hike-step-3.mjs is - that
+// recipe's own `reviewInHarriman`, imported rather than copied - so it has
+// that recipe's two honest frames where the graph does not arrive, and a
+// third where it does.
 //
 // Nobody's data is in the frame by construction: no account, no saved
 // hikes seeded, no location fix, and the walk is a ring of taps around a
 // shelter chosen by name.
-import { walkInHarriman } from './day-hike-builder.mjs'
+import { reviewInHarriman } from './day-hike-step-3.mjs'
 
 export const caption =
   'Step 3 on a laptop — the review in the rail, read against the route it describes, with the map uncovered (#1373, frame 16b)'
@@ -48,27 +49,8 @@ export const desktop = true
 export const wait = 6000
 
 export default async function drive(page) {
-  await page.getByRole('tab', { name: 'Plan' }).click()
-  await page.getByRole('button', { name: 'Start on the map' }).click()
-  await page.getByRole('heading', { name: 'Where do you want to go?' }).waitFor()
-
-  const door = page.getByRole('button', { name: 'Pick on the map' })
-  await door.waitFor({ timeout: 20000 }).catch(() => {})
-  if ((await door.count()) === 0) return
-
-  await door.click()
-  await page.getByRole('region', { name: 'Build a day hike' }).waitFor()
-  if (!(await walkInHarriman(page))) return
-
-  // The way on. Its absence means no route was made, and the builder is
-  // the honest frame.
-  const on = page.getByRole('button', { name: 'Use this route' })
-  await on.waitFor({ timeout: 5000 }).catch(() => {})
-  if ((await on.count()) === 0) return
-  await on.click()
-
-  // The card in the rail: Save is its last button, and the rail is what
-  // this recipe photographs. Waiting on the button proves the review is
-  // up; the layout is desktop.css's, under its own test.
-  await page.getByRole('button', { name: 'Save this day hike' }).waitFor()
+  // The card in the rail: the drive ends on its last button, Save, which
+  // proves the review is up; the layout is desktop.css's, under its own
+  // test.
+  await reviewInHarriman(page)
 }

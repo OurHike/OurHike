@@ -697,6 +697,13 @@ describe('step 3 of the spine (#1373, frames 5a and 5c)', () => {
     const field = screen.getByLabelText('Name') as HTMLInputElement
     expect(field.value).toBe(HIKE.name)
     await user.type(field, '!')
+    // Held in the field while typing and handed over when the hiker is done
+    // (lib/useDraftField.ts): the saved card's rename is a whole-store
+    // read-modify-write, and one per keystroke lost letters.
+    expect(field.value).toBe(`${HIKE.name}!`)
+    expect(onRename).not.toHaveBeenCalled()
+    await user.tab()
+    expect(onRename).toHaveBeenCalledTimes(1)
     expect(onRename).toHaveBeenLastCalledWith(`${HIKE.name}!`)
 
     cleanup()

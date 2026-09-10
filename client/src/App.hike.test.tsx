@@ -16,7 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { appHarness, latOfMile, openMapTab } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab, stubDesktop } from './test/appHarness'
 import { PLANNED_HIKE_KEY } from './lib/plannedHike'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -241,15 +241,7 @@ describe('setting one', () => {
  * questions too (standalone, fine pointer).
  */
 function onADesktop() {
-  vi.stubGlobal(
-    'matchMedia',
-    vi.fn((query: string) => ({
-      matches: query.includes('min-width: 900px'),
-      media: query,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-    })),
-  )
+  stubDesktop()
 }
 
 /** Five miles up the trail from the one fix above, so the journal has a row. */

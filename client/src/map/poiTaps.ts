@@ -23,6 +23,7 @@ import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { POI_PIN_SIZE } from './poiIcons'
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_ID_PROPERTY } from './poiLayers'
 import { warningIdAt } from './warningLayers'
+import { closureIdAt } from './closureLayers'
 
 /** `--min-touch-target` (chrome/chrome.css), which every other control on the
  *  map screen already meets. */
@@ -106,13 +107,28 @@ function idOf(feature: { properties?: Record<string, unknown> | null }): string 
 export function poiIdAt(
   map: MapLibreMap,
   point: { x: number; y: number },
+  {
+    yieldToMarks = true,
+  }: {
+    /**
+     * Whether the two safety marks win the touch. True while the map is
+     * browsed; false while a builder owns the tap, where MapView attaches
+     * neither mark's handler and a stop pin beside a warning pin would
+     * otherwise resolve to nothing - and fall through to a dropped route
+     * point the hiker did not ask for (#1374 review).
+     */
+    yieldToMarks?: boolean
+  } = {},
 ): string | null {
   // A serious-warning pin under the thumb wins (#1373, F12): it is the
   // biggest pin on the map, drawn over the waypoints, and a person escalated
   // it by hand - a tap on it is a tap on it, not on the shelter it stands
   // beside. Asked first so the warning sheet and the waypoint card cannot
-  // both open on one touch.
-  if (warningIdAt(map, point) !== null) return null
+  // both open on one touch. The closure tape next, for the same reason
+  // (closureLayers.ts states the whole order): a shelter pin on closed
+  // trail is a tap on the closure, and the card is a second tap away.
+  if (yieldToMarks && warningIdAt(map, point) !== null) return null
+  if (yieldToMarks && closureIdAt(map, point) !== null) return null
 
   // Before the style has parsed, querying a layer it does not hold fires an
   // error event rather than throwing - a touch on a map with no pins on it yet

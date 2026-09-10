@@ -14,6 +14,17 @@
 // own, never the pipeline's NOBO mile (#1045's lesson), so "0.8 mi in" is a
 // fact about this walk.
 //
+// EVERY PASS, NOT THE NEAREST VERTEX. An out-and-back walks the same line
+// twice, and a loop can re-cross a stretch; the spring at mile 1.2 out is
+// the spring at mile 4.8 back, and a hiker past the turnaround with a
+// litre left is served by the second row, not the first. So a point is
+// listed once per pass of the walk - a run of vertices within reach,
+// separated from the next run by more than the reach walked along the line
+// - at the nearest vertex of that pass. The first version of this took the
+// single nearest vertex, which on an out-and-back put every water point on
+// the outbound leg only; the follow card's "what's left" then listed no
+// water at all once the hiker turned round (#1374 review).
+//
 // WHAT IT DOES NOT CLAIM. An empty list means the published waypoints hold
 // no water point near this walk, which is not the same as no water: the
 // water layer is thin (measured 2026-08 for #529: 97% of shelters have no
@@ -22,7 +33,10 @@
 // prints NOTHING - no "no water on this route" - when it has none. Omit
 // rather than guess, on the one path that is about running dry.
 
-import { projectOnCourse, type DayHikeCourse } from './dayHikeCourse'
+import { straightLineMetres } from './dayHikeShelf'
+import { metresToMiles } from './trailGraph'
+import { feetFromMetres } from './units'
+import type { DayHikeCourse } from './dayHikeCourse'
 import type { StoredPoi } from './trailData'
 
 /**
@@ -49,46 +63,115 @@ export const WATER_ON_ROUTE_FEET = 500
  * from the line is on it for every purpose a hiker has, and "12 ft off the
  * walk" is a claim of precision the vertex-nearest projection does not have
  * (projectOnCourse's own note). A display rule, not a fact about the data.
+ *
+ * @unvalidated. 100 ft is picked, not measured: roughly the half-vertex
+ * spacing the projection's own error bound names, rounded to a figure a
+ * reader recognises. What would settle it is the same distribution
+ * `WATER_ON_ROUTE_FEET` waits on - how far published water points sit from
+ * the lines they serve - read for where "on the line" stops being true.
  */
 export const WATER_SAID_OFF_FEET = 100
 
 export interface RouteWater {
   poiId: string
   name: string
-  lat: number
-  lon: number
   /**
    * Trail miles from the walk's first tap - a DISTANCE along this walk,
    * never a mile marker on the pipeline's axis, and named so a units
    * formatter may take it (test/unitDisplay.test.ts's rule).
    */
   alongMi: number
-  /** Straight-line feet from the point to the nearest vertex of the walk. */
+  /** Straight-line feet from the point to the nearest vertex of this pass. */
   offCourseFeet: number
 }
 
+/** Degrees of latitude per metre, for the prefilter's box; longitude is
+ *  this over the cosine of the latitude. */
+const DEGREES_PER_METRE = 1 / 111_320
+
+/**
+ * The passes `course` makes within `reachMetres` of `at`: for each, the
+ * nearest vertex's mile and distance. One pass is a run of vertices within
+ * reach; the run ends when the walk has gone more than twice the reach
+ * along the line since the last vertex within it - far enough that coming
+ * back is a second visit, not the same bend.
+ */
+function passesNear(
+  course: DayHikeCourse,
+  at: { lon: number; lat: number },
+  reachMetres: number,
+): Array<{ mile: number; metres: number }> {
+  const passes: Array<{ mile: number; metres: number }> = []
+  const rejoinMiles = metresToMiles(2 * reachMetres)
+  let current: { mile: number; metres: number; lastMile: number } | null = null
+  for (const point of course.points) {
+    const metres = straightLineMetres({ lon: point.lon, lat: point.lat }, at)
+    if (metres > reachMetres) continue
+    if (current !== null && point.mile - current.lastMile > rejoinMiles) {
+      passes.push({ mile: current.mile, metres: current.metres })
+      current = null
+    }
+    if (current === null) {
+      current = { mile: point.mile, metres, lastMile: point.mile }
+    } else {
+      current.lastMile = point.mile
+      // Strictly nearer, so a tie keeps the earlier vertex - the same rule
+      // projectOnCourse keeps, for the same reason: a stable row order.
+      if (metres < current.metres) {
+        current.mile = point.mile
+        current.metres = metres
+      }
+    }
+  }
+  if (current !== null) passes.push({ mile: current.mile, metres: current.metres })
+  return passes
+}
+
 /** The published water points along `course`, in the order the walk
- *  reaches them. Empty when there are none - and only then; see the header
- *  for what that does and does not mean. */
+ *  reaches them - once per pass of the walk (see the header). Empty when
+ *  there are none, and only then; the header says what that does and does
+ *  not mean. */
 export function waterOnCourse(
   course: DayHikeCourse,
   pois: readonly StoredPoi[],
   within = WATER_ON_ROUTE_FEET,
 ): RouteWater[] {
   if (course.points.length === 0) return []
+  const reachMetres = within / feetFromMetres(1)
+  // The walk's box, padded by the reach: a point outside it cannot be
+  // within reach of any vertex, and the whole waypoint list is scanned
+  // here, on every tap while the route is built.
+  let west = Infinity
+  let east = -Infinity
+  let south = Infinity
+  let north = -Infinity
+  for (const point of course.points) {
+    west = Math.min(west, point.lon)
+    east = Math.max(east, point.lon)
+    south = Math.min(south, point.lat)
+    north = Math.max(north, point.lat)
+  }
+  const padLat = reachMetres * DEGREES_PER_METRE
+  const padLon = padLat / Math.max(0.1, Math.cos((((south + north) / 2) * Math.PI) / 180))
   const found: RouteWater[] = []
   for (const poi of pois) {
     if (poi.type !== 'water') continue
-    const at = projectOnCourse(course, { lon: poi.lon, lat: poi.lat })
-    if (at === null || at.offCourseFeet > within) continue
-    found.push({
-      poiId: poi.id,
-      name: poi.name,
-      lat: poi.lat,
-      lon: poi.lon,
-      alongMi: at.mile,
-      offCourseFeet: at.offCourseFeet,
-    })
+    if (
+      poi.lon < west - padLon ||
+      poi.lon > east + padLon ||
+      poi.lat < south - padLat ||
+      poi.lat > north + padLat
+    ) {
+      continue
+    }
+    for (const pass of passesNear(course, { lon: poi.lon, lat: poi.lat }, reachMetres)) {
+      found.push({
+        poiId: poi.id,
+        name: poi.name,
+        alongMi: pass.mile,
+        offCourseFeet: feetFromMetres(pass.metres),
+      })
+    }
   }
   // By mile, then by id, for lib/dayHikeStops.ts's reason: two points the
   // projection lands on one vertex must not swap rows under a finger.

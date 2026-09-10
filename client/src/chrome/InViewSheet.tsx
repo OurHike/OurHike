@@ -21,11 +21,13 @@
 // to notice.
 
 import { formatDistance, type UnitSystem } from '../lib/units'
+import { mileMarker } from '../lib/planDisplay'
 import type { MapPoint } from '../lib/legendContents'
 import {
   WORKDAY_WINDOWS,
   type WorkdayRow,
   type WorkdayWindowId,
+  workdayAwayLine,
 } from '../lib/workProjects'
 import '../screens/volunteer.css'
 import type { StalenessTreatment } from '../lib/stalenessDisplay'
@@ -70,10 +72,7 @@ export interface InViewSheetProps {
 }
 
 function mileLabel(mile: number): string {
-  return `mi ${mile.toLocaleString('en-US', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}`
+  return `mi ${mileMarker(mile)}`
 }
 
 export function InViewSheet({
@@ -193,11 +192,7 @@ export function InViewSheet({
                       {[
                         row.club,
                         row.dates,
-                        row.awayMi === null
-                          ? null
-                          : `${row.awayMi.toLocaleString('en-US', {
-                              maximumFractionDigits: 1,
-                            })} trail mi away`,
+                        row.awayMi === null ? null : workdayAwayLine(row.awayMi),
                         row.capacity === null ? null : `room for ${row.capacity}`,
                       ]
                         .filter((part) => part !== null)

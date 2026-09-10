@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 import type { Feature, FeatureCollection } from 'geojson'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { buildTrailIndex } from '../lib/trailPosition'
@@ -276,6 +277,24 @@ describe('tapping the tape', () => {
     map.emit('click', { point: { x: 120, y: 240 } })
 
     expect(onSelect).toHaveBeenCalledWith('c1')
+  })
+
+  it('yields to a serious-warning pin under the same thumb (#1374 review)', () => {
+    // The two safety marks used to report every hit each, so a warning pin
+    // on closed trail opened two sheets on one touch, and which sat on top
+    // was the order two effects were declared in. Now the tape asks the
+    // pin first, and the order is stated once in attachClosureTaps.
+    const map = tappableMap([band('c1')])
+    map.layerIds.push(WARNING_LAYER_ID)
+    map.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    const onSelect = vi.fn()
+
+    attachClosureTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('queries a thumb-sized box, not a pixel', () => {

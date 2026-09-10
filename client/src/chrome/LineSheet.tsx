@@ -126,6 +126,13 @@ export function LineSheet({
         <p className="closure-sheet__range">{detail.extentLine}</p>
       )}
 
+      {/* Two trails on one treadway (#1384, map/sharedGround.ts): the
+          two-tone line says there are two, and this says which other one.
+          On the range class, since it is a fact about where the trail is. */}
+      {detail.sharedLine !== null && (
+        <p className="closure-sheet__range">{detail.sharedLine}</p>
+      )}
+
       {/* The long-term closure (§3). On `closure-sheet__status`, which is the
           class ClosureSheet gives its own "Closed" line - one vocabulary for
           "do not walk this", which is the argument §3 won: a hiker learns one

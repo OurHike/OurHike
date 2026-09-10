@@ -68,6 +68,14 @@
 //     `line-sort-key`, rather than by whichever feature the export wrote last.
 //     See TRAIL_SORT_KEY_EXPRESSION.
 //
+//  4. Two trails on one treadway are drawn as two halves of one line (#1384,
+//     the maintainer's choice of 2026-09-10). The pipeline publishes each
+//     shared stretch as a pair of features on one chord with opposite signs;
+//     two layers over both trail-line stacks draw an opaque casing over the
+//     stretch and each half offset to its own side, and the network split
+//     stops drawing the pairs as plain lines. See map/sharedGround.ts, which
+//     also says why nothing is cut out of the original lines.
+//
 // Not handled here: the POI pins, which are their own two modules -
 // poiLayers.ts for the source, layer and density rules, poiIcons.ts for the
 // pin images themselves. This file composes them in rather than spelling them
@@ -106,6 +114,13 @@ import {
   buildCorridorSource,
   CORRIDOR_SOURCE_ID,
 } from './corridorLayers'
+import {
+  SHARED_GROUND_BLAZE_LAYER_ID,
+  SHARED_GROUND_CASING_LAYER_ID,
+  SHARED_GROUND_FILTER,
+  SHARED_GROUND_PARTNER_SOURCE_PROPERTY,
+  sharedGroundSideExpression,
+} from './sharedGround'
 import {
   buildDayHikeCasingLayers,
   buildDayHikePointLayers,
@@ -288,6 +303,7 @@ export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
   TRAIL_CASING_UNTAKEN_LAYER_ID,
   NEARBY_TRAIL_CASING_LAYER_ID,
   NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
+  SHARED_GROUND_CASING_LAYER_ID,
 ]
 /**
  * The blaze layers that ink a near-white line in the casing's colour on a
@@ -327,6 +343,7 @@ export const BLAZE_LINE_LAYER_IDS: readonly string[] = [
   BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
   NEARBY_BLAZE_UNTAKEN_LAYER_ID,
+  SHARED_GROUND_BLAZE_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
@@ -352,6 +369,10 @@ export const TAPPABLE_BLAZE_LAYER_IDS: readonly string[] = [
   BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
   NEARBY_BLAZE_UNTAKEN_LAYER_ID,
+  // The two halves of a shared stretch (#1384), first: they are drawn over
+  // both stacks, and a tap on the stretch should answer with the half it
+  // landed on and its `concurrent_with`, not the plain line masked under it.
+  SHARED_GROUND_BLAZE_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
 ]
@@ -1117,6 +1138,64 @@ function buildTrailLineSplit(
 }
 
 /**
+ * The two layers that draw a shared stretch as two halves of one line
+ * (header rule 4, map/sharedGround.ts). From the network tiles, since that
+ * is where the pairs ride; over BOTH trail-line stacks, since the casing is
+ * the mask that hides the plain lines under it. Widths are each half's own
+ * tier through the same expressions the lines use, so the halves taper
+ * where the lines taper.
+ */
+function buildSharedGroundLayers(
+  appearance: SheetAppearance,
+  minzoom: number,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): LayerSpecification[] {
+  const side = sharedGroundSideExpression()
+  return [
+    {
+      id: SHARED_GROUND_CASING_LAYER_ID,
+      type: 'line',
+      source: NEARBY_TRAILS_SOURCE_ID,
+      filter: SHARED_GROUND_FILTER as never,
+      minzoom,
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+      },
+      paint: {
+        'line-color': trailCasingColor(appearance),
+        'line-width': sharedGroundCasingWidthExpression() as unknown as number,
+        // Opaque: this casing is drawn OVER two lines, and a translucent rim
+        // would be a different colour over the white half than over paper.
+        'line-opacity': 1,
+      },
+    },
+    {
+      id: SHARED_GROUND_BLAZE_LAYER_ID,
+      type: 'line',
+      source: NEARBY_TRAILS_SOURCE_ID,
+      filter: SHARED_GROUND_FILTER as never,
+      minzoom,
+      layout: {
+        // Butt caps, unlike every other blaze: a round cap on an offset
+        // half swings past the chord's end on its own side, and the two
+        // halves' caps would cross.
+        'line-cap': 'butt',
+        'line-join': 'round',
+        'line-sort-key': TRAIL_SORT_KEY_EXPRESSION as unknown as number,
+      },
+      paint: {
+        'line-color': blazeLineColor(appearance, true) as unknown as string,
+        'line-width': sharedGroundHalfWidthExpression() as unknown as number,
+        'line-offset': sharedGroundOffsetExpression(side) as unknown as number,
+        'line-opacity': nearbyTrailOpacityExpression(chosen) as unknown as number,
+      },
+    },
+  ]
+}
+
+/**
  * One side of the network overview's split (#1135, #1283): the sketch has no
  * casing and its own tapering width, so it is not buildTrailLineLayers, but
  * it takes the same filter pair for the same reason.
@@ -1339,10 +1418,18 @@ export const CASING_LINE_WIDTH = BLAZE_LINE_WIDTH + CASING_OVERHANG * 2
  * scaled proportionally would be twice as heavy under a through-route as under
  * everything else.
  */
-function trailWidthExpression(extra: number, scale = 1): unknown[] {
+function trailWidthExpression(
+  extra: number,
+  scale = 1,
+  /** Which property names the tier - `source` for a line's own; a shared
+   *  stretch's half also asks its partner's (SHARED_GROUND_PARTNER_SOURCE_PROPERTY).
+   *  Read through `to-string` for any other property, since `match` refuses
+   *  a null input and a plain line carries none. */
+  property = 'source',
+): unknown[] {
   return [
     'match',
-    ['get', 'source'],
+    property === 'source' ? ['get', 'source'] : ['to-string', ['get', property]],
     ...Object.entries(TRAIL_LINE_WIDTHS).flatMap(([source, width]) => [
       source,
       width * scale + extra,
@@ -1533,6 +1620,50 @@ export function solidTrailCasingWidthExpression(): unknown {
   return overviewTaper(
     trailWidthExpression(CASING_OVERHANG * 2, OVERVIEW_WIDTH_SCALE),
     TRAIL_CASING_WIDTH_EXPRESSION,
+  )
+}
+
+/** The width a shared stretch is drawn at, at one stop: the HEAVIER of the
+ *  two trails' tiers (map/sharedGround.ts says why the heavier), each read
+ *  off its own property of the half. */
+function sharedGroundTierExpression(scale: number): unknown[] {
+  return [
+    'max',
+    trailWidthExpression(0, scale),
+    trailWidthExpression(0, scale, SHARED_GROUND_PARTNER_SOURCE_PROPERTY),
+  ]
+}
+
+/** `line-width` for one half of a shared stretch (header rule 4): half the
+ *  stretch's width at both stops, so the halves taper where the lines taper.
+ *  Built as its own taper rather than as half OF a line's, because a zoom
+ *  interpolation inside arithmetic is a style error. */
+export function sharedGroundHalfWidthExpression(): unknown {
+  return overviewTaper(
+    ['/', sharedGroundTierExpression(OVERVIEW_WIDTH_SCALE), 2],
+    ['/', sharedGroundTierExpression(1), 2],
+  )
+}
+
+/** `line-offset` for that half: a quarter of the stretch's width - half of
+ *  the half - times the feature's own side, so the two halves of one chord
+ *  sit edge to edge along it. The side is multiplied into each stop, for the
+ *  reason the width above is built the way it is. MapLibre offsets positive
+ *  to the right of the line's direction; the pipeline made the two signs
+ *  opposite on one geometry. */
+export function sharedGroundOffsetExpression(side: unknown): unknown {
+  return overviewTaper(
+    ['*', side, ['/', sharedGroundTierExpression(OVERVIEW_WIDTH_SCALE), 4]],
+    ['*', side, ['/', sharedGroundTierExpression(1), 4]],
+  )
+}
+
+/** The casing under both halves - the mask - at the stretch's cased width:
+ *  the same hairline overhang every casing carries, around the heavier tier. */
+export function sharedGroundCasingWidthExpression(): unknown {
+  return overviewTaper(
+    ['+', sharedGroundTierExpression(OVERVIEW_WIDTH_SCALE), CASING_OVERHANG * 2],
+    ['+', sharedGroundTierExpression(1), CASING_OVERHANG * 2],
   )
 }
 
@@ -2076,6 +2207,16 @@ export function buildMapStyle({
         appearance,
         undefined,
         chosen,
+      ),
+      // Two trails on one treadway, as two halves of one line (header rule
+      // 4, #1384): over BOTH stacks, because the opaque casing is what hides
+      // the two plain lines still drawn on the stretch beneath it, and under
+      // the names, badges and closure tape, which say things about the
+      // trail rather than draw it. Nothing until a release carries the
+      // pairs - map/sharedGround.ts, "guarded on absence".
+      ...onSourceLayer(
+        buildSharedGroundLayers(appearance, POI_PIN_MIN_ZOOM, chosen),
+        NETWORK_TILES_LAYER,
       ),
       // Trail names (#930), directly over the lines they name and UNDER every
       // pin on this map. Both halves of that are deliberate.

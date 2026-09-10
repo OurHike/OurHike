@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
+  SHARED_GROUND_BLAZE_LAYER_ID,
+  SHARED_GROUND_CASING_LAYER_ID,
+  SHARED_GROUND_EXCLUDED,
+  SHARED_GROUND_FILTER,
+} from './sharedGround'
+import {
   createExpression,
+  featureFilter,
   latest,
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
@@ -16,6 +23,7 @@ import {
   TRAIL_CASING_LAYER_ID,
   TRAIL_CASING_UNTAKEN_LAYER_ID,
   TRAIL_CASING_LAYER_IDS,
+  TAPPABLE_BLAZE_LAYER_IDS,
   TRAIL_LINE_LAYER_IDS,
   NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
@@ -354,9 +362,12 @@ describe('buildMapStyle', () => {
     // The filters are complements (nearbyTrails.test.ts holds that) and the
     // style uses exactly that pair, so this is the one-line check that the
     // style did not spell its own.
+    // Complements over plain lines; both refuse a shared-ground half (#1384).
+    const taken = (layer(BLAZE_LAYER_ID) as { filter?: unknown[] }).filter ?? []
     expect((layer(BLAZE_UNTAKEN_LAYER_ID) as { filter?: unknown }).filter).toEqual([
-      '!',
-      (layer(BLAZE_LAYER_ID) as { filter?: unknown }).filter,
+      'all',
+      ['!', taken[1]],
+      SHARED_GROUND_EXCLUDED,
     ])
   })
 
@@ -1375,6 +1386,143 @@ describe('the trails other organizations maintain (#950)', () => {
       'source-layer': NETWORK_TILES_LAYER,
       minzoom: POI_PIN_MIN_ZOOM,
     })
+  })
+
+  it('draws a shared stretch as two halves of one line over both stacks (#1384)', () => {
+    // map/sharedGround.ts: a casing that is also the mask, then each half at
+    // half its own width, offset by a quarter of it to its own side.
+    const casing = layer(SHARED_GROUND_CASING_LAYER_ID)
+    const blaze = layer(SHARED_GROUND_BLAZE_LAYER_ID)
+    for (const l of [casing, blaze] as Array<{
+      source?: string
+      'source-layer'?: string
+      minzoom?: number
+      filter?: unknown
+    }>) {
+      expect(l.source).toBe(NEARBY_TRAILS_SOURCE_ID)
+      expect(l['source-layer']).toBe(NETWORK_TILES_LAYER)
+      expect(l.minzoom).toBe(POI_PIN_MIN_ZOOM)
+      expect(l.filter).toEqual(SHARED_GROUND_FILTER)
+    }
+    // The mask is opaque, unlike every other casing's 0.7 - it is drawn
+    // over two lines rather than under one.
+    expect((casing.paint as Record<string, unknown>)['line-opacity']).toBe(1)
+
+    // The halves and their casing, evaluated the way MapLibre would: the
+    // stretch is weighed at the HEAVIER of the two trails' tiers, each half
+    // half of that, offset a quarter of it with the feature's own sign, the
+    // casing the same hairline overhang around it.
+    const spec = latest.paint_line
+    const at = (
+      id: string,
+      property: string,
+      zoom: number,
+      properties: Record<string, unknown>,
+    ) => {
+      const compiled = createExpression(
+        (layer(id).paint as Record<string, unknown>)[property] as never,
+        spec[property as keyof typeof spec] as never,
+      )
+      if (compiled.result === 'error')
+        throw new Error(`${property} on ${id} is not valid`)
+      return compiled.value.evaluate({ zoom }, { properties } as never) as number
+    }
+    const pairs: Array<[string, string]> = [
+      ['centerline', 'oprhp_trails'],
+      ['oprhp_trails', 'centerline'],
+      ['oprhp_trails', 'oprhp_trails'],
+      ['nynjtc_long_path', 'oprhp_trails'],
+    ]
+    for (const zoom of [OVERVIEW_FAR_ZOOM, POI_PIN_MIN_ZOOM, 14]) {
+      for (const [source, concurrent_source] of pairs) {
+        const stretch = Math.max(
+          at(BLAZE_LAYER_ID, 'line-width', zoom, { source }),
+          at(BLAZE_LAYER_ID, 'line-width', zoom, { source: concurrent_source }),
+        )
+        const half = { source, concurrent_source }
+        expect(at(SHARED_GROUND_BLAZE_LAYER_ID, 'line-width', zoom, half)).toBeCloseTo(
+          stretch / 2,
+        )
+        expect(
+          at(SHARED_GROUND_BLAZE_LAYER_ID, 'line-offset', zoom, {
+            ...half,
+            concurrent_side: 1,
+          }),
+        ).toBeCloseTo(stretch / 4)
+        expect(
+          at(SHARED_GROUND_BLAZE_LAYER_ID, 'line-offset', zoom, {
+            ...half,
+            concurrent_side: -1,
+          }),
+        ).toBeCloseTo(-stretch / 4)
+        expect(at(SHARED_GROUND_CASING_LAYER_ID, 'line-width', zoom, half)).toBeCloseTo(
+          stretch + CASING_OVERHANG * 2,
+        )
+      }
+    }
+    // Painted and ghosted exactly as the plain lines are.
+    expect((blaze.paint as Record<string, unknown>)['line-color']).toEqual(
+      (layer(NEARBY_BLAZE_LAYER_ID).paint as Record<string, unknown>)['line-color'],
+    )
+    expect((blaze.paint as Record<string, unknown>)['line-opacity']).toEqual(
+      (layer(NEARBY_BLAZE_LAYER_ID).paint as Record<string, unknown>)['line-opacity'],
+    )
+    // Butt caps, so an offset half does not swing past the chord's end.
+    expect((blaze.layout as Record<string, unknown>)['line-cap']).toBe('butt')
+
+    // Over BOTH trail-line stacks - the casing hides the plain lines still
+    // drawn on the stretch - and under the names that say things about them.
+    const order = ids()
+    expect(order.indexOf(SHARED_GROUND_CASING_LAYER_ID)).toBeGreaterThan(
+      order.indexOf(BLAZE_LAYER_ID),
+    )
+    expect(order.indexOf(SHARED_GROUND_CASING_LAYER_ID)).toBeGreaterThan(
+      order.indexOf(NEARBY_BLAZE_LAYER_ID),
+    )
+    expect(order.indexOf(SHARED_GROUND_BLAZE_LAYER_ID)).toBe(
+      order.indexOf(SHARED_GROUND_CASING_LAYER_ID) + 1,
+    )
+    expect(order.indexOf(SHARED_GROUND_BLAZE_LAYER_ID)).toBeLessThan(
+      order.indexOf(TRAIL_LABEL_LAYER_ID),
+    )
+  })
+
+  it('keeps the two halves out of every plain line layer, and draws a release without them unchanged', () => {
+    // A half carries a `source` like any line; the exclusion sits inside
+    // both split filters (map/nearbyTrails.ts) so every reader of the split
+    // carries it - the four network layers, the A.T.'s four, the overview.
+    const passes = (filter: unknown, properties: Record<string, unknown>): boolean =>
+      featureFilter(filter as never, 'layers[0].filter').filter(
+        { zoom: 12 } as never,
+        { properties, type: 2 } as never,
+      )
+    for (const [id] of CHOSEN_TRAIL_SPLIT_LAYERS) {
+      const filter = (layer(id) as { filter?: unknown }).filter
+      expect(JSON.stringify(filter), id).toContain(JSON.stringify(SHARED_GROUND_EXCLUDED))
+      for (const source of ['centerline', 'oprhp_trails']) {
+        expect(
+          passes(filter, {
+            source,
+            concurrent_with: 'Ramapo-Dunderberg',
+            concurrent_side: 1,
+          }),
+          id,
+        ).toBe(false)
+      }
+    }
+    // Every plain feature still lands in exactly one of a source's two
+    // layers, which is what "a release without the pairs draws exactly
+    // what it drew" means in the filter's own terms.
+    for (const source of ['centerline', 'side_trails', 'oprhp_trails', '']) {
+      const sides = [BLAZE_LAYER_ID, BLAZE_UNTAKEN_LAYER_ID].filter((id) =>
+        passes((layer(id) as { filter?: unknown }).filter, { source }),
+      )
+      expect(sides, source).toHaveLength(1)
+    }
+    // And a sheet change repaints the halves with every other line.
+    expect(TRAIL_CASING_LAYER_IDS).toContain(SHARED_GROUND_CASING_LAYER_ID)
+    expect(BLAZE_LINE_LAYER_IDS).toContain(SHARED_GROUND_BLAZE_LAYER_ID)
+    expect(TAPPABLE_BLAZE_LAYER_IDS).toContain(SHARED_GROUND_BLAZE_LAYER_ID)
   })
 
   it('draws the network only above the seam, so the corridor view keeps its subject', () => {

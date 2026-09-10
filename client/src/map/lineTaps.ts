@@ -74,6 +74,9 @@ export interface TappedLine {
   closureKind: string | null
   closureReason: string | null
   closureSource: string | null
+  /** The other trail on this stretch of treadway, on a shared-ground half
+   *  (#1384, map/sharedGround.ts); null on every plain line. */
+  sharedWith: string | null
   /** Whether the tap landed on the trail's BADGE rather than its line
    *  (#1306): a badge takes an untaken trail, a line only ever informs. */
   badge: boolean
@@ -197,6 +200,9 @@ function asTappedLine(
     closureKind: stringProp(feature.properties, 'closure_kind'),
     closureReason: stringProp(feature.properties, 'closure_reason'),
     closureSource: stringProp(feature.properties, 'closure_source'),
+    // The other trail on this stretch, on a shared-ground half (#1384,
+    // map/sharedGround.ts); absent on every plain line.
+    sharedWith: stringProp(feature.properties, 'concurrent_with'),
     at: nearestVertex(feature.geometry, near),
   }
 }

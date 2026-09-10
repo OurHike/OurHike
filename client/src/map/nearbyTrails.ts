@@ -70,6 +70,7 @@
  * on this canvas so it can be argued with, not a value these frames decide."
  * Treat a number arrived at here as a starting point a reviewer may move.
  */
+import { SHARED_GROUND_EXCLUDED } from './sharedGround'
 import { TRAILS } from '../lib/trails'
 
 export const NEARBY_TRAIL_OPACITY = 0.45
@@ -254,16 +255,36 @@ export function nearbyTrailOpacityExpression(
 export function chosenSystemFilter(
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): unknown[] {
-  // An empty list matches nothing, so with nothing taken every line is on
-  // the untaken side - the all-untaken first launch (#1306) falls out of
-  // the same two filters rather than needing a third state.
-  return ['in', ['to-string', ['get', 'source']], ['literal', [...chosen]]]
+  return ['all', chosenSystemMembership(chosen), SHARED_GROUND_EXCLUDED]
 }
 
 export function nearbyTrailFilter(
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): unknown[] {
-  return ['!', chosenSystemFilter(chosen)]
+  return ['all', ['!', chosenSystemMembership(chosen)], SHARED_GROUND_EXCLUDED]
+}
+
+/**
+ * The membership test both filters are built on. An empty list matches
+ * nothing, so with nothing taken every line is on the untaken side - the
+ * all-untaken first launch (#1306) falls out of the same two filters rather
+ * than needing a third state.
+ *
+ * WHAT WRAPS IT, AND WHY THE TWO ARE NO LONGER EXACT COMPLEMENTS (#1384).
+ * Both filters also refuse the two halves of a shared stretch - features
+ * carrying `concurrent_with`, which the network tiles hold beside the plain
+ * lines and which map/sharedGround.ts draws as its own two layers. A half
+ * carries a `source` like any line, so without this it would ALSO draw as a
+ * plain centred line under the two-tone, be labelled by trailLabels.ts and
+ * counted by trailsInView.ts as one. Inside the filters rather than beside
+ * them so that every reader of the split - the style, attachChosenTrail's
+ * re-pointing on a trail switch, the network overview - carries the
+ * exclusion without knowing it exists. Over plain features the two remain
+ * complements, which nearbyTrails.test.ts still holds; a pair feature lands
+ * in neither, which it holds too.
+ */
+function chosenSystemMembership(chosen: readonly string[]): unknown[] {
+  return ['in', ['to-string', ['get', 'source']], ['literal', [...chosen]]]
 }
 
 // LABELS DIM WITH THEIR LINES, AND THE EXPRESSION IS SHARED, NOT COPIED

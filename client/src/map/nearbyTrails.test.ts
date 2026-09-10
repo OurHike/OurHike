@@ -1,3 +1,4 @@
+import { SHARED_GROUND_EXCLUDED } from './sharedGround'
 import { describe, it, expect } from 'vitest'
 import { TRAILS } from '../lib/trails'
 import {
@@ -203,9 +204,13 @@ describe('the layer split (#1283): two filters that are exact complements', () =
    * way evaluateOpacityExpression above is: `to-string` renders a missing
    * property as "", `in` is set membership, `!` negates.
    */
-  function passes(filter: unknown[], source: string | null): boolean {
+  function passes(filter: unknown[], source: string | null, shared = false): boolean {
     const [op, ...rest] = filter
-    if (op === '!') return !passes(rest[0] as unknown[], source)
+    if (op === 'all')
+      return rest.every((clause) => passes(clause as unknown[], source, shared))
+    if (op === '!') return !passes(rest[0] as unknown[], source, shared)
+    // `has concurrent_with`: the mark of a shared-ground half (#1384).
+    if (op === 'has') return shared
     expect(op).toBe('in')
     const members = (rest[1] as ['literal', string[]])[1]
     return members.includes(source ?? '')
@@ -219,6 +224,16 @@ describe('the layer split (#1283): two filters that are exact complements', () =
     '',
     null,
   ]
+
+  it('puts the two halves of a shared stretch in neither (#1384)', () => {
+    // A half carries a source like any line and draws as map/sharedGround.ts's
+    // own two layers; in either split layer it would also be a plain centred
+    // line under the two-tone.
+    for (const source of cases) {
+      expect(passes(chosenSystemFilter(), source, true), String(source)).toBe(false)
+      expect(passes(nearbyTrailFilter(), source, true), String(source)).toBe(false)
+    }
+  })
 
   it('puts every source in exactly one of the two layers', () => {
     // Neither in both (a line drawn twice over itself, at two weights) nor
@@ -249,9 +264,16 @@ describe('the layer split (#1283): two filters that are exact complements', () =
   })
 
   it('builds both from CHOSEN_SYSTEM_SOURCES rather than a copy', () => {
-    const members = (chosenSystemFilter()[2] as ['literal', string[]])[1]
+    // ['all', <membership>, SHARED_GROUND_EXCLUDED] since #1384 - the
+    // membership clause is the one the chosen system decides.
+    const membership = chosenSystemFilter()[1] as unknown[]
+    const members = (membership[2] as ['literal', string[]])[1]
     expect(members).toEqual([...CHOSEN_SYSTEM_SOURCES])
-    expect(nearbyTrailFilter()).toEqual(['!', chosenSystemFilter()])
+    expect(nearbyTrailFilter()).toEqual([
+      'all',
+      ['!', membership],
+      SHARED_GROUND_EXCLUDED,
+    ])
   })
 })
 
@@ -269,8 +291,13 @@ describe('nothing taken (#1306)', () => {
     // An empty membership list matches nothing, so the two filters stay
     // complements and the taken side is simply empty.
     const taken = chosenSystemFilter([]) as unknown[]
-    expect((taken[2] as ['literal', string[]])[1]).toEqual([])
-    expect(nearbyTrailFilter([])).toEqual(['!', chosenSystemFilter([])])
+    const membership = taken[1] as unknown[]
+    expect((membership[2] as ['literal', string[]])[1]).toEqual([])
+    expect(nearbyTrailFilter([])).toEqual([
+      'all',
+      ['!', membership],
+      SHARED_GROUND_EXCLUDED,
+    ])
   })
 
   it('ghosts nothing when nothing is taken, since there is no system to belong to', () => {

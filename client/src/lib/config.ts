@@ -204,6 +204,14 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
  * asks latest.json before it asks the bucket, answers every tile empty when
  * the manifest names no archive, and the sketch below the seam still draws.
  *
+ * TWO PROPERTIES THE TILES CARRY THAT THE FILE THEY ARE CUT FROM DOES NOT
+ * (#1384, export_nearby_trails.py's SHARED GROUND block): where two trails
+ * run on one treadway, the tiles also hold a PAIR of features on one chord,
+ * each with `concurrent_with` (the other trail's name) and `concurrent_side`
+ * (+1 or -1). map/sharedGround.ts draws them as two halves of one line, and
+ * the network's own layers exclude them. A release cut before the pairing
+ * existed carries neither property and draws exactly as it did.
+ *
  * @release optional - inside its parent's `reaches_hikers` branch in
  * publish.py's collect_artifacts, held back and shipped as one decision with
  * the lines it is cut from.

@@ -746,6 +746,10 @@ describe('the offline-only background', () => {
       'trail-blaze-untaken',
       'trail-casing',
       'trail-blaze',
+      // Two trails on one treadway as two halves of one line (#1384),
+      // over both stacks: the casing is the mask over the plain lines.
+      'shared-ground-casing',
+      'shared-ground-blaze',
       // Trail names (#930) directly over the lines they name, and — the half
       // that matters — EARLY, so every pin below is placed first and wins the
       // collision. Placement runs top-down (see the pins-last case above), so

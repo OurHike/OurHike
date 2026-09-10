@@ -31,6 +31,8 @@ import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
 import { typeLabel } from '../chrome/legendLabels'
 import { ModeSwitch } from '../chrome/ModeSwitch'
+import { placeTitle } from '../chrome/PlaceField'
+import type { DefaultPlace } from '../lib/defaultPlace'
 import type { HikerMode } from '../lib/hikerMode'
 import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisibility'
 import { MapStylePicker } from './MapStylePicker'
@@ -52,6 +54,15 @@ export interface SettingsProps {
   /** The "today I'm…" mode, reflected under You - see YouSettingsProps. */
   mode?: HikerMode
   onChangeMode?: (mode: HikerMode) => void
+  /**
+   * Where this hiker hikes (#1373, lib/defaultPlace.ts) and the door to
+   * change it - the promise first run makes under its field: "Kept on this
+   * phone. Change it any time in More → You." On the phone like the mode,
+   * never a UserPreferences key: a location must not join the synced
+   * blob. Optional as a pair; absent renders no row rather than a dead one.
+   */
+  defaultPlace?: DefaultPlace | null
+  onChangeDefaultPlace?: () => void
   /**
    * The background, written through its own callback rather than `onChange`.
    *
@@ -160,6 +171,9 @@ export interface YouSettingsProps {
    */
   mode?: HikerMode
   onChangeMode?: (mode: HikerMode) => void
+  /** See SettingsProps. */
+  defaultPlace?: DefaultPlace | null
+  onChangeDefaultPlace?: () => void
 }
 
 // The account row (Phase E5) states plainly that signing out keeps
@@ -176,6 +190,8 @@ export function YouSettings({
   onChange,
   mode,
   onChangeMode,
+  defaultPlace,
+  onChangeDefaultPlace,
 }: YouSettingsProps) {
   return (
     <section className="settings__group">
@@ -188,6 +204,28 @@ export function YouSettings({
         <div className="settings__row settings__row--mode">
           <span className="settings__label">Today I&rsquo;m</span>
           <ModeSwitch mode={mode} onChange={onChangeMode} variant="paper" />
+        </div>
+      )}
+
+      {/* Where the hiker hikes (#1373): the place first run asked for, or
+          "Not set", and the one door to change it - the sheet the shell
+          opens. Read as a value and changed by a button rather than typed
+          here, because the answer has to be a row of the places index and
+          a free-text field would let somebody type a place the map cannot
+          open on. */}
+      {onChangeDefaultPlace !== undefined && (
+        <div className="settings__row">
+          <span className="settings__label">Where you hike</span>
+          <span className="settings__value">
+            {defaultPlace == null ? 'Not set' : placeTitle(defaultPlace)}
+          </span>
+          <button
+            type="button"
+            className="settings__action settings__action--row"
+            onClick={onChangeDefaultPlace}
+          >
+            {defaultPlace == null ? 'Set' : 'Change'}
+          </button>
         </div>
       )}
 

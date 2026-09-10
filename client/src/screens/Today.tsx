@@ -172,10 +172,15 @@ export interface TodayProps {
    *  shelf. Empty collapses the whole section - a hiker with no suggestions
    *  costs no gap, and no rule with nothing under it. */
   suggestedHikes?: readonly SuggestedHike[]
-  /** The fix, so the shelf can pick the nearest starts. Null makes no
-   *  distance claim: the shelf takes the first published, and the rule
-   *  above it reads "Suggested hikes", not "near you". */
-  fixAt?: LonLat | null
+  /**
+   * Where "near" is measured from, so the shelf can pick the nearest
+   * starts: the fix, or - since #1373 - the place the hiker said they hike
+   * (lib/defaultPlace.ts) when there is no fix. RANKING ONLY. Nothing here
+   * prints a distance or claims the hiker is standing there, which is why
+   * a stored place may stand in for a fix on this prop and on no other.
+   * Null makes no claim at all: the shelf takes the first published.
+   */
+  near?: LonLat | null
   /** Pushes the Find screen. The row renders only when there is somewhere
    *  for it to go. */
   onFindHike?: () => void
@@ -301,7 +306,7 @@ export function Today({
   hasDownload = true,
   onOpenDownloads,
   suggestedHikes = NO_SUGGESTIONS,
-  fixAt = null,
+  near = null,
   onFindHike,
   onOpenSuggestedHike,
 }: TodayProps) {
@@ -637,7 +642,7 @@ export function Today({
   // The shelf's picks, memoized with the journal's argument: this screen
   // re-renders on every fix and every clock tick, and the picks change only
   // when the routes or the fix do.
-  const picks = useMemo(() => shelfPicks(suggestedHikes, fixAt), [suggestedHikes, fixAt])
+  const picks = useMemo(() => shelfPicks(suggestedHikes, near), [suggestedHikes, near])
   const morePublished = suggestedHikes.length - picks.length
 
   // SUGGESTED HIKES (#1284): routes somebody published, near the hiker, and

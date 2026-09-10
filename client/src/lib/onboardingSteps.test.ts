@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { buildOnboardingProgress, ONBOARDING_STEPS } from './onboardingSteps'
 
-// WIREFRAMES.md's Onboarding section: three skippable screens (What OurHike
-// is / Map size / Location permission), step counter derived from the live
-// step list, a skipped step still counts so the total never grows mid-flow.
+// WIREFRAMES.md's Onboarding section, plus #1373's second card: four
+// skippable screens (What OurHike is / Where you hike / Map size / Location
+// permission), step counter derived from the live step list, a skipped step
+// still counts so the total never grows mid-flow.
 // Accounts and notifications are never asked here - covered by the "never
 // asked here" list, not this counter's concern.
 
 describe('onboardingSteps', () => {
-  it('has exactly the three MVP steps, in order', () => {
+  it('has exactly the four steps, in order', () => {
     expect(ONBOARDING_STEPS.map((s) => s.id)).toEqual([
       'what-ourhike-is',
+      'default-place',
       'map-size',
       'location-permission',
     ])
@@ -43,13 +45,13 @@ describe('onboardingSteps', () => {
     ).toBe(1)
     expect(
       buildOnboardingProgress({ currentStepId: 'map-size', skippedStepIds: [] }).position,
-    ).toBe(2)
+    ).toBe(3)
     expect(
       buildOnboardingProgress({
         currentStepId: 'location-permission',
         skippedStepIds: [],
       }).position,
-    ).toBe(3)
+    ).toBe(4)
   })
 
   it('formats as "of N" text using the live total, so adding a future step needs no call-site changes', () => {
@@ -57,6 +59,6 @@ describe('onboardingSteps', () => {
       currentStepId: 'map-size',
       skippedStepIds: [],
     })
-    expect(progress.label).toBe(`2 of ${ONBOARDING_STEPS.length}`)
+    expect(progress.label).toBe(`3 of ${ONBOARDING_STEPS.length}`)
   })
 })

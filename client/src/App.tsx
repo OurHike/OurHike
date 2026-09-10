@@ -42,6 +42,15 @@ import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator } from './lib/navigator'
+import { usePlaces } from './lib/usePlaces'
+import {
+  clearDefaultPlace,
+  defaultPlaceCamera,
+  loadDefaultPlace,
+  saveDefaultPlace,
+  type DefaultPlace,
+} from './lib/defaultPlace'
+import { PlaceSheet } from './chrome/PlaceSheet'
 import {
   hikingDetailOptions,
   noDetailOptions,
@@ -688,6 +697,50 @@ function App() {
     back: goBack,
   } = nav
   const setActiveTab = selectTab
+  /**
+   * Where this hiker hikes (#1373, lib/defaultPlace.ts): the map's opening
+   * view when there is no remembered camera, and where Today ranks hikes
+   * from when there is no fix. Never a fix itself - nothing that prints a
+   * position reads it. Read at launch in the same breath as the preferences
+   * (the effect below that sets `preferencesLoaded`), so the gate the map
+   * already waits on covers it and the first map is built around the place
+   * rather than around the whole corridor and then moved.
+   */
+  const [defaultPlace, setDefaultPlace] = useState<DefaultPlace | null>(null)
+  /** The map's opening view from that place, in MapView's own terms: a box
+   *  to fit where the place has one, else a point at a planning zoom. */
+  const placeView = useMemo(() => {
+    if (defaultPlace === null) return null
+    const view = defaultPlaceCamera(defaultPlace)
+    if ('bounds' in view) {
+      const [west, south, east, north] = view.bounds
+      return {
+        bounds: [
+          [west, south],
+          [east, north],
+        ] as [[number, number], [number, number]],
+        center: undefined,
+        zoom: undefined,
+      }
+    }
+    return {
+      bounds: undefined,
+      center: [view.center[0], view.center[1]] as [number, number],
+      zoom: view.zoom,
+    }
+  }, [defaultPlace])
+  /** The sheet that changes it, from More → You (chrome/PlaceSheet.tsx). */
+  const [placeSheetOpen, setPlaceSheetOpen] = useState(false)
+  const handleSaveDefaultPlace = useCallback((place: DefaultPlace) => {
+    setDefaultPlace(place)
+    setPlaceSheetOpen(false)
+    void saveDefaultPlace(place).catch(() => {})
+  }, [])
+  const handleClearDefaultPlace = useCallback(() => {
+    setDefaultPlace(null)
+    setPlaceSheetOpen(false)
+    void clearDefaultPlace().catch(() => {})
+  }, [])
   // The phone's mode read-out opens Today's switch: a tab selection plus a
   // focus that waits for the render mounting Today (the effect on a counter).
   // Declared up here with the other hooks - below the flow chain there is
@@ -1219,6 +1272,10 @@ function App() {
    * read that follows fills the map in.
    */
   const entering = !preferences.onboarding_completed
+  // The places index (#1373, lib/usePlaces.ts), read only while a screen
+  // can type into it: first run's second card, and the sheet More → You
+  // opens. A launch that never opens either never pays for the read.
+  const { places, settled: placesSettled } = usePlaces(online, entering || placeSheetOpen)
   /** The active long hike's trail, or null for nothing taken - first
    *  launch's all-dotted map (#1306), same as a hiker who has set up no
    *  hike yet. Derived from the active Hike rather than its own preference
@@ -1453,14 +1510,21 @@ function App() {
     // "read once, no flash"): the Today header renders the switch on first
     // paint, and a default that flips a tick later is exactly the flash the
     // mirror exists to prevent - so the mirror carries the mode too.
-    void Promise.all([loadPreferences(), loadHikerMode()]).then(
-      ([stored, mode]) => {
+    // The kept place rides the same read (#1373): a rejection there is
+    // "no place", never a reason to hold the preferences back.
+    void Promise.all([
+      loadPreferences(),
+      loadHikerMode(),
+      loadDefaultPlace().catch(() => null),
+    ]).then(
+      ([stored, mode, place]) => {
         // A choice made in the window before this landed outranks the record:
         // the hiker is looking at what they picked.
         if (!mirroredTouched.current) {
           setPreferences(stored)
           setHikerMode(mode)
         }
+        setDefaultPlace(place)
         recordRead.current = true
         setPreferencesLoaded(true)
         markLaunch(LAUNCH_MARKS.preferences)
@@ -6002,7 +6066,17 @@ function App() {
   )
 
   const handleOnboardingComplete = useCallback(
-    ({ hikingDetailLevel, locationRequested }: OnboardingResult) => {
+    ({
+      hikingDetailLevel,
+      locationRequested,
+      defaultPlace: chosen,
+    }: OnboardingResult) => {
+      // Where they hike (#1373), kept on this phone and nowhere else - the
+      // reason it is not one of the preference keys written below.
+      if (chosen !== null) {
+        setDefaultPlace(chosen)
+        void saveDefaultPlace(chosen).catch(() => {})
+      }
       // The choice made is the choice written (#277): onboarding's download
       // step speaks the hiking sheet now, so the hiking sheet's preference
       // is what it sets. The USGS raster's tier keeps its default until its
@@ -7827,7 +7901,12 @@ function App() {
       // The shelf (#1284): routes somebody published, and the way to the rest
       // of them. The cards press since #1290 built the detail they open.
       suggestedHikes={suggestedHikes}
-      fixAt={fixAt}
+      // The fix, or with none the place the hiker said they hike (#1373) -
+      // for ranking the shelf only; Today prints no distance from it.
+      near={
+        fixAt ??
+        (defaultPlace === null ? null : { lon: defaultPlace.lon, lat: defaultPlace.lat })
+      }
       onFindHike={() => pushScreen({ kind: 'find' })}
       onOpenSuggestedHike={openSuggestedHike}
     />
@@ -8017,6 +8096,9 @@ function App() {
                 <More
                   page={morePage}
                   onNavigate={setMorePage}
+                  // Where they hike (#1373), and the sheet that changes it.
+                  defaultPlace={defaultPlace}
+                  onChangeDefaultPlace={() => setPlaceSheetOpen(true)}
                   // #1180's recorder. `now` comes from the shell's clock so
                   // the elapsed reading advances without the section holding
                   // a timer of its own on the one screen that costs battery.
@@ -8907,9 +8989,21 @@ function App() {
               // The corridor is the opening view only. Once there is a camera to put
               // back, it wins: `bounds` would otherwise re-frame the entire trail
               // every time the map screen came back from another tab.
-              center={camera?.center}
-              zoom={camera?.zoom}
-              bounds={camera === null ? CORRIDOR_BOUNDS : undefined}
+              // ...or, since #1373, the place the hiker said they hike
+              // (lib/defaultPlace.ts, `placeView`): its box where it has
+              // one, else its point at a planning zoom. Only with no camera
+              // to put back, and never a fix - the fallback is for a phone
+              // with none, and a fix moves the map through the locate
+              // control the hiker presses, not through the opening view.
+              center={camera?.center ?? placeView?.center}
+              zoom={camera?.zoom ?? placeView?.zoom}
+              bounds={
+                camera !== null
+                  ? undefined
+                  : placeView === null
+                    ? CORRIDOR_BOUNDS
+                    : placeView.bounds
+              }
               boundsPadding={entryFitPadding}
               onViewportChange={handleViewportChange}
               onMapReady={handleMapReady}
@@ -8983,12 +9077,31 @@ function App() {
           onChangeLevel={(level) => updatePreferences({ hiking_detail_level: level })}
           onStartDownload={handleOnboardingDownload}
           downloadActivity={downloadActivity}
+          places={places}
+          placesSettled={placesSettled}
+          online={online}
+          units={units}
         />
       )}
       {/* Not while a full-screen flow is up: the flows used to be early
           returns above this window's own construction, so it never rendered
           over one, and a dialog floating over somebody's half-typed report
           is not an arrangement worth inventing now. */}
+      {/* Where you hike (#1373), from More → You: a sheet over whichever
+          screen is up, docked to the viewport's foot (chrome/placeField.css)
+          so it needs no positioned ancestor at this level. */}
+      {placeSheetOpen && (
+        <PlaceSheet
+          places={places}
+          settled={placesSettled}
+          online={online}
+          units={units}
+          current={defaultPlace}
+          onSave={handleSaveDefaultPlace}
+          onClear={handleClearDefaultPlace}
+          onClose={() => setPlaceSheetOpen(false)}
+        />
+      )}
       {flowScreen === null && !hikeWindowOpen && downloadsWindow}
 
       {/* THE REPORT WINDOW (#1133), last in the fragment so it stacks over

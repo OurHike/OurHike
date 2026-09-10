@@ -147,11 +147,14 @@ function withDownloadedArchive() {
 }
 
 async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
-  await screen.findByText('What OurHike is')
-  await user.click(screen.getByRole('button', { name: 'Continue' }))
+  await screen.findByText('A map that works where there is no signal.')
+  await user.click(screen.getByRole('button', { name: 'Get set up' }))
+
+  // Past the second card, where the hiker hikes (#1373), with no place.
+  await user.click(screen.getByRole('button', { name: /^skip — i/i }))
   // The size step's own primary since #1054 - it also starts the download,
   // which these shell tests let run into their stubbed fetch.
-  await user.click(screen.getByRole('button', { name: 'Keep going' }))
+  await user.click(screen.getByRole('button', { name: /^download/i }))
   await user.click(screen.getByRole('button', { name: /not now/i }))
 }
 
@@ -190,7 +193,9 @@ describe('App shell', () => {
   it('opens on onboarding the very first time', async () => {
     render(<App />)
 
-    expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
+    expect(
+      await screen.findByText('A map that works where there is no signal.'),
+    ).toBeInTheDocument()
   })
 
   it('builds nothing behind the first-run steps, because nothing is behind them (#1324)', async () => {
@@ -224,7 +229,7 @@ describe('App shell', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
     // Not only about stray taps: MapView attaches a locate control, and
     // reaching it would raise the OS location prompt before the step whose
     // whole job is to explain why we are asking.
@@ -284,7 +289,9 @@ describe('App shell', () => {
     expect(
       await screen.findByRole('tab', { name: 'Today', selected: true }),
     ).toBeInTheDocument()
-    expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('A map that works where there is no signal.'),
+    ).not.toBeInTheDocument()
   })
 
   it('needs no re-fit on a phone, because the card never framed the map (#1296/#1324)', async () => {
@@ -1532,7 +1539,9 @@ describe('a storage read that fails', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
+    expect(
+      await screen.findByText('A map that works where there is no signal.'),
+    ).toBeInTheDocument()
   })
 })
 

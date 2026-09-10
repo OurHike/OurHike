@@ -82,6 +82,23 @@ export function normaliseDefaultPlace(stored: unknown): DefaultPlace | null {
   return place
 }
 
+/** The snapshot of a live index row - the fields a map and a label need,
+ *  and none of the measurement that goes stale with the next publish. */
+export function snapshotPlace(place: Place): DefaultPlace {
+  const snapshot: DefaultPlace = {
+    id: place.id,
+    name: place.name,
+    kind: place.kind,
+    lon: place.lon,
+    lat: place.lat,
+  }
+  if (place.state !== undefined) snapshot.state = place.state
+  if (place.category !== undefined) snapshot.category = place.category
+  if (place.within !== undefined) snapshot.within = place.within
+  if (place.bbox !== undefined) snapshot.bbox = place.bbox
+  return snapshot
+}
+
 export async function loadDefaultPlace(): Promise<DefaultPlace | null> {
   return normaliseDefaultPlace(await get(DEFAULT_PLACE_KEY))
 }

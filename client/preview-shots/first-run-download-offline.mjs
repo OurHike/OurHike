@@ -31,7 +31,7 @@
 export const caption =
   'The same offer with the manifest blocked — a size withheld rather than guessed (#1167)'
 export const alt =
-  'The second first-run card over the hero photo: "Take the whole trail with you" with three size options — Light, Standard marked as recommended, and Fine — each reading "Unknown offline" where a figure would normally be, all three still selectable, above a Keep going button and a Decide this later link'
+  'The third first-run card over the hero photo: "Take the whole trail with you" with three size options — Light, Standard marked as recommended, and Fine — each reading "Unknown offline" where a figure would normally be, all three still selectable, above a Download button carrying the chosen size and a Decide this later link'
 
 // First run is the subject, so the runner must not skip it.
 export const entry = true
@@ -43,7 +43,9 @@ export default async function drive(page) {
   await page.route('**/latest.json', (route) => route.abort())
   await page.reload({ waitUntil: 'load' })
 
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Get set up' }).click()
+  // Past the new second card, where the hiker hikes (#1373, frame 1b).
+  await page.getByRole('button', { name: /^Skip/ }).click()
 
   // Wait on the rung rather than a timer - it both settles the shot and
   // asserts the state actually arrived. If a future change gives the picker a

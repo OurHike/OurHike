@@ -5,12 +5,17 @@
 // sites - they all just read ONBOARDING_STEPS.length indirectly.
 
 export interface OnboardingStep {
-  id: 'what-ourhike-is' | 'map-size' | 'location-permission'
+  id: 'what-ourhike-is' | 'default-place' | 'map-size' | 'location-permission'
   skippable: true
 }
 
+// Four since #1373 (the design's frame 1b): where the hiker hikes, asked
+// after the value step and before the download, so the map has a place to
+// open on before location is ever asked for - and a fallback centre whenever
+// GPS has no fix. Skippable like the rest; More → You holds the same field.
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   { id: 'what-ourhike-is', skippable: true },
+  { id: 'default-place', skippable: true },
   { id: 'map-size', skippable: true },
   { id: 'location-permission', skippable: true },
 ]

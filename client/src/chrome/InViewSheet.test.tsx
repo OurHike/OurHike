@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { InViewSheet, type InViewSheetProps } from './InViewSheet'
+import { IN_VIEW_ROW_PX, InViewSheet, type InViewSheetProps } from './InViewSheet'
 
 const POINTS = [
   {
@@ -165,6 +165,43 @@ describe('what is in view', () => {
     cleanup()
     render(<InViewSheet {...PROPS} />)
     expect(screen.queryByRole('region', { name: 'Workdays in view' })).toBeNull()
+  })
+
+  // The list is windowed (the maintainer's review of #1374): every row is
+  // kept, the ones on screen are mounted, and the rest hold their height.
+  it('mounts only the rows a screen holds, with spacers standing in for the rest', () => {
+    const many = Array.from({ length: 500 }, (_, i) => ({
+      id: `p${i}`,
+      type: 'water',
+      lat: 41 + i / 1000,
+      lon: -74.5,
+      confidence: 'high' as const,
+      name: `Spring ${i}`,
+    }))
+    render(<InViewSheet {...PROPS} points={many} total={undefined} mileOf={undefined} />)
+
+    expect(screen.getByRole('heading', { name: 'In view · 500' })).toBeInTheDocument()
+    const rows = screen.getAllByRole('button', { name: /^Spring / })
+    expect(rows.length).toBeGreaterThan(8)
+    expect(rows.length).toBeLessThan(60)
+    // The rows say where they sit in the whole, and the spacers hold the
+    // height of what is not mounted.
+    const list = screen.getByRole('list', { name: '500 waypoints in view' })
+    expect(list.querySelector('li[aria-posinset="1"]')).not.toBeNull()
+    const spacer = list.querySelector('.in-view__spacer') as HTMLElement
+    expect(spacer).not.toBeNull()
+    expect(spacer.style.height).toBe(`${(500 - rows.length) * IN_VIEW_ROW_PX}px`)
+    expect(list.querySelectorAll('li')).toHaveLength(rows.length + 1)
+  })
+
+  it('says when the map is drawing none of the rows, rather than letting "in view" claim a pin', () => {
+    render(<InViewSheet {...PROPS} drawnNone />)
+
+    expect(
+      screen.getByText(/the map draws none of these at this zoom/i),
+    ).toBeInTheDocument()
+    // The rows are still listed: the frame holds them, the zoom hides them.
+    expect(screen.getByRole('button', { name: /Murray spring/ })).toBeInTheDocument()
   })
 
   it('renders nothing while closed', () => {

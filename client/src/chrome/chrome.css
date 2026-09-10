@@ -1026,6 +1026,28 @@
   flex-direction: column;
 }
 
+/* One height per row, the number InViewSheet.tsx's IN_VIEW_ROW_PX carries
+   and the windowing is arithmetic on (its header says why). The row fills
+   the slot and its meta line, which wraps elsewhere, ellipsises here the
+   way the title already does - a second line would push the row past the
+   slot and every row after it off the arithmetic. */
+.in-view__rows > li {
+  flex: none;
+  height: 62px;
+  box-sizing: border-box;
+}
+.in-view__rows .poi-row {
+  height: 100%;
+}
+.in-view__rows .poi-row__meta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.in-view__spacer {
+  visibility: hidden;
+}
+
 .legend__empty {
   margin: var(--space-3, 12px) 0 0;
   color: var(--fg-3);

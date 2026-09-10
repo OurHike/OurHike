@@ -182,6 +182,14 @@ PUBLIC_CLOSURES_SQL = """
 # this is the one place a bare spelling could ever read as one. Ordered by
 # authoring time then id so the bytes are deterministic - publish.py diffs
 # sha256 per artifact, and a day with no report changes must upload nothing.
+#
+# `verified_at` rides out and `verified_by` never does - the split the live
+# wire makes (backend/app/schemas/report.py, PR #647): when a moderator
+# stood behind a report is what a hiker weighing a strong claim about a
+# person is entitled to check, and who did is a profile id. The bake
+# withheld both until #1377: every serious warning read offline - the read a
+# hiker on the trail actually makes - arrived undated, and the sheet could
+# only say so.
 PUBLIC_REPORTS_SQL = """
     SELECT id,
            type,
@@ -195,7 +203,8 @@ PUBLIC_REPORTS_SQL = """
            follow_up,
            status,
            visibility,
-           severity
+           severity,
+           verified_at
       FROM public.reports
      WHERE status IN ('verified', 'resolved')
        AND visibility = 'public'
@@ -306,7 +315,7 @@ PUBLIC_DISPUTES_SQL = """
 # out. Listed rather than detected, so adding a column is a decision about its
 # wire form rather than something type inference makes quietly.
 CLOSURE_TIMESTAMP_FIELDS = ("reported_at", "verified_at", "closed_since", "expected_reopen")
-REPORT_TIMESTAMP_FIELDS = ("timestamp",)
+REPORT_TIMESTAMP_FIELDS = ("timestamp", "verified_at")
 NOTE_TIMESTAMP_FIELDS = ("observed_at",)
 DISPUTE_TIMESTAMP_FIELDS = ("latest_at",)
 

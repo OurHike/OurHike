@@ -556,6 +556,38 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(at.anchor).toEqual([190, 400])
   })
 
+  it('reads the whole line at a coarser pitch when it is longer than the cap, rather than only its densest mile', () => {
+    // The z9 frame of the review of #1374, in screen space: two thousand
+    // vertices a tenth of a px apart under a pin every nineteen px (the
+    // seam's tile geometry through Harriman, pins on every stretch of it),
+    // and eighty sparse vertices in the clear beyond them. The six hundred
+    // nearest the centre all lie under the pins, so a search cut at the
+    // centre finds nothing and drops the mark on the nearest vertex - under
+    // a pin. Sampled along the line, the clear stretch is reached.
+    const dense = Array.from(
+      { length: 2001 },
+      (_, i) => [100 + i / 10, 400] as [number, number],
+    )
+    const clear = Array.from({ length: 80 }, (_, i) => [301 + i, 400] as [number, number])
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [...dense, ...clear],
+          'White',
+        ),
+      ],
+      [POI_LAYER_ID]: Array.from({ length: 11 }, (_, i) => pin(100 + i * 20, 400)),
+    })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).not.toBeNull()
+    // Past the last pin at x = 300: on the clear stretch, where the mark's
+    // box clears the pin's (the placer's own test, plateBox against the
+    // obstacle), rather than on the vertex nearest the centre under a pin.
+    expect((at.anchor as [number, number])[0]).toBeGreaterThan(300)
+  })
+
   it('takes the full form wherever it fits, and says so on the feature', () => {
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS] })
     const trails = trailsInView(map as unknown as MapLibreMap)

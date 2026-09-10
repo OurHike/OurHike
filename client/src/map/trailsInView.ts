@@ -253,16 +253,34 @@ interface Candidate {
 }
 
 /**
- * How many vertices the search reads before settling for the nearest. At
- * the opening camera the A.T.'s drawn geometry is thousands of vertices;
- * trying every anchor of every one of them on each `idle` is work nobody
- * would see. Six hundred nearest the centre is more than a screen holds at
- * any hiking zoom (a phone at z14 draws a few dozen), so the cap only ever
- * bites at the overview, where the line is far from every pin anyway.
- * @unvalidated as a figure: picked to bound the work, not measured against
- * a frame where the six-hundred-and-first vertex was the only free one.
+ * How many vertices the search reads. At the opening camera the A.T.'s
+ * drawn geometry is thousands of vertices; trying every anchor of every one
+ * of them on each `idle` is work nobody would see.
+ *
+ * THINNED ALONG THE LINE, NOT CUT AT THE CENTRE. The first cut kept the six
+ * hundred nearest the centre, on the argument that the cap only bites at
+ * the overview, where the line is far from every pin. The z9 frame proved
+ * that wrong on both a phone and a laptop (rendered 2026-09-10, the review
+ * of #1374): tile geometry at the seam puts six hundred vertices inside a
+ * few miles of trail, the few miles nearest the centre over Harriman were
+ * the ones under a dozen pins, every plate and every mark collided, and
+ * the last resort put the mark on the vertex nearest the centre - under a
+ * pin, invisible. The clear stretch by Warwick was the six-hundred-and-first
+ * vertex and beyond. So a run longer than the cap is sampled evenly along
+ * its length first, and sorted by distance to the centre second: the same
+ * bound on the work, over the whole visible line rather than its densest
+ * mile. The figure itself stays @unvalidated - picked to bound the work;
+ * what would settle it is the cost of one pass at z9 on a slow phone.
  */
 const CANDIDATE_LIMIT = 600
+
+/** Every `step`-th entry of `all`, the first kept, so a run longer than the
+ *  cap is read end to end at a coarser pitch rather than only at one end. */
+function thinned<T>(all: readonly T[], limit: number): T[] {
+  if (all.length <= limit) return [...all]
+  const step = Math.ceil(all.length / limit)
+  return all.filter((_, i) => i % step === 0)
+}
 
 /**
  * Every in-view vertex of every visible piece of a trail, nearest the
@@ -284,17 +302,22 @@ function candidatesOf(
 ): Candidate[] {
   const seen = new Set<string>()
   const list = (runs: readonly Run[]): Candidate[] => {
-    const out: Candidate[] = []
+    const points: Position[] = []
     for (const run of runs) {
       for (const point of run.points) {
         const key = `${point[0]},${point[1]}`
         if (seen.has(key)) continue
         seen.add(key)
-        const at = map.project([point[0], point[1]])
-        out.push({ point, at, distance: Math.hypot(at.x - centre.x, at.y - centre.y) })
+        points.push(point)
       }
     }
-    return out.sort((a, b) => a.distance - b.distance)
+    // Along the line first (the runs' own order), then by distance.
+    return thinned(points, CANDIDATE_LIMIT)
+      .map((point) => {
+        const at = map.project([point[0], point[1]])
+        return { point, at, distance: Math.hypot(at.x - centre.x, at.y - centre.y) }
+      })
+      .sort((a, b) => a.distance - b.distance)
   }
   return [...list(clearRuns), ...list(viewRuns)].slice(0, CANDIDATE_LIMIT)
 }

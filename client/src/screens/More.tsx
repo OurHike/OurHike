@@ -485,6 +485,7 @@ export function More({
             onChange={settings.onChange}
             mode={settings.mode}
             onChangeMode={settings.onChangeMode}
+            modePending={settings.modePending}
             defaultPlace={settings.defaultPlace}
             onChangeDefaultPlace={settings.onChangeDefaultPlace}
           />

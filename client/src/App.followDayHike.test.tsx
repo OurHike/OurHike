@@ -438,6 +438,46 @@ describe('following a day hike, end to end', () => {
     expect(screen.queryByText(/Waiting for GPS/i)).not.toBeInTheDocument()
   })
 
+  it('edits the walk being followed from its card: asked first, then following stops and the builder holds the route (#1373, D1)', async () => {
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    await screen.findByText('turn left onto Seven Hills Trail')
+
+    // Back to the card on the Plan tab. Following is still on, so the edit
+    // door asks with the design's sentence before it does anything.
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow to Seven Hills/ }),
+    )
+    await user.click(await screen.findByRole('button', { name: 'Edit the route' }))
+    expect(screen.getByText(/You are walking this one/)).toBeInTheDocument()
+    expect(screen.getByText('turn left onto Seven Hills Trail')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Edit it' }))
+
+    // The next-turn card is gone, the builder is up at step 2 holding the
+    // saved walk's own legs - not an empty builder - and Save would land
+    // back on the same record.
+    await waitFor(() => {
+      expect(
+        screen.queryByText('turn left onto Seven Hills Trail'),
+      ).not.toBeInTheDocument()
+    })
+    expect(
+      await screen.findByRole('region', { name: 'Build a day hike' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText(/2 legs ·/)).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Planning steps' })).toHaveTextContent(
+      'Route',
+    )
+  })
+
   it('gives the map back when following stops', async () => {
     const user = userEvent.setup()
     app.onboard({ location_permission_requested: true })

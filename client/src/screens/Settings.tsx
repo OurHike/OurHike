@@ -54,6 +54,7 @@ export interface SettingsProps {
   /** The "today I'm…" mode, reflected under You - see YouSettingsProps. */
   mode?: HikerMode
   onChangeMode?: (mode: HikerMode) => void
+  modePending?: boolean
   /**
    * Where this hiker hikes (#1373, lib/defaultPlace.ts) and the door to
    * change it - the promise first run makes under its field: "Kept on this
@@ -171,6 +172,8 @@ export interface YouSettingsProps {
    */
   mode?: HikerMode
   onChangeMode?: (mode: HikerMode) => void
+  /** "Which long hike?" is open over the switch - chrome/ModeSwitch.tsx. */
+  modePending?: boolean
   /** See SettingsProps. */
   defaultPlace?: DefaultPlace | null
   onChangeDefaultPlace?: () => void
@@ -190,6 +193,7 @@ export function YouSettings({
   onChange,
   mode,
   onChangeMode,
+  modePending = false,
   defaultPlace,
   onChangeDefaultPlace,
 }: YouSettingsProps) {
@@ -203,7 +207,12 @@ export function YouSettings({
       {mode !== undefined && onChangeMode !== undefined && (
         <div className="settings__row settings__row--mode">
           <span className="settings__label">Today I&rsquo;m</span>
-          <ModeSwitch mode={mode} onChange={onChangeMode} variant="paper" />
+          <ModeSwitch
+            mode={mode}
+            onChange={onChangeMode}
+            variant="paper"
+            pending={modePending}
+          />
         </div>
       )}
 

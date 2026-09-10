@@ -313,18 +313,21 @@ import { datedDaysAhead, pausedDays, resumeOffer } from './lib/hikeResume'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import {
-  canCloseLoop,
   canStartStretch,
+  draftFromWalk,
   draftPoints,
+  draftShape,
   draftStatus,
   EMPTY_DRAFT,
   drawStroke,
-  loopDraft,
   OFF_NETWORK_REFUSAL,
+  shapeDraft,
+  shapesOffered,
   startStretch,
   tapAt,
   removeTap,
   undoTap,
+  walkEnds,
   type DayHikeDraft,
   NETWORK_STILL_ARRIVING,
 } from './lib/dayHikeDraft'
@@ -716,6 +719,18 @@ function App() {
     (tab: TabId) => navigate({ to: 'tab', tab, unguarded: true }),
     [navigate],
   )
+  /**
+   * Step 2's "‹ Hike" and the rail's first stop (#1373, rule R3): back to
+   * "Where do you want to go?" with the route kept. One push - a step
+   * screen lives under Plan, so pushing it selects the tab as well - and
+   * not a guarded exit: the draft stays live on the map behind it, which is
+   * the whole promise of the rail, so there is nothing to ask about. Step 1
+   * then offers its second stop as the way back (see the PlanStart mount).
+   */
+  const backToStepOne = useCallback(
+    () => pushScreen({ kind: 'step', step: 1 }),
+    [pushScreen],
+  )
   /** Step 1's field (screens/PlanStart.tsx): the stop search, as a sheet. */
   const [stepPickerOpen, setStepPickerOpen] = useState(false)
   /**
@@ -913,6 +928,16 @@ function App() {
    * all read. Cleared with the draft, never outliving it.
    */
   const [dayHikeDraftDate, setDayHikeDraftDate] = useState<string | null>(null)
+  /**
+   * The saved record the live draft was opened FROM (#1373, D1), or null
+   * for a new walk.
+   *
+   * Held whole rather than as an id, because Save writes back over it and
+   * needs the fields the builder never touches - the walks logged against
+   * it, the hiker's own note, the date - to survive the round trip. Cleared
+   * with the draft by both exits, like every other draft-scoped state.
+   */
+  const [dayHikeEditing, setDayHikeEditing] = useState<DayHike | null>(null)
   /**
    * The saved day hike being FOLLOWED, by id (#1041, frames `D9`-`D11`).
    *
@@ -4205,6 +4230,7 @@ function App() {
     gpsPlanMile,
     gpsClientMile: fix?.mile ?? null,
     trailMiles,
+    onBackToStepOne: backToStepOne,
     targetOpen: targetRequest !== null,
     setTargetRequest,
     onRecordWalked: handleRecordWalked,
@@ -4515,6 +4541,7 @@ function App() {
     setDayHikeDraftDate(null)
     setDayHikeDrawMode(false)
     setDayHikeKind('planned')
+    setDayHikeEditing(null)
     // The stops go with the walk they were picked for. Leaving them would
     // put yesterday's shelters into tomorrow's route the moment the builder
     // reopened, which is the same staleness `openId` is kept in the store to
@@ -4753,7 +4780,10 @@ function App() {
     }
     const status = dayHikeStatus
     const hike: DayHike = {
-      id: crypto.randomUUID(),
+      // An edit keeps the record's identity (#1373, D1): the walks logged
+      // against it and the sync exchange both key on the id, and a new one
+      // would leave the old route in the list beside its own replacement.
+      id: dayHikeEditing?.id ?? crypto.randomUUID(),
       // Named off the longest leg of the whole walk, gaps included in the
       // sense that they contribute no leg to be named after - which is right:
       // a walk is named for the trail it spends most of its miles on.
@@ -4762,18 +4792,18 @@ function App() {
       // discarded it - see dayHikeDraftDate.
       date: dayHikeDraftDate,
       // Each stretch stored as its own run of ends, which is what makes the
-      // gap survive a save. A stretch of fewer than two ends is dropped: a
-      // "start a new stretch" the hiker never finished describes a place
-      // rather than a walk, and lib/dayHikeCard.ts cannot resolve one - so
-      // storing it would guarantee the hike falls back to its cache for ever.
-      segments: dayHike.segments
-        .filter((stretch) => stretch.length >= 2)
-        .map((stretch) =>
-          stretch.map((point) => ({
-            coord: [point.at.lon, point.at.lat] as [number, number],
-            poiId: null,
-          })),
-        ),
+      // gap survive a save; an out-and-back is written as the taps and then
+      // the taps again home, so the record needs no shape field
+      // (lib/dayHikeDraft.ts's walkEnds, which also drops a stretch of
+      // fewer than two ends - a "start a new stretch" the hiker never
+      // finished describes a place rather than a walk, and
+      // lib/dayHikeCard.ts cannot resolve one).
+      segments: walkEnds(dayHike).map((stretch) =>
+        stretch.map((point) => ({
+          coord: [point.at.lon, point.at.lat] as [number, number],
+          poiId: null,
+        })),
+      ),
       figures: {
         miles: status.miles,
         legs: status.legs.map((leg) => ({
@@ -4815,13 +4845,27 @@ function App() {
       // door that describes what the hiker is doing, rather than guessed at
       // from a date in the past.
       recorded: dayHikeKind,
-      note: '',
+      // What the builder never touches rides through an edit untouched: the
+      // hiker's own line, and every walk they logged. A published route
+      // edited here is the hiker's own walk now, so its publisher's credit
+      // does not carry - `sourceId` and `sourceAuthor` are left off, and
+      // saving the published route again from the finder mints its own
+      // record beside this one, which is the honest outcome.
+      note: dayHikeEditing?.note ?? '',
+      ...(dayHikeEditing?.walks !== undefined ? { walks: dayHikeEditing.walks } : {}),
     }
     // Done no longer saves: it hands the record to frame `1l`'s card, and
     // "Save this day hike" there is the commit (#980). The draft stays live
     // underneath so closing the card returns to the builder mid-thought.
     setDayHikeReview(hike)
-  }, [dayHike, dayHikeStatus, dayHikeDraftDate, dayHikeKind, dayHikeStops])
+  }, [
+    dayHike,
+    dayHikeStatus,
+    dayHikeDraftDate,
+    dayHikeKind,
+    dayHikeStops,
+    dayHikeEditing,
+  ])
 
   const handleDayHikeSave = useCallback(() => {
     if (dayHikeReview === null) return
@@ -4833,12 +4877,20 @@ function App() {
     // nothing is on screen once the card closes, and the card defines what
     // that pointer means now.
     void loadDayHikes().then((store) => {
-      const next = { hikes: [...store.hikes, hike], openId: null }
+      // An edit lands where the record was (#1373, D1) - same id, same place
+      // in the list - so the shelf does not reorder under a hiker who
+      // changed one stop. A record deleted on another phone meanwhile is
+      // simply saved again: the hiker has the route in hand and asked for it.
+      const hikes = store.hikes.some((saved) => saved.id === hike.id)
+        ? store.hikes.map((saved) => (saved.id === hike.id ? hike : saved))
+        : [...store.hikes, hike]
+      const next = { hikes, openId: null }
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
     setDayHikeReview(null)
     setDayHike(null)
+    setDayHikeEditing(null)
     setGraphAnchors([])
     setDayHikeDraftDate(null)
     // The stops belong to the walk that just saved. Clearing them here as
@@ -4862,6 +4914,57 @@ function App() {
       return saveDayHikes(next)
     })
   }, [])
+
+  /**
+   * Open a saved walk in the builder at step 2 (#1373, D1).
+   *
+   * The saved ends are replayed as taps against this phone's graph
+   * (lib/dayHikeDraft.ts's draftFromWalk), the stops it was saved with are
+   * picked again, and the record itself is kept in `dayHikeEditing` so Save
+   * writes back over it. `openDayHike` does the rest of the door's work -
+   * and it is what STOPS FOLLOWING, the rule D1 exists to say out loud: the
+   * card asks before calling this when the walk is the one being followed.
+   *
+   * A walk the graph can no longer place opens the builder with the refusal
+   * on its bar rather than half a route: the door is only offered while the
+   * card's own resolution is live, so this is the race between a card open
+   * and a graph cell being replaced under it, and an honest empty builder
+   * is the right answer to it.
+   */
+  const handleEditDayHike = useCallback(
+    (id: string) => {
+      const hike = dayHikeStore.hikes.find((saved) => saved.id === id)
+      if (hike === undefined || dayHikeIndex === null) return
+      const replayed = draftFromWalk(
+        dayHikeIndex,
+        hike.segments.map((stretch) =>
+          stretch.map((end) => ({ lon: end.coord[0], lat: end.coord[1] })),
+        ),
+        hike.looped,
+      )
+      openDayHike()
+      setDayHike(
+        replayed ?? {
+          ...EMPTY_DRAFT,
+          refusal:
+            'This phone’s trail map can no longer place that route. Tap it out again.',
+        },
+      )
+      setDayHikeStopIds(new Set((hike.stops ?? []).map((stop) => stop.poiId)))
+      setDayHikeKind(hike.recorded)
+      setDayHikeDraftDate(hike.date)
+      setDayHikeEditing(hike)
+      // The card goes away with the pointer that opened it - the walk is on
+      // the map now, being edited, and a card behind it would be describing
+      // the route as it was.
+      void loadDayHikes().then((store) => {
+        const next = { ...store, openId: null }
+        setDayHikeStore(next)
+        return saveDayHikes(next)
+      })
+    },
+    [dayHikeStore.hikes, dayHikeIndex, openDayHike, setDayHikeStopIds],
+  )
 
   // ---- Opening and saving a published route (#1290) ----
 
@@ -5259,6 +5362,14 @@ function App() {
         onFollow={
           dayHikeReview === null ? () => startFollowing(cardDayHike.id) : undefined
         }
+        // Saved only, like following, and only with a graph to replay the
+        // ends against; the card withholds it over the stored cache itself.
+        onEdit={
+          dayHikeReview === null && dayHikeIndex !== null
+            ? () => handleEditDayHike(cardDayHike.id)
+            : undefined
+        }
+        following={followingId === cardDayHike.id}
         onSave={handleDayHikeSave}
         onClose={handleDayHikeCardClose}
         onDelete={() => handleDeleteDayHike(cardDayHike.id)}
@@ -7969,6 +8080,9 @@ function App() {
       trailLinesMissing={!haveTrailLines && dataError !== null}
       mode={hikerMode}
       onChangeMode={handleChangeMode}
+      // Drawn as chosen-but-pending while "Which long hike?" is open
+      // (#1317's rule; the prop existed and nothing passed it until #1373).
+      modePending={hikeSheet === 'pick'}
       longHike={longHikeToday}
       pois={searchablePois}
       currentMile={fix?.mile}
@@ -8087,7 +8201,11 @@ function App() {
   // control on the Today header. Undefined below the breakpoint, so TabBar
   // draws nothing extra on a phone.
   const sidebarModeSwitch = isDesktop ? (
-    <ModeSwitch mode={hikerMode} onChange={handleChangeMode} />
+    <ModeSwitch
+      mode={hikerMode}
+      onChange={handleChangeMode}
+      pending={hikeSheet === 'pick'}
+    />
   ) : undefined
   /**
    * The phone's mode read-out (#1373, the review's rule R11): a slim row
@@ -8229,6 +8347,7 @@ function App() {
                   account={account}
                   mode={hikerMode}
                   onChangeMode={handleChangeMode}
+                  modePending={hikeSheet === 'pick'}
                   onSignIn={() => setAuthFlow({ screen: 'choose', afterReport: false })}
                   onSignOut={() => void handleSignOut()}
                   preferences={preferences}
@@ -8364,6 +8483,15 @@ function App() {
                   }
                   onOpenSuggestedHike={openSuggestedHike}
                   onCancel={goBack}
+                  // A route waiting on the map makes step 2 a door (R3):
+                  // the rail's second stop goes back to it, the draft kept.
+                  {...(builderLive
+                    ? {
+                        reached: 2 as const,
+                        onStep: () =>
+                          navigate({ to: 'tab', tab: 'map', unguarded: true }),
+                      }
+                    : {})}
                 />
               ) : (
                 <PlanScreen
@@ -8852,6 +8980,7 @@ function App() {
                         draft === null ? draft : removeTap(draft, ordinal),
                       )
                     }
+                    onBackToStepOne={backToStepOne}
                     detailsOpen={dayHikeDetailsOpen}
                     onToggleDetails={() => setDayHikeDetailsOpen((open) => !open)}
                   />
@@ -8974,8 +9103,12 @@ function App() {
                     onUndo={() =>
                       setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
                     }
-                    onCloseLoop={() =>
-                      setDayHike((draft) => (draft === null ? draft : loopDraft(draft)))
+                    shape={draftShape(dayHike)}
+                    shapes={shapesOffered(dayHike)}
+                    onShape={(shape) =>
+                      setDayHike((draft) =>
+                        draft === null ? draft : shapeDraft(draft, shape),
+                      )
                     }
                     onStartStretch={() =>
                       setDayHike((draft) =>
@@ -8983,8 +9116,8 @@ function App() {
                       )
                     }
                     onDone={handleDayHikeDone}
+                    onBackToStepOne={backToStepOne}
                     onCancel={handleDayHikeCancel}
-                    canCloseLoop={dayHike !== null && canCloseLoop(dayHike)}
                     canStartNew={dayHike !== null && canStartStretch(dayHike)}
                     drawing={dayHikeDrawMode}
                     onToggleDraw={() => setDayHikeDrawMode((on) => !on)}

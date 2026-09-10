@@ -153,3 +153,17 @@ describe('the bail sheet (D8)', () => {
     ).toBeNull()
   })
 })
+
+describe('step 2 and the rail (R3)', () => {
+  // The round trip - "‹ Hike" back to step 1 with the route kept, and the
+  // rail's second stop returning to it - is held by App.dayHike.test.tsx,
+  // which has the graph a live builder needs. What is held here is the
+  // other half: with nothing being built, step 1 offers no second stop.
+  it('step 1 offers no second stop when nothing is being built', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await openStepOne(user)
+    expect(screen.queryByRole('button', { name: 'Step 2, Route' })).toBeNull()
+  })
+})

@@ -1,7 +1,8 @@
 // The planning flow end to end (#755 → #756 → #757), through the "route by
 // destination" builder: empty Plan tab → the entrance (where from, how far)
 // → the editable stop surface → a destination added between the ends →
-// "Break into days" → a target → a laid-out plan on the timeline, persisted
+// "Use this route" (step 2's way on; "Break into days" until #1373) → a
+// target → a laid-out plan on the timeline, persisted
 // with the added stop pinned.
 //
 // Its own file because it needs POIs that carry PIPELINE miles offset from
@@ -176,7 +177,7 @@ describe('the planning flow', () => {
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Far Shelter/ })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Break into days' }))
+    await user.click(screen.getByRole('button', { name: 'Use this route' }))
     expect(
       await screen.findByRole('dialog', { name: 'How long is a day?' }),
     ).toBeInTheDocument()
@@ -302,7 +303,7 @@ describe('the planning flow', () => {
 
     // Back to the half-built route, and finish it.
     await user.click(screen.getByRole('tab', { name: 'Map' }))
-    await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
     fireEvent.change(await screen.findByLabelText('Miles per day'), {
       target: { value: '8' },
     })
@@ -992,7 +993,7 @@ describe('the planning flow', () => {
       await tap(map, 3)
       await tap(map, 22)
 
-      await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+      await user.click(await screen.findByRole('button', { name: 'Use this route' }))
       expect(
         await screen.findByRole('dialog', { name: 'How long is a day?' }),
       ).toBeInTheDocument()

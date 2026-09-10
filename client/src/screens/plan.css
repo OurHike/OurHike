@@ -4046,3 +4046,91 @@
 .hike-window--stood-aside {
   visibility: hidden;
 }
+
+/* ---------------------------------------------------------------------------
+   Step 2 on the day-hike builder (#1373, frame 4a).
+
+   THE SHAPE, one control where "Close the loop" stood alone: Point to point,
+   Out and back, Loop. A radio row in the bar's own chip idiom, so the chosen
+   shape reads the way draw mode's pressed toggle already does. Absent while
+   there is nothing to shape (lib/dayHikeDraft.ts's shapesOffered).
+
+   THE FOOT, the spine's two doors: "‹ Hike" back to step 1 with the draft
+   kept, and "Use this route ›" on. The way on wears the bar's primary; the
+   way back is quiet, because it costs nothing. ------------------------------ */
+
+.day-hike-bar__shape {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.day-hike-bar__shape-option {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0.4rem 0.4rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.day-hike-bar__shape-option[aria-checked='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+  font-weight: 600;
+}
+
+.day-hike-bar__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.day-hike-bar__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.day-hike-bar__foot .day-hike-bar__action--done {
+  flex: 0 1 auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-pill, 999px);
+  font-weight: 600;
+}
+
+/* The rail inside the panel: compact, since the panel is capped at 35% of a
+   phone and every row it holds is a row of map it does not. The rail's own
+   stylesheet sets the stops; this only tightens the frame around them. */
+.day-hike-panel .step-rail {
+  padding: 0 0 0.45rem;
+  border-bottom: 1px solid var(--border-1);
+  background: none;
+}
+
+/* D1's ask on the saved card (screens/DayHikeCard.tsx): the sentence over
+   its two answers, in the frame delete's confirm already uses. */
+.day-hike-card__confirm--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.day-hike-card__confirm-sentence {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-1);
+}

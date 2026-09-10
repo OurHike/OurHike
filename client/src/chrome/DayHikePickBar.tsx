@@ -33,7 +33,12 @@
 
 import { useState } from 'react'
 
-import { draftPoints, type DayHikeDraft, type DraftStatus } from '../lib/dayHikeDraft'
+import {
+  draftPoints,
+  type DayHikeDraft,
+  type DraftShape,
+  type DraftStatus,
+} from '../lib/dayHikeDraft'
 import type { PaceEstimate } from '../lib/pace'
 import { formatDistance, type UnitSystem } from '../lib/units'
 import '../screens/plan.css'
@@ -56,12 +61,22 @@ export interface DayHikePickBarProps {
    */
   walking: PaceEstimate | null
   onUndo: () => void
-  onCloseLoop: () => void
+  /**
+   * The walk's shape (#1373, step 2): which it has, which are on offer, and
+   * the change. One control where "Close the loop" stood alone - see
+   * lib/dayHikeDraft.ts's `shapesOffered` for when the list is empty, which
+   * is when the row is absent rather than greyed (D10).
+   */
+  shape: DraftShape
+  shapes: readonly DraftShape[]
+  onShape: (shape: DraftShape) => void
   /** #935: end this stretch here, and pick the walk up somewhere else. */
   onStartStretch: () => void
+  /** Step 2's way on: "Use this route" - the review (F5's step 3). */
   onDone: () => void
+  /** Step 2's way back: "‹ Hike" to step 1, the draft kept (rule R3). */
+  onBackToStepOne: () => void
   onCancel: () => void
-  canCloseLoop: boolean
   canStartNew: boolean
   /** Whether the map is in draw mode (#983, frame `1k`), and the toggle. */
   drawing: boolean
@@ -80,6 +95,13 @@ export interface DayHikePickBarProps {
  * and is kept: a zero or non-finite time is not a fact about the ground, it is
  * a routing result that has not landed yet.
  */
+/** The design's own words for the three shapes (frame 4a). */
+const SHAPE_LABELS: Record<DraftShape, string> = {
+  'point-to-point': 'Point to point',
+  'out-and-back': 'Out and back',
+  loop: 'Loop',
+}
+
 export function walkingTime(estimate: PaceEstimate | null): string | null {
   if (estimate === null) return null
   if (!Number.isFinite(estimate.minutes) || estimate.minutes <= 0) return null
@@ -93,11 +115,13 @@ export function DayHikePickBar({
   orgLabel,
   walking,
   onUndo,
-  onCloseLoop,
+  shape,
+  shapes,
+  onShape,
   onStartStretch,
   onDone,
+  onBackToStepOne,
   onCancel,
-  canCloseLoop,
   canStartNew,
   drawing,
   onToggleDraw,
@@ -243,6 +267,30 @@ export function DayHikePickBar({
         <p className="day-hike-bar__total">Tap again further along to turn.</p>
       )}
 
+      {/* THE SHAPE, as one control (#1373, frame 4a): Point to point, Out
+          and back, Loop. "Close the loop" used to stand alone here, and
+          out-and-back - the shape most day hikes on a linear trail actually
+          take - had no control at all: a hiker tapped the far end and then
+          tapped their way home, or did not. Absent while there is nothing to
+          shape and across a gap (lib/dayHikeDraft.ts's shapesOffered), for
+          the same reason Close the loop was. */}
+      {shapes.length > 0 && (
+        <div className="day-hike-bar__shape" role="radiogroup" aria-label="Shape">
+          {shapes.map((offered) => (
+            <button
+              key={offered}
+              type="button"
+              role="radio"
+              aria-checked={offered === shape}
+              className="day-hike-bar__shape-option"
+              onClick={() => onShape(offered)}
+            >
+              {SHAPE_LABELS[offered]}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* No disabled buttons on this bar - the same rule LineSheet.tsx states
           and the A.T. builder now carries: a control that looks pressable and
           is not teaches a hiker the app is broken. A control that does not
@@ -251,11 +299,6 @@ export function DayHikePickBar({
         {(draftPoints(draft).length > 0 || draft.refusal !== null) && (
           <button type="button" className="day-hike-bar__action" onClick={onUndo}>
             Undo
-          </button>
-        )}
-        {canCloseLoop && (
-          <button type="button" className="day-hike-bar__action" onClick={onCloseLoop}>
-            Close the loop
           </button>
         )}
         {/* #935's other half, in one control. The wording is what the hiker
@@ -277,13 +320,29 @@ export function DayHikePickBar({
         >
           {drawing ? 'Tap instead' : 'Draw instead'}
         </button>
+      </div>
+
+      {/* THE SPINE'S FOOT (#1373, rule R3): back to step 1 with the draft
+          kept, and on to step 3 once there is a route. "Done" and "Keep the
+          snapped route" both meant this; one label now, the design's, and
+          the prompt above already says a drawn line was put on the trails.
+          The way on is absent, not disabled, until a route exists. */}
+      <div className="day-hike-bar__foot">
+        <button
+          type="button"
+          className="day-hike-bar__back"
+          onClick={onBackToStepOne}
+          aria-label="Back to Hike, step 1"
+        >
+          <span aria-hidden="true">‹ </span>Hike
+        </button>
         {routed !== null && (
           <button
             type="button"
             className="day-hike-bar__action day-hike-bar__action--done"
             onClick={() => (hasGap ? setAcknowledging(true) : onDone())}
           >
-            {drawing ? 'Keep the snapped route' : 'Done'}
+            Use this route<span aria-hidden="true"> ›</span>
           </button>
         )}
       </div>

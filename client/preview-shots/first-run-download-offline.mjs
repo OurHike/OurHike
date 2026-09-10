@@ -39,8 +39,14 @@ export const entry = true
 export default async function drive(page) {
   // Abort the manifest, not the whole origin: the point is a build that is
   // working normally and simply has not been told what the artifacts weigh.
-  // Blocking everything would photograph a broken app instead.
+  // Blocking everything would photograph a broken app instead. Both
+  // spellings: the sizes read `releases/<pin>/manifest.json` since the
+  // release folder landed (lib/dataRelease.ts), and this recipe blocked only
+  // the old root `latest.json` - so the card was priced, the "Unknown
+  // offline" rung never appeared, and the camera reported it could not take
+  // this frame on every pull request that touched it (#1373's did).
   await page.route('**/latest.json', (route) => route.abort())
+  await page.route('**/manifest.json', (route) => route.abort())
   await page.reload({ waitUntil: 'load' })
 
   await page.getByRole('button', { name: 'Get set up' }).click()

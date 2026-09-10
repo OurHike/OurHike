@@ -108,6 +108,20 @@ export interface DayHikeCardProps {
    * stored cache, which is a list of figures rather than ground.
    */
   onFollow?: () => void
+  /**
+   * Open this walk in the builder at step 2 (#1373, D1). Saved mode only,
+   * and only when the graph can place the hike - like `onFollow`, for the
+   * same reason: editing is re-routing, and there is no route to edit when
+   * the card is leaning on its stored cache.
+   */
+  onEdit?: () => void
+  /**
+   * Whether this walk is the one being followed right now. Editing it stops
+   * following, and D1's rule is that the screen says so BEFORE it happens
+   * rather than the next-turn card vanishing - so with this true, the edit
+   * door asks first.
+   */
+  following?: boolean
 }
 
 export function DayHikeCard({
@@ -123,10 +137,14 @@ export function DayHikeCard({
   onDelete,
   onSetDate,
   onFollow,
+  onEdit,
+  following = false,
 }: DayHikeCardProps) {
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
   // Delete and its neighbour look alike, and one of them has no way back.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // D1's ask, in the same one-surface-continuing frame delete uses.
+  const [confirmingEdit, setConfirmingEdit] = useState(false)
   // "Leave this with someone" (frame D6) replaces the card in the same
   // sheet frame - one surface continuing, the bar-to-card convention.
   const [leaving, setLeaving] = useState(false)
@@ -475,6 +493,52 @@ export function DayHikeCard({
               Follow this hike on the map
             </button>
           )}
+          {/* The door into step 2 (#1373, D1). A saved walk used to be
+              final: the only way to change a stop was to delete the hike
+              and tap it out again. Absent over the stored cache, like the
+              follow door - the builder needs the graph to place the taps.
+
+              WHEN THE WALK IS BEING FOLLOWED, THE DOOR ASKS FIRST. Following
+              is a claim about a route; the moment the route is being edited
+              the claim is false, and a hiker who loses the next-turn card
+              without being told loses their trust in it. The sentence is
+              the design's, verbatim. The ground already walked is kept
+              because nothing here touches it - the walked ranges and the
+              journal never depended on following. */}
+          {onEdit !== undefined &&
+            resolved !== null &&
+            (confirmingEdit ? (
+              <div
+                className="day-hike-card__confirm day-hike-card__confirm--stack"
+                role="group"
+                aria-label="Editing a hike you are walking"
+              >
+                <p className="day-hike-card__confirm-sentence">
+                  You are walking this one. Changing the route stops following it &mdash;
+                  the next-turn card goes away and the walk you have already done is kept.
+                </p>
+                <div className="day-hike-card__confirm">
+                  <button type="button" className="day-hike-card__quiet" onClick={onEdit}>
+                    Edit it
+                  </button>
+                  <button
+                    type="button"
+                    className="day-hike-card__quiet"
+                    onClick={() => setConfirmingEdit(false)}
+                  >
+                    Keep following
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="day-hike-card__quiet"
+                onClick={() => (following ? setConfirmingEdit(true) : onEdit())}
+              >
+                Edit the route
+              </button>
+            ))}
           {confirmingDelete ? (
             <div className="day-hike-card__confirm">
               <span>Delete this day hike?</span>

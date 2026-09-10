@@ -157,6 +157,15 @@ describe('every long-hike surface goes through one window', () => {
     const dock = windows()
     expect(dock).toHaveLength(1)
     expect(dock[0]?.className).toContain('hike-window--sheet')
+
+    // And the switch that opened it says the pick is not settled (#1317's
+    // rule, which nothing passed until #1373 - the inventory's C6): drawn
+    // as chosen-but-pending, so closing the sheet without picking and the
+    // mode going back is not a surprise. Queried behind the modal, which
+    // is inert to a hiker and exactly where the segment has to read right.
+    expect(
+      screen.getByRole('radio', { name: 'Long hike', hidden: true }).className,
+    ).toContain('mode-switch__segment--pending')
   })
 
   it('opens set-up in the same chrome rather than as a screen of its own', async () => {

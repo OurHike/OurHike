@@ -499,9 +499,10 @@ describe('the day-hike builder, end to end', () => {
     expect(await screen.findByText(/2 legs ·/)).toBeInTheDocument()
     expect(screen.getByText(/NY–NJ Trail Conference · 1 leg/)).toBeInTheDocument()
 
-    // Close the loop, then Done - which exists only now that a route does.
-    await user.click(screen.getByRole('button', { name: 'Close the loop' }))
-    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    // Loop, on the shape control, then "Use this route" - which exists only
+    // now that a route does (#1373, step 2).
+    await user.click(screen.getByRole('radio', { name: 'Loop' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
 
     // Done opens frame `1l`'s card as a REVIEW - nothing stored yet. Every
     // edge the fixture holds is on this loop, so the ways-off block prints
@@ -538,6 +539,46 @@ describe('the day-hike builder, end to end', () => {
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
   })
 
+  it('goes back to step 1 by "‹ Hike" with the route kept, and the rail’s second stop returns to it (#1373, R3)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    await serveGraph()
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+
+    // Back to "Where do you want to go?" - no bail sheet, because nothing
+    // is being left: the draft stays live on the map behind step 1.
+    await user.click(screen.getByRole('button', { name: 'Back to Hike, step 1' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Where do you want to go?' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: 'Keep this half-built route?' }),
+    ).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
+
+    // Step 1 knows a route waits: its rail's second stop is the door back,
+    // and the walk is as it was - one leg, not an empty builder.
+    await user.click(screen.getByRole('button', { name: 'Step 2, Route' }))
+    expect(
+      await screen.findByRole('region', { name: 'Build a day hike' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map', selected: true })).toBeInTheDocument()
+
+    // The rail's own first stop is the same door.
+    await user.click(screen.getByRole('button', { name: 'Step 1, Day hike' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Where do you want to go?' }),
+    ).toBeInTheDocument()
+  })
+
   it('keeps a date set on the review card across a trip back to the map (#1008)', async () => {
     const user = userEvent.setup()
     app.onboard()
@@ -549,7 +590,7 @@ describe('the day-hike builder, end to end', () => {
     const map = await liveMap()
     await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
-    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
 
     // Date it on the review card, then go back to look at the route again -
     // which is the only thing that button is for, since the map is frozen
@@ -562,7 +603,7 @@ describe('the day-hike builder, end to end', () => {
     // Done rebuilds the record from the draft. The date has to survive that,
     // or it is lost silently - and it is the field the list, the split and
     // the trailhead door all read.
-    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
     await user.click(await screen.findByRole('button', { name: 'Save this day hike' }))
 
     await waitFor(() => {
@@ -754,6 +795,46 @@ describe('the day-hike builder, end to end', () => {
     })
     const stored = app.store.get(DAY_HIKES_KEY) as { hikes: unknown[] }
     expect(stored.hikes).toHaveLength(0)
+  })
+
+  it('edits a saved hike at step 2 and saves back over the same record (#1373, D1)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+    app.store.set(DAY_HIKES_KEY, { hikes: [SAVED_HIKE], openId: null })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+    const card = await screen.findByRole('dialog', { name: 'Pine Meadow out and back' })
+    // Nobody is following it, so the door opens straight into the builder
+    // - on the map, at step 2, holding the saved ends as taps rather than
+    // an empty walk.
+    await user.click(within(card).getByRole('button', { name: 'Edit the route' }))
+    expect(
+      await screen.findByRole('region', { name: 'Build a day hike' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map', selected: true })).toBeInTheDocument()
+    expect(await screen.findByText(/legs? ·/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
+    ).not.toBeInTheDocument()
+
+    // Straight through: Use this route, then Save. One record, the same id
+    // - never a second row beside the first.
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
+    await user.click(await screen.findByRole('button', { name: 'Save this day hike' }))
+    await waitFor(() => {
+      const stored = app.store.get(DAY_HIKES_KEY) as {
+        hikes: Array<{ id: string; segments: unknown[][] }>
+      }
+      expect(stored.hikes).toHaveLength(1)
+      expect(stored.hikes[0].id).toBe(SAVED_HIKE.id)
+    })
   })
 
   it('opens a saved hike’s card from the Today tab, where the shelf also lives', async () => {

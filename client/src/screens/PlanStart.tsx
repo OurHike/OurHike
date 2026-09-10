@@ -64,6 +64,14 @@ export interface PlanStartProps {
   /** Day hikes only: the same builder, entered in the past tense (#982). */
   onRecordWalked?: () => void
   onCancel: () => void
+  /**
+   * The furthest step reached with the draft still live (#1373, rule R3):
+   * a hiker who came back here from step 2 by "‹ Hike" has a route waiting,
+   * and the rail's second stop is the door back to it. Absent, step 1 is
+   * where planning starts.
+   */
+  reached?: 2 | 3
+  onStep?: (step: 2 | 3) => void
 }
 
 export function PlanStart({
@@ -83,6 +91,8 @@ export function PlanStart({
   onOpenSuggestedHike,
   onRecordWalked,
   onCancel,
+  reached,
+  onStep,
 }: PlanStartProps) {
   const planMode: 'day' | 'long' = mode === 'long' ? 'long' : 'day'
   const dayRefused = planMode === 'day' && network.kind !== 'ready'
@@ -90,7 +100,18 @@ export function PlanStart({
 
   return (
     <div className="plan-start">
-      <StepRail step={1} kind={HIKER_MODE_LABELS[planMode]} />
+      <StepRail
+        step={1}
+        kind={HIKER_MODE_LABELS[planMode]}
+        {...(reached === undefined || onStep === undefined
+          ? {}
+          : {
+              reached,
+              onStep: (step) => {
+                if (step !== 1) onStep(step)
+              },
+            })}
+      />
 
       <h1 className="plan-start__title">Where do you want to go?</h1>
       <p className="plan-start__lede">

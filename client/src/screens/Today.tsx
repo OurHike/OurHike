@@ -108,6 +108,9 @@ export interface TodayProps {
 
   mode: HikerMode
   onChangeMode: (mode: HikerMode) => void
+  /** The pick is not settled - "Which long hike?" is open over this screen
+   *  (chrome/ModeSwitch.tsx's `pending`). */
+  modePending?: boolean
 
   /**
    * The long hike leading this screen (#1317), or null when the app is not
@@ -337,6 +340,7 @@ export function Today({
   trailLinesMissing = false,
   mode,
   onChangeMode,
+  modePending = false,
   longHike = null,
   pois,
   currentMile,
@@ -1091,7 +1095,12 @@ export function Today({
           // adjusted from.
           <p className="today__pace-line">{estimate.relativeLine}</p>
         )}
-        <ModeSwitch mode={mode} onChange={onChangeMode} variant="chrome" />
+        <ModeSwitch
+          mode={mode}
+          onChange={onChangeMode}
+          variant="chrome"
+          pending={modePending}
+        />
       </header>
 
       <div className="today__paper">

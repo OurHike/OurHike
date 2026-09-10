@@ -10,9 +10,12 @@
 // it. App.tsx re-fits the corridor when the steps end; this is that fix's
 // camera.
 //
-// "Decide this later" on the size step rather than "Keep going", so the
+// "Decide this later" on the size step rather than "Download", so the
 // shot does not start a corridor download it has no use for; "Not now" on
-// the location step, so no permission prompt is raised on a runner.
+// the location step, so no permission prompt is raised on a runner. The
+// second card, where the hiker hikes (#1373, frame 1b), is skipped: a kept
+// place would move this camera off the whole-corridor frame the caption
+// describes.
 export const caption =
   'The map right after the entry steps (#1296): the whole corridor fitted to the screen at 100 mi, nothing taken yet (#1306) so the A.T. is a fine dotted dark line from Georgia to Maine at the same weight as the other organizations’ dotted trails around its New York miles, no marks below the seam (#1292) — where it used to sit under the identity plate at 300 mi and read as an empty map'
 export const alt =
@@ -30,7 +33,8 @@ export const entry = true
 export const wait = 10000
 
 export default async function drive(page) {
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Get set up' }).click()
+  await page.getByRole('button', { name: /^Skip/ }).click()
   await page.getByRole('button', { name: 'Decide this later' }).click()
   await page.getByRole('button', { name: /not now/i }).click()
   await page.getByRole('tab', { name: 'Map' }).click()

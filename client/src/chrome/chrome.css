@@ -4636,3 +4636,24 @@ a.poi-card__credit::after {
   background: var(--bg-surface);
   border: 1px solid var(--border-2);
 }
+
+/* Step 2 on the A.T. builder (#1373, frame 4a): the rail at the head of
+   the stops panel, clear of the close button in its corner, and the quiet
+   way back to step 1 beside "I already walked this" in the bar. */
+.route-stops .step-rail {
+  padding: 0 var(--space-6, 32px) var(--space-2, 8px) 0;
+  margin-bottom: var(--space-2, 8px);
+  background: none;
+}
+
+.route-stops-bar__back {
+  flex: 0 0 auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-2, 8px);
+  border: none;
+  background: none;
+  color: var(--fg-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}

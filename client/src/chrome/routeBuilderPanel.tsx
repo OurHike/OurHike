@@ -205,6 +205,9 @@ export interface RouteBuilderInput {
   gpsClientMile: number | null
   /** The trail's length, for the entrance's distance slider ceiling. */
   trailMiles: number | null
+  /** Step 2's way back to step 1 (#1373, R3). The shell's move, because
+   *  the steps live on the navigator; the draft here is untouched by it. */
+  onBackToStepOne: () => void
   /**
    * Whether the break-into-days sheet is up over the builder (#758).
    *
@@ -272,6 +275,7 @@ export function useRouteBuilderPanel({
   gpsPlanMile,
   gpsClientMile,
   trailMiles,
+  onBackToStepOne,
   targetOpen,
   setTargetRequest,
   onRecordWalked,
@@ -1017,6 +1021,7 @@ export function useRouteBuilderPanel({
           // looking for different things.
           unpriced={elevation === null ? 'no-profile' : 'unmeasured'}
           onBreakIntoDays={handleBreakIntoDays}
+          onBackToStepOne={onBackToStepOne}
           onRecordWalked={handleRecordWalked}
           onClose={handleRouteCancel}
         />

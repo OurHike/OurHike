@@ -92,6 +92,8 @@ import {
   MIN_STATED_FEET,
 } from '../lib/units'
 import type { UnitSystem } from '../lib/units'
+import { HIKER_MODE_LABELS } from '../lib/hikerMode'
+import { StepRail } from './StepRail'
 import '../screens/plan.css'
 
 export interface DayHikePanelProps {
@@ -99,6 +101,13 @@ export interface DayHikePanelProps {
   status: DraftStatus
   stops: readonly DayHikeStop[]
   units: UnitSystem
+  /**
+   * The rail's step 1 door (#1373, rule R3): back to "Where do you want to
+   * go?" with this draft kept. The same move the bar's "‹ Hike" makes; the
+   * rail is where a hiker reads which step they are on, so it opens the
+   * one behind as well.
+   */
+  onBackToStepOne: () => void
   /** The routed walk's time with its baseline, or null when unpriceable. */
   walking: PaceEstimate | null
   hiddenLabels: HiddenLabelLayers
@@ -155,6 +164,7 @@ export function DayHikePanel({
   status,
   stops,
   units,
+  onBackToStepOne,
   walking,
   hiddenLabels,
   onToggleLabel,
@@ -171,6 +181,16 @@ export function DayHikePanel({
 
   return (
     <section className="day-hike-panel" aria-label="Your route">
+      {/* Step 2 of three (#1373). The kind on the first stop is the mode's
+          answer - a day hike is what this builder builds - and never asked
+          again (D6). */}
+      <StepRail
+        step={2}
+        kind={HIKER_MODE_LABELS.day}
+        onStep={(step) => {
+          if (step === 1) onBackToStepOne()
+        }}
+      />
       <div className="day-hike-panel__head">
         <div className="day-hike-panel__title-block">
           <p className="day-hike-panel__eyebrow">Your route</p>

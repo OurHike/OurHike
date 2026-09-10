@@ -321,6 +321,49 @@ describe('the door onto the ground (#1041)', () => {
   })
 })
 
+describe('the door into step 2 (#1373, D1)', () => {
+  const EDIT = { name: 'Edit the route' }
+  const SENTENCE =
+    'You are walking this one. Changing the route stops following it — the next-turn card goes away and the walk you have already done is kept.'
+
+  it('opens the builder straight away on a walk nobody is following', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn()
+    renderCard({ onEdit })
+
+    await user.click(screen.getByRole('button', EDIT))
+    expect(onEdit).toHaveBeenCalledOnce()
+    expect(screen.queryByText(SENTENCE)).not.toBeInTheDocument()
+  })
+
+  it('says what editing costs BEFORE it happens on the walk being followed, verbatim', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn()
+    renderCard({ onEdit, following: true })
+
+    await user.click(screen.getByRole('button', EDIT))
+    // Asked, not done: the sentence is the design's, word for word.
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.getByText(SENTENCE)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Keep following' }))
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.queryByText(SENTENCE)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', EDIT))
+    await user.click(screen.getByRole('button', { name: 'Edit it' }))
+    expect(onEdit).toHaveBeenCalledOnce()
+  })
+
+  it('is absent over the stored cache and on a review, like following', () => {
+    renderCard({ onEdit: vi.fn(), resolved: null })
+    expect(screen.queryByRole('button', EDIT)).not.toBeInTheDocument()
+    cleanup()
+    renderCard({ mode: 'review', onSave: vi.fn(), onEdit: vi.fn() })
+    expect(screen.queryByRole('button', EDIT)).not.toBeInTheDocument()
+  })
+})
+
 describe('the #1008 additions', () => {
   it('offers the date as a field the hiker sets, and clearing it clears the date', async () => {
     const user = userEvent.setup()

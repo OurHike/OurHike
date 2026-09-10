@@ -62,9 +62,16 @@ import {
 import type { PassedPlace } from './Volunteer'
 import type { DayHike } from '../lib/dayHikes'
 import type { LonLat } from '../lib/trailGraph'
-import { shelfPicks, type SuggestedHike } from '../lib/suggestedHikes'
+import {
+  shelfPicks,
+  timeBucketLabel,
+  type HikeFacets,
+  type SuggestedHike,
+} from '../lib/suggestedHikes'
 import { SuggestedHikeCard } from '../chrome/SuggestedHikeCard'
 import { HikeFinderIcon } from '../chrome/HikeFinderIcon'
+import { Notice } from '../chrome/Notice'
+import { PinnedBar } from '../chrome/PinnedBar'
 import { Button } from '../design-system/components'
 import '../chrome/chrome.css'
 import './today.css'
@@ -181,9 +188,26 @@ export interface TodayProps {
    * Null makes no claim at all: the shelf takes the first published.
    */
   near?: LonLat | null
-  /** Pushes the Find screen. The row renders only when there is somewhere
-   *  for it to go. */
-  onFindHike?: () => void
+  /** Pushes the Find screen - with facets already applied when a chip on
+   *  this screen asked for them ("Under 2 hours"). The row and the chips
+   *  render only when there is somewhere for them to go. */
+  onFindHike?: (facets?: Partial<HikeFacets>) => void
+  /**
+   * The pinned bar's other door (#1373, F2): the planning spine. The bar
+   * renders only with both doors - a Today outside the shell has neither,
+   * and a bar with one dead half is the control D10 forbids.
+   */
+  onPlanHike?: () => void
+  /** The long-hike set-up, for the "you have no hike yet" state's one door:
+   *  pick the trail on the map. */
+  onStartLongHike?: () => void
+  /** The hiking sheet's size at the chosen level, already formatted
+   *  (lib/formatBytes.ts), for the download notice - null while the
+   *  manifest has not said what it weighs. */
+  downloadSize?: string | null
+  /** The kept place's name (lib/defaultPlace.ts), when the shelf is ranked
+   *  from it rather than from a fix, for the setup sentence. */
+  placeName?: string | null
   /** Opens a suggested route's detail. Omitted - as it is until wireframe
    *  `1g` is designed - the cards render as things to read rather than as
    *  buttons that go nowhere (chrome/SuggestedHikeCard.tsx). */
@@ -309,6 +333,10 @@ export function Today({
   near = null,
   onFindHike,
   onOpenSuggestedHike,
+  onPlanHike,
+  onStartLongHike,
+  downloadSize = null,
+  placeName = null,
 }: TodayProps) {
   // Memoized because this screen re-renders for reasons that have nothing to do
   // with it (#1090). It is the home screen now, so it is mounted while the GPS
@@ -655,7 +683,12 @@ export function Today({
     suggestedHikes.length > 0 ? (
       <>
         <div className="today__rule">
-          <span className="today__rule-label">Suggested hikes</span>
+          {/* "Near you" only when something is ranking them - a fix, or
+              the kept place - and "Suggested" otherwise, which is the
+              honest heading over a list in published order. */}
+          <span className="today__rule-label">
+            {near === null ? 'Suggested hikes' : 'Hikes near you'}
+          </span>
         </div>
         <div className="today__suggested-rail">
           {picks.map((hike) => (
@@ -672,7 +705,7 @@ export function Today({
           ))}
         </div>
         {onFindHike !== undefined && (
-          <button type="button" className="today__find" onClick={onFindHike}>
+          <button type="button" className="today__find" onClick={() => onFindHike()}>
             <HikeFinderIcon name="search" className="today__find-icon" />
             <span className="today__find-label">Find a hike</span>
             {/* How many the shelf did not show - a count of routes, never
@@ -682,24 +715,116 @@ export function Today({
             )}
           </button>
         )}
+        {/* "Have less time?" (#1373, frame 2a): the finder's own facets,
+            in its own words (lib/suggestedHikes.ts's labels), opened with
+            the filter already applied. Day mode only - the other two modes
+            are not looking for a walk to fit an afternoon. No "Loops": the
+            finder has no shape facet, and a chip that opened it unfiltered
+            would promise one. */}
+        {onFindHike !== undefined && mode === 'day' && (
+          <div className="today__have-less" role="group" aria-label="Have less time?">
+            <span className="today__have-less-label">Have less time?</span>
+            <button
+              type="button"
+              className="today__have-less-chip"
+              onClick={() => onFindHike({ time: 'under2' })}
+            >
+              {timeBucketLabel('under2')}
+            </button>
+            <button
+              type="button"
+              className="today__have-less-chip"
+              onClick={() => onFindHike({ time: '2to4' })}
+            >
+              {timeBucketLabel('2to4')}
+            </button>
+            <button
+              type="button"
+              className="today__have-less-chip"
+              onClick={() => onFindHike({ difficulty: ['easy'] })}
+            >
+              Easy only
+            </button>
+          </div>
+        )}
         <p className="today__note">
           Routes from community contributions. Check before traveling.
         </p>
       </>
     ) : null
 
+  // THE DOWNLOAD, AS A NOTICE (#1373, F2): "download appears whenever it
+  // is needed and nowhere else" - the design's Notice in its warn tone, at
+  // the head of the column, where a card that read as one more entry stood.
+  // What it says stays true of a whole-corridor package: the size is the
+  // manifest's for the chosen level, and with none it says only what still
+  // works without the sheet.
   const download =
     !hasDownload && onOpenDownloads !== undefined ? (
-      <div className="today__card today__card--download">
-        <p className="today__entry-name">Take the whole trail with you</p>
-        <p className="today__note">
-          One download and the map works with no bars and no data plan — the way the trail
-          actually is.
+      <Notice
+        tone="warn"
+        title="The topo sheet is not on this phone"
+        body={
+          downloadSize === null
+            ? 'Trails and waypoints work without it.'
+            : `${downloadSize}. Trails and waypoints work without it.`
+        }
+        action={{ label: 'Download', onClick: onOpenDownloads }}
+      />
+    ) : null
+
+  // THE SETUP HEAD (#1373, F2): "until a hike is loaded, Today is a
+  // different screen - a setup screen, not an empty list. Its contents come
+  // from the mode." The head leads the column and says what to do next;
+  // the bar at the foot is where to do it. Everything the column already
+  // carried stays under the head - the alerts, the journal from a fix, the
+  // crew card - because a screen that dropped the closure ahead on the
+  // grounds that nothing was planned would be the worse failure.
+  const setup =
+    mode === 'day' && dayHikes.length === 0 ? (
+      <section className="today__setup" aria-labelledby="today-setup-title">
+        <h2 id="today-setup-title" className="today__setup-title">
+          Nothing planned today
+        </h2>
+        <p className="today__setup-line">
+          {suggestedHikes.length === 0
+            ? 'A builder for a route of your own — and published walks, once this phone holds any.'
+            : placeName !== null
+              ? `Published walks, nearest ${placeName} first, and a builder if none of them is yours.`
+              : near !== null
+                ? 'Published walks, nearest you first, and a builder if none of them is yours.'
+                : 'Published walks to pick from, and a builder if none of them is yours.'}
         </p>
-        <button type="button" className="today__action" onClick={onOpenDownloads}>
-          Choose a download
-        </button>
-      </div>
+      </section>
+    ) : mode === 'long' && longHike == null ? (
+      <section className="today__setup" aria-labelledby="today-setup-title">
+        <h2 id="today-setup-title" className="today__setup-title">
+          You have no hike yet
+        </h2>
+        <p className="today__setup-line">
+          A long hike is one trail, broken into days. Pick the trail and OurHike will hold
+          the rest.
+        </p>
+        {/* The frame lists the long trails on the map here; the shell holds
+            no list of named lines off the map yet, so the one door is the
+            map itself, where the lines are (screens/HikeSetup.tsx). */}
+        {onStartLongHike !== undefined && (
+          <button type="button" className="today__action" onClick={onStartLongHike}>
+            Pick a trail on the map ›
+          </button>
+        )}
+        <p className="today__note">
+          Not on a long hike after all? Switch to Day hike above — nothing here is lost.
+        </p>
+      </section>
+    ) : null
+
+  // Frame 2e's last line: the bar is the same on the crew's day.
+  const walkingToo =
+    mode === 'volunteer' && onFindHike !== undefined && onPlanHike !== undefined ? (
+      <p className="today__note">
+        Walking today as well? Find and Plan are where they always are.
+      </p>
     ) : null
 
   const noJournal =
@@ -715,6 +840,9 @@ export function Today({
   // each slot is keyed by what it is so React reconciles a re-rank as a move
   // rather than a teardown.
   const named: Record<string, ReactNode> = {
+    setup,
+    download,
+    walkingToo,
     alerts,
     volunteer,
     soFar,
@@ -729,13 +857,36 @@ export function Today({
   }
   const order =
     mode === 'volunteer'
-      ? ['alerts', 'volunteer', 'soFar', 'journal', 'climb', 'hikes', 'suggested']
+      ? [
+          'setup',
+          'download',
+          'alerts',
+          'volunteer',
+          'soFar',
+          'journal',
+          'climb',
+          'hikes',
+          'suggested',
+          'walkingToo',
+        ]
       : mode === 'day'
-        ? ['alerts', 'suggested', 'hikes', 'journal', 'climb', 'soFar', 'volunteer']
+        ? [
+            'setup',
+            'download',
+            'alerts',
+            'suggested',
+            'hikes',
+            'journal',
+            'climb',
+            'soFar',
+            'volunteer',
+          ]
         : // The hike's own day LEADS, above the alerts - and the alerts
           // still render, one slot down. Nothing disappears; what changes is
           // what a hiker's eye lands on first (#1317, lib/hikerMode.ts).
           [
+            'setup',
+            'download',
             // Above the day's own leg: a hiker who has been away for a
             // fortnight is not looking for today's miles, they are looking
             // for what happened while they were gone.
@@ -828,7 +979,6 @@ export function Today({
       </header>
 
       <div className="today__paper">
-        {download}
         {sections}
         {/* TWO BUTTONS, EQUAL WIDTH AND EQUAL WEIGHT (#1133).
 
@@ -900,6 +1050,19 @@ export function Today({
             is built around. */}
         <p className="today__footer">Everything here works with no signal.</p>
       </div>
+
+      {/* THE PINNED BAR (#1373, rule R4 and frames 2a-2e): Find and Plan on
+          every state of this screen, forever. Under the paper rather than
+          in it, so it stays put while the column scrolls, with the tab bar
+          under it. Emphasis goes to Plan while nothing is loaded - that is
+          the next step - and to neither once something is. */}
+      {onFindHike !== undefined && onPlanHike !== undefined && (
+        <PinnedBar
+          onFind={() => onFindHike()}
+          onPlan={onPlanHike}
+          emphasis={setup === null ? 'none' : 'plan'}
+        />
+      )}
     </div>
   )
 }

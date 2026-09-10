@@ -779,3 +779,52 @@
   font-size: 11px;
   color: var(--fg-chrome-3);
 }
+
+/* ---------- The setup head and the "have less time?" chips (#1373, F2) ---------- */
+
+.today__setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today__setup-title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.today__setup-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.today__have-less {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.today__have-less-label {
+  font-size: 13px;
+  color: var(--fg-3);
+}
+
+.today__have-less-chip {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}

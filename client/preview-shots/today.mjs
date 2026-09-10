@@ -13,6 +13,13 @@
 // second absence; that was the camera's own origin, fixed in #1096, and the
 // release arrives now - what stays absent here is only what a fix would
 // bring, and the dated journal appears the day a recipe can supply one.
-export const caption = 'Today — the journal the app now opens on (#1054)'
+// Re-pointed 2026-09-10 (#1373, F2): with nothing planned, the column now
+// leads with a setup head rather than an empty list - "Nothing planned
+// today" and the sentence saying what to do about it - and the Find / Plan
+// bar is pinned under the paper on every state of the screen (rule R4).
+// Same landing, no drive: the head is what a phone with nothing planned
+// sees first.
+export const caption =
+  'Today with nothing planned — the setup head that replaces an empty list, and the pinned Find / Plan bar (#1373, F2)'
 export const alt =
-  'The Today screen: a pine header with the date, a mode switch reading Day hike, Long hike and Volunteer, and a paper column below with the volunteer card and the no-signal footer'
+  'The Today screen: a pine header with the date and a mode switch reading Day hike, Long hike and Volunteer; below it a paper column opening with the heading Nothing planned today and a sentence about published walks and a builder, then the volunteer card and the no-signal footer; pinned under the column, a two-button bar reading Find a hike and Plan a hike, Plan emphasised, above the four tabs'

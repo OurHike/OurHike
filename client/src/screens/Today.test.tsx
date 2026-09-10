@@ -255,9 +255,29 @@ describe('the rest of the column', () => {
     const user = userEvent.setup()
     render(<Today {...props({ hasDownload: false, onOpenDownloads })} />)
 
-    await user.click(screen.getByRole('button', { name: 'Choose a download' }))
+    await user.click(screen.getByRole('button', { name: 'Download' }))
 
     expect(onOpenDownloads).toHaveBeenCalled()
+  })
+
+  it('says what the sheet weighs on the notice when the manifest has said, and only what still works when it has not', () => {
+    const { rerender } = render(
+      <Today
+        {...props({
+          hasDownload: false,
+          onOpenDownloads: vi.fn(),
+          downloadSize: '458.4 MB',
+        })}
+      />,
+    )
+    expect(screen.getByText('The topo sheet is not on this phone')).toBeInTheDocument()
+    expect(
+      screen.getByText('458.4 MB. Trails and waypoints work without it.'),
+    ).toBeInTheDocument()
+
+    rerender(<Today {...props({ hasDownload: false, onOpenDownloads: vi.fn() })} />)
+    expect(screen.getByText('Trails and waypoints work without it.')).toBeInTheDocument()
+    expect(screen.queryByText(/MB/)).toBeNull()
   })
 
   it('surfaces saved day hikes first in day mode', () => {
@@ -628,5 +648,164 @@ describe('the long hike leading Today', () => {
       <Today {...props({ mode: 'long', longHike: LONG_HIKE })} />,
     )
     expect(container.textContent).not.toMatch(/%|behind|ahead of|on track|streak/i)
+  })
+})
+
+// --- The setup screens and the pinned bar (#1373, F2) ---------------------------
+
+describe('Today before anything is loaded (#1373, F2)', () => {
+  const NJ = { lon: -74.6, lat: 41.2 }
+  const walk = (name: string) => ({
+    id: name,
+    name,
+    miles: 4.2,
+    difficulty: 'easy' as const,
+    author: { kind: 'club' as const, name: 'NY-NJ Trail Conference' },
+    segments: [
+      [
+        { coord: [NJ.lon, NJ.lat] as [number, number], poiId: null },
+        { coord: [NJ.lon + 0.01, NJ.lat] as [number, number], poiId: null },
+      ],
+    ],
+  })
+
+  it('day mode with nothing planned leads with the setup head, ranked from the kept place', () => {
+    render(
+      <Today
+        {...props({
+          mode: 'day',
+          suggestedHikes: [walk('Pine Meadow Lake loop')],
+          near: NJ,
+          placeName: 'Harriman State Park',
+          onFindHike: vi.fn(),
+          onPlanHike: vi.fn(),
+        })}
+      />,
+    )
+
+    const sections = [
+      ...document.querySelectorAll('.today__paper .today__section'),
+    ].filter((section) => section.childElementCount > 0)
+    expect(sections[0]).toHaveTextContent('Nothing planned today')
+    expect(sections[0]).toHaveTextContent(
+      'Published walks, nearest Harriman State Park first, and a builder if none of them is yours.',
+    )
+    expect(screen.getByText('Hikes near you')).toBeInTheDocument()
+  })
+
+  it('says "nearest you" from a fix, "to pick from" with neither, and names the builder alone with nothing published', () => {
+    const { rerender } = render(
+      <Today
+        {...props({
+          mode: 'day',
+          suggestedHikes: [walk('A')],
+          near: NJ,
+          onFindHike: vi.fn(),
+        })}
+      />,
+    )
+    expect(screen.getByText(/nearest you first/)).toBeInTheDocument()
+
+    rerender(
+      <Today
+        {...props({ mode: 'day', suggestedHikes: [walk('A')], onFindHike: vi.fn() })}
+      />,
+    )
+    expect(screen.getByText(/Published walks to pick from/)).toBeInTheDocument()
+    expect(screen.getByText('Suggested hikes')).toBeInTheDocument()
+
+    rerender(<Today {...props({ mode: 'day', suggestedHikes: [] })} />)
+    expect(screen.getByText(/A builder for a route of your own/)).toBeInTheDocument()
+  })
+
+  it('a planned day hike is the loaded state: no setup head', () => {
+    render(
+      <Today
+        {...props({
+          mode: 'day',
+          dayHikes: [
+            {
+              id: 'd1',
+              name: 'Reeves Meadow → Tuxedo',
+              figures: { miles: 6.4 },
+            } as unknown as TodayProps['dayHikes'][number],
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.queryByText('Nothing planned today')).toBeNull()
+  })
+
+  it('long mode with no hike says what a long hike is and offers the map, then the way back to day mode', async () => {
+    const onStartLongHike = vi.fn()
+    const user = userEvent.setup()
+    render(<Today {...props({ mode: 'long', longHike: null, onStartLongHike })} />)
+
+    expect(
+      screen.getByRole('heading', { name: 'You have no hike yet' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/A long hike is one trail, broken into days\. Pick the trail/),
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Pick a trail on the map ›' }))
+    expect(onStartLongHike).toHaveBeenCalled()
+    expect(
+      screen.getByText(/Switch to Day hike above — nothing here is lost/),
+    ).toBeInTheDocument()
+  })
+
+  it('carries the pinned bar on every state, emphasising Plan only while nothing is loaded', () => {
+    const onFindHike = vi.fn()
+    const onPlanHike = vi.fn()
+    const { rerender } = render(
+      <Today {...props({ mode: 'day', onFindHike, onPlanHike })} />,
+    )
+
+    const bar = screen.getByRole('group', { name: 'Find or plan a hike' })
+    expect(bar.querySelector('.pinned-bar__button--primary')).toHaveTextContent(
+      'Plan a hike',
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plan a hike' }))
+    expect(onPlanHike).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Find a hike' }))
+    expect(onFindHike).toHaveBeenCalledWith()
+
+    rerender(<Today {...props({ mode: 'volunteer', onFindHike, onPlanHike })} />)
+    expect(
+      screen
+        .getByRole('group', { name: 'Find or plan a hike' })
+        .querySelector('.pinned-bar__button--primary'),
+    ).toBeNull()
+    expect(
+      screen.getByText(
+        /Walking today as well\? Find and Plan are where they always are\./,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('renders no bar outside the shell, where there is nowhere for either door to go', () => {
+    render(<Today {...props({ mode: 'day' })} />)
+
+    expect(screen.queryByRole('group', { name: 'Find or plan a hike' })).toBeNull()
+  })
+
+  it('opens the finder with the chip’s facet already on, in day mode only', async () => {
+    const onFindHike = vi.fn()
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <Today {...props({ mode: 'day', suggestedHikes: [walk('A')], onFindHike })} />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Under 2 hours' }))
+    expect(onFindHike).toHaveBeenLastCalledWith({ time: 'under2' })
+    await user.click(screen.getByRole('button', { name: 'Easy only' }))
+    expect(onFindHike).toHaveBeenLastCalledWith({ difficulty: ['easy'] })
+
+    rerender(
+      <Today {...props({ mode: 'long', suggestedHikes: [walk('A')], onFindHike })} />,
+    )
+    expect(screen.queryByRole('group', { name: 'Have less time?' })).toBeNull()
   })
 })

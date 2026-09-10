@@ -50,6 +50,7 @@
 
 import { useCallback, useMemo, useReducer, useRef } from 'react'
 import type { TabId } from '../chrome/tabs'
+import type { HikeFacets } from './suggestedHikes'
 
 /** More's pages other than its home, which is the tab itself. */
 export type MorePageAway = 'you' | 'map' | 'safety' | 'volunteer' | 'sources'
@@ -60,8 +61,9 @@ export type MorePageAway = 'you' | 'map' | 'safety' | 'volunteer' | 'sources'
  * renders.
  */
 export type Screen =
-  /** Today's finder room (#1284), pushed from its shelf. */
-  | { readonly kind: 'find' }
+  /** Today's finder room (#1284), pushed from its shelf - with facets
+   *  already applied when a chip on Today asked for them (#1373, F2). */
+  | { readonly kind: 'find'; readonly facets?: Partial<HikeFacets> }
   /** One published route's detail (#1290), from a card on Today or the finder. */
   | { readonly kind: 'hike'; readonly id: string }
   /** One of More's pages (features/MORE_TAB.md). */

@@ -379,3 +379,11 @@ describe('the results', () => {
     expect(document.body.textContent).not.toMatch(/no hikes here/i)
   })
 })
+
+describe('facets applied before the screen opens (#1373, F2)', () => {
+  it('starts with the chip’s filter already on', () => {
+    render(<FindHike {...props({ initialFacets: { time: 'under2' } })} />)
+
+    expect(screen.getByText('Under 2 h')).toBeInTheDocument()
+  })
+})

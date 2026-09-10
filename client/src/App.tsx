@@ -42,6 +42,7 @@ import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator } from './lib/navigator'
+import { formatBytes } from './lib/formatBytes'
 import { usePlaces } from './lib/usePlaces'
 import {
   clearDefaultPlace,
@@ -197,6 +198,7 @@ import {
   USGS_SHEET,
   withdrawnSheets,
   type BackgroundSheet,
+  hikingSheetSizeBytes,
 } from './lib/packages'
 import { combineBackgroundStatus } from './lib/backgroundStatus'
 import { activeDownload } from './lib/downloadActivity'
@@ -2041,6 +2043,14 @@ function App() {
   // manifest where it carries one, and from the catalog's constants where it
   // does not (#505) - see lib/usePublishedSizes.ts for why both are needed.
   const publishedSizes = usePublishedSizes()
+  /** What the hiking sheet weighs at the chosen level, formatted, for
+   *  Today's download notice (#1373, F2) - null until the manifest has
+   *  said. Memoised: the shell re-renders on every clock tick and the
+   *  figure changes only when the level or the manifest does. */
+  const downloadSize = useMemo(() => {
+    const bytes = hikingSheetSizeBytes(hikingLevel, publishedSizes)
+    return bytes === null ? null : formatBytes(bytes)
+  }, [hikingLevel, publishedSizes])
   // Routes somebody published (#1284): the kept copy first, the bucket when
   // there is signal, empty until an exporter writes any - see
   // lib/useSuggestedHikes.ts and config.ts's SUGGESTED_HIKES_KEY.
@@ -7907,8 +7917,17 @@ function App() {
         fixAt ??
         (defaultPlace === null ? null : { lon: defaultPlace.lon, lat: defaultPlace.lat })
       }
-      onFindHike={() => pushScreen({ kind: 'find' })}
+      onFindHike={(facets) =>
+        pushScreen(facets === undefined ? { kind: 'find' } : { kind: 'find', facets })
+      }
       onOpenSuggestedHike={openSuggestedHike}
+      // The pinned bar's Plan door (#1373, F2) is the Plan tab's own primary
+      // until F3 gives step 1 a screen of its own; the long-hike setup is
+      // the "you have no hike yet" state's one door.
+      onPlanHike={openPlanKind}
+      onStartLongHike={handleNewHike}
+      downloadSize={downloadSize}
+      placeName={fixAt === null ? (defaultPlace?.name ?? null) : null}
     />
   )
 
@@ -7925,6 +7944,7 @@ function App() {
       pace={pace}
       onBack={goBack}
       onOpenHike={openSuggestedHike}
+      initialFacets={todayTop?.kind === 'find' ? todayTop.facets : undefined}
     />
   )
 

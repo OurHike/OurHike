@@ -57,7 +57,12 @@ const app = appHarness()
 beforeEach(() => app.onboard())
 
 async function openFinder(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(await screen.findByRole('button', { name: /find a hike/i }))
+  await user.click(
+    within(await screen.findByRole('group', { name: 'Find or plan a hike' })).getByRole(
+      'button',
+      { name: 'Find a hike' },
+    ),
+  )
   await screen.findByRole('heading', { name: 'Find a hike' })
 }
 
@@ -86,7 +91,7 @@ describe('Today’s rooms are a stack', () => {
 
     await user.click(screen.getByRole('button', { name: '‹ Back' }))
     expect(
-      await screen.findByRole('button', { name: /find a hike/i }),
+      await screen.findByRole('group', { name: 'Find or plan a hike' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find a hike' })).toBeNull()
   })
@@ -99,7 +104,7 @@ describe('Today’s rooms are a stack', () => {
     await user.click(screen.getByRole('tab', { name: 'Map' }))
     await user.click(screen.getByRole('tab', { name: 'Today' }))
     expect(
-      await screen.findByRole('button', { name: /find a hike/i }),
+      await screen.findByRole('group', { name: 'Find or plan a hike' }),
     ).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Find a hike' })).toBeNull()
 
@@ -121,7 +126,7 @@ describe('the phone’s mode read-out', () => {
   it('names the mode in the bar and opens Today’s switch, from any tab', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByRole('button', { name: /find a hike/i })
+    await screen.findByRole('group', { name: 'Find or plan a hike' })
 
     // The bar still carries no switch of its own (App.test.tsx's rule) -
     // what it carries is one button that opens the one switch.
@@ -146,7 +151,7 @@ describe('the phone’s mode read-out', () => {
   it('reads whatever the switch says', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await screen.findByRole('button', { name: /find a hike/i })
+    await screen.findByRole('group', { name: 'Find or plan a hike' })
 
     const group = screen.getByRole('radiogroup', { name: /today i/i })
     await user.click(within(group).getByRole('radio', { name: 'Volunteer' }))

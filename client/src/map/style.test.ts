@@ -1752,8 +1752,12 @@ describe('the through-route badge (#1283)', () => {
     expect(paint['text-color']).toBe(badgeTextColor({ theme: 'light' }))
   })
 
-  it('starts where the trail labels start, at the overview band', () => {
-    expect(layer(TRAIL_BADGE_LAYER_ID).minzoom).toBe(TRAIL_LABEL_MIN_ZOOM)
+  it('has no floor of its own, while the along-line names start at the overview band', () => {
+    // The badge draws wherever the placer put one, and the placer only has
+    // a vertex where a named line layer is drawing - so the line layers'
+    // floors are the badge's (the review of #1374: the opening camera on a
+    // laptop fits the corridor a shade under 4, and was nameless).
+    expect(layer(TRAIL_BADGE_LAYER_ID).minzoom).toBeUndefined()
     expect(layer(TRAIL_LABEL_LAYER_ID).minzoom).toBe(TRAIL_LABEL_MIN_ZOOM)
   })
 

@@ -365,7 +365,7 @@ describe('the rest of the column', () => {
     render(<Today {...props({ queuedReportCount: 1, onOpenVolunteer })} />)
 
     const line = screen.getByTestId('today-outbox')
-    expect(line).toHaveTextContent('1 note waiting to send')
+    expect(line).toHaveTextContent('1 waiting to send')
     fireEvent.click(line)
     expect(onOpenVolunteer).toHaveBeenCalled()
   })
@@ -375,9 +375,7 @@ describe('the rest of the column', () => {
     // that reports it is a scoreboard for a number that should be zero -
     // which is the anti-gamification rule DATA_NUDGES.md states four times.
     const { rerender } = render(<Today {...props({ queuedReportCount: 2 })} />)
-    expect(screen.getByTestId('today-outbox')).toHaveTextContent(
-      '2 notes waiting to send',
-    )
+    expect(screen.getByTestId('today-outbox')).toHaveTextContent('2 waiting to send')
 
     rerender(<Today {...props({ queuedReportCount: 0 })} />)
     expect(screen.queryByTestId('today-outbox')).toBeNull()

@@ -366,10 +366,15 @@ export function More({
         </button>
       )}
       {queuedReportCount > 0 && (
+        // ONE SENTENCE, ON TODAY AND HERE (#1373, inventory C16). The outbox
+        // holds reports, notes, photos, hours and closures, and this count is
+        // every one of them - so neither "report" nor "note" was true of the
+        // number, and the two screens said different things about the same
+        // queue. What is waiting is listed by kind on "Your reports".
         <p className="settings__note" role="status">
           {queuedReportCount === 1
-            ? '1 report waiting to send.'
-            : `${queuedReportCount} reports waiting to send.`}
+            ? '1 waiting to send.'
+            : `${queuedReportCount} waiting to send.`}
         </p>
       )}
       {stuckReports.length > 0 && (
@@ -635,12 +640,11 @@ export function More({
               So: while a recording is open, or while one is sitting there
               unsaved. `samples > 0` is the same condition the section itself
               uses to decide whether to offer the export at all. */}
-          {gpsTrace !== undefined &&
-            (settings.preferences.location_permission_requested ||
-              gpsTrace.status.recording ||
-              gpsTrace.status.samples > 0) && (
-              <GpsTraceSettings {...gpsTrace} units={settings.preferences.unit_system} />
-            )}
+          {/* The GPS trace recorder is no longer here (#1373, D3): it is a
+              field-test tool, and it sat between the location switch and the
+              anonymity row as though it were a privacy control. It is at the
+              foot of "Where this map comes from", under the build it tests,
+              with the same gate - see there. */}
         </>
       )
     } else if (page === 'reports') {
@@ -681,6 +685,34 @@ export function More({
               reaches both, so the section that displays it and the links
               that send it can never disagree about which one this is. */}
           <ReportBug build={build} onReportFailure={onReportFailure} />
+          {/* THE FIELD-TEST TOOL, AT THE FOOT (#1373, D3 - a relocation, not
+              a first door: More has rendered this under Safety & privacy
+              since #1180, and the review's "App.tsx never renders it" was
+              stale). Here because it is an instrument that tests the build
+              above it, not a setting a hiker chooses, and a recorder sitting
+              between "Use my location" and the anonymity row read as part of
+              the consent it is not. The gate is #1201's, unchanged: the
+              preference decides whether this is OFFERED, never whether a walk
+              already in hand can be reached - hidden while location is off
+              and nothing is recorded, back while a recording is open or a
+              finished one is unsaved, so Stop, Save and Delete never vanish
+              under a hiker who took the screen's own advice. */}
+          {gpsTrace !== undefined &&
+            (settings.preferences.location_permission_requested ||
+              gpsTrace.status.recording ||
+              gpsTrace.status.samples > 0) && (
+              <section className="settings__group" aria-label="Field-test tools">
+                <p className="settings__note">
+                  A field-test tool, for testers rather than a setting for hikers: it
+                  records what this build thinks your position is, and the recording stays
+                  on this phone.
+                </p>
+                <GpsTraceSettings
+                  {...gpsTrace}
+                  units={settings.preferences.unit_system}
+                />
+              </section>
+            )}
         </>
       )
     }
@@ -754,8 +786,8 @@ export function More({
         : `${stuckCount} reports could not be sent`
       : queuedReportCount > 0
         ? queuedReportCount === 1
-          ? '1 report waiting to send'
-          : `${queuedReportCount} reports waiting to send`
+          ? '1 waiting to send'
+          : `${queuedReportCount} waiting to send`
         : // Deliberately not the "Report a problem" button's own label: the
           // row's accessible name contains this line, and a summary that
           // quotes a control verbatim makes every query for that control

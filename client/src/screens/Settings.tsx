@@ -434,6 +434,15 @@ export function AccountSyncSettings({
       <p className="settings__note">
         Photos stay on this phone. Syncing them is not built yet.
       </p>
+      {/* And the one thing that is phone-local by design rather than by
+          absence (#1373, inventory P16): a group is a way of looking at
+          trips, not a record - lib/tripGroups.ts - so it never travels and
+          is not listed above as unsent. Said here so a hiker on a second
+          phone knows why their groups are not on it. */}
+      <p className="settings__note">
+        Groups of trips stay on this phone too — they are a way of arranging trips, and
+        the trips themselves are what travels.
+      </p>
 
       <button
         type="button"

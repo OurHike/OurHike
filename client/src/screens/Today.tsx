@@ -1218,9 +1218,12 @@ export function Today({
           >
             <span className="today__outbox-dot" aria-hidden="true" />
             <span>
+              {/* The same sentence More prints (#1373, C16): the count is the
+                  whole outbox - notes, reports, photos, hours, closures - so
+                  no one noun was true of it. */}
               {queuedReportCount === 1
-                ? '1 note waiting to send'
-                : `${queuedReportCount} notes waiting to send`}
+                ? '1 waiting to send'
+                : `${queuedReportCount} waiting to send`}
             </span>
             <span className="today__outbox-chevron" aria-hidden="true">
               ›

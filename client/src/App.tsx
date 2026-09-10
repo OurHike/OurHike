@@ -8830,7 +8830,13 @@ function App() {
                   onStartReport={() => setReporting({ step: 'window' })}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
-                  onOpenRegistry={() => setBrowsingRegistry(true)}
+                  // The registry gets the gate moderation has (#1373, D4):
+                  // an org console read at a desk, offered to the people
+                  // who can act on it. An anonymous hiker opening it got
+                  // a table about licences they cannot change.
+                  onOpenRegistry={
+                    isModerator ? () => setBrowsingRegistry(true) : undefined
+                  }
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
                   yourReports={yourReportsNode}

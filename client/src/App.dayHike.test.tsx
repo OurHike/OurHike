@@ -537,6 +537,17 @@ describe('the day-hike builder, end to end', () => {
     expect(hike.segments[0][0].coord[0]).toBeCloseTo(-74.095, 2)
     expect(hike.figures.miles).toBeGreaterThan(0)
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+
+    // SAVE LANDS ON THE SAVED CARD (#1373, frame 5c), on the Plan tab: the
+    // record just written, "Saved" over it, "Walk this" first, and the line
+    // saying where it lives - not the map with nothing on it.
+    expect(
+      await screen.findByRole('tab', { name: 'Plan', selected: true }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Walk this' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/Give it a date/)
+    expect(screen.queryByRole('navigation', { name: 'Planning steps' })).toBeNull()
   })
 
   it('goes back to step 1 by "‹ Hike" with the route kept, and the rail’s second stop returns to it (#1373, R3)', async () => {
@@ -597,7 +608,7 @@ describe('the day-hike builder, end to end', () => {
     // while the card is up.
     const when = (await screen.findByLabelText('When')) as HTMLInputElement
     await user.type(when, '2026-09-12')
-    await user.click(screen.getByRole('button', { name: 'Back to the map' }))
+    await user.click(screen.getByRole('button', { name: 'Back to Route, step 2' }))
     expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
 
     // Done rebuilds the record from the draft. The date has to survive that,

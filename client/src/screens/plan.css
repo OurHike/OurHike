@@ -4134,3 +4134,142 @@
   line-height: 1.45;
   color: var(--fg-1);
 }
+
+/* ---------------------------------------------------------------------------
+   Step 3 on the day-hike card (#1373, frames 5a and 5c). The rail inside
+   the sheet, the name as a field, the waypoint rows, the foot with the way
+   back and Save as the last button, and the "Saved" eyebrow. ----------- */
+
+.day-hike-card .step-rail {
+  padding: 0 2.5rem 0.45rem 0;
+  background: none;
+}
+
+.day-hike-card__eyebrow {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-card__name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.day-hike-card__name input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.6rem;
+  font: inherit;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+
+.day-hike-card__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.day-hike-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.day-hike-card__foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.day-hike-card__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+/* Step 3 for a long hike (#1373, frame 5b) on the target sheet: the rail,
+   the route's own head, the days before they are kept, and the foot. */
+.plan-target .step-rail {
+  padding: 0 0 0.45rem;
+  background: none;
+}
+
+.plan-target__route {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.plan-target__route-title {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.plan-target__route-figures {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.plan-target__day-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-target__all-days {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+
+.plan-target__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.plan-target__foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.plan-target__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}

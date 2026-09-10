@@ -185,7 +185,7 @@ describe('the planning flow', () => {
 
     // At 8 mi/day the two legs (3.2→13.2, 13.2→22.2) plan as one day each.
     fireEvent.change(screen.getByLabelText('Miles per day'), { target: { value: '8' } })
-    await user.click(screen.getByRole('button', { name: 'Lay out 2 days' }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     // Landed on the timeline: both days, and the boundary the hiker chose.
     expect(await screen.findByText('DAY 1')).toBeInTheDocument()
@@ -307,7 +307,7 @@ describe('the planning flow', () => {
     fireEvent.change(await screen.findByLabelText('Miles per day'), {
       target: { value: '8' },
     })
-    await user.click(screen.getByRole('button', { name: /^Lay out \d+ days?$/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     // The trips room, showing the trip that was just made. (The trips HOME
     // rather than its timeline: #805 opens the tab on the home whenever

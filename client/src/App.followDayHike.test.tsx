@@ -310,9 +310,7 @@ async function startFollowing(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
     await screen.findByRole('button', { name: /Pine Meadow to Seven Hills/ }),
   )
-  await user.click(
-    await screen.findByRole('button', { name: 'Follow this hike on the map' }),
-  )
+  await user.click(await screen.findByRole('button', { name: 'Walk this' }))
 }
 
 describe('following a day hike, end to end', () => {
@@ -520,9 +518,7 @@ describe('following a day hike, end to end', () => {
     await user.click(
       await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
     )
-    await user.click(
-      await screen.findByRole('button', { name: 'Follow this hike on the map' }),
-    )
+    await user.click(await screen.findByRole('button', { name: 'Walk this' }))
     await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
     // Waits on the follow state itself, not on a tick: the drawing and this
     // line come from the same resolution, so a rendered distance proves the

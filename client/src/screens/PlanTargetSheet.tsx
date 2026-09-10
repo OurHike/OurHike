@@ -20,6 +20,8 @@
 // before anyone commits to it. "Lay out 11 days" beats "Generate".
 
 import { useMemo, useState } from 'react'
+import { DayRow } from '../chrome/DayRow'
+import { StepRail } from '../chrome/StepRail'
 import {
   DEFAULT_CAP_MI,
   DEFAULT_WALKING_HOURS,
@@ -28,19 +30,26 @@ import {
   type ViaStop,
 } from '../lib/dayPlanner'
 import type { ElevationProfile } from '../lib/elevationProfile'
+import { HIKER_MODE_LABELS } from '../lib/hikerMode'
 import {
   buildPlan,
   NEARO_MAX_MI,
+  planDayViews,
   type HikePlan,
   type PlanTarget,
   type RestRhythm,
 } from '../lib/plan'
+import { stopLabel } from '../lib/planDisplay'
 import { applyRhythm } from '../lib/restRhythm'
-import { legFigures } from '../lib/route'
+import { legFigures, priceLeg } from '../lib/route'
 import type { StoredPoi } from '../lib/trailData'
-import { formatDistance, type UnitSystem } from '../lib/units'
+import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { STANDARD_PACE, type PaceProfile } from '../lib/pace'
 import './plan.css'
+
+/** How many days the preview shows before "All N days ›" (frame 5b). Four
+ *  is the design's own count; it is a screen-height decision, not a rule. */
+const PREVIEW_DAYS = 4
 
 export interface PlanTargetSheetProps {
   /** The route's stops in walk order - the two ends, plus any destinations
@@ -60,6 +69,14 @@ export interface PlanTargetSheetProps {
    *  days the hiker asked for rather than quietly dropping them (#798). */
   initialRhythm?: RestRhythm
   onCancel: () => void
+  /**
+   * Step 3 of the spine (#1373, frame 5b): with this, the sheet wears the
+   * rail - "Long hike ✓ · Route ✓ · Details" - and step 1 is a door back
+   * with the route kept (R3); step 2 is `onCancel`, the stops panel behind
+   * it. Without it (the Plan tab's inline section planner, #1344, which is
+   * not on the spine) there is no rail.
+   */
+  onBackToStepOne?: () => void
   /** The laid-out plan, built and ready to keep. */
   onLayOut: (plan: HikePlan) => void
 }
@@ -76,8 +93,11 @@ export function PlanTargetSheet({
   initialStartDate,
   initialRhythm,
   onCancel,
+  onBackToStepOne,
   onLayOut,
 }: PlanTargetSheetProps) {
+  // Frame 5b shows the first few days and a door to the rest.
+  const [allDays, setAllDays] = useState(false)
   const [unit, setUnit] = useState<'hours' | 'miles'>(
     initialTarget !== undefined && 'miles' in initialTarget ? 'miles' : 'hours',
   )
@@ -221,12 +241,78 @@ export function PlanTargetSheet({
 
   const dayCount = laidOut === null ? 0 : laidOut.days.length
 
+  /**
+   * The days as the timeline will list them (frame 5b), read BEFORE they
+   * are kept: one `DayRow` per day of the plan this sheet would lay out,
+   * priced the way the timeline prices its own rows (screens/Plan.tsx's
+   * `figures`) - `legFigures` over the day's span at the hiker's pace, or
+   * nothing with no profile, and the row says which. Built from `laidOut`
+   * rather than from the generator's boundaries, so a rest day the rhythm
+   * inserts is a row here too (#1040's rule, one stage further).
+   */
+  const days = useMemo(() => {
+    if (laidOut === null) return []
+    return planDayViews(laidOut).map((day) => ({
+      ...day,
+      figures:
+        elevation === null || day.zero
+          ? undefined
+          : priceLeg(legFigures(elevation, day.start.mile, day.end.mile, pace), pace),
+    }))
+  }, [laidOut, elevation, pace])
+
+  /** The whole route's figures for the head - distance always, the climb
+   *  where the profile covers every mile of it, priced in walking order. */
+  const whole = useMemo(() => {
+    if (route.length < 2) return null
+    const from = route[0].mile
+    const to = route[route.length - 1].mile
+    const distanceMi = Math.abs(to - from)
+    if (elevation === null || !routeMeasured) return { distanceMi, ascentFt: null }
+    return { distanceMi, ascentFt: legFigures(elevation, from, to, pace).ascentFt }
+  }, [route, elevation, routeMeasured, pace])
+
   const layOut = () => {
     if (laidOut !== null) onLayOut(laidOut)
   }
 
+  const shownDays = allDays ? days : days.slice(0, PREVIEW_DAYS)
+
   return (
     <div className="plan-target" role="dialog" aria-label="How long is a day?">
+      {onBackToStepOne !== undefined && (
+        <StepRail
+          step={3}
+          kind={HIKER_MODE_LABELS.long}
+          onStep={(step) => {
+            if (step === 2) onCancel()
+            else if (step === 1) onBackToStepOne()
+          }}
+        />
+      )}
+      {/* The route this is step 3 OF (frame 5b): its ends, its length, how
+          many days the target makes of it, and its climb where the profile
+          covers all of it. The count is a fact about the plan below, not
+          about one stage of making it - the same figure the button used to
+          carry, said once where a reader looks first. */}
+      {whole !== null && (
+        <div className="plan-target__route">
+          <h2 className="plan-target__route-title">
+            {stopLabel(route[0])} → {stopLabel(route[route.length - 1])}
+          </h2>
+          <p className="plan-target__route-figures">
+            {[
+              formatDistance(whole.distanceMi, units),
+              dayCount > 0 ? `${dayCount} ${dayCount === 1 ? 'day' : 'days'}` : null,
+              whole.ascentFt === null
+                ? null
+                : `${formatElevation(whole.ascentFt, units)} up`,
+            ]
+              .filter((part) => part !== null)
+              .join(' · ')}
+          </p>
+        </div>
+      )}
       <div className="legend__head">
         <h2 className="legend__title">How long is a day?</h2>
         <button type="button" className="legend__close" onClick={onCancel}>
@@ -383,16 +469,66 @@ export function PlanTargetSheet({
             />
           </label>
 
-          <button
-            type="button"
-            className="plan__primary"
-            disabled={dayCount === 0}
-            onClick={layOut}
-          >
-            {dayCount === 0
-              ? 'Nothing to lay out'
-              : `Lay out ${dayCount} ${dayCount === 1 ? 'day' : 'days'}`}
-          </button>
+          {/* THE DAYS, BEFORE THEY ARE KEPT (frame 5b, rule R7): every
+              listed day carries distance, time at the hiker's pace and the
+              climb, in the one row component the timeline and the cascade
+              diff also mount. A zero is a row too - it eats a day of food.
+              The first few and a door to the rest, so the target control
+              above stays in reach while the count moves under a slider. */}
+          {days.length > 0 && (
+            <section className="plan-target__days" aria-label="The days">
+              <ol className="plan-target__day-list">
+                {shownDays.map((day) => (
+                  <li key={day.id}>
+                    <DayRow
+                      label={day.dayNumber === null ? 'Zero' : `D${day.dayNumber}`}
+                      title={
+                        day.zero
+                          ? `Zero at ${stopLabel(day.end)}`
+                          : `→ ${stopLabel(day.end)}`
+                      }
+                      distanceMi={Math.abs(day.end.mile - day.start.mile)}
+                      {...(day.figures === undefined ? {} : { figures: day.figures })}
+                      units={units}
+                      state={day.zero ? 'zero' : 'planned'}
+                    />
+                  </li>
+                ))}
+              </ol>
+              {days.length > PREVIEW_DAYS && !allDays && (
+                <button
+                  type="button"
+                  className="plan-target__all-days"
+                  onClick={() => setAllDays(true)}
+                >
+                  All {days.length} days<span aria-hidden="true"> ›</span>
+                </button>
+              )}
+            </section>
+          )}
+
+          {/* SAVE IS THE LAST BUTTON, NOT A STEP (D7). Absent, never greyed,
+              while there is nothing to save - which the count above already
+              says. The way back is the stops panel, the route kept. */}
+          <div className="plan-target__foot">
+            <button
+              type="button"
+              className="plan-target__back"
+              onClick={onCancel}
+              aria-label="Back to Route, step 2"
+            >
+              <span aria-hidden="true">‹ </span>Route
+            </button>
+            {dayCount === 0 ? (
+              <p className="plan-target__note" role="note">
+                Nothing to lay out yet.
+              </p>
+            ) : (
+              <button type="button" className="plan__primary" onClick={layOut}>
+                Save this long hike
+              </button>
+            )}
+          </div>
           <p className="plan-target__reassure">
             you can move every one of them afterwards
           </p>

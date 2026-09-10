@@ -334,6 +334,7 @@ import {
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
 import { buildCourse, mileTicks } from './lib/dayHikeCourse'
 import { isStoppable, orderStops, toggleStop } from './lib/dayHikeStops'
+import { waterOnCourse } from './lib/dayHikeWater'
 import { poiIdAt } from './map/poiTaps'
 
 /** No stops picked. A module constant rather than a fresh `new Set()` at each
@@ -928,6 +929,18 @@ function App() {
    * all read. Cleared with the draft, never outliving it.
    */
   const [dayHikeDraftDate, setDayHikeDraftDate] = useState<string | null>(null)
+  /**
+   * A name the hiker typed on step 3 (#1373, frame 5a), or null for the
+   * one the walk gets off its longest leg. Draft-scoped like the date and
+   * for the same reason: Done rebuilds the record from the draft, and a
+   * name typed before a trip back to the map must survive that.
+   */
+  const [dayHikeDraftName, setDayHikeDraftName] = useState<string | null>(null)
+  /**
+   * The record Save just wrote (#1373, frame 5c), so the card it lands on
+   * can say where the walk now lives. Cleared when that card closes.
+   */
+  const [justSavedId, setJustSavedId] = useState<string | null>(null)
   /**
    * The saved record the live draft was opened FROM (#1373, D1), or null
    * for a new walk.
@@ -4542,6 +4555,7 @@ function App() {
     setDayHikeDrawMode(false)
     setDayHikeKind('planned')
     setDayHikeEditing(null)
+    setDayHikeDraftName(null)
     // The stops go with the walk they were picked for. Leaving them would
     // put yesterday's shelters into tomorrow's route the moment the builder
     // reopened, which is the same staleness `openId` is kept in the store to
@@ -4786,8 +4800,9 @@ function App() {
       id: dayHikeEditing?.id ?? crypto.randomUUID(),
       // Named off the longest leg of the whole walk, gaps included in the
       // sense that they contribute no leg to be named after - which is right:
-      // a walk is named for the trail it spends most of its miles on.
-      name: dayHikeName({ legs: status.legs }),
+      // a walk is named for the trail it spends most of its miles on - unless
+      // the hiker typed one on step 3, which outranks it.
+      name: dayHikeDraftName?.trim() || dayHikeName({ legs: status.legs }),
       // Whatever the hiker set on a review card before "Back to the map"
       // discarded it - see dayHikeDraftDate.
       date: dayHikeDraftDate,
@@ -4862,6 +4877,7 @@ function App() {
     dayHike,
     dayHikeStatus,
     dayHikeDraftDate,
+    dayHikeDraftName,
     dayHikeKind,
     dayHikeStops,
     dayHikeEditing,
@@ -4884,13 +4900,21 @@ function App() {
       const hikes = store.hikes.some((saved) => saved.id === hike.id)
         ? store.hikes.map((saved) => (saved.id === hike.id ? hike : saved))
         : [...store.hikes, hike]
-      const next = { hikes, openId: null }
+      // The saved card is where Save lands (#1373, frame 5c): the record
+      // opens on the Plan tab with "Walk this" and the line saying where it
+      // now lives, rather than the map with nothing on it. `openId` used to
+      // stay null here because nothing was on screen once the card closed;
+      // now something is, and it is this record.
+      const next = { hikes, openId: hike.id }
       setDayHikeStore(next)
       return saveDayHikes(next)
     })
+    setJustSavedId(hike.id)
+    setActiveTab('plan')
     setDayHikeReview(null)
     setDayHike(null)
     setDayHikeEditing(null)
+    setDayHikeDraftName(null)
     setGraphAnchors([])
     setDayHikeDraftDate(null)
     // The stops belong to the walk that just saved. Clearing them here as
@@ -4899,7 +4923,7 @@ function App() {
     setDayHikeStopIds(EMPTY_STOP_IDS)
     setDayHikeDetailsOpen(false)
     // See handleDayHikeCancel for why the stable setter is named.
-  }, [dayHikeReview, setDayHikeStopIds])
+  }, [dayHikeReview, setDayHikeStopIds, setActiveTab])
 
   /** Open a saved hike's card from the Plan tab. Written through the store
    *  because that is where `openId` lives - held in the one document so the
@@ -5097,6 +5121,19 @@ function App() {
    * DOCUMENT, ONE KEY, so every writer reloads before it writes and there is
    * no pair of writes that can half-land.
    */
+  /** The walk's name, retyped on its card (#1373, frame 5a) - the same
+   *  read-modify-write as the note, for the same one-document reason. */
+  const handleSetDayHikeName = useCallback((id: string, name: string) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? { ...hike, name } : hike)),
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+  }, [])
+
   const handleSetDayHikeNote = useCallback((id: string, note: string) => {
     void loadDayHikes().then((store) => {
       const next = {
@@ -5124,6 +5161,35 @@ function App() {
     if (graph === null) return []
     return dayHikeBailOuts(graph, cardResolution)
   }, [cardResolution, dayHikeIndex, graphIndex])
+
+  /**
+   * The card's walk on its own mile axis (#1373, step 3), for the water
+   * and the stops it lists. A REVIEW is the draft continuing, so it reads
+   * the builder's course; a SAVED card rebuilds one from its resolution -
+   * the same `buildCourse` over the same shape, so "0.8 mi in" on the card
+   * that opens after Save is the figure the builder printed a moment
+   * before. Null over the stored cache, where there is no ground to place
+   * anything on, and the sections stay absent.
+   */
+  const cardCourse = useMemo(() => {
+    if (dayHikeReview !== null) return dayHikeCourse
+    if (cardResolution === null || dayHikeIndex === null) return null
+    const course = buildCourse(dayHikeIndex.graph, cardResolution.segments)
+    return course.points.length === 0 ? null : course
+  }, [dayHikeReview, dayHikeCourse, cardResolution, dayHikeIndex])
+  const cardWater = useMemo(
+    () => (cardCourse === null ? [] : waterOnCourse(cardCourse, pois)),
+    [cardCourse, pois],
+  )
+  const cardStops = useMemo(() => {
+    if (dayHikeReview !== null) return dayHikeStops
+    if (cardCourse === null || cardDayHike === null) return []
+    return orderStops(
+      cardCourse,
+      new Set((cardDayHike.stops ?? []).map((stop) => stop.poiId)),
+      pois,
+    )
+  }, [dayHikeReview, dayHikeStops, cardCourse, cardDayHike, pois])
 
   /**
    * Following a saved day hike (#1041, frames `D9`-`D11`).
@@ -5371,7 +5437,10 @@ function App() {
         }
         following={followingId === cardDayHike.id}
         onSave={handleDayHikeSave}
-        onClose={handleDayHikeCardClose}
+        onClose={() => {
+          setJustSavedId(null)
+          handleDayHikeCardClose()
+        }}
         onDelete={() => handleDeleteDayHike(cardDayHike.id)}
         onSetDate={(date) => {
           if (dayHikeReview === null) {
@@ -5384,6 +5453,21 @@ function App() {
           setDayHikeReview({ ...dayHikeReview, date })
           setDayHikeDraftDate(date)
         }}
+        // Step 3's additions (#1373, frames 5a and 5c). The name rides the
+        // review and the draft-scoped state like the date does.
+        onBackToStepOne={backToStepOne}
+        onRename={(name) => {
+          if (dayHikeReview === null) {
+            handleSetDayHikeName(cardDayHike.id, name)
+            return
+          }
+          setDayHikeReview({ ...dayHikeReview, name })
+          setDayHikeDraftName(name)
+        }}
+        waterOnRoute={cardWater}
+        stops={cardStops}
+        justSaved={justSavedId !== null && justSavedId === cardDayHike.id}
+        today={localDay(now)}
       />
     ) : null
 
@@ -6096,6 +6180,7 @@ function App() {
           ? {}
           : { initialStartDate: targetRequest.initialStartDate })}
         onCancel={() => setTargetRequest(null)}
+        onBackToStepOne={backToStepOne}
         onLayOut={handleLayOut}
       />
     )

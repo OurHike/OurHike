@@ -522,7 +522,7 @@ describe('planning a section without leaving the room (#1344)', () => {
 
     // Both ends named, so the SAME slot becomes the target sheet - the form
     // that already turns two ends into a plan (planDaysVia + buildPlan).
-    await user.click(await screen.findByRole('button', { name: /^Lay out \d+ days?$/ }))
+    await user.click(await screen.findByRole('button', { name: 'Save this long hike' }))
 
     // Kept AND on the hike.
     await waitFor(() => {

@@ -54,9 +54,16 @@
 // the live resolution over a published graph rather than a hand-written
 // fixture - so this shot shows the credit half and DayHikeCard.test.tsx and
 // trailGraph.test.ts pin the merge itself.
-export const caption = 'The finished day hike’s card'
+// Touched by #1373 (step 3, frames 5a and 5c): a SAVED card now leads with
+// "Walk this" and carries "Leave it with someone" as a row under it, the
+// name is a field, and - where the graph places the walk - the water the
+// route passes and the stops it was saved with list as waypoint rows above
+// the legs. The REVIEW card (the same component at step 3, under the rail)
+// is photographed by day-hike-step-3.mjs.
+export const caption =
+  'The saved day hike’s card, after step 3: Walk this first, the plain-text card one row under it (#1373, frame 5c)'
 export const alt =
-  'A saved day hike’s card, opened from the Plan tab, crediting both organizations whose designations share its tread'
+  'A saved day hike’s card, opened from the Plan tab: the name as a field, the date, the figures, then - where this build holds the graph - Water on route and Shelters & campsites rows, the legs, the ways off, the organizations sentence, and at the foot a Walk this button over Leave it with someone, Edit the route and Delete this day hike'
 
 const DAY_HIKES = {
   hikes: [

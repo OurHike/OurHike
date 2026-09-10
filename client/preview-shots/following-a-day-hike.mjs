@@ -255,7 +255,7 @@ export default async function drive(page) {
   // state this recipe exists for.
   await page.getByRole('heading', { name: 'Legs' }).waitFor()
 
-  const follow = page.getByRole('button', { name: 'Follow this hike on the map' })
+  const follow = page.getByRole('button', { name: 'Walk this' })
   // WAITED ON RATHER THAN COUNTED, and the first version of this fix got it
   // wrong in a way only the preview could show. `Legs` prints over the CACHED
   // figures too, so it arrives long before the graph does - and this recipe's

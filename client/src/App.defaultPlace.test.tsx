@@ -149,3 +149,59 @@ describe('More → You, "Where you hike"', () => {
     )
   })
 })
+
+// --- The map's search knows the places (#1373, frame 14d) ------------------
+//
+// The volunteer map's "place search" is the map's own search with the index
+// under its waypoint matches: a park row moves the map to the park, fitted
+// to its box, and the workday pins already drawn there are what a volunteer
+// came to find. Held here because this file already owns the index mock.
+
+describe('the map’s search, over the places index', () => {
+  beforeEach(() => {
+    app.onboard()
+    app.putTrailData()
+  })
+
+  it('moves the map to a park picked by name, and closes the search', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    const map = MockMap.live[0]
+
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+    await user.type(await screen.findByRole('searchbox'), 'harr')
+    await user.click(
+      await screen.findByRole('button', { name: /Harriman State Park, NY/ }),
+    )
+
+    // Fitted to the park's own box - `defaultPlaceCamera`'s rule, the same
+    // one first run opens the map by - never a point at the corridor zoom.
+    const moved = map.cameraMoves.at(-1)
+    expect(moved?.fitBounds).toEqual([
+      [-74.2, 41.2],
+      [-74.0, 41.3],
+    ])
+    expect(screen.queryByRole('searchbox')).toBeNull()
+  })
+
+  it('centres on a point place at the planning zoom', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    const map = MockMap.live[0]
+
+    await user.click(screen.getByRole('button', { name: 'Search' }))
+    await user.type(await screen.findByRole('searchbox'), 'harriman')
+    // The town, which has no box: the second row, after the park.
+    await user.click(await screen.findByRole('button', { name: /Harriman, TN/ }))
+
+    const moved = map.cameraMoves.at(-1)
+    expect(moved?.center).toEqual([-84.5, 35.9])
+    expect(moved?.zoom).toBe(12)
+  })
+})

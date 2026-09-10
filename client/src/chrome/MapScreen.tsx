@@ -92,6 +92,7 @@ import {
   type MapPoint,
 } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
+import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
 import './chrome.css'
 
@@ -430,6 +431,10 @@ export interface MapScreenProps {
   onCloseSearch: () => void
   searchablePois: SearchablePoi[]
   onSelectSearchResult: (poi: SearchablePoi) => void
+  /** The places index for the search (#1373, frame 14d) - see
+   *  SearchProps.places. Both absent on a phone that holds none. */
+  places?: readonly Place[]
+  onSelectPlace?: (place: Place) => void
   bbox: BoundingBox
   /**
    * Every POI the app holds. Named for the legend, which is what first needed
@@ -869,6 +874,8 @@ export function MapScreen({
   onCloseSearch,
   searchablePois,
   onSelectSearchResult,
+  places,
+  onSelectPlace,
   bbox,
   viewportPoints,
   ghostedTrailsDrawn,
@@ -1610,6 +1617,8 @@ export function MapScreen({
               pois={searchablePois}
               onSelect={onSelectSearchResult}
               onClose={onCloseSearch}
+              places={places}
+              onSelectPlace={onSelectPlace}
             />
           </div>
 

@@ -55,6 +55,7 @@ import {
   saveDefaultPlace,
   type DefaultPlace,
 } from './lib/defaultPlace'
+import type { Place } from './lib/places'
 import { PlaceSheet } from './chrome/PlaceSheet'
 import {
   hikingDetailOptions,
@@ -1375,9 +1376,13 @@ function App() {
    */
   const entering = !preferences.onboarding_completed
   // The places index (#1373, lib/usePlaces.ts), read only while a screen
-  // can type into it: first run's second card, and the sheet More → You
-  // opens. A launch that never opens either never pays for the read.
-  const { places, settled: placesSettled } = usePlaces(online, entering || placeSheetOpen)
+  // can type into it: first run's second card, the sheet More → You opens,
+  // and - since frame 14d - the map's search. A launch that never opens any
+  // of them never pays for the read.
+  const { places, settled: placesSettled } = usePlaces(
+    online,
+    entering || placeSheetOpen || searchOpen,
+  )
   /** The active long hike's trail, or null for nothing taken - first
    *  launch's all-dotted map (#1306), same as a hiker who has set up no
    *  hike yet. Derived from the active Hike rather than its own preference
@@ -7593,6 +7598,43 @@ function App() {
     [pois, map, handleSelectPoi, setActiveTab, isDesktop, activeTab],
   )
 
+  /**
+   * A place picked from the map's search (#1373, frame 14d). The map goes
+   * there - fitted to its box where it has one, so a park or a long trail is
+   * framed rather than centred on a point somewhere inside it, else the
+   * point at the planning zoom first run opens on (`defaultPlaceCamera`,
+   * the one rule for "the camera a place opens on") - and a place that IS a
+   * published waypoint opens that waypoint's card, as a search result would.
+   *
+   * This is the volunteer map's "place search": the workday pins are
+   * already drawn (chrome/workdayPanel.tsx), so moving the map to a park is
+   * what finds the workdays in it, and In view then lists them. Nothing
+   * here is gated on the mode - a hiker in any mode can go to a park by
+   * name, which is lib/hikerMode.ts's rule.
+   */
+  const handleSelectPlace = useCallback(
+    (place: Place) => {
+      setSearchOpen(false)
+      if (map !== null) {
+        const view = defaultPlaceCamera(place)
+        if ('bounds' in view) {
+          const [west, south, east, north] = view.bounds
+          map.fitBounds(
+            [
+              [west, south],
+              [east, north],
+            ],
+            { padding: FIT_PADDING, duration: 0 },
+          )
+        } else {
+          map.jumpTo({ center: [view.center[0], view.center[1]], zoom: view.zoom })
+        }
+      }
+      if (place.poiId !== undefined) handleSelectPoi(place.poiId)
+    },
+    [map, handleSelectPoi],
+  )
+
   /** Answered: both fields land together, which is what the screen collects.
    *  An empty trail name is stored as null rather than as "", so Settings can
    *  keep saying "Not set" rather than showing a blank. */
@@ -9654,6 +9696,11 @@ function App() {
               searchOpen={searchOpen}
               onCloseSearch={() => setSearchOpen(false)}
               searchablePois={searchablePois}
+              // The places index under the waypoint matches (#1373, frame
+              // 14d) - handed over only once it holds anything, so a phone
+              // with no index gets the search it had.
+              places={places.places.length > 0 ? places.places : undefined}
+              onSelectPlace={handleSelectPlace}
               onSelectSearchResult={(poi) => {
                 const found = pois.find((p) => p.id === poi.id)
                 // AND OPEN ITS CARD (§3 of #527). Moving the camera was the whole of

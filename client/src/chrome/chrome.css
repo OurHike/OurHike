@@ -1533,6 +1533,19 @@
   color: var(--fg-3);
 }
 
+/* The seam between the waypoint rows and the place rows (#1373, frame 14d):
+   an eyebrow in the chrome's own voice, so the second list reads as a
+   second kind of answer rather than more of the first. */
+.search__group {
+  margin: var(--space-3, 12px) var(--space-4, 16px) var(--space-1, 4px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow, 0.1em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
 /* ---------- Closure sheet ---------- */
 
 .closure-sheet {

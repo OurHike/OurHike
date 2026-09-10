@@ -1098,6 +1098,37 @@
   cursor: pointer;
 }
 
+/* Two figures and nothing else (#1373, frame 8b): walked and to go, at the
+   size the hike room's own line prints them. No bar here - the room draws
+   one, and this screen's job is the pieces under the figures. */
+.whats-left__figures {
+  display: flex;
+  gap: var(--space-4, 16px);
+  margin: 0;
+}
+
+.whats-left__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.whats-left__figure-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.whats-left__figure-value {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
 .whats-left__total {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, monospace);

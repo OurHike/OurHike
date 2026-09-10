@@ -705,8 +705,12 @@ describe('the door to what’s left (#791)', () => {
     await user.click(screen.getByRole('button', { name: /What’s left/ }))
 
     expect(screen.getByRole('heading', { name: 'What’s left' })).toBeInTheDocument()
-    // Nothing walked on this plan, so the whole hike is one piece.
-    expect(screen.getByText(/389\.2 mi in 1 piece/)).toBeInTheDocument()
+    // Nothing walked on this plan, so the whole hike is one piece - and the
+    // head is two figures, walked and to go (#1373, frame 8b).
+    expect(screen.getByText('To go').closest('.whats-left__figure')).toHaveTextContent(
+      /389\.2 mi/,
+    )
+    expect(screen.getByText('in 1 piece')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Back to the hike' }))
     expect(

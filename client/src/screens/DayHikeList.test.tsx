@@ -117,6 +117,33 @@ describe('the shelves', () => {
     expect(onOpen).toHaveBeenCalledWith('Pine Meadow loop')
   })
 
+  it('opens on the walked shelf alone when asked (#1373, D5)', () => {
+    // The Plan home's "Walked" shelf opens this list on the history and
+    // nothing else: no to-walk rows, no sorts (they order what is still to
+    // walk) and no builder door - a hiker looking at their history came for
+    // the history.
+    render(
+      <DayHikeList
+        {...PROPS}
+        shelf="walked"
+        at={{ lon: -74.09, lat: 41.25 }}
+        dayHikes={[
+          dayHike('Pine Meadow loop', { date: '2026-09-12' }),
+          dayHike('Seven Hills, out and back'),
+          dayHike('Breakneck Ridge', { recorded: 'walked', date: '2026-08-02' }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Walked · 1 hike')
+    expect(screen.queryByText('Ready to walk')).toBeNull()
+    expect(screen.queryByText(/Pine Meadow loop/)).toBeNull()
+    const walked = screen.getByText('Walked').closest('section') as HTMLElement
+    expect(within(walked).getByText(/Breakneck Ridge/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Order these by' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Plan a day hike' })).toBeNull()
+  })
+
   it('renders no walked shelf when nothing is walked - no header over an empty list', () => {
     render(<DayHikeList {...PROPS} dayHikes={[dayHike('Pine Meadow loop')]} />)
     expect(screen.queryByText('Walked')).not.toBeInTheDocument()

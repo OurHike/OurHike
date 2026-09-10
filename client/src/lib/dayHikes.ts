@@ -715,6 +715,37 @@ export async function adoptDayHikes(store: DayHikeStore): Promise<void> {
   await set(DAY_HIKES_KEY, store)
 }
 
+/**
+ * Point the store at one hike - or at nothing - without recording an edit.
+ *
+ * `openId` is which card is on screen: a fact about this phone's screen, not
+ * about any hike, and it never travels (lib/useDayHikesSync.ts carries hikes
+ * and tombstones and nothing else). It used to be written through
+ * `saveDayHikes`, whose ledger marks EVERY surviving hike dirty on every save
+ * - so a tap on a row, and the close afterwards, each queued an upload of the
+ * whole shelf, indistinguishable from the hiker having edited all of it
+ * (#1373, inventory P41: `recordDayHikeEdits` above is the line that does
+ * it, and its own comment says over-marking is the cheaper side to err on
+ * - for a SAVE, which this is not).
+ *
+ * Reads before it writes for `saveDayHikes`' reason: the hikes written back
+ * are whatever is in the store now, so a sync landing between the tap and
+ * this write is kept rather than overwritten by React's copy. A pointer at
+ * a hike the store does not hold is written as null, `validateDayHikeStore`'s
+ * repair applied at write time rather than on the next read. Returns the
+ * store as written so a caller can mirror it into state, and writes nothing
+ * when the pointer already says this.
+ */
+export async function saveDayHikeOpenId(openId: string | null): Promise<DayHikeStore> {
+  const store = await loadDayHikes()
+  const pointer =
+    openId !== null && store.hikes.some((hike) => hike.id === openId) ? openId : null
+  if (pointer === store.openId) return store
+  const next = { ...store, openId: pointer }
+  await set(DAY_HIKES_KEY, next)
+  return next
+}
+
 /** Forget every day hike. Recorded as the hiker deleting each of them,
  *  because that is what it is - clearTrips makes the same call, and the
  *  alternative is the inference features/ACCOUNT_SYNC.md forbids. */

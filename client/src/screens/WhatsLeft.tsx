@@ -41,6 +41,14 @@ export interface WhatsLeftProps {
   gpsMile: number | null
   /** Start a route at one end of a gap, walking toward the other. */
   onPlanFrom: (start: PlaceRef, toward: PlaceRef) => void
+  /**
+   * The way back into the plan (#1373, frame 8b): the days of the section
+   * the hiker has open, where a day is called short or long and the rest
+   * moves (the cascade, frame 7). Undefined when no section of this hike is
+   * open - then there is no plan to change from here, and the door is
+   * absent rather than present and dead.
+   */
+  onChangePlan?: () => void
   onClose: () => void
 }
 
@@ -56,6 +64,7 @@ export function WhatsLeft({
   units,
   gpsMile,
   onPlanFrom,
+  onChangePlan,
   onClose,
 }: WhatsLeftProps) {
   const [sort, setSort] = useState<GapSort>('trail')
@@ -91,9 +100,27 @@ export function WhatsLeft({
         <h2 className="legend__title">What&rsquo;s left</h2>
       </div>
 
+      {/* TWO FIGURES, DELIBERATELY (#1373, frame 8b): walked and to go, the
+          same pair the hike's room prints and from the same function. No
+          percentage and no pace anybody could be behind - the trail is not
+          a target and this screen will never imply one. A `dl` because
+          they are two labelled values, not a sentence. */}
+      <dl className="whats-left__figures">
+        <div className="whats-left__figure">
+          <dt className="whats-left__figure-label">Walked</dt>
+          <dd className="whats-left__figure-value">
+            {formatDistance(figures.walkedMi, units)}
+          </dd>
+        </div>
+        <div className="whats-left__figure">
+          <dt className="whats-left__figure-label">To go</dt>
+          <dd className="whats-left__figure-value">
+            {formatDistance(figures.leftMi, units)}
+          </dd>
+        </div>
+      </dl>
       <p className="whats-left__total">
-        {formatDistance(figures.leftMi, units)} in {left.gaps.length}{' '}
-        {left.gaps.length === 1 ? 'piece' : 'pieces'}
+        in {left.gaps.length} {left.gaps.length === 1 ? 'piece' : 'pieces'}
       </p>
 
       {sorts.length > 1 && (
@@ -188,6 +215,21 @@ export function WhatsLeft({
           {formatDistance(MIN_GAP_MI, units)} each, so they get no card. They are still
           trail nobody has walked.
         </p>
+      )}
+
+      {/* At the foot rather than under the figures, where the frame draws
+          it: the cards above are the question this screen answers, and the
+          door is for the hiker whose plan needs moving rather than choosing.
+          "Export GPX" beside it in the frame is not here - no writer exists
+          (P20), and a door is a claim (D10). */}
+      {onChangePlan !== undefined && (
+        <button type="button" className="plan-kind__door" onClick={onChangePlan}>
+          <span className="plan-kind__door-name">Change the plan from here ›</span>
+          <span className="plan-kind__door-note">
+            The days of the section you have open — call one short or long and the rest
+            moves.
+          </span>
+        </button>
       )}
     </div>
   )

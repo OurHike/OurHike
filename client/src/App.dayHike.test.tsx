@@ -22,6 +22,7 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { NETWORK_STILL_ARRIVING } from './lib/dayHikeDraft'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
+import { DAY_HIKES_SYNC_KEY } from './lib/dayHikeSyncState'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
 import { CAMERA_MEMORY_KEY } from './lib/cameraMemory'
@@ -782,6 +783,13 @@ describe('the day-hike builder, end to end', () => {
       ).not.toBeInTheDocument()
     })
     expect(screen.getByRole('heading', { name: 'Sections' })).toBeInTheDocument()
+
+    // Opening a card and putting it away is not an edit of any hike (#1373,
+    // P41): the sync ledger has nothing to carry for it. Both writes used to
+    // go through the ledger-marking save, and every surviving hike was
+    // queued for upload on every tap on a row.
+    const ledger = app.store.get(DAY_HIKES_SYNC_KEY) as { dirty?: string[] } | undefined
+    expect(ledger?.dirty ?? []).toEqual([])
 
     // Back to the day room, and the row is still there to reopen.
     await user.click(screen.getByRole('tab', { name: 'Today' }))

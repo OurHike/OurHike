@@ -230,7 +230,11 @@ import {
 } from './lib/trailPosition'
 import type { StoredPoi } from './lib/trailData'
 import { useTrailData } from './lib/useTrailData'
-import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
+import {
+  ribbonSamples,
+  ribbonWindow,
+  type ElevationProfile,
+} from './lib/elevationProfile'
 import { ascentBetween } from './lib/todayJournal'
 import { loadLastOnTrail, noteOnTrail } from './lib/lastOnTrail'
 import { moveDatedDaysToToday } from './lib/hikeResume'
@@ -248,6 +252,7 @@ import { viewportMiles } from './lib/viewportMiles'
 import {
   anchoredClientMile,
   anchoredMile,
+  legFigures,
   SAME_AXIS_ANCHORS,
   type MileAnchor,
 } from './lib/route'
@@ -259,7 +264,7 @@ import { SectionPlanner } from './chrome/SectionPlanner'
 import { nearestStop } from './lib/cascade'
 import { mileMarker, stopLabel } from './lib/planDisplay'
 import { longDate } from './lib/hikeText'
-import { formatDistance, type UnitSystem } from './lib/units'
+import { formatDistance, formatElevation, type UnitSystem } from './lib/units'
 import { useRouteBuilderPanel, type ViaStopLike } from './chrome/routeBuilderPanel'
 import {
   currentDayIndex,
@@ -371,6 +376,7 @@ import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
   logWalk,
+  saveDayHikeOpenId,
   saveDayHikes,
   savedFromSource,
   walkedDates,
@@ -1050,10 +1056,11 @@ function App() {
    *   screen, and a day-hike surface floating over the trips room is the exact
    *   "which mode am I in" confusion this split exists to end.
    *
-   * The close is a read-modify-write that marks the sync ledger, so it is
-   * guarded on there being something to close - inside, against the loaded
-   * store, which is what keeps this callback stable and lets the doors below
-   * list it as a dependency.
+   * The close writes the POINTER and nothing else (`saveDayHikeOpenId`,
+   * #1373 P41): putting a card away is not an edit of any hike, and the
+   * ledger-marking save this used to go through queued an upload of the
+   * whole shelf for it. Nothing here reads React state, which is what keeps
+   * this callback stable and lets the doors below list it as a dependency.
    */
   /**
    * Which long-hike sheet is open, or null (#1317).
@@ -1095,12 +1102,7 @@ function App() {
   const enterTripsRoom = useCallback(() => {
     applyHikerMode('long')
     setDayListOpen(false)
-    void loadDayHikes().then((store) => {
-      if (store.openId === null) return
-      const next = { ...store, openId: null }
-      setDayHikeStore(next)
-      return saveDayHikes(next)
-    })
+    void saveDayHikeOpenId(null).then(setDayHikeStore)
   }, [applyHikerMode])
   /**
    * The trailhead door (frame D8), put away - by the hikes it was offering
@@ -4962,18 +4964,17 @@ function App() {
     // See handleDayHikeCancel for why the stable setter is named.
   }, [dayHikeReview, setDayHikeStopIds, setActiveTab])
 
-  /** Open a saved hike's card from the Plan tab. Written through the store
-   *  because that is where `openId` lives - held in the one document so the
-   *  pointer cannot outlive the hike it names. */
+  /**
+   * Open a saved hike's card from the Plan tab. Written through the store
+   * because that is where `openId` lives - held in the one document so the
+   * pointer cannot outlive the hike it names - and through the POINTER
+   * write, never `saveDayHikes` (#1373, inventory P41): that path marks
+   * every surviving hike dirty, so each tap on a row queued an upload of
+   * the whole shelf, indistinguishable from the hiker having edited all of
+   * it. Opening a card is not an edit.
+   */
   const handleOpenDayHike = useCallback((id: string) => {
-    void loadDayHikes().then((store) => {
-      const next = {
-        ...store,
-        openId: store.hikes.some((hike) => hike.id === id) ? id : null,
-      }
-      setDayHikeStore(next)
-      return saveDayHikes(next)
-    })
+    void saveDayHikeOpenId(id).then(setDayHikeStore)
   }, [])
 
   /**
@@ -5017,12 +5018,9 @@ function App() {
       setDayHikeEditing(hike)
       // The card goes away with the pointer that opened it - the walk is on
       // the map now, being edited, and a card behind it would be describing
-      // the route as it was.
-      void loadDayHikes().then((store) => {
-        const next = { ...store, openId: null }
-        setDayHikeStore(next)
-        return saveDayHikes(next)
-      })
+      // the route as it was. The pointer only: the edit is recorded when it
+      // is saved, not when it starts.
+      void saveDayHikeOpenId(null).then(setDayHikeStore)
     },
     [dayHikeStore.hikes, dayHikeIndex, openDayHike, setDayHikeStopIds],
   )
@@ -5120,11 +5118,8 @@ function App() {
       setDayHikeReview(null)
       return
     }
-    void loadDayHikes().then((store) => {
-      const next = { ...store, openId: null }
-      setDayHikeStore(next)
-      return saveDayHikes(next)
-    })
+    // The pointer only (P41) - closing a card changes no hike.
+    void saveDayHikeOpenId(null).then(setDayHikeStore)
   }, [dayHikeReview])
 
   const handleDeleteDayHike = useCallback((id: string) => {
@@ -7875,24 +7870,26 @@ function App() {
     // Sharing renders OVER whichever of the other two opened it, so closing
     // the share sheet returns to the screen it was opened from rather than
     // dropping the hiker back into Plan.
+    // Built once here rather than inline, because the note under the list
+    // is derived from the rows (#1373, P31): `someUnpriced` was hard-coded
+    // false while every row printed distance alone.
+    const finishedRows = finishedSections(finishedFacts, units, elevation)
     const under =
       finishScreen === 'record' ? (
         <FinishedHike
           hikeName={finishedFacts.hike.name}
           header={finishedHeader(finishedFacts, units)}
           photo={null}
-          sections={finishedSections(finishedFacts, units)}
+          sections={finishedRows}
           totalSections={finishedFacts.sections.length}
-          someUnpriced={false}
+          someUnpriced={finishedRows.some((row) => !row.priced)}
           units={units}
           onOpenSection={handleOpenTrip}
           onAllSections={() => setTripsOpen(true)}
           onShare={() => setFinishScreen('share')}
-          // Export is FEATURES.md's existing commitment and its own piece of
-          // work. Until it lands the door must not look like it did
-          // something - so it says what it will do and does nothing yet,
-          // which is the honest version of "not built".
-          onExport={() => undefined}
+          // No "Export it" (#1373, D10 / P20): no writer exists, and the
+          // door this used to render was wired to a handler that did
+          // nothing. The commitment is FEATURES.md's and stays there.
           onStartAnother={handleNewHike}
           onBack={() => setFinishScreen(null)}
         />
@@ -9868,17 +9865,40 @@ function finishedSentence(facts: FinishedFacts, units: UnitSystem): string {
     : `${what}, ${when}.`
 }
 
-/** The sections list, newest first - the order a hiker looks for the one
- *  they just walked. */
-function finishedSections(facts: FinishedFacts, units: UnitSystem) {
+/**
+ * The sections list, newest first - the order a hiker looks for the one they
+ * just walked.
+ *
+ * THE CLIMB, WHERE THIS DOWNLOAD CAN MEASURE THE WHOLE STRETCH (#1373, P31).
+ * `legFigures` over the section's span, and printed only when none of that
+ * span is unmeasured - a hole in the DEM understates the ascent (#1039), and
+ * a figure that is honest about its distance and quiet about its climb beats
+ * one that rounds a hole to zero. `priced` is what the screen's one note
+ * rests on. No ≈time on a walked section, for #982's reason (see
+ * FinishedSection's own docstring) - the handoff's frame 8g draws one and
+ * this deviates from it on purpose.
+ */
+function finishedSections(
+  facts: FinishedFacts,
+  units: UnitSystem,
+  elevation: ElevationProfile | null,
+) {
   return [...facts.sections].reverse().map((trip) => {
     const miles = trip.plan.stops.map((stop) => stop.mile)
     const spanMi = miles.length < 2 ? 0 : Math.max(...miles) - Math.min(...miles)
     const year = trip.plan.days.find((day) => day.date !== undefined)?.date?.slice(0, 4)
+    const leg =
+      elevation === null || miles.length < 2
+        ? null
+        : legFigures(elevation, Math.min(...miles), Math.max(...miles))
+    const priced = leg !== null && leg.unmeasuredMi === 0
     return {
       id: trip.id,
       name: trip.name,
-      figures: formatDistance(spanMi, units),
+      figures: priced
+        ? `${formatDistance(spanMi, units)} · ${formatElevation(leg.ascentFt, units)} ↑`
+        : formatDistance(spanMi, units),
+      priced,
       provenance: [
         'walked',
         year,

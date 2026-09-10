@@ -26,10 +26,12 @@
 // how long each walk takes at this hiker's own pace, and let them stop reading
 // when the numbers get too big.
 //
-// The walked shelf renders only when it holds something. Nothing in the
-// client marks a hike walked yet (#982 builds that flow), so that section
-// is usually absent - a header over an empty list is a shelf with a label
-// and no answer on it (#805).
+// The walked shelf renders only when it holds something - a header over an
+// empty list is a shelf with a label and no answer on it (#805). Since #1373
+// (D5) the shelf is also a screen of its own: the Plan home's "Walked" shelf
+// opens this list on `shelf="walked"`, which shows the walks already done and
+// nothing else - one place for walked history, reached without scrolling
+// past the plans, which was the review's whole finding about it.
 
 import { useState } from 'react'
 
@@ -60,6 +62,13 @@ export interface DayHikeListProps {
    *  day home carries the sentence for that state, so this screen simply
    *  offers nothing rather than repeating it. */
   onNewDayHike: (() => void) | null
+  /**
+   * Which shelf this is (#1373, D5): every saved hike, or the walked ones
+   * alone. The walked shelf carries no sorts - they order what is still to
+   * walk - and no builder door, because a hiker looking at their history
+   * came for the history.
+   */
+  shelf?: 'all' | 'walked'
 }
 
 type ListSort = 'recent' | 'nearest' | 'shortest'
@@ -72,10 +81,13 @@ export function DayHikeList({
   onOpen,
   onBack,
   onNewDayHike,
+  shelf: which = 'all',
 }: DayHikeListProps) {
   const [sort, setSort] = useState<ListSort>('recent')
 
   const shelf = splitDayHikes(dayHikes)
+  const walkedOnly = which === 'walked'
+  const listed = walkedOnly ? shelf.walked : dayHikes
   // Offered only when a walk here can actually be priced. A hike saved before
   // the climb was cached carries none, and a "shortest first" that silently
   // put every such hike last would be sorting on the record's age.
@@ -94,7 +106,8 @@ export function DayHikeList({
           <span className="plan__crumb-up">&lsaquo; Day hikes</span>
         </button>
         <h1 className="plan__title">
-          Yours · {dayHikes.length === 1 ? '1 hike' : `${dayHikes.length} hikes`}
+          {walkedOnly ? 'Walked' : 'Yours'} ·{' '}
+          {listed.length === 1 ? '1 hike' : `${listed.length} hikes`}
         </h1>
       </header>
 
@@ -103,7 +116,7 @@ export function DayHikeList({
           container clips exactly that - which is what put a half-drawn band
           on this screen the first time the list was made to scroll. */}
       <div className="day-hike-list__scroll">
-        {(at !== null || canPrice) && shelf.toWalk.length > 1 && (
+        {!walkedOnly && (at !== null || canPrice) && shelf.toWalk.length > 1 && (
           // The group label WhatsLeft.tsx already gives the identical pattern:
           // without it these announce as two unrelated toggles rather than one
           // exclusive choice, and say nothing about what they order.
@@ -139,7 +152,7 @@ export function DayHikeList({
           </div>
         )}
 
-        {toWalk.length > 0 && (
+        {!walkedOnly && toWalk.length > 0 && (
           <section className="plan-home__section">
             <span className="plan-home__title">Ready to walk</span>
             {toWalk.map((hike) => (
@@ -205,21 +218,22 @@ export function DayHikeList({
           An earlier version of this line said "signed in" alone - which is
           exactly wrong for the hiker who has an account and turned sync off
           for data, and who would have read a flat promise as backed up. */}
-        {dayHikes.length === 0 && (
+        {listed.length === 0 && (
           <p className="day-hike-list__empty">
-            Nothing saved yet. A day hike you build is kept on this phone — and, with an
-            account and sync switched on, follows you to the next one.
+            {walkedOnly
+              ? 'Nothing walked yet. A day hike you finish following, or one you record as already done, lands here.'
+              : 'Nothing saved yet. A day hike you build is kept on this phone — and, with an account and sync switched on, follows you to the next one.'}
           </p>
         )}
 
-        {dayHikes.length > 0 && (
+        {listed.length > 0 && (
           <p className="day-hike-list__note">
             All of these are on this phone. With an account and sync switched on, they
             follow you to the next one.
           </p>
         )}
 
-        {onNewDayHike !== null && (
+        {!walkedOnly && onNewDayHike !== null && (
           <button type="button" className="plan__primary" onClick={onNewDayHike}>
             Plan a day hike
           </button>

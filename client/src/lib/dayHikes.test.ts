@@ -34,6 +34,7 @@ import {
   logWalk,
   MAX_NOTE_CHARS,
   MAX_WALKS,
+  saveDayHikeOpenId,
   saveDayHikes,
   savedFromSource,
   validateDayHikeStore,
@@ -553,6 +554,32 @@ describe('the ledger a save writes, and the one it must never touch', () => {
 
     expect(await loadDayHikes()).toEqual(storeWith(hike('from-server')))
     expect((await dayHikeSyncState()).dirty).toEqual([])
+  })
+
+  it('points the store at a hike without marking anything dirty (#1373, P41)', async () => {
+    // Opening a card is not an edit. Through `saveDayHikes` it marked every
+    // surviving hike dirty, so each tap on a row queued an upload of the
+    // whole shelf.
+    await adoptDayHikes({ hikes: [hike('a'), hike('b')], openId: null })
+
+    const pointed = await saveDayHikeOpenId('b')
+    expect(pointed.openId).toBe('b')
+    expect((await loadDayHikes()).openId).toBe('b')
+    expect((await dayHikeSyncState()).dirty).toEqual([])
+
+    const cleared = await saveDayHikeOpenId(null)
+    expect(cleared.openId).toBeNull()
+    expect((await loadDayHikes()).openId).toBeNull()
+    expect((await dayHikeSyncState()).dirty).toEqual([])
+  })
+
+  it('writes null for a pointer at a hike the store does not hold', async () => {
+    // The same repair `validateDayHikeStore` makes on a read, made at the
+    // write - a pointer must never outlive the hike it names.
+    await adoptDayHikes({ hikes: [hike('a')], openId: 'a' })
+
+    expect((await saveDayHikeOpenId('ghost')).openId).toBeNull()
+    expect((await loadDayHikes()).openId).toBeNull()
   })
 })
 

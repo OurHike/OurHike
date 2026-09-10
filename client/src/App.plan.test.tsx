@@ -575,7 +575,10 @@ describe('the planning flow', () => {
     await user.click(screen.getByRole('button', { name: /What’s left/ }))
 
     // One walked stretch, one gap, and both of its ends offered.
-    expect(await screen.findByText(/12\.0 mi in 1 piece/)).toBeInTheDocument()
+    expect(await screen.findByText('in 1 piece')).toBeInTheDocument()
+    expect(screen.getByText('To go').closest('.whats-left__figure')).toHaveTextContent(
+      /12\.0 mi/,
+    )
     expect(
       screen.getByRole('button', { name: /North from Middle Shelter/ }),
     ).toBeInTheDocument()

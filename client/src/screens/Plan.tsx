@@ -345,6 +345,11 @@ export function PlanScreen({
   const [summaryAfterCascade, setSummaryAfterCascade] = useState<number | null>(null)
   const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
   const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
+  /** Which shelf the day-hike list opens on (#1373, D5): every hike, or the
+   *  walked ones alone. This screen's own, unlike `dayListOpen`, because
+   *  nothing outside Plan opens the walked shelf - the trailhead door that
+   *  lifted the boolean opens the whole list. */
+  const [listShelf, setListShelf] = useState<'all' | 'walked'>('all')
   /**
    * The tab opens on its home when there is something to choose between
    * (#805) - and straight into the plan when there is not, because a hiker
@@ -454,6 +459,7 @@ export function PlanScreen({
         <div className="plan plan--day plan--bounded">
           <DayHikeList
             dayHikes={dayHikes}
+            shelf={listShelf}
             units={units}
             at={gpsAt}
             pace={pace}
@@ -504,7 +510,27 @@ export function PlanScreen({
           }}
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
-          onAllDayHikes={() => onDayListOpen(true)}
+          onAllDayHikes={() => {
+            setListShelf('all')
+            onDayListOpen(true)
+          }}
+          onAllWalked={() => {
+            setListShelf('walked')
+            onDayListOpen(true)
+          }}
+          // Only for the hike the room is ABOUT: `hike` here is the one the
+          // open trip belongs to (or the only one there is), and a door on
+          // the active hike's room that opened another hike's gaps would be
+          // the display outrunning its source.
+          onWhatsLeft={
+            hike !== null && activeHike !== null && hike.id === activeHike.id
+              ? () => {
+                  setWhatsLeftOpen(true)
+                  setZoomWanted('hike')
+                  setAtHome(false)
+                }
+              : undefined
+          }
           onNewDayHike={network.kind === 'ready' ? onNewDayHike : null}
           network={network}
           onRetryNetwork={onRetryNetwork}
@@ -596,6 +622,17 @@ export function PlanScreen({
             units={units}
             gpsMile={gpsMile}
             onPlanFrom={onPlanFrom}
+            // The way back into F7 (#1373, frame 8b): the open section's
+            // days, where the cascade lives. Only when a section of THIS
+            // hike is open and has days to show.
+            onChangePlan={
+              openTripId !== null && hike.tripIds.includes(openTripId) && views.length > 0
+                ? () => {
+                    setWhatsLeftOpen(false)
+                    setZoomWanted('days')
+                  }
+                : undefined
+            }
             onClose={() => setWhatsLeftOpen(false)}
           />
         ) : (

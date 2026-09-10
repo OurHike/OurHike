@@ -51,6 +51,7 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react'
 import type { TabId } from '../chrome/tabs'
 import type { HikeFacets } from './suggestedHikes'
+import type { PlanStep } from '../chrome/StepRail'
 
 /** More's pages other than its home, which is the tab itself. */
 export type MorePageAway = 'you' | 'map' | 'safety' | 'volunteer' | 'sources'
@@ -68,13 +69,26 @@ export type Screen =
   | { readonly kind: 'hike'; readonly id: string }
   /** One of More's pages (features/MORE_TAB.md). */
   | { readonly kind: 'more'; readonly page: MorePageAway }
+  /** A step of the planning spine (#1373, F3-F5), under Plan. Not kept
+   *  across a tab selection: leaving the spine by the tab bar IS the exit
+   *  the guard asks about. */
+  | { readonly kind: 'step'; readonly step: PlanStep }
 
-export type Move =
+export type Move = (
   | { readonly to: 'tab'; readonly tab: TabId }
   | { readonly to: 'push'; readonly screen: Screen }
   | { readonly to: 'replace'; readonly screen: Screen }
   | { readonly to: 'back' }
   | { readonly to: 'home' }
+) & {
+  /**
+   * The app's own move rather than the hiker's - landing on Plan after a
+   * save, opening the map for a builder - which the guard never sees. An
+   * exit the guard asks about is a tap the hiker took: a tab, a Back, a
+   * door. A move the app makes for them has already decided.
+   */
+  readonly unguarded?: boolean
+}
 
 export interface Pending<B> {
   readonly move: Move
@@ -88,8 +102,10 @@ export interface NavState<B = never> {
 }
 
 /**
- * Asked when a move would leave screens behind. `leaving` is every screen
- * the move removes, outermost first; a non-null answer parks the move.
+ * Asked on every guarded move. `leaving` is every screen the move removes,
+ * outermost first - possibly none, since what a guard protects need not be
+ * a screen on the stack (the builders live on the map); a non-null answer
+ * parks the move.
  */
 export type Guard<B> = (
   leaving: readonly Screen[],
@@ -111,6 +127,8 @@ export function screenTab(screen: Screen): TabId {
       return 'today'
     case 'more':
       return 'more'
+    case 'step':
+      return 'plan'
   }
 }
 
@@ -129,6 +147,8 @@ export function sameScreen(a: Screen, b: Screen): boolean {
       return a.id === (b as typeof a).id
     case 'more':
       return a.page === (b as typeof a).page
+    case 'step':
+      return a.step === (b as typeof a).step
   }
 }
 
@@ -201,7 +221,7 @@ export function reduceNav<B>(state: NavState<B>, action: NavAction<B>): NavState
       const next = applyMove(state, action.move)
       const leaving = screensLeft(state, next)
       const bail =
-        leaving.length > 0 && action.guard !== undefined
+        action.move.unguarded !== true && action.guard !== undefined
           ? action.guard(leaving, action.move, state)
           : null
       if (bail !== null) return { ...state, pending: { move: action.move, bail } }
@@ -233,6 +253,10 @@ export interface Navigator<B> {
   readonly proceed: () => void
   /** Drop the parked move and stay. */
   readonly stay: () => void
+  /** Replace the guard. The shell's guard closes over state declared long
+   *  after the navigator is, so it is handed in each render rather than at
+   *  construction; a move reads whatever was set last. */
+  readonly setGuard: (guard: Guard<B> | undefined) => void
 }
 
 /**
@@ -248,6 +272,9 @@ export function useNavigator<B = never>(
   const [state, dispatch] = useReducer(reduceNav<B>, initial)
   const guardRef = useRef(guard)
   guardRef.current = guard
+  const setGuard = useCallback((next: Guard<B> | undefined) => {
+    guardRef.current = next
+  }, [])
 
   const navigate = useCallback(
     (move: Move) => dispatch({ type: 'move', move, guard: guardRef.current }),
@@ -282,7 +309,8 @@ export function useNavigator<B = never>(
       home,
       proceed,
       stay,
+      setGuard,
     }),
-    [state, navigate, selectTab, push, replace, back, home, proceed, stay],
+    [state, navigate, selectTab, push, replace, back, home, proceed, stay, setGuard],
   )
 }

@@ -105,6 +105,12 @@ export const HikePicker = deferredScreen(
   () => import('./HikePicker').then((m) => m.HikePicker),
   'HikePicker',
 )
+// Step 1 of the planning spine (#1373): reached by a tap on Plan, or the
+// pinned bar - never on the first frame.
+export const PlanStart = deferredScreen(
+  () => import('./PlanStart').then((m) => m.PlanStart),
+  'PlanStart',
+)
 
 // The long hike's own screens (#1317). Every one is reached by starting a
 // flow - setting a hike up, opening the day inside it, finishing it, reading
@@ -158,6 +164,7 @@ const ALL = [
   FindHike,
   HikeDetail,
   HikePicker,
+  PlanStart,
   HikeSetup,
   HikeDay,
   HikeFinish,

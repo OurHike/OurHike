@@ -426,6 +426,9 @@ describe('following a day hike, end to end', () => {
     // The day room's primary goes straight into the builder (App.tsx wires
     // onNewDayHike to openDayHike), which is the sweep under test.
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
+    // Through step 1 (#1373): the primary lands on "Where do you want to
+    // go?", and the map door is the builder.
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
 
     await waitFor(() => {
       expect(

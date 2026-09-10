@@ -301,7 +301,10 @@ async function openDoor(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
   await user.click(await screen.findByRole('tab', { name: 'Plan' }))
   await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
-  return await screen.findByRole('dialog', { name: 'What are you planning?' })
+  // Step 1 of the spine (#1373, screens/PlanStart.tsx) where the kind sheet
+  // stood: the kind is the mode on the bar, and "Pick on the map" is the
+  // day-hike builder's door.
+  return await screen.findByRole('heading', { name: 'Where do you want to go?' })
 }
 
 /** The live map with the tap listener attached - a wait on something
@@ -382,7 +385,7 @@ describe('shelters and campsites as stops (#1194)', () => {
     await serveGraph()
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     await screen.findByText(/Tap a trail to walk it/)
 
     const map = await liveMap()
@@ -463,7 +466,7 @@ describe('the day-hike builder, end to end', () => {
 
     // The graph loaded, so the day-hike option is a BUTTON - waiting on this
     // rendered consequence is what proves the fetch landed, not a timer.
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
 
     // Frame 1j's bar, on the trail tab, listening.
     expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
@@ -542,7 +545,7 @@ describe('the day-hike builder, end to end', () => {
     await serveGraph()
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
     await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
@@ -578,7 +581,7 @@ describe('the day-hike builder, end to end', () => {
     await serveGraph()
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
 
     // ~5 km north of anything routable - tapped until the graph can answer.
@@ -618,7 +621,7 @@ describe('the day-hike builder, end to end', () => {
     await serveGraph({ withGeometry: false })
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
 
     await tap(map, -74.095, 41.25)
@@ -642,7 +645,7 @@ describe('the day-hike builder, end to end', () => {
     const requested = await serveGraph({ withGeometry: false })
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
 
     const asked = () => requested.filter((url) => url.includes(GEOMETRY_KEY)).length
@@ -665,7 +668,7 @@ describe('the day-hike builder, end to end', () => {
 
     const door = await openDoor(user)
     expect(door).toBeInTheDocument()
-    await screen.findByRole('button', { name: /A day hike/ })
+    await screen.findByRole('button', { name: 'Pick on the map' })
 
     // The routing half of the cell under the camera loads at launch; the
     // geometry half must not have been asked for yet - it is by far the
@@ -673,7 +676,7 @@ describe('the day-hike builder, end to end', () => {
     expect(requested.some((url) => url.includes(GRAPH_KEY))).toBe(true)
     expect(requested.some((url) => url.includes(GEOMETRY_KEY))).toBe(false)
 
-    await user.click(screen.getByRole('button', { name: /A day hike/ }))
+    await user.click(screen.getByRole('button', { name: 'Pick on the map' }))
     await waitFor(() => {
       expect(requested.some((url) => url.includes(GEOMETRY_KEY))).toBe(true)
     })
@@ -929,6 +932,9 @@ describe('the day-hike builder, end to end', () => {
     await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
+    // Through step 1 (#1373): the day room's primary lands on "Where do you
+    // want to go?", and the map door is the builder.
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
     // `tapWhenRoutable` for the FIRST tap, not plain `tap`. This door is
     // reached through the day room rather than through the trail tab's own
@@ -952,6 +958,9 @@ describe('the day-hike builder, end to end', () => {
     // to the hike is the app's mode control since #1317, and then in through
     // the gap door, which calls openRouteBuilderFrom directly.
     await user.click(await screen.findByRole('tab', { name: 'Today' }))
+    // Leaving a live draft by the bar asks first (#1373, D8); kept for later,
+    // which is what the bar used to do silently.
+    await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
     await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(
@@ -1121,10 +1130,10 @@ describe('the day-hike builder, end to end', () => {
     // A sentence, not a dead control - and the other two doors still work.
     // Since #1257 stage 3 the door reads the cell INDEX rather than waiting
     // for a graph to arrive: no index in the release, no day hikes.
-    expect(screen.queryByRole('button', { name: /A day hike/ })).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /A multi-day section/ }),
-    ).toBeInTheDocument()
+      screen.queryByRole('button', { name: 'Pick on the map' }),
+    ).not.toBeInTheDocument()
+    // The long hike is the mode's business now (D6), not a second door here.
 
     // AND THE SENTENCE IS THE TRUE ONE (#1049). `withGraph: false` serves a
     // 404, which is exactly what production serves today (#1048) - so this is

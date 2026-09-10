@@ -152,7 +152,7 @@ describe('reduceNav with a guard', () => {
     expect(topScreen(state)).toEqual(HIKE)
   })
 
-  it('does not ask when nothing is left, and a guard that declines lets the move through', () => {
+  it('asks on every move with what it leaves - even nothing - and an unguarded move is never asked', () => {
     const asked = vi.fn<Guard<string>>(() => null)
     const state = reduceNav(HOME, {
       type: 'move',
@@ -160,7 +160,18 @@ describe('reduceNav with a guard', () => {
       guard: asked,
     })
     expect(state.tab).toBe('plan')
-    expect(asked).not.toHaveBeenCalled()
+    // The builders live on the map, not on a stack: a guard has to see a
+    // tab tap that leaves no screen behind.
+    expect(asked).toHaveBeenCalledWith([], { to: 'tab', tab: 'plan' }, HOME)
+
+    const own = vi.fn<Guard<string>>(() => 'never')
+    const landed = reduceNav(HOME, {
+      type: 'move',
+      move: { to: 'tab', tab: 'plan', unguarded: true },
+      guard: own,
+    })
+    expect(landed.tab).toBe('plan')
+    expect(own).not.toHaveBeenCalled()
 
     const through = reduceNav(onFinder, {
       type: 'move',
@@ -169,6 +180,13 @@ describe('reduceNav with a guard', () => {
     })
     expect(asked).toHaveBeenCalledWith([FIND], { to: 'back' }, onFinder)
     expect(topScreen(through)).toBeNull()
+  })
+
+  it('the planning spine lives under Plan and does not survive a tab selection', () => {
+    const state = at(HOME, { to: 'push', screen: { kind: 'step', step: 1 } })
+    expect(state.tab).toBe('plan')
+
+    expect(applyMove(state, { to: 'tab', tab: 'map' }).stacks.plan).toEqual([])
   })
 
   it('proceed and stay are no-ops with nothing parked', () => {
@@ -193,6 +211,14 @@ describe('useNavigator', () => {
 
     cost = 'two stops'
     rerender()
+    act(() => result.current.selectTab('map'))
+    expect(result.current.tab).toBe('today')
+    expect(result.current.pending?.bail).toBe('two stops')
+    act(() => result.current.stay())
+
+    // And through setGuard, for a guard declared after the navigator is.
+    cost = null
+    result.current.setGuard(() => 'two stops')
     act(() => result.current.selectTab('map'))
     expect(result.current.tab).toBe('today')
     expect(result.current.pending?.bail).toBe('two stops')

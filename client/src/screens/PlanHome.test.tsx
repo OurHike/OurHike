@@ -8,7 +8,8 @@ import userEvent from '@testing-library/user-event'
 
 import { PlanHome, planRoomFor, type PlanHomeProps } from './PlanHome'
 import { DEFAULT_TRAIL_ID, type Hike } from '../lib/hikes'
-import { PlanKindSheet } from '../chrome/PlanKindSheet'
+import { PlanStart } from './PlanStart'
+import { STANDARD_PACE } from '../lib/pace'
 import type { DayHike } from '../lib/dayHikes'
 import type { Trip } from '../lib/trips'
 
@@ -181,29 +182,36 @@ describe('the day room', () => {
     expect(screen.getByText(/does not include the trail network/i)).toBeInTheDocument()
   })
 
-  it('says exactly PlanKindSheet’s sentence for the missing network - two surfaces, one claim', () => {
+  it('says exactly step 1’s sentence for the missing network - two surfaces, one claim', () => {
     // This used to be a pin against two hand-written copies drifting. Since
     // #1049 both screens read lib/trailNetworkText.ts, so they cannot drift -
     // and the test stays, because what it really guards is that a hiker sees
-    // ONE claim about one missing artifact wherever they meet it.
+    // ONE claim about one missing artifact wherever they meet it. The second
+    // surface was chrome/PlanKindSheet.tsx until #1373 retired it (D6); it
+    // is screens/PlanStart.tsx now, the spine's step 1.
     const network = { kind: 'absent', because: 'not-in-release' } as const
     render(<PlanHome {...PROPS} room="day" onNewDayHike={null} network={network} />)
     const home = screen.getByRole('note').textContent
     cleanup()
-    // The sheet carries a SECOND note - the walked door's "isn't built yet" -
-    // so this one is found by its own sentence rather than by the role.
     render(
-      <PlanKindSheet
+      <PlanStart
+        mode="day"
         network={network}
-        walkedAvailable={false}
-        onPickDayHike={vi.fn()}
-        onPickTrip={vi.fn()}
-        onPickWalked={vi.fn()}
-        onClose={vi.fn()}
+        hasFix={false}
+        hikes={[]}
+        near={null}
+        units="imperial"
+        pace={STANDARD_PACE}
+        onNamePlace={vi.fn()}
+        onWhereIAm={vi.fn()}
+        onPickOnMap={vi.fn()}
+        onFindHike={vi.fn()}
+        onOpenSuggestedHike={vi.fn()}
+        onCancel={vi.fn()}
       />,
     )
-    const sheet = screen.getByText(/trail network/i).textContent
-    expect(home).toBe(sheet)
+    const step = screen.getByRole('note').textContent
+    expect(home).toBe(step)
   })
 
   it('never tells anybody to wait for a data sync (#1049)', () => {

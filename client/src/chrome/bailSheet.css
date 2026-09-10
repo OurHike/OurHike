@@ -1,0 +1,77 @@
+/* The bail sheet (chrome/BailSheet.tsx, #1373): docked to the viewport's
+   foot like the place sheet, over whichever screen the exit was taken from.
+   Semantic tokens only. */
+
+.bail-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  padding-bottom: max(var(--space-4, 16px), env(safe-area-inset-bottom, 0));
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-2);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.bail-sheet__title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 18px;
+  color: var(--fg-1);
+}
+
+.bail-sheet__figures {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.bail-sheet__line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.bail-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.bail-sheet__primary,
+.bail-sheet__secondary,
+.bail-sheet__quiet {
+  min-height: var(--min-touch-target, 44px);
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.bail-sheet__primary {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+}
+
+.bail-sheet__secondary {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}
+
+.bail-sheet__quiet {
+  color: var(--fg-3);
+  background: none;
+  border: 0;
+  font-weight: 500;
+}

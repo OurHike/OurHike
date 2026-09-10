@@ -85,16 +85,19 @@ const POIS = [
   shelter(22, 'Beyond Shelter'),
 ]
 
-/** The 1i door (#977) now interposes on the one primary action: every path
- *  into a builder chooses its kind first. These tests want the trip. */
+/** The one primary action lands on step 1 of the spine (#1373, screens/
+ *  PlanStart.tsx), where the kind is the mode on the bar rather than a
+ *  question (D6). These tests want the A.T. route builder, so they run in
+ *  long mode and take the map door. */
 async function throughPlanKind(user: ReturnType<typeof userEvent.setup>) {
-  expect(
-    await screen.findByRole('dialog', { name: 'What are you planning?' }),
-  ).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: /A multi-day section/ }))
+  await screen.findByRole('heading', { name: 'Where do you want to go?' })
+  await user.click(screen.getByRole('button', { name: 'Pick on the map' }))
 }
 
 async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
+  // Long mode: step 1 reads the kind off the bar (D6), and the builder
+  // these tests want is the long hike's.
+  app.store.set(HIKER_MODE_KEY, 'long')
   render(<App />)
 
   await user.click(await screen.findByRole('tab', { name: 'Plan' }))
@@ -288,8 +291,10 @@ describe('the planning flow', () => {
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
 
     // Detour into the day room's list, mid-route. This is the state that used
-    // to survive the trip being laid out.
+    // to survive the trip being laid out. Leaving by the bar asks first
+    // (#1373, D8); kept for later.
     await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
     await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'All 1 ›' }))
@@ -627,8 +632,11 @@ describe('the planning flow', () => {
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
 
     // The draft survives a walk to the Plan tab and back - the entrance is
-    // never a toll gate on the way back to your own route.
+    // never a toll gate on the way back to your own route. Leaving is asked
+    // about once (#1373, D8), and "Keep it for later" is the old behaviour
+    // said out loud.
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
     await user.click(await screen.findByRole('button', { name: 'Back to your route' }))
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
   })
@@ -955,6 +963,8 @@ describe('the planning flow', () => {
       // Settings → Map & Display → the slowest flat pace. The route is
       // untouched; only the hiker's own speed moved.
       await user.click(screen.getByRole('tab', { name: 'More' }))
+      // Asked before leaving the live route (#1373, D8); kept.
+      await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
       await user.click(await screen.findByRole('button', { name: /^the map/i }))
       fireEvent.change(await screen.findByLabelText('Flat pace'), {
         target: { value: String(MIN_FLAT_PACE_MPH) },
@@ -1065,6 +1075,9 @@ describe('the ribbon while a trip is being planned', () => {
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
+    // Long mode: step 1 reads the kind off the bar (D6), and the builder
+    // this test wants is the long hike's.
+    app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
@@ -1186,6 +1199,9 @@ describe('the ribbon while a trip is being planned', () => {
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
+    // Long mode: step 1 reads the kind off the bar (D6), and the builder
+    // this test wants is the long hike's.
+    app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })

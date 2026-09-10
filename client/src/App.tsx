@@ -42,6 +42,8 @@ import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator } from './lib/navigator'
+import type { TabId } from './chrome/tabs'
+import { BailSheet } from './chrome/BailSheet'
 import { formatBytes } from './lib/formatBytes'
 import { nightsBehind } from './lib/nightsBehind'
 import type { StopFacts } from './screens/Today'
@@ -94,6 +96,7 @@ import {
   VolunteerHours,
   VolunteerImpact,
   WalkedHike,
+  PlanStart,
 } from './screens/deferred'
 import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
 import {
@@ -307,7 +310,6 @@ import {
 import { hikeFiguresLine, setupRefusal } from './lib/hikeText'
 import { dayNumber, endsTheHike, hikeDayToday, type HikeDayAt } from './lib/hikeToday'
 import { datedDaysAhead, pausedDays, resumeOffer } from './lib/hikeResume'
-import { PlanKindSheet } from './chrome/PlanKindSheet'
 import { DayHikePickBar } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import {
@@ -537,6 +539,12 @@ interface Camera {
   zoom: number
 }
 
+/** What the bail sheet is handed when an exit is parked (#1373, D8): the
+ *  half-built route's cost so far, in words, or null with nothing routed. */
+interface BailAsk {
+  figures: string | null
+}
+
 /**
  * One stored POI as the waypoint card takes it.
  *
@@ -691,7 +699,7 @@ function App() {
   // did (#1284) and leaves More's page where it was (#1054). No door below
   // relied on the difference - every path back to Today went through
   // `selectTab` already - and the navigator's tests hold both courtesies.
-  const nav = useNavigator()
+  const nav = useNavigator<BailAsk>()
   const activeTab = nav.tab
   const {
     selectTab,
@@ -700,7 +708,16 @@ function App() {
     replace: replaceScreen,
     back: goBack,
   } = nav
-  const setActiveTab = selectTab
+  /** The app's own tab change - landing on Plan after a save, opening the
+   *  map for a builder - which the bail guard never sees: an exit the guard
+   *  asks about is a tap the hiker took. The bar's taps go through
+   *  `selectTab`, which is guarded. */
+  const setActiveTab = useCallback(
+    (tab: TabId) => navigate({ to: 'tab', tab, unguarded: true }),
+    [navigate],
+  )
+  /** Step 1's field (screens/PlanStart.tsx): the stop search, as a sheet. */
+  const [stepPickerOpen, setStepPickerOpen] = useState(false)
   /**
    * Where this hiker hikes (#1373, lib/defaultPlace.ts): the map's opening
    * view when there is no remembered camera, and where Today ranks hikes
@@ -846,7 +863,6 @@ function App() {
    */
   const [dayHike, setDayHike] = useState<DayHikeDraft | null>(null)
   /** Frame `1i`'s door - "What are you planning?" - over the Plan tab. */
-  const [planKindOpen, setPlanKindOpen] = useState(false)
   /**
    * The graph with its edge vertices attached, once the lazy geometry fetch
    * lands - or null while only the routing half is here. Taps and routing
@@ -1165,6 +1181,10 @@ function App() {
   const todayPage: 'home' | 'find' | 'detail' =
     todayTop === null ? 'home' : todayTop.kind === 'hike' ? 'detail' : 'find'
   const openHikeId = todayTop?.kind === 'hike' ? todayTop.id : null
+  /** The planning spine's step showing on the Plan tab (#1373), or null at
+   *  the tab's home. */
+  const planTop = nav.state.stacks.plan[nav.state.stacks.plan.length - 1] ?? null
+  const planStep = planTop?.kind === 'step' ? planTop.step : null
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -3500,8 +3520,8 @@ function App() {
    *  a back button nobody can predict. */
   const handleRecordStretchFromSetup = useCallback(() => {
     setHikeSheet(null)
-    setPlanKindOpen(true)
-  }, [])
+    pushScreen({ kind: 'step', step: 1 })
+  }, [pushScreen])
 
   const handleNewHike = useCallback(() => {
     setHikeDraft({
@@ -4346,7 +4366,7 @@ function App() {
   // `sweepForBuilder`, because the line that fixes #997 has to be in every
   // door that opens a route draft and was worth writing once. This one still
   // stands apart, and that is a real difference rather than an oversight -
-  // its list is not the same list. It clears `planKindOpen` (the sheet it was
+  // its list is not the same list. It clears step 1 (the screen it was
   // opened from) and seeds a draft; `sweepForBuilder` clears the day hike,
   // which this door is creating. Merging them would need a parameter, and a
   // sweep with a mode flag is not a shared rule.
@@ -4358,7 +4378,6 @@ function App() {
     setTargetRequest(null)
     setFreeChartStretch(null)
     routeBuilder.closeRouteBuilder()
-    setPlanKindOpen(false)
     // Re-entering the builder puts the review away: the taps are live again,
     // and a card reviewing a snapshot of a draft being edited would lie.
     setDayHikeReview(null)
@@ -4515,6 +4534,46 @@ function App() {
     if (graphForTaps === null) return null
     return draftStatus(graphForTaps, dayHike)
   }, [dayHike, dayHikeIndex, graphIndex])
+
+  /**
+   * THE BAIL GUARD (#1373, decision D8, chrome/BailSheet.tsx). A half-built
+   * route is a day-hike draft or the A.T. builder's, both on the map;
+   * leaving the map tab by the bar while one is live is the exit the design
+   * says always asks. The app's own tab changes (`setActiveTab`) are
+   * unguarded and never reach this. Handed to the navigator each render,
+   * since both drafts are declared long after it is. What the route has
+   * cost so far prints through lib/units.ts, or nothing with nothing routed.
+   */
+  const builderLive = dayHike !== null || routeBuilder.draftLive
+  const bailFigures = useMemo(() => {
+    if (dayHikeStatus !== null && dayHikeStatus.kind === 'routed') {
+      const legs = dayHikeStatus.legs.length
+      return `${legs} ${legs === 1 ? 'leg' : 'legs'} · ${formatDistance(
+        dayHikeStatus.miles,
+        units,
+      )} so far`
+    }
+    if (routeBuilder.draftStretch !== null) {
+      return `${formatDistance(
+        Math.abs(routeBuilder.draftStretch.endMile - routeBuilder.draftStretch.startMile),
+        units,
+      )} so far`
+    }
+    return null
+  }, [dayHikeStatus, routeBuilder.draftStretch, units])
+  nav.setGuard(
+    builderLive
+      ? (_leaving, move, state) =>
+          move.to === 'tab' && state.tab === 'map' && move.tab !== 'map'
+            ? { figures: bailFigures }
+            : null
+      : undefined,
+  )
+  /** "Discard it": both drafts, since only one can be live (#997). */
+  const discardBuilder = useCallback(() => {
+    handleDayHikeCancel()
+    routeBuilder.closeRouteBuilder()
+  }, [handleDayHikeCancel, routeBuilder])
 
   // What the builder bar prints as ≈time, and the one place it is derived.
   //
@@ -5458,8 +5517,10 @@ function App() {
       routeBuilder.openRouteBuilder()
       return
     }
-    setPlanKindOpen(true)
-  }, [dayHike, routeBuilder, setActiveTab])
+    // Step 1 of the spine (screens/PlanStart.tsx, #1373) where the kind
+    // sheet stood: the kind is the mode on the bar, never asked again (D6).
+    pushScreen({ kind: 'step', step: 1 })
+  }, [dayHike, routeBuilder, setActiveTab, pushScreen])
 
   /**
    * The trail inside the map's viewport, on the pipeline's axis - the "always
@@ -8256,204 +8317,222 @@ function App() {
                 in the timeline must not cost the map, and the tab bar
                 underneath is the way back. */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
-              <PlanScreen
-                plan={plan}
-                elevation={elevation}
-                // The hike the app is on, and the way to a different one
-                // (#1329). Both the shell's: the pointer lives in the trip
-                // store and the sheet is rendered at the foot of this file,
-                // like every other sheet Plan opens.
-                activeHike={activeHike}
-                onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
-                onRenameHike={handleRenameHike}
-                onAddSectionToHike={handleAddSectionToHike}
-                onTakeSectionOut={handleTakeSectionOut}
-                // Open, it takes the primary's place in the column; closed,
-                // undefined leaves the primary alone. Two shapes in one slot:
-                // the ends first, then `PlanTargetSheet` on the same ground
-                // once both are named - which is the whole of "that content
-                // should live on the same page".
-                sectionPlanner={
-                  sectionDraft === null ? undefined : sectionDraft.from !== null &&
-                    sectionDraft.to !== null ? (
-                    <PlanTargetSheet
-                      route={[sectionDraft.from, sectionDraft.to]}
-                      pois={pois}
-                      elevation={elevation}
-                      units={units}
-                      pace={pace}
-                      onCancel={handleCancelSection}
-                      onLayOut={handleLayOutSection}
-                    />
-                  ) : (
-                    <SectionPlanner
-                      from={sectionDraft.from}
-                      to={sectionDraft.to}
-                      onPickFrom={() => setSectionPointAt('from')}
-                      onPickTo={() => setSectionPointAt('to')}
-                      onChooseOnMap={handleSectionOnMap}
-                      onCancel={handleCancelSection}
-                    />
-                  )
-                }
-                kindSheet={
-                  planKindOpen ? (
-                    <PlanKindSheet
-                      // The reason, not just the fact (#1049): four of the
-                      // five ways to have no junction graph never resolve by
-                      // waiting, and this door used to promise all of them a
-                      // data sync that was not coming.
-                      network={trailNetwork}
-                      onRetryNetwork={retryTrailNetwork}
-                      walkedAvailable
-                      onPickDayHike={() => {
-                        setDayHikeKind('planned')
-                        openDayHike()
-                      }}
-                      onPickTrip={() => {
-                        setPlanKindOpen(false)
-                        routeBuilder.openRouteBuilder()
-                      }}
-                      onPickWalked={() => {
-                        // The SAME builder, entered in the past tense (#982's
-                        // own "this is that flow with a different entrance,
-                        // not a second implementation"). What differs is the
-                        // flag it saves under and the screen that reads it.
-                        setDayHikeKind('walked')
-                        openDayHike()
-                      }}
-                      onClose={() => setPlanKindOpen(false)}
-                    />
-                  ) : null
-                }
-                pois={pois}
-                gpsMile={gpsPlanMile}
-                units={units}
-                pace={pace}
-                draftLive={routeBuilder.draftLive || dayHike !== null}
-                // WHICH builder holds it, not merely that one does: each
-                // room offers a way back to its own draft and its own
-                // action otherwise. The day hike wins a tie for the reason
-                // the map tap does - the two are exclusive (#997), and this
-                // is the same precedence stated once more.
-                draftKind={
-                  dayHike !== null ? 'day' : routeBuilder.draftLive ? 'trip' : null
-                }
-                dayListOpen={dayListOpen}
-                onDayListOpen={setDayListOpen}
-                dayHikes={dayHikeStore.hikes}
-                onOpenDayHike={handleOpenDayHike}
-                {...(savedDayHikeCardNode === null
-                  ? {}
-                  : { dayHikeCard: savedDayHikeCardNode })}
-                onStartOnMap={openPlanKind}
-                onNewDayHike={openDayHike}
-                // The hike room's primary is the inline planner now (#1344);
-                // the day room and the no-hike sections room keep the builder,
-                // which is the surface that suits them.
-                onNewTrip={
-                  activeHike === null ? routeBuilder.openRouteBuilder : handlePlanSection
-                }
-                // The state rather than the boolean (#1049): the Plan tab
-                // prints the refusal, and a refusal needs to know which
-                // absence it is refusing for.
-                network={trailNetwork}
-                onRetryNetwork={retryTrailNetwork}
-                gpsAt={gps.status === 'located' ? gps.at : null}
-                room={effectivePlanRoom}
-                onAddDayHikeToHike={
-                  activeHike === null ? undefined : () => setAddDayHikeOpen(true)
-                }
-                onChangeTarget={handleChangeTarget}
-                onInsertZeroAfter={(index) =>
-                  applyPlanEdit((current) => insertZeroAfter(current, index))
-                }
-                onRemoveDay={(index) =>
-                  applyPlanEdit((current) => removeDay(current, index))
-                }
-                onTogglePinned={(index) =>
-                  applyPlanEdit((current) => togglePinned(current, index))
-                }
-                // The stop a day ends at is boundary index + 1 - the plan's
-                // own storage shape (lib/plan.ts).
-                onToggleEndResupply={(index) =>
-                  applyPlanEdit((current) => toggleResupply(current, index + 1))
-                }
-                onReplacePlan={handleReplacePlan}
-                onDeletePlan={handleDeletePlan}
-                tripName={currentTrip?.name ?? null}
-                openTripId={tripStore.openId}
-                tripCount={tripStore.trips.length}
-                hike={currentHike}
-                trips={tripStore.trips}
-                onOpenTrip={handleOpenTrip}
-                hikes={tripStore.hikes}
-                groups={tripStore.groups}
-                onOpenGroup={setOpenGroupId}
-                onPlanGap={routeBuilder.handlePlanGap}
-                onPlanFrom={routeBuilder.handlePlanFrom}
-                // The plan bench's selection (#971): the day the tree and the
-                // timeline are pointing at, so the third pane follows the
-                // other two. Straight into the state `handleChartStretch`
-                // already writes when no draft is open, which is what makes
-                // the Map tab and the desktop chart pick it up for free -
-                // rather than a second copy of "which stretch is selected"
-                // that could disagree with the first.
-                onSelectStretch={setFreeChartStretch}
-                onOpenTrips={() => setTripsOpen(true)}
-                {...(targetSheet === null ? {} : { targetSheet })}
-                {...(openGroup !== null
-                  ? {
-                      // A group replaces the switcher rather than stacking
-                      // over it - one thing open at a time, the rule every
-                      // other sheet in this shell keeps.
-                      tripList: (
-                        <GroupScreen
-                          group={openGroup}
-                          trips={tripStore.trips}
-                          units={units}
-                          onOpenTrip={(id) => {
-                            setOpenGroupId(null)
-                            handleOpenTrip(id)
-                          }}
-                          onAddTrip={(tripId) => handleAddToGroup(openGroup.id, tripId)}
-                          onRemoveTrip={(tripId) =>
-                            handleRemoveFromGroup(openGroup.id, tripId)
-                          }
-                          onRename={(name) => handleRenameGroup(openGroup.id, name)}
-                          onRemove={() => handleRemoveGroup(openGroup.id)}
-                          onClose={() => setOpenGroupId(null)}
-                        />
-                      ),
-                    }
-                  : {})}
-                {...(tripsOpen && openGroup === null
-                  ? {
-                      tripList: (
-                        <TripList
-                          trips={tripStore.trips}
-                          openId={tripStore.openId}
-                          hikes={tripStore.hikes}
-                          pois={pois}
-                          elevation={elevation}
-                          units={units}
-                          onOpen={handleOpenTrip}
-                          onRename={handleRenameTrip}
-                          onRemove={handleRemoveTrip}
-                          onNew={() => {
-                            setTripsOpen(false)
-                            routeBuilder.openRouteBuilder()
-                          }}
-                          onGroupIntoHike={handleGroupIntoHike}
-                          groups={tripStore.groups}
-                          onOpenGroup={setOpenGroupId}
-                          onNewGroup={handleNewGroup}
-                          onClose={() => setTripsOpen(false)}
-                        />
-                      ),
-                    }
-                  : {})}
-              />
+              {planStep !== null ? (
+                // Step 1 of the spine (#1373, F3): "Where do you want to
+                // go?", in the Plan tab's own slot, over the tab bar. Every
+                // door opens a builder on the map or a published walk's
+                // detail; Cancel is the navigator's Back.
+                <PlanStart
+                  mode={hikerMode}
+                  network={trailNetwork}
+                  onRetryNetwork={retryTrailNetwork}
+                  hasFix={gps.status === 'located'}
+                  hikes={suggestedHikes}
+                  near={
+                    fixAt ??
+                    (defaultPlace === null
+                      ? null
+                      : { lon: defaultPlace.lon, lat: defaultPlace.lat })
+                  }
+                  units={units}
+                  pace={pace}
+                  onNamePlace={() => setStepPickerOpen(true)}
+                  onWhereIAm={() => {
+                    if (hikerMode === 'long') routeBuilder.openRouteBuilder()
+                    else if (gps.status === 'located')
+                      startDayHikeAt({ lon: gps.at.lon, lat: gps.at.lat })
+                  }}
+                  onPickOnMap={() =>
+                    hikerMode === 'long' ? routeBuilder.openRouteBuilder() : openDayHike()
+                  }
+                  {...(hikerMode === 'long'
+                    ? {}
+                    : {
+                        onDraw: () => {
+                          openDayHike()
+                          setDayHikeDrawMode(true)
+                        },
+                        onRecordWalked: () => {
+                          setDayHikeKind('walked')
+                          openDayHike()
+                        },
+                      })}
+                  onFindHike={(facets) =>
+                    pushScreen(
+                      facets === undefined ? { kind: 'find' } : { kind: 'find', facets },
+                    )
+                  }
+                  onOpenSuggestedHike={openSuggestedHike}
+                  onCancel={goBack}
+                />
+              ) : (
+                <PlanScreen
+                  plan={plan}
+                  elevation={elevation}
+                  // The hike the app is on, and the way to a different one
+                  // (#1329). Both the shell's: the pointer lives in the trip
+                  // store and the sheet is rendered at the foot of this file,
+                  // like every other sheet Plan opens.
+                  activeHike={activeHike}
+                  onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
+                  onRenameHike={handleRenameHike}
+                  onAddSectionToHike={handleAddSectionToHike}
+                  onTakeSectionOut={handleTakeSectionOut}
+                  // Open, it takes the primary's place in the column; closed,
+                  // undefined leaves the primary alone. Two shapes in one slot:
+                  // the ends first, then `PlanTargetSheet` on the same ground
+                  // once both are named - which is the whole of "that content
+                  // should live on the same page".
+                  sectionPlanner={
+                    sectionDraft === null ? undefined : sectionDraft.from !== null &&
+                      sectionDraft.to !== null ? (
+                      <PlanTargetSheet
+                        route={[sectionDraft.from, sectionDraft.to]}
+                        pois={pois}
+                        elevation={elevation}
+                        units={units}
+                        pace={pace}
+                        onCancel={handleCancelSection}
+                        onLayOut={handleLayOutSection}
+                      />
+                    ) : (
+                      <SectionPlanner
+                        from={sectionDraft.from}
+                        to={sectionDraft.to}
+                        onPickFrom={() => setSectionPointAt('from')}
+                        onPickTo={() => setSectionPointAt('to')}
+                        onChooseOnMap={handleSectionOnMap}
+                        onCancel={handleCancelSection}
+                      />
+                    )
+                  }
+                  pois={pois}
+                  gpsMile={gpsPlanMile}
+                  units={units}
+                  pace={pace}
+                  draftLive={routeBuilder.draftLive || dayHike !== null}
+                  // WHICH builder holds it, not merely that one does: each
+                  // room offers a way back to its own draft and its own
+                  // action otherwise. The day hike wins a tie for the reason
+                  // the map tap does - the two are exclusive (#997), and this
+                  // is the same precedence stated once more.
+                  draftKind={
+                    dayHike !== null ? 'day' : routeBuilder.draftLive ? 'trip' : null
+                  }
+                  dayListOpen={dayListOpen}
+                  onDayListOpen={setDayListOpen}
+                  dayHikes={dayHikeStore.hikes}
+                  onOpenDayHike={handleOpenDayHike}
+                  {...(savedDayHikeCardNode === null
+                    ? {}
+                    : { dayHikeCard: savedDayHikeCardNode })}
+                  onStartOnMap={openPlanKind}
+                  onNewDayHike={openPlanKind}
+                  // The hike room's primary is the inline planner now (#1344);
+                  // the day room and the no-hike sections room keep the builder,
+                  // which is the surface that suits them.
+                  onNewTrip={activeHike === null ? openPlanKind : handlePlanSection}
+                  // The state rather than the boolean (#1049): the Plan tab
+                  // prints the refusal, and a refusal needs to know which
+                  // absence it is refusing for.
+                  network={trailNetwork}
+                  onRetryNetwork={retryTrailNetwork}
+                  gpsAt={gps.status === 'located' ? gps.at : null}
+                  room={effectivePlanRoom}
+                  onAddDayHikeToHike={
+                    activeHike === null ? undefined : () => setAddDayHikeOpen(true)
+                  }
+                  onChangeTarget={handleChangeTarget}
+                  onInsertZeroAfter={(index) =>
+                    applyPlanEdit((current) => insertZeroAfter(current, index))
+                  }
+                  onRemoveDay={(index) =>
+                    applyPlanEdit((current) => removeDay(current, index))
+                  }
+                  onTogglePinned={(index) =>
+                    applyPlanEdit((current) => togglePinned(current, index))
+                  }
+                  // The stop a day ends at is boundary index + 1 - the plan's
+                  // own storage shape (lib/plan.ts).
+                  onToggleEndResupply={(index) =>
+                    applyPlanEdit((current) => toggleResupply(current, index + 1))
+                  }
+                  onReplacePlan={handleReplacePlan}
+                  onDeletePlan={handleDeletePlan}
+                  tripName={currentTrip?.name ?? null}
+                  openTripId={tripStore.openId}
+                  tripCount={tripStore.trips.length}
+                  hike={currentHike}
+                  trips={tripStore.trips}
+                  onOpenTrip={handleOpenTrip}
+                  hikes={tripStore.hikes}
+                  groups={tripStore.groups}
+                  onOpenGroup={setOpenGroupId}
+                  onPlanGap={routeBuilder.handlePlanGap}
+                  onPlanFrom={routeBuilder.handlePlanFrom}
+                  // The plan bench's selection (#971): the day the tree and the
+                  // timeline are pointing at, so the third pane follows the
+                  // other two. Straight into the state `handleChartStretch`
+                  // already writes when no draft is open, which is what makes
+                  // the Map tab and the desktop chart pick it up for free -
+                  // rather than a second copy of "which stretch is selected"
+                  // that could disagree with the first.
+                  onSelectStretch={setFreeChartStretch}
+                  onOpenTrips={() => setTripsOpen(true)}
+                  {...(targetSheet === null ? {} : { targetSheet })}
+                  {...(openGroup !== null
+                    ? {
+                        // A group replaces the switcher rather than stacking
+                        // over it - one thing open at a time, the rule every
+                        // other sheet in this shell keeps.
+                        tripList: (
+                          <GroupScreen
+                            group={openGroup}
+                            trips={tripStore.trips}
+                            units={units}
+                            onOpenTrip={(id) => {
+                              setOpenGroupId(null)
+                              handleOpenTrip(id)
+                            }}
+                            onAddTrip={(tripId) => handleAddToGroup(openGroup.id, tripId)}
+                            onRemoveTrip={(tripId) =>
+                              handleRemoveFromGroup(openGroup.id, tripId)
+                            }
+                            onRename={(name) => handleRenameGroup(openGroup.id, name)}
+                            onRemove={() => handleRemoveGroup(openGroup.id)}
+                            onClose={() => setOpenGroupId(null)}
+                          />
+                        ),
+                      }
+                    : {})}
+                  {...(tripsOpen && openGroup === null
+                    ? {
+                        tripList: (
+                          <TripList
+                            trips={tripStore.trips}
+                            openId={tripStore.openId}
+                            hikes={tripStore.hikes}
+                            pois={pois}
+                            elevation={elevation}
+                            units={units}
+                            onOpen={handleOpenTrip}
+                            onRename={handleRenameTrip}
+                            onRemove={handleRemoveTrip}
+                            onNew={() => {
+                              setTripsOpen(false)
+                              routeBuilder.openRouteBuilder()
+                            }}
+                            onGroupIntoHike={handleGroupIntoHike}
+                            groups={tripStore.groups}
+                            onOpenGroup={setOpenGroupId}
+                            onNewGroup={handleNewGroup}
+                            onClose={() => setTripsOpen(false)}
+                          />
+                        ),
+                      }
+                    : {})}
+                />
+              )}
             </ErrorBoundary>
           </div>
           <TabBar
@@ -9143,6 +9222,58 @@ function App() {
           returns above this window's own construction, so it never rendered
           over one, and a dialog floating over somebody's half-typed report
           is not an arrangement worth inventing now. */}
+      {/* Step 1's field (#1373, F3): the one stop search every stop field
+          uses (chrome/RouteStopPicker.tsx), opened from "Where do you want
+          to go?". A day hike starts at the picked place; a long hike's
+          builder opens with it as the start. */}
+      {stepPickerOpen && (
+        <RouteStopPicker
+          choices={routeStopChoices}
+          pois={pois}
+          previous={null}
+          south={false}
+          removable={false}
+          units={units}
+          onPick={(stop) => {
+            setStepPickerOpen(false)
+            if (hikerMode === 'long') {
+              routeBuilder.handlePlanFrom(
+                {
+                  mile: stop.mile,
+                  ...(stop.name === undefined ? {} : { name: stop.name }),
+                  ...(stop.poiId === undefined ? {} : { poiId: stop.poiId }),
+                },
+                { mile: stop.mile },
+              )
+              return
+            }
+            const poi = stop.poiId === undefined ? undefined : poiById.get(stop.poiId)
+            if (poi !== undefined) startDayHikeAt({ lon: poi.lon, lat: poi.lat })
+            else openDayHike()
+          }}
+          onMapPick={() => {
+            setStepPickerOpen(false)
+            if (hikerMode === 'long') routeBuilder.openRouteBuilder()
+            else openDayHike()
+          }}
+          onRemove={() => setStepPickerOpen(false)}
+          onClose={() => setStepPickerOpen(false)}
+        />
+      )}
+      {/* The bail sheet (#1373, D8): the exit the navigator parked, and the
+          three answers. "Keep it for later" proceeds with the draft where
+          it is; "Discard it" is the one tap that drops it. */}
+      {nav.pending !== null && (
+        <BailSheet
+          figures={nav.pending.bail.figures}
+          onKeep={nav.proceed}
+          onDiscard={() => {
+            discardBuilder()
+            nav.proceed()
+          }}
+          onStay={nav.stay}
+        />
+      )}
       {/* Where you hike (#1373), from More → You: a sheet over whichever
           screen is up, docked to the viewport's foot (chrome/placeField.css)
           so it needs no positioned ancestor at this level. */}

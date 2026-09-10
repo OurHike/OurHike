@@ -53,17 +53,28 @@
 
 .status-strip__conditions {
   display: flex;
-  gap: var(--space-2, 8px);
+  /* Between the chips, never inside one: on a 390 px phone with location
+     off, "No GPS fix" and "Conditions as of 2h ago" each broke across two
+     lines beside each other (the Today and map-plate renders of
+     2026-09-10). A chip is one fact and wraps as one. */
+  flex-wrap: wrap;
+  gap: 2px var(--space-2, 8px);
   flex: 1;
 }
 
 .status-strip__flag {
   color: var(--danger);
   font-weight: 600;
+  white-space: nowrap;
 }
 
 .status-strip__sync {
   margin-left: auto;
+  white-space: nowrap;
+}
+
+.status-strip__time {
+  white-space: nowrap;
 }
 
 /* ---------- The floating chrome (#1054) ---------- */
@@ -104,8 +115,17 @@
    the plate has to know about is a width it will get wrong again. */
 .map-header {
   display: flex;
+  /* And the actions drop under the plate when the two cannot share the row.
+     On a 390 px phone with location off, the plate's status line ("No GPS
+     fix · Conditions as of 2h ago · never synced") is wider than what the
+     "In view · 3808" pill and two buttons leave it, and without wrapping the
+     plate folded to a 140 px column seven lines tall (the opening-map render
+     of 2026-09-10, on the local rig). Wrapped, the plate takes the first row
+     whole and the actions the second, right-aligned by their own margin;
+     on a laptop the row is wide enough that nothing wraps. */
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px 10px;
   width: 100%;
   pointer-events: none;
 }
@@ -1189,7 +1209,11 @@
    alert - the panel is where the per-category detail lives. */
 .map-screen__dropped {
   position: absolute;
-  bottom: var(--space-3, 12px);
+  /* Above the scale bar, not on it: MapLibre's bottom-left control sits in
+     the same corner (10px in, ~20px tall), and at 12px the chip drew across
+     the "1000 ft" bar (the Harriman z12 render of 2026-09-10). 30px clears
+     the bar's box with its own gap; measured on that render, not derived. */
+  bottom: calc(var(--space-3, 12px) + 30px);
   left: var(--space-3, 12px);
   z-index: 2;
   margin: 0;
@@ -1210,7 +1234,12 @@
    a trail name is longer than a category name and `Ramapo-Dunderberg Trail`
    beside `Suffern-Bear Mountain Trail` at 150px each is two ellipses. */
 .legend__trails {
-  margin: var(--space-3, 12px) 0 0;
+  /* At the foot since 2026-09-10 (Legend.tsx says why), so it takes the
+     same rule above it the notices door used to carry: a block that follows
+     four switches needs an edge that says a new subject starts here. */
+  margin: var(--space-4, 16px) 0 0;
+  padding-top: var(--space-3, 12px);
+  border-top: 1px solid var(--border-1);
 }
 
 .legend__trail-rows {
@@ -1433,21 +1462,20 @@
   grid-column: 1 / -1;
 }
 
-/* The way to every ATC notice (#687, Legend.tsx). Same footer-link treatment
-   as .downloads-link just below and for the same reasoning - a hiker reads
-   the rows above constantly and browses every trail update rarely, now that
-   what is actually new has its own bottom banner on the map screen - but its
-   own class rather than sharing that one, because the two rows answer
-   different questions for different reasons and a shared class would read as
-   a claim that they are the same errand. */
+/* The way to every ATC notice (#687, Legend.tsx). It was a footer link
+   beside .downloads-link until 2026-09-10; it sits directly under the
+   grid's serious-warning row now (Legend.tsx says why), so it hugs the row
+   above it - the grid's own gap, no rule - and reads as the grid's last
+   line rather than the panel's foot. Its own class rather than a shared one,
+   because the two rows answer different questions for different reasons and
+   a shared class would read as a claim that they are the same errand. */
 .legend__atc-link {
   display: block;
   width: 100%;
   min-height: var(--min-touch-target, 44px);
-  margin-top: var(--space-4, 16px);
-  padding: var(--space-3, 12px) 0 0;
+  margin-top: var(--space-2, 8px);
+  padding: 0;
   border: 0;
-  border-top: 1px solid var(--border-1);
   font-size: 13px;
   font-weight: 600;
   text-align: left;

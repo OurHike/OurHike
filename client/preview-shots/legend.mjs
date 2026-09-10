@@ -77,7 +77,7 @@
 export const caption =
   'The legend — a ninth waypoint category, and it arrives switched off (#1197)'
 export const alt =
-  'The legend sheet over the trail screen, scrolled to the foot: a ninth waypoint row labelled Trailhead sits alone in the last grid row, its signpost pin and label greyed and struck through like Resupply, Crossing, Viewpoint and Parking above it, and below the Closure and Serious warning rows the Showing control reads 4 of 9 types'
+  'The legend sheet over the trail screen, scrolled to the foot: a ninth waypoint row labelled Trailhead sits alone in the last grid row, its signpost pin and label greyed and struck through like Resupply, Crossing, Viewpoint and Parking above it, and below the Closure and Serious warning rows the "Read all trail notices" door (directly under the safety rows since 2026-09-10) and then the Showing control reading 4 of 9 types'
 
 export default async function drive(page) {
   // The map first: the app opens on Today since #1054, and the legend's

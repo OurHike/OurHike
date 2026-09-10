@@ -5,7 +5,7 @@ import { join } from 'node:path'
 // node out of `types` so browser code cannot reach for it and still typecheck.
 import { cwd } from 'node:process'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
-import { POI_LAYER_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_LAYER_ID } from './poiLayers'
 import { POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { WARNING_ICON_ID } from './warningPin'
 import {
@@ -46,14 +46,15 @@ describe('the layer', () => {
     expect(buildWarningLayer().layout).not.toHaveProperty('icon-ignore-placement')
   })
 
-  it('starts at the seam, like the waypoints (#1292)', () => {
+  it('draws at every zoom, unlike the waypoints', () => {
     // It drew at every zoom until 2026-09-08 - "zoomed out to plan a week is
-    // exactly when someone wants to see where they are" - and the
-    // maintainer's call that the opening camera shows trail lines only
-    // reversed that. Below the seam a 44 px pin covered a hundred trail miles
-    // and said "somewhere here"; the route banner still counts warnings at
-    // every zoom. The module header carries the safety-path note.
-    expect(buildWarningLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    // exactly when someone wants to see where they are" - then took the
+    // waypoints' seam with #1292, and lost it again on 2026-09-10 on the
+    // maintainer's call: "always show all serious warnings at all zooms;
+    // never hide those". The waypoints keep their seam; this layer is the
+    // one exception, and the module header carries the safety-path note.
+    expect(buildWarningLayer()).not.toHaveProperty('minzoom')
+    expect(buildWarningLayer()).not.toHaveProperty('maxzoom')
   })
 
   it('holds its size instead of shrinking toward a minzoom', () => {

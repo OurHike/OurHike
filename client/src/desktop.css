@@ -702,6 +702,17 @@
     flex-direction: column;
   }
 
+  /* Nothing in the column gives up its height. A flex column lets a child
+     shrink to its `min-height`, and the switch rows set one (44px, the touch
+     floor) - so once the panel's content was taller than the panel, the
+     Alerts row shrank to 44px under a three-line sentence and the Drought
+     rule drew through "either way." (the Hudson desktop render, 2026-09-10,
+     the legend reordered under #1374). The panel scrolls; its rows do not
+     fold. */
+  .legend--persistent > * {
+    flex-shrink: 0;
+  }
+
   /* The rule that does the pushing. The block, not the link inside it: the
      background choice and the way to the download are one thing at the foot of
      this panel (chrome.css), and pushing only the link would put the panel's

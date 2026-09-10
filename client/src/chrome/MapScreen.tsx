@@ -54,6 +54,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { WorkdayRow, WorkdayWindowId } from '../lib/workProjects'
 import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
@@ -212,6 +213,16 @@ export interface MapScreenProps {
   workdays?: readonly WorkdayPoint[]
   /** Which workday a tap landed on. */
   onSelectWorkday?: (projectId: string) => void
+  /**
+   * The pinned workdays as rows, the widest window's count, and the window
+   * the pins are filtered to (#1373, frame 14d) - for "Workdays in view"
+   * under the In view list. All the workday panel's; this screen only
+   * narrows the rows to the viewport.
+   */
+  workdayRows?: readonly WorkdayRow[]
+  workdaysHeld?: number
+  workdayWindow?: WorkdayWindowId
+  onChangeWorkdayWindow?: (window: WorkdayWindowId) => void
   /** Places the field says are not there (#876), joined to coordinates. */
   disputes?: readonly DisputePoint[]
   /** The tapped workday's sheet, or null - the atcUpdateSheet pattern: the
@@ -806,6 +817,10 @@ export function MapScreen({
   workdays,
   onSelectWorkday,
   workdaySheet,
+  workdayRows,
+  workdaysHeld,
+  workdayWindow,
+  onChangeWorkdayWindow,
   disputes,
   atcUpdateSheet,
   onSelectClosure,
@@ -943,6 +958,19 @@ export function MapScreen({
    *  legend's own open state used to be: nothing outside this screen opens
    *  or reads it. */
   const [inViewOpen, setInViewOpen] = useState(false)
+  /** The pinned workdays inside the viewport (#1373, frame 14d) - the same
+   *  "in view" the legend and the waypoint list mean. */
+  const workdaysInView = useMemo(
+    () =>
+      (workdayRows ?? []).filter(
+        (row) =>
+          row.lon >= bbox.west &&
+          row.lon <= bbox.east &&
+          row.lat >= bbox.south &&
+          row.lat <= bbox.north,
+      ),
+    [workdayRows, bbox],
+  )
   useEffect(() => {
     const float = floatRef.current
     if (float === null) return
@@ -1595,25 +1623,36 @@ export function MapScreen({
 
           <InViewSheet
             open={inViewOpen && !legendOpen && !buildingDayHike}
-
             points={viewportPoints}
-
             total={waypointTotal}
-
             currentMile={hikerMile ?? null}
-
             mileOf={waypointMileOf}
-
             stalenessFor={waypoints?.stalenessFor}
-
             units={units}
-
             onSelectPoi={(id) => {
               setInViewOpen(false)
-
               onSelectPoi(id)
             }}
-
+            // Offered while the widest window holds any workday at all,
+            // so a hiker can widen the window to reach one - never gated
+            // on the mode (lib/hikerMode.ts: a mode never hides a feature).
+            workdays={
+              workdaysHeld !== undefined &&
+              workdaysHeld > 0 &&
+              workdayWindow !== undefined &&
+              onChangeWorkdayWindow !== undefined &&
+              onSelectWorkday !== undefined
+                ? {
+                    rows: workdaysInView,
+                    window: workdayWindow,
+                    onChangeWindow: onChangeWorkdayWindow,
+                    onSelect: (id) => {
+                      setInViewOpen(false)
+                      onSelectWorkday(id)
+                    },
+                  }
+                : undefined
+            }
             onClose={() => setInViewOpen(false)}
           />
 

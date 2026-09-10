@@ -291,7 +291,7 @@ already keeps `STALE` and `UNKNOWN` apart. A fifth marker here is a row, not a m
    machinery. It refuses two ways, differently on purpose: an *unreviewed* file publishes
    nothing and exits 0, and a *reviewed* file with a bad row publishes nothing and fails.
 4. ~~**Render it**~~ **Built.** `lib/atcUpdates.ts` adapts an update into the shared
-   `Closure` shape for geometry alone; `chrome/AtcUpdateSheet.tsx` carries ATC's name, both
+   `Closure` shape for geometry alone; `chrome/OrgNoticeSheet.tsx` carries ATC's name, both
    dates and the outbound link; the banner names the ATC before anything else; the
    band-length ceiling comes free with the shared path.
 5. **Then** the proposing job, once the reviewed-file path is proven by hand.

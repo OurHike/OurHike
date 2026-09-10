@@ -82,19 +82,105 @@ function utcDay(value: string): number {
  * window. An event already running counts - a crew mid-weekend still takes
  * a walk-up pair of hands - which is why the near bound tests `ends_on`.
  */
+/**
+ * The day windows the map's workday list offers (#1373, frame 14d): the
+ * tab's own fortnight, the coming weekend, and a month. Three rather than a
+ * date picker, because a crew is planned around a weekend or not at all,
+ * and the fortnight is VOLUNTEERING.md's number kept as the default.
+ */
+export const WORKDAY_WINDOWS = [
+  { id: 'fortnight', label: 'Next 14 days' },
+  { id: 'weekend', label: 'This weekend' },
+  { id: 'month', label: 'Next 30 days' },
+] as const
+
+export type WorkdayWindowId = (typeof WORKDAY_WINDOWS)[number]['id']
+
+/**
+ * What a window covers, as UTC-midnight millis: `from` inclusive, `to`
+ * exclusive. "This weekend" is the coming Saturday and Sunday - today's, when
+ * today is one of them - so on a Sunday it still names the weekend under
+ * way rather than the next one. The calendar is read in UTC because the
+ * rows' dates are UTC days (`starts_on`), and a window read in local time
+ * would drift a day either side of them at the edges.
+ */
+export function workdayWindowSpan(
+  id: WorkdayWindowId,
+  now: Date,
+): { from: number; to: number } {
+  if (id === 'weekend') {
+    const weekday = now.getUTCDay()
+    // Sunday is the weekend's second day, so its Saturday was yesterday.
+    const untilSaturday = weekday === 0 ? -1 : 6 - weekday
+    const saturday = Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate() + untilSaturday,
+    )
+    return { from: saturday, to: saturday + 2 * DAY_MS }
+  }
+  const days = id === 'month' ? 30 : WORK_PROJECT_WINDOW_DAYS
+  return { from: now.getTime(), to: now.getTime() + days * DAY_MS }
+}
+
 export function upcomingWorkProjects(
   projects: readonly WorkProjectSummary[],
   now: Date,
+  window: WorkdayWindowId = 'fortnight',
 ): WorkProjectSummary[] {
   const today = now.getTime()
-  const horizon = today + WORK_PROJECT_WINDOW_DAYS * DAY_MS
+  const span = workdayWindowSpan(window, now)
 
   return projects.filter((project) => {
     if (project.status !== 'upcoming') return false
-    // ends_on is a whole day, so it ends at the following UTC midnight.
-    if (utcDay(project.ends_on) + DAY_MS < today) return false
-    return utcDay(project.starts_on) <= horizon
+    // ends_on is a whole day, so it ends at the following UTC midnight. A
+    // workday that is over is over in every window, the weekend's included.
+    const over = utcDay(project.ends_on) + DAY_MS
+    if (over <= today || over <= span.from) return false
+    return utcDay(project.starts_on) < span.to
   })
+}
+
+/**
+ * One workday as a list prints it (#1373, frame 14d) - the map's "Workdays
+ * in view" and, being the same row, whatever else lists them. The distance
+ * is trail miles between the hiker's mile and the row's, or null where
+ * either is missing; a straight line would be a different number wearing
+ * the same word.
+ */
+export interface WorkdayRow {
+  id: string
+  title: string
+  club: string
+  /** `workProjectDates`' own wording. */
+  dates: string
+  /** Trail miles from the hiker, or null. */
+  awayMi: number | null
+  /** Null means "no cap stated", never zero. */
+  capacity: number | null
+  /** The club's own channel, or null. */
+  contact: string | null
+  lat: number
+  lon: number
+}
+
+export function workdayRow(
+  project: WorkProjectSummary,
+  gpsMile: number | null,
+): WorkdayRow | null {
+  if (project.lat === null || project.lon === null) return null
+  return {
+    id: project.id,
+    title: project.title,
+    club: project.club_name,
+    dates: workProjectDates(project),
+    awayMi:
+      project.mile === null || gpsMile === null ? null : Math.abs(project.mile - gpsMile),
+    capacity: project.capacity,
+    contact: project.signup_contact,
+    lat: project.lat,
+    lon: project.lon,
+  }
 }
 
 /**

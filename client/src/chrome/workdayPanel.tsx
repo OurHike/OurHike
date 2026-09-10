@@ -7,14 +7,26 @@
 import { useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
 import { WorkdaySheet } from './WorkdaySheet'
-import { opportunitiesUsable, upcomingWorkProjects } from '../lib/workProjects'
+import {
+  opportunitiesUsable,
+  upcomingWorkProjects,
+  workdayRow,
+  type WorkdayRow,
+  type WorkdayWindowId,
+} from '../lib/workProjects'
 import type { WorkProjectSummary } from '../lib/workProjects'
 import type { WorkdayPoint } from '../map/workdayLayers'
 
 /** The `MapScreenProps` fields this feature owns. See atcNoticesPanel.tsx. */
 export type WorkdayMapProps = Pick<
   MapScreenProps,
-  'workdays' | 'onSelectWorkday' | 'workdaySheet'
+  | 'workdays'
+  | 'onSelectWorkday'
+  | 'workdaySheet'
+  | 'workdayRows'
+  | 'workdaysHeld'
+  | 'workdayWindow'
+  | 'onChangeWorkdayWindow'
 >
 
 export interface WorkdayPanel {
@@ -45,6 +57,14 @@ export function useWorkdayPanel({
    *  by row, so a re-fetch that drops a cancelled workday closes the sheet
    *  over it instead of leaving a stale invitation open. */
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  /**
+   * The day window the pins and the map's list are filtered to (#1373,
+   * frame 14d). The tab keeps its own fortnight; this is the map's, and it
+   * starts on the same number so the two agree until a hiker asks
+   * otherwise. Session state rather than a preference: which weekend a
+   * hiker is looking at is not a setting.
+   */
+  const [window, setWindow] = useState<WorkdayWindowId>('fortnight')
 
   /**
    * The workdays worth drawing (#760), and the two gates in front of them.
@@ -66,11 +86,30 @@ export function useWorkdayPanel({
     if (projects === null || generatedAt === null) return []
     if (!opportunitiesUsable(generatedAt, now)) return []
 
-    return upcomingWorkProjects(projects, now).flatMap((project) =>
+    return upcomingWorkProjects(projects, now, window).flatMap((project) =>
       project.lat === null || project.lon === null
         ? []
         : [{ id: project.id, lat: project.lat, lon: project.lon }],
     )
+  }, [projects, generatedAt, now, window])
+
+  /** The pinned workdays as the map's list prints them (#1373, frame 14d),
+   *  and how many the widest window holds - the list is offered while any
+   *  exist, so a hiker can widen the window to find them. */
+  const rows = useMemo<readonly WorkdayRow[]>(() => {
+    if (projects === null || generatedAt === null) return []
+    if (!opportunitiesUsable(generatedAt, now)) return []
+    return upcomingWorkProjects(projects, now, window).flatMap((project) => {
+      const row = workdayRow(project, gpsPlanMile)
+      return row === null ? [] : [row]
+    })
+  }, [projects, generatedAt, now, window, gpsPlanMile])
+  const held = useMemo(() => {
+    if (projects === null || generatedAt === null) return 0
+    if (!opportunitiesUsable(generatedAt, now)) return 0
+    return upcomingWorkProjects(projects, now, 'month').filter(
+      (project) => project.lat !== null && project.lon !== null,
+    ).length
   }, [projects, generatedAt, now])
 
   /** The tapped workday itself, re-read from the live list every render: if a
@@ -90,6 +129,10 @@ export function useWorkdayPanel({
     () => ({
       workdays: pins,
       onSelectWorkday: setSelectedId,
+      workdayRows: rows,
+      workdaysHeld: held,
+      workdayWindow: window,
+      onChangeWorkdayWindow: setWindow,
       workdaySheet:
         selected === null ? null : (
           <WorkdaySheet
@@ -103,7 +146,7 @@ export function useWorkdayPanel({
           />
         ),
     }),
-    [pins, selected, gpsPlanMile],
+    [pins, selected, gpsPlanMile, rows, held, window],
   )
 
   return { mapScreen, sheetOpen: selectedId !== null }

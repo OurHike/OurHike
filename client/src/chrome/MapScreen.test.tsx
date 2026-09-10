@@ -298,6 +298,44 @@ describe('MapScreen', () => {
     expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
   })
 
+  it('lists a workday inside the viewport under In view, and not one outside it (#1373, frame 14d)', async () => {
+    const user = userEvent.setup()
+    const onSelectWorkday = vi.fn()
+    const row = (id: string, lon: number, lat: number) => ({
+      id,
+      title: `Workday ${id}`,
+      club: 'NYNJTC',
+      dates: 'Sep 12',
+      awayMi: null,
+      capacity: null,
+      contact: null,
+      lat,
+      lon,
+    })
+    render(
+      <MapScreen
+        {...PROPS}
+        // PROPS.bbox spans west -78 to east -77, south 39 to north 40.
+        workdayRows={[row('in', -77.5, 39.5), row('out', -70, 45)]}
+        workdaysHeld={2}
+        workdayWindow="fortnight"
+        onChangeWorkdayWindow={vi.fn()}
+        onSelectWorkday={onSelectWorkday}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    const section = screen.getByRole('region', { name: 'Workdays in view' })
+    expect(
+      within(section).getByRole('button', { name: /Workday in/ }),
+    ).toBeInTheDocument()
+    expect(within(section).queryByText(/Workday out/)).toBeNull()
+
+    await user.click(within(section).getByRole('button', { name: /Workday in/ }))
+    expect(onSelectWorkday).toHaveBeenCalledWith('in')
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+  })
+
   it('offers no In view door with nothing drawn, and renders the two safety sheets in the sheet slot', () => {
     render(
       <MapScreen

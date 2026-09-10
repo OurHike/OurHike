@@ -22,6 +22,12 @@
 
 import { formatDistance, type UnitSystem } from '../lib/units'
 import type { MapPoint } from '../lib/legendContents'
+import {
+  WORKDAY_WINDOWS,
+  type WorkdayRow,
+  type WorkdayWindowId,
+} from '../lib/workProjects'
+import '../screens/volunteer.css'
 import type { StalenessTreatment } from '../lib/stalenessDisplay'
 import { typeLabel } from './legendLabels'
 import { PoiRow } from './PoiRow'
@@ -47,6 +53,20 @@ export interface InViewSheetProps {
   units: UnitSystem
   onSelectPoi: (id: string) => void
   onClose: () => void
+  /**
+   * The workdays in view (#1373, frame 14d), under the waypoints: the pinned
+   * rows inside the viewport, the day window the pins are filtered to, and
+   * the way to widen it. Undefined when the phone holds no workday in any
+   * window, and then the section is absent rather than a heading over an
+   * empty list. A row opens the pin's sheet, as a waypoint row opens its
+   * card.
+   */
+  workdays?: {
+    rows: readonly WorkdayRow[]
+    window: WorkdayWindowId
+    onChangeWindow: (window: WorkdayWindowId) => void
+    onSelect: (id: string) => void
+  }
 }
 
 function mileLabel(mile: number): string {
@@ -66,6 +86,7 @@ export function InViewSheet({
   units,
   onSelectPoi,
   onClose,
+  workdays,
 }: InViewSheetProps) {
   if (!open) return null
 
@@ -126,6 +147,68 @@ export function InViewSheet({
             )
           })}
         </ul>
+      )}
+
+      {workdays !== undefined && (
+        <section className="in-view__workdays" aria-label="Workdays in view">
+          <h3 className="legend__title">Workdays in view · {workdays.rows.length}</h3>
+          {/* Three windows, real toggles (WhatsLeft's sort idiom): the
+              fortnight the tab lists, the coming weekend, a month. */}
+          <div className="in-view__windows" role="group" aria-label="Show workdays in">
+            {WORKDAY_WINDOWS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={
+                  option.id === workdays.window
+                    ? 'in-view__window in-view__window--on'
+                    : 'in-view__window'
+                }
+                aria-pressed={option.id === workdays.window}
+                onClick={() => workdays.onChangeWindow(option.id)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {workdays.rows.length === 0 ? (
+            <p className="legend__empty">
+              No workdays in view in this window. Widen it, or pan to where a club is
+              working.
+            </p>
+          ) : (
+            <ul className="volunteer__workdays">
+              {workdays.rows.map((row) => (
+                <li key={row.id} className="volunteer__workday">
+                  <button
+                    type="button"
+                    className="in-view__workday"
+                    onClick={() => workdays.onSelect(row.id)}
+                  >
+                    <span className="volunteer__workday-title">{row.title}</span>
+                    {/* The tab's own line, word for word: club, dates,
+                        trail miles away only with a fix and a placed row,
+                        room only where a cap was stated. */}
+                    <span className="volunteer__workday-meta">
+                      {[
+                        row.club,
+                        row.dates,
+                        row.awayMi === null
+                          ? null
+                          : `${row.awayMi.toLocaleString('en-US', {
+                              maximumFractionDigits: 1,
+                            })} trail mi away`,
+                        row.capacity === null ? null : `room for ${row.capacity}`,
+                      ]
+                        .filter((part) => part !== null)
+                        .join(' · ')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
     </div>
   )

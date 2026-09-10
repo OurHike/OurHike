@@ -102,6 +102,71 @@ describe('what is in view', () => {
     expect(screen.queryByText(/signal|online/i)).toBeNull()
   })
 
+  it('lists the workdays in view under the waypoints, with the window to widen (#1373, frame 14d)', async () => {
+    const user = userEvent.setup()
+    const onChangeWindow = vi.fn()
+    const onSelect = vi.fn()
+    render(
+      <InViewSheet
+        {...PROPS}
+        workdays={{
+          rows: [
+            {
+              id: 'wd1',
+              title: 'Sidehill and drainage, Wawayanda',
+              club: 'NYNJTC',
+              dates: 'Sep 12',
+              awayMi: 8.4,
+              capacity: 12,
+              contact: 'trails@nynjtc.org',
+              lat: 41.2,
+              lon: -74.5,
+            },
+          ],
+          window: 'fortnight',
+          onChangeWindow,
+          onSelect,
+        }}
+      />,
+    )
+
+    const section = screen.getByRole('region', { name: 'Workdays in view' })
+    expect(
+      within(section).getByRole('heading', { name: 'Workdays in view · 1' }),
+    ).toBeInTheDocument()
+    const row = within(section).getByRole('button', { name: /Sidehill and drainage/ })
+    expect(row).toHaveTextContent('NYNJTC · Sep 12 · 8.4 trail mi away · room for 12')
+    await user.click(row)
+    expect(onSelect).toHaveBeenCalledWith('wd1')
+
+    const windows = within(section).getByRole('group', { name: 'Show workdays in' })
+    expect(within(windows).getByRole('button', { name: 'Next 14 days' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    await user.click(within(windows).getByRole('button', { name: 'This weekend' }))
+    expect(onChangeWindow).toHaveBeenCalledWith('weekend')
+  })
+
+  it('says what to do with no workday in the window, and shows no section with none held', () => {
+    render(
+      <InViewSheet
+        {...PROPS}
+        workdays={{
+          rows: [],
+          window: 'weekend',
+          onChangeWindow: vi.fn(),
+          onSelect: vi.fn(),
+        }}
+      />,
+    )
+    expect(screen.getByText(/No workdays in view in this window/)).toBeInTheDocument()
+
+    cleanup()
+    render(<InViewSheet {...PROPS} />)
+    expect(screen.queryByRole('region', { name: 'Workdays in view' })).toBeNull()
+  })
+
   it('renders nothing while closed', () => {
     const { container } = render(<InViewSheet {...PROPS} open={false} />)
     expect(container).toBeEmptyDOMElement()

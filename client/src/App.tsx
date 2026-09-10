@@ -460,6 +460,7 @@ import {
   type HikerMode,
 } from './lib/hikerMode'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
+import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
@@ -521,7 +522,6 @@ import './desktop.css'
 // OurHike hikes one trail today - see lib/trails.ts for why this is a lookup
 // and not just a string.
 const TRAIL_NAME = TRAILS.AT.name
-const TRAIL_LOGO = TRAILS.AT.logo
 
 // Sync and export are rendered and do nothing: what they need is the backend,
 // which is Phase 2 (ROADMAP.md). They share one placeholder rather than
@@ -708,6 +708,20 @@ function App() {
   const [hikerMode, setHikerMode] = useState<HikerMode>(
     () => launchMirror?.hikerMode ?? DEFAULT_HIKER_MODE,
   )
+  // The trail a tap on the map took (lib/takenTrail.ts; the maintainer's
+  // review of #1374), or null. Mirrored and loaded like the mode, and with
+  // its own touched-guard for the mode's reason: a tap before the record
+  // lands is the hiker's, and the record may not undo it. Read through
+  // `chosenTrailId` below, where a long hike's trail outranks it.
+  const [takenTrailStored, setTakenTrailStored] = useState<string | null>(
+    () => launchMirror?.takenTrail ?? null,
+  )
+  const takenTouched = useRef(false)
+  const applyTakenTrail = useCallback((trailId: string | null) => {
+    takenTouched.current = true
+    setTakenTrailStored(trailId)
+    void saveTakenTrail(trailId)
+  }, [])
   // Today is the home (#1054): the default tab, and where finishing first run
   // lands. During first run the tab branches below are skipped entirely -
   // `entering` renders the map screen as the steps' backdrop whatever this
@@ -1398,8 +1412,15 @@ function App() {
    *  question differently. Decides the lines, the legend's `taken`, and -
    *  since #1357 - whether this download's miles apply at all. The trail
    *  the rest of this shell is NAMED for is still TRAIL_NAME's. */
-  const chosenTrailId = activeHikeOf(tripStore)?.trailId ?? null
+  const chosenTrailId = activeHikeOf(tripStore)?.trailId ?? takenTrailStored
   const chosenSources = useMemo(() => chosenSystemSources(chosenTrailId), [chosenTrailId])
+  /** The taken trail's registry entry, for the plate's name and mark, or
+   *  null with nothing taken - and then the plate names the place, or says
+   *  so (the review of #1374: the A.T. is not assumed). */
+  const chosenTrail = useMemo(
+    () => (chosenTrailId === null ? null : (TRAILS[chosenTrailId] ?? null)),
+    [chosenTrailId],
+  )
 
   /**
    * The trail this build cannot measure the active hike on, by short name,
@@ -1630,8 +1651,9 @@ function App() {
       loadPreferences(),
       loadHikerMode(),
       loadOpenWalk().catch(() => null),
+      loadTakenTrail().catch(() => null),
     ]).then(
-      ([stored, mode, open]) => {
+      ([stored, mode, open, taken]) => {
         setOpenWalk(open)
         // A choice made in the window before this landed outranks the record:
         // the hiker is looking at what they picked.
@@ -1639,11 +1661,12 @@ function App() {
           setPreferences(stored)
           setHikerMode(mode)
         }
+        if (!takenTouched.current) setTakenTrailStored(taken)
         recordRead.current = true
         setPreferencesLoaded(true)
         markLaunch(LAUNCH_MARKS.preferences)
         // The record has spoken; the next launch's first frame starts here.
-        writeLaunchMirror(stored, mode)
+        writeLaunchMirror(stored, mode, takenTouched.current ? null : taken)
       },
       // A storage read that rejects - private browsing, an evicted database -
       // must not keep the gate below closed: on a launch with no mirror,
@@ -1685,8 +1708,14 @@ function App() {
   // launch reads first. So the mirror follows the RECORD, never the fallback.
   useEffect(() => {
     if (!recordRead.current) return
-    writeLaunchMirror(preferences, hikerMode)
-  }, [preferencesLoaded, preferences.onboarding_completed, preferences.theme, hikerMode])
+    writeLaunchMirror(preferences, hikerMode, takenTrailStored)
+  }, [
+    preferencesLoaded,
+    preferences.onboarding_completed,
+    preferences.theme,
+    hikerMode,
+    takenTrailStored,
+  ])
 
   // The mode is saved as it changes (see `applyHikerMode` above) - there is
   // no form to submit, and a mode that survived the session but not the
@@ -3234,6 +3263,11 @@ function App() {
     // just tapped on a line they can see, which reads as the app breaking
     // rather than as a download finishing.
     onStartDayHikeAt: dayHikeIndex !== null ? startDayHikeLater : undefined,
+    // Taking a trail from its line (the review of #1374): the sheet's own
+    // button, the store above, and the plate reads it through chosenTrailId.
+    takenTrailId: chosenTrailId,
+    takenByHike: activeHikeOf(tripStore) !== null,
+    onTakeTrail: applyTakenTrail,
   })
 
   /**
@@ -6139,6 +6173,12 @@ function App() {
         fixClientMile: fixMile,
         fixPlanMile: gpsPlanMile,
         fixWindow,
+        // A profile needs a subject (the review of #1374, lib/ribbonView.ts's
+        // header): a long hike's trail, a tapped one, or the A.T. route
+        // builder open - a hiker laying out a long hike on the trail has
+        // chosen it, and the builder's map-view and fix-window readings are
+        // about that ground. Without one only a walk being followed draws.
+        trailTaken: chosenTrailId !== null || routeBuilder.draftLive,
         ...(travelDirection === undefined ? {} : { direction: travelDirection }),
       }),
     // Keyed on the mile and the settled direction, not the objects carrying
@@ -6178,6 +6218,8 @@ function App() {
       fixMile,
       gpsPlanMile,
       fixWindow,
+      chosenTrailId,
+      routeBuilder.draftLive,
       travelDirection,
     ],
   )
@@ -6269,6 +6311,12 @@ function App() {
   // a drag on the chart re-stretches the route.
   const desktopChart = useMemo(() => {
     if (elevation === null) return undefined
+    // The same subject rule as the ribbon (the review of #1374): the desk's
+    // resting view of the whole trail was a picture of a trail nobody had
+    // chosen under a Today that said nothing was planned. A taken trail, or
+    // the A.T. route builder open - its selection IS the chart's - and the
+    // chart draws; otherwise it is absent, and the map keeps the height.
+    if (chosenTrailId === null && !draftLive) return undefined
     const mileToCoordinate = (mile: number): [number, number] | null => {
       if (trailIndex === null) return null
       const clientMile = anchoredClientMile(mile, mileAnchors)
@@ -6306,6 +6354,7 @@ function App() {
     chartSelection,
     chartSouth,
     draftLive,
+    chosenTrailId,
     handleChartStretch,
     handleChartSouth,
     handlePlanChartStretch,
@@ -8745,6 +8794,9 @@ function App() {
     // A park has no mile axis (#928), so a followed hike replaces the
     // Springer mile with distance along the hiker's own walk.
     follow: followState,
+    // No trail taken, no mile and no "Off the trail" (the review of #1374):
+    // the fix stands, and the slot says what would give it a mile.
+    trailTaken: chosenTrailId !== null,
     units,
   })
 
@@ -9616,8 +9668,23 @@ function App() {
               // it usually says the trail, not a new band. The A.T.'s own mark
               // goes with it - a followed park loop is not on the A.T., and
               // leaving the logo up would be the header naming the wrong trail.
-              trailName={followHeaderText?.trailName ?? TRAIL_NAME}
-              trailLogo={followHeaderText === null ? TRAIL_LOGO : undefined}
+              // Named for what is taken (the review of #1374) rather than
+              // for the A.T. by default: a hike's trail or a tapped one,
+              // with its mark; else the place the hiker named at first
+              // run; else the plain fact. TRAIL_NAME stays the shell's name
+              // for the axis it measures on (reports, the finder), which is
+              // a different question from what the plate is looking at.
+              trailName={
+                followHeaderText?.trailName ??
+                chosenTrail?.name ??
+                defaultPlace?.name ??
+                'No trail taken'
+              }
+              trailLogo={
+                followHeaderText === null && chosenTrail !== null
+                  ? chosenTrail.logo
+                  : undefined
+              }
               state={followHeaderText?.state}
               // One sentence rather than a number, decided in one place
               // (lib/positionLine.ts): the header used to say "Looking for GPS…"

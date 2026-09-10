@@ -1034,7 +1034,10 @@ describe('the ribbon while a trip is being planned', () => {
 
   it('draws the stretch as soon as the entrance has resolved two ends', async () => {
     const user = userEvent.setup()
-    app.onboard()
+    // The A.T. taken (lib/takenTrail.ts, the review of #1374): the fix
+    // window and the map view the ribbon falls back to are the taken
+    // trail's to draw; the stretch being planned draws regardless.
+    app.onboard({}, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
@@ -1075,7 +1078,9 @@ describe('the ribbon while a trip is being planned', () => {
 
   it('takes the lanes with it, and gives the fix window back on close', async () => {
     const user = userEvent.setup()
-    app.onboard({ location_permission_requested: true })
+    // The A.T. taken (the review of #1374): the fix window the ribbon gives
+    // back is the taken trail's, as is the map view it follows.
+    app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
@@ -1139,7 +1144,9 @@ describe('the ribbon while a trip is being planned', () => {
     // it outranks their fix - but only a real gesture does, and only until
     // they ask for themselves back.
     const user = userEvent.setup()
-    app.onboard({ location_permission_requested: true })
+    // The A.T. taken (the review of #1374): the fix window the ribbon gives
+    // back is the taken trail's, as is the map view it follows.
+    app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
@@ -1199,7 +1206,10 @@ describe('the ribbon while a trip is being planned', () => {
 
   it("offers the chart's own framing buttons, and only the ones that would do something", async () => {
     const user = userEvent.setup()
-    app.onboard()
+    // The A.T. taken (lib/takenTrail.ts, the review of #1374): the fix
+    // window and the map view the ribbon falls back to are the taken
+    // trail's to draw; the stretch being planned draws regardless.
+    app.onboard({}, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 

@@ -412,9 +412,10 @@ describe('the Map tab names the hike and can change it (#1367)', () => {
     ).toBeInTheDocument()
   })
 
-  it('leaves the plate naming the trail when there is no hike', async () => {
+  it('says no trail is taken when there is no hike and nothing was tapped', async () => {
     // The eyebrow is not a hike slot - it answers "what am I looking at",
-    // and off a long hike the trail is still that answer.
+    // and with no hike and no trail taken the honest answer is that none is
+    // (the review of #1374); the A.T. is not assumed.
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
@@ -422,8 +423,8 @@ describe('the Map tab names the hike and can change it (#1367)', () => {
 
     await user.click(await screen.findByRole('tab', { name: 'Map' }))
     await waitFor(() => {
-      expect(document.querySelector('.map-plate__eyebrow')?.textContent).toMatch(
-        /Appalachian Trail/,
+      expect(document.querySelector('.map-plate__eyebrow')?.textContent).toBe(
+        'No trail taken',
       )
     })
     expect(screen.queryByRole('button', { name: /Change which hike/ })).toBeNull()

@@ -33,6 +33,7 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
+import { TAKEN_TRAIL_KEY } from './lib/takenTrail'
 import { OPEN_WALK_KEY } from './lib/openWalk'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import {
@@ -142,12 +143,16 @@ function aPhoneThatHasBeenUsed(): void {
   store.set(POIS_KEY, [])
 }
 
-// The bootstrap gate reads three keys - the preferences (which carry the
-// place the hiker hikes since #1374), the "today I'm…" mode (#1054) and the
-// open walk ride one Promise.all - so landing "the preferences" means
-// landing all three, or the gate never opens and nothing renders.
+// The bootstrap gate reads four keys - the preferences (which carry the
+// place the hiker hikes since #1374), the "today I'm…" mode (#1054), the
+// open walk and the trail taken from the map (the review of #1374) ride one
+// Promise.all - so landing "the preferences" means landing all four, or the
+// gate never opens and nothing renders.
 const isPreferences = (key: string) =>
-  key === PREFERENCES_KEY || key === HIKER_MODE_KEY || key === OPEN_WALK_KEY
+  key === PREFERENCES_KEY ||
+  key === HIKER_MODE_KEY ||
+  key === OPEN_WALK_KEY ||
+  key === TAKEN_TRAIL_KEY
 
 /**
  * The download store's keys, taken from the package catalogue rather than

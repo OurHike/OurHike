@@ -26,6 +26,7 @@ import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
 import { PREFERENCES_KEY } from '../lib/preferences'
 import { forgetLaunchMirror, writeLaunchMirror } from '../lib/launchMirror'
+import { TAKEN_TRAIL_KEY } from '../lib/takenTrail'
 import { preloadScreens } from '../screens/deferred'
 import { DEFAULT_HIKER_MODE } from '../lib/hikerMode'
 import { DESKTOP_MEDIA_QUERY } from '../lib/useDesktop'
@@ -104,7 +105,10 @@ export interface AppHarness {
    * question - the state nearly every test wants to start from, since neither
    * screen is the subject.
    */
-  onboard(overrides?: Record<string, unknown>, options?: { mirror?: boolean }): void
+  onboard(
+    overrides?: Record<string, unknown>,
+    options?: { mirror?: boolean; takenTrail?: string | null },
+  ): void
   /** Trail data already on the phone, so nothing is fetched and the centerline
    *  index is built from exactly this geometry. */
   putTrailData(options?: { miles?: number; pois?: readonly unknown[] }): void
@@ -251,7 +255,13 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
   return {
     store,
 
-    onboard(overrides: Record<string, unknown> = {}, { mirror = true } = {}) {
+    onboard(
+      overrides: Record<string, unknown> = {},
+      {
+        mirror = true,
+        takenTrail = null,
+      }: { mirror?: boolean; takenTrail?: string | null } = {},
+    ) {
       const preferences = {
         ...DEFAULT_PREFERENCES,
         onboarding_completed: true,
@@ -259,10 +269,15 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
         ...overrides,
       }
       store.set(PREFERENCES_KEY, preferences)
+      // The trail taken from the map (lib/takenTrail.ts), where a test is
+      // about a phone that has one: the plate, the profile and the chosen
+      // system all read it. Nothing taken is the honest default, as on a
+      // fresh install, so a test that wants the A.T. named says so.
+      if (takenTrail !== null) store.set(TAKEN_TRAIL_KEY, takenTrail)
       // A phone that has launched since #1301 shipped holds the mirror too,
       // which is the ordinary case; `mirror: false` is the first launch after
       // the upgrade, where the shell still waits for the record.
-      if (mirror) writeLaunchMirror(preferences, DEFAULT_HIKER_MODE)
+      if (mirror) writeLaunchMirror(preferences, DEFAULT_HIKER_MODE, takenTrail)
     },
 
     putTrailData({ miles = 40, pois = [] } = {}) {

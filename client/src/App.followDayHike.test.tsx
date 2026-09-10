@@ -625,9 +625,11 @@ describe('following a day hike, end to end', () => {
         screen.queryByText('turn left onto Seven Hills Trail'),
       ).not.toBeInTheDocument()
     })
-    // Back to the A.T.'s own header, and to its own honest refusal about a
-    // fix two thousand miles off the corridor.
-    expect(screen.getByText('Off the trail')).toBeInTheDocument()
+    // Back to the map's own plate. Nothing is taken on this phone, so the
+    // slot says where the fix stands rather than "Off the trail" - which
+    // would be a claim about a trail nobody chose (the review of #1374).
+    expect(screen.getByText('Located · tap a trail to take it')).toBeInTheDocument()
+    expect(screen.queryByText('Off the trail')).toBeNull()
   })
 
   it('draws the ground walked twice, on a walk that re-uses one edge', async () => {

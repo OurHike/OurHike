@@ -70,7 +70,9 @@ const app = appHarness({
 const store = app.store
 
 beforeEach(() => {
-  app.onboard({ location_permission_requested: true })
+  // The A.T. taken (lib/takenTrail.ts, the review of #1374): a hike is
+  // optional, and the mile these cases read is the taken trail's.
+  app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
   app.putTrailData()
 })
 

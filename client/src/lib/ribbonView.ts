@@ -8,7 +8,20 @@
 // will carry is asking the desk's question, and until this module existed the
 // phone answered it with nothing at all.
 //
-// So the ribbon now has FIVE things it can be showing, and exactly one of them
+// **A PROFILE NEEDS A SUBJECT (the maintainer's review of #1374, 2026-09-10).**
+// The whole-trail domain was the resting view of every phone and every desk,
+// so a fresh install drew 2,197 miles of the A.T.'s silhouette under a map
+// nobody had claimed - on Today with "Nothing planned today" above it, on
+// the Map tab with a "Whole trail" button under it. The review: "Only show
+// when a user has their hike selected." So the ribbon draws for a route
+// being built (`planStretch`), a walk being followed (`todaysWalk` of kind
+// 'route'), or a trail that is taken - by the long hike the hiker is on or
+// by a tap on its line (App.tsx's `chosenTrailId`, lib/takenTrail.ts) - and
+// otherwise not at all. Absent, not a blank: an empty ribbon would read as
+// "nothing ahead of you", which is the worse claim (chrome/MapScreen.tsx).
+// The desktop chart follows the same rule in the shell.
+//
+// So the ribbon has FIVE things it can be showing, and exactly one of them
 // is true at a time. The precedence, highest first, with what each is for:
 //
 //   planned-stretch  The route being built. The hiker is laying out this
@@ -200,6 +213,14 @@ export interface RibbonInputs {
    * makes that true by construction instead of by two call sites agreeing.
    */
   fixWindow: MileWindow | null
+  /**
+   * Whether any trail is taken - a long hike's, or one tapped on the map
+   * (lib/takenTrail.ts). The subject the three trail-axis domains below
+   * (`map-view`, `ahead`, `whole-trail`) and a trip day's `todays-walk`
+   * need; a route being built and a followed day hike are subjects of
+   * their own and draw regardless. See the header.
+   */
+  trailTaken: boolean
   /** Which way the hiker is walking, or undefined until lib/hikeDirection.ts
    *  has enough movement to say. Only the climb callout reads it, and it
    *  declines to guess without one. */
@@ -222,6 +243,7 @@ export function ribbonView({
   fixClientMile,
   fixPlanMile,
   fixWindow,
+  trailTaken,
   direction,
 }: RibbonInputs): RibbonView | undefined {
   // A followed day hike answers before the profile is even consulted, because
@@ -234,6 +256,10 @@ export function ribbonView({
   if (planStretch !== null) {
     return stretchView(profile, planStretch, fixPlanMile, 'planned-stretch')
   }
+  // Nothing taken: no trail for the rest of this to be about (the header's
+  // subject rule). Above the map view because taking the map is a gesture on
+  // a map, not on a trail; a hiker panning to the Whites has not chosen one.
+  if (!trailTaken) return undefined
   if (mapStretch !== null) {
     return stretchView(profile, mapStretch, fixPlanMile, 'map-view')
   }

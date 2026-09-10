@@ -1474,7 +1474,7 @@ def test_shared_ground_rides_in_the_tiles_and_never_in_the_lines_file(tmp_path, 
     # beside the five the lines have.
     _, metadata = _tiles_header(manifest)
     (layer,) = metadata["vector_layers"]
-    assert {"concurrent_with", "concurrent_side"} <= set(layer["fields"])
+    assert {"concurrent_with", "concurrent_source", "concurrent_side"} <= set(layer["fields"])
 
 
 def test_the_at_centerline_is_in_the_pool_when_the_fetch_is_there(tmp_path, monkeypatch, capsys):
@@ -1497,6 +1497,7 @@ def test_the_at_centerline_is_in_the_pool_when_the_fetch_is_there(tmp_path, monk
     assert at_half["concurrent_side"] == 1
     assert at_half["blaze_color"] == "White"
     assert at_half["concurrent_with"] == "Ramapo-Dunderberg Trail"
+    assert at_half["concurrent_source"] == "oprhp_trails"
     assert "trail_status" not in at_half
     # The centerline itself is still not a network line.
     assert [f["properties"]["source"] for f in body["features"]] == ["oprhp_trails"]
@@ -1533,4 +1534,4 @@ def test_a_network_with_no_shared_ground_still_cuts_its_tiles(tmp_path, monkeypa
     assert json.loads(Path(concurrent["path"]).read_text()) == {"type": "FeatureCollection", "features": []}
     _, metadata = _tiles_header(manifest)
     (layer,) = metadata["vector_layers"]
-    assert "concurrent_with" not in layer["fields"]
+    assert not {"concurrent_with", "concurrent_source", "concurrent_side"} & set(layer["fields"])

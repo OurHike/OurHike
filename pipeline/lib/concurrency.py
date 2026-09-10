@@ -16,8 +16,10 @@ WHAT IT PRODUCES
 For every stretch where trail A's lines lie within `tolerance_m` of trail
 B's for at least `min_length_m`, TWO features on the SAME geometry - the
 stretch cut out of A's lines - one carrying A's properties and one carrying
-B's, each naming the other in `concurrent_with` and each with a
-`concurrent_side` of +1 or -1. Same coordinates, opposite signs: the client
+B's, each naming the other in `concurrent_with` (and the other's source
+key in `concurrent_source`, so the map can weigh the stretch at the heavier
+of the two tiers) and each with a `concurrent_side` of +1 or -1. Same
+coordinates, opposite signs: the client
 offsets each feature by half a line width times its sign, and because both
 features run the same way the two halves land on opposite sides whatever
 direction either source digitised its line in. Direction-agreement logic
@@ -196,7 +198,8 @@ def find_shared_ground(
     wkt in EPSG:4326, and trail_status where the source has one) from any
     mix of exports. Returns records of the same shape: `wkt` is the shared
     stretch, `concurrent_with` the other trail's name as its own record
-    spells it, `concurrent_side` +1 on the donor's feature and -1 on the
+    spells it, `concurrent_source` the other's source key, `concurrent_side`
+    +1 on the donor's feature and -1 on the
     partner's. Each half's other properties come from the record of that
     trail nearest the stretch's midpoint. Output order is deterministic for
     a given input set.
@@ -280,6 +283,7 @@ def find_shared_ground(
                     "id": f"{donor['id']}~shared~{partner['id']}~{n}",
                     **_carried(donor),
                     "concurrent_with": partner.get("name"),
+                    "concurrent_source": partner.get("source"),
                     "concurrent_side": 1,
                     "wkt": stretch_wkt,
                 }
@@ -289,6 +293,7 @@ def find_shared_ground(
                     "id": f"{partner['id']}~shared~{donor['id']}~{n}",
                     **_carried(partner),
                     "concurrent_with": donor.get("name"),
+                    "concurrent_source": donor.get("source"),
                     "concurrent_side": -1,
                     "wkt": stretch_wkt,
                 }

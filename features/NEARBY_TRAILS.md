@@ -278,7 +278,7 @@ Cross-org rules, recorded from the maintainer's decisions and the spike's eviden
   measured there against UA's 2026-09-10 lines (the shared-kilometres curve flattens at
   8–10 m and ATC's own side trails, which share no ground with the centerline, produce
   nothing over 50 m), a pair of features on one chord — A's properties on one, B's on
-  the other, each naming the other in `concurrent_with`, `concurrent_side` +1 and −1 —
+  the other, each naming the other in `concurrent_with` and `concurrent_source`, `concurrent_side` +1 and −1 —
   goes into `concurrent_trails.geojson` and from there **into the vector tiles only**,
   never into `nearby_trails.geojson`, which eleven scripts read as the network's
   topology. The A.T.'s centerline is in the pool (its raw fetch, simplified to the same

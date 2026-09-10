@@ -65,6 +65,8 @@ def test_a_shared_stretch_becomes_two_features_on_one_geometry_with_opposite_sid
     # Same chord, so the client's offset by sign lands them on opposite
     # sides without either knowing which way the other was digitised.
     assert donor["wkt"] == partner["wkt"]
+    # Each half names the other's source too, for the map's width tiers.
+    assert (donor["concurrent_source"], partner["concurrent_source"]) == ("oprhp_trails", "oprhp_trails")
     # Each half is painted in its own blaze.
     assert (donor["blaze_color"], partner["blaze_color"]) == ("Red", "Yellow")
     # The stretch is the 300 m they share, plus the buffer's overshoot at

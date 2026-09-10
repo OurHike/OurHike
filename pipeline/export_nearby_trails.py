@@ -125,9 +125,10 @@ a mile, the Long Path on the Arden-Surebridge - both sources draw their own
 line on the same pixels and the last painted wins. lib/concurrency.py finds
 those stretches (trail against trail, 10 m and 50 m, both measured there)
 and writes each as a PAIR of features on one chord: the same coordinates,
-each trail's own properties, `concurrent_with` naming the other and
-`concurrent_side` +1 or -1, so the client can offset each half to its own
-side of the line.
+each trail's own properties, `concurrent_with` naming the other,
+`concurrent_source` its source key and `concurrent_side` +1 or -1, so the
+client can offset each half to its own side of the line and weigh the
+stretch at the heavier of the two tiers.
 
 The pool is this export's records plus ATC's CENTERLINE, loaded from the
 A.T. fetch's own raw file through export_trails.py's own functions
@@ -904,8 +905,9 @@ def records_to_geojson(records: list[dict]) -> dict:
                     **({"closure_reason": record["closure_reason"]} if record.get("closure_reason") else {}),
                     **({"closure_source": record["closure_source"]} if record.get("closure_source") else {}),
                     # Only on a shared-ground pair (#1384): the other trail's
-                    # name, and which side of the shared chord this half is.
+                    # name and source, and which side of the chord this half is.
                     **({"concurrent_with": record["concurrent_with"]} if record.get("concurrent_with") else {}),
+                    **({"concurrent_source": record["concurrent_source"]} if record.get("concurrent_source") else {}),
                     **({"concurrent_side": record["concurrent_side"]} if record.get("concurrent_side") else {}),
                 },
                 "geometry": _rounded_geometry(geometry),

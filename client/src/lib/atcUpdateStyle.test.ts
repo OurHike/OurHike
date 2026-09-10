@@ -3,10 +3,9 @@ import {
   ATC_TAPE_IMAGE_ID,
   ATC_UPDATE_CASING_WIDTH,
   ATC_UPDATE_COLOR,
-  ATC_NOTICE_BURST,
   ATC_NOTICE_CASING_RATIO,
   ATC_NOTICE_CASING_WIDTH,
-  ATC_NOTICE_FILL_RADIUS,
+  ATC_NOTICE_GLYPH_BOX,
   ATC_NOTICE_ICON_ID,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_LINE_WIDTH,
@@ -15,7 +14,6 @@ import {
   ATC_UPDATE_POINT_MIN_ZOOM,
   ATC_UPDATE_TAPE_CADENCE,
   ATC_UPDATE_TAPE_SCALE,
-  atcNoticeRimWidths,
   buildAtcUpdateLayers,
 } from './atcUpdateStyle'
 import {
@@ -289,65 +287,27 @@ describe('a point notice', () => {
   })
 })
 
-describe('the burst geometry (#1071)', () => {
+describe('the mark geometry (#1071, and the triangle since 2026-09-10)', () => {
   // The numbers behind the shape, held here rather than in the rasteriser,
   // because they are decisions about what a hiker sees and not about pixels.
   // map/atcNoticeMark.test.ts checks that the image agrees with them.
 
-  it('leaves the middle open, which is the whole change', () => {
-    // A spoke starts halfway out, so the inner half of the mark is a ring of
-    // clear ground with a small dot in it. What a notice is drawn ON - the
-    // centerline, a shelter pin, a ford - sits in that hole.
-    expect(ATC_NOTICE_BURST.innerRadius).toBeGreaterThan(ATC_NOTICE_BURST.hubRadius * 2)
-    expect(ATC_NOTICE_BURST.innerRadius).toBeLessThan(1)
-  })
-
-  it('keeps a dot on the coordinate, so it marks rather than encircles', () => {
-    // Without it the mark is a ring, and a ring reads as drawn AROUND
-    // something. A point notice names one mile marker.
-    expect(ATC_NOTICE_BURST.hubRadius).toBeGreaterThan(0)
-    expect(ATC_NOTICE_BURST.hubRadius * ATC_NOTICE_FILL_RADIUS).toBeGreaterThan(2)
-  })
-
-  it('tapers outward rather than running parallel', () => {
-    // A parallel-sided spoke reads as a cog. The taper is what makes it read
-    // as radiating, which is the thing the mark is saying.
-    expect(ATC_NOTICE_BURST.tipHalfWidth).toBeGreaterThan(ATC_NOTICE_BURST.innerHalfWidth)
-  })
-
-  it('leaves real daylight between neighbouring spokes at walking zoom', () => {
-    // THE PROPERTY THE CHANGE IS BOUGHT WITH, and it was false the first time
-    // this was rendered: with the band's 2px casing the gaps came out 1.7px
-    // wide at the half-width of the day and the mark was a dark disc with red
-    // spokes on it. Measured 2026-08-27 on the shipped geometry: 7.5px of red
-    // against 4.5px of clear ground - and 2.9px of gap if the band's casing is
-    // put back, which is what makes this case the guard on that constant.
-    const { spoke, gap } = atcNoticeRimWidths()
-
-    expect(gap).toBeGreaterThan(3)
-    expect(spoke).toBeGreaterThan(gap)
-    expect(spoke).toBeLessThan(gap * 2)
-  })
-
-  it('still has daylight at the bottom of the zoom ramp', () => {
-    // Where a spoke count is really decided. At z5 the whole mark is 16px, and
-    // this is the bound that rules out the finer eleven-spoke burst: gaps that
-    // close here turn the corridor view back into a solid blob.
-    const { gap } = atcNoticeRimWidths(ATC_UPDATE_POINT_DRAWN_WIDTH * 0.4)
-
-    expect(gap).toBeGreaterThan(1)
+  it('fills its drawn width with the glyph box and a casing on each side', () => {
+    // The derivation, so the two cannot drift: the outer edge of the ink is
+    // the drawn width, and the glyph's box follows from it.
+    expect(ATC_NOTICE_GLYPH_BOX + 2 * ATC_NOTICE_CASING_WIDTH).toBe(
+      ATC_UPDATE_POINT_DRAWN_WIDTH,
+    )
+    expect(ATC_NOTICE_GLYPH_BOX).toBeGreaterThan(ATC_UPDATE_POINT_DRAWN_WIDTH * 0.9)
   })
 
   it('carries the pins’ own hairline rather than the band’s casing', () => {
-    // 1/15 of the radius is map/poiIcons.ts's `edgeWidth`. Using the band's 2px
-    // here is exactly what closed the gaps, because a casing runs down BOTH
-    // sides of every spoke - so this is the constant whose drift would quietly
-    // undo the test above.
+    // 1/15 of the radius is map/poiIcons.ts's `edgeWidth`. The band's 2px
+    // closed the burst's gaps (#1071) because a casing runs down BOTH sides of
+    // every edge, and the triangle's band would lose most of its red the same
+    // way - so this is the constant whose drift would quietly undo the mark.
     expect(ATC_NOTICE_CASING_RATIO).toBe(1 / 15)
     expect(ATC_NOTICE_CASING_WIDTH).toBeLessThan(ATC_UPDATE_CASING_WIDTH)
-    expect(ATC_NOTICE_FILL_RADIUS + ATC_NOTICE_CASING_WIDTH).toBe(
-      ATC_UPDATE_POINT_DRAWN_WIDTH / 2,
-    )
   })
 
   it('has no glow layer left to draw', () => {

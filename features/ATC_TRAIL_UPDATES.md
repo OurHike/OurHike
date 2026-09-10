@@ -444,6 +444,21 @@ droppable without it.)
 > what a hiker came for — and not one strength everywhere, which is the shape of the fault
 > being fixed here.
 
+**Amended 2026-09-10 ([#1374](https://github.com/OurHike/OurHike/pull/1374)) — the mark is the hazard
+triangle, bare.** The maintainer, asked which mark "adopt the warning icon we made" meant, chose the
+serious-warning pin's triangle for the ATC notice marks too. So the point notice is
+`map/warningPin.ts`'s glyph drawn without the pin's disc or halo, in the closure red, at the same
+40px with the same `radius / 15` hairline — the casing is now the glyph grown by that hairline (an
+edge distance rather than the burst's polar half-widths), so it runs one width down the outside of
+the band and up the inside of the hole. What #1071 bought survives: the triangle is a band with an
+exclamation in an empty middle, and the ground reads through the hole. **Measured 2026-09-10 the
+same way: 688.7px² of ink where the burst put 760.1px² and the disc 1,256.6px² (54.8%).** What
+changed is the vocabulary: one triangle means "look", and the same triangle on a 44px disc means a
+person confirmed something serious here — two weights of one mark, where the burst was a shape
+nothing else on the map shared. The `@unvalidated` note above stands unchanged for the triangle.
+`ATC_NOTICE_BURST` and `atcNoticeRimWidths()` are gone with the spokes; `ATC_NOTICE_GLYPH_BOX` is
+the drawn width less a casing on each side.
+
 **The serious-warning pin keeps "the biggest thing on the map"** at the one measurement
 `map/poiIcons.ts` and WIREFRAMES.md actually name: 44px of drawn pin, against the ATC dot's
 40px of ink. The 48px version took it outright and the 40px-declared version tied it, so this

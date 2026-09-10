@@ -22,6 +22,7 @@
 // `extra="forbid"` (features/MAP_OPTIONS.md, features/IDENTITY_AND_PRIVACY.md).
 
 import { DEFAULT_SHOWN_TYPES } from './waypointVisibility'
+import type { DefaultPlace } from './defaultPlace'
 
 /** As a value list like BACKGROUND_SOURCES below, and for the same reason:
  *  preferences.ts drops stored values this build does not know, and it can
@@ -142,6 +143,17 @@ export interface UserPreferences {
    */
   reporter_type: ReporterType | null
 
+  /**
+   * Where this hiker hikes (#1373, first run's "Where do you hike?"): a
+   * park, a town, a trailhead - a place NAMED, snapshotted in full, and
+   * never a GPS fix (lib/defaultPlace.ts). Synced with the rest of this
+   * blob at the maintainer's decision (2026-09-10, #1374), so a second
+   * device opens on the same place; the first draft kept it on the phone.
+   * The permission card's promise - location "is read on this phone and
+   * never sent anywhere" - is about fixes, and stays true.
+   */
+  default_place: DefaultPlace | null
+
   // App-wide display
   theme: Theme
   unit_system: UnitSystem
@@ -254,6 +266,7 @@ export interface UserPreferences {
 export const DEFAULT_PREFERENCES: UserPreferences = {
   trail_name: null,
   reporter_type: null,
+  default_place: null,
 
   theme: 'auto',
   unit_system: 'imperial',

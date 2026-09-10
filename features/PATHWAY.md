@@ -53,7 +53,7 @@ D1 a hike mid-walk **is** editable from step 2, and entering the builder stops f
 
 | step | screen | file |
 |---|---|---|
-| First run — value, **where you hike** (kept on the phone, `lib/defaultPlace.ts`, never synced), the download, location | four cards over the map | `screens/Onboarding.tsx`, `chrome/PlaceField.tsx` over #1371's `places.json` |
+| First run — value, **where you hike** (a synced preference, `default_place`; a place named, never a fix — `lib/defaultPlace.ts`), the download, location | four cards over the map | `screens/Onboarding.tsx`, `chrome/PlaceField.tsx` over #1371's `places.json` |
 | Today — a setup head per mode until something is loaded; the walk dated today as a card; "Ahead of you" as waypoint rows; the pinned Find / Plan bar | | `screens/Today.tsx`, `chrome/PinnedBar.tsx`, `chrome/PoiRow.tsx` |
 | Step 1 · Hike — "Where do you want to go?" | the Plan tab's slot | `screens/PlanStart.tsx`, the bail sheet in `chrome/BailSheet.tsx` |
 | Step 2 · Route — the rail on both builders, the shape as one control | the map, the rail on a desktop | `chrome/DayHikePanel.tsx`, `chrome/DayHikePickBar.tsx`, `chrome/RouteStopsPanel.tsx` |

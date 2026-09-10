@@ -4,16 +4,17 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness, openMapTab } from './test/appHarness'
-import { DEFAULT_PLACE_KEY } from './lib/defaultPlace'
+import { PREFERENCES_KEY } from './lib/preferences'
+import type { UserPreferences } from './lib/userPreferences'
 import type { PlacesDocument } from './lib/places'
 
 // Where the hiker hikes (#1373, first run's frame 1b and More → You), as the
-// shell keeps it: a fact about this phone, in its own store, that decides
+// shell keeps it: a preference (`default_place`, synced since 2026-09-10 at
+// the maintainer's decision - lib/defaultPlace.ts says why) that decides
 // what the map opens on when there is no remembered camera and nothing
 // else. These are the promises across the two doors - first run writes it
 // and the map is built around it; More → You reads it back, changes it and
-// forgets it - and the one promise underneath: the key is never a synced
-// preference (lib/defaultPlace.test.ts holds that half).
+// forgets it.
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -85,9 +86,9 @@ describe('first run’s "where do you hike?"', () => {
       screen.getByRole('button', { name: 'Use Harriman State Park instead' }),
     )
 
-    // Its own key, and a snapshot rather than the index row - no
+    // On the preferences, and a snapshot rather than the index row - no
     // measurement rides along to go stale under the phone.
-    await waitFor(() => expect(app.store.get(DEFAULT_PLACE_KEY)).toEqual(HARRIMAN))
+    await waitFor(() => expect(storedPlace()).toEqual(HARRIMAN))
 
     // The map opens fitted to the park, not to the whole corridor.
     await openMapTab()
@@ -100,11 +101,19 @@ describe('first run’s "where do you hike?"', () => {
   })
 })
 
+/** The place as the preferences blob on the phone holds it. */
+const storedPlace = () =>
+  (app.store.get(PREFERENCES_KEY) as Partial<UserPreferences> | undefined)
+    ?.default_place ?? null
+
 describe('More → You, "Where you hike"', () => {
   beforeEach(() => app.onboard())
 
   it('reads the kept place, and forgets it from the sheet', async () => {
-    app.store.set(DEFAULT_PLACE_KEY, HARRIMAN)
+    app.store.set(PREFERENCES_KEY, {
+      ...(app.store.get(PREFERENCES_KEY) as Partial<UserPreferences> | undefined),
+      default_place: HARRIMAN,
+    })
     const user = userEvent.setup()
     render(<App />)
 
@@ -121,7 +130,7 @@ describe('More → You, "Where you hike"', () => {
       within(sheet).getByRole('button', { name: 'Forget Harriman State Park' }),
     )
 
-    await waitFor(() => expect(app.store.has(DEFAULT_PLACE_KEY)).toBe(false))
+    await waitFor(() => expect(storedPlace()).toBeNull())
     expect(screen.queryByRole('dialog', { name: 'Where you hike' })).toBeNull()
     expect((await screen.findByText('Where you hike')).parentElement).toHaveTextContent(
       'Not set',
@@ -141,9 +150,7 @@ describe('More → You, "Where you hike"', () => {
     await user.click(within(sheet).getByRole('button', { name: /Harriman, TN/ }))
     await user.click(within(sheet).getByRole('button', { name: 'Use Harriman' }))
 
-    await waitFor(() =>
-      expect(app.store.get(DEFAULT_PLACE_KEY)).toMatchObject({ id: 'c1', state: 'TN' }),
-    )
+    await waitFor(() => expect(storedPlace()).toMatchObject({ id: 'c1', state: 'TN' }))
     expect((await screen.findByText('Where you hike')).parentElement).toHaveTextContent(
       'Harriman, TN',
     )

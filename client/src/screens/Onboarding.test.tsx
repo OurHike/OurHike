@@ -476,7 +476,7 @@ describe('the "where do you hike?" card', () => {
       /where do you hike/i,
     )
     expect(
-      screen.getByText(/kept on this phone\. change it any time in more → you\./i),
+      screen.getByText(/kept with your settings.*change it any time in more → you\./i),
     ).toBeInTheDocument()
     // No "Use" button until there is something to use (D10).
     expect(screen.queryByRole('button', { name: /^use /i })).toBeNull()

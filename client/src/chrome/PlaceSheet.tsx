@@ -1,6 +1,5 @@
 // The sheet that changes where a hiker hikes (#1373) - the door More → You
-// promises on first run's frame 1b: "Kept on this phone. Change it any time
-// in More → You."
+// promises on first run's frame 1b: "Change it any time in More → You."
 //
 // One field (chrome/PlaceField.tsx), the place currently kept named above
 // it, and three ways out: take the row just chosen, forget the kept place,
@@ -71,7 +70,10 @@ export function PlaceSheet({
         autoFocus
       />
 
-      <p className="place-sheet__note">Kept on this phone. Never sent anywhere.</p>
+      <p className="place-sheet__note">
+        Kept with your settings: on this phone, and with your account once you sign in. A
+        place you named, never where you are standing.
+      </p>
 
       <div className="place-sheet__actions">
         {picked !== null && (

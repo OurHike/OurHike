@@ -48,13 +48,7 @@ import { formatBytes } from './lib/formatBytes'
 import { nightsBehind } from './lib/nightsBehind'
 import type { StopFacts } from './screens/Today'
 import { usePlaces } from './lib/usePlaces'
-import {
-  clearDefaultPlace,
-  defaultPlaceCamera,
-  loadDefaultPlace,
-  saveDefaultPlace,
-  type DefaultPlace,
-} from './lib/defaultPlace'
+import { defaultPlaceCamera, type DefaultPlace } from './lib/defaultPlace'
 import type { Place } from './lib/places'
 import { PlaceSheet } from './chrome/PlaceSheet'
 import {
@@ -774,7 +768,11 @@ function App() {
    * already waits on covers it and the first map is built around the place
    * rather than around the whole corridor and then moved.
    */
-  const [defaultPlace, setDefaultPlace] = useState<DefaultPlace | null>(null)
+  // A preference since 2026-09-10 (lib/defaultPlace.ts's header says why it
+  // moved off its own store): read from the blob, written through
+  // `updatePreferences` below, so it syncs and the launch mirror's guard
+  // already covers it.
+  const defaultPlace = preferences.default_place
   /** The map's opening view from that place, in MapView's own terms: a box
    *  to fit where the place has one, else a point at a planning zoom. */
   const placeView = useMemo(() => {
@@ -799,23 +797,6 @@ function App() {
   }, [defaultPlace])
   /** The sheet that changes it, from More → You (chrome/PlaceSheet.tsx). */
   const [placeSheetOpen, setPlaceSheetOpen] = useState(false)
-  /** Whether the hiker has set or cleared the place this session - the
-   *  launch read below then leaves state alone, for the reason it gives
-   *  the preferences: a choice made while the record was still loading
-   *  outranks the record. */
-  const defaultPlaceTouched = useRef(false)
-  const handleSaveDefaultPlace = useCallback((place: DefaultPlace) => {
-    defaultPlaceTouched.current = true
-    setDefaultPlace(place)
-    setPlaceSheetOpen(false)
-    void saveDefaultPlace(place).catch(() => {})
-  }, [])
-  const handleClearDefaultPlace = useCallback(() => {
-    defaultPlaceTouched.current = true
-    setDefaultPlace(null)
-    setPlaceSheetOpen(false)
-    void clearDefaultPlace().catch(() => {})
-  }, [])
   // The phone's mode read-out opens Today's switch: a tab selection plus a
   // focus that waits for the render mounting Today (the effect on a counter).
   // Declared up here with the other hooks - below the flow chain there is
@@ -1643,15 +1624,14 @@ function App() {
     // "read once, no flash"): the Today header renders the switch on first
     // paint, and a default that flips a tick later is exactly the flash the
     // mirror exists to prevent - so the mirror carries the mode too.
-    // The kept place rides the same read (#1373): a rejection there is
-    // "no place", never a reason to hold the preferences back.
+    // The open walk rides the same read: a rejection there is "no walk",
+    // never a reason to hold the preferences back.
     void Promise.all([
       loadPreferences(),
       loadHikerMode(),
-      loadDefaultPlace().catch(() => null),
       loadOpenWalk().catch(() => null),
     ]).then(
-      ([stored, mode, place, open]) => {
+      ([stored, mode, open]) => {
         setOpenWalk(open)
         // A choice made in the window before this landed outranks the record:
         // the hiker is looking at what they picked.
@@ -1659,7 +1639,6 @@ function App() {
           setPreferences(stored)
           setHikerMode(mode)
         }
-        if (!defaultPlaceTouched.current) setDefaultPlace(place)
         recordRead.current = true
         setPreferencesLoaded(true)
         markLaunch(LAUNCH_MARKS.preferences)
@@ -6636,6 +6615,20 @@ function App() {
     [persistPreferences],
   )
 
+  /** Where the hiker hikes, set or forgotten from More → You's sheet: a
+   *  preference like any other (lib/defaultPlace.ts), so it syncs. */
+  const handleSaveDefaultPlace = useCallback(
+    (place: DefaultPlace) => {
+      updatePreferences({ default_place: place })
+      setPlaceSheetOpen(false)
+    },
+    [updatePreferences],
+  )
+  const handleClearDefaultPlace = useCallback(() => {
+    updatePreferences({ default_place: null })
+    setPlaceSheetOpen(false)
+  }, [updatePreferences])
+
   /**
    * The legend's three filters - which categories are drawn, whether
    * unconfirmed places are, and the drought tint - owned by
@@ -6703,17 +6696,15 @@ function App() {
       locationRequested,
       defaultPlace: chosen,
     }: OnboardingResult) => {
-      // Where they hike (#1373), kept on this phone and nowhere else - the
-      // reason it is not one of the preference keys written below.
-      if (chosen !== null) {
-        setDefaultPlace(chosen)
-        void saveDefaultPlace(chosen).catch(() => {})
-      }
       // The choice made is the choice written (#277): onboarding's download
       // step speaks the hiking sheet now, so the hiking sheet's preference
       // is what it sets. The USGS raster's tier keeps its default until its
       // own card is used.
       updatePreferences({
+        // Where they hike (#1373) rides the same write as the rest: a
+        // preference, synced (lib/defaultPlace.ts).
+        ...(chosen === null ? {} : { default_place: chosen }),
+
         onboarding_completed: true,
         download_choice_made: true,
         location_permission_requested: locationRequested,

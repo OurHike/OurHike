@@ -453,7 +453,9 @@ export function Onboarding({
               label="Where do you hike"
             />
             <p className="onboarding__reassurance">
-              Kept on this phone. Change it any time in More &rarr; You.
+              Kept with your settings &mdash; on this phone, and with your account once
+              you sign in, so another device opens here too. Change it any time in More
+              &rarr; You.
             </p>
           </section>
         )}

@@ -1,33 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { del, get, set } from 'idb-keyval'
+import { describe, it, expect } from 'vitest'
 import {
-  DEFAULT_PLACE_KEY,
   DEFAULT_PLACE_ZOOM,
-  clearDefaultPlace,
   defaultPlaceCamera,
-  loadDefaultPlace,
   normaliseDefaultPlace,
-  saveDefaultPlace,
   type DefaultPlace,
 } from './defaultPlace'
-import { PREFERENCE_KEYS } from './userPreferences'
-
-vi.mock('idb-keyval', () => ({ get: vi.fn(), set: vi.fn(), del: vi.fn() }))
-
-const store = new Map<string, unknown>()
-
-beforeEach(() => {
-  store.clear()
-  vi.mocked(get).mockImplementation((key) => Promise.resolve(store.get(key as string)))
-  vi.mocked(set).mockImplementation((key, value) => {
-    store.set(key as string, value)
-    return Promise.resolve()
-  })
-  vi.mocked(del).mockImplementation((key) => {
-    store.delete(key as string)
-    return Promise.resolve()
-  })
-})
+import { DEFAULT_PREFERENCES, PREFERENCE_KEYS } from './userPreferences'
+import { normalisePreferences } from './preferences'
 
 const HARRIMAN: DefaultPlace = {
   id: 'oprhp_park_polygons:1',
@@ -40,16 +19,25 @@ const HARRIMAN: DefaultPlace = {
 }
 
 describe('defaultPlace', () => {
-  it('is absent on a phone that has never said where its hiker hikes', async () => {
-    expect(await loadDefaultPlace()).toBeNull()
+  it('is absent on a phone that has never said where its hiker hikes', () => {
+    expect(DEFAULT_PREFERENCES.default_place).toBeNull()
+    expect(normalisePreferences({}).default_place).toBeNull()
   })
 
-  it('round-trips the snapshot, and clears', async () => {
-    await saveDefaultPlace(HARRIMAN)
-    expect(await loadDefaultPlace()).toEqual(HARRIMAN)
-
-    await clearDefaultPlace()
-    expect(await loadDefaultPlace()).toBeNull()
+  it('rides the preferences blob, made safe the way the rest of it is', () => {
+    expect(normalisePreferences({ default_place: HARRIMAN }).default_place).toEqual(
+      HARRIMAN,
+    )
+    // The server sends the optional fields it did not get as null; the
+    // snapshot reads them as absent.
+    expect(
+      normalisePreferences({
+        default_place: { ...HARRIMAN, within: null, category: null } as never,
+      }).default_place,
+    ).toEqual(HARRIMAN)
+    expect(
+      normalisePreferences({ default_place: { ...HARRIMAN, lat: 95 } }).default_place,
+    ).toBeNull()
   })
 
   it('treats a stored value short of a named point as absent rather than trusting it', () => {
@@ -60,18 +48,18 @@ describe('defaultPlace', () => {
     expect(normaliseDefaultPlace({ ...HARRIMAN, bbox: [1, 2, 3] })?.bbox).toBeUndefined()
   })
 
-  it('never joins the synced preferences blob - a location stays on the phone', () => {
-    // The permission step promises location is read on this phone and never
-    // sent anywhere. The key is its own store, like lib/hikerMode.ts's, and
-    // the blob's own key list must not grow a field for it.
-    expect(DEFAULT_PLACE_KEY).not.toBe('ourhike:preferences')
-    // `location_permission_requested` is a legitimate synced key - whether the
-    // question was asked - and is not a location; what must never appear is a
-    // key holding one.
+  it('is a synced preference - a place named, never a fix', () => {
+    // The first draft kept it on the phone under its own key, reading the
+    // permission card's "location is read on this phone and never sent
+    // anywhere" as covering it. The maintainer decided otherwise
+    // (2026-09-10, #1374): that promise is about GPS fixes, and a park chosen
+    // by name from a published index is not one. So it syncs, and a second
+    // device opens on it.
+    expect(PREFERENCE_KEYS).toContain('default_place')
+    // What must never appear on the blob is a fix: a key holding where
+    // somebody is standing rather than where they said they walk.
     expect(
-      PREFERENCE_KEYS.some((key: string) =>
-        /default_(place|location)|home_(place|location)/.test(key),
-      ),
+      PREFERENCE_KEYS.some((key: string) => /fix|position|last_seen|gps/.test(key)),
     ).toBe(false)
   })
 

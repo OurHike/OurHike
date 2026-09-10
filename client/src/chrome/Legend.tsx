@@ -116,7 +116,7 @@
 // is on lib/legendContents.ts's LegendRow, and the consequence here is that
 // the pin drawn is the solid-rimmed one.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 
 import {
   computeLegendContents,
@@ -156,6 +156,11 @@ export interface LegendProps {
    *  panel that is always on screen as an `aria-modal` dialog would tell a
    *  screen-reader user the rest of the app is inert when it is not. */
   persistent?: boolean
+  /** What stands where the title would, on a persistent panel: the rail's
+   *  Legend / In view switch (chrome/MapScreen.tsx, #1374 review), so the
+   *  column beside the map has one head whichever face is up. Ignored on
+   *  the phone's sheet, which keeps its own title and close. */
+  head?: ReactNode
   bbox: BoundingBox
   points: MapPoint[]
   /** Whether a trail from outside the chosen system is on screen (#783), which
@@ -375,6 +380,7 @@ export const NAMED_TRAILS_SHOWN = 5
 export function Legend({
   open,
   persistent = false,
+  head,
   bbox,
   points,
   ghostedTrailsDrawn = false,
@@ -488,18 +494,22 @@ export function Legend({
          keep, which is worse than not claiming it. screens/DownloadsDialog.tsx
          carries the same correction and the argument for it. */
     >
-      <div className="legend__head">
-        <h2 className="legend__title">Legend</h2>
-        {/* A close button on a panel that cannot be reopened is a trap: the
-            control that opens it is hidden at this width precisely because
-            the legend is always there. */}
-        {!persistent && (
-          <button type="button" className="legend__close" onClick={onClose}>
-            <span className="visually-hidden">Close legend</span>
-            <span aria-hidden="true">×</span>
-          </button>
-        )}
-      </div>
+      {persistent && head !== undefined ? (
+        head
+      ) : (
+        <div className="legend__head">
+          <h2 className="legend__title">Legend</h2>
+          {/* A close button on a panel that cannot be reopened is a trap: the
+              control that opens it is hidden at this width precisely because
+              the legend is always there. */}
+          {!persistent && (
+            <button type="button" className="legend__close" onClick={onClose}>
+              <span className="visually-hidden">Close legend</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* The trails on screen (#1283), first, because the map is lines before
           it is pins and the sentence under this block explains those lines.

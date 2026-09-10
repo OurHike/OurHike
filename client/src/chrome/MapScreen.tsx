@@ -985,6 +985,13 @@ export function MapScreen({
    *  legend's own open state used to be: nothing outside this screen opens
    *  or reads it. */
   const [inViewOpen, setInViewOpen] = useState(false)
+  /**
+   * Which face the desktop's rail shows (#1374 review): the persistent
+   * legend, or the In view list docked in the same 17rem column. One face at
+   * a time, switched at the column's head - the desktop's form of the
+   * phone's "one sheet in the lower third". Nothing on a phone reads this.
+   */
+  const [railFace, setRailFace] = useState<'legend' | 'in-view'>('legend')
   /** The pinned workdays inside the viewport (#1373, frame 14d) - the same
    *  "in view" the legend and the waypoint list mean. */
   // What the map is drawing inside the viewport, on the legend's own rule:
@@ -1060,6 +1067,34 @@ export function MapScreen({
   const buildingDayHike =
     dayHikeLive ?? (builderPanel !== undefined && builderPanel !== null)
 
+  /** The desktop's rail beside the map exists: the legend is persistent
+   *  there, and In view is its second face. Stood down with the legend
+   *  while a builder owns the screen. */
+  const railed = isDesktop && !buildingDayHike
+  // The head the rail's two faces share (#1374 review). Tabs, because that
+  // is what they are: one column, two faces, the map untouched either way.
+  const railFaces = railed ? (
+    <div className="rail-faces" role="tablist" aria-label="Beside the map">
+      <button
+        type="button"
+        role="tab"
+        className="rail-faces__face"
+        aria-selected={railFace === 'legend'}
+        onClick={() => setRailFace('legend')}
+      >
+        Legend
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className="rail-faces__face"
+        aria-selected={railFace === 'in-view'}
+        onClick={() => setRailFace('in-view')}
+      >
+        {`In view · ${pointsShown.length}`}
+      </button>
+    </div>
+  ) : undefined
   // The live map, kept here as well as reported upward, because the waypoint
   // card anchors to a pin by projecting its coordinates through the map - and
   // the shell above owns the POI data, not the canvas. Tee'd rather than
@@ -1393,11 +1428,11 @@ export function MapScreen({
                 // The list of what the map is drawing (#1373, frame 12a) -
                 // offered once there is anything to list, and not while a
                 // builder owns the canvas, where the pins are stops. Not on
-                // a desktop: the sheet is absolute against the viewport,
-                // where it would cover the sidebar, the journal and the
-                // persistent legend beside the map, and the legend there is
-                // the standing answer to what is drawn. A desktop In view
-                // is a panel in that rail, which nobody has built.
+                // a desktop: there the list is the legend rail's second
+                // face (`railFace`), reached from the rail's own head - the
+                // phone's sheet is absolute against the viewport and covered
+                // the sidebar, the journal and the legend counting the same
+                // points.
                 inView={
                   pointsShown.length > 0 && !buildingDayHike && !isDesktop
                     ? {
@@ -1674,7 +1709,13 @@ export function MapScreen({
               two doors above), so the lower third has one sheet. A row opens
               the same card a pin does. */}
           <InViewSheet
-            open={inViewOpen && !legendOpen && !buildingDayHike && !isDesktop}
+            open={
+              railed
+                ? railFace === 'in-view'
+                : inViewOpen && !legendOpen && !buildingDayHike
+            }
+            docked={railed}
+            head={railFaces}
             points={pointsShown}
             total={waypointTotal}
             currentMile={hikerMile ?? null}
@@ -1719,8 +1760,9 @@ export function MapScreen({
             // preview photographed. Neither prop is state, so this is a mode
             // rather than a dismissal: cancel the builder and the panel is
             // back, still holding whatever the hiker had set in it.
-            open={legendOpen && !buildingDayHike}
-            persistent={isDesktop && !buildingDayHike}
+            open={legendOpen && !buildingDayHike && !(railed && railFace === 'in-view')}
+            persistent={railed && railFace === 'legend'}
+            head={railFaces}
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}

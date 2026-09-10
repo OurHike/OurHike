@@ -1240,6 +1240,53 @@ describe('the desktop chart (#135)', () => {
     }
   }
 
+  it('carries In view as the legend rail’s second face, one face at a time (#1374 review)', async () => {
+    // The phone's sheet is absolute against the window; on a desktop it
+    // covered the sidebar, the journal and the legend counting the same
+    // points. The rail beside the map now switches between the two.
+    const restore = stubDesktop()
+    try {
+      const user = userEvent.setup()
+      const onSelectPoi = vi.fn()
+      render(
+        <MapScreen
+          {...PROPS}
+          onSelectPoi={onSelectPoi}
+          viewportPoints={[
+            {
+              id: 'w1',
+              type: 'water',
+              lat: 39.5,
+              lon: -77.5,
+              confidence: 'high',
+              name: 'A spring',
+            },
+          ]}
+        />,
+      )
+
+      // No header door above the breakpoint: the rail is where the list is.
+      expect(screen.queryByRole('button', { name: /^In view, \d+/ })).toBeNull()
+      expect(screen.getByRole('region', { name: /legend/i })).toBeInTheDocument()
+
+      await user.click(screen.getByRole('tab', { name: 'In view · 1' }))
+      const panel = screen.getByRole('region', { name: 'In view' })
+      expect(within(panel).getByRole('button', { name: /A spring/ })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /legend/i })).toBeNull()
+      // Docked, the list has nothing to close.
+      expect(within(panel).queryByRole('button', { name: 'Close' })).toBeNull()
+
+      await user.click(within(panel).getByRole('button', { name: /A spring/ }))
+      expect(onSelectPoi).toHaveBeenCalledWith('w1')
+
+      await user.click(screen.getByRole('tab', { name: 'Legend' }))
+      expect(screen.getByRole('region', { name: /legend/i })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'In view' })).toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
   it('stands the chart and the persistent legend down for the day-hike builder', () => {
     // #1194. BOTH of the legend's props have to be gated, and that is the
     // half this got wrong first: Legend.tsx renders unless

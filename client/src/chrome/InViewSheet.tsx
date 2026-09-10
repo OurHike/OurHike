@@ -21,6 +21,7 @@
 // to notice.
 
 import { formatDistance, type UnitSystem } from '../lib/units'
+import type { ReactNode } from 'react'
 import { mileMarker } from '../lib/planDisplay'
 import type { MapPoint } from '../lib/legendContents'
 import {
@@ -56,6 +57,17 @@ export interface InViewSheetProps {
   onSelectPoi: (id: string) => void
   onClose: () => void
   /**
+   * In the desktop's rail rather than a sheet over the map (#1374 review):
+   * a region beside the canvas, wearing the persistent legend's frame, with
+   * `head` - the rail's Legend / In view switch - where the title and close
+   * would be. The phone's sheet was positioned against the whole window and
+   * on a desktop covered the sidebar, the journal and the legend counting
+   * the same points; docked, it is the legend rail's second face and the
+   * map keeps every pixel it had.
+   */
+  docked?: boolean
+  head?: ReactNode
+  /**
    * The workdays in view (#1373, frame 14d), under the waypoints: the pinned
    * rows inside the viewport, the day window the pins are filtered to, and
    * the way to widen it. Undefined when the phone holds no workday in any
@@ -86,6 +98,8 @@ export function InViewSheet({
   onSelectPoi,
   onClose,
   workdays,
+  docked = false,
+  head,
 }: InViewSheetProps) {
   if (!open) return null
 
@@ -104,14 +118,24 @@ export function InViewSheet({
       : `In view · ${points.length} of ${total}`
 
   return (
-    <div className="legend in-view" role="dialog" aria-label="In view">
-      <div className="legend__head">
-        <h2 className="legend__title">{heading}</h2>
-        <button type="button" className="legend__close" onClick={onClose}>
-          <span className="visually-hidden">Close</span>
-          <span aria-hidden="true">×</span>
-        </button>
-      </div>
+    <div
+      className={docked ? 'legend legend--persistent in-view' : 'legend in-view'}
+      role={docked ? 'region' : 'dialog'}
+      aria-label="In view"
+    >
+      {docked && head !== undefined ? (
+        head
+      ) : (
+        <div className="legend__head">
+          <h2 className="legend__title">{heading}</h2>
+          {!docked && (
+            <button type="button" className="legend__close" onClick={onClose}>
+              <span className="visually-hidden">Close</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {rows.length === 0 ? (
         // The honest empty state names what to do next (the README's rule)

@@ -8,11 +8,11 @@ import {
   trailsInView,
 } from './trailsInView'
 import {
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   BLAZE_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
-  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   TAPPABLE_BLAZE_LAYER_IDS,
 } from './style'
 import {
@@ -76,7 +76,7 @@ describe('trailsInView', () => {
   it('lists every named trail the blaze layers are drawing, once each', () => {
     const map = mapWith({
       [BLAZE_LAYER_ID]: [AT],
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Long Path', 'oprhp_trails', [[-74.05, 41.22]], 'Aqua'),
         // The same trail from a second tile.
         line('Long Path', 'oprhp_trails', [[-74.04, 41.23]], 'Aqua'),
@@ -100,7 +100,7 @@ describe('trailsInView', () => {
     // the same `if (name === null) continue` that already kept every
     // unnamed nearby line out above the seam.
     const map = mapWith({
-      [NETWORK_OVERVIEW_DOTTED_LAYER_ID]: [
+      [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID]: [
         line(
           'Long Path',
           'nynjtc_long_path',
@@ -125,7 +125,7 @@ describe('trailsInView', () => {
   it('puts through-routes first, then the chosen system, then the rest by name', () => {
     const map = mapWith({
       [BLAZE_LAYER_ID]: [line('Zebra Spur', 'side_trails', [[-74.05, 41.22]]), AT],
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Beech Trail', 'oprhp_trails', [[-74.06, 41.21]]),
         line('Arden-Surebridge Trail', 'oprhp_trails', [[-74.07, 41.21]]),
       ],
@@ -258,7 +258,7 @@ describe('trailsInView', () => {
 
   it('reads both halves of both splits, and nothing before the style holds them', () => {
     const map = mapWith({
-      [BLAZE_DOTTED_LAYER_ID]: [line('Fault Line', 'unheard_of', [[-74.05, 41.22]])],
+      [BLAZE_UNTAKEN_LAYER_ID]: [line('Fault Line', 'unheard_of', [[-74.05, 41.22]])],
       [NEARBY_BLAZE_LAYER_ID]: [line('Adopted Trail', 'centerline', [[-74.05, 41.22]])],
     })
     expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
@@ -426,7 +426,7 @@ describe('the chrome over the canvas (#1283, the second preview frame)', () => {
 
   it('still lists a trail that is only under the plate: it is on the map', () => {
     const map = screenMap({
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Long Path', 'oprhp_trails', [[100, 30]], 'Aqua'),
       ],
     })
@@ -628,7 +628,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
 
   it('searches only for a through-route, which is the only line that gets a badge', () => {
     const map = screenMap({
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Long Path', 'oprhp_trails', [[100, 400]], 'Aqua'),
       ],
     })

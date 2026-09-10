@@ -256,9 +256,10 @@ export function tappedLineAt(
   // and querying only the first meant a tap on any trail this app does not
   // call the through-route reported nothing at all. That is the sheet #134
   // built and #979 hangs an action on, unreachable on exactly the trails a
-  // day hike is made of. Since #1283 each of those is split into a solid
-  // and a dotted half, and every line outside the chosen system is on a
-  // dotted one - so the list is the style's own, not two names spelled here.
+  // day hike is made of. Since #1283 each of those is split into a taken
+  // and an untaken half, and every line outside the chosen system is on an
+  // untaken one - so the list is the style's own, not two names spelled
+  // here.
   //
   // Rule 2 below is unchanged and is what makes the extra layers safe:
   // among several lines the narrow specific one wins, and a ghosted trail is

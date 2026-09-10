@@ -31,8 +31,8 @@
 // screen, the line drawn as the map draws it, the name, and `taken` on the
 // trail the map is about. The maintainer's design handoff asked for it
 // because on the desktop this is a permanent panel beside a map that, since
-// the dot rhythm and the badges, is a sheet of lines only one of which wears
-// its name - and the block is the key to the rest. Rows are sorted the way
+// the badges, is a sheet of lines only one of which wears its name - and
+// the block is the key to the rest. Rows are sorted the way
 // the map ranks them: through-routes first, then the chosen system, then by
 // name. map/trailsInView.ts measures the list on the same settled frame as
 // the counts, so the panel cannot name a trail the canvas is not drawing.

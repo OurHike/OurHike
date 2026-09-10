@@ -29,11 +29,11 @@
 //
 // And since #1283 a fourth, which is a line and not a pin: the trail swatch
 // beside each row of the legend's "Trails in view" block, drawn as the map
-// draws that line - solid or dotted, at its own tier's width, in its own
-// ink, ghosted if it is not the chosen system's. Every number in it comes
-// from map/style.ts and map/nearbyTrails.ts, for the reason the pins' come
-// from poiIcons.ts: a second table of blaze hexes or dash pitches in this
-// file is the drift the header above exists to prevent.
+// draws that line - solid, at its own tier's width, in its own ink over its
+// casing, ghosted if it is not the chosen system's. Every number in it
+// comes from map/style.ts and map/nearbyTrails.ts, for the reason the pins'
+// come from poiIcons.ts: a second table of blaze hexes in this file is the
+// drift the header above exists to prevent.
 
 import {
   badgeCenters,
@@ -50,18 +50,12 @@ import './mapIcon.css'
 import { WARNING_GLYPH, WARNING_ICON_ID } from './warningPin'
 import { blazePaintColor } from '../lib/blaze'
 import type { SheetAppearance } from './liveTopo'
-import {
-  NEARBY_TRAIL_DASHARRAY,
-  NEARBY_TRAIL_OPACITY,
-  CHOSEN_TRAIL_OPACITY,
-} from './nearbyTrails'
+import { NEARBY_TRAIL_OPACITY, CHOSEN_TRAIL_OPACITY } from './nearbyTrails'
 import {
   CASING_OVERHANG,
-  NEAR_WHITE_BLAZES,
   PRIMARY_TRAIL_WIDTH,
   RED_LIGHT_BLAZE_COLOR,
   SIDE_TRAIL_WIDTH,
-  inksNearWhiteAsCasing,
   redLightActive,
   trailCasingColor,
 } from './style'
@@ -378,11 +372,12 @@ export interface TrailLineSwatchProps {
   blazeColor: string | null
   /** Drawn at the through-route width, or the side-trail width. */
   throughRoute: boolean
-  /** In the chosen system: solid and full-strength. Otherwise dotted and
-   *  ghosted, exactly as the map draws every other line. */
+  /** In the chosen system: full-strength. Otherwise ghosted, exactly as the
+   *  map draws every other line. (It decided solid against dotted until
+   *  2026-09-10 - map/style.ts's header, rule 2.) */
   chosen: boolean
-  /** Which sheet the map is drawn in, for the casing ink and the near-white
-   *  rule. Defaults to the field day sheet, which is what a legend rendered
+  /** Which sheet the map is drawn in, for the casing ink and red light.
+   *  Defaults to the field day sheet, which is what a legend rendered
    *  without a map behind it should assume. */
   appearance?: SheetAppearance
   className?: string
@@ -391,13 +386,12 @@ export interface TrailLineSwatchProps {
 /**
  * One trail line, as the map draws it, in a 24px box (#1283).
  *
- * Solid or dotted follows `chosen`, the width follows `throughRoute`, and
- * the ink follows the same three rules map/style.ts's blazeLineColor keeps:
- * red light's one hue, a near-white blaze inked in the casing colour with no
- * casing on a day sheet, and the blaze's own hex otherwise. The dot pitch is
- * NEARBY_TRAIL_DASHARRAY's - two line widths - and the casing under a dotted
- * line is dotted at the same pitch, which SVG makes trivial (its dasharray
- * is absolute) where MapLibre needed a second constant.
+ * Opacity follows `chosen`, the width follows `throughRoute`, and the ink
+ * follows the rules map/style.ts's blazeLineColor keeps for a CASED line:
+ * red light's one hue, or the blaze's own hex over the sheet's casing - a
+ * white blaze white with its dark edge, the way the real line draws it
+ * since 2026-09-10 (the near-white dark ink is the uncased sketches' rule
+ * only, DARK_INKED_BLAZE_LAYER_IDS, and no sketch has a legend row).
  */
 export function TrailLineSwatch({
   blazeColor,
@@ -407,23 +401,11 @@ export function TrailLineSwatch({
   className,
 }: TrailLineSwatchProps) {
   const width = throughRoute ? PRIMARY_TRAIL_WIDTH : SIDE_TRAIL_WIDTH
-  const nearWhite = blazeColor !== null && NEAR_WHITE_BLAZES.includes(blazeColor)
-  // `!chosen` since #1306, exactly as the map's own layers do it
-  // (DARK_INKED_BLAZE_LAYER_IDS): the dark ink is the DOTTED line's rule,
-  // and a taken near-white trail keeps its white blaze and its casing. A
-  // swatch that kept inking it dark would be the legend contradicting the
-  // canvas beside it, which is the failure this component exists to prevent.
-  const inkedAsCasing = nearWhite && !chosen && inksNearWhiteAsCasing(appearance)
   const casing = trailCasingColor(appearance)
   const ink = redLightActive(appearance)
     ? RED_LIGHT_BLAZE_COLOR
-    : inkedAsCasing
-      ? casing
-      : blazePaintColor(blazeColor ?? 'Unknown')
+    : blazePaintColor(blazeColor ?? 'Unknown')
   const opacity = chosen ? CHOSEN_TRAIL_OPACITY : NEARBY_TRAIL_OPACITY
-  // The blaze's dots are `width` wide at a pitch of NEARBY_TRAIL_DASHARRAY[1]
-  // widths; in SVG's absolute units that is one number both strokes share.
-  const dash = chosen ? undefined : `0 ${NEARBY_TRAIL_DASHARRAY[1] * width}`
   const path = `M ${width} ${SWATCH / 2} H ${SWATCH - width}`
 
   return (
@@ -433,20 +415,16 @@ export function TrailLineSwatch({
       // Decorative, like the pins: the row names the trail beside it.
       aria-hidden="true"
       focusable="false"
-      data-drawn={chosen ? 'solid' : 'dotted'}
     >
-      {!inkedAsCasing && (
-        <path
-          className="map-icon__trail-casing"
-          d={path}
-          fill="none"
-          stroke={casing}
-          strokeWidth={width + CASING_OVERHANG * 2}
-          strokeLinecap="round"
-          strokeOpacity={CASING_OPACITY * opacity}
-          strokeDasharray={dash}
-        />
-      )}
+      <path
+        className="map-icon__trail-casing"
+        d={path}
+        fill="none"
+        stroke={casing}
+        strokeWidth={width + CASING_OVERHANG * 2}
+        strokeLinecap="round"
+        strokeOpacity={CASING_OPACITY * opacity}
+      />
       <path
         className="map-icon__trail-blaze"
         d={path}
@@ -455,7 +433,6 @@ export function TrailLineSwatch({
         strokeWidth={width}
         strokeLinecap="round"
         strokeOpacity={opacity}
-        strokeDasharray={dash}
       />
     </svg>
   )

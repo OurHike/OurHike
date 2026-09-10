@@ -7,7 +7,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
-import { BLAZE_DOTTED_LAYER_ID, BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
+import { BLAZE_UNTAKEN_LAYER_ID, BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
 import { TRAIL_BADGE_LAYER_ID } from './trailBadges'
 import { CORRIDOR_HIGHLIGHT_LAYER_ID, HIGHLIGHT_ID_PROPERTY } from './corridorLayers'
 import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
@@ -457,7 +457,7 @@ describe('the through-route badge (#1283)', () => {
   // Not a switch: features/NEARBY_TRAILS.md §2's decision stands.
   function badgeMap(): MockMap {
     const map = buildMap()
-    map.layerIds = [...map.layerIds, TRAIL_BADGE_LAYER_ID, BLAZE_DOTTED_LAYER_ID]
+    map.layerIds = [...map.layerIds, TRAIL_BADGE_LAYER_ID, BLAZE_UNTAKEN_LAYER_ID]
     return map
   }
 
@@ -521,15 +521,15 @@ describe('the through-route badge (#1283)', () => {
     expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
   })
 
-  it('reads the dotted layers too, where every line outside the chosen system now draws', () => {
+  it('reads the untaken layers too, where every line outside the chosen system draws', () => {
     const map = badgeMap()
-    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [
+    map.renderedFeatures.set(BLAZE_UNTAKEN_LAYER_ID, [
       line('oprhp:42', 'oprhp_trails', 'Aqua', 'Long Path'),
     ])
 
     const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
     expect(tapped?.name).toBe('Long Path')
     const queried = map.featureQueries.map((q) => q.layers)
-    expect(queried).toContainEqual(expect.arrayContaining([BLAZE_DOTTED_LAYER_ID]))
+    expect(queried).toContainEqual(expect.arrayContaining([BLAZE_UNTAKEN_LAYER_ID]))
   })
 })

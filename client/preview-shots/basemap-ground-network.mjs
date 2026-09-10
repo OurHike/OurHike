@@ -36,7 +36,7 @@
 export const caption =
   'The live sheet at Harpers Ferry — roads as single strokes, other trails quieted (#1074)'
 export const alt =
-  'The map screen over Harpers Ferry at zoom 14: roads drawn as thin single strokes rather than cased ribbons, dotted side trails in a pale ink, contours and woodland behind them'
+  'The map screen over Harpers Ferry at zoom 14: roads drawn as thin single strokes rather than cased ribbons, fine side trails in a pale ink, contours and woodland behind them'
 
 /** Tiles and generated contours over a town both take longer than chrome. */
 export const wait = 6000

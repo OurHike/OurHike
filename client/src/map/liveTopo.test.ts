@@ -639,10 +639,10 @@ describe('the offline-only background', () => {
       // whose opening camera has to draw the network from the stored
       // overview, and the tape is the safety half - closed ground stays
       // closed-looking below the seam with no signal at all.
-      // Its dotted half under its solid half (#1283): every line outside
-      // the chosen system is a dot rhythm, on a layer of its own beneath
-      // the one the taken trail draws solid on.
-      'network-overview-line-dotted',
+      // Its untaken half under its taken half (#1283): every line outside
+      // the chosen system is on a layer of its own beneath the one the
+      // taken trail draws on.
+      'network-overview-line-untaken',
       'network-overview-line',
       'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
@@ -676,10 +676,10 @@ describe('the offline-only background', () => {
       // two lines are coincident the last-drawn one owns the pixels whatever
       // its opacity, and it must not be the nearby one.
       //
-      // Four since #1283: the dotted pair under the solid pair, the same
+      // Four since #1283: the untaken pair under the taken pair, the same
       // split the chosen trail's own source gets below.
-      'nearby-trail-casing-dotted',
-      'nearby-trail-blaze-dotted',
+      'nearby-trail-casing-untaken',
+      'nearby-trail-blaze-untaken',
       'nearby-trail-casing',
       'nearby-trail-blaze',
       // A nearby trail closed long-term gets the same barrier tape the A.T.'s
@@ -687,8 +687,8 @@ describe('the offline-only background', () => {
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
       'nearby-long-term-closure-band',
-      'trail-casing-dotted',
-      'trail-blaze-dotted',
+      'trail-casing-untaken',
+      'trail-blaze-untaken',
       'trail-casing',
       'trail-blaze',
       // Trail names (#930) directly over the lines they name, and — the half

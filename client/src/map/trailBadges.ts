@@ -83,7 +83,7 @@ export const TRAIL_BADGE_LAYER_ID = 'trail-badge'
  * A badge is a claim that the line is a destination, so exactly the tier the
  * map already keys width and sort order off wears one. That is what keeps the
  * badge count roughly constant as networks are added: a state park's forty
- * trails add forty dotted lines and forty along-line names, and no badges.
+ * trails add forty fine lines and forty along-line names, and no badges.
  * The Long Path joined this tier at #1307, the first source promoted off
  * export_nearby_trails.py's write_overview naming it below the seam.
  */

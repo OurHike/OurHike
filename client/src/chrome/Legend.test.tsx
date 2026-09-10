@@ -1592,13 +1592,19 @@ describe('the "Trails in view" block (#1283)', () => {
     )
   })
 
-  it('draws the taken trail solid and every other row dotted, as the map does', () => {
+  it('draws every row solid and marks the taken one in words, as the map does', () => {
+    // The rows were solid against dotted until 2026-09-10 (map/style.ts's
+    // header, rule 2). What still separates them on the canvas is opacity,
+    // and on this panel the word.
     render(<Legend {...PROPS} trailsInView={TRAILS} />)
     const block = screen.getByRole('region', { name: 'Trails in view' })
     const [at, longPath] = within(block).getAllByRole('listitem')
 
-    expect(at.querySelector('svg')?.getAttribute('data-drawn')).toBe('solid')
-    expect(longPath.querySelector('svg')?.getAttribute('data-drawn')).toBe('dotted')
+    for (const row of [at, longPath]) {
+      expect(row.querySelector('.map-icon__trail-blaze')).not.toHaveAttribute(
+        'stroke-dasharray',
+      )
+    }
     expect(within(at).getByText('taken')).toBeInTheDocument()
     expect(within(longPath).queryByText('taken')).toBeNull()
   })

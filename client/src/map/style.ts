@@ -7,31 +7,42 @@
 //     source imported later inherits the rule instead of needing its own layer.
 //     That expression lives in lib/blaze.ts and is imported, never re-spelled.
 //
-//  2. The CHOSEN system's lines are SOLID and one colour end to end; every
-//     other line is a dot rhythm (#1283). Lines used to be dashed on a
-//     per-blaze rhythm, and the rhythm was the map's second hue-independent
-//     channel. What that actually produced on screen was a line alternating
-//     between its blaze colour and the dark casing showing through each gap -
-//     and on the AT centerline, whose blaze is very nearly white, the gaps
-//     read as the line. A hiker looking for the trail they are standing on
-//     found a dotted grey-and-white thread through the contours. A solid
-//     line over a casing is the older, plainer cartographic answer and it is
-//     legible at a glance, which is the property that matters most.
+//  2. EVERY trail line is SOLID and one colour end to end. Lines used to be
+//     dashed on a per-blaze rhythm, and the rhythm was the map's second
+//     hue-independent channel. What that actually produced on screen was a
+//     line alternating between its blaze colour and the dark casing showing
+//     through each gap - and on the AT centerline, whose blaze is very
+//     nearly white, the gaps read as the line. A hiker looking for the trail
+//     they are standing on found a dotted grey-and-white thread through the
+//     contours. A solid line over a casing is the older, plainer
+//     cartographic answer and it is legible at a glance, which is the
+//     property that matters most.
 //
-//     THE DOTS ARE NOT THAT REGRESSION COMING BACK, and three things keep
-//     them from being it. The taken trail is never dotted, so the line a
-//     hiker is standing on is the solid one. The casing under a dotted line
-//     is dotted at the same pitch (NEARBY_TRAIL_CASING_DASHARRAY), so no gap
-//     ever shows a casing through. And a near-white line is inked in the
-//     casing colour and drawn with no casing at all (NEAR_WHITE_BLAZES), so
-//     the one blaze that made the old dashes unreadable no longer depends on
-//     a casing for its edge. What the dots buy is the opening camera: with a
-//     country's worth of trails on one screen, opacity alone could not say
-//     which of them the map was about. map/nearbyTrails.ts owns the rule and
-//     the two filters the split is built from.
+//     THE DOTS CAME BACK ONCE AND WENT AGAIN, and the split they left is
+//     still here. #1283 (the maintainer's design handoff, 2026-09-08) drew
+//     every line outside the chosen system as a dot rhythm on a layer of
+//     its own under the solid one, to say at the opening camera which of a
+//     country's worth of trails the map was about; #1306 then inked an
+//     untaken near-white line dark, because a dotted white line has nothing
+//     between its two rails. The maintainer took both back on a Hudson
+//     Highlands frame at z13 (2026-09-10): "the dashes are distracting" and
+//     "the AT is now black, and not its white blaze - make it white". So
+//     every line is solid again, a white blaze is white with its casing on
+//     every layer that has a casing, and the dark ink survives only on the
+//     two corridor-view sketches, which have no casing pair
+//     (DARK_INKED_BLAZE_LAYER_IDS). What the split still carries is one
+//     number and one order: an untaken line below the seam draws at the
+//     network's far weight rather than its own tier
+//     (untakenTrailWidthExpression), and sits UNDER the taken trail's pair.
+//     Folding that into one layer per source is possible - the width is a
+//     data-driven expression and the order a sort key - and has not been
+//     done, because the split's names are in every tap handler, probe and
+//     test, and what the maintainer asked for was the picture, not the
+//     layer count. map/nearbyTrails.ts owns the two filters the split is
+//     built from.
 //
-//     WIDTH carries the hue-independent channel instead, and carries more than
-//     the rhythm did: a system's through-route is drawn markedly wider than the
+//     WIDTH carries the hue-independent channel, and carries more than the
+//     rhythm did: a system's through-route is drawn markedly wider than the
 //     side trails hanging off it, so the line the map is about is findable with
 //     colour removed entirely - by glare, by greyscale (WIREFRAMES.md `9d`), or
 //     by colour vision deficiency. Width is keyed off the pipeline's own
@@ -129,7 +140,6 @@ import {
   CHOSEN_SYSTEM_SOURCES,
   chosenSystemFilter,
   chosenSystemSources,
-  NEARBY_TRAIL_DASHARRAY,
   nearbyTrailFilter,
   nearbyTrailOpacityExpression,
 } from './nearbyTrails'
@@ -244,19 +254,22 @@ export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
 export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
 
 /**
- * The dotted half of each trail-line split (#1283, map/nearbyTrails.ts).
+ * The untaken half of each trail-line split (#1283, map/nearbyTrails.ts).
  *
- * The ids without a suffix keep drawing the chosen system, solid, exactly as
- * they did - which is what keeps every tap handler, probe and repaint that
- * already names them correct for the taken trail. Each gains a `-dotted`
- * twin drawing every other line as a dot rhythm, UNDER it, so the taken trail
- * is never crossed by a dot.
+ * The ids without a suffix keep drawing the chosen system exactly as they
+ * did - which is what keeps every tap handler, probe and repaint that
+ * already names them correct for the taken trail. Each has an `-untaken`
+ * twin drawing every other line UNDER it, at the network's far weight below
+ * the seam, so the taken trail is never crossed by a line that is not it.
+ * The twins were `-dotted` until 2026-09-10 (this file's header, rule 2);
+ * the suffix changed with the drawing, so a layer's name still says what it
+ * draws.
  */
-export const TRAIL_CASING_DOTTED_LAYER_ID = 'trail-casing-dotted'
-export const BLAZE_DOTTED_LAYER_ID = 'trail-blaze-dotted'
-export const NEARBY_TRAIL_CASING_DOTTED_LAYER_ID = 'nearby-trail-casing-dotted'
-export const NEARBY_BLAZE_DOTTED_LAYER_ID = 'nearby-trail-blaze-dotted'
-export const NETWORK_OVERVIEW_DOTTED_LAYER_ID = 'network-overview-line-dotted'
+export const TRAIL_CASING_UNTAKEN_LAYER_ID = 'trail-casing-untaken'
+export const BLAZE_UNTAKEN_LAYER_ID = 'trail-blaze-untaken'
+export const NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID = 'nearby-trail-casing-untaken'
+export const NEARBY_BLAZE_UNTAKEN_LAYER_ID = 'nearby-trail-blaze-untaken'
+export const NETWORK_OVERVIEW_UNTAKEN_LAYER_ID = 'network-overview-line-untaken'
 
 /**
  * Every casing under a blaze, and every layer painting a blaze colour -
@@ -272,58 +285,51 @@ export const NETWORK_OVERVIEW_DOTTED_LAYER_ID = 'network-overview-line-dotted'
  */
 export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
   TRAIL_CASING_LAYER_ID,
-  TRAIL_CASING_DOTTED_LAYER_ID,
+  TRAIL_CASING_UNTAKEN_LAYER_ID,
   NEARBY_TRAIL_CASING_LAYER_ID,
-  NEARBY_TRAIL_CASING_DOTTED_LAYER_ID,
+  NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
 ]
 /**
  * The blaze layers that ink a near-white line in the casing's colour on a
- * day sheet, and the ones that leave it white (#1306).
+ * day sheet: the two corridor-view sketches, which have no casing pair
+ * (#1306, and the maintainer's reversal of 2026-09-10).
  *
- * The rule used to be "every day sheet", and the maintainer overruled it on
- * the frame rather than in the abstract: a TAKEN A.T. drawn in the casing's
- * ink is a black line across the country ("that is not a dashed line / it
- * looks like a black line", 2026-09-09), where what a hiker expects of the
- * trail they have taken is the white blaze with its dark edge - which is
- * what a casing is for and what every paper map draws.
+ * The rule used to be "every day sheet", and was overruled on the frame
+ * twice. First a TAKEN A.T. drawn in the casing's ink was a black line
+ * across the country ("that is not a dashed line / it looks like a black
+ * line", 2026-09-09), so #1306 made the ink follow the dot rhythm: dark
+ * under dots, white with its casing when solid. Then the dots went
+ * (2026-09-10, "the AT is now black, and not its white blaze - make it
+ * white"), and with every real line solid and cased there is nothing left
+ * for the dark ink to fix on them: a white blaze between two dark rails is
+ * what every paper map draws, and it is what the maintainer asked for.
  *
- * So the ink follows the DOT RHYTHM rather than the sheet alone. The
- * original argument survives exactly where it bites: a dotted white line
- * has nothing between its two dark rails, so an untaken near-white trail is
- * inked dark and drawn without a casing. A solid one keeps its white blaze
- * and its casing.
- *
- * BOTH SKETCHES ARE IN THE DARK LIST WHATEVER THEY DRAW, and that is the
- * one place the old unconditional rule stands: neither has a casing pair
+ * BOTH SKETCHES STAY IN THE LIST WHATEVER THEY DRAW, and that is the one
+ * place the old unconditional rule stands: neither has a casing pair
  * (buildNetworkOverviewLayer and the sketch layer both say so), and a white
  * line with no edge at all is the empty-looking frame #1291 exists to
- * prevent. The cost is a taken A.T. changing ink once, when the real line
- * replaces the sketch; at the corridor camera both read as a dark-edged
- * stroke of the same weight, which is the least bad of the three options.
+ * prevent. The cost is the A.T. changing ink once at the seam, when the real
+ * line replaces the sketch; at the corridor camera both read as a
+ * dark-edged stroke of the same weight, which is the least bad of the three
+ * options. Giving the sketches a casing pair would end the swap and this
+ * list with it - not done here, because nobody has looked at a cased
+ * 1.5 px line over the opening camera's park clusters, which is the texture
+ * NETWORK_OVERVIEW_WIDTH_EXPRESSION's taper exists to keep off that view.
  */
 export const DARK_INKED_BLAZE_LAYER_IDS: readonly string[] = [
-  BLAZE_DOTTED_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
-  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
-]
-
-/** The casing halves that go to zero under a near-white line, the other
- *  half of the rule above: the dotted ones, whose blaze is inked dark. */
-export const DOTTED_TRAIL_CASING_LAYER_IDS: readonly string[] = [
-  TRAIL_CASING_DOTTED_LAYER_ID,
-  NEARBY_TRAIL_CASING_DOTTED_LAYER_ID,
 ]
 
 export const BLAZE_LINE_LAYER_IDS: readonly string[] = [
   BLAZE_LAYER_ID,
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
-  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
 ]
 export const TRAIL_LINE_LAYER_IDS: readonly string[] = [
   ...TRAIL_CASING_LAYER_IDS,
@@ -343,11 +349,11 @@ export const TRAIL_LINE_LAYER_IDS: readonly string[] = [
  *  though its layer is included here. */
 export const TAPPABLE_BLAZE_LAYER_IDS: readonly string[] = [
   BLAZE_LAYER_ID,
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
-  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
 ]
 
 /**
@@ -526,25 +532,26 @@ export const RED_LIGHT_BLAZE_COLOR = '#e8804a'
  * Blazes with no edge of their own on white paper. Today: White (#1283).
  *
  * lib/blaze.ts measures White against the field sheet's paper at 1.02:1 and
- * keeps it because "its width and casing are what carry it". What the casing
- * actually drew was the #336-shaped complaint the design handoff answers: a
- * near-white line between two dark rails reads as two dark rails, not as one
- * trail, and once the line is dotted there is nothing between the rails at
- * all. So on a DAY sheet a near-white blaze is inked in the casing colour and
- * drawn with no casing - one dark line, the way a paper map draws the trail
- * it is about. Blaze identity moves to the badge's chip, the legend's swatch
- * and the tapped line's sheet: the same trade blazeLineColor already makes
- * for red light.
+ * keeps it because "its width and casing are what carry it". On a layer
+ * with a casing that is the whole answer, and since 2026-09-10 it is the
+ * only answer for a real line: the maintainer's "make it white" on the
+ * frame (this file's header, rule 2). Where a layer has NO casing - the two
+ * corridor-view sketches - a near-white blaze on a DAY sheet is inked in the
+ * casing colour instead, one dark line rather than no visible line, which
+ * is the empty frame #1291 exists to prevent. Blaze identity there moves to
+ * the badge's chip, the legend's swatch and the tapped line's sheet: the
+ * same trade blazeLineColor already makes for red light.
  *
  * DARK SHEETS ARE LEFT ALONE, and the guard is the whole reason this is a
  * function of the appearance: trailCasingColor is near-black on every dark
- * sheet, so inking White in it would make the A.T. invisible on ink. There a
- * white line has exactly the surround it needs, and keeps its normal casing.
+ * sheet, so inking White in it would make the A.T. invisible on ink. There
+ * a white line has exactly the surround it needs.
  */
 export const NEAR_WHITE_BLAZES: readonly string[] = ['White']
 
-/** Whether the sheet inks near-white blazes in the casing colour: day
- *  sheets only, red light included in the dark half by construction. */
+/** Whether the sheet inks near-white blazes in the casing colour on a layer
+ *  with no casing: day sheets only, red light included in the dark half by
+ *  construction. */
 export function inksNearWhiteAsCasing(appearance: SheetAppearance): boolean {
   return !sheetIsDark(appearance)
 }
@@ -555,12 +562,14 @@ function nearWhiteBlazeCondition(): unknown[] {
 
 /**
  * `line-color` for every blaze layer, per appearance: red light's one hue,
- * or the shared blaze match with near-white swapped for the sheet's casing
- * ink on day sheets - see NEAR_WHITE_BLAZES.
+ * or the shared blaze match - with near-white swapped for the sheet's
+ * casing ink on day sheets where the layer draws with no casing under it
+ * (`cased: false`, the sketches; see NEAR_WHITE_BLAZES). A cased line is
+ * the match on every sheet: white stays white, and the casing is its edge.
  */
-export function blazeLineColor(appearance: SheetAppearance, dotted = true): unknown {
+export function blazeLineColor(appearance: SheetAppearance, cased: boolean): unknown {
   if (redLightActive(appearance)) return RED_LIGHT_BLAZE_COLOR
-  if (!dotted || !inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
+  if (cased || !inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
   return [
     'case',
     nearWhiteBlazeCondition(),
@@ -611,34 +620,25 @@ export function attachMapAppearance(
       // TRAIL_LINE_LAYER_IDS gives. Writing the blaze colour unconditionally
       // is what makes leaving red light an actual restore: the match
       // expression goes back exactly as buildMapStyle spelled it. The casing
-      // WIDTH is repainted too, because it is a function of the appearance
-      // now (zero under a near-white line on day sheets, NEAR_WHITE_BLAZES),
-      // and a casing left at the night sheet's width would put the two dark
-      // rails back under the A.T. on the way to day.
+      // WIDTH is not repainted: it stopped being a function of the
+      // appearance on 2026-09-10, when the zero-under-near-white casing went
+      // with the dot rhythm (this file's header, rule 2).
       for (const layerId of TRAIL_CASING_LAYER_IDS) {
         if (map.getLayer(layerId) === undefined) continue
-        const dotted = DOTTED_TRAIL_CASING_LAYER_IDS.includes(layerId)
         map.setPaintProperty(layerId, 'line-color', trailCasingColor(appearance) as never)
-        map.setPaintProperty(
-          layerId,
-          'line-width',
-          (dotted
-            ? dottedTrailCasingWidthExpression(appearance)
-            : solidTrailCasingWidthExpression(appearance)) as never,
-        )
       }
       for (const layerId of BLAZE_LINE_LAYER_IDS) {
         if (map.getLayer(layerId) === undefined) continue
-        // Per layer since #1306: the dotted halves and both sketches ink a
-        // near-white line dark, the solid halves leave it white. One colour
-        // for all of them would put the black line back on a taken trail at
-        // every theme switch.
+        // Per layer: the two sketches ink a near-white line dark, because
+        // they have no casing to edge it; every cased line leaves it white.
+        // One colour for all of them would put the black line back on the
+        // A.T. at every theme switch (DARK_INKED_BLAZE_LAYER_IDS).
         map.setPaintProperty(
           layerId,
           'line-color',
           blazeLineColor(
             appearance,
-            DARK_INKED_BLAZE_LAYER_IDS.includes(layerId),
+            !DARK_INKED_BLAZE_LAYER_IDS.includes(layerId),
           ) as never,
         )
       }
@@ -836,28 +836,30 @@ function trailLinesDrawn(map: MapLibreMap): boolean {
   return map.isSourceLoaded(TRAILS_SOURCE_ID)
 }
 
-/** Whether the A.T.'s own sketch draws dotted: it does whenever the A.T.'s
- *  through-route source is not in the chosen system - nothing taken, or
- *  some other trail taken (#1306). */
-function sketchDotted(chosen: readonly string[]): boolean {
+/** Whether the A.T.'s own sketch draws as an untaken line: it does whenever
+ *  the A.T.'s through-route source is not in the chosen system - nothing
+ *  taken, or some other trail taken (#1306). */
+function sketchUntaken(chosen: readonly string[]): boolean {
   return !PRIMARY_TRAIL_SOURCES.some((source) => chosen.includes(source))
 }
 
 /**
- * The A.T. sketch's `line-width`: the dotted taper while the A.T. is not
+ * The A.T. sketch's `line-width`: the untaken taper while the A.T. is not
  * taken, its own tier once it is (#1306).
  *
- * Not a third rule - the SAME expression the real dotted line takes
- * (dottedTrailWidthExpression carries the argument and the frame), because
+ * Not a third rule - the SAME expression the real untaken line takes
+ * (untakenTrailWidthExpression carries the argument and the frame), because
  * the sketch's whole contract is that a hiker cannot see the moment the
- * real line replaces it. A taken A.T. is solid at TRAIL_WIDTH_EXPRESSION,
+ * real line replaces it. A taken A.T. is at TRAIL_WIDTH_EXPRESSION,
  * unchanged from before #1306: 4.5 px is the emphasis the prototype's
- * x2.1 is for. Whether a hiker reads a 1.5 px dark dot rhythm from Georgia
- * to Maine as the A.T., with no badge below the seam (#1292) to name it,
- * is @unvalidated beyond the preview frame.
+ * x2.1 is for. Whether a hiker reads a 1.5 px dark line from Georgia to
+ * Maine as the A.T., with no badge below the seam (#1292) to name it, is
+ * @unvalidated beyond the preview frame.
  */
 export function sketchWidthExpression(chosen: readonly string[]): unknown {
-  return sketchDotted(chosen) ? dottedTrailWidthExpression() : solidTrailWidthExpression()
+  return sketchUntaken(chosen)
+    ? untakenTrailWidthExpression()
+    : solidTrailWidthExpression()
 }
 
 /**
@@ -884,12 +886,12 @@ export function attachChosenTrail(
     () => map.getLayer(BLAZE_LAYER_ID) !== undefined,
     () => {
       const solid = chosenSystemFilter(chosen) as never
-      const dotted = nearbyTrailFilter(chosen) as never
+      const untaken = nearbyTrailFilter(chosen) as never
       const opacity = nearbyTrailOpacityExpression(chosen) as never
       const casingOpacity = ['*', 0.7, nearbyTrailOpacityExpression(chosen)] as never
       for (const [id, side] of CHOSEN_TRAIL_SPLIT_LAYERS) {
         if (map.getLayer(id) === undefined) continue
-        map.setFilter(id, side === 'chosen' ? solid : dotted)
+        map.setFilter(id, side === 'chosen' ? solid : untaken)
         map.setPaintProperty(
           id,
           'line-opacity',
@@ -898,11 +900,6 @@ export function attachChosenTrail(
       }
       if (map.getLayer(TRAIL_OVERVIEW_LAYER_ID) !== undefined) {
         map.setPaintProperty(TRAIL_OVERVIEW_LAYER_ID, 'line-opacity', opacity)
-        map.setPaintProperty(
-          TRAIL_OVERVIEW_LAYER_ID,
-          'line-dasharray',
-          (sketchDotted(chosen) ? [...NEARBY_TRAIL_DASHARRAY] : undefined) as never,
-        )
         map.setPaintProperty(
           TRAIL_OVERVIEW_LAYER_ID,
           'line-width',
@@ -931,14 +928,14 @@ export function attachChosenTrail(
  *  its split it is - the three splits, in the order the style draws them. */
 export const CHOSEN_TRAIL_SPLIT_LAYERS: ReadonlyArray<readonly [string, TrailLineSide]> =
   [
-    [NETWORK_OVERVIEW_DOTTED_LAYER_ID, 'nearby'],
+    [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID, 'nearby'],
     [NETWORK_OVERVIEW_LAYER_ID, 'chosen'],
-    [NEARBY_TRAIL_CASING_DOTTED_LAYER_ID, 'nearby'],
-    [NEARBY_BLAZE_DOTTED_LAYER_ID, 'nearby'],
+    [NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID, 'nearby'],
+    [NEARBY_BLAZE_UNTAKEN_LAYER_ID, 'nearby'],
     [NEARBY_TRAIL_CASING_LAYER_ID, 'chosen'],
     [NEARBY_BLAZE_LAYER_ID, 'chosen'],
-    [TRAIL_CASING_DOTTED_LAYER_ID, 'nearby'],
-    [BLAZE_DOTTED_LAYER_ID, 'nearby'],
+    [TRAIL_CASING_UNTAKEN_LAYER_ID, 'nearby'],
+    [BLAZE_UNTAKEN_LAYER_ID, 'nearby'],
     [TRAIL_CASING_LAYER_ID, 'chosen'],
     [BLAZE_LAYER_ID, 'chosen'],
   ]
@@ -946,10 +943,11 @@ export const CHOSEN_TRAIL_SPLIT_LAYERS: ReadonlyArray<readonly [string, TrailLin
 /**
  * Which half of the trail-line split a pair of layers draws (#1283).
  *
- * The chosen system, solid; or every other line, as a dot rhythm. The filter
- * and both dasharrays follow from this one word, so a caller cannot pair the
- * nearby filter with a solid line or the chosen filter with dots - the split
- * is only honest as a partition, and this is what keeps it one.
+ * The chosen system, at its own tier; or every other line, at the network's
+ * far weight below the seam. The filter and the width taper follow from
+ * this one word, so a caller cannot pair the nearby filter with the taken
+ * weight or the chosen filter with the untaken one - the split is only
+ * honest as a partition, and this is what keeps it one.
  */
 export type TrailLineSide = 'chosen' | 'nearby'
 
@@ -968,11 +966,11 @@ export type TrailLineSide = 'chosen' | 'nearby'
  *
  * Every argument below is an id, a source, or the side of the split. Nothing
  * about how a trail LOOKS is a parameter, which is the property that makes
- * the ghosting honest: a nearby trail is the same line drawn dimmer and
- * dotted, and both come from expressions reading the feature's own `source`
- * - the opacity from nearbyTrailOpacityExpression, the side from the filter
- * pair in map/nearbyTrails.ts - not from this function being called
- * differently.
+ * the ghosting honest: a nearby trail is the same line drawn dimmer, and
+ * finer below the seam, and both come from expressions reading the
+ * feature's own `source` - the opacity from nearbyTrailOpacityExpression,
+ * the side from the filter pair in map/nearbyTrails.ts - not from this
+ * function being called differently.
  */
 function buildTrailLineLayers(
   sourceId: string,
@@ -986,7 +984,7 @@ function buildTrailLineLayers(
   const filter = (
     side === 'chosen' ? chosenSystemFilter(chosen) : nearbyTrailFilter(chosen)
   ) as never
-  const dotted = side === 'nearby'
+  const untaken = side === 'nearby'
   return [
     {
       // Hairline dark casing, drawn under every blaze so the trail stays
@@ -1013,16 +1011,13 @@ function buildTrailLineLayers(
       },
       paint: {
         'line-color': trailCasingColor(appearance),
-        // Per appearance since #1283: zero under a near-white line on a day
-        // sheet, where the line is inked in the casing colour and an outline
-        // in the same ink would just be a fatter line. See NEAR_WHITE_BLAZES.
-        // And tapered below the seam on the dotted side since #1306, so the
-        // hairline stays a hairline under a line that is 1.5 px there.
-        'line-width': (dotted
-          ? dottedTrailCasingWidthExpression(appearance)
-          : solidTrailCasingWidthExpression(appearance)) as unknown as number,
-        // (the near-white zero lives inside those two, and only the dotted
-        // one has it - #1306's DARK_INKED_BLAZE_LAYER_IDS)
+        // Tapered below the seam on the untaken side since #1306, so the
+        // hairline stays a hairline under a line that is 1.5 px there. Under
+        // every blaze, white included: the zero-under-near-white casing went
+        // with the dot rhythm on 2026-09-10 (this file's header, rule 2).
+        'line-width': (untaken
+          ? untakenTrailCasingWidthExpression()
+          : solidTrailCasingWidthExpression()) as unknown as number,
         // The casing's own 0.7, MULTIPLIED by the line's ghosting rather
         // than replaced by it. Both facts are true at once and they compose:
         // a casing is always slightly softer than the blaze it carries, and
@@ -1035,10 +1030,6 @@ function buildTrailLineLayers(
           0.7,
           nearbyTrailOpacityExpression(chosen),
         ] as unknown as number,
-        // Dotted at the blaze's pitch, or not at all - never a solid casing
-        // under a dotted line, which would be the 2026-08-03 defect (this
-        // file's header, rule 2) drawn one layer down.
-        ...(dotted ? { 'line-dasharray': [...NEARBY_TRAIL_CASING_DASHARRAY] } : {}),
       },
     },
     {
@@ -1063,41 +1054,41 @@ function buildTrailLineLayers(
       paint: {
         // Through blazeLineColor rather than the match expression directly,
         // so a cold start under red light is red in its first frame - the
-        // same reason `appearance` seeds the backdrop above. `dotted` is the
-        // near-white question (#1306): dark ink under dots, white with its
-        // casing when solid.
-        'line-color': blazeLineColor(appearance, dotted) as unknown as string,
-        // Its own tier, except on the dotted side below the seam, where a
-        // dot rhythm is a stroke of the line's own width and the tier is a
-        // rope (dottedTrailWidthExpression, #1306).
-        'line-width': (dotted
-          ? dottedTrailWidthExpression()
+        // same reason `appearance` seeds the backdrop above. Cased, on both
+        // sides: a white blaze is white here, with the casing as its edge
+        // (NEAR_WHITE_BLAZES).
+        'line-color': blazeLineColor(appearance, true) as unknown as string,
+        // Its own tier, except on the untaken side below the seam, where
+        // the tier is a rope and the network's far weight is what the
+        // handoff drew (untakenTrailWidthExpression, #1306).
+        'line-width': (untaken
+          ? untakenTrailWidthExpression()
           : solidTrailWidthExpression()) as unknown as number,
         // The third channel (#783). Hue still says which blaze and width
         // still says which line the map is about; opacity says which SYSTEM,
         // which is the distinction an A.T.-only map never had to draw. See
         // map/nearbyTrails.ts for why it is opacity and not a halo or a hue.
+        // No fourth: the dot rhythm #1283 put here went on 2026-09-10 (this
+        // file's header, rule 2).
         'line-opacity': nearbyTrailOpacityExpression(chosen) as unknown as number,
-        // The fourth (#1283): a dot rhythm on every line that is not the
-        // chosen system's. Round caps turn the zero-length dash into dots.
-        ...(dotted ? { 'line-dasharray': [...NEARBY_TRAIL_DASHARRAY] } : {}),
       },
     },
   ]
 }
 
 /**
- * Both sides of one source's split, in draw order: the dotted pair UNDER the
- * solid pair, so the taken trail is never crossed by a dot. Four layers, one
- * builder, and the only thing the two calls differ in is the side.
+ * Both sides of one source's split, in draw order: the untaken pair UNDER
+ * the taken pair, so the taken trail is never crossed by a line that is not
+ * it. Four layers, one builder, and the only thing the two calls differ in
+ * is the side.
  */
 function buildTrailLineSplit(
   sourceId: string,
   ids: {
     casing: string
     blaze: string
-    casingDotted: string
-    blazeDotted: string
+    casingUntaken: string
+    blazeUntaken: string
   },
   appearance: SheetAppearance,
   minzoom?: number,
@@ -1106,8 +1097,8 @@ function buildTrailLineSplit(
   return [
     ...buildTrailLineLayers(
       sourceId,
-      ids.casingDotted,
-      ids.blazeDotted,
+      ids.casingUntaken,
+      ids.blazeUntaken,
       appearance,
       'nearby',
       minzoom,
@@ -1128,7 +1119,7 @@ function buildTrailLineSplit(
 /**
  * One side of the network overview's split (#1135, #1283): the sketch has no
  * casing and its own tapering width, so it is not buildTrailLineLayers, but
- * it takes the same filter pair and the same dash for the same reason.
+ * it takes the same filter pair for the same reason.
  */
 function buildNetworkOverviewLayer(
   layerId: string,
@@ -1146,10 +1137,11 @@ function buildNetworkOverviewLayer(
     maxzoom: POI_PIN_MIN_ZOOM,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
-      'line-color': blazeLineColor(appearance) as unknown as string,
+      // Uncased, so a near-white line is inked dark on a day sheet
+      // (DARK_INKED_BLAZE_LAYER_IDS).
+      'line-color': blazeLineColor(appearance, false) as unknown as string,
       'line-width': NETWORK_OVERVIEW_WIDTH_EXPRESSION as unknown as number,
       'line-opacity': nearbyTrailOpacityExpression(chosen) as unknown as number,
-      ...(side === 'nearby' ? { 'line-dasharray': [...NEARBY_TRAIL_DASHARRAY] } : {}),
     },
   }
 }
@@ -1325,31 +1317,6 @@ export const TRAIL_SORT_KEY_EXPRESSION = [
 export const CASING_OVERHANG = 1
 
 /**
- * The casing's dash pattern under a dotted line, so its dots sit UNDER the
- * blaze's rather than drifting out of step with them (#1283).
- *
- * Reasoned, not picked: dash units scale with each layer's own width. The
- * blaze is `w` wide and NEARBY_TRAIL_DASHARRAY puts its dots `2w` apart; the
- * casing is `w + 2 * CASING_OVERHANG` wide, so the SAME pitch in the casing's
- * units is `2w / (w + 2 * CASING_OVERHANG)`. Both patterns start with a dot
- * at the line's first vertex, so equal pitch is equal phase.
- *
- * `w` is SIDE_TRAIL_WIDTH, because that is the only tier the dotted layers
- * draw: every through-route is in the chosen system (nearbyTrails.test.ts
- * pins PRIMARY_TRAIL_SOURCES inside CHOSEN_SYSTEM_SOURCES), so nothing
- * dotted is ever PRIMARY_TRAIL_WIDTH wide. The day a through-route draws
- * dotted, its casing dots drift from its blaze dots by the ratio of the two
- * widths - the cost of `line-dasharray` not being data-driven, and the thing
- * to fix first if that day comes (a third layer per tier, or no casing under
- * dots at all).
- */
-export const NEARBY_TRAIL_CASING_DASHARRAY: readonly number[] = [
-  0,
-  (NEARBY_TRAIL_DASHARRAY[1] * SIDE_TRAIL_WIDTH) /
-    (SIDE_TRAIL_WIDTH + CASING_OVERHANG * 2),
-]
-
-/**
  * The widest a blaze is ever drawn, and the width a closure has to stay
  * markedly clear of (lib/closureStyle.ts and its tests read this).
  *
@@ -1388,23 +1355,6 @@ export const TRAIL_WIDTH_EXPRESSION = trailWidthExpression(0)
 export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHANG * 2)
 
 /**
- * `line-width` for the casing, per appearance (#1283).
- *
- * The plain casing width everywhere, except that on a day sheet the casing
- * goes to ZERO under a near-white line: the line is inked in the casing
- * colour there (NEAR_WHITE_BLAZES), so there is nothing to outline, and an
- * outline in the same ink would just be a fatter line. Dark sheets keep the
- * casing under every blaze - a white line on ink is what a casing is for.
- */
-export function trailCasingWidthExpression(
-  appearance: SheetAppearance,
-  dotted = true,
-): unknown[] {
-  if (!dotted || !inksNearWhiteAsCasing(appearance)) return TRAIL_CASING_WIDTH_EXPRESSION
-  return ['case', nearWhiteBlazeCondition(), 0, TRAIL_CASING_WIDTH_EXPRESSION]
-}
-
-/**
  * The network overview's width, tapering across the representational band
  * (#1135) - the one paint expression that layer does not share with the
  * lines it sketches, and the reason is drawn rather than argued: at the
@@ -1427,14 +1377,17 @@ export function trailCasingWidthExpression(
  * camera as the A.T. alone ("at least the Long Path should be visible",
  * 2026-09-09, #1306). It is now the prototype's own weight for an untaken
  * line at the continental camera: `Opening Map Options.html` frame 2a draws
- * every dotted line at `lineWidth: 1.5` at the `us` scope. Whether 1.5 px
- * dots over the park clusters read as trails or as a smear is @unvalidated
- * beyond the preview frame; #1307 is where the long-distance trails get
- * their own weight and the clusters stop mattering.
+ * every untaken line at `lineWidth: 1.5` at the `us` scope. The dots went
+ * on 2026-09-10 (this file's header, rule 2) and the weight stayed: a
+ * solid 1.5 px line is at least the dots' own diameter, so nothing about
+ * the haze argument got weaker. Whether 1.5 px solid lines over the park
+ * clusters read as trails or as a smear is @unvalidated beyond the preview
+ * frame; #1307 is where the long-distance trails get their own weight and
+ * the clusters stop mattering.
  *
  * The A.T.'s own sketch takes the same far end while the A.T. is not taken
  * (sketchWidthExpression, #1306) - frame 2a draws the untaken A.T. at this
- * weight too, and a heavier dot rhythm on that line is a rope, not dots.
+ * weight too, and a heavier line there is a rope.
  */
 export const NETWORK_OVERVIEW_FAR_WIDTH = 1.5
 
@@ -1448,8 +1401,8 @@ export const OVERVIEW_FAR_ZOOM = 4
  *
  * Written once because three layers take it and they have to agree to the
  * pixel: the network overview sketch, the A.T.'s own sketch while it is
- * untaken, and the real dotted lines that replace both at the seam
- * (sketchWidthExpression and dottedTrailWidthExpression, #1306). The seam
+ * untaken, and the real untaken lines that replace both at the seam
+ * (sketchWidthExpression and untakenTrailWidthExpression, #1306). The seam
  * stop is always the layer's own tier, so every taper lands where the
  * un-tapered layers start and no handoff is a restyle.
  *
@@ -1479,8 +1432,8 @@ function overviewTaper(far: unknown, atSeam: unknown): unknown[] {
  * own line, above) - this is that weight.
  *
  * Twice NETWORK_OVERVIEW_FAR_WIDTH, picked the same way that constant's own
- * far end was: legible over the generic dot rhythm without approaching a
- * chosen system's own solid weight, should one of these trails ever be
+ * far end was: legible over the generic haze without approaching a
+ * chosen system's own weight, should one of these trails ever be
  * takeable (map/trailBadges.ts's TAKEABLE_SOURCES says none but the AT is,
  * yet). `@unvalidated` the same way NETWORK_OVERVIEW_FAR_WIDTH's own history
  * records: nobody has watched this weight against the generic haze on a
@@ -1509,40 +1462,33 @@ export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = overviewTaper(
 )
 
 /**
- * `line-width` for a DOTTED blaze and the casing under it (#1306).
+ * `line-width` for an UNTAKEN blaze and the casing under it (#1306).
  *
  * The same taper the sketches take, and for the reason the maintainer
- * reported rather than one drawn in advance: below the seam a dotted line
- * is not read as dots at all. The A.T. is 51,068 vertices over 2,190 miles
- * and the corridor camera gives it some 700 px, so about three miles of
- * trail per pixel - the line folds back inside a pixel and its dots land on
- * each other's gaps whatever the pitch. What is left is a stroke of the
- * line's own width, so the width is the only thing that decides how it
- * reads: at the through-route tier the eleventh preview build drew the
- * untaken A.T. as a black rope from Georgia to Maine ("the AT is now
- * black", 2026-09-09). The handoff never drew it that way - frame 2a of
- * `Opening Map Options.html`, the chosen option, gives EVERY untaken line
+ * reported rather than one drawn in advance. The A.T. is 51,068 vertices
+ * over 2,190 miles and the corridor camera gives it some 700 px, so about
+ * three miles of trail per pixel - the line folds back inside a pixel, and
+ * its width is the only thing that decides how it reads: at the
+ * through-route tier the eleventh preview build drew the untaken A.T. as a
+ * black rope from Georgia to Maine ("the AT is now black", 2026-09-09).
+ * The handoff never drew it that way - frame 2a of `Opening Map
+ * Options.html`, the chosen option, gives EVERY untaken line
  * `lineWidth: 1.5` at the `us` scope and reserves the heavier weight
- * (`baseW * 2.1`) for the trail that has been taken.
+ * (`baseW * 2.1`) for the trail that has been taken. (The frame's dots are
+ * gone since 2026-09-10 - this file's header, rule 2 - and the weight
+ * argument never depended on them.)
  *
- * So below the seam every dotted line is drawn as the overview sketches
+ * So below the seam every untaken line is drawn as the overview sketches
  * are: NETWORK_OVERVIEW_FAR_WIDTH at the continental camera, its own tier
- * at the seam. Three consequences worth naming:
+ * at the seam. Two consequences worth naming:
  *
- * - The A.T.'s sketch and its real line now carry the SAME width at every
+ * - The A.T.'s sketch and its real line carry the SAME width at every
  *   zoom (sketchWidthExpression takes this expression), so the swap when
  *   trails.geojson finally parses stays the invisible one #1291 asked for.
  * - The nearby network's tiles start AT the seam, so this taper is a no-op
  *   over them - it exists for the sources that draw below it.
- * - The casing keeps its hairline (the same `+ 2 * CASING_OVERHANG` at
- *   both stops) but NOT the dot phase NEARBY_TRAIL_CASING_DASHARRAY was
- *   reasoned for, which assumes the side-trail tier. Below the seam the
- *   dots merge, so the drift is invisible there; between about z6 and the
- *   seam it is a sub-pixel drift on lines that are themselves sub-pixel.
- *   @unvalidated - nobody has looked at that band under a loupe, and the
- *   fix if it ever shows is the one that constant's own comment names.
  */
-export function dottedTrailWidthExpression(): unknown {
+export function untakenTrailWidthExpression(): unknown {
   return overviewTaper(NETWORK_OVERVIEW_FAR_WIDTH, TRAIL_WIDTH_EXPRESSION)
 }
 
@@ -1558,11 +1504,12 @@ export function dottedTrailWidthExpression(): unknown {
  * at `baseW * 2.1` against 1.5 for everything else.
  *
  * WHY A SOLID LINE NEEDS THIS TOO, which the first cut of #1306 missed.
- * Only the dotted side tapered, so a TAKEN A.T. still drew at 4.5 px from
+ * Only the untaken side tapered, so a TAKEN A.T. still drew at 4.5 px from
  * Georgia to Maine - the maintainer's "it looks like a black line",
  * reproduced on the built app at a 1512 px desktop window with
  * `chosen_trail_id` set (2026-09-09). Taking a trail is meant to move a
- * line from a dot rhythm to a solid stroke, not from a fine line to a rope.
+ * line from the network's weight to its own tier at the seam, not from a
+ * fine line to a rope at the continental camera.
  *
  * That preference is gone since #1352 and this paragraph is left as the
  * dated record it is. To reproduce the rope again, put the app on an active
@@ -1579,27 +1526,24 @@ export function solidTrailWidthExpression(): unknown {
   )
 }
 
-/** The casing under it, keeping the same hairline overhang at both stops. */
-export function solidTrailCasingWidthExpression(appearance: SheetAppearance): unknown {
-  // No near-white case on this side since #1306: a solid white blaze keeps
-  // its casing on every sheet, which is the edge that lets it stay white.
+/** The casing under it, keeping the same hairline overhang at both stops.
+ *  Under every blaze, white included: a white blaze keeps its casing on
+ *  every sheet, which is the edge that lets it stay white. */
+export function solidTrailCasingWidthExpression(): unknown {
   return overviewTaper(
     trailWidthExpression(CASING_OVERHANG * 2, OVERVIEW_WIDTH_SCALE),
-    trailCasingWidthExpression(appearance, false),
+    TRAIL_CASING_WIDTH_EXPRESSION,
   )
 }
 
-export function dottedTrailCasingWidthExpression(appearance: SheetAppearance): unknown {
-  const far = NETWORK_OVERVIEW_FAR_WIDTH + CASING_OVERHANG * 2
-  if (!inksNearWhiteAsCasing(appearance)) {
-    return overviewTaper(far, TRAIL_CASING_WIDTH_EXPRESSION)
-  }
-  // The near-white rule at BOTH stops rather than around the taper: a
-  // white line on a day sheet is inked in the casing colour and carries no
-  // casing at any zoom, and a zoom expression may not sit inside a `case`.
+/** The casing under an untaken blaze: the same hairline overhang at both
+ *  of untakenTrailWidthExpression's stops. It took the appearance until
+ *  2026-09-10, for a zero-under-near-white case that went with the dot
+ *  rhythm (this file's header, rule 2). */
+export function untakenTrailCasingWidthExpression(): unknown {
   return overviewTaper(
-    ['case', nearWhiteBlazeCondition(), 0, far],
-    trailCasingWidthExpression(appearance),
+    NETWORK_OVERVIEW_FAR_WIDTH + CASING_OVERHANG * 2,
+    TRAIL_CASING_WIDTH_EXPRESSION,
   )
 }
 
@@ -1657,11 +1601,11 @@ export interface MapStyleOptions {
   /**
    * The taken trail, by lib/trails.ts registry id, or null for nothing taken
    * (#1306). Decides which side of every line split a source lands on, what
-   * is ghosted, and whether the A.T.'s own sketch is dotted. MapView always
-   * passes the preference; the default here is the TAKEN state, because it
-   * is what the style suite describes and what a phone is in from the moment
-   * a hiker takes the trail - a caller wanting the all-dotted first launch
-   * says so.
+   * is ghosted, and whether the A.T.'s own sketch draws at the untaken
+   * weight. MapView always passes the preference; the default here is the
+   * TAKEN state, because it is what the style suite describes and what a
+   * phone is in from the moment a hiker takes the trail - a caller wanting
+   * the all-untaken first launch says so.
    */
   chosenTrailId?: string | null
 }
@@ -2002,13 +1946,14 @@ export function buildMapStyle({
       // pixel-seamless, and the deviation cannot leak into a zoom a hiker
       // navigates by.
       //
-      // SPLIT LIKE EVERY OTHER TRAIL SOURCE (#1283): dotted under solid. The
-      // solid half is empty today - every line in this artifact is another
-      // organization's by construction - and it is built anyway, by the same
-      // builder, so admitting a source to the chosen system cannot leave the
-      // overview drawing it dotted while the full lines draw it solid.
+      // SPLIT LIKE EVERY OTHER TRAIL SOURCE (#1283): untaken under taken.
+      // The taken half is empty today - every line in this artifact is
+      // another organization's by construction - and it is built anyway, by
+      // the same builder, so admitting a source to the chosen system cannot
+      // leave the overview drawing it as untaken while the full lines draw
+      // it as taken.
       buildNetworkOverviewLayer(
-        NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+        NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
         appearance,
         'nearby',
         chosen,
@@ -2048,25 +1993,20 @@ export function buildMapStyle({
           // The same expressions the real line is painted with, off the same
           // two published properties - so the sketch is not a second
           // appearance to keep in step, and the swap is not a colour change.
-          'line-color': blazeLineColor(appearance) as unknown as string,
+          // Uncased, so a near-white line is inked dark on a day sheet
+          // (DARK_INKED_BLAZE_LAYER_IDS): the one place the sketch and the
+          // real line differ, and the frame #1291 is about.
+          'line-color': blazeLineColor(appearance, false) as unknown as string,
           // The one departure, and only while the A.T. is not taken: the
           // network's taper rather than the line's own tier, because 4.5 px
-          // dots on this line at z4 are a black rope (sketchWidthExpression
-          // has the frame and the handoff's own number).
+          // on this line at z4 is a black rope (sketchWidthExpression has
+          // the frame and the handoff's own number).
           'line-width': sketchWidthExpression(chosen) as unknown as number,
           // Ghosted here too, for the reason the two lines above are shared:
           // the sketch is the same appearance arriving early, so a nearby
           // trail that fades when the real line loads would read as the map
           // changing its mind about which trail it is about.
           'line-opacity': nearbyTrailOpacityExpression(chosen) as unknown as number,
-          // And dotted while the A.T. is not taken (#1306), for the same
-          // reason: the real line it stands in for is on the dotted side
-          // then, and a sketch that arrived solid and then broke into dots
-          // would be the map changing its mind about whether the trail is
-          // taken.
-          ...(sketchDotted(chosen)
-            ? { 'line-dasharray': [...NEARBY_TRAIL_DASHARRAY] }
-            : {}),
         },
       },
       // The other organizations' trails (#950), UNDER the chosen trail's own
@@ -2089,8 +2029,8 @@ export function buildMapStyle({
           {
             casing: NEARBY_TRAIL_CASING_LAYER_ID,
             blaze: NEARBY_BLAZE_LAYER_ID,
-            casingDotted: NEARBY_TRAIL_CASING_DOTTED_LAYER_ID,
-            blazeDotted: NEARBY_BLAZE_DOTTED_LAYER_ID,
+            casingUntaken: NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
+            blazeUntaken: NEARBY_BLAZE_UNTAKEN_LAYER_ID,
           },
           appearance,
           // ABOVE THE SEAM ONLY (features/NEARBY_TRAILS.md §8). "Forty short
@@ -2130,8 +2070,8 @@ export function buildMapStyle({
         {
           casing: TRAIL_CASING_LAYER_ID,
           blaze: BLAZE_LAYER_ID,
-          casingDotted: TRAIL_CASING_DOTTED_LAYER_ID,
-          blazeDotted: BLAZE_DOTTED_LAYER_ID,
+          casingUntaken: TRAIL_CASING_UNTAKEN_LAYER_ID,
+          blazeUntaken: BLAZE_UNTAKEN_LAYER_ID,
         },
         appearance,
         undefined,

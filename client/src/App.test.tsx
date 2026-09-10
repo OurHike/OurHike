@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FIT_PADDING } from './map/MapView'
 import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
-import { BLAZE_DOTTED_LAYER_ID } from './map/style'
+import { BLAZE_UNTAKEN_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, getMany, set, setMany, update } from 'idb-keyval'
@@ -1122,17 +1122,17 @@ describe('taking a trail (#1306)', () => {
     },
   }
 
-  it('takes nothing on first launch: the map is built with every line dotted', async () => {
+  it('takes nothing on first launch: the map is built with every line on the untaken side', async () => {
     returningHiker()
     render(<App />)
     await openMapTab()
     await waitFor(() => expect(MockMap.live.length).toBe(1))
     const [map] = MockMap.live
     const style = map.options.style as { layers: Array<{ id: string; filter?: unknown }> }
-    const dotted = style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)
-    // The dotted side's filter is the negation of an empty membership: every
-    // line, the A.T. included.
-    expect(JSON.stringify(dotted?.filter)).toContain('"literal",[]')
+    const untaken = style.layers.find((layer) => layer.id === BLAZE_UNTAKEN_LAYER_ID)
+    // The untaken side's filter is the negation of an empty membership:
+    // every line, the A.T. included.
+    expect(JSON.stringify(untaken?.filter)).toContain('"literal",[]')
   })
 
   it('opens the hike picker from a tap on its badge, rather than taking it silently (#1352)', async () => {
@@ -1173,7 +1173,7 @@ describe('taking a trail (#1306)', () => {
     // A settled frame with the A.T. across it, as map/trailsInView.ts reads
     // one: identity projection, the line inside the viewport.
     map.bounds = { west: 0, south: 0, east: 390, north: 844 }
-    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [AT_LINE])
+    map.renderedFeatures.set(BLAZE_UNTAKEN_LAYER_ID, [AT_LINE])
     await act(async () => {
       map.emit('idle')
     })

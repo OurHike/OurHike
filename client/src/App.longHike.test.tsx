@@ -24,7 +24,7 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { localDay } from './lib/passedToday'
-import { BLAZE_DOTTED_LAYER_ID } from './map/style'
+import { BLAZE_UNTAKEN_LAYER_ID } from './map/style'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -611,21 +611,21 @@ describe('the hike a hiker is on, in Plan (#1329)', () => {
 })
 
 describe('the hike a hiker is on is what the map takes (#1352)', () => {
-  /** The dotted side's filter, as map/nearbyTrails.ts builds it: the
-   *  negation of a membership test, so an EMPTY membership dots every line
-   *  and a non-empty one dots everything outside it. */
-  async function dottedFilter(): Promise<string> {
+  /** The untaken side's filter, as map/nearbyTrails.ts builds it: the
+   *  negation of a membership test, so an EMPTY membership puts every line
+   *  on that side and a non-empty one everything outside it. */
+  async function untakenFilter(): Promise<string> {
     await openMapTab()
     await waitFor(() => expect(MockMap.live.length).toBe(1))
     const style = MockMap.live[0].options.style as {
       layers: Array<{ id: string; filter?: unknown }>
     }
     return JSON.stringify(
-      style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)?.filter,
+      style.layers.find((layer) => layer.id === BLAZE_UNTAKEN_LAYER_ID)?.filter,
     )
   }
 
-  it('draws the A.T. solid when the active hike is on it, with no preference to set', async () => {
+  it('draws the A.T. as the taken trail when the active hike is on it, with no preference to set', async () => {
     // The whole point of the merge: nothing wrote `chosen_trail_id` here.
     // The hike says AT, so the map is about the A.T. - one state, read in
     // two places, rather than two states that can disagree.
@@ -635,15 +635,15 @@ describe('the hike a hiker is on is what the map takes (#1352)', () => {
     app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
 
-    expect(await dottedFilter()).toContain('centerline')
+    expect(await untakenFilter()).toContain('centerline')
   })
 
   it('takes nothing when the active hike is on a trail this build has no lines for', async () => {
     // THE HONEST-DEGRADE PATH, and the reason Part 1 could be shipped before
     // Part 2. `chosenSystemSources()` answers an empty list for every trail
     // but the A.T. (map/nearbyTrails.ts), so a hike on the Long Path leaves
-    // the map in its all-dotted state rather than picking a system it cannot
-    // stand behind. No crash, no wrong trail drawn solid - the same shape as
+    // the map in its all-untaken state rather than picking a system it
+    // cannot stand behind. No crash, no wrong trail taken - the same shape as
     // first launch, which is the truthful one until #1307's successor
     // publishes a second trail's sources.
     app.onboard()
@@ -655,7 +655,7 @@ describe('the hike a hiker is on is what the map takes (#1352)', () => {
     app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
 
-    expect(await dottedFilter()).toContain('"literal",[]')
+    expect(await untakenFilter()).toContain('"literal",[]')
   })
 })
 

@@ -1430,7 +1430,7 @@ function App() {
     entering || placeSheetOpen || searchOpen,
   )
   /** The active long hike's trail, or null for nothing taken - first
-   *  launch's all-dotted map (#1306), same as a hiker who has set up no
+   *  launch's all-untaken map (#1306), same as a hiker who has set up no
    *  hike yet. Derived from the active Hike rather than its own preference
    *  since #1352: taking a trail from the map is now the same act as
    *  picking one in Plan, not a second, weaker path answering the same

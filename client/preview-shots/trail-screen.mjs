@@ -58,15 +58,18 @@
 // every other point mark below the seam: the opening camera is trail lines
 // only, by the maintainer's call.
 // NOTHING TAKEN (#1306). First run takes no trail, so this frame - first
-// run skipped, nothing taken - has the A.T. as a dotted dark line like every
-// other, at the same 1.5 px the network's dots take at this camera: the
-// tenth build drew the network as a haze at 0.8 px, and the eleventh drew
-// the A.T.'s dots at its 4.5 px tier, which on a 51,068-vertex line at z4
-// is a black rope (style.ts's sketchWidthExpression).
+// run skipped, nothing taken - has the A.T. as a fine dark line like every
+// other, at the same 1.5 px the network takes at this camera: the tenth
+// build drew the network as a haze at 0.8 px, and the eleventh drew the
+// A.T. at its 4.5 px tier, which on a 51,068-vertex line at z4 is a black
+// rope (style.ts's sketchWidthExpression). SOLID since 2026-09-10: the dot
+// rhythm #1283 gave every untaken line is gone (map/style.ts's header, rule
+// 2). The dark ink stays at this camera only, because the sketch has no
+// casing to edge a white line with; the real line above the seam is white.
 export const caption =
-  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a dot rhythm at one fine weight, the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails dotted in their own hues around its New York miles — the Long Path in aqua — no waypoints, and the A.T.’s one badge naming it, placed at this camera since the review of #1374'
+  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a solid line at one fine weight (the dot rhythm of #1283 is gone since 2026-09-10), the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails in their own hues around its New York miles — the Long Path in aqua — no waypoints, and the A.T.’s one badge naming it, placed at this camera since the review of #1374'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single fine dotted dark line from Georgia to Maine over the basemap, with no pins on it and one paper badge reading “Appalachian National Scenic Trail” with the ATC mark, and the other organizations’ trails as dotted threads of the same weight in their own colours around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single fine dark line from Georgia to Maine over the basemap, with no pins on it and one paper badge reading “Appalachian National Scenic Trail” with the ATC mark, and the other organizations’ trails as fine solid threads of the same weight in their own colours around its New York miles'
 
 /** The network overview is one 10.8 MB GeoJSON (lib/config.ts's
  *  NETWORK_OVERVIEW_KEY) that the map cuts into tiles in a worker after it

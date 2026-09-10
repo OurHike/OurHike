@@ -66,6 +66,17 @@ describe('a place row', () => {
 
   it('says "no trail data held" only when something measured and found nothing', () => {
     expect(placeMeta(TOWN, 'imperial', true)).toBe('town · no trail data held')
+    // The published index writes a measured nothing as `trailMiles: 0.0`
+    // (Harrisonburg, VA in UA's 2026-09-10 release); that is the same
+    // nothing, not "0 mi of trail held".
+    expect(placeMeta({ ...TOWN, trailMiles: 0 }, 'imperial', true)).toBe(
+      'town · no trail data held',
+    )
+    // And a measured fraction of a mile keeps its tenth rather than
+    // rounding to the zero sentence's figure.
+    expect(placeMeta({ ...TOWN, trailMiles: 0.4 }, 'imperial', true)).toBe(
+      'town · 0.4 mi of trail held',
+    )
     // An unmeasured document is silent rather than claiming there is none.
     expect(placeMeta(TOWN, 'imperial', false)).toBe('town')
   })

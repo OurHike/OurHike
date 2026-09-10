@@ -70,8 +70,19 @@ export function placeMeta(place: Place, units: UnitSystem, measured: boolean): s
   // Both flags: a residual per-row figure in a document that says it did
   // not measure is not a measurement, whatever the exporter promises to
   // clear (lib/places.ts's header) - the display checks its own source.
-  if (measured && place.trailMiles !== undefined) {
-    const miles = formatDistance(place.trailMiles, units, 'whole')
+  // And a measured ZERO is the measured nothing the sentence below is for:
+  // the published index writes `trailMiles: 0.0` on a town with no trail
+  // within reach (Harrisonburg, VA in UA's 2026-09-10 release), and "0 mi
+  // of trail held" is a figure where the design (1b, D13) has a sentence.
+  if (measured && place.trailMiles !== undefined && place.trailMiles > 0) {
+    // Whole miles once there is a mile to count; under one, the tenth,
+    // because "0 mi of trail held" for a measured 0.4 is the zero sentence
+    // above wearing a figure.
+    const miles = formatDistance(
+      place.trailMiles,
+      units,
+      place.trailMiles < 1 ? 'tenths' : 'whole',
+    )
     return place.kind === 'trail'
       ? `${kind} · ${miles}`
       : `${kind} · ${miles} of trail held`

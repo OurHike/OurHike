@@ -426,9 +426,12 @@ describe('App shell', () => {
     // skipping the onboarding step leaves behind, and what the default
     // preference is. The header used to tell them "Looking for GPS…" for the
     // life of the install, about a watch that had never started and never
-    // would (#312).
+    // would (#312). The sentence is the map plate's: Today's header prints
+    // the mile or nothing since the maintainer's read of its frame
+    // (2026-09-10), so the plate is where this honesty is read.
     returningHiker()
     render(<App />)
+    await openMapTab()
 
     expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
     expect(screen.queryByText(/looking for gps/i)).not.toBeInTheDocument()
@@ -447,10 +450,25 @@ describe('App shell', () => {
       download_choice_made: true,
       location_permission_requested: true,
     })
-    render(<App />)
+    // A watch that starts and never answers: jsdom has no geolocation at
+    // all, which the plate reports as "No GPS on this phone" - settled, and
+    // not the case this test is about.
+    Object.defineProperty(navigator, 'geolocation', {
+      value: { watchPosition: () => 1, clearWatch: () => {} },
+      configurable: true,
+    })
+    try {
+      render(<App />)
+      await openMapTab()
 
-    expect(await screen.findByText(/looking for gps/i)).toBeInTheDocument()
-    expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+      expect(await screen.findByText(/looking for gps/i)).toBeInTheDocument()
+      expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+    } finally {
+      // Unmount before the stub goes: the watch's teardown calls clearWatch
+      // on whatever navigator holds at that moment.
+      cleanup()
+      Reflect.deleteProperty(navigator, 'geolocation')
+    }
   })
 
   it('moves between the two tabs', async () => {
@@ -1587,7 +1605,10 @@ describe('the desktop planning station (#1054)', () => {
     const { container } = render(<App />)
 
     // The Today screen renders directly - no map region behind it.
-    expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(
+      await screen.findByText(/^Good (morning|afternoon|evening)/),
+    ).toBeInTheDocument()
     expect(container.querySelector('.map-screen__journal')).toBeNull()
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
   })
@@ -1612,7 +1633,7 @@ describe('the desktop planning station (#1054)', () => {
   it('keeps the mode switch out of the phone bar, which has no room for it', async () => {
     returningHiker()
     render(<App />)
-    await screen.findByText(/location is off/i)
+    await screen.findByRole('tab', { name: 'Today', selected: true })
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
     expect(within(nav).queryByRole('radiogroup')).toBe(null)

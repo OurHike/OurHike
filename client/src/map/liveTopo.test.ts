@@ -45,6 +45,7 @@ import {
 import { MAP_STYLE_VALUES } from '../lib/userPreferences'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
+  CONTOUR_ELEVATION_KEY,
   CONTOUR_LEVEL_KEY,
   CONTOUR_SOURCE_ID,
   DEM_SOURCE_ID,
@@ -202,15 +203,24 @@ describe('the live topographic background', () => {
         (layer) => layer.id === id,
       ) as { filter?: unknown }
 
+    // Every contour layer floors at sea level (the maintainer's brown rings
+    // over the Hudson, 2026-09-10): the DEM reads at and below zero across
+    // tidal water, 0 is a multiple of every index interval, and a ring at
+    // 0 ft in the index ink is a contour of nothing.
     expect(byId(LIVE_TOPO_LAYER_IDS.contourLabel).filter).toEqual([
-      '>',
-      ['get', CONTOUR_LEVEL_KEY],
-      0,
+      'all',
+      ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+      ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+    ])
+    expect(byId(LIVE_TOPO_LAYER_IDS.contourIndex).filter).toEqual([
+      'all',
+      ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+      ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
     ])
     expect(byId(LIVE_TOPO_LAYER_IDS.contour).filter).toEqual([
-      '==',
-      ['get', CONTOUR_LEVEL_KEY],
-      0,
+      'all',
+      ['==', ['get', CONTOUR_LEVEL_KEY], 0],
+      ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
     ])
   })
 

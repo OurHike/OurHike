@@ -3,7 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { MockMap } from './test/mocks/maplibre-gl'
-import { appHarness, openMapTab } from './test/appHarness'
+import { appHarness, openMapTab, stubDesktop } from './test/appHarness'
+import { CAMERA_MEMORY_KEY } from './lib/cameraMemory'
 import { PREFERENCES_KEY } from './lib/preferences'
 import type { UserPreferences } from './lib/userPreferences'
 import type { PlacesDocument } from './lib/places'
@@ -100,6 +101,71 @@ describe('first run’s "where do you hike?"', () => {
       [-74.2, 41.2],
       [-74.0, 41.3],
     ])
+  })
+
+  it('outranks a camera the tab remembered - the choice just made is what the map opens on', async () => {
+    // A returning tab (lib/cameraMemory.ts, session storage) used to win over
+    // the place picked two cards earlier: the maintainer chose Hudson
+    // Highlands on the preview and the map opened on the corridor view the
+    // tab had kept (2026-09-10).
+    window.sessionStorage.setItem(
+      CAMERA_MEMORY_KEY,
+      JSON.stringify({ center: [-77.5, 39.5], zoom: 5 }),
+    )
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Get set up' }))
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Where do you hike' }),
+      'harr',
+    )
+    await user.click(screen.getByRole('button', { name: /Harriman State Park/ }))
+    await user.click(screen.getByRole('button', { name: 'Use Harriman State Park' }))
+    await user.click(screen.getByRole('button', { name: 'Decide this later' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Use Harriman State Park instead' }),
+    )
+
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await waitFor(() => expect(MockMap.instances).toHaveLength(1))
+    expect(MockMap.instances[0].options.bounds).toEqual([
+      [-74.2, 41.2],
+      [-74.0, 41.3],
+    ])
+  })
+
+  it('on a laptop, whose map is built under the cards, moves that map to the place when the cards end', async () => {
+    // The entry-end re-fit (#1296) used to put the corridor back over a
+    // place chosen a card earlier; now it agrees with the choice.
+    stubDesktop()
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('button', { name: 'Get set up' })
+    await waitFor(() => expect(MockMap.live.length).toBeGreaterThan(0))
+    const map = MockMap.live[0]
+
+    await user.click(screen.getByRole('button', { name: 'Get set up' }))
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
+    await user.type(
+      await screen.findByRole('searchbox', { name: 'Where do you hike' }),
+      'harr',
+    )
+    await user.click(screen.getByRole('button', { name: /Harriman State Park/ }))
+    await user.click(screen.getByRole('button', { name: 'Use Harriman State Park' }))
+    await user.click(screen.getByRole('button', { name: 'Decide this later' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Use Harriman State Park instead' }),
+    )
+
+    await waitFor(() =>
+      expect(map.cameraMoves.at(-1)?.fitBounds).toEqual([
+        [-74.2, 41.2],
+        [-74.0, 41.3],
+      ]),
+    )
   })
 })
 

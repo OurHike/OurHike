@@ -72,7 +72,6 @@ import {
   type SuggestedHike,
 } from '../lib/suggestedHikes'
 import { SuggestedHikeCard } from '../chrome/SuggestedHikeCard'
-import { HikeFinderIcon } from '../chrome/HikeFinderIcon'
 import { Notice } from '../chrome/Notice'
 import { PinnedBar } from '../chrome/PinnedBar'
 import { PoiRow } from '../chrome/PoiRow'
@@ -818,6 +817,20 @@ export function Today({
           <span className="today__rule-label">
             {near === null ? 'Suggested hikes' : 'Hikes near you'}
           </span>
+          {/* The way to the rest, on the label (frame 2a's "All 34 ›")
+              rather than a second "Find a hike" under the shelf - the
+              pinned bar is that door, and the maintainer read the pair as
+              one screen with two of the same button (2026-09-10). A count
+              of routes, never of anybody. */}
+          {onFindHike !== undefined && morePublished > 0 && (
+            <button
+              type="button"
+              className="today__rule-link"
+              onClick={() => onFindHike()}
+            >
+              All {suggestedHikes.length} ›
+            </button>
+          )}
         </div>
         <div className="today__suggested-rail">
           {picks.map((hike) => (
@@ -833,26 +846,21 @@ export function Today({
             />
           ))}
         </div>
-        {onFindHike !== undefined && (
-          <button type="button" className="today__find" onClick={() => onFindHike()}>
-            <HikeFinderIcon name="search" className="today__find-icon" />
-            <span className="today__find-label">Find a hike</span>
-            {/* How many the shelf did not show - a count of routes, never
-                of anybody. Absent when the shelf holds them all. */}
-            {morePublished > 0 && (
-              <span className="today__find-count">{morePublished} more ›</span>
-            )}
-          </button>
-        )}
         {/* "Have less time?" (#1373, frame 2a): the finder's own facets,
             in its own words (lib/suggestedHikes.ts's labels), opened with
             the filter already applied. Day mode only - the other two modes
             are not looking for a walk to fit an afternoon. No "Loops": the
             finder has no shape facet, and a chip that opened it unfiltered
-            would promise one. */}
+            would promise one. Under a rule of its own, the same label the
+            shelf wears, so the column reads as sections rather than a run
+            of unlike rows (the maintainer's read of it, 2026-09-10). */}
+        {onFindHike !== undefined && mode === 'day' && (
+          <div className="today__rule">
+            <span className="today__rule-label">Have less time?</span>
+          </div>
+        )}
         {onFindHike !== undefined && mode === 'day' && (
           <div className="today__have-less" role="group" aria-label="Have less time?">
-            <span className="today__have-less-label">Have less time?</span>
             <button
               type="button"
               className="today__have-less-chip"
@@ -876,9 +884,6 @@ export function Today({
             </button>
           </div>
         )}
-        <p className="today__note">
-          Routes from community contributions. Check before traveling.
-        </p>
       </>
     ) : null
 
@@ -958,12 +963,16 @@ export function Today({
       </p>
     ) : null
 
+  // With no fix there is no journal and no sentence about one: a column
+  // that said "nothing here claims to know where you are yet" under a head
+  // that already says what to do next was filler, the maintainer's word
+  // for it (2026-09-10; frame 2a carries no such line). Located and empty
+  // is still worth a sentence, because then the absence is a fact about
+  // the stretch.
   const noJournal =
-    entries.length === 0 ? (
+    entries.length === 0 && currentMile !== undefined ? (
       <p className="today__note">
-        {currentMile === undefined
-          ? 'The journal fills in from your position — nothing here claims to know where you are yet.'
-          : 'Nothing of the journal’s kinds is on this stretch of trail.'}
+        Nothing of the journal’s kinds is on this stretch of trail.
       </p>
     ) : null
 
@@ -1014,7 +1023,12 @@ export function Today({
             'conditions',
             'climb',
             'soFar',
-            'volunteer',
+            // No crew card on the day-hike home (maintainer, 2026-09-10,
+            // chosen from three drawn feet): a day hiker's volunteer door is
+            // More's, and the card at the foot of a page about today's walk
+            // was one more section to get mixed up in. The other two modes
+            // keep it - a long hike lives with the crew for months, and the
+            // volunteer mode is the crew.
           ]
         : // The hike's own day LEADS, above the alerts - and the alerts
           // still render, one slot down. Nothing disappears; what changes is
@@ -1067,13 +1081,19 @@ export function Today({
             .filter((part) => part !== null)
             .join(' · ')}
         </p>
-        {readout.kind === 'mile' ? (
+        {/* The mile, when there is one - and with none, nothing between the
+            date and the greeting. The no-mile sentences ("Location is off",
+            "Located · tap a trail to take it") used to print here at 19 px,
+            and the maintainer read them off the frame as filler (2026-09-10,
+            chosen from two drawn headers). They are the map plate's, and the
+            plate still prints them where a hiker is looking at the map; the
+            status row above carries Offline and No GPS fix, so a fault is
+            not silent here either. */}
+        {readout.kind === 'mile' && (
           <p className="today__readout">
             <span className="today__mile">{readout.mile}</span>
             <span className="today__mile-unit">{readout.unit}</span>
           </p>
-        ) : (
-          <p className="today__position-sentence">{readout.sentence}</p>
         )}
         <p className="today__greeting">{greeting}</p>
         {longHike?.awayLine != null && (
@@ -1183,25 +1203,35 @@ export function Today({
             Both of those fills were failing contrast until #1132 - the
             secondary variant read a base palette token that cannot follow a
             theme, and both hardcoded a label colour that does not flip. This
-            row is why that got measured. */}
-        <div className="today__crew">
-          <Button
-            variant="secondary"
-            size="s"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={onStartReport}
-          >
-            Report a problem
-          </Button>
-          <Button
-            variant="primary"
-            size="s"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={onSayThanks}
-          >
-            Say thanks
-          </Button>
-        </div>
+            row is why that got measured.
+
+            NOT ON THE DAY-HIKE HOME, since the maintainer's read of the frame
+            (2026-09-10): the pair went with the crew card above it, and a day
+            hiker still has both doors where a problem is found - the map's
+            press plate (chrome/PressPlate.tsx) and the waypoint sheet's own
+            "Report a problem here too" - and More's Contribute group for the
+            rest. The outbox line below stays in every mode: what is waiting
+            to send is true whatever the day is for. */}
+        {mode !== 'day' && (
+          <div className="today__crew">
+            <Button
+              variant="secondary"
+              size="s"
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={onStartReport}
+            >
+              Report a problem
+            </Button>
+            <Button
+              variant="primary"
+              size="s"
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={onSayThanks}
+            >
+              Say thanks
+            </Button>
+          </div>
+        )}
 
         {/* WAITING, AND NOW SOMEWHERE TO GO. This line already existed - it
             hid at zero and pluralised - but it sat up in "Today so far", a

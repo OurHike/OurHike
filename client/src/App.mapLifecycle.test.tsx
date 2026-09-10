@@ -653,6 +653,10 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
     // `flowScreen`, which is what would destroy the map - and a test that
     // costs one click is worth keeping against that.
     aPhoneThatHasBeenUsed()
+    // On a long hike: the day-hike home has no report door of its own since
+    // the maintainer's read of its frame (2026-09-10), and the other two
+    // modes keep the pair this test opens the window from.
+    store.set(HIKER_MODE_KEY, 'long')
     const user = userEvent.setup()
     render(<App />)
     await land(isPreferences)

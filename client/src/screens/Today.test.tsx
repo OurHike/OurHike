@@ -79,10 +79,16 @@ describe('the pine header', () => {
     expect(screen.getByText('mi · NOBO')).toBeInTheDocument()
   })
 
-  it('prints the no-position states as the sentences they are', () => {
-    render(<Today {...props({ position: 'Location is off' })} />)
+  it('prints nothing where the mile would be, when there is no mile', () => {
+    // The no-mile sentences are the map plate's. Here they read as filler
+    // between the date and the greeting (the maintainer, 2026-09-10, from
+    // the frame), so the header is the date and the greeting and nothing
+    // else - the status row still says No GPS fix when that is the fault.
+    render(<Today {...props({ position: 'Location is off', hasGpsFix: false })} />)
 
-    expect(screen.getByText('Location is off')).toBeInTheDocument()
+    expect(screen.queryByText('Location is off')).toBeNull()
+    expect(screen.getByText('No GPS fix')).toBeInTheDocument()
+    expect(screen.getByText(/^Good morning\./)).toBeInTheDocument()
   })
 
   it('carries the status flags, same wording as the map screen', () => {
@@ -192,12 +198,18 @@ describe('the journal column', () => {
     expect(screen.queryByText(/Never confirmed/)).not.toBeInTheDocument()
   })
 
-  it('renders honestly with no position at all', () => {
+  it('renders honestly with no position at all - no journal, and no sentence about one', () => {
     render(<Today {...props({ currentMile: undefined, position: 'No GPS signal' })} />)
 
-    expect(
-      screen.getByText(/nothing here claims to know where you are/i),
-    ).toBeInTheDocument()
+    // The head says what to do next; a line under it saying the journal
+    // would fill in from a position nobody has was filler (2026-09-10).
+    expect(screen.queryByText(/nothing here claims to know where you are/i)).toBeNull()
+    expect(screen.queryByText(/nothing of the journal/i)).toBeNull()
+  })
+
+  it('says so when located on a stretch with nothing of the journal’s kinds', () => {
+    render(<Today {...props({ currentMile: 100, pois: [] })} />)
+    expect(screen.getByText(/nothing of the journal’s kinds/i)).toBeInTheDocument()
   })
 
   it('carries the closure sentence and its next step', async () => {
@@ -219,8 +231,12 @@ describe('the journal column', () => {
 })
 
 describe('the volunteer card', () => {
-  it('renders in every mode - that is the deal the tab removal was made on', () => {
-    for (const mode of ['day', 'long', 'volunteer'] as const) {
+  it('renders in the two modes that keep it - the deal the tab removal was made on, less one', () => {
+    // The deal (#1054) was every mode. The day-hike home gave its card up on
+    // the maintainer's read of the frame (2026-09-10): one more section at
+    // the foot of a page about today's walk, with More's volunteer row still
+    // the day hiker's door. The other two modes hold the deal as it was.
+    for (const mode of ['long', 'volunteer'] as const) {
       const { unmount } = render(<Today {...props({ mode })} />)
       expect(
         screen.getByText('Volunteer', { selector: '.today__volunteer-eyebrow' }),
@@ -344,6 +360,27 @@ describe('the rest of the column', () => {
     expect(onSayThanks).toHaveBeenCalled()
   })
 
+  it('keeps the crew card and its two doors off the day-hike home', () => {
+    // The maintainer's read of the day-hike frame (2026-09-10): the card and
+    // the pair under it were two more sections to get mixed up in, on a page
+    // about today's walk. A day hiker reports from the map's press plate or
+    // from More; the other two modes keep both, and the outbox line stays
+    // everywhere because what is waiting to send is true whatever the day is
+    // for.
+    const { rerender } = render(
+      <Today {...props({ mode: 'day', queuedReportCount: 2 })} />,
+    )
+
+    expect(screen.queryByRole('button', { name: 'Report a problem' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Say thanks' })).toBeNull()
+    expect(screen.queryByText('The trail crew')).toBeNull()
+    expect(screen.getByTestId('today-outbox')).toHaveTextContent('2 waiting to send')
+
+    rerender(<Today {...props({ mode: 'long', queuedReportCount: 2 })} />)
+    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
+    expect(screen.getByText('The trail crew')).toBeInTheDocument()
+  })
+
   it('gives the two buttons the same width to share', () => {
     // The design handoff's own implementation note asked for this to be
     // CHECKED rather than assumed: `flex: 1` did nothing in its prototype,
@@ -430,7 +467,7 @@ describe('the suggested hikes (#1284)', () => {
         <Today {...props({ mode, suggestedHikes: SUGGESTED, onFindHike: vi.fn() })} />,
       )
       expect(screen.getByText('Suggested hikes')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /find a hike/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'All 5 ›' })).toBeInTheDocument()
       unmount()
     }
   })
@@ -472,10 +509,21 @@ describe('the suggested hikes (#1284)', () => {
     render(<Today {...props({ suggestedHikes: SUGGESTED, onFindHike })} />)
 
     expect(document.querySelectorAll('.today__suggested-card')).toHaveLength(3)
-    const find = screen.getByRole('button', { name: /find a hike/i })
-    expect(find).toHaveTextContent('2 more ›')
-    await user.click(find)
+    // The door to the rest sits on the shelf's own label (frame 2a's
+    // "All 34 ›"); the pinned bar is the screen's one "Find a hike".
+    const all = screen.getByRole('button', { name: 'All 5 ›' })
+    expect(screen.queryByRole('button', { name: /find a hike/i })).toBeNull()
+    await user.click(all)
     expect(onFindHike).toHaveBeenCalled()
+  })
+
+  it('offers no "All" door when the shelf already holds every published route', () => {
+    render(
+      <Today
+        {...props({ suggestedHikes: SUGGESTED.slice(0, 3), onFindHike: vi.fn() })}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /^All \d+ ›$/ })).toBeNull()
   })
 
   it('prints a walking duration from the cached climb, and no time without one', () => {
@@ -525,12 +573,12 @@ describe('the suggested hikes (#1284)', () => {
     expect(screen.getByRole('article', { name: 'Sunrise Mtn loop' })).toBeInTheDocument()
   })
 
-  it('keeps the provenance note under the row', () => {
+  it('prints no provenance note under the row - each card names its publisher', () => {
     render(<Today {...props({ suggestedHikes: SUGGESTED, onFindHike: vi.fn() })} />)
 
     expect(
-      screen.getByText('Routes from community contributions. Check before traveling.'),
-    ).toBeInTheDocument()
+      screen.queryByText('Routes from community contributions. Check before traveling.'),
+    ).toBeNull()
   })
 })
 

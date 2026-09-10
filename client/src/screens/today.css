@@ -76,16 +76,6 @@
   color: var(--fg-chrome-3);
 }
 
-/* The no-mile states, in the same slot at a size the sentences deserve -
-   "Location is off" at 52px would read as a headline about a failure. */
-.today__position-sentence {
-  margin: 6px 0 0;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 19px;
-  font-weight: 500;
-  color: var(--fg-chrome-1);
-}
-
 .today__greeting {
   margin: 10px 0 0;
   font-family: var(--font-body, sans-serif);
@@ -154,6 +144,25 @@
   flex: 1;
   height: 1px;
   background: var(--border-1);
+}
+
+/* The label's door to the rest of what it heads ("All 34 ›", frame 2a),
+   after the rule: `order` puts it past the ::after line, which flex treats
+   as the last child otherwise. Mono like the label, in the brand ink so it
+   reads as the one pressable thing on the line. */
+.today__rule-link {
+  order: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .today__card {
@@ -772,11 +781,6 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-
-.today__have-less-label {
-  font-size: 13px;
-  color: var(--fg-3);
 }
 
 .today__have-less-chip {

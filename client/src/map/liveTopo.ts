@@ -1267,12 +1267,25 @@ export function liveTopoLayers({
         'line-opacity': ['case', ['==', ['get', 'intermittent'], 1], 0.6, 1] as never,
       },
     },
+    // ABOVE SEA LEVEL ONLY, all three contour layers (the maintainer,
+    // 2026-09-10, over the Hudson at Dutchess Junction: "weird brown lines
+    // appear, normally in the water - I swear this is negative elevation").
+    // It was. The DEM reads within a few feet of zero across tidal water and
+    // dips below it, so the generator drew closed rings at 0 ft all over the
+    // river - and 0 is a multiple of every index interval, so each ring came
+    // out in the index line's heavy ink with a "0'" label on it. A USGS quad
+    // draws no contour at sea level: the shoreline is the water's own edge,
+    // which the sheet already draws. The floor is strict, so 0 itself goes.
     {
       id: LIVE_TOPO_LAYER_IDS.contour,
       type: 'line',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
-      filter: ['==', ['get', CONTOUR_LEVEL_KEY], 0] as never,
+      filter: [
+        'all',
+        ['==', ['get', CONTOUR_LEVEL_KEY], 0],
+        ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+      ] as never,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contour, palette),
         'line-width': 0.6,
@@ -1296,7 +1309,11 @@ export function liveTopoLayers({
       type: 'line',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
-      filter: ['>', ['get', CONTOUR_LEVEL_KEY], 0] as never,
+      filter: [
+        'all',
+        ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+        ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+      ] as never,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contourIndex, palette),
         'line-width': 1.2,
@@ -1319,7 +1336,11 @@ export function liveTopoLayers({
       type: 'symbol',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
-      filter: ['>', ['get', CONTOUR_LEVEL_KEY], 0] as never,
+      filter: [
+        'all',
+        ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+        ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+      ] as never,
       minzoom: 12,
       layout: {
         'symbol-placement': 'line',

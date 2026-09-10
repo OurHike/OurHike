@@ -564,6 +564,28 @@ const SEARCH_RESULT_ZOOM = 14
  *  for the whole route back on screen. Matches MapScreen's own
  *  CHART_FIT_PADDING, so the two ways of framing a stretch put its ends the
  *  same distance off the edge. */
+/**
+ * The camera a place opens on, applied to a built map: its box where it has
+ * one, else its point at the planning zoom - `defaultPlaceCamera`, the one
+ * rule for where a place puts the map, shared by the search, first run,
+ * More → You and the entry-end re-fit so none of them can frame it differently.
+ */
+function moveMapToPlace(map: MapLibreMap, place: DefaultPlace): void {
+  const view = defaultPlaceCamera(place)
+  if ('bounds' in view) {
+    const [west, south, east, north] = view.bounds
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: FIT_PADDING, duration: 0 },
+    )
+  } else {
+    map.jumpTo({ center: [view.center[0], view.center[1]], zoom: view.zoom })
+  }
+}
+
 const FOLLOW_FIT_PADDING = 48
 
 interface Camera {
@@ -1506,8 +1528,12 @@ function App() {
   useEffect(() => {
     if (entering || map === null || mapTaken || !fittedForEntry.current) return
     fittedForEntry.current = false
-    map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
-  }, [entering, map, mapTaken])
+    // The place the cards just asked for, where one was given (`showPlace`
+    // moved the map at the moment of choosing; this is the re-fit that
+    // used to undo it, and now agrees with it); the corridor otherwise.
+    if (defaultPlace !== null) moveMapToPlace(map, defaultPlace)
+    else map.fitBounds(CORRIDOR_BOUNDS, { padding: FIT_PADDING, duration: 0 })
+  }, [entering, map, mapTaken, defaultPlace])
 
   // The centerline, the POIs, the elevation profile, and the fetch that puts
   // them on the phone - see lib/useTrailData.ts. Everything below reads these;
@@ -6687,14 +6713,36 @@ function App() {
     [persistPreferences],
   )
 
+  /**
+   * A place just CHOSEN goes on screen - at first run and from More → You
+   * (the maintainer, 2026-09-10: "I selected Hudson Highlands State Park,
+   * but the AT was still selected as the zoomed to trail"). `placeView`
+   * above is only the camera a map is BUILT around, and a map that already
+   * exists, or a remembered camera (`readCamera`, session storage) waiting
+   * for the next build, both outranked the choice: the laptop's map had been
+   * built under the entry cards and re-fitted to the corridor when they
+   * ended, and a phone whose tab remembered a view opened on that view. So
+   * a built map moves now, and a map not yet built forgets the remembered
+   * camera, so the one it builds is the place's. Not a race with the index -
+   * the place's box came with the row that was picked.
+   */
+  const showPlace = useCallback(
+    (place: DefaultPlace) => {
+      if (map !== null) moveMapToPlace(map, place)
+      else setCamera(null)
+    },
+    [map],
+  )
+
   /** Where the hiker hikes, set or forgotten from More → You's sheet: a
    *  preference like any other (lib/defaultPlace.ts), so it syncs. */
   const handleSaveDefaultPlace = useCallback(
     (place: DefaultPlace) => {
       updatePreferences({ default_place: place })
+      showPlace(place)
       setPlaceSheetOpen(false)
     },
-    [updatePreferences],
+    [updatePreferences, showPlace],
   )
   const handleClearDefaultPlace = useCallback(() => {
     updatePreferences({ default_place: null })
@@ -6774,6 +6822,7 @@ function App() {
       // sees is already the one they asked for. A skip is null and writes
       // nothing - the default stays the default, said aloud on the card.
       if (chosenMode !== null) applyHikerMode(chosenMode)
+      if (chosen !== null) showPlace(chosen)
       // The choice made is the choice written (#277): onboarding's download
       // step speaks the hiking sheet now, so the hiking sheet's preference
       // is what it sets. The USGS raster's tier keeps its default until its
@@ -6797,7 +6846,7 @@ function App() {
       // they just declined. (The old desktop carve-out went with it: with
       // nothing auto-opening, there is nothing to withhold from a laptop.)
     },
-    [updatePreferences, applyHikerMode],
+    [updatePreferences, applyHikerMode, showPlace],
   )
 
   /** One sheet: every archive it is made of, in one tap. Archives already on
@@ -7879,21 +7928,7 @@ function App() {
   const handleSelectPlace = useCallback(
     (place: Place) => {
       setSearchOpen(false)
-      if (map !== null) {
-        const view = defaultPlaceCamera(place)
-        if ('bounds' in view) {
-          const [west, south, east, north] = view.bounds
-          map.fitBounds(
-            [
-              [west, south],
-              [east, north],
-            ],
-            { padding: FIT_PADDING, duration: 0 },
-          )
-        } else {
-          map.jumpTo({ center: [view.center[0], view.center[1]], zoom: view.zoom })
-        }
-      }
+      if (map !== null) moveMapToPlace(map, place)
       if (place.poiId !== undefined) handleSelectPoi(place.poiId)
     },
     [map, handleSelectPoi],

@@ -24,6 +24,29 @@
 # SETUP: needs a Pages project and an API token - LAUNCH_CHECKLIST.md 3a.
 # Until those exist this workflow says so and skips, rather than failing every
 # pull request with a wrangler error.
+#
+# MANUALLY PREVIEWING AGAINST UA DATA
+#
+# The trigger below always builds a preview against DATA_BASE_URL - production's
+# data - because that is what most reviewers should be looking at, and a preview
+# that could silently disagree with what the automatic build shows would be
+# worse than not having the option at all. `workflow_dispatch` is the deliberate
+# exception: it takes the same `data_environment` choice the four publish
+# workflows already do (features/DATA_ENVIRONMENTS.md), and a `ua` run points
+# this same build at `${DATA_BASE_URL}/environments/ua` instead - the prefix a
+# `data_environment: ua` publish writes to. That is the end-to-end check a
+# pipeline change gets before it reaches production: publish it to UA, then
+# dispatch this workflow with `data_environment: ua` against the pull request
+# that changed it.
+#
+# Dispatched from the pull request's own branch - only a branch that lives in
+# this repository can be selected as a workflow_dispatch ref at all, which is
+# the same restriction the automatic trigger already applies for the opposite
+# reason (a fork gets no secrets to deploy with). `pr_number` is required
+# rather than inferred: a workflow_dispatch run carries no pull_request context
+# to read it from, and a wrong guess would post this preview's comment onto
+# somebody else's pull request - so the run checks the guess against the
+# branch it actually checked out before doing anything else.
 
 name: PR preview
 
@@ -31,6 +54,16 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to build and post this preview to"
+        required: true
+      data_environment:
+        description: "Which published data the preview reads"
+        type: choice
+        options: [ua, production]
+        default: ua
 
 # Per pull request, and cancelling: only the newest commit's preview is worth
 # having, so superseding an in-flight build is right. Deliberately NOT a group
@@ -38,7 +71,7 @@ on:
 # cancels the rest, so a shared group would drop most of ten queued previews
 # rather than taking turns.
 concurrency:
-  group: pr-preview-${{ github.event.number }}
+  group: pr-preview-${{ github.event.number || inputs.pr_number }}
   cancel-in-progress: true
 
 permissions:
@@ -64,7 +97,10 @@ jobs:
           # spelled out in pages.yml: `${{ }}` is substituted as literal text
           # before bash sees the line, so a value carrying a quote would be
           # parsed as script rather than as data.
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          # workflow_dispatch carries no pull_request context, so this falls
+          # back to "this repo" - correctly, since only a branch already in
+          # this repository can be chosen as a workflow_dispatch ref.
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           THIS_REPO: ${{ github.repository }}
         run: |
           if [ -z "$API_TOKEN" ] || [ -z "$ACCOUNT_ID" ] || [ -z "$PROJECT" ]; then
@@ -93,7 +129,7 @@ jobs:
       - name: Name this preview
         id: preview
         env:
-          NUMBER: ${{ github.event.number }}
+          NUMBER: ${{ github.event.number || inputs.pr_number }}
           PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
         run: |
           {
@@ -110,6 +146,27 @@ jobs:
       - uses: actions/checkout@v7
         if: steps.can.outputs.deploy == 'true'
 
+      # See "MANUALLY PREVIEWING AGAINST UA DATA" at the top of this file.
+      # pr_number is a human's typed guess rather than something read off an
+      # event, so it is checked once, early, against the branch this run
+      # actually checked out - rather than trusted for the rest of the job.
+      - name: Confirm the dispatched PR number matches this branch
+        if: steps.can.outputs.deploy == 'true' && github.event_name == 'workflow_dispatch'
+        uses: actions/github-script@v9
+        env:
+          PR_NUMBER: ${{ inputs.pr_number }}
+        with:
+          script: |
+            const pull_number = Number(process.env.PR_NUMBER)
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number })
+            if (pr.head.sha !== context.sha) {
+              core.setFailed(
+                `pr_number ${pull_number} is at ${pr.head.sha}, but this run checked out ` +
+                `${context.sha}. Dispatch this workflow from that pull request's own branch - ` +
+                'a mismatch here would post this preview under the wrong pull request.'
+              )
+            }
+
       - uses: actions/setup-node@v7
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         with:
@@ -122,17 +179,31 @@ jobs:
         working-directory: client
         run: npm ci
 
-      # Same data source as the production build (see pages.yml) - a preview
-      # that can't download map data isn't much of a testable version.
+      # Production's data by default - same source as the production build
+      # (see pages.yml) - because that is what most reviewers should be
+      # looking at. `data_environment: ua`, reachable only by dispatching this
+      # workflow by hand, points the same build at UA's prefix instead: the
+      # formula is ua.yml's own, computed rather than typed out for the same
+      # reason it is there (features/DATA_ENVIRONMENTS.md).
       - name: Resolve the data source
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         id: data
         env:
           FROM_VAR: ${{ vars.DATA_BASE_URL }}
           FROM_SECRET: ${{ secrets.DATA_BASE_URL }}
+          DATA_ENVIRONMENT: ${{ inputs.data_environment }}
         run: |
-          URL="${FROM_VAR:-$FROM_SECRET}"
-          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          BASE="${FROM_VAR:-$FROM_SECRET}"
+          if [ "$DATA_ENVIRONMENT" = "ua" ]; then
+            URL="${BASE:+${BASE%/}/environments/ua}"
+          else
+            URL="$BASE"
+          fi
+          echo "Data source: ${URL:-<none>} (${DATA_ENVIRONMENT:-production})"
+          {
+            echo "url=$URL"
+            echo "environment=${DATA_ENVIRONMENT:-production}"
+          } >> "$GITHUB_OUTPUT"
 
       # Same Supabase project as production (see pages.yml) - a preview where
       # signing in is the thing under review is not testable without it.
@@ -253,12 +324,17 @@ jobs:
         uses: actions/github-script@v9
         env:
           LIST: ${{ runner.temp }}/pr-files.txt
+          # context.payload.pull_request is absent on a workflow_dispatch run,
+          # so the number travels through env instead - the same reason every
+          # `${{ }}` value that reaches a script or a shell line does, spelled
+          # out above at "Check whether this run can deploy".
+          PR_NUMBER: ${{ github.event.number || inputs.pr_number }}
         with:
           script: |
             const { writeFileSync } = require('node:fs')
             const files = await github.paginate(github.rest.pulls.listFiles, {
               ...context.repo,
-              pull_number: context.payload.pull_request.number,
+              pull_number: Number(process.env.PR_NUMBER),
               per_page: 100,
             })
             // A rename counts under both names - the runner skips the old
@@ -390,13 +466,21 @@ jobs:
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: pr-preview
+          # workflow_dispatch carries no pull_request context for this action
+          # to infer a number from - harmless to pass explicitly on the
+          # automatic trigger too, since it already agrees with what the
+          # action would have inferred there.
+          number: ${{ github.event.number || inputs.pr_number }}
           message: |
             ### Preview
 
             **[Open this change in the app](${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }})**
 
-            Built from ${{ github.event.pull_request.head.sha }}. The link stays the
-            same as you push - it always serves the latest build of this pull request.
+            Built from ${{ github.event.pull_request.head.sha || github.sha }}. The link
+            stays the same as you push - it always serves the latest build of this pull
+            request.
+
+            ${{ steps.data.outputs.environment == 'ua' && '**Previewing UA data** (`environments/ua`), not production - see features/DATA_ENVIRONMENTS.md.' || '' }}
 
             ${{ steps.wait.outputs.note }}
 

@@ -43,7 +43,7 @@ Each is held by a test somewhere; the file named is where to look first.
 - **R8 · The map keeps its own controls** (`map/mapChrome.ts`): compass and locate bottom-right, the scale bar bottom-left, the legend beside it; locate is absent, not disabled, where location is off.
 - **R9 · Any day can be edited, and it cascades** — shown as the diff first (`lib/cascadeDiff.ts`), applied when the hiker says so, undoable in one action.
 - **R10 · A legend names five trails, then condenses** (`NAMED_TRAILS_SHOWN` in `chrome/Legend.tsx`, `@unvalidated` — the frame's own count).
-- **R11 · Four tabs and the mode, on every screen** — a read-out above the tabs that opens the one control, never a second switch (`chrome/TabBar.tsx`). First run is the only exception; a desktop's sidebar carries the switch itself.
+- **R11 · Four tabs and the mode, on every screen** — a read-out above the tabs that opens the one control, never a second switch (`chrome/TabBar.tsx`). First run carries no read-out, but since the review of #1374 it asks the mode once, on its second card, rather than assigning Day hike silently; a desktop's sidebar carries the switch itself.
 
 ## The decisions, which were the acceptance list
 
@@ -53,7 +53,7 @@ D1 a hike mid-walk **is** editable from step 2, and entering the builder stops f
 
 | step | screen | file |
 |---|---|---|
-| First run — value, **where you hike** (a synced preference, `default_place`; a place named, never a fix — `lib/defaultPlace.ts`), the download, location | four cards over the map | `screens/Onboarding.tsx`, `chrome/PlaceField.tsx` over #1371's `places.json` |
+| First run — value, **what brings you out** (the mode, asked rather than assigned — the maintainer's review of #1374, 2026-09-10; a skip says it means Day hike), **where you hike** (a synced preference, `default_place`; a place named, never a fix — `lib/defaultPlace.ts`), the download, location | five cards over the map | `screens/Onboarding.tsx`, `chrome/PlaceField.tsx` over #1371's `places.json`, `lib/hikerMode.ts` |
 | Today — a setup head per mode until something is loaded; the walk dated today as a card; "Ahead of you" as waypoint rows; the pinned Find / Plan bar | | `screens/Today.tsx`, `chrome/PinnedBar.tsx`, `chrome/PoiRow.tsx` |
 | Step 1 · Hike — "Where do you want to go?" | the Plan tab's slot | `screens/PlanStart.tsx`, the bail sheet in `chrome/BailSheet.tsx` |
 | Step 2 · Route — the rail on both builders, the shape as one control | the map, the rail on a desktop | `chrome/DayHikePanel.tsx`, `chrome/DayHikePickBar.tsx`, `chrome/RouteStopsPanel.tsx` |

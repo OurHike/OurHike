@@ -75,6 +75,8 @@ describe('first run’s "where do you hike?"', () => {
     render(<App />)
 
     await user.click(await screen.findByRole('button', { name: 'Get set up' }))
+    // Past the mode card (the review of #1374); the place is the subject here.
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
     await user.type(
       await screen.findByRole('searchbox', { name: 'Where do you hike' }),
       'harr',

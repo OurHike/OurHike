@@ -438,7 +438,9 @@ describe('what a launch does once, and must not do twice', () => {
     await screen.findByText('A map that works where there is no signal.')
     await user.click(screen.getByRole('button', { name: 'Get set up' }))
 
-    // Past the second card, where the hiker hikes (#1373), with no place.
+    // Past the mode card with nothing chosen, then the place card with no
+    // place (#1373; the mode card is the review of #1374's).
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
     await user.click(screen.getByRole('button', { name: /^skip — i/i }))
     // Declined, deliberately: this file counts what a LAUNCH costs, and
     // "Keep going" would start the download machinery on top of it (#1054).

@@ -436,7 +436,9 @@ describe('what the first-run steps cost', () => {
   async function stepThrough(user: ReturnType<typeof userEvent.setup>): Promise<void> {
     await user.click(screen.getByRole('button', { name: 'Get set up' }))
 
-    // Past the second card, where the hiker hikes (#1373), with no place.
+    // Past the mode card with nothing chosen, then the place card with no
+    // place (#1373; the mode card is the review of #1374's).
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
     await user.click(screen.getByRole('button', { name: /^skip — i/i }))
     // Declined: this file counts maps and reads, not downloads (#1054).
     await user.click(screen.getByRole('button', { name: 'Decide this later' }))

@@ -6695,7 +6695,13 @@ function App() {
       hikingDetailLevel,
       locationRequested,
       defaultPlace: chosen,
+      hikerMode: chosenMode,
     }: OnboardingResult) => {
+      // The mode, when one was taken (the maintainer's review of #1374): the
+      // same write the switch on Today makes, so the first Today a hiker
+      // sees is already the one they asked for. A skip is null and writes
+      // nothing - the default stays the default, said aloud on the card.
+      if (chosenMode !== null) applyHikerMode(chosenMode)
       // The choice made is the choice written (#277): onboarding's download
       // step speaks the hiking sheet now, so the hiking sheet's preference
       // is what it sets. The USGS raster's tier keeps its default until its
@@ -6719,7 +6725,7 @@ function App() {
       // they just declined. (The old desktop carve-out went with it: with
       // nothing auto-opening, there is nothing to withhold from a laptop.)
     },
-    [updatePreferences],
+    [updatePreferences, applyHikerMode],
   )
 
   /** One sheet: every archive it is made of, in one tap. Archives already on

@@ -61,6 +61,8 @@ import { PlaceField } from '../chrome/PlaceField'
 import { snapshotPlace, type DefaultPlace } from '../lib/defaultPlace'
 import { NO_PLACES, type Place, type PlacesDocument } from '../lib/places'
 import type { UnitSystem } from '../lib/units'
+import { HIKER_MODE_LABELS, HIKER_MODE_VALUES, type HikerMode } from '../lib/hikerMode'
+import { ModeIcon } from '../chrome/ModeIcon'
 import './onboarding.css'
 
 /**
@@ -84,6 +86,24 @@ export interface OnboardingResult {
   /** Where the hiker said they hike (#1373, frame 1b), or null when the
    *  step was skipped. A snapshot for lib/defaultPlace.ts, never an id. */
   defaultPlace: DefaultPlace | null
+  /**
+   * What brings them out - Day hike, Long hike or Volunteer - or null when
+   * the card was skipped, which the card says aloud means Day hike (the
+   * shell's DEFAULT_HIKER_MODE). Null rather than 'day' so the shell can
+   * tell a choice from a default and write only the choice.
+   */
+  hikerMode: HikerMode | null
+}
+
+/**
+ * One line under each mode, in Today's own voice (screens/Today.tsx's setup
+ * heads say the same things at more length). Copy, not data: the labels are
+ * lib/hikerMode.ts's and only the sentence is this card's.
+ */
+const MODE_NOTES: Record<HikerMode, string> = {
+  day: 'Out and back by dark. Walks near you, and a builder for one of your own.',
+  long: 'One trail, broken into days. Sections, water and camp to camp.',
+  volunteer: 'Workdays and the crew, with the trail in the background.',
 }
 
 export interface OnboardingProps {
@@ -201,6 +221,10 @@ export function Onboarding({
   units = 'imperial',
 }: OnboardingProps) {
   const [stepIndex, setStepIndex] = useState(0)
+  // The mode taken on the "what brings you out?" card, or null until one is
+  // - and null on through the skip, which is the shell's cue to keep its
+  // default rather than write a choice nobody made.
+  const [mode, setMode] = useState<HikerMode | null>(null)
   // The row taken on the "where do you hike?" step, held as the live index
   // row until the flow finishes and snapshots it (lib/defaultPlace.ts).
   const [place, setPlace] = useState<Place | null>(null)
@@ -276,6 +300,7 @@ export function Onboarding({
       hikingDetailLevel: hikingLevel,
       locationRequested,
       defaultPlace: place === null ? null : snapshotPlace(place),
+      hikerMode: mode,
     })
 
   /** What the size step's primary says it will do, with the chosen rung's
@@ -430,12 +455,53 @@ export function Onboarding({
           </section>
         )}
 
-        {/* Where the hiker hikes (#1373, the design's frame 1b) - the one
-            step the rebuild adds. A place, not a permission: the map has
-            somewhere to open before location is asked for, and somewhere to
-            fall back to whenever GPS has no fix. The sentence under the
-            field is a promise lib/defaultPlace.ts keeps - its own store on
-            this phone, never the synced blob. */}
+        {/* What brings them out (the maintainer's review of #1374, 2026-09-10):
+            the mode was being assigned silently, and it decides what Today
+            shows and what step 1 builds. Three radios, none preselected - a
+            default drawn as a choice would be the silent assignment in
+            better clothes - and the primary is absent until one is taken
+            (D10: no dead control). The skip says what skipping means. */}
+        {step.id === 'hiker-mode' && (
+          <section className="onboarding__step">
+            <h1 className="onboarding__title">What brings you out?</h1>
+            <p>
+              Today changes with the answer &mdash; what leads, what is nearby, what a
+              plan builds. Switch it any day from the Today screen.
+            </p>
+            <div className="onboarding__modes" role="radiogroup" aria-label="Today I'm">
+              {HIKER_MODE_VALUES.map((offered) => (
+                <button
+                  key={offered}
+                  type="button"
+                  role="radio"
+                  aria-checked={offered === mode}
+                  className={
+                    offered === mode
+                      ? 'onboarding__mode onboarding__mode--on'
+                      : 'onboarding__mode'
+                  }
+                  onClick={() => setMode(offered)}
+                >
+                  <ModeIcon mode={offered} size={22} className="onboarding__mode-icon" />
+                  <span className="onboarding__mode-text">
+                    <span className="onboarding__mode-name">
+                      {HIKER_MODE_LABELS[offered]}
+                    </span>
+                    <span className="onboarding__mode-note">{MODE_NOTES[offered]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Where the hiker hikes (#1373, the design's frame 1b). A place,
+            not a permission: the map has somewhere to open before location
+            is asked for, and somewhere to fall back to whenever GPS has no
+            fix. The sentence under the field is the promise
+            lib/defaultPlace.ts and lib/userPreferences.ts keep: a place
+            named from a published index, kept with the synced preferences
+            since the maintainer's decision of 2026-09-10, and never a fix. */}
         {step.id === 'default-place' && (
           <section className="onboarding__step">
             <h1 className="onboarding__title">Where do you hike?</h1>
@@ -535,6 +601,27 @@ export function Onboarding({
                 onClick={() => finish(false)}
               >
                 Skip &mdash; take me to the map
+              </button>
+            </>
+          )}
+          {step.id === 'hiker-mode' && (
+            <>
+              {/* Absent until a mode is taken, for the place card's reason
+                  below; the skip is the way on and says what it means. */}
+              {mode !== null && (
+                <button type="button" className="onboarding__primary" onClick={next}>
+                  Continue as {HIKER_MODE_LABELS[mode].toLowerCase()}
+                </button>
+              )}
+              <button
+                type="button"
+                className="onboarding__skip"
+                onClick={() => {
+                  setMode(null)
+                  next()
+                }}
+              >
+                Skip &mdash; day hike for now, change it on Today
               </button>
             </>
           )}

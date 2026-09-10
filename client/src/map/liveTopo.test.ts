@@ -37,7 +37,13 @@ import {
   TOPO_PALETTE_DARK,
   TOPO_PALETTE_FIELD_NIGHT,
   TOPO_PALETTE_RED,
+  CONTOUR_INDEX_OPACITY,
+  CONTOUR_INDEX_WIDTH,
+  CONTOUR_MINOR_OPACITY,
+  CONTOUR_MINOR_WIDTH,
   attachSheetAppearance,
+  contourFadeZooms,
+  contourOpacityRamp,
   liveTopoLayers,
   sheetPalette,
   sheetVariant,
@@ -430,6 +436,55 @@ describe('relief shading, by zoom', () => {
     // where full-strength shading sits under full-strength contours.
     expect(contourInkAt(HILLSHADE_HANDOVER_START_ZOOM)).toBe(0)
     expect(contourInkAt(HILLSHADE_HANDOVER_END_ZOOM)).toBeGreaterThan(0.5)
+    // Which layer that ink is on matters since 2026-09-10: the INDEX line is
+    // what the hillshade hands the terrain to (CONTOUR_INDEX_OPACITY), and
+    // the minor line is a texture under it (CONTOUR_MINOR_OPACITY) - a
+    // threshold met by the minor line alone would be the old cluttered ink.
+    const inkOf = (layer: string, zoom: number) =>
+      paintAt(layer, 'line-opacity', latest.paint_line['line-opacity'], zoom)
+    expect(inkOf(LIVE_TOPO_LAYER_IDS.contourIndex, HILLSHADE_HANDOVER_END_ZOOM)).toBe(
+      CONTOUR_INDEX_OPACITY,
+    )
+    expect(inkOf(LIVE_TOPO_LAYER_IDS.contour, HILLSHADE_HANDOVER_END_ZOOM)).toBe(
+      CONTOUR_MINOR_OPACITY,
+    )
+    expect(CONTOUR_MINOR_OPACITY).toBeLessThan(CONTOUR_INDEX_OPACITY / 2)
+  })
+
+  it('draws the index line heavier than the minor, on every sheet (index-led ink)', () => {
+    // The design note of 2026-09-10: minors are a texture, the index carries
+    // the terrain. Weight and opacity only - the hues are each sheet's own -
+    // so every variant takes it, and the fade windows are untouched.
+    const appearances = [
+      ...MAP_STYLE_VALUES.flatMap((mapStyle) => [
+        { mapStyle, theme: 'light' as const },
+        { mapStyle, theme: 'dark' as const },
+      ]),
+      { mapStyle: 'night_hike' as const, theme: 'dark' as const, redLight: true },
+    ]
+    for (const appearance of appearances) {
+      const layers = liveTopoLayers({
+        terrain: TERRAIN,
+        units: 'imperial',
+        ...appearance,
+      })
+      const paintOf = (id: string) =>
+        layers.find((layer) => layer.id === id)!.paint as Record<string, unknown>
+      const minor = paintOf(LIVE_TOPO_LAYER_IDS.contour)
+      const index = paintOf(LIVE_TOPO_LAYER_IDS.contourIndex)
+      expect(minor['line-width'], JSON.stringify(appearance)).toBe(CONTOUR_MINOR_WIDTH)
+      expect(index['line-width'], JSON.stringify(appearance)).toBe(CONTOUR_INDEX_WIDTH)
+      expect((minor['line-opacity'] as unknown[]).at(-1)).toBe(CONTOUR_MINOR_OPACITY)
+      expect((index['line-opacity'] as unknown[]).at(-1)).toBe(CONTOUR_INDEX_OPACITY)
+      // The same ramp the live repaint replays, from the one builder.
+      const fade = contourFadeZooms(sheetVariant(appearance))
+      expect(minor['line-opacity']).toEqual(
+        contourOpacityRamp(fade.minor, CONTOUR_MINOR_OPACITY),
+      )
+      expect(index['line-opacity']).toEqual(
+        contourOpacityRamp(fade.index, CONTOUR_INDEX_OPACITY),
+      )
+    }
   })
 })
 
@@ -1339,6 +1394,30 @@ describe('attachSheetAppearance', () => {
       )
     }
     expect(m.styles).toEqual([])
+  })
+
+  it('replays the contour ink from the same constants the style was built from', async () => {
+    // Two sites write these ramps - the style build and this repaint - and a
+    // literal at one drifting from the other would revert the sheet to the
+    // old ink on every theme change. Both read CONTOUR_*_OPACITY through
+    // contourOpacityRamp, and this holds the repaint's copy to it.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [
+      LIVE_TOPO_LAYER_IDS.wood,
+      LIVE_TOPO_LAYER_IDS.contour,
+      LIVE_TOPO_LAYER_IDS.contourIndex,
+    ]
+
+    attachSheetAppearance(m as never, { theme: 'dark' })
+
+    const fade = contourFadeZooms(sheetVariant({ theme: 'dark' }))
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contour}/line-opacity`)).toEqual(
+      contourOpacityRamp(fade.minor, CONTOUR_MINOR_OPACITY),
+    )
+    expect(
+      m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contourIndex}/line-opacity`),
+    ).toEqual(contourOpacityRamp(fade.index, CONTOUR_INDEX_OPACITY))
   })
 
   it('leaves an offline-background style alone', async () => {

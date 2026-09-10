@@ -55,6 +55,10 @@ export const TOPO_PALETTE = {
 // water_name text-color #1c5c86 · trail casing #14130f
 // HILLSHADE_EXAGGERATION (hiking-zoom end) = 0.30
 // Field extras: peak text-size 12→14, contour label 10→11, halos 1.4→1.8
+// Contour ink, index-led since 2026-09-10 (every sheet, weight and opacity
+// only): minor lines 0.5px at 0.32, index lines 1.4px at 0.95 - liveTopo.ts's
+// CONTOUR_MINOR_* / CONTOUR_INDEX_*, read by the style build and the live
+// repaint alike. The fade windows and the labels are unchanged.
 ```
 
 All other palettes (field/night, quiet_pine day+night, night_hike dark+red,
@@ -79,6 +83,18 @@ map, via a `whenStyleReady` attach helper exactly like `attachContourUnits`:
 Borders default OFF (standard): wanted sometimes, distracting mostly.
 Minimal keeps index contours so terrain still reads, and keeps paths because
 side trails are hiker signal, not clutter.
+
+**Amended 2026-09-10 ([#1374](https://github.com/OurHike/OurHike/pull/1374)) — index-led contour
+ink, at every level.** The maintainer's design note on the UA preview ("the topo is cluttered /
+the contours are too dark and compete with the trail lines"): at hiking zooms the sheet was
+carrying terrain on four channels at once — minor lines, index lines, their labels and the
+hillshade — and that was one too many. So the minor lines drop to a texture (0.5px at 0.32,
+from 0.6px at 0.7) and the index lines carry the terrain (1.4px at 0.95, from 1.2px at 0.9), on
+all ten sheets, with the hues, the fade windows, the labels, the thresholds and the hillshade
+untouched (`liveTopo.ts`'s `CONTOUR_MINOR_OPACITY` and neighbours, one builder for the style and
+the live repaint). This is the default that makes `minimal` a preference rather than a repair;
+the `mapDetail` control itself is still the separate change this section describes. No data
+change, no pipeline run, no new interval.
 
 ## 3. Wiring
 

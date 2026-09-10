@@ -2516,6 +2516,12 @@
   flex-direction: column;
   gap: 0.2rem;
   width: 100%;
+  /* Border-box, said out loud: the pressable doors are <button>s, which
+     the browser sizes border-box on its own, and the refused door is a
+     <div>, which it does not - so at 100% plus its padding the refusal
+     sentence ran off the right edge of the desktop column in the preview
+     at a7eda732 while the door under it fit. */
+  box-sizing: border-box;
   padding: 0.85rem 0.95rem;
   text-align: left;
   background: var(--bg-surface);

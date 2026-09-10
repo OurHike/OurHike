@@ -29,9 +29,19 @@
  * this folder's manifest resolves against their OWN base before deploying, so
  * a wrong pin costs a red deploy rather than a hiker's map.
  *
+ * 2026-09-10 EXISTS IN UA ONLY as of the bump (2026-09-10, #1374): it is the
+ * release `publish-vector-data.yml` wrote to `environments/ua/` after #1372
+ * merged - the first carrying `places.json` and `trail_graph_cells.json` -
+ * and the pin moved so the pull request's preview, dispatched with
+ * `data_environment: ua`, reads it (the maintainer's call, 2026-09-10).
+ * Production has no folder of that name until its own publish mints one,
+ * so `pages.yml`'s guard above holds this build off production exactly as
+ * designed; the release train's production leg is what lifts it, and the
+ * id it mints must match this line or this line moves again.
+ *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-09-08'
+export const DATA_RELEASE = '2026-09-10'
 
 /**
  * Keys that stay at the bucket root rather than moving into the release

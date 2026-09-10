@@ -83,6 +83,7 @@ import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
 import {
+  BADGE_ANCHOR_PROPERTY,
   BADGE_CHIP_PROPERTY,
   BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
@@ -231,6 +232,9 @@ function obstacleBoxes(map: TrailsInViewMap): Box[] {
 interface BadgeAnchor {
   point: Position
   fit: BadgeFit
+  /** Which side of the vertex the text block sits - one of
+   *  TRAIL_BADGE_ANCHORS, and the one the layer draws (below). */
+  anchor: string
 }
 
 /**
@@ -334,11 +338,11 @@ function anchorWithRoom(
         const box = plateBox(anchor, candidate.at, text)
         if (!withinFrame(box, frame)) continue
         if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
-        return { point: candidate.point, fit }
+        return { point: candidate.point, fit, anchor }
       }
     }
   }
-  return { point: candidates[0].point, fit: 'mark' }
+  return { point: candidates[0].point, fit: 'mark', anchor: TRAIL_BADGE_ANCHORS[0] }
 }
 
 export type TrailsInViewMap = MapLibreMap
@@ -369,6 +373,15 @@ export interface TrailInView {
   /** Which form the badge takes at that vertex: the full plate, or the mark
    *  alone where nothing wider had room (map/trailBadges.ts's header). */
   badgeFit: BadgeFit
+  /** Which side of the vertex the badge sits, one of TRAIL_BADGE_ANCHORS -
+   *  the placer's own choice, written on the feature for the layer's
+   *  `text-anchor` (map/trailBadges.ts). THE ENGINE DOES NOT CHOOSE, since
+   *  the review of #1374: with the layer allowed to overlap, MapLibre's
+   *  variable-anchor pass accepts the first anchor on its list whatever the
+   *  placer found room for - the phone frame at 05e9506a drew the plate
+   *  off the right edge of the screen from a vertex the placer had given
+   *  the mirror anchor. So the list is the placer's order alone. */
+  badgeAnchor: string
   /** The published properties of the piece that named it, verbatim, so a tap
    *  on the badge can open the same sheet a tap on the line opens. */
   properties: Record<string, unknown>
@@ -569,6 +582,7 @@ export function trailsInView(
         chosen: inChosenSystem,
         anchor: null,
         badgeFit: 'full',
+        badgeAnchor: TRAIL_BADGE_ANCHORS[0],
         properties,
         runs,
         clearRuns,
@@ -603,7 +617,12 @@ export function trailsInView(
         trail.name,
       )
       if (placed === null) return { ...trail, anchor: null }
-      return { ...trail, anchor: placed.point, badgeFit: placed.fit }
+      return {
+        ...trail,
+        anchor: placed.point,
+        badgeFit: placed.fit,
+        badgeAnchor: placed.anchor,
+      }
     })
     .sort((a, b) => {
       if (a.throughRoute !== b.throughRoute) return a.throughRoute ? -1 : 1
@@ -634,6 +653,7 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
           [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
           [BADGE_CHIP_PROPERTY]: blazeChipImageId(trail.blazeColor),
           [BADGE_FIT_PROPERTY]: trail.badgeFit,
+          [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
         },
         geometry: { type: 'Point', coordinates: trail.anchor as Position },
       })),

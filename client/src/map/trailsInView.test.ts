@@ -16,6 +16,8 @@ import {
   TAPPABLE_BLAZE_LAYER_IDS,
 } from './style'
 import {
+  BADGE_ANCHOR_PROPERTY,
+  TRAIL_BADGE_ANCHORS,
   BADGE_CHIP_PROPERTY,
   BADGE_MARK_PROPERTY,
   TRAIL_BADGE_SOURCE_ID,
@@ -302,6 +304,7 @@ describe('badgeFeatures', () => {
           chosen: true,
           anchor: null,
           badgeFit: 'full',
+          badgeAnchor: 'left',
           properties: {},
         },
       ]).features,
@@ -559,6 +562,36 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(trails[0].badgeFit).toBe('full')
     const { features } = badgeFeatures(trails)
     expect(features[0].properties).toMatchObject({ fit: 'full' })
+    // Mid-screen the plate fits only above or below the vertex - a 390 px
+    // screen is narrower than the vertex plus a plate on either side - and
+    // whichever side it is, the feature says so.
+    expect(TRAIL_BADGE_ANCHORS).toContain(features[0].properties?.[BADGE_ANCHOR_PROPERTY])
+  })
+
+  it('hands the layer the side it chose, so a plate at the right edge is drawn leftward', () => {
+    // One vertex twenty px from the right edge. The plate to the right of
+    // it ('left', the first anchor) would run off the screen; to the left
+    // of it ('right') it fits whole. The engine, allowed to overlap, would
+    // draw the first anchor on its list regardless (the phone frame at
+    // 05e9506a), so the choice rides the feature and the layer reads it.
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line('Appalachian National Scenic Trail', 'centerline', [[370, 400]], 'White'),
+      ],
+    })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.badgeFit).toBe('full')
+    expect(at.badgeAnchor).toBe('right')
+    const { features } = badgeFeatures([at])
+    expect(features[0].properties).toMatchObject({ [BADGE_ANCHOR_PROPERTY]: 'right' })
+
+    // And the mirror: at the left edge the first anchor fits, and is kept.
+    const mirror = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line('Appalachian National Scenic Trail', 'centerline', [[20, 400]], 'White'),
+      ],
+    })
+    expect(trailsInView(mirror as unknown as MapLibreMap)[0].badgeAnchor).toBe('left')
   })
 
   it('searches only for a through-route, which is the only line that gets a badge', () => {

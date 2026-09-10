@@ -94,10 +94,31 @@
   pointer-events: auto;
 }
 
+/* The plate and the actions share the column's first row, and the row is
+   what keeps them apart: the plate is a shrinking flex item and the actions
+   never shrink, so the plate can only ever take what the buttons leave.
+   Until the review of #1374 the actions were absolute in the corner and the
+   plate capped itself at "the width less two buttons" - which was the truth
+   when there were two, and the preview frame at 05e9506a had the "In view ·
+   5389" pill, the third action, drawn over the plate's own title. A width
+   the plate has to know about is a width it will get wrong again. */
+.map-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  pointer-events: none;
+}
+
+.map-header > * {
+  pointer-events: auto;
+}
+
 /* The identity plate: the map's chrome colour at 94%, so a hairline of
    terrain reads through and the plate stays a plate rather than a band. */
 .map-plate {
-  max-width: calc(100% - 2 * var(--header-button-size) - 20px);
+  flex: 0 1 auto;
+  min-width: 0;
   padding: 8px 12px;
   background: color-mix(in srgb, var(--bg-chrome) 94%, transparent);
   border-radius: var(--radius-l, 14px);
@@ -170,9 +191,8 @@
 }
 
 .map-header__actions {
-  position: absolute;
-  top: 0;
-  right: 0;
+  flex: none;
+  margin-left: auto;
   display: flex;
   /* WIREFRAMES.md: two 38px icon buttons, gap 7px. */
   gap: 7px;

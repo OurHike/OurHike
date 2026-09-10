@@ -100,7 +100,7 @@ export function Header({
   inView,
 }: HeaderProps) {
   return (
-    <>
+    <div className="map-header">
       <header className="map-plate">
         <div className="map-plate__identity">
           {trailLogo !== undefined && (
@@ -207,6 +207,6 @@ export function Header({
           </svg>
         </button>
       </div>
-    </>
+    </div>
   )
 }

@@ -16,11 +16,12 @@ export const alt =
 export const desktop = true
 
 export default async function drive(page) {
+  // Through the Plan tab's own primary, not Today's pinned bar: the bar is
+  // Today's (chrome/PinnedBar.tsx), and the Plan tab a laptop lands on has
+  // "Start on the map" where the phone's recipe found the bar - the camera
+  // caught the bar's door timing out here at 05e9506a.
   await page.getByRole('tab', { name: 'Plan' }).click()
-  await page
-    .getByRole('group', { name: 'Find or plan a hike' })
-    .getByRole('button', { name: 'Plan a hike' })
-    .click()
+  await page.getByRole('button', { name: 'Start on the map' }).click()
   await page.getByRole('heading', { name: 'Where do you want to go?' }).waitFor()
   await page.getByRole('region', { name: /trail map/i }).waitFor()
 }

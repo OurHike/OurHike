@@ -148,6 +148,11 @@ export function bareImageId(id: string): string {
 export type BadgeFit = 'full' | 'mark'
 export const BADGE_FIT_PROPERTY = 'fit'
 
+/** Which side of its vertex the badge sits - one of TRAIL_BADGE_ANCHORS,
+ *  chosen by map/trailsInView.ts and read by the layer's `text-anchor`.
+ *  The placer's, not the engine's: see the layout below. */
+export const BADGE_ANCHOR_PROPERTY = 'anchor'
+
 /** The chip a blaze falls through to. Every palette member has one, derived
  *  from BLAZE_PALETTE_MEMBERS so lib/blaze.ts's closed-palette rule (#782)
  *  reaches the badges without anybody listing them here; the three neutral
@@ -195,7 +200,10 @@ export const TRAIL_BADGE_TEXT_SIZE = 12
 
 /**
  * Where the plate may sit around its vertex, in the order the placer tries
- * them (#1283).
+ * them (#1283). THE PLACER'S LIST, NOT THE LAYER'S, since the review of
+ * #1374: the layer draws the one anchor map/trailsInView.ts writes on the
+ * feature (BADGE_ANCHOR_PROPERTY) rather than trying these itself - see
+ * `text-anchor` in the layout below for why it may not.
  *
  * ONE POSITION WAS NOT ENOUGH, and the first preview frame is the evidence:
  * over Harriman at z12 the A.T.'s badge anchored beside a water pin, pins
@@ -670,10 +678,20 @@ export function buildTrailBadgeLayer(
       ] as never,
       'text-font': ['Noto Sans Regular'],
       'text-size': TRAIL_BADGE_TEXT_SIZE,
-      'text-variable-anchor': [...TRAIL_BADGE_ANCHORS] as never,
+      // THE PLACER'S ANCHOR, NOT THE ENGINE'S. This was `text-variable-anchor`
+      // over TRAIL_BADGE_ANCHORS until the review of #1374, and that was
+      // right while the engine also did the collision pass: it tried the
+      // same list and kept the first that fit. Allowing overlap (below)
+      // took the collision pass away and left the anchor pass, which then
+      // accepts the FIRST anchor on the list for every feature - there is
+      // nothing left for a later one to be better at - so a plate the placer
+      // had given the mirror anchor at the right edge was drawn to the right
+      // regardless, half off the screen (the phone frame at 05e9506a). The
+      // placer already chose; the feature says which, and the layer obeys.
+      'text-anchor': ['get', BADGE_ANCHOR_PROPERTY] as never,
       'text-radial-offset': TRAIL_BADGE_RADIAL_OFFSET,
-      // Justified toward whichever anchor won, so the mark stays the end
-      // nearest the line on either side of it.
+      // Justified toward the anchor, so the mark stays the end nearest the
+      // line on either side of it.
       'text-justify': 'auto',
       // No wrapping for any name the data holds: the longest published
       // through-route name is 33 characters (trailLabels.ts's measurement),

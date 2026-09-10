@@ -98,6 +98,7 @@ import {
   CHOSEN_TRAIL_OPACITY,
 } from './nearbyTrails'
 import {
+  BADGE_ANCHOR_PROPERTY,
   TRAIL_BADGE_ANCHORS,
   TRAIL_BADGE_LAYER_ID,
   TRAIL_BADGE_PLATE_DAY,
@@ -1728,17 +1729,20 @@ describe('the through-route badge (#1283)', () => {
     expect(layout['text-optional']).toBe(false)
   })
 
-  it('may slide round its vertex when a pin is in the way, mark-first', () => {
-    // The first preview frame's lesson: pins are placed first, a symbol
-    // with one position that collides is dropped whole, and Harriman's
-    // one badge vanished beside a water pin. Reproduced and fixed in a
-    // stand-alone render (trailBadges.ts's TRAIL_BADGE_ANCHORS).
+  it('sits where the placer put it, on the side the placer chose', () => {
+    // The first preview frame's lesson was that one position is not
+    // enough (pins are placed first, and a symbol whose only position
+    // collides is dropped whole); the review of #1374's was that once the
+    // layer is allowed to overlap, the engine's variable-anchor pass
+    // accepts the first anchor on its list for every feature, so the
+    // placer's choice has to reach the layer as data. The list stays the
+    // placer's search order (trailBadges.ts's TRAIL_BADGE_ANCHORS).
     const layout = layer(TRAIL_BADGE_LAYER_ID).layout as Record<string, unknown>
-    expect(layout['text-variable-anchor']).toEqual(TRAIL_BADGE_ANCHORS)
+    expect(layout['text-anchor']).toEqual(['get', BADGE_ANCHOR_PROPERTY])
+    expect(layout['text-variable-anchor']).toBeUndefined()
     expect(TRAIL_BADGE_ANCHORS[0]).toBe('left')
     expect(TRAIL_BADGE_ANCHORS.length).toBeGreaterThanOrEqual(4)
     expect(layout['text-radial-offset']).toBe(TRAIL_BADGE_RADIAL_OFFSET)
-    expect(layout['text-anchor']).toBeUndefined()
   })
 
   it('ranks on the label ladder’s route-trail rung and dims with its line', () => {

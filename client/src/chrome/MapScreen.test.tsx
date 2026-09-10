@@ -1313,6 +1313,12 @@ describe('the desktop chart (#135)', () => {
     }
   })
 
+  it('draws the hover plate inside the canvas, positioned where the shell says (the review of #1374)', () => {
+    render(<MapScreen {...PROPS} hoverPlate={<div data-testid="hover">Hovering</div>} />)
+    const plate = screen.getByTestId('hover')
+    expect(plate.closest('.map-screen__canvas')).not.toBeNull()
+  })
+
   it('gives the chart and the legend back the moment the builder closes', () => {
     const restore = stubDesktop()
     try {

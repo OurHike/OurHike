@@ -72,6 +72,17 @@ export interface DayHikePickBarProps {
   onShape: (shape: DraftShape) => void
   /** #935: end this stretch here, and pick the walk up somewhere else. */
   onStartStretch: () => void
+  /**
+   * Whether the bar prints the walk's figures - the leg count, the miles,
+   * the ≈time and its baseline - or leaves them to the panel above it. On
+   * a phone the bar is the figures' one home; on a laptop the bar sits at
+   * the foot of the panel's column (the review of #1374), where "Your
+   * route" already prints Distance, Climb and Walking two inches up, and a
+   * second copy would be the disagreement one source exists to prevent.
+   * The gap notes and the organizations' tally stay either way: nothing
+   * else prints them. Defaults to true, so every phone caller is unchanged.
+   */
+  figures?: boolean
   /** Step 2's way on: "Use this route" - the review (F5's step 3). */
   onDone: () => void
   /** Step 2's way back: "‹ Hike" to step 1, the draft kept (rule R3). */
@@ -125,6 +136,7 @@ export function DayHikePickBar({
   canStartNew,
   drawing,
   onToggleDraw,
+  figures = true,
 }: DayHikePickBarProps) {
   const routed = status.kind === 'routed' ? status : null
   const time = walkingTime(walking)
@@ -219,11 +231,13 @@ export function DayHikePickBar({
 
       {routed !== null && (
         <>
-          <p className="day-hike-bar__total">
-            {routed.legs.length} {routed.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
-            {formatDistance(routed.miles, units)}
-            {time !== null && <> · {time}</>}
-          </p>
+          {figures && (
+            <p className="day-hike-bar__total">
+              {routed.legs.length} {routed.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
+              {formatDistance(routed.miles, units)}
+              {time !== null && <> · {time}</>}
+            </p>
+          )}
 
           {/* THE GAP IS PRINTED APART FROM THE MILES, NEVER ADDED TO THEM.
               One is ground an organization maintains and measures; the other
@@ -249,7 +263,7 @@ export function DayHikePickBar({
           {/* Whose pace that time is, when it is not the standard one (#851).
               Absent for a hiker who never moved a control, which is most of
               them - the line has to keep its weight for the ones who did. */}
-          {time !== null && walking?.relativeLine != null && (
+          {figures && time !== null && walking?.relativeLine != null && (
             <p className="day-hike-bar__baseline">{walking.relativeLine}</p>
           )}
           <ul className="day-hike-bar__orgs">

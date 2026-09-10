@@ -85,6 +85,19 @@ const SHELTER: DayHikeStop = {
 /** A shelter a long way up a spur - the case the panel says out loud. */
 const FAR_SHELTER: DayHikeStop = { ...SHELTER, poiId: 'far', offCourseFeet: 3200 }
 
+describe('the controls at the foot (the review of #1374)', () => {
+  it('renders what the shell hands it after the route, and nothing when the phone hands nothing', () => {
+    panel({ controls: <div>the bar</div> })
+    const bar = screen.getByText('the bar')
+    expect(bar.closest('.day-hike-panel__controls')).not.toBeNull()
+    expect(bar.closest('.day-hike-panel')).not.toBeNull()
+    cleanup()
+
+    panel()
+    expect(document.querySelector('.day-hike-panel__controls')).toBeNull()
+  })
+})
+
 function panel(overrides: Partial<Parameters<typeof DayHikePanel>[0]> = {}) {
   const props = {
     draft: DRAFT,

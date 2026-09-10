@@ -309,6 +309,13 @@ export interface MapScreenProps {
    */
   builderPanel?: ReactNode
   /**
+   * The figure following the pointer over a route being built, on a laptop
+   * (chrome/RouteHover.tsx, the review of #1374). A slot for `builderPanel`'s
+   * reason: what the route is called and weighs is the shell's. Rendered
+   * inside the canvas, positioned in canvas px.
+   */
+  hoverPlate?: ReactNode
+  /**
    * A day-hike draft is live, at any step - the builder at step 2, or the
    * review at step 3, which the phone shows as a sheet (`routeSheet`) and
    * the desktop in the rail (`builderPanel`). What stands down for the
@@ -863,6 +870,7 @@ export function MapScreen({
   pressPlateOpen,
   routeSheet,
   builderPanel,
+  hoverPlate,
   dayHikeLive,
   pressPlate,
   followBand,
@@ -1546,6 +1554,7 @@ export function MapScreen({
                 </button>
               )}
             </div>
+            {hoverPlate}
 
             <MapView
               topoArchiveUrl={topoArchiveUrl}

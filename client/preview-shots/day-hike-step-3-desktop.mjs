@@ -39,7 +39,7 @@ import { reviewInHarriman } from './day-hike-step-3.mjs'
 export const caption =
   'Step 3 on a laptop — the review in the rail, read against the route it describes, with the map uncovered (#1373, frame 16b)'
 export const alt =
-  'Either step 3 of the planning spine in a wide browser window: a narrow column down the left opening with a three-stop rail reading Day hike ✓, Route ✓ and Details with Details lit, a Name field, the date, a figures line with miles and legs, then Water on route and Shelters & campsites rows where this build holds waypoints near the walk, the legs with their blazes, the ways off, and a foot with "‹ Route" and "Save this day hike"; the map filling the whole right of the window with the route cased dark and nothing drawn over it - or, where no walk could be built, the empty builder or step 1 with its refusal sentence'
+  'Either step 3 of the planning spine in a wide browser window: a narrow column down the right of the map opening with a three-stop rail reading Day hike ✓, Route ✓ and Details with Details lit, a Name field, the date, a figures line with miles and legs, then Water on route and Shelters & campsites rows where this build holds waypoints near the walk, the legs with their blazes, the ways off, and a foot with "‹ Route" and "Save this day hike"; the map filling the middle of the window with the route cased dark and nothing drawn over it - or, where no walk could be built, the empty builder or step 1 with its refusal sentence'
 
 // The wide layout, which is the entire subject.
 export const desktop = true

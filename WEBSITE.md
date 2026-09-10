@@ -372,9 +372,15 @@ sheet anchored to the bottom of the canvas at `max-height: 60%`, and above the
 breakpoint it stayed that way — a letterboxed map with a sheet across the foot
 of it on a 27" display, which is exactly the "sheet that covers the map" the
 paragraph above rules out. Since [#1194](https://github.com/OurHike/OurHike/issues/1194)
-the information moves into a 348px left rail (`chrome/DayHikePanel.tsx`) — the
+the information moves into a 348px rail (`chrome/DayHikePanel.tsx`) — the
 route's figures, its ordered legs and stops, and the map-label toggles — and the
-map takes the whole remaining frame.
+map takes the whole remaining frame. **Amended 2026-09-10 ([#1374](https://github.com/OurHike/OurHike/pull/1374)
+review):** the rail is the column on the *right* of the map, where the legend's
+column already lives, and it holds the builder's controls at its foot — the bar
+along the bottom of the map was the phone's thumb-reach answer drawn where
+there is no thumb. Step 1 takes the same column (`plan-step-1-desktop.mjs`),
+so the three steps are one column at one map's edge, and a figure follows the
+pointer over the route (`chrome/useRouteHover.ts`).
 
 **Step 3 reads against its own route.** The rail's next stop, applied with
 [#1373](https://github.com/OurHike/OurHike/issues/1373). The review of a built

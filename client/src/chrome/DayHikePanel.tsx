@@ -67,7 +67,7 @@
 // is a claim about the bucket, and it wants checking against the bucket
 // rather than against a comment.
 
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 
 import { blazePaintColor } from '../lib/blaze'
 import type { DraftStatus, DayHikeDraft } from '../lib/dayHikeDraft'
@@ -117,6 +117,17 @@ export interface DayHikePanelProps {
   /** Phone only: whether the detail body is open. Always open on a desktop. */
   detailsOpen: boolean
   onToggleDetails: () => void
+  /**
+   * The builder's controls - the bar (chrome/DayHikePickBar.tsx) - at the
+   * foot of this column on a laptop (the maintainer's review of #1374: the
+   * design's step 2 is one column on the right of the map holding the
+   * rail, the shape, the stops, the tools and the foot, and the bar along
+   * the bottom of the map was the phone's thumb-reach answer drawn where
+   * there is no thumb). The shell passes the same element it would have
+   * put over the map, so the two breakpoints run one component with one
+   * state; the phone never passes it, and the bar stays over the canvas.
+   */
+  controls?: ReactNode
 }
 
 /**
@@ -133,7 +144,7 @@ export interface DayHikePanelProps {
  * cannot resolve, and inventing "Reeves -> somewhere" here would be the same
  * invention one screen earlier.
  */
-function routeTitle(status: DraftStatus): string {
+export function routeTitle(status: DraftStatus): string {
   if (status.kind !== 'routed' || status.legs.length === 0) return 'A new day hike'
   const named = status.legs.map((leg) => leg.name).filter((name) => name !== null)
   if (named.length === 0) return 'A new day hike'
@@ -172,6 +183,7 @@ export function DayHikePanel({
   onRemoveTurn,
   detailsOpen,
   onToggleDetails,
+  controls,
 }: DayHikePanelProps) {
   const bodyId = useId()
   const routed = status.kind === 'routed' ? status : null
@@ -359,6 +371,9 @@ export function DayHikePanel({
           })}
         </div>
       </div>
+      {controls !== undefined && (
+        <div className="day-hike-panel__controls">{controls}</div>
+      )}
     </section>
   )
 }

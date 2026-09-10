@@ -141,6 +141,15 @@ function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}
 }
 
 describe('the running total', () => {
+  it('leaves the figures to the column when told to, and keeps everything else (the review of #1374)', () => {
+    renderBar({ figures: false })
+    expect(screen.queryByText(/1 leg ·|legs ·/)).toBeNull()
+    // The controls and the organizations' tally are the bar's alone.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Shape' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Use this route/ })).toBeInTheDocument()
+  })
+
   it('counts legs and prints the distance', () => {
     renderBar()
 

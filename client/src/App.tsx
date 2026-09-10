@@ -329,7 +329,7 @@ import {
   pausedDays,
   resumeOffer,
 } from './lib/hikeResume'
-import { DayHikePickBar } from './chrome/DayHikePickBar'
+import { DayHikePickBar, walkingTime } from './chrome/DayHikePickBar'
 import { roadRefusal, tappedRoadAt } from './map/roadTaps'
 import {
   canStartStretch,
@@ -460,6 +460,9 @@ import {
   type HikerMode,
 } from './lib/hikerMode'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
+import { RouteHoverPlate } from './chrome/RouteHover'
+import { useRouteHover } from './chrome/useRouteHover'
+import { routeTitle } from './chrome/DayHikePanel'
 import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
@@ -2133,10 +2136,16 @@ function App() {
     reportingFailure ||
     reportingClosure ||
     reporting !== null
+  // STEP 1 BESIDE THE MAP on a laptop (the review of #1374; the design's
+  // R2, "the map never leaves"): the Plan tab's step 1 is the map with the
+  // step column beside it, the same slot steps 2 and 3 take, so the three
+  // steps are one column at one map's edge. On a phone step 1 stays the
+  // Plan tab's own page.
+  const planStepBeside = isDesktop && planStep !== null
   const tabOverMap =
     !entering &&
     (activeTab === 'more' ||
-      activeTab === 'plan' ||
+      (activeTab === 'plan' && !planStepBeside) ||
       (activeTab === 'today' && !isDesktop))
   const mapShownNow = mapMounted && !flowOpen && !tabOverMap
   /**
@@ -4844,6 +4853,20 @@ function App() {
       pace,
     )
   }, [dayHikeStatus, pace])
+
+  /**
+   * Where the pointer is over the route being built, on a laptop with a
+   * fine pointer, or null (chrome/RouteHover.tsx, the review of #1374).
+   * Asked only while a routed draft is live at step 2: the review card and
+   * the phone never have a plate to place.
+   */
+  const routeHoverAt = useRouteHover(
+    map,
+    isDesktop &&
+      dayHike !== null &&
+      dayHikeReview === null &&
+      dayHikeStatus?.kind === 'routed',
+  )
 
   /**
    * The walk with a mile on every vertex (#1194) - what the stops, the mile
@@ -8996,6 +9019,103 @@ function App() {
   // already there instead of paying for a new one. The screens themselves
   // still mount and unmount exactly as they did as returns, which is what
   // More's boundary comment below relies on (#175).
+  /**
+   * Step 1 of the spine (#1373, F3): "Where do you want to go?". One
+   * element, two homes: the Plan tab's own page on a phone, and the map's
+   * beside-the-map slot on a laptop (`planStepBeside`), where it is the
+   * first face of the column steps 2 and 3 take. Built once here so the
+   * forty-odd props cannot drift between the two.
+   */
+  const planStartNode =
+    planStep === null ? null : (
+      // Step 1 of the spine (#1373, F3): "Where do you want to
+      // go?", in the Plan tab's own slot, over the tab bar. Every
+      // door opens a builder on the map or a published walk's
+      // detail; Cancel is the navigator's Back.
+      <PlanStart
+        mode={hikerMode}
+        network={trailNetwork}
+        onRetryNetwork={retryTrailNetwork}
+        hasFix={gps.status === 'located'}
+        hikes={suggestedHikes}
+        near={near}
+        units={units}
+        pace={pace}
+        onNamePlace={() => setStepPickerOpen(true)}
+        onWhereIAm={() => {
+          if (hikerMode === 'long') routeBuilder.openRouteBuilder()
+          else if (gps.status === 'located')
+            startDayHikeAt({ lon: gps.at.lon, lat: gps.at.lat })
+        }}
+        onPickOnMap={() =>
+          hikerMode === 'long' ? routeBuilder.openRouteBuilder() : openDayHike()
+        }
+        {...(hikerMode === 'long'
+          ? {}
+          : {
+              onDraw: () => {
+                openDayHike()
+                setDayHikeDrawMode(true)
+              },
+              onRecordWalked: () => {
+                setDayHikeKind('walked')
+                openDayHike()
+              },
+            })}
+        onFindHike={openFinder}
+        onOpenSuggestedHike={openSuggestedHike}
+        onCancel={goBack}
+        // A route waiting on the map makes step 2 a door (R3):
+        // the rail's second stop goes back to it, the draft kept.
+        {...(builderLive
+          ? {
+              reached: 2 as const,
+              onStep: () => navigate({ to: 'tab', tab: 'map', unguarded: true }),
+            }
+          : {})}
+      />
+    )
+
+  /**
+   * The builder's controls (chrome/DayHikePickBar.tsx), built once: the
+   * sheet over the map's lower third on a phone, and on a laptop the foot
+   * of the builder's column (DayHikePanel's `controls`, the review of
+   * #1374), where the figures the column already prints are left out.
+   */
+  const dayHikeBarNode =
+    dayHike === null ? null : (
+      <DayHikePickBar
+        draft={dayHike}
+        status={dayHikeStatus ?? { kind: 'empty' }}
+        units={units}
+        orgLabel={dayHikeOrgLabel}
+        // Priced from the graph's own per-edge climb (#1011). Still
+        // null - and the bar still prints no time - whenever this
+        // phone holds no elevation artifact or the walk crosses an
+        // edge nobody measured: ascentFt: 0 would price a climb in
+        // Harriman at zero, a flat-ground claim on real ground.
+        walking={dayHikeWalking}
+        onUndo={() => setDayHike((draft) => (draft === null ? draft : undoTap(draft)))}
+        shape={draftShape(dayHike)}
+        shapes={shapesOffered(dayHike)}
+        onShape={(shape) =>
+          setDayHike((draft) => (draft === null ? draft : shapeDraft(draft, shape)))
+        }
+        onStartStretch={() =>
+          setDayHike((draft) => (draft === null ? draft : startStretch(draft)))
+        }
+        onDone={handleDayHikeDone}
+        onBackToStepOne={backToStepOne}
+        onCancel={handleDayHikeCancel}
+        canStartNew={dayHike !== null && canStartStretch(dayHike)}
+        drawing={dayHikeDrawMode}
+        onToggleDraw={() => setDayHikeDrawMode((on) => !on)}
+        // The column prints the figures on a laptop (DayHikePanel's stats);
+        // the bar prints them only where it is the one home, over the map.
+        figures={!isDesktop}
+      />
+    )
+
   let overlayScreen: ReactNode = null
   if (!entering && activeTab === 'today' && !isDesktop) {
     overlayScreen = (
@@ -9181,7 +9301,7 @@ function App() {
         </div>
       </>
     )
-  } else if (!entering && activeTab === 'plan') {
+  } else if (!entering && activeTab === 'plan' && !planStepBeside) {
     overlayScreen = (
       <>
         <div className="app__screen">
@@ -9191,53 +9311,7 @@ function App() {
                 underneath is the way back. */}
             <ErrorBoundary fallback={() => <ScreenFailed what="This screen" />}>
               {planStep !== null ? (
-                // Step 1 of the spine (#1373, F3): "Where do you want to
-                // go?", in the Plan tab's own slot, over the tab bar. Every
-                // door opens a builder on the map or a published walk's
-                // detail; Cancel is the navigator's Back.
-                <PlanStart
-                  mode={hikerMode}
-                  network={trailNetwork}
-                  onRetryNetwork={retryTrailNetwork}
-                  hasFix={gps.status === 'located'}
-                  hikes={suggestedHikes}
-                  near={near}
-                  units={units}
-                  pace={pace}
-                  onNamePlace={() => setStepPickerOpen(true)}
-                  onWhereIAm={() => {
-                    if (hikerMode === 'long') routeBuilder.openRouteBuilder()
-                    else if (gps.status === 'located')
-                      startDayHikeAt({ lon: gps.at.lon, lat: gps.at.lat })
-                  }}
-                  onPickOnMap={() =>
-                    hikerMode === 'long' ? routeBuilder.openRouteBuilder() : openDayHike()
-                  }
-                  {...(hikerMode === 'long'
-                    ? {}
-                    : {
-                        onDraw: () => {
-                          openDayHike()
-                          setDayHikeDrawMode(true)
-                        },
-                        onRecordWalked: () => {
-                          setDayHikeKind('walked')
-                          openDayHike()
-                        },
-                      })}
-                  onFindHike={openFinder}
-                  onOpenSuggestedHike={openSuggestedHike}
-                  onCancel={goBack}
-                  // A route waiting on the map makes step 2 a door (R3):
-                  // the rail's second stop goes back to it, the draft kept.
-                  {...(builderLive
-                    ? {
-                        reached: 2 as const,
-                        onStep: () =>
-                          navigate({ to: 'tab', tab: 'map', unguarded: true }),
-                      }
-                    : {})}
-                />
+                planStartNode
               ) : (
                 <PlanScreen
                   plan={plan}
@@ -9729,9 +9803,31 @@ function App() {
               dayHikeDrawing={dayHikeDrawing ?? followDrawing}
               dayHikeTicks={dayHikeTicks}
               mapLabels={mapLabelState}
-              dayHikeLive={dayHike !== null}
+              dayHikeLive={dayHike !== null || planStepBeside}
+              // The figure following the pointer over the route (the review
+              // of #1374), on a laptop with a fine pointer only - the hook
+              // answers null everywhere else. Its words are the column's.
+              hoverPlate={
+                routeHoverAt !== null && dayHikeStatus?.kind === 'routed' ? (
+                  <RouteHoverPlate
+                    at={routeHoverAt}
+                    title={routeTitle(dayHikeStatus)}
+                    figures={[
+                      formatDistance(dayHikeStatus.miles, units),
+                      walkingTime(dayHikeWalking),
+                    ]
+                      .filter((part) => part !== null)
+                      .join(' · ')}
+                  />
+                ) : undefined
+              }
               builderPanel={
-                // Only while a walk is being built, and never over the review
+                // Step 1 beside the map on a laptop (the review of #1374),
+                // ahead of the builder: "‹ Hike" keeps the draft and returns
+                // to step 1, whose column then stands where the builder's did.
+                planStepBeside ? (
+                  planStartNode
+                ) : // Only while a walk is being built, and never over the review
                 // card: `dayHikeReview` means the walk is finished and the
                 // panel's controls no longer apply to anything. On a desktop
                 // the review takes the rail over from it (below).
@@ -9757,6 +9853,11 @@ function App() {
                     onBackToStepOne={backToStepOne}
                     detailsOpen={dayHikeDetailsOpen}
                     onToggleDetails={() => setDayHikeDetailsOpen((open) => !open)}
+                    // The bar at the column's foot on a laptop (the review of
+                    // #1374); the phone keeps it over the map (below).
+                    {...(isDesktop && dayHikeBarNode !== null
+                      ? { controls: dayHikeBarNode }
+                      : {})}
                   />
                 ) : isDesktop && dayHikeReview !== null ? (
                   // STEP 3 AGAINST ITS OWN ROUTE (#1373, frame 16b). Above the
@@ -9884,39 +9985,10 @@ function App() {
                     dayHikeCardNode
                   )
                 ) : dayHike !== null ? (
-                  <DayHikePickBar
-                    draft={dayHike}
-                    status={dayHikeStatus ?? { kind: 'empty' }}
-                    units={units}
-                    orgLabel={dayHikeOrgLabel}
-                    // Priced from the graph's own per-edge climb (#1011). Still
-                    // null - and the bar still prints no time - whenever this
-                    // phone holds no elevation artifact or the walk crosses an
-                    // edge nobody measured: ascentFt: 0 would price a climb in
-                    // Harriman at zero, a flat-ground claim on real ground.
-                    walking={dayHikeWalking}
-                    onUndo={() =>
-                      setDayHike((draft) => (draft === null ? draft : undoTap(draft)))
-                    }
-                    shape={draftShape(dayHike)}
-                    shapes={shapesOffered(dayHike)}
-                    onShape={(shape) =>
-                      setDayHike((draft) =>
-                        draft === null ? draft : shapeDraft(draft, shape),
-                      )
-                    }
-                    onStartStretch={() =>
-                      setDayHike((draft) =>
-                        draft === null ? draft : startStretch(draft),
-                      )
-                    }
-                    onDone={handleDayHikeDone}
-                    onBackToStepOne={backToStepOne}
-                    onCancel={handleDayHikeCancel}
-                    canStartNew={dayHike !== null && canStartStretch(dayHike)}
-                    drawing={dayHikeDrawMode}
-                    onToggleDraw={() => setDayHikeDrawMode((on) => !on)}
-                  />
+                  // On a laptop the bar is at the foot of the column (below).
+                  isDesktop ? null : (
+                    dayHikeBarNode
+                  )
                 ) : followSheetNode !== null ? (
                   // Following outranks both doors below and neither builder above:
                   // a hiker mid-walk is not planning, and a hiker who IS planning

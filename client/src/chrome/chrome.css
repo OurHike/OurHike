@@ -4915,3 +4915,45 @@ a.poi-card__credit::after {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ---------- The figure following the pointer over a route (#1374 review) ---------- */
+
+/* chrome/RouteHover.tsx: the design's "Hovering · Reeves Meadow → Tuxedo
+   station · 6.4 mi · ≈3 h 20" beside the pointer, on a laptop. Positioned
+   in canvas px by the hook, offset so the pointer never sits on it, and
+   inert to the pointer so it never takes the tap it describes. The same
+   paper as the plate over the map, and the same mono for the figures. */
+.route-hover {
+  position: absolute;
+  z-index: 4;
+  transform: translate(14px, 14px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 15rem;
+  padding: 8px 10px;
+  pointer-events: none;
+  background: var(--surface-over-map, var(--bg-surface));
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+  color: var(--fg-1);
+}
+.route-hover__eyebrow {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow, 0.1em);
+  text-transform: uppercase;
+  color: var(--fg-3, var(--fg-2));
+}
+.route-hover__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.route-hover__figures {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}

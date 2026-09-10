@@ -1239,6 +1239,43 @@ describe('the day-hike builder, end to end', () => {
 // --- Step 3 on a desktop (#1373, frame 16b) ---------------------------------
 
 describe('step 3 on a desktop', () => {
+  it('keeps the builder’s controls at the foot of the column, and its figures in the column alone (the review of #1374)', async () => {
+    stubDesktop()
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await screen.findByRole('heading', { name: 'Where do you want to go?' })
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
+    const bar = await screen.findByRole('region', { name: 'Build a day hike' })
+    // In the column, under "Your route", and nowhere over the canvas.
+    const column = bar.closest('.day-hike-panel')
+    expect(column).not.toBeNull()
+    expect(bar.closest('.day-hike-panel__controls')).not.toBeNull()
+    expect(bar.closest('.map-screen__canvas')).toBeNull()
+    expect(column?.parentElement?.className).toBe('map-screen__body')
+
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    // The column prints the distance once, in its stats; the bar in it does
+    // not print the leg count and miles a second time.
+    await screen.findByText('Distance')
+    expect(screen.queryByText(/1 leg ·/)).toBeNull()
+    expect(
+      within(column as HTMLElement).getByRole('button', { name: /Use this route/ }),
+    ).toBeInTheDocument()
+    expect(
+      within(column as HTMLElement).getByRole('radiogroup', { name: 'Shape' }),
+    ).toBeInTheDocument()
+  })
+
   it('reads the review in the rail beside the route, and still saves from there', async () => {
     // The same walk the end-to-end case builds, above the breakpoint. On a
     // phone the review is a sheet over the canvas (`routeSheet`); here the
@@ -1267,7 +1304,8 @@ describe('step 3 on a desktop', () => {
     const map = await liveMap()
     await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
-    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+    // Routed: the way on appears. (The bar's "1 leg ·" line is the phone's;
+    // on a laptop the column's stats carry the figures - the case above.)
     await user.click(await screen.findByRole('button', { name: 'Use this route' }))
 
     const save = await screen.findByRole('button', { name: 'Save this day hike' })

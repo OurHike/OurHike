@@ -70,8 +70,26 @@ on:
 # shared across pull requests - GitHub holds one pending run per group and
 # cancels the rest, so a shared group would drop most of ten queued previews
 # rather than taking turns.
+#
+# A manual dispatch gets its own `manual-<n>` namespace rather than joining
+# the automatic trigger's `pr-preview-<n>` group directly, even though both
+# are "the same pull request" once pr_number is entered correctly. Concurrency
+# groups are resolved from this raw expression at queue time, before a single
+# step - including "Confirm the dispatched PR number matches this branch"
+# below - has run. A mistyped pr_number sharing the automatic group would
+# therefore cancel a real, unrelated pull request's in-progress build before
+# the run doing the mistyping ever gets far enough to notice its own mistake.
+# Namespaced separately, that same typo only ever costs the dispatch that
+# made it: the confirmation step still catches it and fails the run, and
+# nothing outside this one pull request's own manual runs is at risk.
+#
+# This is also the one place `github.event.number || inputs.pr_number` has to
+# be spelled out rather than read from "Name this preview" below - a
+# workflow-level `concurrency:` is evaluated before any job or step runs, so
+# it cannot depend on a step's output the way everything else in this file
+# now does.
 concurrency:
-  group: pr-preview-${{ github.event.number || inputs.pr_number }}
+  group: pr-preview-${{ github.event.number || format('manual-{0}', inputs.pr_number) }}
   cancel-in-progress: true
 
 permissions:
@@ -126,6 +144,12 @@ jobs:
       # is what remains when there was no deploy in this run at all - the
       # comment posted when a pull request closes - and it assumes the project
       # subdomain matches the project name, which is how Pages names them.
+      # The canonical place this workflow resolves "which pull request is
+      # this" - every later step that needs the number reads it from here
+      # (steps.preview.outputs.number) rather than re-deriving it, so the
+      # fallback lives in exactly one place a future change to it could miss
+      # (the concurrency group above is the one necessary exception - see its
+      # own comment for why).
       - name: Name this preview
         id: preview
         env:
@@ -133,6 +157,7 @@ jobs:
           PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
         run: |
           {
+            echo "number=$NUMBER"
             echo "alias=pr-$NUMBER"
             echo "url=https://pr-$NUMBER.$PROJECT.pages.dev"
           } >> "$GITHUB_OUTPUT"
@@ -150,20 +175,32 @@ jobs:
       # pr_number is a human's typed guess rather than something read off an
       # event, so it is checked once, early, against the branch this run
       # actually checked out - rather than trusted for the rest of the job.
+      #
+      # Compared by BRANCH NAME, not by head commit: a SHA comparison would
+      # race a fast follow-up push. Dispatch this run against commit A, then
+      # push commit B to the same branch before this step executes (it is the
+      # 4th step - a matter of seconds), and `pulls.get` would already report
+      # `head.sha: B` while this run checked out A, failing a dispatch that
+      # named the right pull request for no real mistake. The branch name
+      # does not move when a new commit lands on it, so it is what this step
+      # actually needs to confirm: that pr_number names a pull request whose
+      # branch is the one this run was dispatched from.
       - name: Confirm the dispatched PR number matches this branch
         if: steps.can.outputs.deploy == 'true' && github.event_name == 'workflow_dispatch'
         uses: actions/github-script@v9
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
+          REF_NAME: ${{ github.ref_name }}
         with:
           script: |
             const pull_number = Number(process.env.PR_NUMBER)
             const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number })
-            if (pr.head.sha !== context.sha) {
+            if (pr.head.ref !== process.env.REF_NAME) {
               core.setFailed(
-                `pr_number ${pull_number} is at ${pr.head.sha}, but this run checked out ` +
-                `${context.sha}. Dispatch this workflow from that pull request's own branch - ` +
-                'a mismatch here would post this preview under the wrong pull request.'
+                `pr_number ${pull_number} is on branch '${pr.head.ref}', but this run was ` +
+                `dispatched from '${process.env.REF_NAME}'. Dispatch this workflow from that ` +
+                'pull request\'s own branch - a mismatch here would post this preview under ' +
+                'the wrong pull request.'
               )
             }
 
@@ -324,11 +361,11 @@ jobs:
         uses: actions/github-script@v9
         env:
           LIST: ${{ runner.temp }}/pr-files.txt
-          # context.payload.pull_request is absent on a workflow_dispatch run,
-          # so the number travels through env instead - the same reason every
-          # `${{ }}` value that reaches a script or a shell line does, spelled
-          # out above at "Check whether this run can deploy".
-          PR_NUMBER: ${{ github.event.number || inputs.pr_number }}
+          # steps.preview.outputs.number rather than context.payload.pull_request.number:
+          # the latter is absent on a workflow_dispatch run. Read from "Name
+          # this preview" rather than re-deriving the fallback here - see its
+          # comment.
+          PR_NUMBER: ${{ steps.preview.outputs.number }}
         with:
           script: |
             const { writeFileSync } = require('node:fs')
@@ -469,8 +506,9 @@ jobs:
           # workflow_dispatch carries no pull_request context for this action
           # to infer a number from - harmless to pass explicitly on the
           # automatic trigger too, since it already agrees with what the
-          # action would have inferred there.
-          number: ${{ github.event.number || inputs.pr_number }}
+          # action would have inferred there. Read from "Name this preview"
+          # rather than re-deriving the fallback here - see its comment.
+          number: ${{ steps.preview.outputs.number }}
           message: |
             ### Preview
 

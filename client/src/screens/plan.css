@@ -4273,3 +4273,51 @@
   color: var(--fg-2);
   cursor: pointer;
 }
+
+/* The cascade's diff before it applies, and the one undo after (#1373,
+   frames 7a-7b). The rows are DayRow's; this frames them in the actions
+   sheet and gives the foot its two doors. */
+.plan__diff {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.plan__diff-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.plan__diff-foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.plan__undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+}
+
+.plan__undo-button {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.6rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
+}

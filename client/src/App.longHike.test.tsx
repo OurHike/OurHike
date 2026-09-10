@@ -23,6 +23,7 @@ import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
+import { localDay } from './lib/passedToday'
 import { BLAZE_DOTTED_LAYER_ID } from './map/style'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -654,5 +655,134 @@ describe('the hike a hiker is on is what the map takes (#1352)', () => {
     render(<App />)
 
     expect(await dottedFilter()).toContain('"literal",[]')
+  })
+})
+
+describe('when today changes (#1373, F7)', () => {
+  const today = localDay(new Date())
+  const tomorrow = localDay(new Date(Date.now() + 86_400_000))
+
+  /** A hike on a trip whose two days are dated today and tomorrow. */
+  function datedStore(over: Partial<TripStore> = {}): TripStore {
+    return hikeStore({
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'This week',
+          plan: {
+            target: { miles: 15 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+              { mile: 22.2, name: 'Beyond Shelter', poiId: 's22', resupply: false },
+            ],
+            days: [
+              { id: 'd1', pinned: false, generated: true, date: today },
+              { id: 'd2', pinned: false, generated: true, date: tomorrow },
+            ],
+          },
+        },
+      ],
+      hikes: [{ ...hikeStore().hikes[0], tripIds: ['trip-1'] }],
+      ...over,
+    })
+  }
+
+  it('the day screen’s "Call it a day here" lands on the timeline’s call sheet (frame 7c)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    app.store.set(TRIPS_KEY, datedStore())
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open the day' }))
+    await user.click(await screen.findByRole('button', { name: 'Call it a day here' }))
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Call it a day' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
+  })
+
+  it('"Take a zero" on the day screen inserts one after today, dating the rest a day on', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    app.store.set(TRIPS_KEY, datedStore())
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open the day' }))
+    // The day screen's own control - Today's card carries one of the same
+    // name, which opens this screen.
+    await user.click(
+      within(await screen.findByRole('region', { name: 'Change today' })).getByRole(
+        'button',
+        {
+          name: 'Take a zero',
+        },
+      ),
+    )
+
+    await waitFor(() => {
+      const stored = app.store.get(TRIPS_KEY) as TripStore
+      const plan = stored.trips[0].plan
+      expect(plan.days).toHaveLength(3)
+      expect(plan.stops[1].mile).toBe(plan.stops[2].mile)
+      expect(plan.days[2].date).toBe(localDay(new Date(Date.now() + 2 * 86_400_000)))
+    })
+    expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
+  })
+
+  it('"Move them to today" on the welcome-back card moves the dated days (the inventory’s P30)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    app.store.set(
+      TRIPS_KEY,
+      datedStore({
+        trips: [
+          {
+            id: 'trip-1',
+            name: 'This week',
+            plan: {
+              target: { miles: 15 },
+              stops: [
+                { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+                { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+                { mile: 22.2, name: 'Beyond Shelter', poiId: 's22', resupply: false },
+              ],
+              days: [
+                { id: 'd1', pinned: false, generated: true, date: '2026-08-01' },
+                { id: 'd2', pinned: false, generated: true, date: '2026-08-03' },
+              ],
+            },
+          },
+        ],
+        hikes: [
+          {
+            ...hikeStore().hikes[0],
+            tripIds: ['trip-1'],
+            status: 'paused',
+            pausedOn: '2026-08-01',
+          },
+        ],
+      }),
+    )
+    render(<App />)
+
+    const card = await screen.findByRole('region', { name: 'Welcome back' })
+    await user.click(within(card).getByRole('button', { name: 'Move them to today' }))
+
+    await waitFor(() => {
+      const stored = app.store.get(TRIPS_KEY) as TripStore
+      expect(stored.trips[0].plan.days.map((day) => day.date)).toEqual([
+        today,
+        localDay(new Date(Date.now() + 2 * 86_400_000)),
+      ])
+      expect(stored.hikes[0].status).toBe('walking')
+    })
   })
 })

@@ -233,6 +233,7 @@ import { useTrailData } from './lib/useTrailData'
 import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
 import { ascentBetween } from './lib/todayJournal'
 import { loadLastOnTrail, noteOnTrail } from './lib/lastOnTrail'
+import { moveDatedDaysToToday } from './lib/hikeResume'
 import {
   clearOpenWalk,
   leftOpenBefore,
@@ -3785,6 +3786,9 @@ function App() {
 
   /** Whether the day screen is open over the hike (#1317). */
   const [hikeDayOpen, setHikeDayOpen] = useState(false)
+  /** The day screen asked for "call it a day" (#1373, frame 7c): the
+   *  timeline opens its sheet on the current day and acknowledges. */
+  const [callDayRequest, setCallDayRequest] = useState(false)
 
   /**
    * The last day this phone had a fix on the trail (#1317), for the resume
@@ -3934,9 +3938,25 @@ function App() {
 
   const handleResumeHike = useCallback(() => {
     if (activeHike === null) return
-    applyTripStore((store) => resumeHike(store, activeHike.id))
+    // "Move them to today" does what it says (#1373, frame 6d; the
+    // inventory's P30): the status comes back to walking AND every dated
+    // day ahead in the hike's plans slides to start today, keeping their
+    // spacing. `resumeHike` alone moved no date, and the card's copy had
+    // promised one since #1317.
+    const today = localDay(now)
+    applyTripStore((store) => {
+      const resumed = resumeHike(store, activeHike.id)
+      return {
+        ...resumed,
+        trips: resumed.trips.map((trip) =>
+          activeHike.tripIds.includes(trip.id)
+            ? { ...trip, plan: moveDatedDaysToToday(trip.plan, today) }
+            : trip,
+        ),
+      }
+    })
     setResumeDismissed((seen) => [...seen, activeHike.id])
-  }, [activeHike, applyTripStore])
+  }, [activeHike, applyTripStore, now])
 
   /** Leave the plan exactly as it is - which is what doing nothing does too,
    *  and the point of the button is that a hiker can say so and stop being
@@ -6233,6 +6253,30 @@ function App() {
     [applyTripStore],
   )
 
+  /** The day screen's three ends (frame 7c) land on the timeline's call
+   *  sheet: the hike's room, the Plan tab, and the sheet on today's day. */
+  const callToday = useCallback(() => {
+    setHikeDayOpen(false)
+    closeStepAway()
+    enterTripsRoom()
+    setActiveTab('plan')
+    setCallDayRequest(true)
+  }, [closeStepAway, enterTripsRoom, setActiveTab])
+  const acknowledgeCallToday = useCallback(() => setCallDayRequest(false), [])
+
+  /** A zero after today, from the day screen or the step-away sheet: the
+   *  plan's own insertion, which dates every later day a day on. */
+  const zeroAfterToday = useCallback(() => {
+    setHikeDayOpen(false)
+    closeStepAway()
+    applyPlanEdit((current) => {
+      const today = currentDayIndex(current)
+      return today === null ? current : insertZeroAfter(current, today)
+    })
+    enterTripsRoom()
+    setActiveTab('plan')
+  }, [closeStepAway, applyPlanEdit, enterTripsRoom, setActiveTab])
+
   const handleOpenTrip = useCallback(
     (id: string) => {
       applyTripStore((store) => openTrip(store, id))
@@ -7908,14 +7952,17 @@ function App() {
         units={units}
         onBack={() => setHikeDayOpen(false)}
         onOpenWaypoint={handleOpenPassedPlace}
-        // The three edits and the explicit end-of-day are #1317's next
-        // slice; until they land the screen must not offer a control that
-        // silently does nothing, so each closes back to the hike - the
-        // honest version of "not yet", and the same rule LineSheet keeps.
-        onStopShort={() => setHikeDayOpen(false)}
-        onPushOn={() => setHikeDayOpen(false)}
-        onTakeZero={() => setHikeDayOpen(false)}
-        onCallItADay={() => setHikeDayOpen(false)}
+        // #1317's next slice, landed with #1373 (frame 7c): each control
+        // now acts. Stopping short, pushing on and calling the day are all
+        // "call it a day" at an end the sheet offers - the planned stop,
+        // where the fix is, the nearest named place - so the three land on
+        // the timeline's call sheet, whose cascade then asks what the days
+        // after should do. A zero is inserted after today outright: the
+        // plan's own rule dates every later day a day on (lib/plan.ts).
+        onStopShort={callToday}
+        onPushOn={callToday}
+        onTakeZero={zeroAfterToday}
+        onCallItADay={callToday}
       />
     )
   } else if (hikeSheet === 'setup' && hikeDraft !== null) {
@@ -7964,8 +8011,11 @@ function App() {
         // that editing is #1317's next slice - so for now each closes
         // rather than pretending to act. A control that looks like it did
         // something and did not is worse than one that says "not yet".
-        onZero={closeStepAway}
-        onTownNight={closeStepAway}
+        // Both insert a zero after today (frame 7c's rule, one level up):
+        // a town night is a zero at the next stop, and whether that stop is
+        // a resupply stays the timeline's own control.
+        onZero={zeroAfterToday}
+        onTownNight={zeroAfterToday}
         onPause={handlePauseHike}
         onTurnAround={handleTurnHikeAround}
         onFinish={handleFinishHike}
@@ -8795,6 +8845,8 @@ function App() {
                   }
                   onReplacePlan={handleReplacePlan}
                   onDeletePlan={handleDeletePlan}
+                  callToday={callDayRequest}
+                  onCallTodayShown={acknowledgeCallToday}
                   tripName={currentTrip?.name ?? null}
                   openTripId={tripStore.openId}
                   tripCount={tripStore.trips.length}

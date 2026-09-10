@@ -19,6 +19,7 @@
 
 import { daysBetween } from './hikeText'
 import type { Hike } from './hikes'
+import { shiftDate, walkedDayCount, type HikePlan } from './plan'
 
 /**
  * How many days with no fix on a hike's corridor before the app offers to
@@ -78,13 +79,48 @@ export function pausedDays(hike: Hike, today: string): number | null {
  * Counted rather than moved. The offer to move them is a button.
  */
 export function datedDaysAhead(
-  plans: readonly { days: readonly { date?: string }[] }[],
-  today: string,
+  plans: readonly { days: readonly { date?: string; walked?: boolean }[] }[],
+  _today: string,
 ): { count: number; from: string } | null {
+  // Every dated day not yet walked, whatever its date (#1373, frame 6d):
+  // the count describes what "Move them to today" moves, and a hiker back
+  // after a pause has days dated in the PAST still on the plan - which
+  // were the ones this used to leave out, so the card told them there was
+  // nothing to move on exactly the morning there was.
   const dates = plans
-    .flatMap((plan) => plan.days.map((day) => day.date))
-    .filter((date): date is string => date !== undefined && date >= today)
+    .flatMap((plan) =>
+      plan.days.filter((day) => day.walked !== true).map((day) => day.date),
+    )
+    .filter((date): date is string => date !== undefined)
     .sort()
   if (dates.length === 0) return null
   return { count: dates.length, from: dates[0] }
+}
+
+/**
+ * Move a plan's dated days to start today (#1373, frame 6d; the handler
+ * WelcomeBackCard's "Move them to today" promised since #1317 and never had
+ * - `resumeHike` set the status and moved no date, the inventory's P30).
+ *
+ * The first day not yet walked that carries a date is the anchor: every
+ * date from it onward slides by the same delta, so the rhythm of the plan
+ * - its zeros, its pins' spacing - is kept and only the calendar moves.
+ * Walked days are records and keep their dates. A plan with no dated day
+ * ahead is returned as it is: there is nothing to move, which the card
+ * already says.
+ */
+export function moveDatedDaysToToday(plan: HikePlan, today: string): HikePlan {
+  const first = walkedDayCount(plan)
+  const anchor = plan.days.slice(first).find((day) => day.date !== undefined)?.date
+  if (anchor === undefined) return plan
+  const delta = daysBetween(anchor, today)
+  if (delta === null || delta === 0) return plan
+  return {
+    ...plan,
+    days: plan.days.map((day, index) =>
+      index < first || day.date === undefined
+        ? day
+        : { ...day, date: shiftDate(day.date, delta) },
+    ),
+  }
 }

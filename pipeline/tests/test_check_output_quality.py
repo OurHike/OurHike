@@ -535,6 +535,34 @@ def test_manifests_verdict_treats_a_missing_club_manifest_as_an_excusable_proble
     )
 
 
+def test_manifests_verdict_verifies_places_and_names_its_degraded_states(tmp_path):
+    """places.json is collected on its manifest's word like the tombstones
+    (#1371); the exporter's own warnings only reached stderr, and this is
+    where a run's log is read."""
+    club_manifest = tmp_path / "club_sections_manifest.json"
+    club_entry = _artifact_entry(tmp_path / "club_sections.json", "club bytes", 0)
+    club_manifest.write_text(json.dumps({"path": club_entry["path"], "sha256": club_entry["sha256"]}))
+    places_entry = _artifact_entry(tmp_path / "places.json", "places bytes", 0)
+    places_manifest = tmp_path / "places_manifest.json"
+    places_manifest.write_text(
+        json.dumps({**places_entry, "counts": {"park": 2, "town": 1}, "lines_measured": 0, "parks_held_back": None})
+    )
+
+    report = check_output_quality.manifests_verdict(
+        club_manifest_path=club_manifest, cells_dir=tmp_path, places_manifest_path=places_manifest
+    )
+
+    assert report["verdict"] is Verdict.OK
+    assert "places.json verified (3 places; NO PUBLISHED LINE" in report["detail"]
+
+    (tmp_path / "places.json").write_text("rewritten after the manifest recorded its hash")
+    report = check_output_quality.manifests_verdict(
+        club_manifest_path=club_manifest, cells_dir=tmp_path, places_manifest_path=places_manifest
+    )
+    assert report["verdict"] is Verdict.PROBLEM
+    assert any("places.json" in p for p in report["problems"])
+
+
 def test_manifests_verdict_does_not_fail_a_vector_run_for_having_no_cells(tmp_path):
     """Stretch archives exist only after a basemap/dem build; their absence
     on a vector-only run is normal and must be noted, not failed."""

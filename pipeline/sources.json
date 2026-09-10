@@ -100,6 +100,8 @@
       "url": "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services/AT_Communities/FeatureServer/0",
       "discovered_via": "Experience Builder app c218db84e3ec430db52249797f4cff43 -> Web Map item f0759fe58dcb4c5f9e0f9682a41678cc -> operationalLayers",
       "discovered_date": "2026-07-24",
+      "place_kind": "town",
+      "place_kind_comment": "Its resupply rows are the towns places.json lists (#1371) - a fact about the layer, recorded beside it rather than named in export_places.py, so a second Communities-like layer is a registry line and not a code change.",
       "reaches_hikers": true,
       "licence_basis": "maintainer_authorisation"
     },
@@ -321,12 +323,16 @@
       "trust": "authoritative",
       "steward": "New York State Office of Parks, Recreation and Historic Preservation",
       "steward_contact": "https://parks.ny.gov/about/contact-us.aspx",
-      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` is false here for a different reason than it used to be: nothing exports this layer yet. Registered and not wired to anything, per reaches_hikers_comment.",
+      "licence": "See oprhp_licence below - the same terms as oprhp_trails, and they permit this. `reaches_hikers` became true on 2026-09-09 (#1371) when export_places.py started reading this layer for the park rows of places.json - name, centroid, boundary box and the miles of published trail inside each boundary, never the polygon itself. It was false before for the reason its own note recorded - nothing exported it - and never as a licence judgement, the same move #1097 made for oprhp_facilities on the same terms. #769's open question, whether OurHike is non-commercial within OPRHP's stated terms, is NOT settled by this and is unchanged by it.",
       "attribution": "New York State Office of Parks, Recreation and Historic Preservation",
       "discovered_via": "The first layer every per-park 'Parks App' Web Map draws (same operationalLayers read, 2026-08-18, #768/#769). Registered by hand.",
       "discovered_date": "2026-08-18",
-      "notes": "858 park-unit boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30).",
-      "reaches_hikers": false,
+      "notes": "858 boundary polygons, measured 2026-08-18 - what the #770 survey's ring proposal and the #771 spike's Harriman clip cut against. dataLastEditDate verified live 2026-08-18 (then 2026-07-30). ONE POLYGON PER PARCEL, NOT PER PARK - measured live 2026-09-10: 858 rows carry 257 distinct Name and 258 distinct MasterAreaID (one null); Genesee Valley Greenway alone is 47 rows, Hudson Highlands 39; Name collides across units (Robert Moses is 127 and 270, Long Point three) and a unit can carry two names (Captree/Robert Moses beside Robert Moses on 270). Label differs from Name on 741 of the 858. export_places.py groups by unit_field before it measures anything.",
+      "name_field": "Name",
+      "id_field": "GlobalID",
+      "unit_field": "MasterAreaID",
+      "unit_field_comment": "The field that names a park UNIT, whose parcels this layer holds one per row (the notes above have the counts). Declared here like name_field and id_field so the registry records the join rather than the exporter knowing it (oprhp_facilities's id_field_comment is the reasoning): places.json carries one row per unit under this id, and a column rename at OPRHP is an edit to this line.",
+      "reaches_hikers": true,
       "licence_basis": "stated_by_org"
     },
     {
@@ -1051,12 +1057,12 @@
         "note": "Maintains trails across the NY-NJ region. Two public trail extracts and their trail alerts ship on the maintainer's authorisation; the full network is deliberately withheld and is an agreement, not a scrape."
       },
       "org:nysoprhp": {
-        "provider": "NYS OPRHP",
+        "provider": "NYS OPRHP", "state": "NY",
         "name": "New York State Office of Parks, Recreation and Historic Preservation",
         "note": "The landowner inside Harriman, Fahnestock and every other state park the ring crosses. The only registered organization whose terms are STATED rather than authorised by the maintainer."
       },
       "org:nysdec": {
-        "provider": "NYS DEC",
+        "provider": "NYS DEC", "state": "NY",
         "name": "New York State Department of Environmental Conservation",
         "note": "The landowner on forest-preserve stretches, and the largest single block of layers after ATC's. Terms genuinely unstated; the ask is open (#1019)."
       },

@@ -11,8 +11,8 @@
 // is evidence for is the sheet itself; which stops it names depends on the
 // bucket, which is why they are searched rather than assumed.
 //
-// Nobody's data: a new long hike with the mock's own opening answers, no
-// account, no location fix, no saved plan.
+// Nobody's data: the fixture's invented hike over the A.T.'s published mile
+// axis (fixtures/longHike.mjs), no account, no location fix.
 export const caption =
   'Step 3 for a long hike — the days laid out before they are kept, each priced, under the rail; Save is the last button (#1373, frame 5b)'
 export const alt =
@@ -20,14 +20,20 @@ export const alt =
 
 export const wait = 4000
 
+import { seedLongHike } from './fixtures/longHike.mjs'
+
 const SHELTER = 'Fingerboard Shelter'
 
 export default async function drive(page) {
-  // The kind is the mode (D6): a long hike, set on Today's own switch, and
-  // then a new hike through the sheet the switch opens.
-  await page.getByRole('radio', { name: 'Long hike' }).click()
-  await page.getByRole('button', { name: /A new long hike/ }).click()
-  await page.getByRole('button', { name: 'Start this long hike' }).click()
+  // The kind is the mode (D6): a long hike, seeded with the fixture every
+  // long-hike recipe shares rather than set up in the drive. The first
+  // version of this recipe went through "A new long hike" and clicked
+  // "Start this long hike" on a hike with no ends, which the screen
+  // refuses (lib/hikeText.ts's setupRefusal: "A long hike needs two ends")
+  // - the preview at 88891547 caught it as a disabled button. The fixture
+  // is Springer → Katahdin with a section behind it, which is also the
+  // honest state for step 3's head to print against.
+  await seedLongHike(page)
 
   // Step 1, then the A.T. builder's entrance (frame 4c) by the map door.
   await page

@@ -64,8 +64,19 @@ export default async function drive(page) {
   // this caption would be worse than no photograph.
   await page.getByRole('button', { name: 'Stop recording' }).waitFor()
 
-  // The switch the hiker flips, and the whole point of the frame.
-  await useMyLocation.uncheck()
+  // The switch the hiker flips, and the whole point of the frame. It is a
+  // page away since the relocation: back to More, into Safety & privacy,
+  // off, and back to the recorder - which is exactly the walk a tester
+  // makes, and the recording survives it because the trace lives in the
+  // shell (App.tsx's `useGpsTrace`), not on the page. The preview at
+  // 88891547 caught the first version of this re-pointing reaching for the
+  // switch from the sources page, where it is not.
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: /safety & privacy/i }).click()
+  await page.getByRole('checkbox', { name: 'Use my location' }).uncheck()
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: /Where this map comes from/ }).click()
+  await page.getByRole('heading', { name: 'Record a GPS trace' }).waitFor()
 
   // Waited on because this sentence IS the change - `recordingTrouble` now
   // answers this case ahead of every other, since the others ("no GPS signal

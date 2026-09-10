@@ -385,6 +385,18 @@ Also still waiting on their own issues: recording a finished walk (#982); freeha
 
 **The one surface that prints no computed time on purpose** is "Leave this with someone", and that is a decision rather than a gap: asked and answered by the maintainer on 2026-08-25, *after* #1011 had already made the estimate available network-wide. Moving time on the card somebody decides to worry from reads as an arrival promise however it is worded, and the line that matters there — "if I'm not back by" — is a judgement about lunch and the swim and the view that only the hiker can make. The reach of the data was never the objection, so better data does not reopen it.
 
+## One room, and the mode is its answer (#1373, 2026-09-10)
+
+The two rooms above lasted sixteen days. The design review behind [#1373 — The front end becomes one pathway](https://github.com/OurHike/OurHike/issues/1373) read the fork and the rooms as one defect stated twice — "the same fork asked twice": the mode switch decided the room, and then the kind sheet asked the same question — and [#1374](https://github.com/OurHike/OurHike/pull/1374) rebuilt the tab as one pathway. What a reader of this section needs to carry forward:
+
+- **`PlanKindSheet` is gone**, and the kind of hike is the mode (`lib/hikerMode.ts`), never asked again. Its one behaviour that had to survive — the mode reverting when "Which long hike?" closes with nothing picked — was never the sheet's; `HikePickSheet`'s close path does it, and `App.plan.test.tsx` still holds it. The third door above ("A walk I've already done") is the same builder entered in the past tense, now reached from the walked shelf.
+- **Step 1 is "Where do you want to go?"** (`screens/PlanStart.tsx`): the field into the stop search, "Where I am / Pick on the map / Draw it myself" — each absent, never greyed, when it cannot work — and the published shelf as a doorway with "N hikes ›" into the finder. The Plan tab's primary and Today's pinned Plan both land here; with a builder live, both go back to it.
+- **One rail, three stops** (`chrome/StepRail.tsx`) at the head of both builders and of the review card: "‹ Hike" keeps the route, "‹ Route" keeps the name and the date, and Save is the last button on step 3, never a step. The day hike's shape is one control — point to point, out and back, loop — where "Close the loop" stood alone.
+- **The Plan home is one hike** with its sections and day hikes under it, "What's left ›" beside its two figures, and one shelf for walked history on both homes. What's left opens with "Walked" and "To go" and offers "Change the plan from here ›" as the way back into the open section's days.
+- **Leaving a half-built route asks** (`lib/navigator.ts`'s guard, the bail sheet) rather than discarding it, which was the storyboard's other defect.
+
+The figures' rules above — null is all or nothing, absent is not null, nothing falls back to distance alone, no computed time on "Leave this with someone" — are unchanged and re-asserted by the same tests. [features/PATHWAY.md](PATHWAY.md) is the design of record.
+
 ## Roads: drawn already, and the sentence that was wrong (#931, 2026-08-27)
 
 The maintainer chose the middle option #931 asks not to be defaulted past — *draw walkable connectors as context a hiker can see and decide about, and never let the router choose one.* Building it turned up that **half of it already shipped, and the issue's premise was false.**

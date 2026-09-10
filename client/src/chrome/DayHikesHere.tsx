@@ -123,38 +123,53 @@ export function DayHikesHere({
       </p>
 
       <div className="hikes-here__rows">
-        {near.map(({ hike, miles }) => (
-          <button
-            type="button"
-            className="hikes-here__row"
-            key={hike.id}
-            onClick={() => onOpen(hike.id)}
-          >
-            <span className="hikes-here__row-top">
-              <span className="hikes-here__row-name">{hike.name}</span>
-              <span className="hikes-here__row-away">
-                {formatDistance(miles, units, 'fine')} away
+        {near.map(({ hike, miles }) => {
+          // Priced once per row rather than twice: the same call decided
+          // whether to print a time and then produced it, and it is also the
+          // thing the baseline below has to come from - three reads of one
+          // answer is three chances for them to disagree.
+          const estimate = cachedEstimate(hike, pace)
+          return (
+            <button
+              type="button"
+              className="hikes-here__row"
+              key={hike.id}
+              onClick={() => onOpen(hike.id)}
+            >
+              <span className="hikes-here__row-top">
+                <span className="hikes-here__row-name">{hike.name}</span>
+                <span className="hikes-here__row-away">
+                  {formatDistance(miles, units, 'fine')} away
+                </span>
               </span>
-            </span>
-            <span className="hikes-here__row-meta">
-              {/* "to walk" earns its two words: beside a straight-line
+              <span className="hikes-here__row-meta">
+                {/* "to walk" earns its two words: beside a straight-line
                   figure on the same row, a bare "4.2 mi" reads as more of
                   the same kind of distance. */}
-              {formatDistance(hike.figures.miles, units)} to walk
-              {/* Priced from the cache, because this door opens over the map
+                {formatDistance(hike.figures.miles, units)} to walk
+                {/* Priced from the cache, because this door opens over the map
                   and may not load the routing graph to answer. Absent when
                   the record carries no climb - the honest state for a walk
                   saved before the climb was cached, and for one the graph
                   could not price. */}
-              {cachedEstimate(hike, pace) !== null &&
-                ` · ${cachedEstimate(hike, pace)?.text}`}
-              {hike.date !== null &&
-                ` · planned ${dayLongDateLabel(hike.date)}${
-                  hike.date === today ? '. That’s today.' : ''
-                }`}
-            </span>
-          </button>
-        ))}
+                {estimate !== null && ` · ${estimate.text}`}
+                {hike.date !== null &&
+                  ` · planned ${dayLongDateLabel(hike.date)}${
+                    hike.date === today ? '. That’s today.' : ''
+                  }`}
+              </span>
+              {/* What that time was adjusted from (#851). The row prints the
+                hiker's own pace applied to Naismith, and the maintainer's
+                decision is that the two never travel apart - a walk this door
+                calls two hours because a control was nudged in week one is
+                exactly the number somebody leaves late on. Absent at the
+                standard pace, which is most hikers. */}
+              {estimate?.relativeLine != null && (
+                <span className="hikes-here__row-baseline">{estimate.relativeLine}</span>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       <button type="button" className="hikes-here__all" onClick={onAll}>

@@ -23,6 +23,22 @@
 // over unchanged. So the last vertex's `mile` equals `DraftStatus.miles`
 // exactly, by construction rather than by both happening to be right.
 //
+// AND THE CONSTRUCTION IS THE SCALING BELOW, WHICH IT DID NOT USED TO BE.
+// This walked the drawn vertices adding haversine metres, and asserted the
+// equality above without buying it. The two are different measurements of
+// the same ground: `build_trail_graph.py` publishes `length_m` as the line's
+// length in EPSG:5070 - an equal-AREA projection - and the vertices in
+// WGS84. Measured with pyproj at Harriman's latitude, Albers reads an
+// east-west metre 0.8% short and a north-south metre 0.8% long, so the two
+// axes cannot agree and did not.
+//
+// lib/dayHikeFollow.ts had already met this and written the rule down:
+// "`length_m` is EPSG:5070 and these vertices are lon/lat, and every other
+// mile in this app comes from the former. One axis, so the header and the
+// turn list agree." It scales its projection back onto the published metres
+// for exactly this reason. This module is that rule applied where it was
+// missed.
+//
 // That is the honest axis and it is worth saying which honesty it buys. "Mile
 // 3.4" on this axis means "3.4 miles of maintained trail from the first tap",
 // not "3.4 miles of walking" - a hiker crossing a gap walks further than the
@@ -41,6 +57,7 @@ import {
   bearingDegrees,
   metresToMiles,
   routeLines,
+  walkedMetresPerEdge,
   type LonLat,
   type TrailGraph,
 } from './trailGraph'
@@ -98,6 +115,16 @@ export function buildCourse(
     const lines = routeLines(graph, stretch.route)
     if (lines === null) return EMPTY_COURSE
 
+    // What the pipeline measured for each edge this stretch walks, in the
+    // order `routeLines` drew them. `routeLines` emits one polyline per edge
+    // across the route's sections, so these line up positionally - EXCEPT
+    // that `routeGeometry` drops an edge whose cut yields fewer than two
+    // vertices, which a zero-length traversal does. `scaleFor` below checks
+    // the counts rather than trusting them.
+    const walkedMetres = stretch.route.sections.flatMap((section) =>
+      walkedMetresPerEdge(graph, section.edgeIndices, section.from, section.to),
+    )
+
     stretchStarts.push(points.length)
     // Carried across the join within a stretch too: `routeLines` returns one
     // array per leg, and consecutive legs share their meeting vertex. Adding
@@ -105,23 +132,82 @@ export function buildCourse(
     // at each leg join - harmless arithmetically, and a duplicate point that
     // a tick or a stop could land on twice.
     let firstOfStretch = true
-    for (const line of lines) {
+    const scale = scaleFor(lines, walkedMetres)
+    lines.forEach((line, at) => {
+      // Each edge's drawn run stretched onto the metres the pipeline
+      // published for it, so the axis lands exactly on the published total at
+      // every edge boundary - and therefore at every LEG boundary, which is
+      // where lib/dayHikeRows.ts places a stop against a leg. Per edge rather
+      // than per stretch because the distortion varies along a walk: measured
+      // on a 6.3-mile winding route, scaling the stretch as a whole still
+      // left 32 ft of drift at the worst edge boundary, and a shelter sitting
+      // AT a junction is exactly 0 ft from one.
+      const factor = scale(at)
       for (const [lon, lat] of line) {
         const previous = points[points.length - 1]
         if (previous !== undefined && !firstOfStretch) {
           if (previous.lon === lon && previous.lat === lat) continue
-          mile += metresToMiles(
-            straightLineMetres({ lon: previous.lon, lat: previous.lat }, { lon, lat }),
-          )
+          mile +=
+            metresToMiles(
+              straightLineMetres({ lon: previous.lon, lat: previous.lat }, { lon, lat }),
+            ) * factor
         }
         points.push({ lon, lat, mile })
         firstOfStretch = false
       }
-    }
+    })
   }
 
   if (points.length === 0) return EMPTY_COURSE
   return { points, stretchStarts, miles: points[points.length - 1].mile }
+}
+
+/**
+ * How much to stretch each drawn line so its miles are the published ones.
+ *
+ * Per line when the drawn lines and the walked edges correspond one to one,
+ * which is the ordinary case. When they do not - `routeGeometry` dropped an
+ * edge too short to draw - every line gets the stretch's own single factor
+ * instead: the total still lands exactly on `route.miles`, and only the
+ * placement WITHIN the stretch keeps the drift this function exists to
+ * remove. Degrading to the old behaviour's accuracy on a case that used to
+ * be wrong everywhere is the right direction to fail in.
+ *
+ * A factor of 1 wherever there is nothing to scale against - a line with no
+ * length, or a published length of zero - because multiplying a real distance
+ * by a ratio derived from nothing is how a mile axis acquires a number nobody
+ * measured.
+ */
+function scaleFor(
+  lines: ReadonlyArray<ReadonlyArray<readonly [number, number]>>,
+  walkedMetres: readonly number[],
+): (at: number) => number {
+  const drawn = lines.map(drawnMetres)
+  const perLine = lines.length === walkedMetres.length
+
+  if (perLine) {
+    const factors = drawn.map((metres, at) =>
+      metres > 0 && walkedMetres[at] > 0 ? walkedMetres[at] / metres : 1,
+    )
+    return (at) => factors[at] ?? 1
+  }
+
+  const drawnTotal = drawn.reduce((sum, metres) => sum + metres, 0)
+  const walkedTotal = walkedMetres.reduce((sum, metres) => sum + metres, 0)
+  const whole = drawnTotal > 0 && walkedTotal > 0 ? walkedTotal / drawnTotal : 1
+  return () => whole
+}
+
+/** A drawn line's own length, by the same measure the axis accumulates. */
+function drawnMetres(line: ReadonlyArray<readonly [number, number]>): number {
+  let total = 0
+  for (let at = 1; at < line.length; at += 1) {
+    total += straightLineMetres(
+      { lon: line[at - 1][0], lat: line[at - 1][1] },
+      { lon: line[at][0], lat: line[at][1] },
+    )
+  }
+  return total
 }
 
 /** Where a point sits on the course: its mile, and how far off the line it was. */

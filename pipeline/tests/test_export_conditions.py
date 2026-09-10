@@ -513,7 +513,8 @@ def test_a_bad_hikers_report_and_a_thanks_never_appear(clean_tables):
 
 def test_the_reports_export_names_nobody_and_carries_no_photo(clean_tables):
     """The anonymous `ReportOut` withholds `reporter_id`, `received_at`,
-    `maintainer_id` and `club_id`, never sends `verified_by`/`verified_at`,
+    `maintainer_id` and `club_id`, sends `verified_at` and never `verified_by`
+    (the split PR #647 made on the wire, which the bake follows since #1377),
     and the baked artifact drops `photo_url` too - a presigned URL expires in
     minutes, the artifact lives a day, and the object key underneath points
     into a private bucket (#436). The live tier supplies photos."""
@@ -521,8 +522,9 @@ def test_the_reports_export_names_nobody_and_carries_no_photo(clean_tables):
 
     [row] = read_reports(clean_tables)
 
-    for withheld in ("reporter_id", "received_at", "maintainer_id", "club_id", "verified_by", "verified_at", "photo_url"):
+    for withheld in ("reporter_id", "received_at", "maintainer_id", "club_id", "verified_by", "photo_url"):
         assert withheld not in row
+    assert "verified_at" in row
     document = json.dumps(build_document("reports", [row], datetime.now(timezone.utc)))
     assert "reporter-profile-id" not in document
     assert "verifier-profile-id" not in document
@@ -535,6 +537,9 @@ def test_exported_report_timestamps_are_stamped(clean_tables):
     [row] = read_reports(clean_tables)
 
     assert row["timestamp"] == "2026-08-01T09:00:00Z"
+    # The confirmation date, stamped the way the closure's is (#1377): what
+    # the serious-warning sheet prints beside "Confirmed by club moderators".
+    assert row["verified_at"] == "2026-08-02T12:00:00Z"
 
 
 def _insert_note(
@@ -904,6 +909,7 @@ def test_the_catalog_queries_answer_against_a_real_schema(clean_tables):
             "status",
             "visibility",
             "severity",
+            "verified_at",
         ]
 
 

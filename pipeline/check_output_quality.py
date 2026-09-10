@@ -181,6 +181,7 @@ CENTERLINE_PATH = ROOT / "data" / "raw" / "centerline.geojson"
 TOPO_QUADS_MANIFEST = ROOT / "data" / "raw" / "topo_quads" / "manifest.json"
 CLUB_SECTIONS_MANIFEST = PROCESSED_DIR / "club_sections_manifest.json"
 RETIRED_POI_MANIFEST = PROCESSED_DIR / "retired_poi_manifest.json"
+PLACES_MANIFEST = PROCESSED_DIR / "places_manifest.json"
 BASELINE_PATH = ROOT / "data" / "quality_baseline.json"
 #: The directory fetch receipts record their output paths relative to - the
 #: pipeline root itself, not a file under it, because a receipt names several
@@ -521,6 +522,7 @@ def manifests_verdict(
     club_manifest_path: Path | None = None,
     cells_dir: Path | None = None,
     retired_manifest_path: Path | None = None,
+    places_manifest_path: Path | None = None,
 ) -> dict:
     """Re-verify the manifest-backed artifacts publish.py collects that no
     dedicated verdict covers (#659): club_sections_manifest.json and each
@@ -540,6 +542,8 @@ def manifests_verdict(
         cells_dir = PROCESSED_DIR
     if retired_manifest_path is None:
         retired_manifest_path = RETIRED_POI_MANIFEST
+    if places_manifest_path is None:
+        places_manifest_path = PLACES_MANIFEST
 
     problems: list[str] = []
     details: list[str] = []
@@ -573,6 +577,26 @@ def manifests_verdict(
     else:
         problems += artifact_problems("retired_poi.geojson", retired_manifest)
         details.append(f"retired_poi.geojson verified ({retired_manifest.get('retired_count', 0)} tombstones)")
+
+    # The places index (#1371, export_places.py): the tombstones' posture -
+    # noted when absent, since the exporter is the last step of a vector run
+    # and a partial run rightly has none; verified when present, because
+    # publish.py collects it on the manifest's word. The two degraded states
+    # its own manifest records are said here, where the log is read, rather
+    # than left to the exporter's stderr: every trail mile withheld (no line
+    # was published to measure against), and the park layer held back.
+    places_manifest = read_manifest(places_manifest_path)
+    if places_manifest is None:
+        details.append("places.json: not built this run")
+    else:
+        problems += artifact_problems("places.json", places_manifest)
+        counts = places_manifest.get("counts", {})
+        summary = f"places.json verified ({sum(counts.values())} places"
+        if not places_manifest.get("lines_measured"):
+            summary += "; NO PUBLISHED LINE TO MEASURE AGAINST, trailMiles withheld on every row"
+        if places_manifest.get("parks_held_back"):
+            summary += f"; no parks - {places_manifest['parks_held_back']}"
+        details.append(summary + ")")
 
     # publish.py's CELL_FAMILIES, imported rather than restated, so a third
     # family lands here the day it lands there. Imported lazily: this module

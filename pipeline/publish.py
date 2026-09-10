@@ -747,6 +747,10 @@ NEARBY_TRAILS_KEY = "nearby_trails.geojson"
 
 # export_suggested_hikes.py's artifact (#1290): config.ts's SUGGESTED_HIKES_KEY.
 SUGGESTED_HIKES_KEY = "suggested_hikes.json"
+# export_places.py's artifact (#1371): the places a hiker can name before
+# anything is downloaded. The client's PLACES_KEY lands with its reader in the
+# front-end rebuild; this spelling is the contract it has to match.
+PLACES_KEY = "places.json"
 
 # The published key for export_nearby_poi.py's artifact (#1097) - the POIs NYS
 # DEC and NYS OPRHP publish, the sibling of NEARBY_TRAILS_KEY and gated the
@@ -1080,6 +1084,21 @@ def collect_artifacts() -> dict[str, dict]:
     if suggested_manifest.exists():
         manifest = json.loads(suggested_manifest.read_text())
         artifacts[SUGGESTED_HIKES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
+
+    # The places a hiker can name before anything is downloaded - parks,
+    # towns, trailheads and the long trails - if export_places.py has run
+    # (#1371). Same shape again, and absent for the same family of reasons:
+    # a release exported before the script existed, or a run that did not
+    # reach it. The park rows inside it ship behind oprhp_park_polygons's own
+    # reaches_hikers, which the exporter reads itself, and its trail miles
+    # are measured over the line sources this function would publish - the
+    # exporter applies shipped_line_source_keys before it measures, so a
+    # held-back steward's lines count for nothing there either. Its manifest
+    # carries the same `sources` block the line manifests do.
+    places_manifest = PROCESSED_DIR / "places_manifest.json"
+    if places_manifest.exists():
+        manifest = json.loads(places_manifest.read_text())
+        artifacts[PLACES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The tombstones: every POI id ever retired, so an id that has been
     # published once always resolves to something (#673,

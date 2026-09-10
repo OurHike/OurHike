@@ -357,7 +357,7 @@ class TestAgainstTheRealRegistry:
 
         assert any("Mohonk" in n for n in named)
 
-    def test_still_omits_the_oprhp_layers_nothing_exports(self):
+    def test_every_oprhp_layer_now_has_an_exporter_and_none_claims_otherwise(self):
         """The distinction the licence flip had to keep, and it is not about
         licensing: a source is held back either because its terms are
         unresolved OR because nothing is wired to it, and `reaches_hikers`
@@ -381,6 +381,15 @@ class TestAgainstTheRealRegistry:
         part of it still held back, the water, is held back inside the export
         rather than by this flag (`oprhp_water_holdback`), which is the right
         place for a refusal that a flag flip must not be able to undo.
+
+        The last member left under #1371, when export_places.py started reading
+        `oprhp_park_polygons` for the park rows of places.json - the same shape
+        of move as #1097, on the same terms, with the same open question left
+        open. So the held-back group is empty today and the assertion turns
+        over the way the trail stewards' did above: every oprhp_* layer ships,
+        and no entry's licence field still claims that nothing exports it - a
+        sentence that outlives its exporter is the kind of stale reason that
+        would stop the next person wiring something up.
         """
         registry = json.loads((ROOT / "sources.json").read_text())
         oprhp = {s["key"]: s for s in registry["sources"] if s["key"].startswith("oprhp")}
@@ -388,10 +397,16 @@ class TestAgainstTheRealRegistry:
         shipped = {k for k, s in oprhp.items() if s["reaches_hikers"]}
         held = {k for k, s in oprhp.items() if not s["reaches_hikers"]}
 
-        assert shipped == {"oprhp_trails", "oprhp_trail_closures", "oprhp_facilities"}
-        assert held == {"oprhp_park_polygons"}
+        # The rule, over every entry, rather than a census of today's
+        # registry: a "registered but not yet wired" layer is exactly the
+        # state `reaches_hikers: false` exists to record, and must not turn
+        # this red - what must is a licence sentence that outlives its
+        # exporter in either direction.
+        assert "oprhp_park_polygons" in shipped
+        for key in shipped:
+            assert "nothing exports this layer" not in oprhp[key]["licence"], key
         for key in held:
-            assert "nothing exports this layer" in oprhp[key]["licence"]
+            assert "nothing exports this layer" in oprhp[key]["licence"] or "review" in oprhp[key]["licence"].lower(), key
 
     def test_every_licence_and_support_block_joins_a_steward(self):
         """The check that would have caught a two-year-old silent bug in one run.

@@ -64,9 +64,9 @@
 // the A.T.'s dots at its 4.5 px tier, which on a 51,068-vertex line at z4
 // is a black rope (style.ts's sketchWidthExpression).
 export const caption =
-  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a dot rhythm at one fine weight, the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails dotted in their own hues around its New York miles — the Long Path in aqua — and no waypoints or marks of any kind'
+  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a dot rhythm at one fine weight, the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails dotted in their own hues around its New York miles — the Long Path in aqua — no waypoints, and the A.T.’s one badge naming it, placed at this camera since the review of #1374'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single fine dotted dark line from Georgia to Maine over the basemap, with no pins or marks anywhere on it, and the other organizations’ trails as dotted threads of the same weight in their own colours around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single fine dotted dark line from Georgia to Maine over the basemap, with no pins on it and one paper badge reading “Appalachian National Scenic Trail” with the ATC mark, and the other organizations’ trails as dotted threads of the same weight in their own colours around its New York miles'
 
 /** The network overview is one 10.8 MB GeoJSON (lib/config.ts's
  *  NETWORK_OVERVIEW_KEY) that the map cuts into tiles in a worker after it

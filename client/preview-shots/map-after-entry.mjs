@@ -17,9 +17,9 @@
 // place would move this camera off the whole-corridor frame the caption
 // describes.
 export const caption =
-  'The map right after the entry steps (#1296): the whole corridor fitted to the screen at 100 mi, nothing taken yet (#1306) so the A.T. is a fine dotted dark line from Georgia to Maine at the same weight as the other organizations’ dotted trails around its New York miles, no marks below the seam (#1292) — where it used to sit under the identity plate at 300 mi and read as an empty map'
+  'The map right after the entry steps (#1296): the whole corridor fitted to the screen at 100 mi, nothing taken yet (#1306) so the A.T. is a fine dotted dark line from Georgia to Maine at the same weight as the other organizations’ dotted trails around its New York miles, no waypoints below the seam (#1292) and the A.T.’s one badge naming it (#1283; placed at the opening camera since the review of #1374) — where it used to sit under the identity plate at 300 mi and read as an empty map'
 export const alt =
-  'The map screen as a new hiker first opens it after the three entry steps: the identity plate at the top, and below it the whole Appalachian Trail as a single fine dotted dark line from Georgia to Maine fitted to the screen over the basemap, with the other organizations’ trails as dotted threads of the same weight around its New York miles, no pins or marks, a 100 mi scale bar and the elevation strip along the foot'
+  'The map screen as a new hiker first opens it after the three entry steps: the identity plate at the top, and below it the whole Appalachian Trail as a single fine dotted dark line from Georgia to Maine fitted to the screen over the basemap, with the other organizations’ trails as dotted threads of the same weight around its New York miles, no pins, one paper badge reading “Appalachian National Scenic Trail” with the ATC mark on the line, a 100 mi scale bar, and no elevation strip along the foot since nothing is taken (#1374 review)'
 
 // First run is the subject, so it must not be skipped (scripts/screenshot.mjs).
 export const entry = true

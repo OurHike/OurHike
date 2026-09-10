@@ -68,7 +68,6 @@ import { sheetVariant, type SheetAppearance } from './liveTopo'
 import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
 import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
 import { whenStyleReady } from './styleReady'
-import { TRAIL_LABEL_MIN_ZOOM } from './trailLabels'
 
 export const TRAIL_BADGE_SOURCE_ID = 'trail-badges'
 export const TRAIL_BADGE_LAYER_ID = 'trail-badge'
@@ -627,7 +626,12 @@ export function buildTrailBadgeLayer(
     id: TRAIL_BADGE_LAYER_ID,
     type: 'symbol',
     source: TRAIL_BADGE_SOURCE_ID,
-    minzoom: TRAIL_LABEL_MIN_ZOOM,
+    // No floor of its own (the review of #1374): the badge draws wherever
+    // the placer put one, and the placer only has a vertex to put it on
+    // where a named line layer is drawing - the line layers' own floors
+    // are the badge's. TRAIL_LABEL_MIN_ZOOM floored this at 4, and the
+    // opening camera on a laptop fits the corridor a shade below it, which
+    // is one of the two frames the review found nameless.
     filter: ['!=', ['to-string', ['get', BADGE_NAME_PROPERTY]], ''] as never,
     layout: {
       'symbol-placement': 'point',

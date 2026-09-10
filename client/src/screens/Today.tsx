@@ -52,6 +52,7 @@ import {
 import { formatTodayEyebrow, splitPosition, todayGreeting } from '../lib/todayText'
 import { formatDistance, formatElevation } from '../lib/units'
 import { localDay } from '../lib/passedToday'
+import { dayLongDateLabel } from '../lib/planDisplay'
 import { formatMile } from '../lib/positionLine'
 import { cachedEstimate } from '../lib/dayHikeShelf'
 import { typeLabel } from '../chrome/legendLabels'
@@ -179,6 +180,15 @@ export interface TodayProps {
    *  the provenance); opening one re-resolves the real route. */
   dayHikes: readonly DayHike[]
   onOpenDayHike: (id: string) => void
+  /**
+   * A walk this phone was following and never finished, from a day before
+   * today (#1373, frame 6d; lib/openWalk.ts). The morning asks - "Finished
+   * it" logs the walk for that day, "Not this time" forgets - and never
+   * closes it unasked. Null or absent prints nothing.
+   */
+  openWalk?: { hike: DayHike; day: string } | null
+  onFinishOpenWalk?: (id: string, day: string) => void
+  onDropOpenWalk?: () => void
 
   // The nothing-downloaded empty state: a starting point, not an apology.
   hasDownload?: boolean
@@ -363,6 +373,9 @@ export function Today({
   onSayThanks,
   dayHikes,
   onOpenDayHike,
+  openWalk = null,
+  onFinishOpenWalk,
+  onDropOpenWalk,
   hasDownload = true,
   onOpenDownloads,
   suggestedHikes = NO_SUGGESTIONS,
@@ -1104,6 +1117,50 @@ export function Today({
       </header>
 
       <div className="today__paper">
+        {/* THE WALK LEFT OPEN (#1373, frame 6d): following ended with the
+            session and nobody said how the walk ended, so the morning asks
+            - once, at the head of the column, with both answers and no
+            default. Nothing here moves on its own: a walk nobody finished
+            is a question, not a record (WelcomeBackCard's rule, kept). The
+            design's "stopped counting at 6:12pm near…" is not printed: the
+            phone keeps no such record, on purpose. */}
+        {openWalk !== null &&
+          onFinishOpenWalk !== undefined &&
+          onDropOpenWalk !== undefined && (
+            <section
+              className="today__card today__card--hike"
+              aria-label="A walk is still open"
+            >
+              <p className="today__rule-label">
+                {dayLongDateLabel(openWalk.day)} · day hike
+              </p>
+              <h2 className="today__hike-title">
+                {openWalk.day === localDay(new Date(now.getTime() - 86_400_000))
+                  ? 'Yesterday’s walk is still open'
+                  : 'A walk is still open'}
+              </h2>
+              <p className="today__hike-line">
+                {openWalk.hike.name} ·{' '}
+                {formatDistance(openWalk.hike.figures.miles, units)}
+              </p>
+              <p className="today__setup-line">
+                You were walking it and nothing said how it ended. Say so, or leave it —
+                nothing changes on its own.
+              </p>
+              <div className="today__actions">
+                <button
+                  type="button"
+                  className="today__action"
+                  onClick={() => onFinishOpenWalk(openWalk.hike.id, openWalk.day)}
+                >
+                  Finished it
+                </button>
+                <button type="button" className="today__action" onClick={onDropOpenWalk}>
+                  Not this time
+                </button>
+              </div>
+            </section>
+          )}
         {sections}
         {/* TWO BUTTONS, EQUAL WIDTH AND EQUAL WEIGHT (#1133).
 

@@ -34,6 +34,7 @@ import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { DEFAULT_PLACE_KEY } from './lib/defaultPlace'
+import { OPEN_WALK_KEY } from './lib/openWalk'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import {
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -147,7 +148,10 @@ function aPhoneThatHasBeenUsed(): void {
 // so landing "the preferences" means landing all three, or the gate never
 // opens and nothing renders.
 const isPreferences = (key: string) =>
-  key === PREFERENCES_KEY || key === HIKER_MODE_KEY || key === DEFAULT_PLACE_KEY
+  key === PREFERENCES_KEY ||
+  key === HIKER_MODE_KEY ||
+  key === DEFAULT_PLACE_KEY ||
+  key === OPEN_WALK_KEY
 
 /**
  * The download store's keys, taken from the package catalogue rather than

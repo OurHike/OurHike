@@ -233,6 +233,13 @@ import { useTrailData } from './lib/useTrailData'
 import { ribbonSamples, ribbonWindow } from './lib/elevationProfile'
 import { ascentBetween } from './lib/todayJournal'
 import { loadLastOnTrail, noteOnTrail } from './lib/lastOnTrail'
+import {
+  clearOpenWalk,
+  leftOpenBefore,
+  loadOpenWalk,
+  noteOpenWalk,
+  type OpenWalk,
+} from './lib/openWalk'
 import { dayHikeOnTrail, overlaps } from './lib/dayHikeOnTrail'
 import { ribbonLanes, ribbonView, type TodaysWalk } from './lib/ribbonView'
 import { walkProfile } from './lib/walkProfile'
@@ -966,6 +973,14 @@ function App() {
    * tap restarts it.
    */
   const [followingId, setFollowingId] = useState<string | null>(null)
+  /**
+   * The walk this phone was following and never finished (#1373, frame
+   * 6d; lib/openWalk.ts). Read at launch, written when following starts,
+   * cleared by Stop, by Finish, and by the morning's own answer. What lets
+   * "the next morning asks" happen without following itself surviving a
+   * restart - which it deliberately does not (above).
+   */
+  const [openWalk, setOpenWalk] = useState<OpenWalk | null>(null)
   /** The last answer lib/dayHikeFollow.ts gave, which is one of its own
    *  inputs - see `FollowInputs.previous` for the two jobs it does. */
   const [followState, setFollowState] = useState<FollowState | null>(null)
@@ -1578,8 +1593,10 @@ function App() {
       loadPreferences(),
       loadHikerMode(),
       loadDefaultPlace().catch(() => null),
+      loadOpenWalk().catch(() => null),
     ]).then(
-      ([stored, mode, place]) => {
+      ([stored, mode, place, open]) => {
+        setOpenWalk(open)
         // A choice made in the window before this landed outranks the record:
         // the hiker is looking at what they picked.
         if (!mirroredTouched.current) {
@@ -5277,7 +5294,62 @@ function App() {
     setFollowState(null)
     lastFollowRef.current = null
     setTurnOpenAt(null)
+    // Stop is an answer: the walk is not left open for the morning to ask
+    // about. Finish (below) and the morning's own buttons clear it the same
+    // way.
+    setOpenWalk(null)
+    void clearOpenWalk()
   }, [])
+
+  /**
+   * The finish, asked on the card and answered here (#1373, frame 6c): the
+   * walk is logged for today (lib/dayHikes.ts's logWalk - one record, many
+   * dates), following stops, and the saved card opens on the Plan tab with
+   * the date on it. Never called by anything but the hiker's own tap.
+   */
+  const finishWalk = useCallback(() => {
+    const id = followingId
+    if (id === null) return
+    const today = localDay(new Date())
+    void loadDayHikes().then((store) => {
+      const next = {
+        hikes: store.hikes.map((hike) => (hike.id === id ? logWalk(hike, today) : hike)),
+        openId: id,
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+    stopFollowing()
+    setActiveTab('plan')
+  }, [followingId, stopFollowing, setActiveTab])
+
+  /** The morning's answers to a walk left open (frame 6d): logged for the
+   *  day it was walked, or forgotten - never closed by the app itself. */
+  const finishOpenWalk = useCallback((id: string, day: string) => {
+    void loadDayHikes().then((store) => {
+      const next = {
+        ...store,
+        hikes: store.hikes.map((hike) => (hike.id === id ? logWalk(hike, day) : hike)),
+      }
+      setDayHikeStore(next)
+      return saveDayHikes(next)
+    })
+    setOpenWalk(null)
+    void clearOpenWalk()
+  }, [])
+  const dropOpenWalk = useCallback(() => {
+    setOpenWalk(null)
+    void clearOpenWalk()
+  }, [])
+  /** The walk the morning asks about: left open before today, and still a
+   *  record on this phone. A record deleted meanwhile is nothing to ask
+   *  about, and the memory of it is cleared by the next follow. */
+  const openWalkForToday = useMemo(() => {
+    const open = leftOpenBefore(openWalk, localDay(now))
+    if (open === null) return null
+    const hike = dayHikeStore.hikes.find((saved) => saved.id === open.hikeId)
+    return hike === undefined ? null : { hike, day: open.day }
+  }, [openWalk, now, dayHikeStore.hikes])
 
   const startFollowing = useCallback(
     (id: string) => {
@@ -5288,6 +5360,11 @@ function App() {
       setFollowState(null)
       lastFollowRef.current = null
       setTurnOpenAt(null)
+      // Remembered on this phone as a walk left open, so the morning can
+      // ask if nobody finishes it (lib/openWalk.ts).
+      const day = localDay(new Date())
+      setOpenWalk({ hikeId: id, day })
+      void noteOpenWalk(id, day)
       // The card came from the Plan tab and the walk happens on the map, so
       // this puts the card away and goes there - the same one-surface-
       // continuing move the builder's own doors make.
@@ -5328,6 +5405,67 @@ function App() {
     atJunction: atJunction(followNext),
   })
 
+  // Declared here rather than beside the other map flags, because the
+  // follow card below reads both (#1373, F6) and a `const` is not
+  // reachable before its line.
+  // Past the edge of everything downloaded (#557), read off the same settled
+  // camera as the zoom flag above, so the two edges are decided from one
+  // view. Nothing is claimed before the map has reported a camera, and
+  // nothing before the store has answered - `heldFootprints` is null until
+  // then, and null is unknown.
+  const outsideDownload =
+    camera !== null &&
+    coverageAt(heldFootprints, camera.center[0], camera.center[1]) === 'outside'
+
+  /**
+   * Opens the download window, and clears whatever else was open over the map.
+   *
+   * One thing open at a time, the same rule the legend and the waypoint card
+   * already keep. Both of those announce themselves as modal dialogs on a
+   * phone, and so does this - leaving one behind would put a screen-reader
+   * user inside a dialog with a second one on top of it. On a desktop the
+   * legend is a permanent panel and closing it is a no-op, which is the right
+   * answer there too.
+   */
+  const openDownloads = useCallback(() => {
+    setDownloadsOpen(true)
+    setLegendOpen(false)
+    setSelectedPoiId(null)
+  }, [])
+
+  /**
+   * What is still ahead on the followed walk (#1373, frame 6b): the water
+   * the route passes past where the hiker is, on the walk's own axis - the
+   * same course and the same projection step 3 listed before they left
+   * (lib/dayHikeWater.ts), minus the miles already walked. Undefined
+   * off-route and before a fix, where nothing is ahead of a position nobody
+   * has; empty when the walk passes no published water, which prints the
+   * finish row alone rather than a sentence about water.
+   */
+  const followCourse = useMemo(() => {
+    if (followResolution === null || dayHikeIndex === null) return null
+    const course = buildCourse(dayHikeIndex.graph, followResolution.segments)
+    return course.points.length === 0 ? null : course
+  }, [followResolution, dayHikeIndex])
+  const followAhead = useMemo(() => {
+    if (
+      followCourse === null ||
+      followState === null ||
+      followState.kind !== 'on-route'
+    ) {
+      return undefined
+    }
+    const walked = followState.walkedMi
+    return waterOnCourse(followCourse, pois)
+      .filter((water) => water.alongMi > walked)
+      .map((water) => ({
+        key: water.poiId,
+        kind: 'water',
+        title: water.name,
+        milesAway: water.alongMi - walked,
+      }))
+  }, [followCourse, followState, pois])
+
   const followSheetNode = (() => {
     // GATED ON THE MODE, NOT ON THE POSITION (#1044 review). This used to
     // return null whenever `followState` was null - which is every ordinary
@@ -5349,6 +5487,8 @@ function App() {
           units={units}
           onOpenTurn={() => undefined}
           onStopFollowing={stopFollowing}
+          outsideDownload={outsideDownload}
+          onTakeStretch={openDownloads}
         />
       )
     }
@@ -5390,6 +5530,11 @@ function App() {
           setTurnOpenAt(followNext === null ? null : followNext.turn.miles)
         }
         onStopFollowing={stopFollowing}
+        outsideDownload={outsideDownload}
+        onTakeStretch={openDownloads}
+        ahead={followAhead}
+        walkedMi={followState.walkedMi}
+        onFinish={finishWalk}
       />
     )
   })()
@@ -6197,15 +6342,6 @@ function App() {
     camera !== null &&
     !archiveCoversZoom(archiveZooms, camera.zoom)
 
-  // Past the edge of everything downloaded (#557), read off the same settled
-  // camera as the zoom flag above, so the two edges are decided from one
-  // view. Nothing is claimed before the map has reported a camera, and
-  // nothing before the store has answered - `heldFootprints` is null until
-  // then, and null is unknown.
-  const outsideDownload =
-    camera !== null &&
-    coverageAt(heldFootprints, camera.center[0], camera.center[1]) === 'outside'
-
   /**
    * Write preferences to the phone, and do not let the failure be silent (#315).
    *
@@ -6284,22 +6420,6 @@ function App() {
    * on purpose.
    */
   const alerts = useAlertLayerPanel()
-
-  /**
-   * Opens the download window, and clears whatever else was open over the map.
-   *
-   * One thing open at a time, the same rule the legend and the waypoint card
-   * already keep. Both of those announce themselves as modal dialogs on a
-   * phone, and so does this - leaving one behind would put a screen-reader
-   * user inside a dialog with a second one on top of it. On a desktop the
-   * legend is a permanent panel and closing it is a no-op, which is the right
-   * answer there too.
-   */
-  const openDownloads = useCallback(() => {
-    setDownloadsOpen(true)
-    setLegendOpen(false)
-    setSelectedPoiId(null)
-  }, [])
 
   /**
    * The background choice, and the one case where making it does something
@@ -8168,6 +8288,9 @@ function App() {
       // Drawn as chosen-but-pending while "Which long hike?" is open
       // (#1317's rule; the prop existed and nothing passed it until #1373).
       modePending={hikeSheet === 'pick'}
+      openWalk={openWalkForToday}
+      onFinishOpenWalk={finishOpenWalk}
+      onDropOpenWalk={dropOpenWalk}
       longHike={longHikeToday}
       pois={searchablePois}
       currentMile={fix?.mile}
@@ -9292,7 +9415,11 @@ function App() {
               // Both withheld off a long hike, and the switch withheld
               // where there is nothing to switch to - never a control that
               // does nothing.
-              hikeName={activeHike?.name}
+              // The follow eyebrow outranks the hike's name (the inventory's
+              // C15): with a long hike active, `hikeName ?? …` in Header.tsx
+              // hid "Day hike · leg 2 of 3" behind the A.T. hike's own name
+              // while a day hike was followed, and nothing tested the pair.
+              hikeName={followHeaderText === null ? activeHike?.name : undefined}
               onSwitchHike={
                 activeHike !== null && tripStore.hikes.length > 0
                   ? handleSwitchHike

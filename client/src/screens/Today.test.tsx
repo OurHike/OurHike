@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Today, type LongHikeToday, type TodayProps } from './Today'
 import { STANDARD_PACE } from '../lib/pace'
@@ -956,5 +956,64 @@ describe('On-trail conditions for the hiker’s own stops (#1373, F2)', () => {
     render(<Today {...props({ mode: 'day', dayHikes: [walk()], stopFacts })} />)
 
     expect(screen.queryByText('On-trail conditions')).toBeNull()
+  })
+})
+
+describe('a walk left open (#1373, frame 6d)', () => {
+  const OPEN = {
+    hike: {
+      id: 'walk-1',
+      name: 'Pine Meadow out and back',
+      date: null,
+      segments: [],
+      figures: { miles: 6.4, legs: [] },
+      looped: false,
+      recorded: 'planned' as const,
+      note: '',
+    },
+    day: '2026-08-25',
+  }
+
+  it('asks the morning after, with both answers and no default', async () => {
+    const user = userEvent.setup()
+    const onFinishOpenWalk = vi.fn()
+    const onDropOpenWalk = vi.fn()
+    render(
+      <Today
+        {...props({ mode: 'day', openWalk: OPEN, onFinishOpenWalk, onDropOpenWalk })}
+      />,
+    )
+
+    const card = screen.getByRole('region', { name: 'A walk is still open' })
+    // MORNING is 2026-08-26: the day before is yesterday, and the title says so.
+    expect(card).toHaveTextContent('Yesterday’s walk is still open')
+    expect(card).toHaveTextContent('Pine Meadow out and back · 6.4 mi')
+    expect(card).toHaveTextContent(/nothing changes on its own/)
+
+    await user.click(within(card).getByRole('button', { name: 'Finished it' }))
+    expect(onFinishOpenWalk).toHaveBeenCalledWith('walk-1', '2026-08-25')
+    await user.click(within(card).getByRole('button', { name: 'Not this time' }))
+    expect(onDropOpenWalk).toHaveBeenCalledOnce()
+  })
+
+  it('says which day when it was longer ago, and asks nothing with nothing open', () => {
+    render(
+      <Today
+        {...props({
+          mode: 'day',
+          openWalk: { ...OPEN, day: '2026-08-20' },
+          onFinishOpenWalk: vi.fn(),
+          onDropOpenWalk: vi.fn(),
+        })}
+      />,
+    )
+    expect(
+      screen.getByRole('region', { name: 'A walk is still open' }),
+    ).toHaveTextContent('A walk is still open')
+    expect(screen.queryByText('Yesterday’s walk is still open')).toBeNull()
+
+    cleanup()
+    render(<Today {...props({ mode: 'day' })} />)
+    expect(screen.queryByRole('region', { name: 'A walk is still open' })).toBeNull()
   })
 })

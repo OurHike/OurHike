@@ -39,7 +39,6 @@ const NOT_YET_MOUNTED: Readonly<Record<string, string>> = {
   'chrome/SeriousWarningSheet.tsx':
     'the serious-warning detail sheet (WIREFRAMES.md §8), built and never mounted; F12 mounts it on the pin',
   'chrome/StepRail.tsx': 'phase 0 of #1373; F3 mounts it over the three steps',
-  'chrome/PoiRow.tsx': 'phase 0 of #1373; F5 mounts it in the details list',
   'chrome/DayRow.tsx': 'phase 0 of #1373; F5 mounts it, then F7 and F8',
 }
 

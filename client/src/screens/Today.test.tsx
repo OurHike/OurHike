@@ -122,16 +122,23 @@ describe('the pine header', () => {
 })
 
 describe('the journal column', () => {
-  it('lists what is ahead in walking order, with the miles in the gutter', () => {
+  it('lists what is ahead in walking order, as waypoint rows with the miles first', () => {
     render(<Today {...props()} />)
 
     expect(screen.getByText('AHEAD')).toBeInTheDocument()
-    const names = [...document.querySelectorAll('.today__entry-name')].map(
+    const names = [...document.querySelectorAll('.poi-row__title')].map(
       (name) => name.textContent,
     )
     expect(names).toEqual(['Sartain Spring', 'Bailey Gap Shelter'])
-    expect(screen.getByText('1.4')).toBeInTheDocument()
-    expect(screen.getByText('8.4')).toBeInTheDocument()
+    // Through lib/units.ts (rule R6), never a hand-formatted figure.
+    expect(screen.getByText(/^1\.4 mi · /)).toBeInTheDocument()
+    expect(screen.getByText(/^8\.4 mi · /)).toBeInTheDocument()
+  })
+
+  it('prints the same rows in kilometres when the hiker asked for them', () => {
+    render(<Today {...props({ units: 'metric' })} />)
+
+    expect(screen.getByText(/^2\.3 km · /)).toBeInTheDocument()
   })
 
   it('says NEARBY, not AHEAD, while the direction is unsettled', () => {
@@ -718,23 +725,66 @@ describe('Today before anything is loaded (#1373, F2)', () => {
     expect(screen.getByText(/A builder for a route of your own/)).toBeInTheDocument()
   })
 
-  it('a planned day hike is the loaded state: no setup head', () => {
+  const walkOn = (
+    date: string | null,
+    climb?: { gainFt: number; lossFt: number } | null,
+  ) =>
+    ({
+      id: `walk-${date ?? 'undated'}`,
+      name: 'Reeves Meadow → Tuxedo',
+      date,
+      figures: { miles: 6.4, legs: [], ...(climb === undefined ? {} : { climb }) },
+      looped: false,
+      recorded: 'planned',
+      segments: [],
+    }) as unknown as TodayProps['dayHikes'][number]
+
+  it('a day hike dated today is the loaded state: its card leads, with the card’s own figures', () => {
+    const onOpenDayHike = vi.fn()
+    const onWalkDayHike = vi.fn()
     render(
       <Today
         {...props({
           mode: 'day',
-          dayHikes: [
-            {
-              id: 'd1',
-              name: 'Reeves Meadow → Tuxedo',
-              figures: { miles: 6.4 },
-            } as unknown as TodayProps['dayHikes'][number],
-          ],
+          dayHikes: [walkOn('2026-08-26', { gainFt: 780, lossFt: 640 })],
+          onOpenDayHike,
+          onWalkDayHike,
         })}
       />,
     )
 
     expect(screen.queryByText('Nothing planned today')).toBeNull()
+    const card = screen.getByRole('region', { name: 'Today’s walk' })
+    expect(card).toHaveTextContent('Today · day hike')
+    expect(card).toHaveTextContent('Reeves Meadow → Tuxedo')
+    // Distance, climb both ways, then the time at the standard pace - the
+    // card's own line (screens/DayHikeCard.tsx), figure for figure.
+    expect(card).toHaveTextContent(
+      /6\.4 mi · \+780 ft \/ −640 ft · ≈\d+ ?h ?\d* ?m? walking/,
+    )
+    // Not also a row in the list below.
+    expect(screen.queryByText('Your day hikes')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open the walk' }))
+    expect(onOpenDayHike).toHaveBeenCalledWith('walk-2026-08-26')
+    fireEvent.click(screen.getByRole('button', { name: 'Walk this' }))
+    expect(onWalkDayHike).toHaveBeenCalledWith('walk-2026-08-26')
+  })
+
+  it('prints no time for a walk with no measured climb, and says so', () => {
+    render(<Today {...props({ mode: 'day', dayHikes: [walkOn('2026-08-26', null)] })} />)
+
+    const card = screen.getByRole('region', { name: 'Today’s walk' })
+    expect(card).toHaveTextContent('6.4 mi · no climb measured, so no time')
+    expect(card).not.toHaveTextContent(/walking/)
+  })
+
+  it('a planned walk dated another day is not today’s: the setup head stays, and the walk is listed', () => {
+    render(<Today {...props({ mode: 'day', dayHikes: [walkOn('2026-08-29')] })} />)
+
+    expect(screen.getByText('Nothing planned today')).toBeInTheDocument()
+    expect(screen.getByText('Your day hikes')).toBeInTheDocument()
+    expect(screen.getByText('6.4 mi')).toBeInTheDocument()
   })
 
   it('long mode with no hike says what a long hike is and offers the map, then the way back to day mode', async () => {
@@ -807,5 +857,104 @@ describe('Today before anything is loaded (#1373, F2)', () => {
       <Today {...props({ mode: 'long', suggestedHikes: [walk('A')], onFindHike })} />,
     )
     expect(screen.queryByRole('group', { name: 'Have less time?' })).toBeNull()
+  })
+})
+
+// --- On-trail conditions (#1373, frames 2c and 2d) ---------------------------
+
+describe('On-trail conditions for the hiker’s own stops (#1373, F2)', () => {
+  const noteContext = () => ({
+    notesFor: () => null,
+    reporterType: null,
+    contributeConditions: false,
+    disputeFor: () => null,
+    onAddNote: vi.fn(),
+    onReportProblem: vi.fn(),
+    onSayThanks: vi.fn(),
+    now: MORNING,
+  })
+  const stopFacts = (poiId: string) =>
+    poiId === 's1'
+      ? { type: 'shelter', lat: 39.3, lon: -77.1, mile: 720.8, unverified: false }
+      : null
+  const walk = () =>
+    ({
+      id: 'walk-today',
+      name: 'Reeves Meadow → Tuxedo',
+      date: '2026-08-26',
+      figures: { miles: 6.4, legs: [] },
+      stops: [
+        { poiId: 's1', type: 'shelter', name: 'Bailey Gap Shelter' },
+        { poiId: 'gone', type: 'campsite', name: 'A retired campsite' },
+      ],
+      looped: false,
+      recorded: 'planned',
+      segments: [],
+    }) as unknown as TodayProps['dayHikes'][number]
+
+  it('asks the card’s own one-tap question for each of today’s stops, and files the tap through the same context', async () => {
+    const context = noteContext()
+    const user = userEvent.setup()
+    render(
+      <Today
+        {...props({ mode: 'day', dayHikes: [walk()], noteContext: context, stopFacts })}
+      />,
+    )
+
+    expect(screen.getByText('On-trail conditions')).toBeInTheDocument()
+    expect(screen.getByText('your stops today')).toBeInTheDocument()
+    const rows = document.querySelectorAll('.today__condition')
+    // The retired campsite draws nothing rather than a row with nothing to tap.
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toHaveTextContent('Bailey Gap Shelter')
+    expect(rows[0]).toHaveTextContent('your stop · mi 720.8')
+
+    // The peek's own controls (chrome/FieldNoteSection.tsx): the good end
+    // of the shelter scale, filed as the card would file it.
+    await user.click(screen.getByTestId('poi-card-observe-fine'))
+    expect(context.onAddNote).toHaveBeenCalledWith(
+      expect.objectContaining({ poi_id: 's1', observation: 'fine' }),
+      undefined,
+    )
+  })
+
+  it('on a long hike, asks about the last nights’ sites in the frame’s own order', () => {
+    render(
+      <Today
+        {...props({
+          mode: 'long',
+          longHike: {
+            name: 'Springer → Katahdin',
+            figures: '214 mi walked · 1,983 mi to go',
+            dayNumber: 14,
+            awayLine: null,
+            resume: null,
+            day: null,
+            nights: [
+              { label: 'Tonight', poiId: 's1', name: 'Bailey Gap Shelter', mile: 720.8 },
+              {
+                label: 'Last night',
+                poiId: 'gone',
+                name: 'Somewhere retired',
+                mile: 700,
+              },
+            ],
+          } as unknown as LongHikeToday,
+          noteContext: noteContext(),
+          stopFacts,
+        })}
+      />,
+    )
+
+    expect(screen.getByText('last 2 days')).toBeInTheDocument()
+    expect(screen.getByText('Tonight · mi 720.8')).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-observe-fine')).toBeInTheDocument()
+    expect(screen.getByTestId('poi-card-observe-problem')).toBeInTheDocument()
+  })
+
+  it('renders no section without the context to file through', () => {
+    render(<Today {...props({ mode: 'day', dayHikes: [walk()], stopFacts })} />)
+
+    expect(screen.queryByText('On-trail conditions')).toBeNull()
   })
 })

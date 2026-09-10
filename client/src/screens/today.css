@@ -156,22 +156,6 @@
   background: var(--border-1);
 }
 
-.today__row {
-  display: flex;
-  gap: 10px;
-}
-
-.today__gutter {
-  flex: none;
-  width: 42px;
-  padding-top: 14px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-3);
-  text-align: right;
-}
-
 .today__card {
   background: var(--surface-card);
   border: 1px solid var(--border-1);
@@ -191,27 +175,6 @@
   cursor: pointer;
   font: inherit;
   color: inherit;
-}
-
-/* The category chip: the pin's own accent at ~22% over the card, holding the
-   real silhouette (map/poiIcons.ts) at chip scale. The accent arrives as an
-   inline custom property from POI_COLORS - the registry the map itself
-   paints from - so the chip and the pin cannot disagree. */
-.today__chip {
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-m, 8px);
-  background: color-mix(in srgb, var(--chip-accent) 22%, var(--surface-card));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.today__chip svg {
-  width: 22px;
-  height: 22px;
-  fill: var(--chip-accent);
 }
 
 .today__entry-text {
@@ -827,4 +790,26 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+}
+
+/* ---------- On-trail conditions (#1373, F2) ---------- */
+
+/* A stop and its answers, as one block: the waypoint row above the card's
+   own peek (chrome.css .poi-card__peek-conditions), on the card surface so
+   the two read as one question. */
+.today__condition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+}
+
+.today__rule-note {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
 }

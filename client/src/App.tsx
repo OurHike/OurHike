@@ -43,6 +43,8 @@ import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { useNavigator } from './lib/navigator'
 import { formatBytes } from './lib/formatBytes'
+import { nightsBehind } from './lib/nightsBehind'
+import type { StopFacts } from './screens/Today'
 import { usePlaces } from './lib/usePlaces'
 import {
   clearDefaultPlace,
@@ -3922,6 +3924,8 @@ function App() {
       // is a control that does nothing.
       ...(tripStore.hikes.length > 0 ? { onSwitch: handleSwitchHike } : {}),
       figures: hikeFiguresLine(activeHike, tripStore.trips, pois, units),
+      // The last nights' sites, for the one-tap answers (#1373, frame 2d).
+      nights: at === null ? [] : nightsBehind(at.trip.plan, at.index),
       dayNumber: dayNumber(tripStore.trips, activeHike.tripIds, today),
       awayLine:
         activeHike.status !== 'paused'
@@ -6762,6 +6766,35 @@ function App() {
    * The conditions section's whole world, built once per change of its
    * inputs so the card is not re-rendered by every unrelated shell state.
    */
+  /**
+   * A stop's waypoint as this phone holds it, for Today's one-tap answers
+   * (#1373, frames 2c and 2d): the coordinates a note anchors to, the mile
+   * search gave it, and whether upstream ever confirmed it. Two maps rather
+   * than two scans: Today re-renders on every clock tick, and a scan of
+   * 17,000 rows per stop per tick is the kind of cost the launch budget was
+   * written against.
+   */
+  const poiById = useMemo(() => new Map(pois.map((poi) => [poi.id, poi])), [pois])
+  const poiMileById = useMemo(
+    () => new Map(searchablePois.map((poi) => [poi.id, poi.mile])),
+    [searchablePois],
+  )
+  const stopFacts = useCallback(
+    (poiId: string): StopFacts | null => {
+      const poi = poiById.get(poiId)
+      if (poi === undefined) return null
+      const mile = poiMileById.get(poiId)
+      return {
+        type: poi.type,
+        lat: poi.lat,
+        lon: poi.lon,
+        ...(mile === undefined ? {} : { mile }),
+        unverified: poi.confidence === 'low',
+      }
+    },
+    [poiById, poiMileById],
+  )
+
   const noteContext: FieldNoteContext = useMemo(
     () => ({
       notesFor: (poiId: string) => {
@@ -7926,6 +7959,9 @@ function App() {
       // the "you have no hike yet" state's one door.
       onPlanHike={openPlanKind}
       onStartLongHike={handleNewHike}
+      onWalkDayHike={startFollowing}
+      noteContext={noteContext}
+      stopFacts={stopFacts}
       downloadSize={downloadSize}
       placeName={fixAt === null ? (defaultPlace?.name ?? null) : null}
     />

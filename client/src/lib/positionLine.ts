@@ -108,7 +108,10 @@ export interface PositionLineInputs {
  * Fixed precision keeps the number from changing width as the hiker walks,
  * which would otherwise make the whole header twitch.
  */
-function formatMile(mile: number): string {
+/** A trail mile marker as the position line prints it - the trail's own
+ *  axis, never a converted distance, which is why this is not in
+ *  lib/units.ts (#1373's Today rows print "mi 713.8" from it). */
+export function formatMile(mile: number): string {
   return mile.toLocaleString('en-US', {
     minimumFractionDigits: 1,
     maximumFractionDigits: 1,

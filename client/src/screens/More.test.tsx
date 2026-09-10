@@ -160,6 +160,46 @@ describe('the volunteer row', () => {
   })
 })
 
+// --- The doors to what this phone holds (#1373, F9 and D5) -----------------
+
+describe('the doors to what this phone holds', () => {
+  it('offers Your reports under Contribute, says what went, and opens the shell’s screen', async () => {
+    const user = userEvent.setup()
+    render(<MoreWalkable yourReports={<p>the reports</p>} sentReportCount={6} />)
+
+    await user.click(screen.getByRole('button', { name: /^Volunteer & report/ }))
+    expect(screen.getByText('6 sent from this phone.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Your reports' }))
+    expect(screen.getByText('the reports')).toBeInTheDocument()
+
+    // Back goes UP, to the page the door was on, not home.
+    await user.click(screen.getByRole('button', { name: /Volunteer & report/ }))
+    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
+  })
+
+  it('offers Your photos and notes under You, and back returns to You', async () => {
+    const user = userEvent.setup()
+    render(<MoreWalkable yourWork={<p>the work</p>} />)
+
+    await user.click(screen.getByRole('button', { name: /^You/ }))
+    await user.click(screen.getByRole('button', { name: 'Your photos and notes' }))
+    expect(screen.getByText('the work')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^‹ You$|^You$/ }))
+    expect(
+      screen.getByRole('button', { name: 'Your photos and notes' }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers neither door when the shell passes no screen behind it', () => {
+    render(<More {...PROPS} page="volunteer" />)
+    expect(screen.queryByRole('button', { name: 'Your reports' })).toBeNull()
+    cleanup()
+    render(<More {...PROPS} page="you" />)
+    expect(screen.queryByRole('button', { name: 'Your photos and notes' })).toBeNull()
+  })
+})
+
 // --- The storage card -------------------------------------------------------
 
 describe('the storage card', () => {

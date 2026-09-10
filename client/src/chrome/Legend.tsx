@@ -174,6 +174,14 @@ export interface LegendProps {
    * the same shape `.legend__toggle` already has.
    */
   onTakeTrail?: (trail: TrailInView) => void
+  /**
+   * "Your day hikes near here" (#1373, D5): the summonable form of the
+   * trailhead door. DayHikesHere is raised only when the fix happens to be
+   * near a saved start; this lets a hiker ASK, from the one sheet the map
+   * always has. Undefined without a fix to measure from or a saved day hike
+   * to measure to - and then the row is absent rather than dead.
+   */
+  onDayHikesNearHere?: () => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /**
@@ -358,6 +366,7 @@ export function Legend({
   trailsInView,
   sheetAppearance,
   onTakeTrail,
+  onDayHikesNearHere,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -539,6 +548,17 @@ export function Legend({
             })}
           </ul>
         </section>
+      )}
+
+      {/* The ask, where the trails are (#1373, D5): a hiker looking at what
+          is around them can ask what of THEIRS is. Opens the day-hike list
+          ordered by distance from the fix; the answer is a list rather than
+          a sentence because "none within half a mile" would be this sheet
+          inventing a threshold the list does not have. */}
+      {onDayHikesNearHere !== undefined && (
+        <button type="button" className="legend__ask" onClick={onDayHikesNearHere}>
+          Your day hikes near here ›
+        </button>
       )}
 
       {/* features/NEARBY_TRAILS.md §1's sentence of state - directly under the

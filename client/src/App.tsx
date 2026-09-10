@@ -96,6 +96,8 @@ import {
   VolunteerHours,
   VolunteerImpact,
   WalkedHike,
+  YourReports,
+  YourWork,
   PlanStart,
 } from './screens/deferred'
 import { useAfterFirstFrame } from './lib/useAfterFirstFrame'
@@ -424,8 +426,12 @@ import {
   retryQueued,
   type AppFailureDraft,
   type FlushResult,
+  type OutboxItem,
 } from './lib/outbox'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
+import { listSentReports, type SentReport } from './lib/sentReports'
+import { listAllOwnPhotos, type OwnPhotoAt } from './lib/poiPhotos'
+import { reportStateFor } from './lib/reportStatus'
 import { conditionsAgeLabel, worstOf } from './lib/conditionState'
 import { useConditions } from './lib/useConditions'
 import { enqueueFieldNote } from './lib/outbox'
@@ -1174,6 +1180,21 @@ function App() {
   const account = useAccount()
   const [queuedCount, setQueuedCount] = useState(0)
   const [stuckReports, setStuckReports] = useState<StuckReport[]>([])
+  /** The queue itself (#1373, frame 9d), for "Your reports" and for the
+   *  notes waiting on "Your photos and notes". The two counts above are
+   *  derived from it and stay, for the surfaces that only need a number. */
+  const [queuedItems, setQueuedItems] = useState<readonly OutboxItem[]>([])
+  /** What this phone has sent (lib/sentReports.ts): read at launch, and
+   *  again after every flush that sent something. */
+  const [sentReports, setSentReports] = useState<readonly SentReport[]>([])
+  /** The hiker's own photos, place by place (#1373, D5). Read when the
+   *  screen that lists them opens rather than at launch: it walks every
+   *  own-photo record, and nothing else needs the list. */
+  const [ownPhotos, setOwnPhotos] = useState<readonly OwnPhotoAt[]>([])
+  /** The day-hike list was opened by the map's "Your day hikes near here"
+   *  (#1373, D5), so it opens in distance order. Cleared by any open or
+   *  close the Plan tab makes itself. */
+  const [dayListNearHere, setDayListNearHere] = useState(false)
 
   // What the hiker SAID they are doing, as against what the GPS works out
   // below. Null is the ordinary state rather than an incomplete setup (#335).
@@ -1713,6 +1734,7 @@ function App() {
   // what let a phone with a wrong clock say "waiting to send" forever (#243).
   const refreshOutbox = useCallback(async () => {
     const queue = await listQueued()
+    setQueuedItems(queue)
     setQueuedCount(queue.filter((item) => item.failure === undefined).length)
     setStuckReports(
       queue
@@ -1729,6 +1751,18 @@ function App() {
     void refreshOutbox()
   }, [reporting, reportingFailure, refreshOutbox])
 
+  // The sent ledger, once - it moves only when a flush sends something, and
+  // handleSynced re-reads it then.
+  useEffect(() => {
+    void listSentReports().then(setSentReports)
+  }, [])
+
+  // The own-photo list, when its screen opens (#1373, D5) - see `ownPhotos`.
+  useEffect(() => {
+    if (morePage !== 'work') return
+    void listAllOwnPhotos().then(setOwnPhotos)
+  }, [morePage])
+
   // Sending is the one thing that waits for signal. Everything else a hiker
   // does - writing the report, reading the map - already happened offline.
   //
@@ -1742,7 +1776,12 @@ function App() {
       // Only on a real delivery. Stamping the clock after a flush that sent
       // nothing would make "synced just now" mean "we had signal", which is
       // the opposite of what the strip is for (lib/syncAge.ts).
-      if (sent > 0) markSynced()
+      if (sent > 0) {
+        markSynced()
+        // What went is now in the ledger (lib/outboxSync.ts records it at
+        // the send), so the "Your reports" screen reads it again.
+        void listSentReports().then(setSentReports)
+      }
       // Refreshed even when nothing was sent, because a flush that only
       // discovered a refusal still changed what the hiker needs to see -
       // that is the whole point of the stuck state.
@@ -6802,6 +6841,24 @@ function App() {
   const handleClosePoi = useCallback(() => setSelectedPoiId(null), [])
 
   /**
+   * "Your day hikes near here" (#1373, D5): the trailhead door, asked for.
+   *
+   * `DayHikesHere` is raised only when the fix happens to be within half a
+   * mile of a saved start; this is the same question a hiker can put to the
+   * map themselves, from the legend. It lands on the day-hike list in
+   * distance order, in the day room, with the legend closed behind it. The
+   * map offers it only with a fix to measure from and a saved plan to
+   * measure to, so the row is absent rather than an answer with no fix in it.
+   */
+  const openDayHikesNearHere = useCallback(() => {
+    applyHikerMode('day')
+    setDayListNearHere(true)
+    setDayListOpen(true)
+    closeLegend()
+    setActiveTab('plan')
+  }, [applyHikerMode, closeLegend, setActiveTab])
+
+  /**
    * Queue a closure and send it if there is anything to send it with (#832).
    *
    * The geometry is captured HERE rather than in the form, because this is
@@ -7209,6 +7266,132 @@ function App() {
       }
     },
     [poiById, poiMileById],
+  )
+
+  /**
+   * The place a report, a note or a photo names, as this phone can name it
+   * (#1373, frames 9d and D5): the waypoint's name, a retired place's last
+   * name from its tombstone, the mile the phone measured, or an honest
+   * absence - a photo of a place on a download this phone no longer holds
+   * is "A place not on this map" rather than nothing.
+   */
+  const placeLabelFor = useCallback(
+    (poiId: string | null | undefined, mile: number | null | undefined): string => {
+      if (poiId !== undefined && poiId !== null) {
+        const poi = poiById.get(poiId)
+        if (poi !== undefined) return poi.name
+        const tombstone = tombstoneFor(retiredPois, poiId)
+        if (tombstone?.name !== undefined) return tombstone.name
+        if (mile === undefined || mile === null) return 'A place not on this map'
+      }
+      if (mile !== undefined && mile !== null) {
+        return `mi ${mile.toLocaleString('en-US', {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })}`
+      }
+      return 'somewhere on the trail'
+    },
+    [poiById, retiredPois],
+  )
+  /** The glyph for a place: its type, a retired place's from its tombstone,
+   *  the neutral mark for anything else. */
+  const kindFor = useCallback(
+    (poiId: string | null): string => {
+      if (poiId === null) return 'dot'
+      return (
+        poiById.get(poiId)?.type ?? tombstoneFor(retiredPois, poiId)?.poiType ?? 'dot'
+      )
+    },
+    [poiById, retiredPois],
+  )
+
+  /**
+   * "Your reports" (#1373, frame 9d), built here because this is where the
+   * three sources meet: the outbox for what waits, the sent ledger for what
+   * went, and the live list for what a moderator did about it - joined by
+   * id, absent rather than guessed where the list has not been read or does
+   * not hold the row (D14).
+   */
+  const yourReportsNode = (
+    <YourReports
+      waiting={queuedItems.flatMap((item) =>
+        item.payload === undefined || item.failure !== undefined
+          ? []
+          : [
+              {
+                id: item.id,
+                type: item.payload.type,
+                place: placeLabelFor(item.payload.poi_id, item.payload.mile),
+                authoredAt: item.authoredAt,
+              },
+            ],
+      )}
+      sent={sentReports.map((entry) => {
+        const live = reports?.find((report) => report.id === entry.id)
+        return {
+          id: entry.id,
+          type: entry.type,
+          place: placeLabelFor(entry.poiId, entry.mile),
+          authoredAt: entry.authoredAt,
+          sentAt: entry.sentAt,
+          state: live === undefined ? null : reportStateFor(live.status),
+        }
+      })}
+      statusesRead={reports !== null}
+      signedAs={
+        preferences.trail_name === null || preferences.trail_name === ''
+          ? null
+          : {
+              trailName: preferences.trail_name,
+              // The floor lib/reporterIdentity.ts applies at signing time: a
+              // hiker who has not said is signed as a day hiker, the safer
+              // error, so that is what the sentence says too.
+              reporterType: preferences.reporter_type ?? 'day',
+            }
+      }
+      today={localDay(now)}
+    />
+  )
+
+  /** "Your photos and notes" (#1373, D5) - the door to a place that has
+   *  left the map, among the rest of the hiker's own work. */
+  const yourWorkNode = (
+    <YourWork
+      photos={ownPhotos.map((photo) => ({
+        poiId: photo.poiId,
+        id: photo.id,
+        kind: kindFor(photo.poiId),
+        place: placeLabelFor(photo.poiId, null),
+        date: photo.taken ?? photo.added,
+        shared: photo.shared !== undefined,
+        removed:
+          !poiById.has(photo.poiId) &&
+          tombstoneFor(retiredPois, photo.poiId) !== undefined,
+      }))}
+      notes={queuedItems.flatMap((item) =>
+        item.fieldNote === undefined || item.failure !== undefined
+          ? []
+          : [
+              {
+                id: item.id,
+                poiId: item.fieldNote.poi_id ?? null,
+                kind: kindFor(item.fieldNote.poi_id ?? null),
+                place: placeLabelFor(item.fieldNote.poi_id, item.fieldNote.mile),
+                observation: item.fieldNote.observation ?? null,
+                authoredAt: item.authoredAt,
+              },
+            ],
+      )}
+      today={localDay(now)}
+      // The same door a pin is: the waypoint card for a live place, the
+      // removed-place card for one that has left the map - `removedPoi`
+      // resolves a retired id to its tombstone either way.
+      onOpenPlace={(id) => {
+        handleSelectPoi(id)
+        setActiveTab('map')
+      }}
+    />
   )
 
   const noteContext: FieldNoteContext = useMemo(
@@ -8634,6 +8817,9 @@ function App() {
                   onOpenRegistry={() => setBrowsingRegistry(true)}
                   queuedReportCount={queuedCount}
                   stuckReports={stuckReports}
+                  yourReports={yourReportsNode}
+                  sentReportCount={sentReports.length}
+                  yourWork={yourWorkNode}
                   onRetryReport={handleRetryReport}
                   onDiscardReport={handleDiscardReport}
                   volunteerScreen={
@@ -8803,7 +8989,13 @@ function App() {
                     dayHike !== null ? 'day' : routeBuilder.draftLive ? 'trip' : null
                   }
                   dayListOpen={dayListOpen}
-                  onDayListOpen={setDayListOpen}
+                  onDayListOpen={(open) => {
+                    setDayListOpen(open)
+                    // Plan's own doors open the list in its own order; only
+                    // the map's ask sets this, and it sets it itself.
+                    setDayListNearHere(false)
+                  }}
+                  dayListNearHere={dayListNearHere}
                   dayHikes={dayHikeStore.hikes}
                   onOpenDayHike={handleOpenDayHike}
                   {...(savedDayHikeCardNode === null
@@ -9457,6 +9649,11 @@ function App() {
               onTrailsInView={setTrailsInView}
               chosenTrailId={chosenTrailId}
               onTakeTrail={handleTakeTrail}
+              onDayHikesNearHere={
+                gps.status === 'located' && plannedDayHikes.length > 0
+                  ? openDayHikesNearHere
+                  : undefined
+              }
               drawnCounts={drawnPoiCounts}
               belowPoiZoom={belowPoiZoom}
               // The Map tab's own two halves of #1367: the plate SAYS

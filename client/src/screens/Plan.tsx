@@ -169,6 +169,9 @@ export interface PlanScreenProps {
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
   onDayListOpen: (open: boolean) => void
+  /** The list was opened by the map's "Your day hikes near here" (#1373,
+   *  D5), so it opens in distance order. */
+  dayListNearHere?: boolean
   /** Which builder holds a live draft, or null - each room offers a way back
    *  to its OWN draft and its own action otherwise, so the day room never
    *  puts a button into the trips builder. */
@@ -275,6 +278,7 @@ export function PlanScreen({
   onTakeSectionOut,
   dayListOpen,
   onDayListOpen,
+  dayListNearHere = false,
   draftKind,
   onChangeTarget,
   onInsertZeroAfter,
@@ -460,6 +464,7 @@ export function PlanScreen({
           <DayHikeList
             dayHikes={dayHikes}
             shelf={listShelf}
+            initialSort={dayListNearHere ? 'nearest' : 'recent'}
             units={units}
             at={gpsAt}
             pace={pace}

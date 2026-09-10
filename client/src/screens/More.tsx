@@ -67,7 +67,8 @@ export interface StuckReport {
  * (App.tsx) - a deep link this screen could not honour if the page were its
  * own useState.
  */
-export type MorePage = 'home' | 'you' | 'map' | 'safety' | 'volunteer' | 'sources'
+export type MorePage =
+  'home' | 'you' | 'map' | 'safety' | 'volunteer' | 'sources' | 'reports' | 'work'
 
 export interface MoreProps extends SettingsProps {
   /**
@@ -81,6 +82,16 @@ export interface MoreProps extends SettingsProps {
   page: MorePage
   onNavigate: (page: MorePage) => void
   onStartReport: () => void
+  /**
+   * "Your reports" (#1373, frame 9d), rendered by the shell - it owns the
+   * outbox, the sent ledger and the live list the screen joins. Undefined
+   * and the door is absent rather than present and empty.
+   */
+  yourReports?: ReactNode
+  /** How many reports this phone has sent, for the line under that door. */
+  sentReportCount?: number
+  /** "Your photos and notes" (#1373, D5), the shell's for the same reason. */
+  yourWork?: ReactNode
   /**
    * The volunteer surface, rendered by the shell with the live props only it
    * holds (opportunities, hours, the GPS mile). A slot rather than a prop bag
@@ -307,6 +318,9 @@ export function More({
   page,
   onNavigate,
   onStartReport,
+  yourReports,
+  sentReportCount = 0,
+  yourWork,
   volunteerScreen,
   onOpenModeration,
   onOpenRegistry,
@@ -425,6 +439,29 @@ export function More({
           </p>
         </div>
       )}
+      {/* THE DOOR TO WHAT THIS PHONE HAS REPORTED (#1373, frame 9d). After
+          the counts above rather than beside "Report a problem": the queue
+          and the stuck list are what needs a hiker's attention now, and this
+          is the record. The line under it counts what went, not what waits -
+          the note above already says that. */}
+      {yourReports !== undefined && (
+        <>
+          <button
+            type="button"
+            className="settings__action"
+            onClick={() => onNavigate('reports')}
+          >
+            Your reports
+          </button>
+          <p className="settings__note">
+            {sentReportCount === 0
+              ? 'Nothing sent from this phone yet.'
+              : sentReportCount === 1
+                ? '1 sent from this phone.'
+                : `${sentReportCount} sent from this phone.`}
+          </p>
+        </>
+      )}
     </section>
   )
 
@@ -489,6 +526,24 @@ export function More({
             defaultPlace={settings.defaultPlace}
             onChangeDefaultPlace={settings.onChangeDefaultPlace}
           />
+          {/* THE HIKER'S OWN WORK (#1373, D5), under You because it is about
+              them rather than about the trail - and the door the review found
+              missing to a place that has left the map. */}
+          {yourWork !== undefined && (
+            <section className="settings__group">
+              <h2 className="settings__heading">On this phone</h2>
+              <button
+                type="button"
+                className="settings__action"
+                onClick={() => onNavigate('work')}
+              >
+                Your photos and notes
+              </button>
+              <p className="settings__note">
+                What this phone holds of what you have added, place by place.
+              </p>
+            </section>
+          )}
           {/* Under the account it depends on, and above nothing (#894). Only
               when signed in and only when the shell actually has a sync to
               describe - see AccountSyncSettings' header for why it is here
@@ -588,6 +643,10 @@ export function More({
             )}
         </>
       )
+    } else if (page === 'reports') {
+      panel = yourReports ?? null
+    } else if (page === 'work') {
+      panel = yourWork ?? null
     } else if (page === 'volunteer') {
       panel = (
         <>
@@ -626,13 +685,27 @@ export function More({
       )
     }
 
+    // Named for where it goes, not what it does: the five pages share one
+    // way home, and "More" is the same word the tab bar taught. The two
+    // pages under a page (#1373) go back UP rather than home, so a hiker who
+    // opened their reports from Volunteer & report lands where they were.
+    const parent: { page: MorePage; label: string } =
+      page === 'reports'
+        ? { page: 'volunteer', label: 'Volunteer & report' }
+        : page === 'work'
+          ? { page: 'you', label: 'You' }
+          : { page: 'home', label: 'More' }
+
     return (
       <div className="more">
         <div className="more__pagebar">
-          {/* Named for where it goes, not what it does: five pages share this
-              one way home, and "More" is the same word the tab bar taught. */}
-          <button type="button" className="more__back" onClick={() => onNavigate('home')}>
-            <span aria-hidden="true">‹ </span>More
+          <button
+            type="button"
+            className="more__back"
+            onClick={() => onNavigate(parent.page)}
+          >
+            <span aria-hidden="true">‹ </span>
+            {parent.label}
           </button>
         </div>
         <div className="settings">{panel}</div>

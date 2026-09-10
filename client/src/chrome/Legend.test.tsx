@@ -109,6 +109,21 @@ describe('the ghosting sentence (#783)', () => {
   })
 })
 
+describe('the ask for your own day hikes (#1373, D5)', () => {
+  it('offers it only when the shell can answer it', async () => {
+    const user = userEvent.setup()
+    const onDayHikesNearHere = vi.fn()
+    render(<Legend {...PROPS} onDayHikesNearHere={onDayHikesNearHere} />)
+
+    await user.click(screen.getByRole('button', { name: /Your day hikes near here/ }))
+    expect(onDayHikesNearHere).toHaveBeenCalled()
+
+    cleanup()
+    render(<Legend {...PROPS} />)
+    expect(screen.queryByRole('button', { name: /Your day hikes near here/ })).toBeNull()
+  })
+})
+
 describe('Legend', () => {
   it('renders nothing while closed', () => {
     render(<Legend {...PROPS} open={false} />)

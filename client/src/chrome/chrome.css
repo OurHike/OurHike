@@ -1092,6 +1092,23 @@
    describes (#783). Quiet like the drop summary, and for the same reason: it
    explains the rows rather than competing with them. No control, so nothing
    here is interactive or looks it. */
+/* "Your day hikes near here ›" (#1373, D5) - a row-shaped door in the
+   sheet's own voice, not a pill: it asks a question rather than filing
+   anything. */
+.legend__ask {
+  align-self: flex-start;
+  margin: 0;
+  padding: var(--space-2, 8px) 0;
+  border: 0;
+  background: none;
+  color: var(--brand-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
 .legend__note {
   margin: var(--space-3, 12px) 0 0;
   color: var(--fg-2);

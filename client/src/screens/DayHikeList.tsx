@@ -69,9 +69,17 @@ export interface DayHikeListProps {
    * came for the history.
    */
   shelf?: 'all' | 'walked'
+  /**
+   * The order to open in (#1373, D5): the map's "Your day hikes near here"
+   * asks for `nearest`, so the answer to that ask is the list already in
+   * distance order rather than a chip to find. Falls back to `recent` where
+   * the order cannot be computed - no fix, no nearest - exactly as the chip
+   * would.
+   */
+  initialSort?: ListSort
 }
 
-type ListSort = 'recent' | 'nearest' | 'shortest'
+export type ListSort = 'recent' | 'nearest' | 'shortest'
 
 export function DayHikeList({
   dayHikes,
@@ -82,8 +90,9 @@ export function DayHikeList({
   onBack,
   onNewDayHike,
   shelf: which = 'all',
+  initialSort = 'recent',
 }: DayHikeListProps) {
-  const [sort, setSort] = useState<ListSort>('recent')
+  const [sort, setSort] = useState<ListSort>(initialSort)
 
   const shelf = splitDayHikes(dayHikes)
   const walkedOnly = which === 'walked'

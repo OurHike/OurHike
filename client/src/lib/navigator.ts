@@ -54,7 +54,16 @@ import type { HikeFacets } from './suggestedHikes'
 import type { PlanStep } from '../chrome/StepRail'
 
 /** More's pages other than its home, which is the tab itself. */
-export type MorePageAway = 'you' | 'map' | 'safety' | 'volunteer' | 'sources'
+export type MorePageAway =
+  | 'you'
+  | 'map'
+  | 'safety'
+  | 'volunteer'
+  | 'sources'
+  /** Under Volunteer & report and under You (#1373, F9 and D5): what this
+   *  phone has reported, and its own photos and notes. */
+  | 'reports'
+  | 'work'
 
 /**
  * Every screen a stack can hold. Grows with the phases that add one (the

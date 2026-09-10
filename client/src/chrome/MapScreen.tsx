@@ -425,6 +425,9 @@ export interface MapScreenProps {
    *  it, per the legend's rule that a control is drawn only where it goes
    *  somewhere. */
   onTakeTrail?: (trail: TrailInView) => void
+  /** The legend's "Your day hikes near here" (#1373, D5), passed through
+   *  for the legend's own reason: absent without a fix and a saved plan. */
+  onDayHikesNearHere?: () => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -834,6 +837,7 @@ export function MapScreen({
   onTrailsInView,
   chosenTrailId = null,
   onTakeTrail,
+  onDayHikesNearHere,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -1556,6 +1560,7 @@ export function MapScreen({
             ghostedTrailsDrawn={ghostedTrailsDrawn}
             trailsInView={trailsInView}
             onTakeTrail={onTakeTrail}
+            onDayHikesNearHere={onDayHikesNearHere}
             // The sheet the canvas beside it is drawn in, so each row's swatch
             // inks its line the way the map does (#1283).
             sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}

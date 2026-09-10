@@ -130,6 +130,14 @@ export const HikeFinish = deferredScreen(
   () => import('./HikeFinish').then((m) => m.HikeFinish),
   'HikeFinish',
 )
+export const YourReports = deferredScreen(
+  () => import('./YourReports').then((m) => m.YourReports),
+  'YourReports',
+)
+export const YourWork = deferredScreen(
+  () => import('./YourWork').then((m) => m.YourWork),
+  'YourWork',
+)
 export const FinishedHike = deferredScreen(
   () => import('./FinishedHike').then((m) => m.FinishedHike),
   'FinishedHike',

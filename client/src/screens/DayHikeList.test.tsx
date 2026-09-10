@@ -195,6 +195,39 @@ describe('the sorts', () => {
   })
 })
 
+describe('opened from the map’s ask (#1373, D5)', () => {
+  it('opens in distance order when asked to, without a chip to find', () => {
+    const near = dayHike('Pine Meadow loop', { date: '2026-09-12' })
+    const far = dayHike('Breakneck Ridge', {
+      date: '2026-09-13',
+      segments: [
+        [
+          { coord: [-73.0, 41.0], poiId: null },
+          { coord: [-73.01, 41.0], poiId: null },
+        ],
+      ],
+    })
+    render(
+      <DayHikeList
+        {...PROPS}
+        // Newest first would put Breakneck first; the ask puts the near one.
+        dayHikes={[far, near]}
+        at={{ lon: -74.095, lat: 41.25 }}
+        initialSort="nearest"
+      />,
+    )
+
+    const rows = screen.getAllByRole('button', {
+      name: /Pine Meadow loop|Breakneck Ridge/,
+    })
+    expect(rows[0]).toHaveTextContent('Pine Meadow loop')
+    expect(screen.getByRole('button', { name: 'nearest me' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+  })
+})
+
 describe('the edges', () => {
   it('empty list says so in the app’s voice, with the sync fact', () => {
     render(<DayHikeList {...PROPS} dayHikes={[]} />)

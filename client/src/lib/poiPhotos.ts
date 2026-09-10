@@ -223,6 +223,52 @@ export async function ownPhotosOn(date: string): Promise<number> {
   return count
 }
 
+/** One of the hiker's own photos with the place it belongs to - the
+ *  metadata a list can print, and never the bytes. */
+export interface OwnPhotoAt {
+  poiId: string
+  id: string
+  taken: string | null
+  added: string
+  source: OwnPhotoSource
+  shared?: string
+}
+
+/**
+ * Every own photo on this phone, newest first, with its place (#1373, D5).
+ *
+ * The list of a hiker's own work - the door to a place that is no longer on
+ * the map, whose photos would otherwise be reachable only by tapping a pin
+ * that is not there. Walks every own-photo key like `ownPhotoUsage` above,
+ * and like `ownPhotosOn` reads the records' metadata without holding a
+ * blob: a list of two hundred rows must not pin two hundred images.
+ *
+ * Sorted by the date the card prints - `taken ?? added`, the fallback
+ * `listOwnPhotos` uses - so the list and the card agree about which day a
+ * photo belongs to.
+ */
+export async function listAllOwnPhotos(): Promise<OwnPhotoAt[]> {
+  const allKeys = await keys()
+  const out: OwnPhotoAt[] = []
+  for (const key of allKeys) {
+    if (typeof key !== 'string' || !key.startsWith(POI_PHOTOS_PREFIX)) continue
+    const stored = await get<PoiPhotoRecord>(key)
+    if (stored === undefined) continue
+    const poiId = key.slice(POI_PHOTOS_PREFIX.length)
+    for (const photo of stored.photos) {
+      out.push({
+        poiId,
+        id: photo.id,
+        taken: photo.taken,
+        added: photo.added,
+        source: photo.source,
+        ...(photo.shared === undefined ? {} : { shared: photo.shared }),
+      })
+    }
+  }
+  return out.sort((a, b) => (b.taken ?? b.added).localeCompare(a.taken ?? a.added))
+}
+
 export async function ownPhotoUsage(): Promise<{ count: number; bytes: number }> {
   const allKeys = await keys()
   let count = 0

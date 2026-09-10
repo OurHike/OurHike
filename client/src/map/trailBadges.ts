@@ -677,6 +677,17 @@ export function buildTrailBadgeLayer(
       'text-max-width': 40,
       'text-letter-spacing': 0.02,
       'symbol-sort-key': LABEL_TIER.routeTrail,
+      // ALWAYS DRAWN (the maintainer's review of #1374): map/trailsInView.ts
+      // already keeps the plate clear of every pin, warning, workday and
+      // notice and inside the frame, and falls back to the bare mark where
+      // nothing fits - so the engine's own collision pass, which dropped the
+      // badge whole wherever a basemap label or a pin box touched it (the
+      // opening camera, and the review's z12 frame), has nothing left to
+      // decide. Allowed to overlap rather than ignoring placement: the
+      // badge still claims its box, so the along-line names and the sheet's
+      // own labels placed after it keep yielding to it as they did.
+      'icon-allow-overlap': true,
+      'text-allow-overlap': true,
     },
     paint: {
       'text-color': badgeTextColor(appearance),

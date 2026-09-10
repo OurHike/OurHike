@@ -49,6 +49,20 @@ function rgb(hex: string): [number, number, number] {
   return [...parseHex(hex)] as [number, number, number]
 }
 
+describe('the layer', () => {
+  it('is allowed to overlap, because the placer already kept it clear (the review of #1374)', () => {
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    expect(layout['icon-allow-overlap']).toBe(true)
+    expect(layout['text-allow-overlap']).toBe(true)
+    // Still claiming its box, so what is placed after it yields to it.
+    expect(layout['icon-ignore-placement']).toBeUndefined()
+    expect(layout['text-ignore-placement']).toBeUndefined()
+  })
+})
+
 describe('who earns a badge', () => {
   it('is exactly the through-route tier the style keys width and sort order off', () => {
     // Restated rather than imported to avoid the import cycle; only safe

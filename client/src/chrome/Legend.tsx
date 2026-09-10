@@ -1,3 +1,4 @@
+import { useState } from 'react'
 // The legend bottom sheet (WIREFRAMES.md §2).
 //
 // It answers "what am I looking at right now," so its COUNTS are derived from
@@ -357,6 +358,19 @@ export interface LegendProps {
   onOpenNotices?: () => void
 }
 
+/**
+ * How many named trails the block lists before folding (#1373, R10).
+ *
+ * @unvalidated - the review's own number, and a reading of a phone's
+ * height: five rows and the fold sit above the pin grid on a 60% sheet at
+ * 812px, which is the smallest phone this app is tested on. What would
+ * settle it is watching somebody open the legend on a stretch where two
+ * trail systems overlap and counting how many names they read before they
+ * scroll - which nobody has done, and which is the same test the header's
+ * no-blaze-rows note is waiting on.
+ */
+export const NAMED_TRAILS_SHOWN = 5
+
 export function Legend({
   open,
   persistent = false,
@@ -396,6 +410,7 @@ export function Legend({
   noticeCount = 0,
   onOpenNotices,
 }: LegendProps) {
+  const [allTrails, setAllTrails] = useState(false)
   if (!open && !persistent) return null
 
   // TWO LISTS, AND KEEPING THEM APART IS THE WHOLE OF #723.
@@ -490,63 +505,94 @@ export function Legend({
           One row per named trail, ranked as the map ranks them. */}
       {trailsInView !== undefined && trailsInView.length > 0 && (
         <section className="legend__trails" aria-label="Trails in view">
-          <h3 className="legend__title">Trails in view</h3>
+          <h3 className="legend__title">
+            Trails in view
+            {trailsInView.length > NAMED_TRAILS_SHOWN && (
+              <span className="legend__count">
+                {' '}
+                {allTrails ? trailsInView.length : NAMED_TRAILS_SHOWN} of{' '}
+                {trailsInView.length}
+              </span>
+            )}
+          </h3>
           <ul className="legend__trail-rows">
-            {trailsInView.map((trail) => {
-              const taken = trail.throughRoute && trail.chosen
-              const face = (
-                <>
-                  <TrailLineSwatch
-                    className="legend__swatch"
-                    blazeColor={trail.blazeColor}
-                    throughRoute={trail.throughRoute}
-                    chosen={trail.chosen}
-                    appearance={sheetAppearance}
-                  />
-                  <span className="legend__label">{trail.name}</span>
-                  {/* `taken`, in the slot a count would take, on the trail
+            {(allTrails ? trailsInView : trailsInView.slice(0, NAMED_TRAILS_SHOWN)).map(
+              (trail) => {
+                const taken = trail.throughRoute && trail.chosen
+                const face = (
+                  <>
+                    <TrailLineSwatch
+                      className="legend__swatch"
+                      blazeColor={trail.blazeColor}
+                      throughRoute={trail.throughRoute}
+                      chosen={trail.chosen}
+                      appearance={sheetAppearance}
+                    />
+                    <span className="legend__label">{trail.name}</span>
+                    {/* `taken`, in the slot a count would take, on the trail
                       the map is about. No mileage on the others - the header
                       says why the number is absent rather than estimated. */}
-                  {taken && <span className="legend__count">taken</span>}
-                  {/* And the affordance where a row can take its trail and
+                    {taken && <span className="legend__count">taken</span>}
+                    {/* And the affordance where a row can take its trail and
                       has not (#1306): a takeable through-route's row is a
                       button then, and a button that looks like a row is a
                       control nobody finds. Gated on takeable rather than
                       throughRoute since #1307 - a through-route this build
                       cannot measure (the Long Path) earns a badge without
                       earning this row's button. */}
-                  {onTakeTrail !== undefined && trail.takeable && !taken && (
-                    <span className="legend__count">take</span>
-                  )}
-                </>
-              )
-              return (
-                <li
-                  key={trail.name}
-                  className="legend__trail-row"
-                  aria-label={taken ? `${trail.name} · taken` : trail.name}
-                >
-                  {onTakeTrail === undefined || !trail.takeable ? (
-                    // Only a takeable through-route's row is a control: a
-                    // side trail has no registry trail to take (#1306), and
-                    // neither does a through-route this build cannot measure
-                    // (#1307) - a button that does nothing is worse than a
-                    // row.
-                    face
-                  ) : (
-                    <button
-                      type="button"
-                      className="legend__toggle"
-                      aria-pressed={taken}
-                      onClick={() => onTakeTrail(trail)}
-                    >
-                      {face}
-                    </button>
-                  )}
-                </li>
-              )
-            })}
+                    {onTakeTrail !== undefined && trail.takeable && !taken && (
+                      <span className="legend__count">take</span>
+                    )}
+                  </>
+                )
+                return (
+                  <li
+                    key={trail.name}
+                    className="legend__trail-row"
+                    aria-label={taken ? `${trail.name} · taken` : trail.name}
+                  >
+                    {onTakeTrail === undefined || !trail.takeable ? (
+                      // Only a takeable through-route's row is a control: a
+                      // side trail has no registry trail to take (#1306), and
+                      // neither does a through-route this build cannot measure
+                      // (#1307) - a button that does nothing is worse than a
+                      // row.
+                      face
+                    ) : (
+                      <button
+                        type="button"
+                        className="legend__toggle"
+                        aria-pressed={taken}
+                        onClick={() => onTakeTrail(trail)}
+                      >
+                        {face}
+                      </button>
+                    )}
+                  </li>
+                )
+              },
+            )}
           </ul>
+          {/* THE REST BY NAME, NOT BY BLAZE (#1373, R10). The review condenses
+              the block after five rows and folds the rest "by their blazes";
+              the maintainer took the blaze rows off this panel on 2026-08-25
+              (the header) and this keeps that call: what folds is the tail
+              of the same named list, and the door unfolds it in place. A
+              park like Harriman draws forty lines, and five named rows plus
+              "35 more ›" is a legend; forty rows is a scroll past the pins
+              a hiker opened this sheet for. */}
+          {trailsInView.length > NAMED_TRAILS_SHOWN && (
+            <button
+              type="button"
+              className="legend__ask"
+              aria-expanded={allTrails}
+              onClick={() => setAllTrails((current) => !current)}
+            >
+              {allTrails
+                ? 'Fewer ›'
+                : `${trailsInView.length - NAMED_TRAILS_SHOWN} more, by name ›`}
+            </button>
+          )}
         </section>
       )}
 

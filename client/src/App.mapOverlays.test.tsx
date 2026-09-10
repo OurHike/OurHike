@@ -15,6 +15,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockMap } from './test/mocks/maplibre-gl'
+import { CLOSURE_LAYER_ID } from './lib/closureStyle'
+import { CLOSURE_ID_PROPERTY } from './map/closureLayers'
+import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './map/warningLayers'
 import { renderedMap } from './test/liveMap'
 import { appHarness, openMapTab } from './test/appHarness'
 import { CLOSURE_SOURCE_ID } from './map/closureLayers'
@@ -59,6 +62,9 @@ const CLOSURE = {
 const REPORT = {
   reporter_type: 'thru',
   status: 'verified' as const,
+  // Stamped when a moderator escalated it - what the warning sheet dates
+  // its badge by (#1373, F12).
+  verified_at: '2026-08-02T10:00:00Z',
   poi_id: null,
   note: null,
   timestamp: '2026-08-01T10:00:00Z',
@@ -218,6 +224,40 @@ describe('what the shell draws once the reads land', () => {
 // three: a tap in the legend has to reach the two GeoJSON sources on the
 // canvas, and the app has to take the hide back on its own. Either half tested
 // alone would pass with the wiring cut.
+
+describe('tapping the tape and the pin (#1373, F12)', () => {
+  // The two marks #232 drew and left for a tap that never came. Through the
+  // shell rather than the layer helpers alone, because the door is the whole
+  // change: the sheet, the tap and the shell's join of the two.
+  it('opens the closure sheet from the tape, saying what the app will not do', async () => {
+    const map = await renderApp()
+    await waitFor(() => expect(featuresIn(map, CLOSURE_SOURCE_ID)).toHaveLength(1))
+
+    map.renderedFeatures.set(CLOSURE_LAYER_ID, [
+      { properties: { [CLOSURE_ID_PROPERTY]: CLOSURE.id } },
+    ])
+    map.emit('click', { point: { x: 100, y: 100 } })
+
+    const sheet = await screen.findByRole('dialog', { name: /closure/i })
+    expect(within(sheet).getByText(/does not work out detours/i)).toBeInTheDocument()
+  })
+
+  it('opens the warning sheet from the pin, dated by the moderator', async () => {
+    const map = await renderApp()
+    await waitFor(() => expect(featuresIn(map, WARNING_SOURCE_ID)).toHaveLength(1))
+
+    map.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'serious-1' } },
+    ])
+    map.emit('click', { point: { x: 100, y: 100 } })
+
+    const sheet = await screen.findByRole('dialog', { name: 'Serious warning' })
+    expect(
+      within(sheet).getByText(/Confirmed by club moderators · August 2/),
+    ).toBeInTheDocument()
+    expect(within(sheet).getByText(/doesn.t send push/i)).toBeInTheDocument()
+  })
+})
 
 describe('taking the alerts off the map, and getting them back (#1047)', () => {
   async function openLegendAndToggleAlerts(): Promise<void> {

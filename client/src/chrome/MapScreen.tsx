@@ -28,6 +28,7 @@ import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
+import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
 import { Search } from './Search'
 import { ElevationRibbon, type RibbonControl } from './ElevationRibbon'
@@ -222,6 +223,23 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
+   *  the shell renders for it - the atcUpdateSheet pattern, on the mark
+   *  #245 drew and left for a tap. */
+  onSelectClosure?: (closureId: string) => void
+  closureSheet?: ReactNode
+  /** A serious-warning pin was tapped, by report id (#1373, F12), and its
+   *  sheet - the same pattern, on the pin #292 drew. */
+  onSelectWarning?: (reportId: string) => void
+  warningSheet?: ReactNode
+  /**
+   * For "In view" (#1373, frame 12a): how many waypoints the phone holds in
+   * all, and a waypoint's mile on the centerline where the download can
+   * place it. Both optional; the list counts only the viewport and orders
+   * by name without them.
+   */
+  waypointTotal?: number
+  waypointMileOf?: (poiId: string) => number | undefined
   /** A trail line was tapped, as its published facts - null for a tap that
    *  landed elsewhere, which is how the sheet dismisses (#134). Stable
    *  across renders, like `onSelectPoi`. */
@@ -790,6 +808,12 @@ export function MapScreen({
   workdaySheet,
   disputes,
   atcUpdateSheet,
+  onSelectClosure,
+  closureSheet,
+  onSelectWarning,
+  warningSheet,
+  waypointTotal,
+  waypointMileOf,
   onSelectLine,
   lineSheet,
   routeDrawing = null,
@@ -914,6 +938,11 @@ export function MapScreen({
   // is a frame where one does.
   const floatRef = useRef<HTMLDivElement | null>(null)
   const [floatBottom, setFloatBottom] = useState(0)
+  /** "In view" (#1373, frame 12a): the list of what the map is drawing,
+   *  opened from the header and closed like the legend. Local, like the
+   *  legend's own open state used to be: nothing outside this screen opens
+   *  or reads it. */
+  const [inViewOpen, setInViewOpen] = useState(false)
   useEffect(() => {
     const float = floatRef.current
     if (float === null) return
@@ -943,7 +972,7 @@ export function MapScreen({
    * redesign was that its map was too small, and adding the rail alone made
    * that WORSE on a wide screen rather than better: measured on this pull
    * request's own preview at 1280x800, the tab sidebar (208px), the rail
-   * (348px) and the persistent legend (290px) left the map 434px, with the
+   * (348px) and the persistent legend (272px - desktop.css's 17rem; an earlier version of this note said 290) left the map 434px, with the
    * elevation chart taking another 200px of height under it. A rail that
    * buys the map room by taking it from the map is not the fix anybody asked
    * for.
@@ -1291,6 +1320,14 @@ export function MapScreen({
                 onSwitchHike={onSwitchHike}
                 onOpenLegend={onOpenLegend}
                 onOpenSearch={onOpenSearch}
+                // The list of what the map is drawing (#1373, frame 12a) -
+                // offered once there is anything to list, and not while a
+                // builder owns the canvas, where the pins are stops.
+                inView={
+                  viewportPoints.length > 0 && !buildingDayHike
+                    ? { count: viewportPoints.length, onOpen: () => setInViewOpen(true) }
+                    : undefined
+                }
                 strip={
                   <StatusStrip
                     time={time}
@@ -1414,6 +1451,8 @@ export function MapScreen({
               atcUpdates={drawnAtcUpdates}
               atcUpdatePoints={drawnAtcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              onSelectClosure={onSelectClosure}
+              onSelectWarning={onSelectWarning}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
               disputes={disputes}
@@ -1509,6 +1548,10 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {/* The two safety sheets (#1373, F12), in the same slot family:
+                a stretch of tape and a pin, neither anchored to a card. */}
+            {closureSheet}
+            {warningSheet}
             {workdaySheet}
 
             {/* The line-detail sheet (#134), in the same slot family for the
@@ -1541,6 +1584,38 @@ export function MapScreen({
               onClose={onCloseSearch}
             />
           </div>
+
+          {/* What the map is drawing, as a list (#1373, frame 12a) - the same
+
+              points the legend counts, named. Over the same slot as the legend
+
+              and never beside it: opening one closes the other, so the lower
+
+              third has one sheet. A row opens the same card a pin does. */}
+
+          <InViewSheet
+            open={inViewOpen && !legendOpen && !buildingDayHike}
+
+            points={viewportPoints}
+
+            total={waypointTotal}
+
+            currentMile={hikerMile ?? null}
+
+            mileOf={waypointMileOf}
+
+            stalenessFor={waypoints?.stalenessFor}
+
+            units={units}
+
+            onSelectPoi={(id) => {
+              setInViewOpen(false)
+
+              onSelectPoi(id)
+            }}
+
+            onClose={() => setInViewOpen(false)}
+          />
 
           <Legend
             // Stood down while the builder owns the screen - see

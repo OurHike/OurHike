@@ -7,7 +7,7 @@
 // features/SPUR_TRAILS.md §3 specifies the spur section. Every sentence
 // here is decided in lib/lineDetail.ts, where it is testable without a
 // canvas - this component only lays the lines out, on the same classes
-// AtcUpdateSheet already renders with so the two sheets read as one family.
+// OrgNoticeSheet already renders with so the two sheets read as one family.
 //
 // Lines that are null are OMITTED, never placeholdered. A spur with no
 // resolved destination shows no destination line at all - not "Unknown

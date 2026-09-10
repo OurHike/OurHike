@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Legend } from './Legend'
+import { Legend, NAMED_TRAILS_SHOWN } from './Legend'
 import { GHOSTED_TRAILS_NOTE } from '../lib/legendContents'
 import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
@@ -1599,6 +1599,37 @@ describe('the "Trails in view" block (#1283)', () => {
     expect(longPath.querySelector('svg')?.getAttribute('data-drawn')).toBe('dotted')
     expect(within(at).getByText('taken')).toBeInTheDocument()
     expect(within(longPath).queryByText('taken')).toBeNull()
+  })
+
+  it('names five and folds the rest by name, never by blaze (#1373, R10)', async () => {
+    // The review condenses the block after five rows; the maintainer took
+    // the blaze rows off this panel (2026-08-25), so what folds is the tail
+    // of the same named list and the door unfolds it in place.
+    const user = userEvent.setup()
+    const many = Array.from({ length: 7 }, (_, index) => ({
+      ...TRAILS[1],
+      name: `Trail ${index + 1}`,
+    }))
+    render(<Legend {...PROPS} trailsInView={many} />)
+
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).getAllByRole('listitem')).toHaveLength(NAMED_TRAILS_SHOWN)
+    expect(within(block).getByRole('heading')).toHaveTextContent('5 of 7')
+    expect(within(block).queryByText(/blaze/i)).toBeNull()
+
+    await user.click(within(block).getByRole('button', { name: '2 more, by name ›' }))
+    expect(within(block).getAllByRole('listitem')).toHaveLength(7)
+    expect(within(block).getByRole('heading')).toHaveTextContent('7 of 7')
+
+    await user.click(within(block).getByRole('button', { name: 'Fewer ›' }))
+    expect(within(block).getAllByRole('listitem')).toHaveLength(NAMED_TRAILS_SHOWN)
+  })
+
+  it('folds nothing at five or fewer, so the common case has no door', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).queryByRole('button', { name: /more, by name/ })).toBeNull()
+    expect(within(block).getByRole('heading')).toHaveTextContent(/^Trails in view$/)
   })
 
   it('prints no mileage, because nothing published carries a trail’s length', () => {

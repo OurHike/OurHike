@@ -37,8 +37,13 @@ export interface SeriousWarning {
   id: string
   type: string
   note: string
-  mile: number
-  confirmedAt: Date
+  /** Where the pin was drawn, on the centerline - or null for a report the
+   *  download could not place, which then prints no mile line (D13). */
+  mile: number | null
+  /** When a moderator confirmed it (`verified_at`), or null where the wire
+   *  carries no date: the badge still says who stood behind the claim, and
+   *  says nothing about when rather than a date nobody stamped. */
+  confirmedAt: Date | null
 }
 
 export interface SeriousWarningSheetProps {
@@ -58,22 +63,26 @@ export function SeriousWarningSheet({ warning, onClose }: SeriousWarningSheetPro
       </div>
 
       <p className="warning-sheet__badge">
-        {`Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
-          'en-US',
-          {
-            month: 'long',
-            day: 'numeric',
-            timeZone: 'UTC',
-          },
-        )}`}
+        {warning.confirmedAt === null
+          ? 'Confirmed by club moderators'
+          : `Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
+              'en-US',
+              {
+                month: 'long',
+                day: 'numeric',
+                timeZone: 'UTC',
+              },
+            )}`}
       </p>
 
-      <p className="closure-sheet__range">
-        {`mi ${warning.mile.toLocaleString('en-US', {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        })}`}
-      </p>
+      {warning.mile !== null && (
+        <p className="closure-sheet__range">
+          {`mi ${warning.mile.toLocaleString('en-US', {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}`}
+        </p>
+      )}
 
       <p className="warning-sheet__note">{warning.note}</p>
 

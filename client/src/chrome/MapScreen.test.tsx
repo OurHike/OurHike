@@ -265,6 +265,53 @@ describe('MapScreen', () => {
     expect(screen.getByRole('searchbox')).toBeInTheDocument()
   })
 
+  it('lists what is in view from the header, and a row opens the pin’s card (#1373, frame 12a)', async () => {
+    const user = userEvent.setup()
+    const onSelectPoi = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        onSelectPoi={onSelectPoi}
+        waypointTotal={23}
+        viewportPoints={[
+          {
+            id: 'w1',
+            type: 'water',
+            lat: 39.5,
+            lon: -77.5,
+            confidence: 'high',
+            name: 'A spring',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    const sheet = screen.getByRole('dialog', { name: 'In view' })
+    expect(
+      within(sheet).getByRole('heading', { name: 'In view · 1 of 23' }),
+    ).toBeInTheDocument()
+
+    await user.click(within(sheet).getByRole('button', { name: /A spring/ }))
+    expect(onSelectPoi).toHaveBeenCalledWith('w1')
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+  })
+
+  it('offers no In view door with nothing drawn, and renders the two safety sheets in the sheet slot', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[]}
+        closureSheet={<p>the closure sheet</p>}
+        warningSheet={<p>the warning sheet</p>}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /In view/ })).toBeNull()
+    expect(screen.getByText('the closure sheet')).toBeInTheDocument()
+    expect(screen.getByText('the warning sheet')).toBeInTheDocument()
+  })
+
   it('wires the header buttons to the legend and search handlers', async () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)

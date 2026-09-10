@@ -14,8 +14,14 @@
 // below are multi-part rather than a single line each.
 
 import type { GeoJSONSourceSpecification } from '@maplibre/maplibre-gl-style-spec'
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import type {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  MapMouseEvent,
+  PointLike,
+} from 'maplibre-gl'
 import type { Closure } from '../lib/closureBanner'
+import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import { isBroadAdvisory } from '../lib/closureSpan'
 import { trailSlice, type TrailIndex } from '../lib/trailPosition'
 import { whenStyleReady } from './styleReady'
@@ -109,6 +115,65 @@ export function closureFeatureCollection(
  * network well after the map is built, and re-reading a style to add them
  * would drop the WebGL context underneath the hiker.
  */
+/** `--min-touch-target` (chrome/chrome.css), same as every other control. */
+const MIN_TOUCH_TARGET_PX = 44
+
+export const CLOSURE_TAP_SLOP_PX = MIN_TOUCH_TARGET_PX / 2
+
+/** The box a tap on the tape queries - the ATC band's reasoning
+ *  (map/atcUpdateLayers.ts): a 14px band hit with a gloved thumb in the
+ *  sun, and a band that opens only when hit dead centre reads as one that
+ *  does not open. */
+export function closureTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
+  return [
+    [point.x - CLOSURE_TAP_SLOP_PX, point.y - CLOSURE_TAP_SLOP_PX],
+    [point.x + CLOSURE_TAP_SLOP_PX, point.y + CLOSURE_TAP_SLOP_PX],
+  ]
+}
+
+/**
+ * Which closure's tape a touch landed on, or null (#1373, F12 - the tap
+ * #245 left waiting).
+ *
+ * Silent before the style holds the layer, for `atcBandIdAt`'s reason:
+ * querying a layer the style does not have fires an error event rather
+ * than throwing, and a touch on a map with no tape yet should be silent.
+ */
+export function closureIdAt(
+  map: MapLibreMap,
+  point: { x: number; y: number },
+): string | null {
+  if (map.getLayer(CLOSURE_LAYER_ID) === undefined) return null
+  const [feature] = map.queryRenderedFeatures(closureTapBox(point), {
+    layers: [CLOSURE_LAYER_ID],
+  })
+  if (feature === undefined) return null
+  const id = feature.properties?.[CLOSURE_ID_PROPERTY]
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+/**
+ * Wires taps on the closure tape to `onSelect`, and returns a detach.
+ *
+ * Only hits report, like the ATC band's handler and unlike the POI's: the
+ * closure sheet is dismissed by its own close, and a tap on bare map is
+ * left to the handlers that own bare map. The one-interpreter rule holds
+ * because lineTaps.ts yields to this layer, as it yields to the ATC bands.
+ */
+export function attachClosureTaps(
+  map: MapLibreMap,
+  onSelect: (closureId: string) => void,
+): () => void {
+  const onClick = (event: MapMouseEvent) => {
+    const id = closureIdAt(map, event.point)
+    if (id !== null) onSelect(id)
+  }
+  map.on('click', onClick)
+  return () => {
+    map.off('click', onClick)
+  }
+}
+
 export function buildClosureSource(): GeoJSONSourceSpecification {
   return { type: 'geojson', data: { type: 'FeatureCollection', features: [] } }
 }

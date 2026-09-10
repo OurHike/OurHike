@@ -47,6 +47,22 @@ describe('SeriousWarningSheet', () => {
     expect(screen.getByText(/July 24/)).toBeInTheDocument()
   })
 
+  it('still says who stood behind it when the wire carries no date, and no mile when it cannot be placed', () => {
+    // #1373, F12: the sheet is on the pin now, fed from the live list, and
+    // a report the download could not place or a date nobody stamped gets
+    // an absence rather than an invention (D13).
+    render(
+      <SeriousWarningSheet
+        {...PROPS}
+        warning={{ ...WARNING, confirmedAt: null, mile: null }}
+      />,
+    )
+
+    expect(screen.getByText('Confirmed by club moderators')).toBeInTheDocument()
+    expect(screen.queryByText(/July 24/)).toBeNull()
+    expect(screen.queryByText(/^mi /)).toBeNull()
+  })
+
   it('explains why the phone stayed silent', () => {
     render(<SeriousWarningSheet {...PROPS} />)
 

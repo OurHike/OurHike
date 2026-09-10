@@ -920,6 +920,27 @@
   cursor: pointer;
 }
 
+/* "In view" (#1373, frame 12a) shares the legend's box - the same sheet
+   over the same map, capped and scrolling inside like it - and lists rows
+   rather than a grid. */
+.map-header__button--inview {
+  width: auto;
+  padding: 0 var(--space-3, 12px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.in-view__rows {
+  list-style: none;
+  margin: var(--space-2, 8px) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .legend__empty {
   margin: var(--space-3, 12px) 0 0;
   color: var(--fg-3);

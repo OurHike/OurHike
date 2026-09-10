@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
@@ -98,6 +99,20 @@ describe('tapping a pin', () => {
         ),
       ).toBe(true)
     }
+  })
+
+  it('yields to a serious-warning pin under the same thumb (#1373, F12)', () => {
+    // The biggest pin on the map, drawn over the waypoints and escalated by
+    // hand: a tap on it is a tap on it, not on the shelter beside it, so the
+    // warning sheet and the waypoint card cannot both open on one touch.
+    const map = buildMap()
+    map.layerIds.push(WARNING_LAYER_ID)
+    map.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
   })
 
   it('allows for a thumb: a touch beside the pin still opens it', () => {

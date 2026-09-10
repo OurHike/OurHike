@@ -32,13 +32,16 @@ const SRC = resolve(process.cwd(), 'src')
 const ROOT = join(SRC, 'main.tsx')
 const SCREEN_DIRS = ['screens', 'chrome', 'reporting'] as const
 
-/** Modules built before their door, by the phase of #1373 that mounts each. */
-const NOT_YET_MOUNTED: Readonly<Record<string, string>> = {
-  'chrome/ClosureSheet.tsx':
-    'the closure tap sheet (WIREFRAMES.md §7), built and never mounted; F12 mounts it on the closure tape',
-  'chrome/SeriousWarningSheet.tsx':
-    'the serious-warning detail sheet (WIREFRAMES.md §8), built and never mounted; F12 mounts it on the pin',
-}
+/**
+ * Modules built before their door, by the phase of #1373 that mounts each.
+ *
+ * Empty since F12 mounted the last two - the closure tap sheet (WIREFRAMES.md
+ * §7) on the tape and the serious-warning sheet (§8) on the pin, both built
+ * by #232 and left for a tap that took a year to arrive. The map stays so a
+ * screen built ahead of its door has somewhere to be declared rather than
+ * somewhere to hide.
+ */
+const NOT_YET_MOUNTED: Readonly<Record<string, string>> = {}
 
 const IMPORT_SPECIFIERS = [
   // import x from './y' · import { x } from './y' · export { x } from './y'

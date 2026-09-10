@@ -208,7 +208,7 @@ export function orgProviderFrom(stewards: Stewards): (source: string | null) => 
  * Here rather than in the component that first needed it, because there are
  * two callers and were two implementations - NoticeList.tsx declared this
  * with a comment saying it was "one rule with one caller", while
- * AtcUpdateSheet.tsx inlined the same expression a few lines into its body.
+ * OrgNoticeSheet.tsx inlined the same expression a few lines into its body.
  * Two copies of one rule is the state where they can disagree, and this one
  * is a rule about ENGLISH rather than about notices or sheets, so neither
  * component was ever its home.

@@ -66,6 +66,14 @@
 // The violet is not in this frame either - a hidden row desaturates its pin,
 // and that is a true thing the caption does not claim. For the colour,
 // `npx vite-node scripts/preview-poi-pins.ts` writes the contact sheet.
+// Re-pointed 2026-09-10 (#1373, F12 and D5): "Trails in view" names five
+// and folds the rest under "N more, by name ›" (R10 - by NAME, because the
+// blaze rows the review would fold them into came off this panel at the
+// maintainer's request above), and the row "Your day hikes near here ›"
+// sits under the trails when the phone has a fix and a saved day hike. The
+// preview's phone has neither, so that row is absent here on purpose;
+// Legend.test.tsx holds it. Whether the fold shows depends on how many
+// named lines the preview's viewport draws.
 export const caption =
   'The legend — a ninth waypoint category, and it arrives switched off (#1197)'
 export const alt =

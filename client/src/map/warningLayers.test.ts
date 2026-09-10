@@ -10,6 +10,8 @@ import { POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { WARNING_ICON_ID } from './warningPin'
 import {
   attachWarningData,
+  attachWarningTaps,
+  warningIdAt,
   attachWarningIcon,
   buildWarningLayer,
   buildWarningSource,
@@ -228,5 +230,57 @@ describe('the rule that this never pushes', () => {
     expect(source).toContain('WARNING_SOURCE_ID')
     expect(source).not.toMatch(/from '[^']*push'/)
     expect(source).not.toMatch(/Notification|registration\./)
+  })
+})
+
+// #1373, F12: the tap #292 said "opens a sheet nothing can honestly fill",
+// before it emptied the sheet of exactly that. What is left is what the wire
+// carries, and the pin opens it now.
+describe('tapping a pin', () => {
+  function pin(id: string) {
+    return { properties: { [WARNING_ID_PROPERTY]: id } }
+  }
+  function tappableMap(features: unknown[]): MockMap {
+    const map = new MockMap({})
+    map.layerIds = [WARNING_LAYER_ID, POI_LAYER_ID]
+    map.renderedFeatures.set(WARNING_LAYER_ID, features)
+    return map
+  }
+
+  it('tells the shell which warning was touched, and only on a hit', () => {
+    const map = tappableMap([pin('r1')])
+    const onSelect = vi.fn()
+
+    attachWarningTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+    expect(onSelect).toHaveBeenCalledWith('r1')
+
+    map.renderedFeatures.set(WARNING_LAYER_ID, [])
+    onSelect.mockClear()
+    map.emit('click', { point: { x: 1, y: 1 } })
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('is silent before the style holds the layer, and for a pin with no id', () => {
+    const bare = new MockMap({})
+    bare.layerIds = []
+    const query = vi.spyOn(bare, 'queryRenderedFeatures')
+    expect(warningIdAt(bare as never, { x: 10, y: 10 })).toBeNull()
+    expect(query).not.toHaveBeenCalled()
+
+    expect(
+      warningIdAt(tappableMap([{ properties: {} }]) as never, { x: 1, y: 1 }),
+    ).toBeNull()
+  })
+
+  it('stops listening when detached', () => {
+    const map = tappableMap([pin('r1')])
+    const onSelect = vi.fn()
+
+    const detach = attachWarningTaps(map as never, onSelect)
+    detach()
+    map.emit('click', { point: { x: 1, y: 1 } })
+
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })

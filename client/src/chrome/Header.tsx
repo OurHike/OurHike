@@ -78,6 +78,13 @@ export interface HeaderProps {
   strip: ReactNode
   onOpenLegend: () => void
   onOpenSearch: () => void
+  /**
+   * "In view" (#1373, frame 12a): the count of waypoints the map is drawing
+   * and the door to the list of them. Undefined where the shell has nothing
+   * to list (no waypoints on this phone yet), and then the bar carries its
+   * two buttons exactly as before.
+   */
+  inView?: { count: number; onOpen: () => void }
 }
 
 export function Header({
@@ -90,6 +97,7 @@ export function Header({
   strip,
   onOpenLegend,
   onOpenSearch,
+  inView,
 }: HeaderProps) {
   return (
     <>
@@ -140,6 +148,21 @@ export function Header({
                 strokeLinejoin="round"
               />
             </svg>
+          </button>
+        )}
+
+        {/* The list of what is in view (#1373, frame 12a) - a word and a
+            count rather than a third icon, because it is the one control
+            here that answers a question ("what is around me") rather than
+            opening a tool. */}
+        {inView !== undefined && (
+          <button
+            type="button"
+            className="map-header__button map-header__button--inview"
+            aria-label={`In view, ${inView.count}`}
+            onClick={inView.onOpen}
+          >
+            <span aria-hidden="true">In view · {inView.count}</span>
           </button>
         )}
 

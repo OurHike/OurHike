@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { CLOSURE_ID_PROPERTY } from './closureLayers'
+import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
@@ -214,6 +217,27 @@ describe('tapping a line', () => {
     map.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
 
     expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('yields to the closure tape and to a serious-warning pin under the same thumb (#1373, F12)', () => {
+    // Both are safety marks drawn ON the line: a tap on barrier tape that
+    // opened the blaze sheet instead of the closure would answer the wrong
+    // question on the one path that is about danger.
+    const taped = buildMap()
+    taped.layerIds.push(CLOSURE_LAYER_ID)
+    taped.renderedFeatures.set(CLOSURE_LAYER_ID, [
+      { properties: { [CLOSURE_ID_PROPERTY]: 'c1' } },
+    ])
+    taped.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
+    expect(tappedLineAt(taped as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+
+    const pinned = buildMap()
+    pinned.layerIds.push(WARNING_LAYER_ID)
+    pinned.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    pinned.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
+    expect(tappedLineAt(pinned as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
   })
 
   it('prefers the side trail over the through-route at a junction', () => {

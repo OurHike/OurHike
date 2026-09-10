@@ -1895,7 +1895,7 @@ export function buildMapStyle({
       // the wrong surface for it. What a hiker needs is not "© ATC" under the
       // whole map but the organisation's name on the specific claim, with the
       // date they last edited it and a link to their page, which is what
-      // chrome/AtcUpdateSheet.tsx renders (#461).
+      // chrome/OrgNoticeSheet.tsx renders (#461).
       [ATC_UPDATE_SOURCE_ID]: buildAtcUpdateSource(),
       [WARNING_SOURCE_ID]: buildWarningSource(),
       [WORKDAY_SOURCE_ID]: buildWorkdaySource(),

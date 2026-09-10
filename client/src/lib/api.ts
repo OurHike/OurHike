@@ -244,6 +244,14 @@ export interface ReportSummary {
   note: string | null
   /** ISO 8601, UTC-designated - the server stamps the `Z` on the way out. */
   timestamp: string
+  /**
+   * When a moderator confirmed it, or null (#1373, F12). The wire has sent
+   * it since PR #647 and the bake carries it (export_conditions.py); the
+   * serious-warning sheet prints it as "Confirmed by club moderators · date".
+   * Optional as well as nullable for the reason `ClosureSummary`'s geometry
+   * gives: a baseline baked before the field existed omits the key.
+   */
+  verified_at?: string | null
 }
 
 /**
@@ -331,6 +339,17 @@ export interface ClosureSummary {
   /** ISO 8601, UTC-designated. */
   reported_at: string
   verified_at: string | null
+  /**
+   * The three the closure sheet prints beyond the shared shape (#245,
+   * chrome/ClosureSheet.tsx): when it shut, when it is expected back, and
+   * the club's reroute page. Each null where nobody said, and each optional
+   * for the baseline's reason above - a file baked before #245 omits the
+   * keys, and undefined and null both mean "not said" (D13: omitted, never
+   * "unknown").
+   */
+  closed_since?: string | null
+  expected_reopen?: string | null
+  reroute_url?: string | null
 }
 
 /**

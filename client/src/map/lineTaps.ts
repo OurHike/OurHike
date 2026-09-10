@@ -23,6 +23,8 @@
 
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { atcBandIdAt } from './atcUpdateLayers'
+import { closureIdAt } from './closureLayers'
+import { warningIdAt } from './warningLayers'
 import { highlightIdAt } from './corridorLayers'
 import { poiIdAt } from './poiTaps'
 import {
@@ -215,6 +217,13 @@ export function tappedLineAt(
   // aimed at, and their handlers will act on this same click.
   if (poiIdAt(map, point) !== null) return null
   if (atcBandIdAt(map, point) !== null) return null
+  // The closure tape and the serious-warning pin (#1373, F12), for the same
+  // reason and one more: both are safety marks drawn ON the line, and a tap
+  // on barrier tape that opened the trail's blaze sheet instead of the
+  // closure would answer the wrong question on the one path that is about
+  // danger.
+  if (closureIdAt(map, point) !== null) return null
+  if (warningIdAt(map, point) !== null) return null
   // And a highlight mark (#858), for the same reason: it is a small target a
   // hiker aimed at, sitting on the corridor line that is always under it.
   if (highlightIdAt(map, point) !== null) return null

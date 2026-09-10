@@ -16,7 +16,7 @@
 // false. Both mean the trail is shut. Provenance is a question about WHO
 // says so, and it is answered where a hiker can actually read an answer: the
 // banner names the ATC first (lib/atcUpdates.ts) and the sheet carries their
-// name, their date and a link to their page (chrome/AtcUpdateSheet.tsx).
+// name, their date and a link to their page (chrome/OrgNoticeSheet.tsx).
 //
 // The same reasoning lib/closureStyle.ts applies to blazes applies here in
 // miniature: the distinction that matters is structural rather than

@@ -34,7 +34,12 @@ import type {
   GeoJSONSourceSpecification,
   LayerSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
-import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
+import type {
+  GeoJSONSource,
+  Map as MapLibreMap,
+  MapMouseEvent,
+  PointLike,
+} from 'maplibre-gl'
 import { POI_PIN_PIXEL_RATIO } from './poiIcons'
 import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { buildWarningIcon, WARNING_ICON_ID } from './warningPin'
@@ -105,6 +110,53 @@ export function buildWarningLayer(
 }
 
 /** Registers the warning pin image on a live map, and returns a detach. */
+/** The pin's own hit box: the pin is 44px on the map (lib/seriousWarnings.ts's
+ *  size ceiling) and is hit like every other 44px control. */
+const WARNING_TAP_SLOP_PX = 22
+
+export function warningTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
+  return [
+    [point.x - WARNING_TAP_SLOP_PX, point.y - WARNING_TAP_SLOP_PX],
+    [point.x + WARNING_TAP_SLOP_PX, point.y + WARNING_TAP_SLOP_PX],
+  ]
+}
+
+/**
+ * Which warning's pin a touch landed on, or null (#1373, F12 - "the tap
+ * that would (#292) opens a sheet nothing can honestly fill" was true until
+ * #292 emptied the sheet of what nothing could fill; what is left is what
+ * the wire carries, and the tap can open it now).
+ */
+export function warningIdAt(
+  map: MapLibreMap,
+  point: { x: number; y: number },
+): string | null {
+  if (map.getLayer(WARNING_LAYER_ID) === undefined) return null
+  const [feature] = map.queryRenderedFeatures(warningTapBox(point), {
+    layers: [WARNING_LAYER_ID],
+  })
+  if (feature === undefined) return null
+  const id = feature.properties?.[WARNING_ID_PROPERTY]
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+/** Wires taps on the warning pins to `onSelect`; hits only, like the
+ *  closure tape's. The POI and line handlers yield to this pin, so one
+ *  touch has one interpreter. */
+export function attachWarningTaps(
+  map: MapLibreMap,
+  onSelect: (reportId: string) => void,
+): () => void {
+  const onClick = (event: MapMouseEvent) => {
+    const id = warningIdAt(map, event.point)
+    if (id !== null) onSelect(id)
+  }
+  map.on('click', onClick)
+  return () => {
+    map.off('click', onClick)
+  }
+}
+
 export function attachWarningIcon(map: MapLibreMap): () => void {
   return whenStyleReady(
     map,

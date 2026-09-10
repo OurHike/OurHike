@@ -467,6 +467,7 @@ import { projectClosures } from './lib/closureProjection'
 import { atcUpdateBanner, atcUpdateLanes, type RankedAtcUpdate } from './lib/atcUpdates'
 import { ATC_SOURCE_KEY } from './lib/notices'
 import { useNoticesPanel } from './chrome/noticesPanel'
+import { useAlertSheets } from './chrome/alertSheetsPanel'
 import {
   useWaypointFiltersPanel,
   type UpdatePreferences,
@@ -2942,6 +2943,15 @@ function App() {
     bbox,
     now,
   })
+  /** The closure tape's and the warning pin's sheets (#1373, F12) - the two
+   *  the map drew marks for and never opened. */
+  const alertSheets = useAlertSheets({
+    closures: placedClosures,
+    reports,
+    placedWarnings,
+    lastSyncedAt,
+    now,
+  })
 
   /**
    * Serious warnings as points, straight from the report's own lat/lon.
@@ -3373,6 +3383,7 @@ function App() {
     // `useState`s, and why a feature that grows a second sheet widens its own
     // `sheetOpen` instead of this line.
     atc.sheetOpen ||
+    alertSheets.sheetOpen ||
     workday.sheetOpen
   useAppUpdate(UPDATE_CHECK_MS, { hold: updateWouldCost, ready: afterFirstFrame })
 
@@ -7252,6 +7263,11 @@ function App() {
     () => new Map(searchablePois.map((poi) => [poi.id, poi.mile])),
     [searchablePois],
   )
+  /** A waypoint's mile for the map's "In view" list (#1373, frame 12a). */
+  const waypointMileOf = useCallback(
+    (poiId: string) => poiMileById.get(poiId),
+    [poiMileById],
+  )
   const stopFacts = useCallback(
     (poiId: string): StopFacts | null => {
       const poi = poiById.get(poiId)
@@ -9398,6 +9414,9 @@ function App() {
               // second owner for any of them and a change to one of these
               // features never reaches this file at all.
               {...atc.mapScreen}
+              {...alertSheets.mapScreen}
+              waypointTotal={pois.length}
+              waypointMileOf={waypointMileOf}
               {...line.mapScreen}
               onSelectLine={handleSelectLine}
               {...workday.mapScreen}

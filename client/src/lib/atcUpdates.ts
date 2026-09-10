@@ -195,7 +195,7 @@ export function atcUpdateForBandId(
  * `reason_type: 'other'` is a placeholder that must never be rendered. Its
  * label is "Closed", and applying that to an ATC Detour would put a word in
  * their mouth. Everything a hiker reads about an ATC update comes off
- * `AtcUpdate` itself - see `atcUpdateBanner` below and chrome/AtcUpdateSheet.
+ * `AtcUpdate` itself - see `atcUpdateBanner` below and chrome/OrgNoticeSheet.
  *
  * `status: 'closed'` for the same narrow reason: `closureBands` drops
  * anything marked `open` because drawing a barrier across a reopened trail is

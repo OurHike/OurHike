@@ -62,7 +62,7 @@ import type { BoundingBox } from '../lib/legendContents'
 import type { TrailIndex } from '../lib/trailPosition'
 import type { Stewards } from '../lib/stewards'
 import type { MapScreenProps } from './MapScreen'
-import { AtcUpdateSheet } from './AtcUpdateSheet'
+import { OrgNoticeSheet } from './OrgNoticeSheet'
 import { NoticeList } from './NoticeList'
 
 /**
@@ -359,7 +359,7 @@ export function useNoticesPanel({
       onSelectAtcUpdate: setSelectedBandId,
       atcUpdateSheet:
         selectedUpdate === null ? null : (
-          <AtcUpdateSheet
+          <OrgNoticeSheet
             update={selectedUpdate}
             reviewedAt={reviewedAt}
             stewards={stewards}

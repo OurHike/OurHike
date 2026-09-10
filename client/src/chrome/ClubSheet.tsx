@@ -4,7 +4,7 @@
 // features/CORRIDOR_VIEW.md specifies it; every sentence is decided in
 // lib/clubDetail.ts, where it is testable without a canvas, and this component
 // only lays them out. Rendered on LineSheet.tsx's own classes so the two read
-// as one family - which is the same reason LineSheet uses AtcUpdateSheet's.
+// as one family - which is the same reason LineSheet uses OrgNoticeSheet's.
 //
 // Lines that are null are OMITTED, never placeholdered, the restraint every
 // sheet in this app keeps. A club with no region shows no region; a stretch

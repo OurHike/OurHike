@@ -497,7 +497,11 @@ describe('planning a section without leaving the room (#1344)', () => {
       ['From', 'Front Shelter'],
       ['To', 'Beyond Shelter'],
     ] as const) {
-      await user.click(screen.getByRole('button', { name: new RegExp(end) }))
+      // Anchored, and not "Today": the phone's bar now carries a "Today I’m…"
+      // read-out (#1373, lib/navigator.ts), and an unanchored /To/ matched
+      // it too. The field's own name runs its two spans together
+      // ("ToChoose a place ›"), so a word boundary would miss it.
+      await user.click(screen.getByRole('button', { name: new RegExp(`^${end}(?!day)`) }))
       const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
       await user.type(within(picker).getByLabelText('Search for a stop'), place)
       await user.click(

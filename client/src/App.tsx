@@ -41,7 +41,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
 import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
-import type { TabId } from './chrome/tabs'
+import { useNavigator } from './lib/navigator'
 import {
   hikingDetailOptions,
   noDetailOptions,
@@ -662,7 +662,51 @@ function App() {
   // lands. During first run the tab branches below are skipped entirely -
   // `entering` renders the map screen as the steps' backdrop whatever this
   // says - so the default only takes effect once onboarding is done.
-  const [activeTab, setActiveTab] = useState<TabId>('today')
+  //
+  // WHERE THE HIKER IS, since #1373 (lib/navigator.ts): the tab, and the
+  // screens pushed over each tab's home - Today's finder and a route's
+  // detail, More's pages, and from F3 on the pathway's three steps. The
+  // names `activeTab`, `setActiveTab` and `selectTab` are kept because two
+  // dozen doors below read them; what changed is that every one of those
+  // moves now goes through a single `navigate()`, which is the only place
+  // the bail sheet (design decision D8) can stop an exit from a half-built
+  // route. The guard that does the stopping arrives with the builder (F3);
+  // until then nothing is parked and `nav.pending` stays null.
+  //
+  // `setActiveTab` IS a tab selection now, where it used to be a bare
+  // setState: it returns Today to its journal the way `selectTab` always
+  // did (#1284) and leaves More's page where it was (#1054). No door below
+  // relied on the difference - every path back to Today went through
+  // `selectTab` already - and the navigator's tests hold both courtesies.
+  const nav = useNavigator()
+  const activeTab = nav.tab
+  const {
+    selectTab,
+    navigate,
+    push: pushScreen,
+    replace: replaceScreen,
+    back: goBack,
+  } = nav
+  const setActiveTab = selectTab
+  // The phone's mode read-out opens Today's switch: a tab selection plus a
+  // focus that waits for the render mounting Today (the effect on a counter).
+  // Declared up here with the other hooks - below the flow chain there is
+  // an early return between the two, and a hook after it renders a
+  // different number of hooks per branch. `modeReadout`, which hands these
+  // to the bar, is defined beside the sidebar's switch further down.
+  const [modeFocusAsk, setModeFocusAsk] = useState(0)
+  const openModeSwitch = useCallback(() => {
+    selectTab('today')
+    setModeFocusAsk((asked) => asked + 1)
+  }, [selectTab])
+  useEffect(() => {
+    if (modeFocusAsk === 0) return
+    document
+      .querySelector<HTMLElement>(
+        '.mode-switch--chrome [role="radio"][aria-checked="true"]',
+      )
+      ?.focus()
+  }, [modeFocusAsk])
   // The download window (screens/DownloadsDialog.tsx), which replaced the tab
   // it used to be. Held here rather than on either screen because it opens
   // over both of them, from the one background picker they share.
@@ -1031,7 +1075,17 @@ function App() {
    * the map mid-form comes back to the page they left, which is the same
    * courtesy every tab's own state already keeps.
    */
-  const [morePage, setMorePage] = useState<MorePage>('home')
+  const moreTop = nav.state.stacks.more[nav.state.stacks.more.length - 1]
+  const morePage: MorePage = moreTop?.kind === 'more' ? moreTop.page : 'home'
+  // More's pages are flat (its own `onNavigate` goes page → home → page), so
+  // a page REPLACES whatever page is up rather than stacking on it, and
+  // `home` clears the tab's stack - called from More's own back button, so
+  // More is the active tab when it runs.
+  const setMorePage = useCallback(
+    (page: MorePage) =>
+      page === 'home' ? navigate({ to: 'home' }) : replaceScreen({ kind: 'more', page }),
+    [navigate, replaceScreen],
+  )
   /**
    * Which room the Today tab is showing (#1284): the journal, or the Find-a-
    * hike search pushed from its shelf. Not a fifth tab - Today stays the
@@ -1044,16 +1098,16 @@ function App() {
   // finder pushed from its shelf, and one route's detail pushed from a card
   // on either. Held as a page plus an id rather than as a route object, so a
   // republished document cannot leave a stale copy of a hike on screen.
-  const [todayPage, setTodayPage] = useState<'home' | 'find' | 'detail'>('home')
-  const [openHikeId, setOpenHikeId] = useState<string | null>(null)
-  // Which page the detail was pushed from, so Back returns there rather than
-  // always to the column. A boolean rather than a stack: there are two doors
-  // and no third is coming.
-  const [cameFromFinder, setCameFromFinder] = useState(false)
-  const selectTab = useCallback((id: TabId) => {
-    setTodayPage('home')
-    setActiveTab(id)
-  }, [])
+  //
+  // Read off Today's stack since #1373. The finder is a screen pushed from
+  // the shelf, the detail a screen pushed from a card on either, and Back
+  // pops - so which page the detail came from is no longer a boolean beside
+  // it ("there are two doors and no third is coming" - true, and the stack
+  // remembers it for free).
+  const todayTop = nav.state.stacks.today[nav.state.stacks.today.length - 1] ?? null
+  const todayPage: 'home' | 'find' | 'detail' =
+    todayTop === null ? 'home' : todayTop.kind === 'hike' ? 'detail' : 'find'
+  const openHikeId = todayTop?.kind === 'hike' ? todayTop.id : null
 
   const [direction, setDirection] = useState<DirectionTracker | null>(null)
   // The live map is state rather than a ref because effects have to run when
@@ -3529,7 +3583,7 @@ function App() {
     setHikePointOnMap(true)
     setHikePointRefusedTap(false)
     setActiveTab('map')
-  }, [])
+  }, [setActiveTab])
 
   /**
    * A point placed by tapping the trail.
@@ -3867,6 +3921,7 @@ function App() {
     handleLeaveHikePlan,
     handleSwitchHike,
     tripStore.hikes.length,
+    setActiveTab,
   ])
 
   /**
@@ -3968,7 +4023,7 @@ function App() {
       enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore, enterTripsRoom],
+    [applyTripStore, enterTripsRoom, setActiveTab],
   )
 
   /**
@@ -4033,7 +4088,7 @@ function App() {
     // opens on Day hikes, where the one primary button is "Plan a day hike"
     // - and that button reaches this same sweep, discarding the route.
     applyHikerMode('long')
-  }, [applyHikerMode])
+  }, [applyHikerMode, setActiveTab])
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -4241,7 +4296,7 @@ function App() {
     // The mirror of `sweepForBuilder`'s last line, and for the same reason:
     // the draft a hiker is building is what the Plan tab is about.
     applyHikerMode('day')
-  }, [routeBuilder, applyHikerMode])
+  }, [routeBuilder, applyHikerMode, setActiveTab])
 
   /**
    * Whether the map is taking a DRAWN line rather than taps (#983, frame 1k).
@@ -4674,12 +4729,8 @@ function App() {
   // ---- Opening and saving a published route (#1290) ----
 
   const openSuggestedHike = useCallback(
-    (id: string) => {
-      setCameFromFinder(todayPage === 'find')
-      setOpenHikeId(id)
-      setTodayPage('detail')
-    },
-    [todayPage],
+    (id: string) => pushScreen({ kind: 'hike', id }),
+    [pushScreen],
   )
 
   /**
@@ -4699,7 +4750,7 @@ function App() {
       handleOpenDayHike(id)
       setActiveTab('map')
     },
-    [handleOpenDayHike],
+    [handleOpenDayHike, setActiveTab],
   )
 
   /**
@@ -4937,7 +4988,7 @@ function App() {
       handleDayHikeCardClose()
       setActiveTab('map')
     },
-    [handleDayHikeCardClose],
+    [handleDayHikeCardClose, setActiveTab],
   )
 
   /** Frame the whole walk, which is the one navigational thing frame `D11`
@@ -5330,7 +5381,7 @@ function App() {
       return
     }
     setPlanKindOpen(true)
-  }, [dayHike, routeBuilder])
+  }, [dayHike, routeBuilder, setActiveTab])
 
   /**
    * The trail inside the map's viewport, on the pipeline's axis - the "always
@@ -5666,7 +5717,7 @@ function App() {
       enterTripsRoom()
       setActiveTab('plan')
     },
-    [targetRequest, applyTripStore, closeRouteBuilder, enterTripsRoom],
+    [targetRequest, applyTripStore, closeRouteBuilder, enterTripsRoom, setActiveTab],
   )
 
   // Every timeline edit runs through here, against whichever trip is open.
@@ -5710,7 +5761,7 @@ function App() {
       enterTripsRoom()
       setActiveTab('plan')
     },
-    [applyTripStore, enterTripsRoom],
+    [applyTripStore, enterTripsRoom, setActiveTab],
   )
 
   const handleRenameTrip = useCallback(
@@ -6797,7 +6848,7 @@ function App() {
         })
       }
     },
-    [pois, map, handleSelectPoi],
+    [pois, map, handleSelectPoi, setActiveTab],
   )
 
   /** Answered: both fields land together, which is what the screen collects.
@@ -7755,10 +7806,7 @@ function App() {
       pace={pace}
       opportunities={workProjects}
       opportunitiesAsOf={workProjectsGeneratedAt}
-      onOpenVolunteer={() => {
-        setActiveTab('more')
-        setMorePage('volunteer')
-      }}
+      onOpenVolunteer={() => setMorePage('volunteer')}
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
       onStartReport={() => setReporting({ step: 'window' })}
@@ -7780,7 +7828,7 @@ function App() {
       // of them. The cards press since #1290 built the detail they open.
       suggestedHikes={suggestedHikes}
       fixAt={fixAt}
-      onFindHike={() => setTodayPage('find')}
+      onFindHike={() => pushScreen({ kind: 'find' })}
       onOpenSuggestedHike={openSuggestedHike}
     />
   )
@@ -7796,7 +7844,7 @@ function App() {
       fixAt={fixAt}
       units={units}
       pace={pace}
-      onBack={() => setTodayPage('home')}
+      onBack={goBack}
       onOpenHike={openSuggestedHike}
     />
   )
@@ -7821,7 +7869,7 @@ function App() {
         hike={openHike}
         pace={pace}
         units={units}
-        onBack={() => setTodayPage(cameFromFinder ? 'find' : 'home')}
+        onBack={goBack}
         onSave={saveSuggestedHike}
         {...(savedCopy === undefined
           ? {}
@@ -7845,6 +7893,19 @@ function App() {
   const sidebarModeSwitch = isDesktop ? (
     <ModeSwitch mode={hikerMode} onChange={handleChangeMode} />
   ) : undefined
+  /**
+   * The phone's mode read-out (#1373, the review's rule R11): a slim row
+   * above the four tabs saying which of the three modes the hiker is in,
+   * opening THE ONE switch - Today's header's - rather than carrying a
+   * second. Opening it is a tab selection plus a focus: the switch lives on
+   * Today, so the row lands the hiker there and puts keyboard and screen-
+   * reader attention on the selected segment. The focus waits for the
+   * render that mounts Today, which is why it is an effect on a counter
+   * rather than a call. Undefined above the breakpoint, where the sidebar
+   * carries the switch itself and a read-out under it would answer the
+   * same question twice.
+   */
+  const modeReadout = isDesktop ? {} : { mode: hikerMode, onOpenMode: openModeSwitch }
   /**
    * The hike a hiker is on, in the sidebar, on every screen (#1344).
    *
@@ -7903,6 +7964,7 @@ function App() {
           onSelect={selectTab}
           modeSwitch={sidebarModeSwitch}
           hikeSwitch={sidebarHikeSwitch}
+          {...modeReadout}
         />
       </div>
     )
@@ -8042,6 +8104,7 @@ function App() {
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
             hikeSwitch={sidebarHikeSwitch}
+            {...modeReadout}
           />
         </div>
       </>
@@ -8260,6 +8323,7 @@ function App() {
             onSelect={selectTab}
             modeSwitch={sidebarModeSwitch}
             hikeSwitch={sidebarHikeSwitch}
+            {...modeReadout}
           />
         </div>
       </>
@@ -8350,6 +8414,7 @@ function App() {
             onSelect={selectTab}
             modeSwitch={isDesktop ? sidebarModeSwitch : undefined}
             hikeSwitch={sidebarHikeSwitch}
+            {...modeReadout}
           />
         </div>
       )}
@@ -8377,7 +8442,7 @@ function App() {
             fallback={() => (
               <div className="app__screen">
                 <ScreenFailed what="The map" />
-                <TabBar active={activeTab} onSelect={selectTab} />
+                <TabBar active={activeTab} onSelect={selectTab} {...modeReadout} />
               </div>
             )}
           >

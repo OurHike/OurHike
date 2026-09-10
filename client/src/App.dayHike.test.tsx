@@ -1243,3 +1243,67 @@ describe('the day-hike builder, end to end', () => {
     expect(screen.queryByText(/data sync/i)).not.toBeInTheDocument()
   })
 })
+
+// --- Step 3 on a desktop (#1373, frame 16b) ---------------------------------
+
+describe('step 3 on a desktop', () => {
+  it('reads the review in the rail beside the route, and still saves from there', async () => {
+    // The same walk the end-to-end case builds, above the breakpoint. On a
+    // phone the review is a sheet over the canvas (`routeSheet`); here the
+    // shell hands the same card to the builder-panel slot, so it is the
+    // first child of the map body - the rail step 2 wore - and the map
+    // beside it shows the route the card describes. Matched on the query,
+    // for the reason the journal-column case above gives.
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches: query.includes('min-width: 900px'),
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      })),
+    )
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+
+    render(<App />)
+    // A desktop builds its map from launch, so the first frame's tab bar is
+    // the bare one App draws while the archive store answers - a click on
+    // it lands on an element the map screen then replaces. Wait for the map
+    // itself, as the journal-column case does, then reach for the tab.
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await screen.findByRole('heading', { name: 'Where do you want to go?' })
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
+    expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
+
+    const save = await screen.findByRole('button', { name: 'Save this day hike' })
+    const card = save.closest('.day-hike-card')
+    expect(card).not.toBeNull()
+    // The rail, not the sheet: a child of the body, and nowhere inside the
+    // canvas the phone's sheet floats over.
+    expect(card?.parentElement?.className).toBe('map-screen__body')
+    expect(card?.closest('.map-screen__canvas')).toBeNull()
+    // And no second copy of it in the sheet slot - the slot stays empty
+    // rather than falling through to the pick bar under it.
+    expect(screen.getAllByRole('button', { name: 'Save this day hike' })).toHaveLength(1)
+    expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+
+    // The same handlers: Save lands the one record from the rail.
+    await user.click(save)
+    await waitFor(() => {
+      expect(app.store.get(DAY_HIKES_KEY)).toBeDefined()
+    })
+    const stored = app.store.get(DAY_HIKES_KEY) as { hikes: unknown[] }
+    expect(stored.hikes).toHaveLength(1)
+  })
+})

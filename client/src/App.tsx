@@ -7567,10 +7567,20 @@ function App() {
    * A tap on a passed place opens its card, on the map, framed - the exact
    * behaviour a search result has (#527), because the list is a second way
    * to name a place, not a second kind of screen.
+   *
+   * THE TAB SWITCH IS THE PHONE'S, and one form factor's (#1373, frame 16a;
+   * the inventory's C5). On a desktop with Today active the journal already
+   * reads beside the map (#1054), so the map the card opens on is on screen
+   * - and `setActiveTab('map')` there did not move it, it unmounted the
+   * journal the row was tapped in, since the journal slot is gated on the
+   * Today tab. Every other caller still covers the map on every width -
+   * Plan's hike day and More's passed places replace it - so those keep the
+   * switch. The condition is the tab, not the caller, because it is the
+   * tab that says whether the map is visible.
    */
   const handleOpenPassedPlace = useCallback(
     (id: string) => {
-      setActiveTab('map')
+      if (!(isDesktop && activeTab === 'today')) setActiveTab('map')
       handleSelectPoi(id)
       const found = pois.find((candidate) => candidate.id === id)
       if (found !== undefined && map !== null) {
@@ -7580,7 +7590,7 @@ function App() {
         })
       }
     },
-    [pois, map, handleSelectPoi, setActiveTab],
+    [pois, map, handleSelectPoi, setActiveTab, isDesktop, activeTab],
   )
 
   /** Answered: both fields land together, which is what the screen collects.
@@ -9434,7 +9444,8 @@ function App() {
               builderPanel={
                 // Only while a walk is being built, and never over the review
                 // card: `dayHikeReview` means the walk is finished and the
-                // panel's controls no longer apply to anything.
+                // panel's controls no longer apply to anything. On a desktop
+                // the review takes the rail over from it (below).
                 dayHike !== null && dayHikeReview === null ? (
                   <DayHikePanel
                     draft={dayHike}
@@ -9458,6 +9469,21 @@ function App() {
                     detailsOpen={dayHikeDetailsOpen}
                     onToggleDetails={() => setDayHikeDetailsOpen((open) => !open)}
                   />
+                ) : isDesktop && dayHikeReview !== null ? (
+                  // STEP 3 AGAINST ITS OWN ROUTE (#1373, frame 16b). Above the
+                  // breakpoint the review card takes the same rail step 2's
+                  // panel just left - first child of the map body, the map
+                  // filling everything right of it - rather than the sheet
+                  // the phone draws over the canvas. The card is the same
+                  // component with the same handlers; only the slot moves,
+                  // and desktop.css takes the sheet frame off it. The slot
+                  // was chosen over a second one on MapScreen because it
+                  // already means "a column the map stands beside", and
+                  // because the legend, In view and the ribbon already
+                  // stand down for it - which step 3 wants too, since a
+                  // legend beside a route being read is a legend beside the
+                  // wrong thing.
+                  dayHikeCardNode
                 ) : undefined
               }
               followBand={
@@ -9561,7 +9587,13 @@ function App() {
                 ) : dayHikeReview !== null ? (
                   // Frame `1l` as a review, in the same slot the bar held - one
                   // surface continuing, with Save as its one primary action.
-                  dayHikeCardNode
+                  // On a desktop the review is the rail instead (`builderPanel`
+                  // above, frame 16b), and this slot stays empty rather than
+                  // falling through to the pick bar the draft under it would
+                  // otherwise draw.
+                  isDesktop ? null : (
+                    dayHikeCardNode
+                  )
                 ) : dayHike !== null ? (
                   <DayHikePickBar
                     draft={dayHike}

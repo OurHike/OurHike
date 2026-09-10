@@ -270,6 +270,22 @@ describe('desktop layout contract', () => {
     expect(frame).toMatch(/border-radius/)
   })
 
+  it('keeps step 3 positioned in the rail, for the close button it anchors', () => {
+    // The shell hands the review card to the builder-panel slot above the
+    // breakpoint (#1373, frame 16b), where it sheds the sheet frame plan.css
+    // gives `.day-hike-card`. It must stay a positioned box while it does:
+    // `.route-stops__close` is absolute against the card, and a static card
+    // would hand the button to the map body's corner - the same trap
+    // .legend--persistent's test above pins, on the other rail.
+    const block = declarationsOf('.map-screen__body > .day-hike-card')
+
+    expect(block).toMatch(/position:\s*relative/)
+    expect(block).not.toMatch(/position:\s*static/)
+    // The sheet's ceiling is a fraction of the canvas; a rail has the body's
+    // height and scrolls inside it.
+    expect(block).toMatch(/max-height:\s*none/)
+  })
+
   it('restates the focus ring on the chrome, where the global ring is invisible', () => {
     // The unguarded rule at the foot of desktop.css draws --brand-primary
     // rings: forest on pine is 1.9:1. The chrome zones restate the colour -

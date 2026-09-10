@@ -1315,6 +1315,33 @@
   .day-hike-bar {
     max-height: 40%;
   }
+
+  /* Step 3 in the same rail (#1373, frame 16b). The review card the phone
+     draws as a sheet over the map - `.day-hike-card` in plan.css is an
+     absolute box at `bottom: 0` - is handed to MapScreen's `builderPanel`
+     slot above the breakpoint, so it is the first child of `.map-screen__body`
+     and a column beside the map exactly as step 2's panel is. The sheet
+     frame comes off: the rail's width, the body's full height, no rounded
+     top edge and no shadow, because nothing is under it to be over. Step 3
+     is then read against the route it describes, which is what the width
+     is for, and the map is never covered on a desktop - §6's rule.
+
+     `relative`, not `static`, for the reason .legend--persistent gives
+     above: the card's close button is absolute against the card, and a
+     static card would hand it to the map body's corner instead. `inset:
+     auto` clears the sheet's `left/right/bottom: 0`, which would otherwise
+     be read as relative offsets. */
+  .map-screen__body > .day-hike-card {
+    position: relative;
+    inset: auto;
+    flex: 0 0 21.75rem;
+    max-height: none;
+    padding: 1rem 1.25rem 1.1rem;
+    border-top: 0;
+    border-right: 1px solid var(--border-1);
+    border-radius: 0;
+    box-shadow: none;
+  }
 }
 
 /* Focus rings, everywhere, with no media query around them.

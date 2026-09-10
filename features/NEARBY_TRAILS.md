@@ -269,6 +269,27 @@ Cross-org rules, recorded from the maintainer's decisions and the spike's eviden
   superowner, per-section landowners with final say, and per-section maintainers —
   [#780 — Research route ownership](https://github.com/OurHike/OurHike/issues/780) owns
   that lattice, and this doc's "selected org" resolves against whatever #780 lands.
+- **Two trails on one treadway draw as two halves of one line, 2026-09-10
+  ([#1384 — Two trails on one treadway: draw both](https://github.com/OurHike/OurHike/issues/1384)).**
+  The maintainer, looking at Harriman: "If 2 trail lines overlap, could we show both
+  somehow?" — and, shown the options, chose the two-tone: each blaze on its own side.
+  The data half is `pipeline/lib/concurrency.py`, run inside `export_nearby_trails.py`:
+  where trail A's lines lie within **10 m** of trail B's for **50 m or more**, both
+  measured there against UA's 2026-09-10 lines (the shared-kilometres curve flattens at
+  8–10 m and ATC's own side trails, which share no ground with the centerline, produce
+  nothing over 50 m), a pair of features on one chord — A's properties on one, B's on
+  the other, each naming the other in `concurrent_with`, `concurrent_side` +1 and −1 —
+  goes into `concurrent_trails.geojson` and from there **into the vector tiles only**,
+  never into `nearby_trails.geojson`, which eleven scripts read as the network's
+  topology. The A.T.'s centerline is in the pool (its raw fetch, simplified to the same
+  1 m) and is always the +1 half; its side trails are not. **A stretch is kept only when
+  the two halves carry two different real blazes**: the first run over real data found
+  the A.T.'s most frequent partners were other organizations' copies of the A.T. under
+  their own names ("APPALACHIAN TRAIL", New Hampshire's "MOOSE MTN"), blazed "Unknown",
+  and the Whites' trails in the A.T.'s own White — one trail spelled twice, not two
+  trails — and none of that survives the rule. The module docstring carries every
+  number. The client half offsets each half to its side and is the front-end overhaul's
+  ([#1373](https://github.com/OurHike/OurHike/issues/1373)).
 
 ## 6. Provenance in the display voice
 

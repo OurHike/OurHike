@@ -118,6 +118,41 @@ what falls inside. The client needs no change for it, because the barred band
 over this source already keys off `trail_status` (#950). See that function for
 why a partly-covered trail is split at the boundary rather than closed whole.
 
+SHARED GROUND, WHICH RIDES IN THE TILES AND NOWHERE ELSE (#1384)
+
+Where two trails run on one treadway - the Ramapo-Dunderberg on the A.T. for
+a mile, the Long Path on the Arden-Surebridge - both sources draw their own
+line on the same pixels and the last painted wins. lib/concurrency.py finds
+those stretches (trail against trail, 10 m and 50 m, both measured there)
+and writes each as a PAIR of features on one chord: the same coordinates,
+each trail's own properties, `concurrent_with` naming the other and
+`concurrent_side` +1 or -1, so the client can offset each half to its own
+side of the line.
+
+The pool is this export's records plus ATC's CENTERLINE, loaded from the
+A.T. fetch's own raw file through export_trails.py's own functions
+(load_at_centerline) - the raw file because the A.T. export runs later in
+the workflow than this one, held there by the identity gate
+(.github/tests/test_identity_ledger_regeneration.py), and a run reads what
+this run fetched, never a cache. Simplified to the same 1 m the published
+line is, so the pair sits on the line the map draws to within a metre.
+ATC's side trails are deliberately NOT in the pool: lib/concurrency.py's
+docstring carries the measurement (they share no ground with the centerline
+at 5 m or under) and the reason (they carry other organizations' trails
+under ATC's names). When the A.T. fetch is not there - a checkout with only
+the external layers - the pairing runs over the network alone and main()
+prints a HELD BACK line, the same shape as trail_miles.json's.
+
+The pairs go into concurrent_trails.geojson beside the lines and then INTO
+THE VECTOR TILES, unioned with the lines when write_tiles cuts them. They
+do NOT go into nearby_trails.geojson: eleven other scripts read that file
+as the network's topology (build_trail_graph.py routes over it,
+fetch_trail_water.py measures water against it), and a stretch of ground
+appearing twice more would be a duplicate edge to every one of them. The
+tiles are what the map draws and the only reader that wants the pairs, and
+cut_cells.py carries them into the coverage cells for free. The overview
+sketch takes the plain records, as before.
+
 WHAT THIS ARTIFACT SHIPS ON, AND THE ONE THING IT DOES NOT
 
 It reaches hikers as of 2026-08-24, and the basis is worth reading before
@@ -184,11 +219,16 @@ from export_trails import (
     OVERVIEW_COORDINATE_DECIMALS,
     OVERVIEW_SIMPLIFY_TOLERANCE_M,
     _overview_coordinates,
+    build_trail_records,
     geometry_to_wkt,
+    load_features,
+    load_line_sources,
+    normalize_source_features,
     simplify_records,
 )
 from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
+from lib.concurrency import AT_CENTERLINE_SOURCE, find_shared_ground
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
@@ -201,6 +241,17 @@ SOURCES_PATH = ROOT / "sources.json"
 
 ARTIFACT_NAME = "nearby_trails.geojson"
 MANIFEST_NAME = "nearby_trails_manifest.json"
+
+# The A.T. fetch's raw directory and registry - export_trails.py's RAW_DIR and
+# SOURCES_PATH, named here so a test can point this module's reading of the
+# centerline somewhere else without reaching into that module (#1384, the
+# SHARED GROUND block above).
+AT_RAW_DIR = ROOT / "data" / "raw"
+AT_SOURCES_PATH = SOURCES_PATH
+
+# The shared-ground pairs (#1384): written beside the lines, unioned into the
+# tiles, never into ARTIFACT_NAME - the header says why.
+CONCURRENT_ARTIFACT_NAME = "concurrent_trails.geojson"
 
 # The corridor-view sketch of this whole network - export_trails.py's
 # write_overview pattern (#869) applied to the artifact above, so the opening
@@ -832,7 +883,11 @@ def records_to_geojson(records: list[dict]) -> dict:
                     "source": record["source"],
                     "name": record["name"],
                     "blaze_color": record["blaze_color"],
-                    "trail_status": record["trail_status"],
+                    # Every record this export builds carries a status. A
+                    # shared-ground pair's A.T. half (#1384) carries none,
+                    # because trails.geojson publishes none for the A.T. -
+                    # absent means unknown, never invented open.
+                    **({"trail_status": record["trail_status"]} if "trail_status" in record else {}),
                     # Only on a closed record, and only when the steward said
                     # something. Omitted rather than null everywhere else -
                     # 3,663 features do not need three empty keys each, and an
@@ -848,6 +903,10 @@ def records_to_geojson(records: list[dict]) -> dict:
                     **({"closure_kind": record["closure_kind"]} if record.get("closure_kind") else {}),
                     **({"closure_reason": record["closure_reason"]} if record.get("closure_reason") else {}),
                     **({"closure_source": record["closure_source"]} if record.get("closure_source") else {}),
+                    # Only on a shared-ground pair (#1384): the other trail's
+                    # name, and which side of the shared chord this half is.
+                    **({"concurrent_with": record["concurrent_with"]} if record.get("concurrent_with") else {}),
+                    **({"concurrent_side": record["concurrent_side"]} if record.get("concurrent_side") else {}),
                 },
                 "geometry": _rounded_geometry(geometry),
             }
@@ -977,7 +1036,7 @@ def write_overview(records: list[dict]) -> dict:
     }
 
 
-def write_tiles(geojson_path: Path) -> dict:
+def write_tiles(geojson_path: Path, concurrent_path: Path | None = None) -> dict:
     """Tile the artifact just written into TILES_ARTIFACT_NAME and return its
     manifest entry (#1257).
 
@@ -986,6 +1045,14 @@ def write_tiles(geojson_path: Path) -> dict:
     the features and properties the file carries, and `SELECT *` keeps every
     property - the closure_* columns only exist on a run whose records hold a
     closed trail, and a hand-kept column list would fail the runs that do not.
+
+    `concurrent_path` is the shared-ground pairs (#1384), unioned in BY NAME
+    so each file's columns line up with the other's and a column only one of
+    them has reads NULL on the other's rows - GDAL then writes no property
+    for it, which is what the client's `has` filters read. Passed only when
+    the file holds a feature: ST_Read of an empty collection is a table with
+    no columns (lib/corridor.py's count_features has the failure), and there
+    is nothing to union in.
 
     GDAL's PMTiles driver builds an MBTiles beside the output and converts it,
     so the run needs roughly the archive's own size again in scratch space
@@ -1003,9 +1070,12 @@ def write_tiles(geojson_path: Path) -> dict:
 
     con = duckdb.connect()
     con.execute("INSTALL spatial; LOAD spatial;")
+    lines = f"SELECT * FROM ST_Read('{geojson_path.as_posix()}')"
+    if concurrent_path is not None:
+        lines = f"{lines} UNION ALL BY NAME SELECT * FROM ST_Read('{concurrent_path.as_posix()}')"
     con.execute(
         f"""
-        COPY (SELECT * FROM ST_Read('{geojson_path.as_posix()}'))
+        COPY ({lines})
         TO '{path.as_posix()}'
         WITH (
             FORMAT GDAL, DRIVER 'PMTiles', LAYER_NAME '{TILES_LAYER}',
@@ -1035,6 +1105,48 @@ def write_tiles(geojson_path: Path) -> dict:
         "min_zoom": TILES_MIN_ZOOM,
         "max_zoom": TILES_MAX_ZOOM,
         "tile_count": header["addressed_tiles_count"],
+    }
+
+
+def load_at_centerline() -> list[dict]:
+    """ATC's centerline as export_trails.py-shaped records, for the shared-
+    ground pairing (#1384) - or [] with a loud line when the A.T. fetch is not
+    there. See the SHARED GROUND block in the module docstring for why the raw
+    file rather than the published one, and why the centerline alone.
+
+    export_trails.py's own functions, in its own order up to the corridor
+    clip: the clip and the chain merge change which vertices are published
+    not where they are, and the pairing measures where. The centerline
+    carries a flat `blaze_default` and no `blaze_field`, so normalising it
+    makes no network call."""
+    sources = [s for s in load_line_sources(AT_SOURCES_PATH) if s["key"] == AT_CENTERLINE_SOURCE]
+    path = AT_RAW_DIR / f"{AT_CENTERLINE_SOURCE}.geojson"
+    if not sources or not path.exists():
+        print(
+            f"  HELD BACK: shared ground is paired over the network alone - {path} is not there, "
+            "and the A.T.'s share of it needs the centerline fetch_all.py writes. "
+            "A run of the publish workflow has it; a checkout with only the external layers does not."
+        )
+        return []
+    (source,) = sources
+    records = build_trail_records(source, normalize_source_features(source, load_features(path)))
+    return simplify_records(records)
+
+
+def write_concurrent(pairs: list[dict], stats: dict, *, at_paired: bool) -> dict:
+    """Write the shared-ground pairs beside the lines and return their manifest
+    entry (#1384): the file, the pairing's own counts and constants, and
+    whether the A.T. was in the pool - so a manifest can say "no shared
+    ground" and "no A.T. to share it with" as two different things."""
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUT_DIR / CONCURRENT_ARTIFACT_NAME
+    path.write_text(json.dumps(records_to_geojson(pairs), separators=(",", ":")))
+    return {
+        "path": to_manifest_path(path),
+        "sha256": sha256_file(path),
+        "feature_count": len(pairs),
+        "at_paired": at_paired,
+        **stats,
     }
 
 
@@ -1120,6 +1232,12 @@ def main() -> dict:
     simplified = simplify_records(all_records)
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
+    # The shared-ground pairs (#1384), from the records just written plus the
+    # A.T.'s centerline, into their own file - never into the one above, for
+    # the eleven readers the module docstring counts.
+    at_records = load_at_centerline()
+    pairs, shared = find_shared_ground(simplified + at_records)
+    manifest["concurrent"] = write_concurrent(pairs, shared, at_paired=bool(at_records))
     # The corridor-view sketch, from the same simplified records the artifact
     # was just written from - export_trails.py's ordering, for its reason: the
     # overview simplifies the same geometry a second time at its own coarser
@@ -1127,7 +1245,8 @@ def main() -> dict:
     manifest["overview"] = write_overview(simplified)
     # The same lines as vector tiles (#1257), cut from the file just written
     # so the two cannot disagree - see write_tiles for what a phone gains.
-    manifest["tiles"] = write_tiles(Path(manifest["path"]))
+    # The pairs ride in the tiles, and only when there are any to ride.
+    manifest["tiles"] = write_tiles(Path(manifest["path"]), Path(manifest["concurrent"]["path"]) if pairs else None)
 
     size = Path(manifest["path"]).stat().st_size
     print(f"\n  {manifest['feature_count']:,} features -> {manifest['path']} ({size:,} bytes)")
@@ -1135,6 +1254,16 @@ def main() -> dict:
     print(
         f"  overview: {overview['feature_count']} features, {overview['coordinate_count']:,} coordinates "
         f"-> {overview['path']} ({Path(overview['path']).stat().st_size:,} bytes)"
+    )
+    concurrent = manifest["concurrent"]
+    print(
+        f"  shared ground: {concurrent['stretches']} stretches, {concurrent['shared_m'] / 1000:.1f} km, "
+        f"{concurrent['feature_count']} pair features among {concurrent['trails']} trails"
+        f"{'' if concurrent['at_paired'] else ' (network only)'} "
+        f"(within {concurrent['tolerance_m']:g} m for {concurrent['min_length_m']:g} m or more; "
+        f"{concurrent['dropped_short']} shorter pieces dropped, {concurrent['dropped_unpainted']} with no blaze to paint, "
+        f"{concurrent['dropped_same_blaze']} in one paint, {concurrent['nameless_skipped']} nameless lines skipped) "
+        f"-> {concurrent['path']}"
     )
 
     tiles = manifest["tiles"]

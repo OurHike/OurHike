@@ -610,6 +610,31 @@ headed, and there is no display in CI or in an agent sandbox.
   rediscover it, and it is reported on #1374 — the file predates that branch, so
   it is out of its diff.
 
+- **The seeded camera is not always the camera the map opens at**, about once in
+  three runs of `e2e/data/mapSheets.spec.ts`, and the failure it produces reads
+  like a slow load rather than like what it is.
+
+  Measured 2026-09-11, three full runs of that file with a 180-second test
+  budget: 17/17, 17/17, 16/17. The single failure was `a waypoint's card ›
+entrance`, a test that predates this batch. It polled **55 times across the
+  full 90 seconds** for the legend's "Trails in view" section and never got it —
+  and the legend it did get read "0 of 3 waypoints fit at this zoom" and
+  "Maintained by the Smoky Mountain Hiking Club". Both are BELOW-the-seam text,
+  so the map was somewhere under `POI_PIN_MIN_ZOOM` rather than at the
+  `ABOVE_THE_SEAM_ZOOM` the helper seeded, and the section it was waiting for
+  could never have appeared. A viewport holding only three waypoints is a small
+  region, not the whole corridor, so the centre looks right and the zoom does
+  not.
+
+  **What it is not**: not the sketch wait being too short (the budget was spent
+  in full), and not something this batch introduced. What would settle it is
+  reading the camera back after boot and asserting it, which would turn a
+  90-second wait for an impossible condition into an immediate, honest failure —
+  and would say whether the app's own opening fit is overriding
+  `lib/cameraMemory.ts` or whether the seed is losing a race to write it.
+  Nobody has done that. **No retry is wired in meanwhile**: a helper that
+  re-seeded and reloaded until it worked would hide the one signal there is.
+
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

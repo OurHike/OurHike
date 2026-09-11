@@ -51,6 +51,18 @@ import {
  * zoom levels out is a great deal more geometry. Exactly the confusion
  * e2e/data/longSpine.spec.ts's own NETWORK_BOUND_MS was added for, so the
  * same answer: a budget that says what it is waiting on.
+ *
+ * AND IT IS NOT ALWAYS A TIMING PROBLEM, which the budget makes legible
+ * rather than fixing. Measured 2026-09-11 across three full runs of this file
+ * with the 180s test budget in place — 17/17, 17/17, and 16/17 — the one
+ * failure polled 55 times over the full 90 seconds and the section never
+ * arrived, on a legend reading "0 of 3 waypoints fit at this zoom" and
+ * "Maintained by the Smoky Mountain Hiking Club". Both of those are
+ * BELOW-the-seam text, so the map was not at the camera this helper seeded and
+ * no amount of waiting would have produced a trails section. The seeded camera
+ * is occasionally not the one the map opens at; it is a pre-existing
+ * intermittent — the failing test predates this batch — and it is written up
+ * in features/FLOW_TESTING.md rather than papered over with a retry here.
  */
 const SKETCHES_BOUND_MS = 90_000
 

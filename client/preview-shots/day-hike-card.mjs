@@ -65,61 +65,16 @@ export const caption =
 export const alt =
   'A saved day hike’s card, opened from the Plan tab: the name as a field, the date, the figures, then - where this build holds the graph - Water on route and Shelters & campsites rows, the legs, the ways off, the organizations sentence, and at the foot a Walk this button over Leave it with someone, Edit the route and Delete this day hike'
 
-const DAY_HIKES = {
-  hikes: [
-    {
-      id: 'preview-fixture-1',
-      name: 'Pine Meadow loop',
-      date: '2026-08-29',
-      segments: [
-        [
-          { coord: [-74.095, 41.25], poiId: null },
-          { coord: [-74.085, 41.25], poiId: null },
-        ],
-      ],
-      figures: {
-        miles: 6.4,
-        legs: [
-          {
-            name: 'Pine Meadow Trail',
-            source: 'oprhp_trails',
-            blaze_color: 'Blue',
-            miles: 6.4,
-            // Both organizations designate this tread; the leg wears one
-            // name and credits the other (#1115). Invented, like every
-            // other figure in this fixture - nobody's data.
-            concurrent_sources: ['nynjtc_long_path'],
-          },
-        ],
-      },
-      looped: true,
-      recorded: 'planned',
-    },
-  ],
-  openId: null,
-}
+// The fixture itself moved to fixtures/dayHike.mjs (#1388) so a Playwright
+// spec can seed the same real hike profile - one home per fixture, same as
+// fixtures/longHike.mjs. Nothing about this recipe's own behavior changed.
+import { seedDayHikes } from './fixtures/dayHike.mjs'
 
 export default async function drive(page) {
-  await page.evaluate(
-    ({ store }) =>
-      new Promise((done, fail) => {
-        const open = indexedDB.open('keyval-store')
-        open.onupgradeneeded = () => open.result.createObjectStore('keyval')
-        open.onerror = () => fail(open.error)
-        open.onsuccess = () => {
-          const write = open.result
-            .transaction('keyval', 'readwrite')
-            .objectStore('keyval')
-            .put(store, 'ourhike:day-hikes')
-          write.onsuccess = () => done()
-          write.onerror = () => fail(write.error)
-        }
-      }),
-    { store: DAY_HIKES },
-  )
-  // The store is read once at mount, which has already happened - reload so
-  // the app wakes up owning the fixture, exactly as a phone reopening would.
-  await page.reload({ waitUntil: 'load' })
+  // seedDayHikes reloads once the store is written - the store is read once
+  // at mount, which has already happened - so the app wakes up owning the
+  // fixture, exactly as a phone reopening would.
+  await seedDayHikes(page)
 
   await page.getByRole('tab', { name: 'Plan' }).click()
   await page.getByRole('button', { name: /Pine Meadow loop/ }).click()

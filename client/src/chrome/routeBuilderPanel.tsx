@@ -981,7 +981,25 @@ export function useRouteBuilderPanel({
           hoursTarget={DEFAULT_WALKING_HOURS}
           daysUsable={elevation !== null}
           gpsUsable={gpsClientMile !== null && gpsPlanMile !== null}
-          refused={routeStopChoices.length === 0}
+          // NOT MERELY "no stop carries a mile", because that is also true
+          // for the second or two before the waypoints arrive — and the sheet
+          // says something definite about the download when it is true
+          // ("This download predates trail miles on waypoints… Newer trail
+          // data carries them"). A hiker on a slow connection who opened the
+          // route builder was told their data was too old to plan on, and
+          // handed a remedy that was not theirs to take.
+          //
+          // MEASURED 2026-09-11, against release 2026-09-10 through the local
+          // proxy: opening the builder straight after boot shows the refusal;
+          // the same sheet, left alone, has recovered twenty seconds later,
+          // and opening it after the waypoint index is on the phone never
+          // shows it at all. e2e/data/longSpine.spec.ts drives both.
+          //
+          // With no waypoints at all the honest state is the ordinary fields:
+          // they are usable (a map tap needs no index) and they fill
+          // themselves in when the index lands, where a sentence about the
+          // download's age would still be wrong once it had.
+          refused={pois.length > 0 && routeStopChoices.length === 0}
           units={units}
           onAsk={(ask) => patchEntrance({ ask })}
           onMiles={(miles) => patchEntrance({ miles })}

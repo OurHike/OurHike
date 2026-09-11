@@ -515,6 +515,24 @@ headed, and there is no display in CI or in an agent sandbox.
   `preview-shots/following-a-day-hike.mjs` said the opposite twice, most recently "should
   now draw… stated as an expectation rather than a fact". The expectation was honest and
   about the wrong artifact; that header now carries the measurement.
+- **A race is not something a flow test should chase — refuse the request instead.** The
+  route builder's entrance blamed the hiker's download while the waypoints were still
+  arriving ("This download predates trail miles on waypoints… Newer trail data carries
+  them"), because its condition was "no stop carries a mile", which an empty stop set
+  satisfies. Measured 2026-09-11 against release 2026-09-10: opening the builder straight
+  after boot showed the refusal, and the same sheet left alone had recovered twenty
+  seconds later.
+
+  **The first test written for it passed with the defect in place**, because alone on the
+  machine the fetch beat the drive — the worst kind of test, and caught only by reverting
+  the fix to check. The test that works refuses the waypoint request outright
+  (`page.route('**/poi_*.geojson', (route) => route.abort())`), which is the same
+  condition with no stopwatch, and is the "absent" case the data-freshness axis above
+  already asks every screen to be driven in. It goes red on the defect and green on the
+  fix, checked both ways.
+
+  Reach for `page.route` whenever a state is a race: aborting or delaying the artifact
+  makes the state deterministic, and the assertion then says what it means.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

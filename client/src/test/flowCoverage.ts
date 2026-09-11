@@ -108,7 +108,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/RouteStopPicker.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
   'chrome/RouteEntranceSheet.tsx': {
     step: 'F3 step 1 · Hike',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
   'chrome/HikePickSheet.tsx': {
     step: 'F3 step 1 · Hike',
@@ -146,6 +146,15 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F5 step 3 · Details',
     flow: { status: 'covered', spec: 'e2e/dayHikeCard.spec.ts' },
   },
+  // STILL PLANNED, with one thing worth carrying (2026-09-11). Its refusal is
+  // the same sentence chrome/RouteEntranceSheet.tsx used to show while the
+  // waypoints were still arriving — "This download predates trail miles on
+  // waypoints" — and it rests on the same conflation: `preview === null`
+  // comes from `planDaysVia`, which is null exactly when `candidateStops`
+  // finds no poi carrying a mile, and an EMPTY poi set satisfies that too.
+  // Read rather than measured, and NOT fixed by symmetry: the entrance's
+  // `refused` only chose between two valid renders, where this branch also
+  // guards a body that needs the preview it is standing in for.
   'screens/PlanTargetSheet.tsx': {
     step: 'F5 step 3 · Details',
     flow: { status: 'planned' },

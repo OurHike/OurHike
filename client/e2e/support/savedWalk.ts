@@ -76,3 +76,56 @@ export async function editTheSavedRoute(page: Page): Promise<void> {
     timeout: GRAPH_READY_MS,
   })
 }
+
+/** The saved walk's stops, read off the fixture rather than copied beside it. */
+const SAVED_WALK_STOPS: ReadonlyArray<readonly [number, number]> = (
+  FOLLOWED_HIKE_STORE as unknown as {
+    hikes: Array<{ segments: Array<Array<{ coord: [number, number] }>> }>
+  }
+).hikes[0].segments
+  .flat()
+  .map((stop) => stop.coord)
+
+/**
+ * A camera on the walk itself, for a spec that has to touch the drawn line.
+ *
+ * WHY THIS EXISTS, and it is the interesting part. The builder does not open
+ * on the route it is editing — it opens on the camera the map already had,
+ * which is the whole corridor. A 2.9 mi walk drawn at corridor zoom is a mark
+ * a few tens of pixels long, and whether a sweep of the frame lands on it is
+ * luck rather than a property of the app.
+ *
+ * MEASURED 2026-09-11 against release 2026-09-10, the same 17-by-17 sweep of
+ * the map's own box, one run each:
+ *
+ *   the camera the builder opens on   0, 0, 0, and once 1, of 289 points
+ *   seeded here at z13 / z14 / z15    16 / 20 / 22 of 289
+ *
+ * So the fix for "the sweep found nothing" was never a denser grid or a
+ * longer wait — a 16 px scan of 1,974 points found nothing either, because
+ * nothing was there to find. It was putting the camera where the line is.
+ *
+ * The centre is the midpoint of the stops' own bounding box, so a fixture
+ * whose ends move takes the camera with it. z14 rather than a rounder number:
+ * web mercator at this latitude is 156543.03 × cos(41.28°) / 2^z ≈ 117,700 /
+ * 2^z m/px, so z14 is 7.2 m/px and the stops' 2.9 km separation draws about
+ * 400 px across the 682 px frame this project gives the map — the whole walk
+ * inside the frame, with room for the tread to wander off the straight line
+ * between its ends, which it does.
+ *
+ * `@unvalidated` as anything about a hiker: this is where a TEST looks, not a
+ * claim that the builder should open here. Whether it should is
+ * #1404 — The route builder opens on the corridor rather than on the route it
+ * is editing.
+ */
+export const SAVED_WALK_CENTER: readonly [number, number] = [
+  (Math.min(...SAVED_WALK_STOPS.map((c) => c[0])) +
+    Math.max(...SAVED_WALK_STOPS.map((c) => c[0]))) /
+    2,
+  (Math.min(...SAVED_WALK_STOPS.map((c) => c[1])) +
+    Math.max(...SAVED_WALK_STOPS.map((c) => c[1]))) /
+    2,
+]
+
+/** @see SAVED_WALK_CENTER for why 14. */
+export const SAVED_WALK_ZOOM = 14

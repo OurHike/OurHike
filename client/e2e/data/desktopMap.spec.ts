@@ -23,9 +23,13 @@ import { test, expect, type Page } from '@playwright/test'
 // Untyped on purpose: a shot fixture is plain JavaScript, and its shape is the
 // app's contract with IndexedDB rather than a type this spec restates.
 import { seedLongHike } from '../../preview-shots/fixtures/longHike.mjs'
-import { seedPreferences, seedHikerMode } from '../support/seed'
+import { seedPreferences, seedHikerMode, seedCamera } from '../support/seed'
 import { expectMapReach } from '../support/layout'
-import { editTheSavedRoute } from '../support/savedWalk'
+import {
+  editTheSavedRoute,
+  SAVED_WALK_CENTER,
+  SAVED_WALK_ZOOM,
+} from '../support/savedWalk'
 
 /** The graph and the profile both arrive over the network, and the drives here
  *  wait on doors rather than timers — but the doors themselves are network
@@ -38,10 +42,14 @@ import { editTheSavedRoute } from '../support/savedWalk'
 const NETWORK_BOUND_MS = 60_000
 
 /** How long the pointer keeps sweeping for the drawn route before giving up.
- *  `hoverTheRoute` below carries the measurement and why one pass is not a
- *  wait. Bounded rather than open-ended so a route that never draws still
- *  fails inside the file's budget. */
-const SWEEP_BOUND_MS = 60_000
+ *
+ *  20_000 rather than the 60_000 this started at, and the cut is the point:
+ *  with the camera seeded onto the walk a sweep finds the line on its first
+ *  pass (measured: 20 of 289 points raise the plate), so the bound is only
+ *  covering a line that draws late. The 60_000 was there to re-sweep the same
+ *  coordinates over and over, which `hoverTheRoute` explains was never a
+ *  wait on anything. A route that does not draw should fail in seconds. */
+const SWEEP_BOUND_MS = 20_000
 
 /** Room for support/savedWalk.ts's GRAPH_READY_MS and SWEEP_BOUND_MS on top of
  *  it, both larger than playwright.config.ts's data-mode per-test ceiling. */
@@ -123,31 +131,33 @@ test.describe('the elevation chart across the desk', { tag: '@desktop' }, () => 
 
 test.describe('the figure that follows the pointer', { tag: '@desktop' }, () => {
   /**
-   * Sweep the pointer for the drawn route, the way e2e/data/mapSheets.spec.ts
-   * sweeps a finger for the trail line — and for the same reason: nothing hands
-   * a test the route's screen position, and a fixed coordinate would be pinning
-   * a projection rather than the app.
+   * Put the camera on the walk, then sweep the frame for the drawn line.
    *
-   * THE SWEEP IS THE WAIT, and the first version of this helper got that wrong.
-   * It swept the frame once and threw if nothing answered, which made it a
-   * snapshot of one moment rather than a wait on an observable —
-   * features/FLOW_TESTING.md's rule, broken by a helper written to enforce it.
+   * THE SWEEP IS NOT THE INTERESTING HALF — THE CAMERA IS, and the first two
+   * versions of this helper got that backwards. It swept the frame once and
+   * threw; then, when that failed about one run in three, it re-swept the
+   * SAME points for 60s and called the re-sweep "waiting on an observable".
+   * It was not. Sweeping identical coordinates again is the same lottery
+   * ticket drawn twice, and CI drew it four times and lost four times
+   * (run 34647748197, both tests, both retries).
    *
-   * Measured 2026-09-11 against release 2026-09-10, three full runs of the data
-   * suite: one 18-by-18 sweep found the route about a third of the way in
-   * twice, and found nothing at all on the third. The drive before it waits on
-   * step 2's own text, which the panel prints from the routed draft — so the
-   * FIGURES being on screen does not mean the LINE is drawn on the canvas, and
-   * there is nothing this suite can ask the map about that does.
+   * MEASURED 2026-09-11 against release 2026-09-10, this same 17-by-17 sweep:
    *
-   * NOT A RETRY-UNTIL-GREEN. Re-sweeping is waiting on the plate itself, which
-   * is the observable the test is about; each pass is a few hundred pointer
-   * moves and costs a second or two. A route that never draws still fails, and
-   * fails with the same sentence it always did.
+   *   the camera the builder opens on   0, 0, 0, and once 1, of 289 points
+   *   seeded onto the walk (z14)        20 of 289
    *
-   * What is NOT established: why the line is late. That would need the map's
-   * own render state, which the app does not expose and no spec should add a
-   * seam for. `@unvalidated` as a diagnosis; the behaviour above is measured.
+   * A 16 px scan of 1,974 points on the builder's own camera found nothing
+   * either — so density was never the problem. The builder opens on the
+   * corridor rather than on the route it is editing, which draws a 2.9 mi
+   * walk as a mark a few tens of pixels long. e2e/support/savedWalk.ts's
+   * SAVED_WALK_CENTER carries that arithmetic; whether the app should open
+   * there is #1404, not this spec's to assert.
+   *
+   * Sweeping at all, rather than a fixed coordinate: nothing hands a test the
+   * route's screen position, and a hard-coded point would pin a projection
+   * rather than the app. The bound is short now because it is guarding
+   * against a line that draws late, not buying tickets — a route that never
+   * draws should fail in seconds and say so.
    */
   async function hoverTheRoute(page: Page) {
     const box = await page.getByRole('region', { name: 'Trail map' }).boundingBox()
@@ -165,16 +175,35 @@ test.describe('the figure that follows the pointer', { tag: '@desktop' }, () => 
         }
       }
     } while (Date.now() < deadline)
+
+    // WHERE THE MAP ACTUALLY WAS, read back rather than assumed. App.tsx
+    // writes the settled camera to lib/cameraMemory.ts's key on every
+    // `moveend`, so if the app moved off the seed this says where it went —
+    // and features/FLOW_TESTING.md records a flake in which a seeded camera is
+    // not the one the map opens at, about one run in three of another file.
+    // Read only on the failure path: asserting it up front would add a second
+    // way for this test to go red, and the plate is the observable it is about.
+    const landed = await page.evaluate(() => {
+      try {
+        return sessionStorage.getItem('ourhike:camera')
+      } catch {
+        return 'unreadable'
+      }
+    })
     throw new Error(
       'no point on the map raised the hover plate in ' +
-        `${SWEEP_BOUND_MS / 1000}s of sweeping — either the release moved the ` +
-        'route out of the opening camera, or a pointer over it no longer counts',
+        `${SWEEP_BOUND_MS / 1000}s of sweeping. Seeded ` +
+        `${JSON.stringify({ center: SAVED_WALK_CENTER, zoom: SAVED_WALK_ZOOM })}; ` +
+        `the map settled at ${landed ?? 'nothing written'}. Same camera means ` +
+        'the route is not being drawn; a different one means the app moved off ' +
+        'the seed and the line is outside the frame this swept',
     )
   }
 
   test('entrance and states: hovering the route names it and prices it, in the column’s own words', async ({
     page,
   }) => {
+    await seedCamera(page, SAVED_WALK_CENTER, SAVED_WALK_ZOOM)
     await editTheSavedRoute(page)
 
     // Read the column FIRST, so the comparison below is against this run's
@@ -201,6 +230,7 @@ test.describe('the figure that follows the pointer', { tag: '@desktop' }, () => 
   })
 
   test('states: the plate goes when the pointer leaves the route', async ({ page }) => {
+    await seedCamera(page, SAVED_WALK_CENTER, SAVED_WALK_ZOOM)
     await editTheSavedRoute(page)
     const plate = await hoverTheRoute(page)
     await expect(plate).toBeVisible()

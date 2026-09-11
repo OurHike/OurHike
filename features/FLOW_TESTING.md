@@ -300,6 +300,30 @@ every move goes through.
   than on a claim. **Run a new data spec inside the whole suite, not only on its own** — a
   budget that holds with the machine to itself says nothing about the budget CI needs, and
   the red it produces is the worst kind: a timeout that reports nothing about the app.
+- **A sweep that finds nothing is usually a camera, not a grid — and re-sweeping the same
+  points is not a wait.** `e2e/data/desktopMap.spec.ts` hunts the drawn route by moving the
+  pointer across the map's box, because `chrome/RouteHover.tsx` answers only a pointer on
+  the line. The first version swept once and threw; when that failed about one run in three,
+  the second re-swept the SAME coordinates for 60 s and called it waiting on an observable.
+  It is not — identical coordinates are the same lottery ticket drawn twice, and CI drew it
+  four times and lost four times (run 34647748197, both tests, both retries), where the
+  sandbox had been winning.
+
+  Measured 2026-09-11 against release 2026-09-10, a 17-by-17 sweep of the map's own box:
+  **0, 0, 0, and once 1 of 289 points** raised the plate on the camera the builder opens on,
+  against **20 of 289** with the camera seeded onto the walk. Density was never the fix
+  either — a 16 px scan of **1,974 points** on the builder's own camera raised it zero times.
+  The builder opens on the corridor rather than on the route it is editing, which draws a
+  2.9 mi walk as a mark a few tens of pixels long
+  (**#1404 — The route builder opens on the corridor rather than on the route it is
+  editing**).
+
+  So: when a sweep comes back empty, ask where the camera is before making the grid finer or
+  the wait longer. `seedCamera` is the answer, and the failure path now reads
+  `ourhike:camera` back — App.tsx writes the settled camera there on every `moveend` — so a
+  future failure says whether the line was undrawn or merely out of frame. That read is on
+  the failure path only: asserting the camera up front would add a second way to go red, and
+  the plate is the observable the test is about.
 - **Assert the mechanism or the number, and say which** — TESTING.md's rule holds here too. A
   flow test that pins a rendered figure is pinning a fixture; what it is usually there to
   prove is that the screen was reachable and said which figures it was showing.

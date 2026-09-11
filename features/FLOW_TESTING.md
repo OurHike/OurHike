@@ -459,6 +459,19 @@ headed, and there is no display in CI or in an agent sandbox.
   rather than through the middle. The comment that first shipped with it said "a point on a
   published trail", which was a guess nobody had checked and would have sent the next person
   hunting for a bug in the tap handler.
+- **The elevation ribbon has a screen to draw on and no data under it.**
+  `e2e/data/followMode.spec.ts` (2026-09-11) reaches the followed map, which is where
+  `chrome/ElevationRibbon.tsx` lives, so the surface is no longer out of reach — but the
+  profile arrives as CELLS, and against release 2026-09-10 the two under that walk answer
+  404 (`trail_graph_elevation_cell_n41w075.json` and
+  `trail_graph_profile_cell_n41w075.json`) while the whole-corridor
+  `elevation_profile.json` answers 200. The ribbon correctly renders nothing, so there is
+  nothing to assert. Covering it needs a walk under a published elevation cell, or that
+  cell published — a pipeline question, not a suite one.
+
+  `preview-shots/following-a-day-hike.mjs` said the opposite twice, most recently "should
+  now draw… stated as an expectation rather than a fact". The expectation was honest and
+  about the wrong artifact; that header now carries the measurement.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

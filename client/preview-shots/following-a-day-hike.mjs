@@ -82,12 +82,25 @@
 // measured this walk's ascent - so it is absent. Inventing one to fill the
 // field would be a flat-ground claim about real ground.
 //
-// THE ELEVATION RIBBON #1045 ADDED SHOULD NOW DRAW. This header used to say
-// the frame had no ribbon because `trail_graph_profile.json` was in no
-// release; it is published as of 2026-09-04 (3,317,565 bytes decoded), so the
-// artifact that was missing is there. Stated as an expectation rather than a
-// fact: a preview run is the only place this can be confirmed, and this pull
-// request's own is the first that could.
+// THE ELEVATION RIBBON #1045 ADDED STILL DOES NOT DRAW ON THIS WALK, and that
+// is now measured rather than expected. This header said twice that it should:
+// first the ribbon was missing because `trail_graph_profile.json` was in no
+// release, then the whole-corridor artifact was published (2026-09-04,
+// 3,317,565 bytes decoded) and this note became "should now draw… stated as
+// an expectation rather than a fact".
+//
+// It was the wrong artifact. The followed map fetches the profile as CELLS,
+// and against release 2026-09-10 the two under this walk answer 404:
+// `trail_graph_elevation_cell_n41w075.json` and
+// `trail_graph_profile_cell_n41w075.json`, while `elevation_profile.json` —
+// the whole-corridor one this note was about — answers 200. So the ribbon
+// renders nothing, correctly, and it is a publishing gap over Harriman rather
+// than a client one.
+//
+// Measured 2026-09-11 by driving this exact fixture through a local proxy onto
+// that release and watching the responses (e2e/data/followMode.spec.ts is that
+// drive, kept). Recorded here because the next person reading "should now
+// draw" over a frame without a ribbon would go looking in the client.
 
 // THE CAPTION STILL NAMES BOTH FRAMES, because a static string cannot know
 // which one landed (#1058). photograph-preview.mjs reads `caption` and `alt`
@@ -137,7 +150,17 @@ export const wait = 6000
  *
  * Every figure below is re-derived, not invented - see the header.
  */
-const DAY_HIKES = {
+/**
+ * EXPORTED SO THE FLOW SUITE CAN USE THE SAME WALK (e2e/data/followMode.spec.ts).
+ *
+ * Every figure and coordinate below is re-derived against published artifacts
+ * — the header carries the measurements and the two wrong explanations that
+ * preceded them — and re-deriving them a second time in a spec would be two
+ * answers to "which walk resolves", which is the drift CONTRIBUTING.md's
+ * one-home rule exists to stop. The recipe keeps the provenance; the spec
+ * imports the result.
+ */
+export const FOLLOWED_HIKE_STORE = {
   hikes: [
     {
       id: 'preview-fixture-followed-1',
@@ -203,14 +226,15 @@ const DAY_HIKES = {
 }
 
 /** A vertex of the 1777 edge the walk crosses, so the fix lands ON the route
- *  rather than beside it. Public trail geometry, and a fictional hiker. */
-const FIX = { longitude: -73.9888, latitude: 41.27444 }
+ *  rather than beside it. Public trail geometry, and a fictional hiker.
+ *  Exported with the store above, for the same reason. */
+export const FOLLOWED_HIKE_FIX = { longitude: -73.9888, latitude: 41.27444 }
 
 export default async function drive(page) {
   // A made-up point on the fixture's own grid. The switch below is what the
   // app reads; this is what the browser answers with once it does.
   await page.context().grantPermissions(['geolocation'])
-  await page.context().setGeolocation(FIX)
+  await page.context().setGeolocation(FOLLOWED_HIKE_FIX)
 
   await page.evaluate(
     ({ store }) =>
@@ -227,7 +251,7 @@ export default async function drive(page) {
           write.onerror = () => fail(write.error)
         }
       }),
-    { store: DAY_HIKES },
+    { store: FOLLOWED_HIKE_STORE },
   )
   // The store is read once at mount, which has already happened - reload so
   // the app wakes up owning the fixture, exactly as a phone reopening would.

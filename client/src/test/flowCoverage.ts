@@ -161,11 +161,35 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
 
   // ---- F6 walking it ------------------------------------------------------
-  'chrome/NextTurnCard.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
-  'chrome/TurnCard.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
-  'chrome/OffRouteCard.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
-  'screens/HikeFinish.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
+  'chrome/NextTurnCard.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'covered', spec: 'e2e/data/followMode.spec.ts' },
+  },
+  'chrome/TurnCard.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'covered', spec: 'e2e/data/followMode.spec.ts' },
+  },
+  'chrome/OffRouteCard.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'covered', spec: 'e2e/data/followMode.spec.ts' },
+  },
+  'screens/HikeFinish.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'covered', spec: 'e2e/data/followMode.spec.ts' },
+  },
   'screens/DaySummary.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
+  // STILL PLANNED, AND THE REASON IS A MEASUREMENT RATHER THAN AN OMISSION
+  // (2026-09-11). e2e/data/followMode.spec.ts reaches the followed map, which
+  // is where the ribbon draws — but the release it pins answers 404 for
+  // `trail_graph_elevation_cell_n41w075.json` and
+  // `trail_graph_profile_cell_n41w075.json`, the cells under that walk, so
+  // there is no profile to draw and the ribbon correctly renders nothing.
+  // preview-shots/following-a-day-hike.mjs states the opposite as an
+  // expectation ("THE ELEVATION RIBBON #1045 ADDED SHOULD NOW DRAW"), which
+  // was honest when written — the whole-corridor profile artifact is
+  // published — and is not what the cell-sharded fetch actually finds.
+  // Covering this needs a walk under a published elevation cell, or that cell
+  // published; neither is this spec's to decide.
   'chrome/ElevationRibbon.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
   'screens/TrailRibbon.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
 

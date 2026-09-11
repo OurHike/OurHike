@@ -21,7 +21,20 @@
 // uses. No navigator state is injected (FLOW_TESTING.md, "Not a router").
 
 import { test, expect, type Page } from '@playwright/test'
-import { seedPreferences, seedHikerMode } from '../support/seed'
+import {
+  seedPreferences,
+  seedHikerMode,
+  seedCamera,
+  ON_THE_TRAIL,
+  ABOVE_THE_SEAM_ZOOM,
+} from '../support/seed'
+import { writeIDBEntries } from '../support/idb'
+// Untyped on purpose: a shot recipe is plain JavaScript, and the fixture's
+// shape is the app's contract with IndexedDB rather than a type this spec
+// should restate. e2e/data/followMode.spec.ts makes the same import.
+import { FOLLOWED_HIKE_STORE } from '../../preview-shots/following-a-day-hike.mjs'
+
+const DAY_HIKES_KEY = 'ourhike:day-hikes'
 
 /** Past first run, in day mode, on step 1 of the spine — the screen Today's
  *  pinned "Plan a hike" and the Plan tab's own primary both land on. */
@@ -86,8 +99,14 @@ test.describe('step 1, with a trail network on the phone', () => {
     // nothing is a label that looks like a control — the same argument
     // chrome/BackgroundPicker.tsx makes for returning null (#855), and D10's
     // "absent rather than disabled" applied to a control rather than a door.
-    await expect(page.getByRole('button', { name: /Point to point/ })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /Out and back/ })).toHaveCount(0)
+    //
+    // ASSERTED ON THE RADIOGROUP, and the first version of this was worse
+    // than useless: it looked for BUTTONS named "Point to point" and "Out and
+    // back", and the control is a `radiogroup` of `role="radio"` options
+    // (DayHikePickBar.tsx). So it passed whether the control was there or
+    // not, and the sibling test below — which asserts the same control
+    // PRESENT once a route is loaded — is what exposed it.
+    await expect(page.getByRole('radiogroup', { name: 'Shape' })).toHaveCount(0)
 
     // Nor is there a way on yet: "Use this route ›" is a claim that there is
     // a route, and there is not.
@@ -115,6 +134,223 @@ test.describe('step 1, with a trail network on the phone', () => {
     // And step 1 still offers the doors, so the round trip left the graph
     // where it was rather than dropping the phone back into the refusal.
     await expect(page.getByRole('button', { name: /Pick on the map/ })).toBeVisible()
+  })
+})
+
+test.describe('the bar over the map at step 2', () => {
+  /** Step 2 with the tap tool open, at a camera above the pin seam so the
+   *  map is drawing tread rather than a corridor sketch. */
+  async function pickOnTheMap(page: Page): Promise<void> {
+    await seedCamera(page, ON_THE_TRAIL, ABOVE_THE_SEAM_ZOOM)
+    await stepOne(page)
+    await page.getByRole('button', { name: /Pick on the map/ }).click()
+    await expect(page.getByRole('heading', { name: 'A new day hike' })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+  }
+
+  test('states: the bar says what a tap will do, and names the boundary it will not cross', async ({
+    page,
+  }) => {
+    await pickOnTheMap(page)
+
+    // TWO TAPS, SAID IN ORDER. The gesture is not obvious — one tap starts
+    // walking a trail and the second decides where to turn off it — so the
+    // bar spells it out rather than leaving a hiker to discover it.
+    await expect(
+      page.getByText(/Tap a trail to walk it\. Tap again further along to turn\./),
+    ).toBeVisible()
+
+    // THE BOUNDARY, SAID RATHER THAN IMPLIED. A missing capability the app is
+    // silent about reads as a bug; one it names reads as a boundary
+    // (DayHikePickBar.tsx's own argument for #931). Roads are drawn because a
+    // hiker needs to see them and never routed on, which is
+    // build_trail_graph.py's rule — roads are not edges — surfaced on the one
+    // screen where a hiker would otherwise try.
+    await expect(page.getByText('Roads are drawn, never routed on')).toBeVisible()
+
+    // The tool's own way out, which is not the rail's: Cancel abandons the
+    // tap tool, where "Back to Hike, step 1" leaves the step (asserted above).
+    await expect(page.getByRole('button', { name: 'Cancel' })).toBeVisible()
+
+    // WHAT IS DELIBERATELY NOT ASSERTED, and it is a measurement rather than
+    // an omission. The bar's refusal sentence — "that tap isn't on a marked
+    // hiking route" — fires only on a tap the graph can place and decline,
+    // and no tap this suite can aim reaches one: ninety taps across this map
+    // at this camera, over two runs on 2026-09-11 against release 2026-09-10,
+    // produced neither a routed stop nor a refusal. They land on open ground,
+    // where the bar correctly says nothing at all. features/FLOW_TESTING.md
+    // carries that measurement under #1387, which is the issue this is.
+    await expect(page.getByText(/isn’t on a marked hiking route/)).toHaveCount(0)
+  })
+})
+
+test.describe('the builder with a route already in it', () => {
+  /**
+   * A live day-hike draft, without a single canvas tap.
+   *
+   * THE DOOR IS "EDIT THE ROUTE" on a saved walk's card, and finding it is
+   * what unblocked this whole group. The obvious way in — tap the map until
+   * the router accepts a stop — cannot be aimed from a spec
+   * (features/FLOW_TESTING.md carries the measurement, under #1387). Editing
+   * a walk the phone already holds loads its legs into step 2 and puts the
+   * builder in exactly the state a hiker reaches by tapping, which is what
+   * the assertions below are about.
+   *
+   * The walk is e2e/data/followMode.spec.ts's, for the same reason that spec
+   * imports it rather than inventing one: its ends were measured against
+   * published tread, and a second fixture would be a second answer to which
+   * walk resolves.
+   */
+  async function editTheSavedRoute(page: Page): Promise<void> {
+    await seedPreferences(page)
+    await seedHikerMode(page, 'day')
+    await writeIDBEntries(page, [[DAY_HIKES_KEY, FOLLOWED_HIKE_STORE]])
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Plan' }).click()
+    await page.getByRole('button', { name: /Ramapo-Dunderberg to Timp-Torne/ }).click()
+    // Waited on rather than counted: the card prints its cached figures long
+    // before the graph lands, and "Edit the route" appears only once the walk
+    // has been placed on live tread — the same trap
+    // preview-shots/following-a-day-hike.mjs records for its own Follow door.
+    const edit = page.getByRole('button', { name: 'Edit the route' })
+    await edit.waitFor({ timeout: 60_000 })
+    await edit.click()
+    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+  }
+
+  test('states: with a route in it the builder offers the shape control and the way on, which it withholds with nothing', async ({
+    page,
+  }) => {
+    // THE OTHER HALF OF THIS FILE'S OWN D10 CLAIM. The empty-builder test
+    // above asserts that Point to point / Out and back and "Use this route ›"
+    // are ABSENT with no stops — a segmented control over nothing is a label
+    // that looks like a control, and a way on is a claim that there is a
+    // route. Until now nothing asserted they appear when there IS one, which
+    // made that an untested half: a build that never rendered them would have
+    // passed.
+    await editTheSavedRoute(page)
+
+    const shape = page.getByRole('radiogroup', { name: 'Shape' })
+    await expect(shape).toBeVisible()
+    await expect(shape.getByRole('radio', { name: 'Point to point' })).toBeVisible()
+    await expect(shape.getByRole('radio', { name: 'Out and back' })).toBeVisible()
+    await expect(shape.getByRole('radio', { name: 'Loop' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+    // And the two tools a route makes meaningful: taking back the last tap,
+    // and starting again without leaving the step.
+    await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Start a new stretch' })).toBeVisible()
+  })
+
+  test('states: the route reads back as an ordered list of legs with the miles they cover', async ({
+    page,
+  }) => {
+    // WHAT THE PANEL IS FOR. A route is a sequence, and a hiker checking one
+    // is asking "in what order, and how far is each" — so the panel numbers
+    // the legs and gives each its own span of the walk rather than printing a
+    // total and leaving the shape to the map.
+    await editTheSavedRoute(page)
+
+    const order = page.locator('.day-hike-panel__list > li')
+    expect(await order.count()).toBeGreaterThan(1)
+    // A mile range per leg, by shape: the numbers are the release's.
+    await expect(page.getByText(/mile [\d.]+–[\d.]+/).first()).toBeVisible()
+    // And who keeps it walkable, counted live while the hiker builds rather
+    // than added as a credit at the end — three organizations keeping one
+    // loop walkable is the thing this app exists to make visible.
+    await expect(page.getByText(/· \d+ legs?$/).first()).toBeVisible()
+  })
+
+  test('states: a walk whose climb nobody measured says so, and prices nothing', async ({
+    page,
+  }) => {
+    // ROUND TOWARD CAUTION, AND SAY WHICH WAY YOU ROUNDED (CLAUDE.md). The
+    // panel could fill WALKING from distance alone; a flat-ground time on a
+    // walk with unmeasured climb is an optimistic number wearing an honest
+    // one's ≈. Instead it prints neither, and says which of the two reasons
+    // it is — the download, or the trail.
+    //
+    // Reachable because release 2026-09-10 publishes no elevation cell over
+    // this walk (e2e/data/followMode.spec.ts's header carries that
+    // measurement), so this is the first branch rather than a contrived one.
+    await editTheSavedRoute(page)
+
+    await expect(page.getByText(/can’t price the climb on this walk/)).toBeVisible()
+    await expect(
+      page.getByText(
+        /the elevation download hasn’t landed, or one of these trails has never been measured/,
+      ),
+    ).toBeVisible()
+  })
+})
+
+test.describe('a half-built route the hiker walks away from', () => {
+  /** The same live draft as above, parked one step back — the premise for
+   *  both tests here, and the state R3 is a claim about. */
+  async function draftUnderStepOne(page: Page): Promise<void> {
+    await seedPreferences(page)
+    await seedHikerMode(page, 'day')
+    await writeIDBEntries(page, [[DAY_HIKES_KEY, FOLLOWED_HIKE_STORE]])
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Plan' }).click()
+    await page.getByRole('button', { name: /Ramapo-Dunderberg to Timp-Torne/ }).click()
+    const edit = page.getByRole('button', { name: 'Edit the route' })
+    await edit.waitFor({ timeout: 60_000 })
+    await edit.click()
+    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+    await page.getByRole('button', { name: 'Back to Hike, step 1' }).click()
+    await expect(
+      page.getByRole('heading', { name: /Where do you want to go/ }),
+    ).toBeVisible()
+  }
+
+  test('states: R3 with a route actually in it — the rail’s back keeps every leg', async ({
+    page,
+  }) => {
+    // THE CLAIM R3 MAKES, tested for the first time against something worth
+    // keeping. The empty-builder exit test above drives the same control and
+    // can only assert that step 1 came back, because an empty draft survives
+    // trivially. This one counts the legs on the way out and again on the way
+    // in: a back that quietly emptied the builder would pass that test and
+    // fail this one.
+    await draftUnderStepOne(page)
+
+    await page.getByRole('button', { name: /Pick on the map/ }).click()
+
+    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+    expect(await page.locator('.day-hike-panel__list > li').count()).toBeGreaterThan(1)
+    await expect(page.getByRole('radiogroup', { name: 'Shape' })).toBeVisible()
+  })
+
+  test('states: leaving the whole flow by the tab bar parks the route, and Plan offers the way back', async ({
+    page,
+  }) => {
+    // NOT ASKED ABOUT, AND THAT IS RIGHT HERE — which is worth asserting
+    // because the long-hike builder DOES ask in the same position
+    // (e2e/bailSheet.spec.ts's first test), and the asymmetry looks like a
+    // missing guard until you follow it through. A day-hike draft under step
+    // 1 is parked rather than swept: nothing is at risk, so nothing is asked,
+    // and the Plan tab carries the way back to it.
+    //
+    // That is exactly the outcome the bail sheet's "Keep it for later" reaches
+    // for the other builder. The day builder gets there without the question.
+    await draftUnderStepOne(page)
+
+    await page.getByRole('tab', { name: 'Today' }).click()
+    await expect(
+      page.getByRole('dialog', { name: 'Keep this half-built route?' }),
+    ).toHaveCount(0)
+
+    await page.getByRole('tab', { name: 'Plan' }).click()
+    const back = page.getByRole('button', { name: /Back to your route/ })
+    await expect(back).toBeVisible()
+
+    // AND THE WAY BACK ACTUALLY GOES BACK, which is the half that makes the
+    // absent question defensible. A "Back to your route" that reopened an
+    // empty builder would be worse than no button at all.
+    await back.click()
+    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+    expect(await page.locator('.day-hike-panel__list > li').count()).toBeGreaterThan(1)
   })
 })
 

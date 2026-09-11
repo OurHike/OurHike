@@ -118,7 +118,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'screens/HikePicker.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
 
   // ---- F4 step 2, Route ---------------------------------------------------
-  'chrome/DayHikePickBar.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
+  'chrome/DayHikePickBar.tsx': {
+    step: 'F4 step 2 · Route',
+    flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
+  },
   'chrome/DayHikePanel.tsx': {
     step: 'F4 step 2 · Route',
     flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },

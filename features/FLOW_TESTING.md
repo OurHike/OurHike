@@ -435,6 +435,49 @@ headed, and there is no display in CI or in an agent sandbox.
   on a map canvas and having the router accept it. Reaching the builder is not the same as
   putting a live draft in it, and the skip comes off when a spec has actually done the second
   thing rather than when it could plausibly try.
+
+  **The live draft is no longer the blocker. The repro is.** Two separate things were in the
+  way, and only one of them is left.
+
+  *A live day-hike draft is reachable now*, and the door is "Edit the route" on a saved
+  walk's card: it loads the walk's legs into step 2 and puts the builder in the state a
+  hiker reaches by tapping. `e2e/data/builder.spec.ts` drives it — the shape control and
+  "Use this route ›" present where the empty builder withholds them, the legs as an ordered
+  list, the honest climb refusal, and R3 proved with something worth keeping (back to step 1,
+  re-enter, all seven legs still there).
+
+  *Dropping a stop by tapping still cannot be aimed*, and it was tried so the next person
+  need not. Measured 2026-09-11 against release 2026-09-10, at the `ON_THE_TRAIL` camera the
+  map specs share: a coarse sweep of the builder's map region produced one accepted tap out
+  of about ninety and never a second; a fine sweep at 18-pixel spacing produced none at all
+  (consecutive clicks that close together are read as a double-click and zoom the map
+  instead of tapping it); twenty taps on the middle of the frame produced neither a stop nor
+  the road refusal, twice, because the middle of that frame is open ground where the bar
+  correctly says nothing. Nothing in the suite can ask the map where the tread is — the same
+  wall `tapTheTrail` works around by sweeping for a sheet that opens. It no longer blocks the
+  skip, because the edit door reaches the same state.
+
+  **What the skipped test now needs is rewriting, not unblocking.** Its drive was written
+  against an older step 1 — a "Start from" doors group, a "Where I am" door, a "Where from?"
+  heading — and this build's step 1 is "Where do you want to go?" with "Pick on the map" and
+  "Draw it myself". Driving the mode switch from the mode chip lands on Today in long mode,
+  where there is no "Pick on the map" at all, so the repro's middle steps no longer exist as
+  written. The gap it describes may well still be real; what is certain is that nobody can
+  tell from the test as it stands, which is the worse of the two states to leave it in.
+
+  **One thing the attempt settled, and it is the opposite of a gap.** A day-hike draft under
+  step 1 is PARKED, not swept: leaving the whole flow by the tab bar asks nothing, and Plan
+  then carries "Back to your route", which restores every leg. `e2e/data/builder.spec.ts`
+  pins both halves. The long-hike builder asks in the same position, and that asymmetry reads
+  as a missing guard until you follow it through — the day builder simply reaches the bail
+  sheet's own "Keep it for later" outcome without asking the question, because nothing is at
+  risk. Which sharpens what #1387's gap is actually about: the SWEEP, where the draft is
+  dropped and unrecoverable, and not the park.
+
+  The attempt also produced `chrome/DayHikePickBar.tsx`, covered on the two sentences it
+  always shows: the two-tap gesture spelled out, and "Roads are drawn, never routed on" —
+  `build_trail_graph.py`'s rule that roads are not edges, surfaced on the one screen where a
+  hiker would otherwise try.
 - **The map's canvas answers four more questions nobody can drive yet**, and they are four
   different reasons rather than one. `e2e/data/mapSheets.spec.ts` (2026-09-11) took the
   waypoint card, the trail line's sheet, the long-press plate and the notices list, all of

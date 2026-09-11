@@ -100,6 +100,36 @@ test.describe('the bail sheet (D8)', () => {
     await expect(page.getByRole('dialog', BAIL_SHEET)).toHaveCount(0)
   })
 
+  // STALE AS WRITTEN, and that is a change of status rather than a new
+  // excuse (2026-09-11). Two things blocked this; one is gone and the other
+  // turned out to be the test itself.
+  //
+  // A LIVE DAY-HIKE DRAFT IS REACHABLE NOW. "Edit the route" on a saved
+  // walk's card loads its legs into step 2, which is the same state a hiker
+  // reaches by tapping — e2e/data/builder.spec.ts drives it, and proves R3
+  // keeps every leg across the rail's back. So the graph-shard fixture this
+  // note asks for is no longer what stands in the way.
+  //
+  // THE DRIVE BELOW NO LONGER MATCHES THE SCREEN. It was written against an
+  // older step 1 — a "Start from" doors group, a "Where I am" door, a "Where
+  // from?" heading — and this build's step 1 is "Where do you want to go?"
+  // with "Pick on the map" and "Draw it myself". Switching mode from the mode
+  // chip lands on Today in long mode, where there is no "Pick on the map" at
+  // all. The gap it describes may still be real; nobody can tell from this
+  // test as it stands, which is the worse state to leave it in.
+  //
+  // AND ONE THING IS SETTLED, narrowing what the gap is about: a day-hike
+  // draft under step 1 is PARKED rather than swept. Leaving by the tab bar
+  // asks nothing and Plan carries "Back to your route", which restores every
+  // leg (both halves pinned in e2e/data/builder.spec.ts). So the dangerous
+  // move is the SWEEP — where the draft is dropped and unrecoverable — not
+  // the park, and a rewrite should target that.
+  //
+  // Kept rather than deleted for the same reason as before: the test is the
+  // target. features/FLOW_TESTING.md's "Known gaps" carries the measurements.
+  //
+  // The original note follows.
+  //
   // BLOCKED, not written off: reproducing this needs a day-hike draft, and
   // "Where I am" - the door that starts one without a map tap - lives behind
   // PlanStart.tsx's OWN refusal gate in day mode
@@ -125,7 +155,7 @@ test.describe('the bail sheet (D8)', () => {
   // fixture exists, this becomes seedPreferences + seedHikerMode('day') +
   // seedGraphShard(...) + the "Where I am" door, and the skip below comes
   // off in the same change.
-  test.skip('known gap: switching mode then Pick on the map sweeps a live day-hike draft with no ask (should be guarded) - blocked on #1387, no graph-shard fixture exists yet', async ({
+  test.skip('known gap: switching mode then Pick on the map sweeps a live day-hike draft with no ask (should be guarded) - #1387, and this drive is now stale against step 1', async ({
     page,
   }) => {
     await seedPreferences(page)

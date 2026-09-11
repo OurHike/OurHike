@@ -584,6 +584,32 @@ headed, and there is no display in CI or in an agent sandbox.
   Whether an install actually completes, whether iOS later evicts the storage,
   whether the Capacitor shell changes any of it — none of that is attested here,
   and none of it can be: it is the Phase 3 acceptance category above.
+- **The field note's rotating word is held for a card, and a fold throws it away.**
+  #1122 deals the affirmative one-tap answer from a list of synonyms — "Flowing",
+  "Running", "Water's on", "Flowing fine" — and `chrome/FieldNoteSection.tsx` says
+  it is "PICKED ONCE PER WAYPOINT AND HELD", because re-rolling "would change the
+  word under a hiker's thumb". `e2e/data/mapSheets.spec.ts` was written to assert
+  that and went red.
+
+  **Measured 2026-09-11 against release 2026-09-10**, on one water waypoint:
+  the word is stable while the card stays at one height — eight reads, zero
+  changes, the card re-placed by a map nudge between each — and changes when the
+  card is pulled open and folded back: **5 changes in 8 folds on one run, 3 in 8
+  on another**, about what a uniform re-roll over four words would give.
+
+  The cause is in `chrome/PoiCard.tsx` rather than in the section:
+  `conditions('peek')` and `conditions('open')` are rendered at different
+  positions in its tree, so the fold unmounts `FieldNoteSection` and its
+  `useState` goes with it — the held rotation, and with it `filed`, any typed
+  note and any attached photo. The reset-during-render the file documents at
+  length works perfectly within one mount and cannot survive a remount.
+
+  **No assertion is written for it**, because a test that pinned the current
+  behaviour would go red the day somebody fixes it. The spec carries the
+  measurement where the test would have been, so the next person does not
+  rediscover it, and it is reported on #1374 — the file predates that branch, so
+  it is out of its diff.
+
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

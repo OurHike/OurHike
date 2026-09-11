@@ -102,7 +102,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // exactly the reason the ribbon draws nothing, and the same published
   // elevation cell would move both.
   'chrome/NextUpRail.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
-  'chrome/FieldNoteSection.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/FieldNoteSection.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
   'chrome/TrailDataUpdate.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
 
   // ---- F3 step 1, Hike ----------------------------------------------------
@@ -403,7 +406,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
-  'chrome/ClubSheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/ClubSheet.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
   'screens/GroupScreen.tsx': {
     step: 'F14 volunteering',
     flow: { status: 'covered', spec: 'e2e/tripRooms.spec.ts' },

@@ -154,3 +154,23 @@ export async function seedCamera(
  */
 export const ON_THE_TRAIL: readonly [number, number] = [-83.4821, 35.6012]
 export const ABOVE_THE_SEAM_ZOOM = 12.5
+
+/**
+ * The same window, BELOW the pin seam — where the map stops drawing waypoints
+ * and a tap on the A.T. asks who maintains it instead of what the line is
+ * (chrome/tappedLinePanel.tsx: "one tap asks one question, and which question
+ * depends on the zoom").
+ *
+ * 8 rather than 8.9: `map/poiLayers.ts`'s `POI_PIN_MIN_ZOOM` is 9 and
+ * `belowSeam` is `zoom < POI_PIN_MIN_ZOOM`, so anything under 9 is below the
+ * seam — but a value that sits on the boundary would turn a one-line change to
+ * that constant into a mystifying spec failure rather than an obvious one.
+ *
+ * Measured 2026-09-11 against release 2026-09-10, sweeping the whole frame
+ * below the header at this camera: 21 of 247 taps open the club sheet and 28
+ * open a side trail's line sheet, so the A.T. is comfortably findable here —
+ * far more so than at ABOVE_THE_SEAM_ZOOM, where the same sweep finds the line
+ * at one point only. The legend confirms the zoom from the app's own side:
+ * "Waypoints appear from a closer zoom."
+ */
+export const BELOW_THE_SEAM_ZOOM = 8

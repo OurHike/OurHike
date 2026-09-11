@@ -30,7 +30,29 @@ import {
   bootFreshPage,
   ON_THE_TRAIL,
   ABOVE_THE_SEAM_ZOOM,
+  BELOW_THE_SEAM_ZOOM,
 } from '../support/seed'
+
+/**
+ * HOW LONG THE TRAIL SKETCHES ARE ALLOWED TO TAKE, and why this is not the
+ * 30-second default.
+ *
+ * Both helpers below prove the map has arrived by opening the legend and
+ * reading its "Trails in view" section — the app's own statement that it holds
+ * the lines a tap has to hit. The waypoint index parses first and the sketches
+ * land separately, so without that wait the sweeps race them.
+ *
+ * Measured 2026-09-11 against release 2026-09-10, with other Playwright runs
+ * sharing the machine: the wait misses 30 seconds at BOTH cameras — three
+ * times across two full runs of this file, once at the closer one. The failure
+ * prints a legend with every waypoint count populated and no trails section,
+ * which reads as "the legend lost a section" rather than "this has not
+ * finished yet", and the wider camera is the slower of the two because four
+ * zoom levels out is a great deal more geometry. Exactly the confusion
+ * e2e/data/longSpine.spec.ts's own NETWORK_BOUND_MS was added for, so the
+ * same answer: a budget that says what it is waiting on.
+ */
+const SKETCHES_BOUND_MS = 90_000
 
 /** On the map tab, past first run, at whatever camera the caller seeded. */
 async function openMap(page: Page): Promise<void> {
@@ -55,7 +77,7 @@ async function openMapOnTheTrail(page: Page): Promise<void> {
   // Without this the line-tap sweep raced the sketches and found nothing on
   // about one run in four, which reads as "tapping a trail is broken".
   const legend = await openLegend(page)
-  await expect(legend).toContainText('Trails in view')
+  await expect(legend).toContainText('Trails in view', { timeout: SKETCHES_BOUND_MS })
   await legend.getByRole('button', { name: /Close legend/ }).click()
   await expect(page.getByRole('dialog', { name: 'Legend' })).toHaveCount(0)
 }
@@ -460,5 +482,234 @@ test.describe('every trail notice the app holds', () => {
     // wrong reason.
     await expect(fresh.getByRole('button', { name: /^Legend/ })).toHaveText('Legend')
     await fresh.close()
+  })
+})
+
+test.describe('what the field has said about a place', () => {
+  /** A waypoint whose type carries a conditions section. The In view list is
+   *  ordered by mile and the release puts a spring first at this camera, but
+   *  the section is the thing under test rather than the place — so this
+   *  walks the rows until one has the group, and says so if none does. */
+  async function openAWaypointWithConditions(page: Page): Promise<Locator> {
+    await page.getByRole('button', { name: /In view/ }).click()
+    const list = page.getByRole('dialog', { name: 'In view' })
+    await expect(list).toBeVisible()
+    const rows = list.locator('.poi-row--opens')
+    const count = await rows.count()
+    for (let index = 0; index < count; index += 1) {
+      await rows.nth(index).click()
+      const card = page.getByRole('dialog', { name: 'Waypoint' })
+      await expect(card).toBeVisible()
+      if ((await card.getByRole('group', { name: 'How is it right now?' }).count()) > 0) {
+        return card
+      }
+      await card.getByRole('button', { name: /^Close waypoint details/ }).click()
+      await page.getByRole('button', { name: /In view/ }).click()
+      await expect(list).toBeVisible()
+    }
+    throw new Error(
+      'no waypoint in view carries a conditions section — either the release stopped ' +
+        'publishing water, shelters and campsites at this camera, or the scoped-type ' +
+        'list in lib/fieldNotes.ts no longer matches what is exported',
+    )
+  }
+
+  test('entrance and states: the peek asks one question, offers two answers, and says nobody has spoken', async ({
+    page,
+  }) => {
+    await openMapOnTheTrail(page)
+    const card = await openAWaypointWithConditions(page)
+
+    // ONE QUESTION, NAMED. The group's accessible name is the question, so a
+    // hiker using a screen reader gets the same framing as one reading it.
+    const asking = card.getByRole('group', { name: 'How is it right now?' })
+    await expect(asking).toBeVisible()
+
+    // TWO ANSWERS ON THE PEEK, not the whole picker. lib/fieldNotes.ts's
+    // `peekObservations` deals exactly the good one and the problem one, and
+    // the peek has no room to be a form.
+    await expect(asking.getByRole('button')).toHaveCount(2)
+
+    // AND THE SILENCE IS NAMED. A place nobody has confirmed says so rather
+    // than showing a blank where a date would be — the same omit-rather-than
+    // -guess rule the capacity line keeps. "No recent word" is a claim about
+    // notes this phone COULD read; the offline case says something different
+    // ("Recent notes unavailable — no signal"), which is #249's distinction.
+    await expect(
+      card.getByText(/No recent word|Never confirmed|Recent notes unavailable/),
+    ).toBeVisible()
+  })
+
+  test('states: pulling the card open widens the question rather than replacing it', async ({
+    page,
+  }) => {
+    await openMapOnTheTrail(page)
+    const card = await openAWaypointWithConditions(page)
+    const peekAnswers = await card
+      .getByRole('group', { name: 'How is it right now?' })
+      .getByRole('button')
+      .count()
+
+    await card.getByRole('button', { name: /Notes & details|Details/ }).click()
+    await expect(card).toHaveClass(/poi-card--open/)
+
+    // SAME QUESTION, MORE ANSWERS. The group keeps its name, so the opened
+    // card is the peek at a second height rather than a different screen.
+    const asking = card.getByRole('group', { name: 'How is it right now?' })
+    await expect(asking).toBeVisible()
+    expect(await asking.getByRole('button').count()).toBeGreaterThan(peekAnswers)
+
+    // THE DISPUTE VALUE, which #876 put on every scoped type: a hiker who
+    // finds nothing where the map drew something can say exactly that, rather
+    // than having to pick the nearest wrong answer.
+    await expect(asking.getByRole('button', { name: /Not here/ })).toBeVisible()
+
+    // And the two escalations, each named for the case it is for — a problem
+    // worth a report, and a thanks. Offered together because the card cannot
+    // know which one the hiker is standing in front of.
+    await expect(card.getByText(/Blowdown, damage, trash/)).toBeVisible()
+    await expect(card.getByText(/Say thanks to whoever keeps it up/)).toBeVisible()
+  })
+
+  // NOT TESTED HERE, AND THE REASON IS A MEASUREMENT (2026-09-11). #1122's
+  // rotation deals the affirmative answer from a list of synonyms and says it
+  // is "PICKED ONCE PER WAYPOINT AND HELD". The first version of this describe
+  // asserted exactly that across a fold and went red: measured against release
+  // 2026-09-10, the word is stable while the card stays at one height (8 reads,
+  // 0 changes, the card re-placed by a map nudge between each) and re-rolls
+  // when the card is pulled open and folded back (5 changes in 8 folds on one
+  // run, 3 in 8 on another — about what a uniform re-roll over four words
+  // gives). PoiCard.tsx renders `conditions('peek')` and `conditions('open')`
+  // at different positions in its tree, so the fold unmounts the section and
+  // takes the held rotation with it. See features/FLOW_TESTING.md's known gaps;
+  // the property is real and the build does not have it, so there is no green
+  // assertion to write until it does.
+})
+
+test.describe('who looks after this stretch', () => {
+  // THE SWEEP IS THE COST, and 30 seconds is not enough for it. Measured
+  // 2026-09-11 against release 2026-09-10: one of these tests takes 25.5s on
+  // an idle machine and the sweep is bounded at 247 taps, so a slower run or a
+  // release that moves the A.T. further down the frame walks straight into the
+  // default timeout — and "locator timed out" would then read as a broken tap
+  // rather than as a test that ran out of budget, which is the exact confusion
+  // e2e/data/longSpine.spec.ts already paid for once.
+  test.describe.configure({ timeout: 180_000 })
+
+  /**
+   * Below the seam, and sweep for the club sheet rather than the line sheet.
+   *
+   * Deliberately its own sweep and not a parameter on `tapTheTrail`: the two
+   * are looking for different things. `tapTheTrail` wants ANY trail line and
+   * stops at the first sheet of either kind; this wants the A.T. specifically,
+   * because `clubDetail` is null unless `mileOnTrail` can place the tapped
+   * point on the published centerline — so a tap that lands on a side trail is
+   * a miss here and a hit there. Measured at this camera (support/seed.ts):
+   * the side trails are hit more often than the A.T. on the way, which is why
+   * this closes whatever it opened and keeps going.
+   */
+  async function tapTheAppalachianTrail(page: Page): Promise<Locator> {
+    const box = await frameOf(page)
+    const club = page.getByRole('dialog', { name: 'Who maintains this trail' })
+    const line = page.getByRole('dialog', { name: 'Trail line' })
+
+    for (let down = HEADER_ROWS; down < 20; down += 1) {
+      for (let across = 1; across < 20; across += 1) {
+        await page.mouse.click(
+          box.x + (box.width * across) / 20,
+          box.y + (box.height * down) / 20,
+        )
+        // Read straight after the click, the way `tapTheTrail` does. The
+        // first version of this waited a beat with `expect.poll`, which was
+        // both pointless — the predicate it polled was always true — and
+        // actively harmful: on a loaded machine two `count()` calls can
+        // outlast the poll's own timeout, so the wait invented a failure the
+        // app had nothing to do with.
+        if ((await club.count()) > 0) return club
+        if ((await line.count()) > 0) {
+          await line.getByRole('button', { name: /^Close/ }).click()
+          await expect(line).toHaveCount(0)
+        }
+      }
+    }
+    throw new Error(
+      'no tap on the whole frame opened the club sheet — either the release moved the ' +
+        'A.T. out of this camera, or the club-section artifact stopped publishing',
+    )
+  }
+
+  async function openMapBelowTheSeam(page: Page): Promise<void> {
+    await seedCamera(page, ON_THE_TRAIL, BELOW_THE_SEAM_ZOOM)
+    await openMap(page)
+    const legend = await openLegend(page)
+    await expect(legend).toContainText('Trails in view', { timeout: SKETCHES_BOUND_MS })
+    await legend.getByRole('button', { name: /Close legend/ }).click()
+    await expect(page.getByRole('dialog', { name: 'Legend' })).toHaveCount(0)
+  }
+
+  test('entrance and states: below the seam a tap names the club, its miles, and where both facts came from', async ({
+    page,
+  }) => {
+    await openMapBelowTheSeam(page)
+    const sheet = await tapTheAppalachianTrail(page)
+
+    // WHAT IS PINNED IS THE SHAPE, not the release. A club's name, its mile
+    // range and its maintained mileage all move when the ATC redraws a
+    // section, so the assertions are on the sentences' form.
+    await expect(sheet.getByText(/^mi [\d,.]+ – [\d,.]+$/)).toBeVisible()
+    await expect(
+      sheet.getByText(/[\d,.]+ mi maintained, in \d+ sections?$/),
+    ).toBeVisible()
+
+    // TWO SOURCES, NOT ONE, and this is the assertion worth having. WHICH club
+    // maintains a mile comes from the ATC's centerline; HOW that club's name
+    // is spelled comes from their club-section polygons — two layers, edited
+    // on different days (lib/clubSections.ts's header). A sheet that printed
+    // one date for both would be claiming a currency it does not have.
+    await expect(sheet.getByText(/^Who maintains it: .+, \d/)).toBeVisible()
+    await expect(sheet.getByText(/^Club name: .+, \d/)).toBeVisible()
+  })
+
+  test('states: the club sheet and the line sheet never stack — one tap asks one question', async ({
+    page,
+  }) => {
+    await openMapBelowTheSeam(page)
+    await tapTheAppalachianTrail(page)
+
+    // chrome/tappedLinePanel.tsx makes them mutually exclusive by
+    // construction, and this is that property from outside: with the club
+    // sheet up there is no "Trail line" dialog anywhere behind it.
+    await expect(page.getByRole('dialog', { name: 'Trail line' })).toHaveCount(0)
+  })
+
+  test('states: the same question is not asked above the seam, where a tap is about the line', async ({
+    page,
+  }) => {
+    // The other half of "which question depends on the zoom". At the closer
+    // camera the line sheet is what a tap on the A.T. opens, so the club sheet
+    // must be absent — asserted here rather than assumed, because a club sheet
+    // that leaked upward would answer a question nobody asked while hiding the
+    // blaze and the source a hiker at that zoom is actually reading.
+    await openMapOnTheTrail(page)
+    const sheet = await tapTheTrail(page)
+    await expect(sheet).toBeVisible()
+    await expect(
+      page.getByRole('dialog', { name: 'Who maintains this trail' }),
+    ).toHaveCount(0)
+  })
+
+  test('exit: closing the club sheet leaves the map, and a second tap can ask again', async ({
+    page,
+  }) => {
+    await openMapBelowTheSeam(page)
+    const sheet = await tapTheAppalachianTrail(page)
+
+    await sheet.getByRole('button', { name: /^Close/ }).click()
+    await expect(sheet).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    // Re-openable rather than a one-shot: the close clears the selection, so
+    // the next tap is a fresh question rather than a dead control.
+    await expect(await tapTheAppalachianTrail(page)).toBeVisible()
   })
 })

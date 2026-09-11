@@ -96,11 +96,10 @@ describe('TabBar', () => {
   })
 
   it('carries both pieces of the mark, leaving the layout to pick', () => {
-    // Both are always in the markup; which one is drawn is a CSS question, and
-    // is asserted in test/desktopLayout.test.ts. The sidebar shows icon over
-    // wordmark; a phone shows the icon alone beside the tabs, because the icon
-    // on its own still says whose app this is and type there would come
-    // straight out of a thumb target's width.
+    // Both are always in the markup; whether either is drawn is a CSS
+    // question, asserted in test/desktopLayout.test.ts. The sidebar shows icon
+    // over wordmark; a phone shows neither since 2026-09-10, because its bar's
+    // left end went to the mode chip in the room audit for #1374.
     const { container } = render(<TabBar {...PROPS} />)
 
     expect(container.querySelector('.tab-bar__brand-icon')).not.toBeNull()
@@ -140,7 +139,8 @@ describe('the mode slot', () => {
 })
 
 // The mode read-out (#1373, review rule R11): every phone screen carries the
-// four tabs and, above them, which of the three modes you are in - a read-out
+// four tabs and, as the left chip of the same row, which of the three modes
+// you are in - a read-out
 // that opens the one control, never a second switch.
 describe('the mode read-out', () => {
   it('renders nothing extra when no mode is handed over, which is first run and the desktop', () => {

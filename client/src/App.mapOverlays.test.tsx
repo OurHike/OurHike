@@ -456,7 +456,7 @@ describe('every ATC notice is readable, drawn or not', () => {
   })
 })
 
-describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
+describe('the new-notice dot on the legend button, end to end (#687; a dot rather than a banner since 2026-09-10)', () => {
   // chrome/MapScreen.test.tsx and lib/atcAlertsBanner.test.ts cover the
   // banner's own rendering and the 72-hour gate in isolation. What only this
   // file can catch is the wiring between them: App.tsx's real clock
@@ -477,8 +477,10 @@ describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
     serveAtcUpdates([UNDRAWN_UPDATE, recentUpdate()])
     await renderApp()
 
+    // As a dot on the legend button, in its name (Header.tsx) - the banner
+    // row it was until 2026-09-10 cost the phone a row of map.
     expect(
-      await screen.findByRole('button', { name: /New notice issued/ }),
+      await screen.findByRole('button', { name: 'Legend, 1 new trail notice' }),
     ).toBeInTheDocument()
   })
 
@@ -492,34 +494,23 @@ describe('the bottom banner for new ATC alerts, end to end (#687)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Legend' }))
     await screen.findByRole('button', { name: 'Read all 2 trail notices' })
 
-    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+    expect(screen.queryByRole('button', { name: /Legend, \d+ new/ })).toBe(null)
   })
 
-  it('silences on its own, without opening the full list', async () => {
+  it('is silenced by reading the full list, which the legend row opens', async () => {
     serveAtcUpdates([recentUpdate()])
     await renderApp()
 
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Silence new trail notices' }),
+      await screen.findByRole('button', { name: 'Legend, 1 new trail notice' }),
     )
-
-    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
-    expect(
-      screen.queryByRole('dialog', { name: 'Every trail notice OurHike holds' }),
-    ).toBe(null)
-  })
-
-  it('is also silenced by reading the full list instead', async () => {
-    serveAtcUpdates([recentUpdate()])
-    await renderApp()
-
     await userEvent.click(
-      await screen.findByRole('button', { name: /New notice issued/ }),
+      await screen.findByRole('button', { name: 'Read the 1 trail notice · 1 new' }),
     )
 
-    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
     expect(
       screen.getByRole('dialog', { name: 'Every trail notice OurHike holds' }),
     ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Legend, \d+ new/ })).toBe(null)
   })
 })

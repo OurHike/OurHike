@@ -22,7 +22,7 @@ they claim.
 
 | | Defect | Where it lived | What fixed it |
 |---|---|---|---|
-| D1 | Three front doors, no address — Today, the Map, Plan's two rooms, nothing saying which you were in | `chrome/tabs.ts`, `screens/Today.tsx`, `chrome/MapScreen.tsx` | The navigator (`lib/navigator.ts`): four tabs, a stack over each, one `navigate()`; the mode read-out above the tabs (R11) |
+| D1 | Three front doors, no address — Today, the Map, Plan's two rooms, nothing saying which you were in | `chrome/tabs.ts`, `screens/Today.tsx`, `chrome/MapScreen.tsx` | The navigator (`lib/navigator.ts`): four tabs, a stack over each, one `navigate()`; the mode read-out in the tab row (R11) |
 | D2 | The same fork asked twice — the mode switch decided the Plan room, then the kind sheet asked again | `lib/hikerMode.ts`, `screens/PlanHome.tsx`, `chrome/PlanKindSheet.tsx` | `PlanKindSheet` retired; the mode is the answer to step 1's first stop (D6 below) |
 | D3 | Plan was a filing cabinet — storage for a plan a new hiker could not yet make | `screens/PlanHome.tsx`, `TripList.tsx`, `DayHikeList.tsx` | Step 1 — "Where do you want to go?" (`screens/PlanStart.tsx`) — where the Plan tab's primary and Today's pinned Plan both land |
 | D4 | Four grammars for one journey — a bar, a sheet, a panel, a card | `chrome/DayHikePickBar.tsx`, `RouteStopsPanel.tsx`, `screens/DayHikeCard.tsx` | One rail (`chrome/StepRail.tsx`) at the head of each, "‹ back" and "on ›" as each foot, Save the last button |
@@ -43,7 +43,7 @@ Each is held by a test somewhere; the file named is where to look first.
 - **R8 · The map keeps its own controls** (`map/mapChrome.ts`): compass and locate bottom-right, the scale bar bottom-left, the legend beside it; locate is absent, not disabled, where location is off.
 - **R9 · Any day can be edited, and it cascades** — shown as the diff first (`lib/cascadeDiff.ts`), applied when the hiker says so, undoable in one action.
 - **R10 · A legend names five trails, then condenses** (`NAMED_TRAILS_SHOWN` in `chrome/Legend.tsx`, `@unvalidated` — the frame's own count).
-- **R11 · Four tabs and the mode, on every screen** — a read-out above the tabs that opens the one control, never a second switch (`chrome/TabBar.tsx`). First run carries no read-out, but since the review of #1374 it asks the mode once, on its second card, rather than assigning Day hike silently; a desktop's sidebar carries the switch itself.
+- **R11 · Four tabs and the mode, on every screen** — a read-out that opens the one control, never a second switch (`chrome/TabBar.tsx`); since 2026-09-10 the left chip of the tab row rather than a row above it, because the row wrapped the phone's bar to three rows (105 px measured at 375×667, against 45 px) and the brand mark it displaced had nothing to say that the tabs did not. First run carries no read-out, but since the review of #1374 it asks the mode once, on its second card, rather than assigning Day hike silently; a desktop's sidebar carries the switch itself.
 
 ## The decisions, which were the acceptance list
 

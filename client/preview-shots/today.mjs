@@ -19,6 +19,10 @@
 // bar is pinned under the paper on every state of the screen (rule R4).
 // Same landing, no drive: the head is what a phone with nothing planned
 // sees first.
+// RE-TAKEN 2026-09-10 for the room audit (#1374): the bottom bar under the
+// pinned Find / Plan bar is one row - the mode chip, then the tabs - and the
+// header's status strip wraps its sync chip instead of running off a 375px
+// screen (chrome.css's .status-strip).
 export const caption =
   'Today with nothing planned — the setup head that replaces an empty list, and the pinned Find / Plan bar (#1373, F2)'
 export const alt =

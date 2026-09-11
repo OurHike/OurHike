@@ -102,10 +102,11 @@ describe('desktop layout contract', () => {
     expect(block).not.toMatch(/position:\s*(static|relative)/)
   })
 
-  // The brand mark differs by layout rather than existing in only one, so both
+  // The brand mark is in the markup for both layouts and drawn in one, so both
   // halves are asserted together rather than one per stylesheet. A phone gets
-  // the icon at the left end of the bar; a desktop gets icon over wordmark at
-  // the foot of the sidebar.
+  // none of it since 2026-09-10 - the mode chip has its bar's left end (the
+  // room audit for #1374); a desktop gets icon over wordmark at the foot of
+  // the sidebar.
   const chromeCss = readFileSync(resolve(process.cwd(), 'src/chrome/chrome.css'), 'utf8')
   const bareChrome = chromeCss.replace(/\/\*[\s\S]*?\*\//g, '')
 
@@ -124,12 +125,14 @@ describe('desktop layout contract', () => {
     expect(css).toMatch(/\.tab-bar__brand-wordmark\s*\{[^}]*display:\s*block/)
   })
 
-  it('pulls the mark ahead of the tabs on a phone and back after them on a desktop', () => {
-    // The mark is last in the DOM because on a desktop it is the foot of a
-    // column. Only the phone needs it first, and the desktop has to put that
-    // back - otherwise the sidebar grows a logo above its own navigation.
-    expect(chromeRule('.tab-bar__brand')).toMatch(/order:\s*-1/)
-    expect(declarationsOf('.map-screen > .tab-bar .tab-bar__brand')).toMatch(/order:\s*0/)
+  it('keeps the whole mark off the phone, whose bar corner belongs to the mode chip', () => {
+    // The same shape as the wordmark test above, for the same structural
+    // reason: hidden by the component's stylesheet, turned back on only from
+    // inside the media query, as the foot of the sidebar.
+    expect(chromeRule('.tab-bar__brand')).toMatch(/display:\s*none/)
+    expect(declarationsOf('.map-screen > .tab-bar .tab-bar__brand')).toMatch(
+      /display:\s*flex/,
+    )
   })
 
   it('sizes the mark for the layout it is in, not once for both', () => {

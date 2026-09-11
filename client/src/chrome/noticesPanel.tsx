@@ -84,7 +84,6 @@ export type NoticesMapProps = Pick<
   | 'noticeList'
   | 'newNoticeCount'
   | 'newNoticeLabel'
-  | 'onSilenceNewNotices'
 >
 
 export interface NoticesPanel {
@@ -286,8 +285,9 @@ export function useNoticesPanel({
 
   const openNotices = useCallback(() => {
     setNoticesOpen(true)
-    // Opening the full list is a hiker having looked, exactly as much as
-    // tapping the bottom banner's own dismiss is - see silenceNotices above.
+    // Opening the full list is a hiker having looked - and since 2026-09-10
+    // the only way to silence, the banner's own dismiss having gone with the
+    // banner (MapScreen.tsx's `newNoticeCount`) - see silenceNotices above.
     //
     // THAT PREMISE STOPPED HOLDING WHEN THE LIST BECAME SCOPED, and this is
     // written down rather than fixed here because the fix is a product call
@@ -371,7 +371,6 @@ export function useNoticesPanel({
       newNoticeCount: newNotices?.count ?? 0,
       newNoticeLabel:
         newNotices === null ? undefined : newNoticeLabel(newNotices, stewards),
-      onSilenceNewNotices: silenceNotices,
       noticeList: noticesOpen ? (
         <NoticeList
           notices={allNotices}
@@ -396,7 +395,6 @@ export function useNoticesPanel({
       allNotices,
       openNotices,
       newNotices,
-      silenceNotices,
       noticesOpen,
       drawnIds,
     ],

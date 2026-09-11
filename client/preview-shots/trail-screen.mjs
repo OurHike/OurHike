@@ -66,6 +66,11 @@
 // rhythm #1283 gave every untaken line is gone (map/style.ts's header, rule
 // 2). The dark ink stays at this camera only, because the sketch has no
 // casing to edge a white line with; the real line above the seam is white.
+// RE-TAKEN 2026-09-10 for the room audit (#1374): the bottom bar is one row -
+// the mode chip at its left, then the four tabs, no brand mark - where it was
+// three rows with the mark alone on the first, and the plate is the OPEN
+// state this frame has always shown; map-plate-folded.mjs is the same screen
+// one pan later.
 export const caption =
   'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a solid line at one fine weight (the dot rhythm of #1283 is gone since 2026-09-10), the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails in their own hues around its New York miles — the Long Path in aqua — no waypoints, and the A.T.’s one badge naming it, placed at this camera since the review of #1374'
 export const alt =

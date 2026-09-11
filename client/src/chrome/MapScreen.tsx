@@ -370,30 +370,40 @@ export interface MapScreenProps {
    * exactly as `atcUpdateSheet` does.
    */
   noticeCount?: number
-  /** Opens that list - from the Legend row and from the bottom banner below,
-   *  both of which are simply "a hiker asked to see it". */
+  /** Opens that list - from the Legend row, which is simply "a hiker asked
+   *  to see it". */
   onOpenNotices?: () => void
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
   /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
-   * #687). Zero, or the shell not passing it, renders no banner.
+   * #687). Zero, or the shell not passing it, renders no dot.
+   *
+   * A DOT ON THE LEGEND BUTTON SINCE 2026-09-10, AND A COUNT ON THE LEGEND'S
+   * NOTICES ROW (Header.tsx, Legend.tsx), where until then it was a banner
+   * row at the foot of the main column. The row cost 61px of map on a phone
+   * whenever it had something to say (measured on the rig at 375×667, the
+   * room audit for #1374), and the maintainer chose the dot from the mocked
+   * options. Silencing is now only ever "a hiker read the list" - the row's
+   * own × went with it (chrome/noticesPanel.tsx still writes the watermarks
+   * when the list opens).
    *
    * Deliberately not derived from `noticeCount` above - that is every notice
    * the app holds, drawn or not, and this is the much narrower "something
-   * changed recently" question the bottom banner exists to answer. The two can
-   * and usually do disagree: most visits hold several notices and none of them
+   * changed recently" question the dot exists to answer. The two can and
+   * usually do disagree: most visits hold several notices and none of them
    * new.
    *
-   * ONE BANNER ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 calls
+   * ONE DOT ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 called
    * the banner "a scarce surface rather than a record"; a second one is more
    * chrome this screen doesn't have room for. So the count merges and every
    * row survives in the list.
    */
   newNoticeCount?: number
   /**
-   * What that banner says, built by the shell.
+   * What the screen reader hears for it, built by the shell (Header.tsx's
+   * live region).
    *
    * A STRING RATHER THAN A COUNT AND A LIST OF ORGANIZATIONS, because naming
    * an organization means resolving its `source_key` through the published
@@ -403,10 +413,6 @@ export interface MapScreenProps {
    * does not compose it.
    */
   newNoticeLabel?: string
-  /** Silences the bottom banner without opening the list - the quick "not
-   *  now" beside `onOpenNotices`'s "show me". Omitted, no silence control
-   *  is drawn. */
-  onSilenceNewNotices?: () => void
   /**
    * The published trail data this phone does not have, and the two answers to
    * it (#919). Undefined renders nothing, which is the state on every launch
@@ -880,7 +886,6 @@ export function MapScreen({
   noticeList,
   newNoticeCount = 0,
   newNoticeLabel,
-  onSilenceNewNotices,
   trailDataUpdate,
   warnings,
   alertsShown = true,
@@ -974,6 +979,28 @@ export function MapScreen({
   // permanent panel it is neither. No media query can change what a component
   // tells a screen reader it is.
   const isDesktop = useDesktop()
+
+  // THE PLATE FOLDS ON THE HIKER'S FIRST GESTURE (#1374, the room audit of
+  // 2026-09-10) and opens again on a tap - Header.tsx draws it, this owns it.
+  // A gesture rather than a timer or a zoom: a pan or a pinch is the moment
+  // the hiker starts using the map instead of reading about it, and MapView
+  // already tells `originalEvent`-driven moves from the app's own framing
+  // (`fromGesture`), so the shell re-framing the camera after a download does
+  // not fold the plate under somebody who has not touched it. Phone only: a
+  // desktop has the room, and the same state simply never applies there.
+  //
+  // The wrapper is handed to MapView unconditionally, where the raw prop used
+  // to be: the fold needs the gesture signal whether or not the shell wants
+  // viewport reports, and MapView attaches its `moveend` listener only when it
+  // has a handler to call.
+  const [plateFolded, setPlateFolded] = useState(false)
+  const handleViewportChange = useCallback(
+    (bbox: BoundingBox, fromGesture: boolean) => {
+      if (fromGesture) setPlateFolded(true)
+      onViewportChange?.(bbox, fromGesture)
+    },
+    [onViewportChange],
+  )
 
   // How much of the canvas the floating chrome covers (#1283), for the
   // through-route badge's anchor. The top band is MEASURED off the float
@@ -1433,6 +1460,20 @@ export function MapScreen({
                   onOpenLegend()
                 }}
                 onOpenSearch={onOpenSearch}
+                folded={plateFolded && !isDesktop}
+                onUnfold={() => setPlateFolded(false)}
+                newNotices={
+                  newNoticeCount > 0 && onOpenNotices !== undefined
+                    ? {
+                        count: newNoticeCount,
+                        label:
+                          newNoticeLabel ??
+                          (newNoticeCount === 1
+                            ? 'New trail notice issued'
+                            : `${newNoticeCount} new trail notices issued`),
+                      }
+                    : undefined
+                }
                 // The list of what the map is drawing (#1373, frame 12a) -
                 // offered once there is anything to list, and not while a
                 // builder owns the canvas, where the pins are stops. Not on
@@ -1605,7 +1646,7 @@ export function MapScreen({
               bounds={bounds}
               archiveZooms={archiveZooms}
               boundsPadding={boundsPadding}
-              onViewportChange={onViewportChange}
+              onViewportChange={handleViewportChange}
               onTrailsInView={onTrailsInView}
               chromeInsets={chromeInsets}
               chosenTrailId={chosenTrailId}
@@ -1816,6 +1857,7 @@ export function MapScreen({
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
+            newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />
         </div>
@@ -1886,56 +1928,10 @@ export function MapScreen({
           />
         )}
 
-        {/* "Something changed" rather than "here is everything" - the row
-            that used to sit under the alert strip and answer the second
-            question moved into the legend above, permanently reachable and
-            no longer costing every visit map height for it (#687). This one
-            answers only the first, and answers it far less often: it renders
-            solely while ATC has touched a live notice in the last 72 hours
-            and the hiker has not already silenced it
-            (lib/notices.ts).
-
-            At the FOOT of the main column instead - `aria-live="polite"`
-            rather than `role="alert"` (assertive) or `role="status"`: the
-            status strip above already owns that role for connectivity and
-            sync age (StatusStrip.tsx), and a second region claiming it would
-            make "the status region" ambiguous to a screen reader and to
-            `getByRole('status')` alike. Polite announcement is the part this
-            banner actually wants - "something is new" is not "something
-            changes what you do next", so it does not need `role="alert"`'s
-            interrupt either. Bottom rather than a float over the canvas: a
-            floating card would have to dodge the locate/compass stack and
-            the credit strip sharing that corner, by hand-tuned offsets that
-            drift the moment either changes size. A row in flow needs none of
-            that, on a phone or the desktop sidebar layout alike. */}
         {/* Beneath the alert row rather than above it, on the one occasion
             both are up: an organization's closure changes what a hiker does
             next, and newer waypoint data does not. The order is the ranking. */}
         {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
-        {newNoticeCount > 0 && onOpenNotices !== undefined && (
-          <div className="map-screen__new-alerts" aria-live="polite">
-            <button
-              type="button"
-              className="map-screen__new-alerts-button"
-              onClick={onOpenNotices}
-            >
-              {newNoticeLabel ??
-                (newNoticeCount === 1
-                  ? 'New trail notice issued'
-                  : `${newNoticeCount} new trail notices issued`)}
-            </button>
-            {onSilenceNewNotices !== undefined && (
-              <button
-                type="button"
-                className="map-screen__new-alerts-silence"
-                onClick={onSilenceNewNotices}
-              >
-                <span className="visually-hidden">Silence new trail notices</span>
-                <span aria-hidden="true">×</span>
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       <TabBar

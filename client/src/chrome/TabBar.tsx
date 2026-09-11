@@ -3,12 +3,15 @@
 // longer one of them, and MORE_TAB.md for why the third tab reads "Settings"
 // rather than "More".
 //
-// This bar is also where the OurHike mark lives, because on both layouts the
-// bar IS the bottom-left corner of the page. On a desktop it becomes the left
-// sidebar (desktop.css) and the mark sits at the foot of it, icon over
-// wordmark. On a phone it is a horizontal strip and the mark is the icon
-// alone, left of the tabs - the wordmark has nowhere to go there without
-// taking width off a thumb target.
+// This bar is also where the OurHike mark lives on a desktop, because there
+// the bar IS the bottom-left corner of the page: it becomes the left sidebar
+// (desktop.css) and the mark sits at the foot of it, icon over wordmark. On a
+// phone the bar is a horizontal strip of thumb targets and carries no mark at
+// all since 2026-09-10 (the room audit for #1374): the left end of the row is
+// spent on the mode chip below, which says something the tabs do not, and the
+// 24px icon that sat there was 32px of the tabs' width spent on branding. The
+// mark is kept in the markup for the sidebar; chrome.css decides which layout
+// draws it.
 //
 // The mark rides here rather than on the map itself because the map is the
 // product, and a watermark over it costs terrain a hiker may be reading. In the
@@ -70,9 +73,12 @@ export interface TabBarProps {
    */
   hikeSwitch?: ReactNode
   /**
-   * Which of the three modes the hiker is in, read out in a slim row above
-   * the tabs (#1373, review rule R11): "Four tabs and the mode, on every
+   * Which of the three modes the hiker is in, read out as the left chip of
+   * the tab row (#1373, review rule R11): "Four tabs and the mode, on every
    * screen … a read-out that opens the one control, never a second switch."
+   * A chip in the row rather than a row of its own since 2026-09-10: the
+   * room audit at 375×667 measured the bar at 105px - three rows, the brand
+   * mark alone on the first - against 45px with the chip in the row.
    *
    * A READ-OUT, NOT A SWITCH. The phone's bar is a strip of thumb targets and
    * App.test.tsx pins that no radiogroup lives in it; this row is one button
@@ -104,9 +110,6 @@ export function TabBar({
           <>
             <span className="tab-bar__mode-caret" aria-hidden="true">
               ▾
-            </span>
-            <span className="tab-bar__mode-hint" aria-hidden="true">
-              tap to switch
             </span>
           </>
         )}

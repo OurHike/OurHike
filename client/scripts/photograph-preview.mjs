@@ -42,6 +42,7 @@ import {
   DEFAULT_WAIT_MS,
   CAPTURE_SCALE,
   PHONE,
+  PHONE_SMALL,
   DESKTOP,
 } from './screenshot.mjs'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
@@ -199,8 +200,9 @@ export function planShots({
  * optional except that what is present has the right type: `caption` (table
  * heading) falls back to the shot name, `alt` to the caption, `entry` keeps
  * first run on screen, `desktop` photographs the wide layout instead of the
- * phone, `wait` overrides the settle, and the default export is the drive —
- * absent for a screen the app opens on by itself.
+ * phone, `small` the smallest phone (PHONE_SMALL) instead of the usual one,
+ * `wait` overrides the settle, and the default export is the drive — absent
+ * for a screen the app opens on by itself.
  */
 export function normaliseRecipe(module, name) {
   const wrong = (what, value) => {
@@ -222,6 +224,7 @@ export function normaliseRecipe(module, name) {
     alt,
     entry: module.entry === true,
     desktop: module.desktop === true,
+    small: module.small === true,
     wait,
   }
 }
@@ -311,9 +314,14 @@ export function renderComment(results, { nudge = false } = {}) {
       '',
     )
   }
-  const sizes = taken.some((shot) => shot.desktop === true)
-    ? `${PHONE.width}x${PHONE.height}, the wide ones at ${DESKTOP.width}x${DESKTOP.height},`
-    : `${PHONE.width}x${PHONE.height}`
+  const sizes =
+    `${PHONE.width}x${PHONE.height}` +
+    (taken.some((shot) => shot.small === true)
+      ? `, the small-phone ones at ${PHONE_SMALL.width}x${PHONE_SMALL.height}`
+      : '') +
+    (taken.some((shot) => shot.desktop === true)
+      ? `, the wide ones at ${DESKTOP.width}x${DESKTOP.height},`
+      : '')
   lines.push(
     `Photographed from this build at ${sizes} and served ` +
       'by this preview - so they go when it does. The camera goes where ' +
@@ -365,7 +373,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         waitMs: recipe.wait,
         scale: recipe.desktop ? DESKTOP_CAPTURE_SCALE : CAPTURE_SCALE,
         fullPage: false,
-        viewport: recipe.desktop ? DESKTOP : PHONE,
+        viewport: recipe.desktop ? DESKTOP : recipe.small ? PHONE_SMALL : PHONE,
         drive: recipe.drive,
       })
       const verdict = budgetVerdict(bytes)
@@ -375,6 +383,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         caption: recipe.caption,
         alt: recipe.alt,
         desktop: recipe.desktop,
+        small: recipe.small,
         bytes,
         overBudget: verdict.overBudget,
       })

@@ -355,10 +355,18 @@ export interface LegendProps {
    * whether or not any of it changed lately, is exactly the kind of rare
    * errand this panel's own download link already exists for - "a hiker
    * opens this all day to ask what is nearby, a handful of times ever to do
-   * this." What is actually NEW gets its own bottom banner on the map screen
-   * instead, which this row has no opinion about.
+   * this." What is actually NEW is a dot on the legend button and a count on
+   * this row (`newNoticeCount`).
    */
   noticeCount?: number
+  /**
+   * How many of them are new - touched in the last 72 hours and not yet
+   * silenced (lib/notices.ts). Said on the row since 2026-09-10, because the
+   * bottom banner that used to say it on the map screen folded into a dot on
+   * the legend button (Header.tsx, the room audit for #1374), and a dot needs
+   * a sentence somewhere: this row is where the door it points at is.
+   */
+  newNoticeCount?: number
   /** Opens the full list (chrome/NoticeList.tsx), rendered by the shell
    *  the same way `onOpenDownloads` is. */
   onOpenNotices?: () => void
@@ -415,6 +423,7 @@ export function Legend({
   hasDownload = false,
   downloadActivity = null,
   noticeCount = 0,
+  newNoticeCount = 0,
   onOpenNotices,
 }: LegendProps) {
   const [allTrails, setAllTrails] = useState(false)
@@ -735,6 +744,7 @@ export function Legend({
           {noticeCount === 1
             ? 'Read the 1 trail notice'
             : `Read all ${noticeCount} trail notices`}
+          {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
         </button>
       )}
 

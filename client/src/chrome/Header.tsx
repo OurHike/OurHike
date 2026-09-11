@@ -85,6 +85,25 @@ export interface HeaderProps {
    * two buttons exactly as before.
    */
   inView?: { count: number; onOpen: () => void }
+  /**
+   * Folded (#1374, the room audit of 2026-09-10): the plate keeps its eyebrow
+   * and position line and takes the strip off the screen - after the hiker's
+   * first pan or zoom, the moment they start using the map rather than
+   * reading about it - and a tap on the plate opens it again. MapScreen.tsx
+   * owns the state and folds on the phone only; here it is a class, a
+   * `.visually-hidden` wrapper that keeps the strip's role="status"
+   * announcing, and one transparent button over the plate.
+   */
+  folded?: boolean
+  onUnfold?: () => void
+  /**
+   * New trail notices (#687), as a dot on the legend button and one polite
+   * sentence for a screen reader - what the banner row at the foot of the
+   * main column said until 2026-09-10, without the 61px row (the room audit
+   * for #1374). The legend it opens carries the count on its notices row
+   * (Legend.tsx). `label` is the shell's sentence, naming the organization.
+   */
+  newNotices?: { count: number; label: string }
 }
 
 export function Header({
@@ -98,10 +117,13 @@ export function Header({
   onOpenLegend,
   onOpenSearch,
   inView,
+  folded = false,
+  onUnfold,
+  newNotices,
 }: HeaderProps) {
   return (
     <div className="map-header">
-      <header className="map-plate">
+      <header className={`map-plate${folded ? ' map-plate--folded' : ''}`}>
         <div className="map-plate__identity">
           {trailLogo !== undefined && (
             <img
@@ -118,10 +140,28 @@ export function Header({
             <p className="map-plate__position">{position}</p>
           </div>
         </div>
-        {strip}
+        <div className={folded ? 'visually-hidden' : undefined}>{strip}</div>
+        {folded && onUnfold !== undefined && (
+          <button type="button" className="map-plate__unfold" onClick={onUnfold}>
+            <span className="visually-hidden">Show the map&rsquo;s status</span>
+          </button>
+        )}
       </header>
 
       <div className="map-header__actions">
+        {/* The sentence behind the dot, for a screen reader. Rendered only
+            while there is news, exactly as the banner row it replaced was -
+            MapScreen.test.tsx pins that a followed walk's announcement is
+            the ONE live region on this screen, and a second standing region
+            would be a second thing that can interrupt. `polite` rather than
+            role="alert" or role="status", for the reason the banner gave:
+            the strip on the plate owns role="status" here, and "something
+            is new" is not "something changes what you do next". */}
+        {newNotices !== undefined && (
+          <p className="visually-hidden" aria-live="polite">
+            {newNotices.label}
+          </p>
+        )}
         {/* THE MAP TAB'S OWN DOOR TO A DIFFERENT HIKE (#1367). Every other
             screen had one - the sidebar on a desktop, Today's header, the
             Plan band, a Settings row - and this was the one that did not,
@@ -174,7 +214,14 @@ export function Header({
           className="map-header__button map-header__button--legend"
           onClick={onOpenLegend}
         >
-          <span className="visually-hidden">Legend</span>
+          <span className="visually-hidden">
+            {newNotices === undefined
+              ? 'Legend'
+              : `Legend, ${newNotices.count === 1 ? '1 new trail notice' : `${newNotices.count} new trail notices`}`}
+          </span>
+          {newNotices !== undefined && (
+            <span className="map-header__badge" aria-hidden="true" />
+          )}
           <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20">
             <path
               d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"

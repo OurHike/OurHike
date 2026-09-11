@@ -21,8 +21,10 @@ what lets a broken flow through a large, disciplined suite.
 
 **1. Entrance.** Every screen has at least one test that reaches it by a real,
 currently-shipped door — an actual tap sequence from boot, never a URL and never an
-injected navigator state — and asserts it is actually visible (`toBeVisible`, which reads
-real layout and CSS, not mere presence in the DOM).
+injected navigator state — and asserts it is actually visible. `toBeVisible` is the floor
+and not the ceiling: it means a non-empty box that is not `visibility: hidden`, which a
+sliver and a wholly covered element both satisfy. Where a screen's _size_ is part of what
+it promises, the Layout axis below is what asserts it.
 
 **2. Exit.** Every screen can be left. Where a move is guarded (the bail sheet — decision
 **D8**), the test drives every branch — `proceed` and `stay`, and each button behind them
@@ -43,7 +45,7 @@ tapped mid-save, has specified the happy path and called it the screen.
 
 ## The axes every flow is tested across
 
-A "state" here is not a vague adjective. These five axes are the ones this app actually
+A "state" here is not a vague adjective. These six axes are the ones this app actually
 varies along, each with a defect or a code branch behind it rather than a hypothetical.
 
 ### Mode — day, long, **and volunteer**
@@ -124,6 +126,58 @@ sentence, not just the number** — a card that silently swaps cached figures fo
 the defect, and the number alone cannot see it. Note that the sandbox and CI's dev server
 both reach _no_ graph, so the cached branch is the one a spec gets by default and the live
 branch needs the fixture #1387 tracks.
+
+### Layout — the map has room, and nothing is covering it
+
+**`toBeVisible()` does not mean visible.** It means the element has a non-empty box and is
+not `visibility: hidden`. A map squeezed to a sliver, or sitting whole underneath a sheet,
+passes it — which is exactly the failure this app keeps having, and the reason rule 1 above
+is necessary but nowhere near sufficient.
+
+Measured on the trail screen at 390×844 (2026-09-11, `client/e2e/support/layout.ts`):
+
+| state                 | the map's box            | how much of it a finger could land on |
+| --------------------- | ------------------------ | ------------------------------------- |
+| map tab, nothing open | 0.915 of viewport height | **88%**                               |
+| legend open           | 0.915                    | **28%**                               |
+| Today tab             | 0.915                    | **0%**                                |
+
+**The box is identical in all three.** No assertion on width, height or visibility can tell
+them apart. So the measurement is a grid of points over the map's own box, each asked
+`document.elementFromPoint` — "if a finger landed here, what would it hit?" — and counted as
+reach when the answer is the map. That is the hiker's question rather than the layout
+engine's, it needs no list of what might be covering the map, and it survives a box that
+lies.
+
+The rules, which are PATHWAY.md's **R2 · The map never leaves** finally given a number:
+
+- **A screen whose subject is the map asserts a reach floor**, not a box. `mapRoom.spec.ts`
+  holds the map tab to 0.80 against a measured 0.88 — the gap is the map's own controls,
+  which R8 puts there deliberately.
+- **An open sheet leaves the map a share and gives it back.** 0.20 against a measured 0.28
+  with the legend up, whose own `legend.css` says `max-height: 60%`. This is the floor a
+  sheet outgrowing its max-height breaks — the defect `preview-shots/legend.mjs`'s header
+  records having already hit once, where the sheet grew past that height after its contents
+  landed. **A sheet that will not close hides the map as completely as one that is too big**,
+  so the dismissal is asserted in the same test.
+- **Floors name their state, never the whole app.** A map covered by Today on a phone with
+  nothing being followed is R2 working; a rule that forbade it would assert the wrong thing
+  everywhere but the map tab. **But "Today has no map" is itself only one state:** the map
+  is on Today while a walk is being followed (F6 — the next-turn card sits over it), and on
+  a desktop always (`mapShownUnder` is `tab === 'map' || (isDesktop && tab === 'today')`).
+  Both need the floor, and the following one needs it most — that is the screen a hiker
+  reads while moving. Neither is asserted yet: following needs a resolved route the suite
+  cannot produce (#1387 — measured 2026-09-11, the saved card offers neither "Walk this"
+  nor "Edit the route" without one), and the desktop needs the project this suite has not
+  added. `mapRoom.spec.ts` carries the following case written out as a `test.skip`.
+- Both floors are `@unvalidated` as hiker-facing numbers. They are measurements of today's
+  layout, not findings about how much map somebody needs to navigate by — which nothing here
+  has established, and which field testing would settle.
+
+The same measurement is what any "is it displaying properly" question should reach for.
+Rendered size and occlusion are the two things a real browser knows and jsdom cannot, so
+they are the two things this layer is uniquely able to assert — and until #1386 it was
+asserting neither.
 
 ### Hike profile — an empty install is not the app
 

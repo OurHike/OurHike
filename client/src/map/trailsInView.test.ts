@@ -122,6 +122,63 @@ describe('trailsInView', () => {
     expect(trails[0].anchor).not.toBeNull()
   })
 
+  it('names a marked trail off the registry when the sketch carries no name (2026-09-11)', () => {
+    // THE BUCKET'S OWN SHAPE, not a hypothetical: the published
+    // network_overview.geojson carries `source`, `blaze_color` and
+    // `trail_status` and nothing else - 38 features, none named, read live
+    // 2026-09-11 - because the publish that would refresh it is held back
+    // with the network file it sketches. The maintainer's frame of that day
+    // is the A.T. wearing its pill over the Hudson and the Long Path in aqua
+    // beside it wearing nothing. The registry knows the name and the mark;
+    // map/trailBadges.ts's registryNameForSource is why taking the name from
+    // there says nothing the mark did not.
+    const map = mapWith({
+      [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID]: [
+        line(
+          null,
+          'nynjtc_long_path',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'Aqua',
+        ),
+      ],
+    })
+
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails.map((t) => t.name)).toEqual(['Long Path'])
+    expect(trails[0].throughRoute).toBe(true)
+    expect(trails[0].anchor).not.toBeNull()
+  })
+
+  it('leaves the unnamed haze unnamed - only a marked source gets the fallback', () => {
+    // The forty fine lines of a state park are one folded feature per
+    // (source, blaze, status) with no name, and they must stay off the list:
+    // the fallback fires for the two sources BADGE_MARK_BY_SOURCE declares,
+    // and a park's feed is not one of them. This is the half of the change
+    // that keeps "Trails in view" a list of trails rather than of sources.
+    const map = mapWith({
+      [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID]: [
+        line(null, 'oprhp_trails', [[-74.06, 41.21]], 'Red'),
+        line(null, 'dec_hiking_trails', [[-74.05, 41.22]], 'Blue'),
+      ],
+    })
+
+    expect(trailsInView(map as unknown as MapLibreMap)).toEqual([])
+  })
+
+  it('lets the data’s own name beat the registry’s', () => {
+    // ATC's feed says "Appalachian National Scenic Trail"; the registry says
+    // "Appalachian Trail". The feed is what a hiker reads on the badge, and
+    // the fallback must never quietly rename a trail that arrived named.
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+
+    expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
+      'Appalachian National Scenic Trail',
+    ])
+  })
+
   it('puts through-routes first, then the chosen system, then the rest by name', () => {
     const map = mapWith({
       [BLAZE_LAYER_ID]: [line('Zebra Spur', 'side_trails', [[-74.05, 41.22]]), AT],

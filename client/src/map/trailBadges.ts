@@ -128,6 +128,47 @@ export function trailIdForSource(source: string | null | undefined): string | nu
   return BADGE_MARK_BY_SOURCE[source] ?? null
 }
 
+/**
+ * The name the registry gives a marked source, or null - what a badge prints
+ * when the DATA carries no name (#1374, the maintainer's frame of
+ * 2026-09-11).
+ *
+ * THE SKETCH BELOW THE SEAM IS THE CASE THIS EXISTS FOR. Under
+ * POI_PIN_MIN_ZOOM the other organizations' trails draw from one coarse file
+ * (lib/config.ts's NETWORK_OVERVIEW_KEY), and the copy in the bucket carries
+ * `source`, `blaze_color` and `trail_status` and nothing else - 38 features,
+ * none of them named, read live 2026-09-11. export_nearby_trails.py's
+ * write_overview has named its qualifying trails since #1307, and its test
+ * pins that; the artifact is simply older than the exporter, because the
+ * publish that would refresh it is held back with the network file it
+ * sketches (two New Jersey sources carry `reaches_hikers: false` since
+ * #1293). So the Long Path drew below the seam with no name, and
+ * map/trailsInView.ts's `if (name === null) continue` left it unbadged and
+ * off the "Trails in view" list, while the A.T. beside it kept both - the
+ * A.T. draws from its own file, which is named at every zoom.
+ *
+ * NAMING IT FROM THE REGISTRY IS THE SAME CLAIM THE MARK ALREADY MAKES. The
+ * badge's mark is keyed off `source` through BADGE_MARK_BY_SOURCE above,
+ * because nothing publishes a `trail_id` (this file's header). A source in
+ * that table has already been declared to BE one registry trail; taking that
+ * trail's name from lib/trails.ts when the feature carries none says nothing
+ * the mark did not. It fires for exactly the two sources in that table, so no
+ * unnamed haze gains a name: the forty fine lines of a state park have no
+ * entry and stay unnamed, which is what keeps them out of the list.
+ *
+ * THE DATA'S NAME ALWAYS WINS where there is one, which is why this is a
+ * fallback and not a lookup. The registry calls the A.T. "Appalachian Trail"
+ * and ATC's feed calls it "Appalachian National Scenic Trail"; the feed is
+ * what a hiker reads on the badge today and that does not change. In
+ * practice this never fires for `centerline` at all - the A.T.'s own file
+ * carries names at every zoom - and it is written to be correct if it did.
+ */
+export function registryNameForSource(source: string | null | undefined): string | null {
+  const trail =
+    source === null || source === undefined ? undefined : BADGE_MARK_BY_SOURCE[source]
+  return trail === undefined ? null : (TRAILS[trail]?.name ?? null)
+}
+
 export function trailMarkImageId(source: string | null | undefined): string | null {
   const trail =
     source === null || source === undefined ? undefined : BADGE_MARK_BY_SOURCE[source]

@@ -83,6 +83,7 @@ import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
 import {
+  registryNameForSource,
   BADGE_ANCHOR_PROPERTY,
   BADGE_CHIP_PROPERTY,
   BADGE_FIT_PROPERTY,
@@ -578,9 +579,14 @@ export function trailsInView(
 
   for (const feature of features) {
     const properties = (feature.properties ?? {}) as Record<string, unknown>
-    const name = stringProp(properties, 'name')
-    if (name === null) continue
     const source = stringProp(properties, 'source') ?? ''
+    // The data's name, or the registry's for a source the badge already
+    // marks - which is what puts the Long Path's pill back below the seam,
+    // where the published sketch carries no names at all
+    // (map/trailBadges.ts's registryNameForSource says why, and why this
+    // cannot name the unnamed haze around it).
+    const name = stringProp(properties, 'name') ?? registryNameForSource(source)
+    if (name === null) continue
     const throughRoute = BADGE_SOURCES.includes(source)
     const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)

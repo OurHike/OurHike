@@ -54,6 +54,22 @@ import {
  */
 const SKETCHES_BOUND_MS = 90_000
 
+/**
+ * AND THE TEST HAS TO BE LONGER THAN THE WAIT INSIDE IT.
+ *
+ * playwright.config.ts gives the data project a 90-second per-test timeout,
+ * which is exactly `SKETCHES_BOUND_MS` — so a wait that actually needed its
+ * budget could never spend it: the test died first, and the message read
+ * "Test timeout of 90000ms exceeded" rather than naming the legend it was
+ * waiting on. Measured here 2026-09-11, and the same trap
+ * e2e/data/longSpine.spec.ts had already paid for once with an inner wait and
+ * a test budget both set to 90s.
+ *
+ * 180s leaves the sketch wait its full 90 and the sweep the other 90, which is
+ * ample: the slowest test in this file takes about 25s on an idle machine.
+ */
+test.describe.configure({ timeout: 180_000 })
+
 /** On the map tab, past first run, at whatever camera the caller seeded. */
 async function openMap(page: Page): Promise<void> {
   await seedPreferences(page)
@@ -587,15 +603,6 @@ test.describe('what the field has said about a place', () => {
 })
 
 test.describe('who looks after this stretch', () => {
-  // THE SWEEP IS THE COST, and 30 seconds is not enough for it. Measured
-  // 2026-09-11 against release 2026-09-10: one of these tests takes 25.5s on
-  // an idle machine and the sweep is bounded at 247 taps, so a slower run or a
-  // release that moves the A.T. further down the frame walks straight into the
-  // default timeout — and "locator timed out" would then read as a broken tap
-  // rather than as a test that ran out of budget, which is the exact confusion
-  // e2e/data/longSpine.spec.ts already paid for once.
-  test.describe.configure({ timeout: 180_000 })
-
   /**
    * Below the seam, and sweep for the club sheet rather than the line sheet.
    *

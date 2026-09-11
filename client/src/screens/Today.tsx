@@ -66,6 +66,7 @@ import type { PassedPlace } from './Volunteer'
 import type { DayHike } from '../lib/dayHikes'
 import type { LonLat } from '../lib/trailGraph'
 import {
+  availableFacets,
   shelfPicks,
   timeBucketLabel,
   type HikeFacets,
@@ -801,6 +802,35 @@ export function Today({
   const picks = useMemo(() => shelfPicks(suggestedHikes, near), [suggestedHikes, near])
   const morePublished = suggestedHikes.length - picks.length
 
+  /**
+   * Which of the "Have less time?" chips have something to open.
+   *
+   * THE RULE IS THE FINDER'S AND THE CHIPS WERE NOT KEEPING IT.
+   * lib/suggestedHikes.ts states it for the whole feature - "a facet no route
+   * on the phone can answer (a time bucket when nothing can be priced…) is
+   * not offered" - and `availableFacets` is named there as "the one place
+   * that is decided". screens/FindHike.tsx asks it; this shelf did not, and
+   * rendered its two time chips unconditionally.
+   *
+   * MEASURED, 2026-09-11, against release 2026-09-10: not one of the nine
+   * published routes carries a measured climb, so `hikeEstimate` prices none
+   * of them, so `availableFacets` withholds `time` - and the finder correctly
+   * shows no Time door. Tapping "Under 2 h" on this shelf opened the finder
+   * on "0 hikes", every time, for every hiker. Three taps to a dead end that
+   * the screen one door along already knew was dead.
+   *
+   * Asking the same function is the fix rather than a condition of its own,
+   * because two answers to "can this be filtered" is how the pair drifted
+   * apart in the first place.
+   */
+  const offeredFacets = useMemo(
+    () => availableFacets(suggestedHikes, pace),
+    [suggestedHikes, pace],
+  )
+  const offersTime = offeredFacets.includes('time')
+  const offersDifficulty = offeredFacets.includes('difficulty')
+  const offersAnyChip = offersTime || offersDifficulty
+
   // SUGGESTED HIKES (#1284): routes somebody published, near the hiker, and
   // the way to the rest of them. The app surfaces them and names who wrote
   // each; it never rates, ranks or scores a route itself, and the note under
@@ -854,34 +884,40 @@ export function Today({
             would promise one. Under a rule of its own, the same label the
             shelf wears, so the column reads as sections rather than a run
             of unlike rows (the maintainer's read of it, 2026-09-10). */}
-        {onFindHike !== undefined && mode === 'day' && (
+        {onFindHike !== undefined && mode === 'day' && offersAnyChip && (
           <div className="today__rule">
             <span className="today__rule-label">Have less time?</span>
           </div>
         )}
-        {onFindHike !== undefined && mode === 'day' && (
+        {onFindHike !== undefined && mode === 'day' && offersAnyChip && (
           <div className="today__have-less" role="group" aria-label="Have less time?">
-            <button
-              type="button"
-              className="today__have-less-chip"
-              onClick={() => onFindHike({ time: 'under2' })}
-            >
-              {timeBucketLabel('under2')}
-            </button>
-            <button
-              type="button"
-              className="today__have-less-chip"
-              onClick={() => onFindHike({ time: '2to4' })}
-            >
-              {timeBucketLabel('2to4')}
-            </button>
-            <button
-              type="button"
-              className="today__have-less-chip"
-              onClick={() => onFindHike({ difficulty: ['easy'] })}
-            >
-              Easy only
-            </button>
+            {offersTime && (
+              <button
+                type="button"
+                className="today__have-less-chip"
+                onClick={() => onFindHike({ time: 'under2' })}
+              >
+                {timeBucketLabel('under2')}
+              </button>
+            )}
+            {offersTime && (
+              <button
+                type="button"
+                className="today__have-less-chip"
+                onClick={() => onFindHike({ time: '2to4' })}
+              >
+                {timeBucketLabel('2to4')}
+              </button>
+            )}
+            {offersDifficulty && (
+              <button
+                type="button"
+                className="today__have-less-chip"
+                onClick={() => onFindHike({ difficulty: ['easy'] })}
+              >
+                Easy only
+              </button>
+            )}
           </div>
         )}
       </>

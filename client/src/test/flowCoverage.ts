@@ -212,10 +212,22 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
   },
   'screens/StretchCard.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/HikeDetail.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/FindHike.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'chrome/FacetSheet.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'chrome/SuggestedHikeCard.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/HikeDetail.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/data/findHike.spec.ts' },
+  },
+  'screens/FindHike.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/data/findHike.spec.ts' },
+  },
+  'chrome/FacetSheet.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/data/findHike.spec.ts' },
+  },
+  'chrome/SuggestedHikeCard.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/data/findHike.spec.ts' },
+  },
   'chrome/DayHikesHere.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
 
   // ---- F9 reporting -------------------------------------------------------

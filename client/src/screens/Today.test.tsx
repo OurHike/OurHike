@@ -893,11 +893,20 @@ describe('Today before anything is loaded (#1373, F2)', () => {
     expect(screen.queryByRole('group', { name: 'Find or plan a hike' })).toBeNull()
   })
 
+  /** The same walk with a climb somebody measured, which is what makes it
+   *  priceable and therefore what makes a time chip honest. */
+  const pricedWalk = (name: string) => ({
+    ...walk(name),
+    climb: { gainFt: 900, lossFt: 900 },
+  })
+
   it('opens the finder with the chip’s facet already on, in day mode only', async () => {
     const onFindHike = vi.fn()
     const user = userEvent.setup()
     const { rerender } = render(
-      <Today {...props({ mode: 'day', suggestedHikes: [walk('A')], onFindHike })} />,
+      <Today
+        {...props({ mode: 'day', suggestedHikes: [pricedWalk('A')], onFindHike })}
+      />,
     )
 
     await user.click(screen.getByRole('button', { name: 'Under 2 hours' }))
@@ -906,9 +915,48 @@ describe('Today before anything is loaded (#1373, F2)', () => {
     expect(onFindHike).toHaveBeenLastCalledWith({ difficulty: ['easy'] })
 
     rerender(
-      <Today {...props({ mode: 'long', suggestedHikes: [walk('A')], onFindHike })} />,
+      <Today
+        {...props({ mode: 'long', suggestedHikes: [pricedWalk('A')], onFindHike })}
+      />,
     )
     expect(screen.queryByRole('group', { name: 'Have less time?' })).toBeNull()
+  })
+
+  it('withholds a time chip when no published route can be priced, and keeps the difficulty one', () => {
+    // THE DEAD CONTROL THIS CLOSES. lib/suggestedHikes.ts makes the rule for
+    // the whole feature - a facet no route on the phone can answer is not
+    // offered - and `availableFacets` is "the one place that is decided".
+    // screens/FindHike.tsx asked it; this shelf rendered its two time chips
+    // unconditionally, so on a release where nothing carries a measured climb
+    // (which is every release so far - checked 2026-09-11 against 2026-09-10,
+    // where none of the nine published routes has one) "Under 2 hours" opened
+    // the finder on "0 hikes" for every hiker who tapped it.
+    const onFindHike = vi.fn()
+    render(<Today {...props({ mode: 'day', suggestedHikes: [walk('A')], onFindHike })} />)
+
+    expect(screen.queryByRole('button', { name: 'Under 2 hours' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '2 \u2013 4 hours' })).toBeNull()
+    // And the one chip that still has something behind it stays, because
+    // withholding the row wholesale would be the opposite mistake.
+    expect(screen.getByRole('button', { name: 'Easy only' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Have less time?' })).toBeInTheDocument()
+  })
+
+  it('drops the whole row when neither a time nor a difficulty chip can be honest', () => {
+    const onFindHike = vi.fn()
+    const { climb: _climb, difficulty: _difficulty, ...unrated } = pricedWalk('A')
+    render(
+      <Today
+        {...props({
+          mode: 'day',
+          suggestedHikes: [{ ...unrated, difficulty: null }],
+          onFindHike,
+        })}
+      />,
+    )
+
+    expect(screen.queryByRole('group', { name: 'Have less time?' })).toBeNull()
+    expect(screen.queryByText('Have less time?')).toBeNull()
   })
 })
 

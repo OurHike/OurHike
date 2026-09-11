@@ -80,3 +80,26 @@ export async function seedFixAtMile(
   await page.context().grantPermissions(['geolocation'])
   await page.context().setGeolocation({ latitude: latOfMile(mile), longitude })
 }
+
+/**
+ * A second page in the same browser context, booted from nothing.
+ *
+ * THE RELOAD TRAP THIS EXISTS FOR. `writeIDBEntries` registers its seed
+ * through `page.addInitScript`, which Playwright re-runs on every future
+ * navigation of that page - and each entry is a whole-record `put`, not a
+ * merge. So `page.reload()` rewrites the seeded preferences object over
+ * whatever the app has saved since, and a spec asserting that a choice
+ * survived a restart would be asserting that the seed survived instead: it
+ * would fail with the feature working, which is the worst kind of test.
+ *
+ * A sibling page shares the context's origin and therefore its IndexedDB,
+ * and carries none of this page's init scripts - so it is the app booting
+ * cold onto the store as the hiker left it, which is the thing a "survives a
+ * restart" claim is actually about. The caller closes it, or the context
+ * does at the end of the test.
+ */
+export async function bootFreshPage(page: Page): Promise<Page> {
+  const second = await page.context().newPage()
+  await second.goto('/')
+  return second
+}

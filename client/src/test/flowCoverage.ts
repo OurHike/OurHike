@@ -150,9 +150,18 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
 
   // ---- F8 Plan ------------------------------------------------------------
   'screens/Plan.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/PlanHome.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/WhatsLeft.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/HikeZoom.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/PlanHome.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },
+  },
+  'screens/WhatsLeft.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },
+  },
+  'screens/HikeZoom.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },
+  },
   'screens/DayHikeList.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/TripList.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/FinishedHike.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
@@ -165,8 +174,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/DayHikesHere.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
 
   // ---- F9 reporting -------------------------------------------------------
-  'screens/YourReports.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
-  'screens/YourWork.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
+  'screens/YourReports.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
+  'screens/YourWork.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
   'screens/ReportForm.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
   'screens/ClosureForm.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
   'reporting/ReportWindow.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
@@ -201,7 +216,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/ElevationChart.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
 
   // ---- F14 volunteering ---------------------------------------------------
-  'screens/Volunteer.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'screens/Volunteer.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
   'screens/VolunteerHours.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'screens/VolunteerImpact.tsx': {
     step: 'F14 volunteering',
@@ -213,18 +231,36 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'screens/GroupScreen.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
 
   // ---- F13 More, settings and identity -----------------------------------
-  'screens/More.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/More.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
   'screens/Settings.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/AboutBuild.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/AboutBuild.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
   'screens/Registry.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/GpsTrace.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/GpsTrace.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
   'screens/PaceSettings.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/SignInPrompt.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/ThemePicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/UnitPicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/MapStylePicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/ThemePicker.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
+  'screens/UnitPicker.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
+  'screens/MapStylePicker.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
   'screens/MapDetailPicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/BackgroundPicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/SourcesSection.tsx': { step: 'F13 More', flow: { status: 'planned' } },

@@ -467,6 +467,7 @@ import { loadTakenTrail, saveTakenTrail } from './lib/takenTrail'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 import { enqueueVolunteerHours } from './lib/outbox'
 import { fetchMyVolunteerHours } from './lib/api'
+import { queuedHoursSummary } from './lib/volunteerHours'
 import type { VolunteerHoursDraft, VolunteerHoursSummary } from './lib/volunteerHours'
 import type { FieldNoteContext, ReportAnchor } from './chrome/FieldNoteSection'
 import { PressPlate } from './chrome/PressPlate'
@@ -7774,6 +7775,51 @@ function App() {
   const [myHours, setMyHours] = useState<VolunteerHoursSummary[] | null>(null)
   const [localHours, setLocalHours] = useState<readonly VolunteerHoursSummary[]>([])
 
+  /**
+   * The days this phone has logged and not yet sent, read back at boot.
+   *
+   * WITHOUT THIS THE ECHO LASTED AS LONG AS THE TAB. `handleLogHours` below
+   * writes the day to the outbox and echoes it into `localHours`, and the
+   * echo was React state alone - so a volunteer who logged a day, closed the
+   * app and came back found "Your hours" empty and the impact panel gone,
+   * while the reports row on the same screen still said "1 waiting to send".
+   * Found 2026-09-11 by e2e/identityRooms.spec.ts booting a second page onto
+   * the same store, which is the only way that state is visible at all.
+   *
+   * The section promises the opposite in its own copy - a logged day "is
+   * claimed in your name until a club confirms it - and it stays yours either
+   * way" - so this is a promise being kept rather than a feature being added.
+   * Nothing was ever lost: the outbox had it, and no screen asked.
+   *
+   * Once, at mount, and only what the queue actually holds. A day that has
+   * been sent is no longer queued and arrives from the backend instead, under
+   * the same id, which is the case `hoursRecords` below already resolves.
+   */
+  useEffect(() => {
+    let cancelled = false
+    void listQueued().then(
+      (items) => {
+        if (cancelled) return
+        const queued = items
+          .filter((item) => item.volunteerHours !== undefined)
+          .map((item) =>
+            queuedHoursSummary({
+              id: item.id,
+              authoredAt: item.authoredAt,
+              volunteerHours: item.volunteerHours as VolunteerHoursDraft,
+            }),
+          )
+        if (queued.length > 0) setLocalHours(queued)
+      },
+      // An unreadable store is the ordinary offline-first condition and not
+      // this screen's to report: the logbook shows what it has.
+      () => undefined,
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   useEffect(() => {
     // "Open" means the volunteer surface itself since #1054, not a tab: the
     // fetch-when-looked-at rule is the point, and where the looking happens
@@ -7816,22 +7862,15 @@ function App() {
     async (draft: VolunteerHoursDraft) => {
       const item = await enqueueVolunteerHours(draft)
 
+      // THE SAME MAPPING THE BOOT RESTORE USES (lib/volunteerHours.ts), not a
+      // second copy of it: two answers to "what does a queued day look like"
+      // is how the echo and the logbook would drift apart.
       setLocalHours((current) => [
-        {
+        queuedHoursSummary({
           id: item.id,
-          club_id: draft.club_id ?? null,
-          worked_on: draft.worked_on,
-          hours: draft.hours,
-          work_project_id: draft.work_project_id ?? null,
-          activity: draft.activity,
-          note: draft.note ?? null,
-          mile: draft.mile ?? null,
-          lat: draft.lat ?? null,
-          lon: draft.lon ?? null,
-          state: 'claimed',
-          confirmed_at: null,
-          recorded_at: item.authoredAt,
-        },
+          authoredAt: item.authoredAt,
+          volunteerHours: draft,
+        }),
         ...current,
       ])
 

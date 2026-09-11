@@ -295,7 +295,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'chrome/RemovedPoiCard.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/PoiShareSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/PlaceSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/PlaceSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
   'chrome/PressPlate.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
@@ -322,7 +325,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'screens/VolunteerImpact.tsx': {
     step: 'F14 volunteering',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
   },
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
@@ -357,7 +360,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/SignInPrompt.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/SignInPrompt.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
+  },
   'screens/ThemePicker.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },

@@ -106,6 +106,37 @@ release: `chrome/ElevationChart.tsx` and `chrome/RouteHover.tsx`, neither of whi
 renders at all, plus the planning column's own room — the R2 measurement in the Layout axis
 below, which needed a routed draft before it could be taken.
 
+Four more went in on 2026-09-11 after a count rather than a hunch: **`grep -c isDesktop`
+across `src/` returns 40 branch sites in five components** (`App.tsx`, `chrome/MapScreen.tsx`,
+`screens/Plan.tsx`, `screens/Downloads.tsx`, and `lib/useDesktop.ts` itself), and the first
+pass of these specs left several with no assertion at all. The four are the ones whose
+failure is INVISIBLE — nothing crashes, nothing misaligns, and a screenshot looks right:
+
+- **the plate does not fold on a pan**, where the phone trades its status strip for an
+  eyebrow (the room audit of 2026-09-10). The gesture sets the latch at both widths; only
+  the render reads `!isDesktop`, so the wrong branch quietly costs a laptop its strip;
+- **the figures have one home** — `figures={!isDesktop}` withholds them from the builder bar
+  because the column prints them. Both are mounted on a laptop, inches apart, so the wrong
+  branch prints the same mileage twice rather than breaking anything. Measured: the
+  distance appears exactly once on the whole screen;
+- **In view is a face of the rail, not a pull-up over the map.** The hermetic half can pin
+  that the rail HAS both faces; it cannot pin that the phone's door is ABSENT, because with
+  nothing downloaded neither width draws one and the absence passes for the wrong reason.
+  Measured against release 2026-09-10: the phone gets one button reading `IN VIEW · 3` and
+  no tab, the laptop the tab and no button;
+- **the C5 defect**, which only a laptop can have: a row tapped in Today's journal opens the
+  card and leaves the tab — and therefore the column — where it was. Until #1373 every "see
+  it on the map" door switched tabs at every width, which on a laptop unmounted the journal
+  the row was tapped in. A regression is silent in a screenshot, since the card is open and
+  the map is behind it either way; the assertion that matters is that the column is still
+  there.
+
+**Not every one of the 40 is asserted, and this does not claim otherwise.** The one known
+gap worth naming is `hikeWindowHidesMap` in `App.tsx` — a hike window hides the map on a
+phone and does not on a laptop, "which is the ordinary desktop case for placing a point".
+No spec drives it. Nobody has audited the other branch sites one by one; the four above were
+picked by reading the fork, not by a coverage tool.
+
 `App.desktopSpine.test.tsx` and `desktopLayout.test.ts` still hold the desktop layout at the
 rendered layer, which is the cheaper place for the arithmetic. The division is the one this
 document draws everywhere: those two prove the numbers, these two prove *findable*.

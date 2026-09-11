@@ -23,7 +23,13 @@ import { test, expect, type Page } from '@playwright/test'
 // Untyped on purpose: a shot fixture is plain JavaScript, and its shape is the
 // app's contract with IndexedDB rather than a type this spec restates.
 import { seedLongHike } from '../../preview-shots/fixtures/longHike.mjs'
-import { seedPreferences, seedHikerMode, seedCamera } from '../support/seed'
+import {
+  seedPreferences,
+  seedHikerMode,
+  seedCamera,
+  ON_THE_TRAIL,
+  ABOVE_THE_SEAM_ZOOM,
+} from '../support/seed'
 import { expectMapReach } from '../support/layout'
 import {
   editTheSavedRoute,
@@ -316,5 +322,136 @@ test.describe('the planning column beside the map', { tag: '@desktop' }, () => {
     // And the map is still a region of its own beside it, rather than
     // something the column has taken over.
     await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+  })
+})
+
+test.describe('what the column takes off the map', { tag: '@desktop' }, () => {
+  test('states: the figures have one home here — the column prints them and the bar does not', async ({
+    page,
+  }) => {
+    // `figures={!isDesktop}` in App.tsx: "The column prints the figures on a
+    // laptop (DayHikePanel's stats); the bar prints them only where it is the
+    // one home, over the map."
+    //
+    // WHY THIS IS WORTH A TEST RATHER THAN A COMMENT. The bar and the column
+    // are both mounted on a laptop - the bar sits at the column's foot - so
+    // the wrong branch here does not crash, does not misalign anything, and
+    // does not look wrong in a screenshot. It prints the same mileage twice,
+    // a few inches apart. That is the failure this file already guards on the
+    // hover plate ("nothing is derived on the plate"), and it is the same
+    // rule: a figure a hiker reads twice can disagree with itself the day one
+    // of the two is computed differently.
+    await seedCamera(page, SAVED_WALK_CENTER, SAVED_WALK_ZOOM)
+    await editTheSavedRoute(page)
+
+    const column = page.getByRole('region', { name: 'Your route' })
+    const distance = /\d[\d.,]*\s*(?:mi|km)\b/.exec(await column.innerText())?.[0]
+    expect(distance, 'no distance in the column to count').toBeTruthy()
+
+    // ONCE ON THE WHOLE SCREEN. Measured 2026-09-11 against release
+    // 2026-09-10: one occurrence, in the column's DISTANCE row. Asserted over
+    // the page rather than over the bar, because the claim is "one home" and
+    // a second home somewhere this test did not think to look would be the
+    // same defect.
+    await expect(page.getByText(distance as string, { exact: false })).toHaveCount(1)
+
+    // The bar is mounted and is doing its own job - the prompt, the shape
+    // control, the foot - so the assertion above is about what it withholds,
+    // not about it being absent.
+    const bar = page.locator('.day-hike-bar')
+    await expect(bar).toHaveCount(1)
+    await expect(bar).toContainText('Use this route')
+  })
+
+  test('states: In view is a face of the rail here, not a pull-up over the map', async ({
+    page,
+  }) => {
+    // `inView={pointsShown.length > 0 && !buildingDayHike && !isDesktop}` in
+    // chrome/MapScreen.tsx. The phone raises a door over the map's lower
+    // third; the laptop already has a column, so the same list is its second
+    // face and a pull-up would be a sheet over a map that never needed one.
+    //
+    // The hermetic half of this suite pins that the rail HAS both faces. It
+    // cannot pin that the phone's door is absent, because with nothing
+    // downloaded there are no points and neither width draws a door - the
+    // absence would pass for the wrong reason. Measured here against release
+    // 2026-09-10 at this camera: the phone gets one button reading
+    // "IN VIEW · 3" and no tab; the laptop gets the tab and no button.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await seedCamera(page, ON_THE_TRAIL, ABOVE_THE_SEAM_ZOOM)
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible({
+      timeout: NETWORK_BOUND_MS,
+    })
+
+    // The face exists, which is what makes the absence below a fork rather
+    // than a feature nobody built.
+    const face = page.getByRole('tab', { name: /In view/i })
+    await expect(face).toHaveCount(1, { timeout: NETWORK_BOUND_MS })
+
+    // And no door over the map.
+    await expect(page.getByRole('button', { name: /In view/i })).toHaveCount(0)
+  })
+})
+
+/**
+ * A made-up point on public trail geometry - Bear Mountain's summit, which the
+ * A.T. crosses - for a fictional hiker. The same fixture
+ * preview-shots/today-desktop.mjs uses, and for the same reason: the journal
+ * lists what a hiker will meet FROM WHERE THEY STAND, so there is no journal
+ * without a fix. Nobody's real location is in this suite.
+ */
+const JOURNAL_FIX = { longitude: -73.9888, latitude: 41.3125 }
+
+test.describe('a row tapped in the journal', { tag: '@desktop' }, () => {
+  test('states: the card opens over the map and the column that opened it stays', async ({
+    page,
+  }) => {
+    // THE C5 DEFECT, WHICH ONLY A LAPTOP CAN HAVE. Until #1373 every "see it
+    // on the map" door switched to the Map tab at every width. On a phone that
+    // is right - the map is another screen. On a laptop it unmounted the
+    // journal the row was tapped in: the card opened and the column that
+    // opened it was gone, so the hiker could not tap the next row.
+    //
+    // App.tsx's fix is one rule read by every such door rather than a guard on
+    // the one where it was noticed: `showMap` is
+    // `if (!(isDesktop && activeTab === 'today')) setActiveTab('map')`. The
+    // condition is the TAB, not the caller, "because it is the tab that says
+    // whether the map is visible".
+    //
+    // A regression here is silent in a screenshot - the card is open and the
+    // map is behind it either way - and shows up only as the column being
+    // gone. So the assertion that matters is the last one.
+    await page.context().grantPermissions(['geolocation'])
+    await page.context().setGeolocation(JOURNAL_FIX)
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await page.goto('/')
+
+    await page.getByRole('tab', { name: 'Today' }).click()
+    await expect(page.getByRole('region', { name: /trail map/i })).toBeVisible({
+      timeout: NETWORK_BOUND_MS,
+    })
+    const journal = page.locator('.map-screen__journal .today')
+    await expect(journal).toBeVisible({ timeout: NETWORK_BOUND_MS })
+
+    // Measured 2026-09-11 against release 2026-09-10: seven rows within reach
+    // of this point. Asserted as "at least one" rather than seven, because the
+    // count is the release's and the claim is about what a tap does.
+    const row = page.locator('.map-screen__journal .poi-row--opens').first()
+    await expect(row).toBeVisible({ timeout: NETWORK_BOUND_MS })
+    await row.click()
+
+    await expect(page.getByRole('dialog', { name: 'Waypoint' })).toBeVisible()
+
+    // THE TAB DID NOT MOVE, which is the rule, and...
+    await expect(page.getByRole('tab', { name: 'Today', selected: true })).toBeVisible()
+    // ...the column is still there, which is what the rule is FOR.
+    await expect(journal).toBeVisible()
+    await expect(
+      page.locator('.map-screen__journal .poi-row--opens').first(),
+    ).toBeVisible()
   })
 })

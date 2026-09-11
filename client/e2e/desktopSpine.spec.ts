@@ -373,4 +373,56 @@ test.describe('the laptop layout', { tag: '@desktop' }, () => {
     await expect(page.getByRole('region', { name: 'Trail map' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Start on the map' })).toBeVisible()
   })
+
+  test('states: a pan leaves the plate whole here, where a phone folds it away for room', async ({
+    page,
+  }) => {
+    // The plate folds on a gesture pan and hides its status strip - the room
+    // audit of 2026-09-10, which bought back a phone's vertical room by
+    // trading the strip for an eyebrow the hiker taps to get it back.
+    //
+    // A laptop pays nothing for that room and so does not make the trade:
+    // `folded={plateFolded && !isDesktop}` in chrome/MapScreen.tsx. The state
+    // still flips - the gesture sets it at both widths - and only the render
+    // reads it, which is exactly the kind of fork a stylesheet cannot fake
+    // and a phone-only suite cannot see.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'day')
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+
+    const region = page.getByRole('region', { name: 'Trail map' })
+    await expect(region).toBeVisible()
+    const box = await region.boundingBox()
+    if (box === null) throw new Error('the map region has no box, so it never mounted')
+
+    // A REAL GESTURE, not a camera call: `fromGesture` is what sets the latch,
+    // so a programmatic move would leave the plate unfolded at both widths and
+    // the test would pass without exercising anything.
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(box.x + box.width / 2 - 140, box.y + box.height / 2 - 90, {
+      steps: 14,
+    })
+    await page.mouse.up()
+
+    // The strip is what the fold costs, so the strip is what this asserts -
+    // by its text rather than by the class that hides it, because
+    // `visually-hidden` is an implementation of "gone" and the claim is about
+    // what a hiker can still read.
+    //
+    // Lower case on purpose: the plate SHOWS "NO TRAIL TAKEN" because a
+    // stylesheet upper-cases it, and `innerText` reports the transform while
+    // `toContainText` reads the DOM. Asserting what a probe printed would pin
+    // a text-transform rather than the app's words.
+    const plate = page.locator('.map-plate')
+    await expect(plate).toContainText('No trail taken')
+    await expect(plate).toContainText('No GPS fix')
+    await expect(plate).not.toHaveClass(/map-plate--folded/)
+
+    // And no door back, because nothing went away. A phone grows one here.
+    await expect(page.getByRole('button', { name: /Show the rest|Unfold/i })).toHaveCount(
+      0,
+    )
+  })
 })

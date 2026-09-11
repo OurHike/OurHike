@@ -252,13 +252,11 @@ test.describe('a place that has left the map', () => {
     // waypoint set — `placeLabelFor` falls back to a retired place's last
     // known name before it falls back to "A place not on this map". So the
     // note does not become anonymous the day its subject is retired.
-    const row = page
-      .locator('button')
-      .filter({
-        hasText: new RegExp(
-          retired.name.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-        ),
-      })
+    const row = page.locator('button').filter({
+      hasText: new RegExp(
+        retired.name.slice(0, 20).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      ),
+    })
     await expect(row.first()).toBeVisible({ timeout: 60_000 })
     await row.first().click()
 

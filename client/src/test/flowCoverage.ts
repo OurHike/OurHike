@@ -247,7 +247,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  'screens/Settings.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/Settings.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
   'screens/AboutBuild.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
@@ -257,7 +260,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  'screens/PaceSettings.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/PaceSettings.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'screens/SignInPrompt.tsx': { step: 'F13 More', flow: { status: 'planned' } },
@@ -273,19 +279,53 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  'screens/MapDetailPicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'chrome/BackgroundPicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'chrome/SourcesSection.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'chrome/DownloadsLink.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/MapDetailPicker.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
+  // COVERED IN THEIR ABSENT STATE, WHICH IS THE ONLY ONE THIS SUITE CAN
+  // REACH - and is a real assertion about the surface rather than a pass
+  // through it, so `covered` is the honest status. Both render null on the
+  // phone the flow suite drives, each for a stated reason: the background
+  // picker because #855 withdrew the raster archive and "a segmented pair
+  // with one segment left in it is not a choice", the sources section
+  // because an empty steward list gets nothing rather than an empty heading.
+  // The present halves - two backgrounds to choose between, one card per
+  // organization with its licence verbatim - need published data this suite
+  // deliberately does not reach (playwright.config.ts), and stay unwritten.
+  'chrome/BackgroundPicker.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
+  'chrome/SourcesSection.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
+  'chrome/DownloadsLink.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
   'screens/ReportBug.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/failurePaths.spec.ts' },
   },
 
   // ---- The download, which is its own flow at every step ------------------
-  'screens/Downloads.tsx': { step: 'The download', flow: { status: 'planned' } },
-  'screens/DownloadsDialog.tsx': { step: 'The download', flow: { status: 'planned' } },
-  'screens/DownloadCard.tsx': { step: 'The download', flow: { status: 'planned' } },
+  // The window on an EMPTY phone: what it offers, and every trail-data row
+  // answered for. The transfer itself - a bar moving, a pause, a delete - is
+  // a network journey against the bucket, and stays out of this suite.
+  'screens/Downloads.tsx': {
+    step: 'The download',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
+  'screens/DownloadsDialog.tsx': {
+    step: 'The download',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
+  'screens/DownloadCard.tsx': {
+    step: 'The download',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
 
   // ---- Failure paths ------------------------------------------------------
   'screens/AppFailureReport.tsx': {

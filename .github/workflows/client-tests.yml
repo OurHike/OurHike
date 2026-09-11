@@ -123,3 +123,78 @@ jobs:
       - name: Build
         if: steps.scope.outputs.run == 'true'
         run: npm run build
+
+  # The flow layer (features/FLOW_TESTING.md), which until now was written and
+  # never run on a pull request: #1386 built the suite, the pull request
+  # template asks which flows a change drives, and nothing checked either. A
+  # test nobody runs is a comment with a longer syntax.
+  #
+  # ITS OWN JOB rather than a step in `test` above, for two reasons. It needs a
+  # browser - two minutes of download the unit suite should not pay for - and
+  # it is the slower half, so running the two in parallel keeps the wall clock
+  # at the longer of them instead of the sum.
+  #
+  # The same scope gate, the same shape, and the same reason there is no `if:`
+  # on the job: a required check that reports nothing blocks a pull request
+  # forever. A docs-only change finishes this job green having done nothing.
+  flow:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # Narrower than the unit suite's list on purpose: the flow layer
+          # boots the built client and drives it, so it reads nothing outside
+          # client/ at runtime - no gain vectors, no issue forms, no site
+          # stylesheet. Its own workflow and the scope action are in the list
+          # for the reason they are in that one, so a change to the gate still
+          # proves the suite it gates.
+          paths: client/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+
+      - uses: actions/setup-node@v7
+        if: steps.scope.outputs.run == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true'
+        run: npm ci
+
+      # Chromium alone, and no `--with-deps`. The engine axis wants WebKit too
+      # and deliberately does not have it yet - features/FLOW_TESTING.md's own
+      # "Status: not yet run", which asks that whoever turns it on runs it
+      # locally first rather than discovering the engine's differences as a red
+      # pull request. The flag is refused by
+      # .github/tests/test_apt_update_is_not_fatal.py, and the reason is worth
+      # knowing rather than working around: it has Playwright shell out to apt
+      # and propagate apt's exit 100, so an inconsistent upstream mirror fails a
+      # required check for a download that needs no apt at all (#1361). This
+      # runner already carries the shared libraries Chromium wants.
+      - name: Install Chromium
+        if: steps.scope.outputs.run == 'true'
+        run: npx playwright install chromium
+
+      # playwright.config.ts builds and serves the real bundle under CI rather
+      # than running the dev server - "what CI shoots: same bytes it deploys",
+      # screenshot.mjs's reasoning, applied to assertions.
+      - name: Flow tests
+        if: steps.scope.outputs.run == 'true'
+        run: npx playwright test
+
+      # Only on failure, and only for a fortnight: the report carries a trace
+      # per failed test (`trace: 'retain-on-failure'`), which is how a failure
+      # that reproduces only in CI gets diagnosed without guessing.
+      - name: Keep the report when it fails
+        if: failure() && steps.scope.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-test-report
+          path: client/playwright-report/
+          retention-days: 14

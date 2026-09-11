@@ -340,6 +340,18 @@ A battery written after the feature is a battery written against the code rather
 against the intent, by someone who has already forgotten which states were meant to exist.
 That is the whole reason this is a pre-PR step and not a cleanup sweep.
 
+**And CI runs it on every pull request** — `client-tests.yml`'s `flow` job, added
+2026-09-11 at the maintainer's ask that these agents be wired in for every pull request.
+Until then this whole layer was written and never run by anything but a person choosing
+to: the suite existed, the pull request template asked which flows a change drove, and no
+check read either answer. A test nobody runs is a comment with a longer syntax.
+
+The job carries the same scope gate as the unit suite and the same deliberate absence of
+a job-level `if:`, so a change touching nothing under `client/` finishes it green rather
+than leaving a required check unreported. It installs Chromium alone — the engine axis
+above says why WebKit is not on yet — builds the real bundle rather than running the dev
+server, and keeps the HTML report, traces included, for a fortnight when it fails.
+
 ## Boundaries
 
 - **No visual regression.** `toHaveScreenshot()` is not used. Pictures are
@@ -354,6 +366,46 @@ That is the whole reason this is a pre-PR step and not a cleanup sweep.
 - **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
   `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
   `@playwright/test`'s `test` through vitest's runner.
+
+## The three agents, and what each is good for
+
+`npx playwright init-agents --loop=claude` (run 2026-09-11, at the maintainer's ask)
+installs Playwright's own test agents and the MCP server they drive a browser through.
+They are a way of writing the specs this document asks for, not a different standard:
+everything above still applies to what they produce, and the ledger still refuses a
+screen nobody considered.
+
+| agent | what it does | what it writes |
+| --- | --- | --- |
+| `playwright-test-planner` | opens a screen, explores it, and writes down its controls, paths and states | a markdown plan in `client/specs/` |
+| `playwright-test-generator` | takes one plan item, performs it in a real browser, and records what it did | one spec file in `client/e2e/` |
+| `playwright-test-healer` | runs the suite, pauses on each failure, inspects the live page, and fixes the spec | edits to an existing spec |
+
+**Where the pieces are.** The agent definitions are in the repository's own
+`.claude/agents/`, beside its skills, rather than the `client/.claude/` the installer
+writes — Claude Code is run from the repository root here, and an agent nobody's editor
+can see is an agent nobody uses. `.mcp.json` is at the root for the same reason, and
+carries `--config client/playwright.config.ts` so the server still resolves the one
+Playwright project this repository has. `client/e2e/seed.spec.ts` is the state every
+agent run starts from; the installer's stub would have started each one on the first-run
+cards, so it seeds past them with `support/seed.ts`'s own helper and asserts that it
+worked.
+
+**What the healer must never do.** Its job is to make a spec describe the app correctly.
+It is not to make a red test green: a failure that is the app being wrong is a finding,
+and editing the assertion until it passes destroys exactly the signal this layer exists
+to produce. If the healer cannot make a spec pass without weakening what it claims, the
+spec stays red and the app gets the fix.
+
+**What the generator is weakest at, and this document is strongest at.** A generator
+records what it did; it does not know which of the six axes a screen varies along, that
+volunteer is a third mode, or that `toBeVisible` is not visible. So the useful division
+is: plan and generate the entrance and the happy path, then write the states and the
+layout floors by hand against the axes above. A generated spec is a draft until somebody
+has read it against the four rules.
+
+**`--headless` is in the MCP config deliberately.** The installer defaults the server to
+headed, and there is no display in CI or in an agent sandbox.
 
 ## Known gaps
 

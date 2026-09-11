@@ -26,10 +26,7 @@ function chromiumExecutable(): string | undefined {
 /**
  * The phone WIREFRAMES.md sizes against - the same object
  * client/scripts/screenshot.mjs's PHONE is, so a spec and a screenshot
- * recipe describe the same device. No desktop project yet: every spec this
- * suite has today drives the phone-primary spine; add one the way this one
- * is built once a spec needs the desktop-only layout (App.desktopSpine.test.tsx
- * already covers that layout at the rendered layer).
+ * recipe describe the same device.
  */
 const PHONE = {
   width: 390,
@@ -37,6 +34,29 @@ const PHONE = {
   isMobile: true,
   hasTouch: true,
   deviceScaleFactor: 2,
+}
+
+/**
+ * The laptop, and the same object client/scripts/screenshot.mjs's DESKTOP is -
+ * so a `@desktop` spec and a `--desktop` shot describe the same window.
+ *
+ * 1280 rather than 901: `lib/useDesktop.ts`'s DESKTOP_MIN_WIDTH is 900 and the
+ * layout is `min-width: 900px`, so anything above it gets the desktop fork -
+ * but a viewport sitting one pixel over the line would turn a change to that
+ * constant into a mystifying failure rather than an obvious one, and 1280x800
+ * is the window the recipes already photograph.
+ *
+ * `isMobile: false` and `hasTouch: false` are not decoration. Playwright's
+ * `isMobile` sets a mobile user agent and a visual viewport, and the desktop
+ * layout is a pointer layout - chrome/useRouteHover.ts listens for
+ * `pointermove` and a touch context never sends one.
+ */
+const DESKTOP = {
+  width: 1280,
+  height: 800,
+  isMobile: false,
+  hasTouch: false,
+  deviceScaleFactor: 1,
 }
 
 /**
@@ -129,20 +149,55 @@ export default defineConfig({
     baseURL: BYO_ORIGIN !== '' ? BYO_ORIGIN : `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
     browserName: 'chromium',
-    // `viewport` is its own nested option, not a flat width/height on `use` -
-    // spreading PHONE directly here once set two properties Playwright does
-    // not read and left the default 1280x720 context in place, which made
-    // lib/useDesktop.ts's breakpoint match and every spec run in the desktop
-    // layout regardless of this file's own comments about it.
-    viewport: { width: PHONE.width, height: PHONE.height },
-    isMobile: PHONE.isMobile,
-    hasTouch: PHONE.hasTouch,
-    deviceScaleFactor: PHONE.deviceScaleFactor,
     launchOptions: {
       args: ['--no-sandbox', '--disable-dev-shm-usage'],
       executablePath: chromiumExecutable(),
     },
   },
+  /**
+   * TWO WIDTHS, AND A SPEC RUNS AT EXACTLY ONE OF THEM.
+   *
+   * `lib/useDesktop.ts`'s breakpoint is a real fork rather than a reflow - the
+   * legend is a modal dialog on a phone and a persistent panel on a laptop, and
+   * the bail guard's `mapShownUnder` makes tapping Today a guarded exit on one
+   * and not an exit at all on the other. A suite that ran only one width would
+   * call the other's behaviour a bug.
+   *
+   * SCOPED BY TAG, NOT BY RUNNING EVERYTHING TWICE, which is what
+   * features/FLOW_TESTING.md asked for and the reason is worth keeping: most
+   * specs here are meaningful at one width, and running them at both would
+   * assert the wrong layout twice - a phone spec passing on a laptop proves
+   * nothing about either. So `@desktop` is opt-in, everything else is the
+   * phone, and no test runs in a layout it was not written for.
+   *
+   * `viewport` is its own nested option rather than a flat width/height, and
+   * that is a scar: spreading PHONE directly once set two properties Playwright
+   * does not read and left the default 1280x720 context in place, which made
+   * the breakpoint match and ran every spec in the desktop layout regardless of
+   * this file's own comments about it.
+   */
+  projects: [
+    {
+      name: 'phone',
+      grepInvert: /@desktop/,
+      use: {
+        viewport: { width: PHONE.width, height: PHONE.height },
+        isMobile: PHONE.isMobile,
+        hasTouch: PHONE.hasTouch,
+        deviceScaleFactor: PHONE.deviceScaleFactor,
+      },
+    },
+    {
+      name: 'desktop',
+      grep: /@desktop/,
+      use: {
+        viewport: { width: DESKTOP.width, height: DESKTOP.height },
+        isMobile: DESKTOP.isMobile,
+        hasTouch: DESKTOP.hasTouch,
+        deviceScaleFactor: DESKTOP.deviceScaleFactor,
+      },
+    },
+  ],
   // None where the caller brought their own (the sandbox's proxy above);
   // otherwise the same build-and-serve as the hermetic half, carrying
   // VITE_DATA_BASE_URL through so the bundle knows which bucket to read.

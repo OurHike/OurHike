@@ -28,13 +28,13 @@ import {
   ON_THE_TRAIL,
   ABOVE_THE_SEAM_ZOOM,
 } from '../support/seed'
-import { writeIDBEntries } from '../support/idb'
-// Untyped on purpose: a shot recipe is plain JavaScript, and the fixture's
-// shape is the app's contract with IndexedDB rather than a type this spec
-// should restate. e2e/data/followMode.spec.ts makes the same import.
-import { FOLLOWED_HIKE_STORE } from '../../preview-shots/following-a-day-hike.mjs'
+import { editTheSavedRoute } from '../support/savedWalk'
 
-const DAY_HIKES_KEY = 'ourhike:day-hikes'
+/** Room for GRAPH_READY_MS, which is larger than playwright.config.ts's
+ *  data-mode per-test ceiling because the junction graph resolving a saved
+ *  walk is the slowest door in this suite. support/savedWalk.ts carries the
+ *  measurement and why the old 60_000 was not one. */
+test.describe.configure({ timeout: 300_000 })
 
 /** Past first run, in day mode, on step 1 of the spine — the screen Today's
  *  pinned "Plan a hike" and the Plan tab's own primary both land on. */
@@ -201,23 +201,6 @@ test.describe('the builder with a route already in it', () => {
    * published tread, and a second fixture would be a second answer to which
    * walk resolves.
    */
-  async function editTheSavedRoute(page: Page): Promise<void> {
-    await seedPreferences(page)
-    await seedHikerMode(page, 'day')
-    await writeIDBEntries(page, [[DAY_HIKES_KEY, FOLLOWED_HIKE_STORE]])
-    await page.goto('/')
-    await page.getByRole('tab', { name: 'Plan' }).click()
-    await page.getByRole('button', { name: /Ramapo-Dunderberg to Timp-Torne/ }).click()
-    // Waited on rather than counted: the card prints its cached figures long
-    // before the graph lands, and "Edit the route" appears only once the walk
-    // has been placed on live tread — the same trap
-    // preview-shots/following-a-day-hike.mjs records for its own Follow door.
-    const edit = page.getByRole('button', { name: 'Edit the route' })
-    await edit.waitFor({ timeout: 60_000 })
-    await edit.click()
-    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
-  }
-
   test('states: with a route in it the builder offers the shape control and the way on, which it withholds with nothing', async ({
     page,
   }) => {
@@ -288,16 +271,7 @@ test.describe('a half-built route the hiker walks away from', () => {
   /** The same live draft as above, parked one step back — the premise for
    *  both tests here, and the state R3 is a claim about. */
   async function draftUnderStepOne(page: Page): Promise<void> {
-    await seedPreferences(page)
-    await seedHikerMode(page, 'day')
-    await writeIDBEntries(page, [[DAY_HIKES_KEY, FOLLOWED_HIKE_STORE]])
-    await page.goto('/')
-    await page.getByRole('tab', { name: 'Plan' }).click()
-    await page.getByRole('button', { name: /Ramapo-Dunderberg to Timp-Torne/ }).click()
-    const edit = page.getByRole('button', { name: 'Edit the route' })
-    await edit.waitFor({ timeout: 60_000 })
-    await edit.click()
-    await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+    await editTheSavedRoute(page)
     await page.getByRole('button', { name: 'Back to Hike, step 1' }).click()
     await expect(
       page.getByRole('heading', { name: /Where do you want to go/ }),

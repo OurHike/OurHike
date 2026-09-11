@@ -614,6 +614,220 @@ test.describe('what the field has said about a place', () => {
   // assertion to write until it does.
 })
 
+/**
+ * A PHOTOGRAPH THAT IS NOT A PHOTOGRAPH. Eight pixels of flat colour, built
+ * here as bytes rather than committed as a file — CLAUDE.md's "no screenshot is
+ * ever committed" is about pixels entering a public tree, and a fixture image
+ * is the same trade for the same reason. It is also the only honest kind of
+ * photo for this suite: the skill's never-photograph list starts with anybody's
+ * real pictures, and this one is nobody's.
+ */
+const A_PICTURE_NOBODY_TOOK = {
+  name: 'a-flat-square.png',
+  mimeType: 'image/png',
+  buffer: Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mMIyHPDihiGlgQAaL9BARVxU3UAAAAASUVORK5CYII=',
+    'base64',
+  ),
+}
+
+test.describe('a photo the hiker keeps, and the ask before it leaves', () => {
+  /**
+   * THE DOCUMENTED BLOCKER FOR THIS WAS WRONG TOO. features/FLOW_TESTING.md
+   * said `chrome/PoiShareSheet.tsx` "needs a photo this hiker took, which needs
+   * a camera." It needs a photo this hiker HAS — and the card's own "Add from
+   * your photos" is a plain file input, which is exactly the door a hiker uses
+   * when the picture is already in their library rather than in front of them.
+   * `setInputFiles` is that door, not a way round it.
+   */
+  async function keepAPhoto(page: Page): Promise<Locator> {
+    await openMapOnTheTrail(page)
+    await page.getByRole('button', { name: /In view/ }).click()
+    await page
+      .getByRole('dialog', { name: 'In view' })
+      .locator('.poi-row--opens')
+      .first()
+      .click()
+    const card = page.getByRole('dialog', { name: 'Waypoint' })
+    await expect(card).toBeVisible()
+    await card.getByRole('button', { name: /Notes & details|Details/ }).click()
+    await expect(card).toHaveClass(/poi-card--open/)
+
+    await card.locator('input[type=file]').last().setInputFiles(A_PICTURE_NOBODY_TOOK)
+
+    // THE CARD ASKS BEFORE IT KEEPS, and says what keeping costs and what it
+    // strips. Both halves matter: a hiker handing over a picture is owed the
+    // size it will take and the promise that where they stood is not in it.
+    await expect(card).toContainText(/Keep stores this .+ copy on this phone/)
+    await expect(card).toContainText(/Location details are not in it/)
+    await card.getByRole('button', { name: 'Keep', exact: true }).click()
+
+    // KEPT, AND THE CARD KNOWS WHICH DOOR IT CAME THROUGH. A photo picked from
+    // the library says "your library has the original"; one TAKEN in OurHike
+    // says the opposite — "unless you saved the original, this small copy is
+    // the only one" — because for that one it is true. Asserted rather than
+    // stumbled into: this drive uses the picker, and getting the pair the
+    // wrong way round would be the card telling a hiker their only copy is
+    // safe somewhere it is not.
+    //
+    // `toContainText` on the card rather than `getByText` on the sentence,
+    // because the line sits in a paragraph with the heading beside it and a
+    // locator for the sentence alone matches no single element.
+    await expect(card).toContainText(/Your photo ·/)
+    await expect(card).toContainText(
+      /A copy sized for this card — your library has the original/,
+    )
+    return card
+  }
+
+  test('entrance and states: sharing is refused without a trail name, and says where to set one', async ({
+    page,
+  }) => {
+    const card = await keepAPhoto(page)
+    await card.getByRole('button', { name: 'Share this photo' }).click()
+
+    const sheet = page.getByRole('dialog', { name: 'Share this photo' })
+    await expect(sheet).toBeVisible()
+
+    // WHAT IS ABOUT TO LEAVE, in figures, before anything does — the place,
+    // the month, the pixels and the bytes. A share sheet that showed only a
+    // thumbnail would be asking for consent to something unmeasured.
+    await expect(sheet).toContainText(/\d+ px · .+B/)
+
+    // AND THE REFUSAL, which is the state this build actually lands in: a
+    // shared photo carries a credit, a credit needs a trail name, and this
+    // phone has not set one. It names the screen to set it on rather than
+    // leaving a dead button — and promises, in the same breath, that the real
+    // name is never shown either way.
+    await expect(
+      sheet.getByText(/Sharing needs a trail name to credit the photo to/),
+    ).toBeVisible()
+    await expect(sheet.getByText(/Set a trail name under Report settings/)).toBeVisible()
+    await expect(
+      sheet.getByText(/your real name is never shown either way/),
+    ).toBeVisible()
+  })
+
+  test('exit: closing without sharing keeps the photo and sends nothing', async ({
+    page,
+  }) => {
+    const card = await keepAPhoto(page)
+    await card.getByRole('button', { name: 'Share this photo' }).click()
+    const sheet = page.getByRole('dialog', { name: 'Share this photo' })
+    await expect(sheet).toBeVisible()
+
+    // The close is worded as the outcome rather than as a direction — "Close
+    // without sharing", not "Cancel" — which is the difference between a
+    // hiker knowing nothing left and hoping so.
+    await sheet.getByRole('button', { name: /Close without sharing/ }).click()
+    await expect(sheet).toHaveCount(0)
+
+    // The photo is still theirs and still on the card: backing out of sharing
+    // is not backing out of keeping.
+    await expect(card).toContainText(/Your photo ·/)
+    await expect(card.getByRole('button', { name: 'Share this photo' })).toBeVisible()
+  })
+})
+
+test.describe('an organization’s own trail notice', () => {
+  /**
+   * Sweep for a notice band, which is a tap the line sweep already competes
+   * with: `map/lineTaps.ts` yields to a notice, so a tap that lands on a band
+   * opens the organization's sheet INSTEAD of the trail line's. That makes the
+   * two mutually exclusive from outside and is why this sweeps for one and
+   * closes the other rather than reusing `tapTheTrail`.
+   *
+   * MEASURED 2026-09-11 against release 2026-09-10, at the shared camera: a
+   * full sweep of the frame below the header opens a notice sheet eight times
+   * and a trail line ten, so a band is comfortably findable here. The release
+   * publishes 38 ATC updates and 18 NYNJTC alerts; one of the ATC ones sits at
+   * mi 195.8 in the Smokies, which is why this camera has a band at all.
+   */
+  async function tapANotice(page: Page): Promise<Locator> {
+    const box = await frameOf(page)
+    const notice = page.getByRole('dialog', { name: /trail update$/ })
+    const line = page.getByRole('dialog', { name: 'Trail line' })
+    const card = page.getByRole('dialog', { name: 'Waypoint' })
+
+    for (let down = HEADER_ROWS; down < 20; down += 1) {
+      for (let across = 1; across < 20; across += 1) {
+        await page.mouse.click(
+          box.x + (box.width * across) / 20,
+          box.y + (box.height * down) / 20,
+        )
+        if ((await notice.count()) > 0) return notice
+        for (const other of [line, card]) {
+          if ((await other.count()) > 0) {
+            await other
+              .getByRole('button', { name: /^Close/ })
+              .first()
+              .click()
+            await expect(other).toHaveCount(0)
+          }
+        }
+      }
+    }
+    throw new Error(
+      'no tap on the whole frame opened a trail notice — either the release ' +
+        'stopped publishing one over this camera, or a tap on a band no longer opens it',
+    )
+  }
+
+  test('entrance and states: the sheet is the organization’s notice, and says so rather than speaking for them', async ({
+    page,
+  }) => {
+    await openMapOnTheTrail(page)
+    const sheet = await tapANotice(page)
+
+    // WHOSE NOTICE, AND WHEN. The org is named and dated in the same line,
+    // because a notice with no date is a claim about now that nobody stamped.
+    await expect(sheet.getByText(/— updated \w+ \d+, \d{4}$/)).toBeVisible()
+
+    // WHERE, in the organization's own units: a state and a mile marker. Not
+    // a figure this spec names — the release moves them.
+    await expect(sheet.getByText(/·\s*mi [\d.,]+/)).toBeVisible()
+
+    // THE LINK OUT, which NoticeList.tsx's own test already pins for the list:
+    // the app carries you to the notice rather than reprinting it.
+    await expect(sheet.getByRole('link', { name: /^Read .+’s notice$/ })).toBeVisible()
+  })
+
+  test('states: it refuses to be read as OurHike’s advice, in as many words', async ({
+    page,
+  }) => {
+    await openMapOnTheTrail(page)
+    const sheet = await tapANotice(page)
+
+    // THE SENTENCE THAT MAKES THE WHOLE SHEET SAFE, and the reason this test
+    // exists separately from the one above. A closure or a detour is one of
+    // CLAUDE.md's four ways this app can hurt somebody — "in front of
+    // something dangerous" — and the failure mode is not a missing notice, it
+    // is a hiker reading a relayed notice as OurHike having checked the trail
+    // and worked out a way round. So the sheet says it has not, and that the
+    // organization's own words are the ones to follow.
+    await expect(sheet.getByText(/is .+’s notice, not OurHike’s/)).toBeVisible()
+    await expect(
+      sheet.getByText(/has not checked the trail itself, and does not work out detours/),
+    ).toBeVisible()
+  })
+
+  test('exit: closing it leaves the map, and never leaves a second sheet behind', async ({
+    page,
+  }) => {
+    await openMapOnTheTrail(page)
+    const sheet = await tapANotice(page)
+
+    await sheet.getByRole('button', { name: /^Close/ }).click()
+    await expect(sheet).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    // ONE TAP, ONE QUESTION — the same property the club sheet has below the
+    // seam. `map/lineTaps.ts` yields to a notice, so the line sheet the tap
+    // would otherwise have opened must not be sitting underneath it.
+    await expect(page.getByRole('dialog', { name: 'Trail line' })).toHaveCount(0)
+  })
+})
+
 test.describe('who looks after this stretch', () => {
   /**
    * Below the seam, and sweep for the club sheet rather than the line sheet.

@@ -166,7 +166,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F4 step 2 · Route',
     flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
-  'chrome/RouteHover.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
+  'chrome/RouteHover.tsx': {
+    step: 'F4 step 2 · Route',
+    flow: { status: 'covered', spec: 'e2e/data/desktopMap.spec.ts' },
+  },
   'chrome/SectionPlanner.tsx': {
     step: 'F4 step 2 · Route',
     flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
@@ -235,7 +238,9 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // was honest when written — the whole-corridor profile artifact is
   // published — and is not what the cell-sharded fetch actually finds.
   // Covering this needs a walk under a published elevation cell, or that cell
-  // published; neither is this spec's to decide.
+  // published; neither is this spec's to decide. #1401 — "The elevation cells
+  // under the followed walk 404, so the ribbon and the next-up rail both draw
+  // nothing".
   'chrome/ElevationRibbon.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
   'screens/TrailRibbon.tsx': {
     step: 'F6 walking it',
@@ -352,9 +357,20 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
   },
+  // NOT A NEEDLE — NO NEEDLE. Measured 2026-09-11 against the UA environment:
+  // `conditions/closures.json` carries 0 closures and `conditions/reports.json`
+  // 0 reports, and the serious warnings ARE escalated reports. So
+  // alertSheetsPanel has nothing to place, the marks never draw, and a camera
+  // derived from a mile would find nothing at it. The three ways
+  // out are in #1400 — "Two safety sheets have no published data to open them, so
+  // the map's alert taps go untested". This is the safety path CLAUDE.md names
+  // third of four, so the gap is worth more than its line count.
   'chrome/ClosureSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/SeriousWarningSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/OrgNoticeSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/OrgNoticeSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
   'chrome/alertSheetsPanel.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/noticesPanel.tsx': {
     step: 'F12 the map',
@@ -385,7 +401,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/newerData.spec.ts' },
   },
-  'chrome/PoiShareSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  // NOT A CAMERA AFTER ALL, and this ledger implied otherwise until
+  // 2026-09-11. The card's "Add from your photos" is a plain file input — the
+  // door a hiker uses when the picture is already in their library — so
+  // `setInputFiles` reaches the share sheet without a camera and without a
+  // fake. The photo is eight pixels built as bytes in the spec, never a file
+  // in the tree and never anybody's picture.
+  'chrome/PoiShareSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
   'chrome/PlaceSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
@@ -402,8 +427,20 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/mapChrome.spec.ts' },
   },
+  // NO DOOR RATHER THAN NO TEST. map/corridorLayers.ts removed the highlight
+  // marks on 2026-09-08 (#1292) — "the maintainer's call was that the opening
+  // camera shows trail lines only" — so nothing on the canvas raises this
+  // sheet. The features and the tap path are still built; the mark is not.
+  // Measured 2026-09-11: highlights.json publishes 10, and a full sweep at
+  // McAfee Knob's own miles finds trail lines and nothing else, above the seam
+  // and below it. #1403 — "The highlight marks were removed from the map, so
+  // HighlightSheet has no door — give it one or retire it" — is the decision:
+  // a band above the seam, or retire the sheet with its module.
   'chrome/HighlightSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/ElevationChart.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/ElevationChart.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/desktopMap.spec.ts' },
+  },
 
   // ---- F14 volunteering ---------------------------------------------------
   'screens/Volunteer.tsx': {
@@ -421,9 +458,11 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // NOT A DRIVE PROBLEM, measured 2026-09-11: release 2026-09-10 publishes
   // 1,943 artifacts and NONE of them is a workday or opportunities file, so
   // there are no pins to tap and the panel correctly renders nothing. A spec
-  // cannot fix that; a publish can. Left `planned` rather than `unit-only`
-  // because the surface is meant to be drivable, and will be the day the
-  // pipeline publishes what it reads.
+  // cannot fix that; a publish can — #1402, "No workday artifact is published,
+  // so the volunteer pins and their sheet have nothing to draw". Left
+  // `planned` rather than
+  // `unit-only` because the surface is meant to be drivable, and will be the
+  // day the pipeline publishes what it reads.
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': {
@@ -579,12 +618,18 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'shared',
     flow: { status: 'unit-only', why: 'An icon set with no behaviour.' },
   },
+  // NOT STATIC AFTER ALL, and this entry said it was until 2026-09-11. The
+  // exemption read "static credit text required on every frame", which is
+  // true of WHAT it says and wrong about WHAT IT IS: the component forks on
+  // width. A phone gets a `<details>` whose summary reads "© OpenStreetMap
+  // contributors · 2 more", because ODbL demands prominence and a 390px
+  // column cannot carry three clauses without eating map; a laptop gets all
+  // three on one line with nothing behind a disclosure. Measured on the same
+  // boot in both projects. That is a `@desktop` claim rather than a leaf, so
+  // it is driven rather than exempted.
   'chrome/MapAttribution.tsx': {
     step: 'shared',
-    flow: {
-      status: 'unit-only',
-      why: 'Static credit text required on every frame; style.test.ts and the map chrome tests already hold it present.',
-    },
+    flow: { status: 'covered', spec: 'e2e/desktopSpine.spec.ts' },
   },
   'chrome/JunctionDiagram.tsx': {
     step: 'shared',

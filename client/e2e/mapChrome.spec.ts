@@ -58,7 +58,13 @@
 // window (F14), which is a different screen and a different spec.
 
 import { test, expect, type Page } from '@playwright/test'
-import { seedPreferences, bootFreshPage } from './support/seed'
+import {
+  seedPreferences,
+  bootFreshPage,
+  seedCamera,
+  ON_THE_TRAIL,
+  ABOVE_THE_SEAM_ZOOM,
+} from './support/seed'
 
 /**
  * On the map tab, past first run.
@@ -76,30 +82,14 @@ async function openMap(page: Page): Promise<void> {
 }
 
 /**
- * The view the hiker last had, which is the app's own memory of it -
- * lib/cameraMemory.ts's `ourhike:camera`, in sessionStorage rather than
- * IndexedDB because it is "a memory of what the hiker is LOOKING AT, not a
- * preference".
+ * A camera above the pin seam, on the A.T. near the Smokies.
  *
- * WHY A SPEC WRITES IT. The opening camera is the whole corridor, which sits
- * below map/poiLayers.ts's POI_PIN_MIN_ZOOM, and down there the legend says
- * the app is declining to draw pins rather than that there are none. Reaching
- * the other sentence means a closer camera, and the honest ways to get one are
- * a wheel-zoom loop (measured: twelve steps of -240 moved the scale bar from
- * 100 mi to 30 mi and never crossed the seam) or this, which is the state a
- * hiker is in on any reload while looking at a place. Seeded state, not an
- * injected route: the entrance is still the tab tap above, and no navigator
- * state is written.
+ * The seed itself lives in support/seed.ts, where e2e/data/mapSheets.spec.ts
+ * reads the same two constants — one answer to "where does the suite look",
+ * rather than two specs each picking their own point on the same trail.
  */
 async function rememberCameraOnTheTrail(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    // The A.T. near the Smokies, at a zoom above the pin seam. Nobody's
-    // location: a point on a published trail, not a fix.
-    sessionStorage.setItem(
-      'ourhike:camera',
-      JSON.stringify({ center: [-83.4821, 35.6012], zoom: 12.5 }),
-    )
-  })
+  await seedCamera(page, ON_THE_TRAIL, ABOVE_THE_SEAM_ZOOM)
 }
 
 /** The phone's legend is a dialog; the desktop's persistent panel is a region

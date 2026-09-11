@@ -261,15 +261,33 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/SeriousWarningSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/OrgNoticeSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/alertSheetsPanel.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/noticesPanel.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/NoticeList.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/LineSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/tappedLinePanel.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/PoiCard.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/noticesPanel.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
+  'chrome/NoticeList.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
+  'chrome/LineSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
+  'chrome/tappedLinePanel.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
+  'chrome/PoiCard.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
   'chrome/RemovedPoiCard.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/PoiShareSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/PlaceSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/PressPlate.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/PressPlate.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
+  },
   'chrome/Search.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/mapChrome.spec.ts' },

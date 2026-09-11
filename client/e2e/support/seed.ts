@@ -103,3 +103,54 @@ export async function bootFreshPage(page: Page): Promise<Page> {
   await second.goto('/')
   return second
 }
+
+/**
+ * The view the hiker last had, which is the app's own memory of it -
+ * lib/cameraMemory.ts's `ourhike:camera`, in sessionStorage rather than
+ * IndexedDB because it is "a memory of what the hiker is LOOKING AT, not a
+ * preference".
+ *
+ * WHY A SPEC WRITES IT. The opening camera is the whole corridor, which sits
+ * below map/poiLayers.ts's POI_PIN_MIN_ZOOM - and down there the app declines
+ * to draw pins, no trail line is thick enough to tap, and the legend's
+ * below-the-seam half never renders. Reaching any of that means a closer
+ * camera, and the honest ways to get one are a wheel-zoom loop (measured
+ * while writing e2e/mapChrome.spec.ts: twelve steps of -240 moved the scale
+ * bar from 100 mi to 30 mi and never crossed the seam) or this, which is the
+ * state a hiker is in on any reload while looking at a place.
+ *
+ * Seeded state, not an injected route: the entrance is still a tab tap, and
+ * no navigator state is written (features/FLOW_TESTING.md, "Not a router").
+ */
+export async function seedCamera(
+  page: Page,
+  center: readonly [number, number],
+  zoom: number,
+): Promise<void> {
+  await page.addInitScript(
+    ([seenCenter, seenZoom]) => {
+      sessionStorage.setItem(
+        'ourhike:camera',
+        JSON.stringify({ center: seenCenter, zoom: seenZoom }),
+      )
+    },
+    [center, zoom] as const,
+  )
+}
+
+/**
+ * A window onto the A.T. near the Smokies, above the pin seam - nobody's
+ * location, and a stretch every release since the first has carried.
+ *
+ * NEAR the trail rather than ON it, which is worth the word: measured
+ * 2026-09-11 against release 2026-09-10, the centerline crosses this frame
+ * about nine tenths of the way across it rather than through its middle, so a
+ * spec that wants to touch the line has to look for it (e2e/data/mapSheets.ts
+ * carries that measurement and the sweep built on it). The point was picked
+ * for the pin seam, not for the geometry.
+ *
+ * Shared because two specs want the same window onto the same data and a
+ * second copy would be two answers to "where does the suite look".
+ */
+export const ON_THE_TRAIL: readonly [number, number] = [-83.4821, 35.6012]
+export const ABOVE_THE_SEAM_ZOOM = 12.5

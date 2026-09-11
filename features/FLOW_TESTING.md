@@ -435,6 +435,30 @@ headed, and there is no display in CI or in an agent sandbox.
   on a map canvas and having the router accept it. Reaching the builder is not the same as
   putting a live draft in it, and the skip comes off when a spec has actually done the second
   thing rather than when it could plausibly try.
+- **The map's canvas answers four more questions nobody can drive yet**, and they are four
+  different reasons rather than one. `e2e/data/mapSheets.spec.ts` (2026-09-11) took the
+  waypoint card, the trail line's sheet, the long-press plate and the notices list, all of
+  which needed a release under the map. What it could not take:
+
+  - `chrome/ClosureSheet.tsx`, `chrome/SeriousWarningSheet.tsx`, `chrome/OrgNoticeSheet.tsx`
+    and `chrome/alertSheetsPanel.tsx` open on a tap on an ALERT PIN, and where an alert pin
+    sits is a fact about the release rather than about the app. The line sheet has the same
+    problem and solves it by sweeping the canvas (that spec's `tapTheTrail` carries the
+    measurement); a closure is one pin rather than a line across the frame, so the same sweep
+    would be looking for a needle. What would settle it is a camera derived from the published
+    notice's own mile rather than written down — nobody has built that.
+  - `chrome/PoiShareSheet.tsx` needs a photo this hiker took, which needs a camera.
+  - `chrome/RemovedPoiCard.tsx` needs a tombstone — a waypoint a NEWER release retired — so it
+    needs two releases, and this suite pins one.
+  - `chrome/ElevationChart.tsx` is behind `isDesktop` in `chrome/MapScreen.tsx`, so it is the
+    desktop gap below rather than a data one.
+
+  **And one measurement worth carrying:** the camera both map specs seed
+  (`ON_THE_TRAIL` in `e2e/support/seed.ts`) is NEAR the A.T., not on it — measured against
+  release 2026-09-10, the centerline crosses that frame about nine tenths of the way across
+  rather than through the middle. The comment that first shipped with it said "a point on a
+  published trail", which was a guess nobody had checked and would have sent the next person
+  hunting for a bug in the tap handler.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

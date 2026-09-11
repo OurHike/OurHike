@@ -97,7 +97,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F3 step 1 · Hike',
     flow: { status: 'planned' },
   },
-  'chrome/HikePickSheet.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
+  'chrome/HikePickSheet.tsx': {
+    step: 'F3 step 1 · Hike',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
   'screens/HikeSetup.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
   'screens/HikePicker.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
 
@@ -155,7 +158,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
 
   // ---- F8 Plan ------------------------------------------------------------
-  'screens/Plan.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/Plan.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
   'screens/PlanHome.tsx': {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },
@@ -168,10 +174,24 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/plan.spec.ts' },
   },
-  'screens/DayHikeList.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/DayHikeList.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
+  // STILL PLANNED, and the near miss is worth recording: "Switch hike" reads
+  // like this screen's door and is not. PlanHome's own comment says so — it
+  // "opens the same sheet rather than a second list of the same hikes" — so
+  // planRooms.spec.ts drives chrome/HikePickSheet.tsx there, and this
+  // switcher keeps no flow test until a spec finds the door that reaches it.
   'screens/TripList.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/FinishedHike.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
-  'screens/WalkedHike.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/FinishedHike.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
+  'screens/WalkedHike.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
   'screens/StretchCard.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/HikeDetail.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
   'screens/FindHike.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },

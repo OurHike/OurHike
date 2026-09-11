@@ -51,6 +51,28 @@ export const DAY_HIKES = {
   openId: null,
 }
 
+/**
+ * The same walk, already done — the other half of the state
+ * `lib/dayHikeShelf.ts` splits the list by, and the one a hiker is in at 7am
+ * when they want last Saturday rather than next.
+ *
+ * A SECOND FUNCTION RATHER THAN A SECOND LITERAL, mirroring
+ * fixtures/longHike.mjs's `finishedStore` over `tripStore`: the walk is the
+ * same walk, and a copy of the record would drift from it the first time
+ * either is edited. Only `recorded` moves, because `recorded` is the only
+ * thing that differs — screens/WalkedHike.tsx reads the same figures, the
+ * same legs and the same name, and says them in the past tense.
+ *
+ * Still nobody's data: the same invented name and grid coordinates the
+ * planned store carries.
+ */
+export function walkedDayHikes(store = DAY_HIKES) {
+  return {
+    ...store,
+    hikes: store.hikes.map((hike) => ({ ...hike, recorded: 'walked' })),
+  }
+}
+
 /** Seed the fixture into idb-keyval's `ourhike:day-hikes` key, then reload -
  *  the store is read once at mount, which has already happened by the time
  *  a drive or a spec calls this. */

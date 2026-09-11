@@ -93,7 +93,11 @@ const COMMAND = process.env.CI
  *    once written, so the bytes under a run cannot change without a commit
  *    somebody reviewed. This is the whole of why the flakiness is bounded.
  * 2. IT IS ITS OWN CI JOB. A bucket outage reds `flow-data` and leaves the
- *    97 hermetic tests in `flow` green, so the two failures never look alike.
+ *    hermetic tests in `flow` green, so the two failures never look alike.
+ *    That half was 97 tests when this was written and is 155 across the two
+ *    projects as of 2026-09-11; the count is scale, not the argument, and is
+ *    re-measured by running `npx playwright test` rather than by reading it
+ *    here.
  * 3. IT PREFLIGHTS. `e2e/support/dataPreflight.ts` fetches the manifest
  *    before any test runs and fails with "the bucket did not answer" rather
  *    than letting thirty assertions fail one at a time.

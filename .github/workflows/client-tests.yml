@@ -207,7 +207,7 @@ jobs:
   #
   # ITS OWN JOB, WHICH IS THE POINT. A test that reads a bucket can go red
   # because the bucket did, and that failure is indistinguishable from a broken
-  # build in a log. Keeping it apart means the 97 hermetic tests in `flow`
+  # build in a log. Keeping it apart means the hermetic tests in `flow`
   # answer "is the client broken" on their own, and this job answers a
   # different question that nobody has to untangle from theirs. The other two
   # things holding the flakiness down are in playwright.config.ts's FLOW_DATA

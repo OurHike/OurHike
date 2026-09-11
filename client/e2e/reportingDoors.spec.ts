@@ -13,6 +13,14 @@
 // ENTRANCE. Every door is a real tap from boot. No navigator state is
 // injected (FLOW_TESTING.md, "Not a router").
 //
+// CORRECTED 2026-09-11: screens/GroupScreen.tsx DOES have a door, and this
+// file was right about the volunteer page and wrong about the app. The door
+// is under the Plan tab, two levels in — a section's timeline, "All N trips",
+// "+ New group", then the group itself — and e2e/tripRooms.spec.ts drives it.
+// The note below stands as written about the volunteer page, which is what it
+// actually probed; "no door on the volunteer page this build ships" was the
+// true sentence, and "no door" was the one it turned into.
+//
 // WHAT IS DELIBERATELY NOT HERE. screens/GroupScreen.tsx has no door on the
 // volunteer page this build ships — probed 2026-09-11: More → Volunteer &
 // report offers "Report a problem", "Your reports" and "Log the day", and

@@ -172,7 +172,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'chrome/AddDayHikeSheet.tsx': {
     step: 'F5 step 3 · Details',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/tripRooms.spec.ts' },
   },
 
   // ---- F6 walking it ------------------------------------------------------
@@ -236,12 +236,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
   },
-  // STILL PLANNED, and the near miss is worth recording: "Switch hike" reads
-  // like this screen's door and is not. PlanHome's own comment says so — it
-  // "opens the same sheet rather than a second list of the same hikes" — so
-  // planRooms.spec.ts drives chrome/HikePickSheet.tsx there, and this
-  // switcher keeps no flow test until a spec finds the door that reaches it.
-  'screens/TripList.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/TripList.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/tripRooms.spec.ts' },
+  },
   'screens/FinishedHike.tsx': {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
@@ -369,11 +367,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
-  // STILL PLANNED, probed rather than assumed (2026-09-11): More -> Volunteer
-  // & report offers "Report a problem", "Your reports" and the hours form,
-  // and nothing on it reaches a crew. Driving this through a route that does
-  // not exist is the claim the ledger's header forbids.
-  'screens/GroupScreen.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'screens/GroupScreen.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'covered', spec: 'e2e/tripRooms.spec.ts' },
+  },
 
   // ---- F13 More, settings and identity -----------------------------------
   'screens/More.tsx': {

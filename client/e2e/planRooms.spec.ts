@@ -242,3 +242,85 @@ test.describe('the rooms behind the Plan tab', () => {
     await expect(page.getByRole('button', { name: /^Export/ })).toHaveCount(0)
   })
 })
+
+test.describe('a day already walked, and the trail it sits on', () => {
+  /** A section's timeline, which is where both surfaces below live: the
+   *  ribbon at the head of the hike view, the day summary behind a grey row. */
+  async function aSectionsTimeline(page: Page): Promise<void> {
+    await planIn(page, 'long', seedLongHike)
+    await page.locator('.plan-home__row-open').first().click()
+    await expect(page.getByRole('button', { name: 'Days', exact: true })).toBeVisible()
+  }
+
+  test('entrance and states: a walked day opens its own record, backward-looking only', async ({
+    page,
+  }) => {
+    await aSectionsTimeline(page)
+
+    // The row is grey and says so — "walked · not a plan any more" — which is
+    // what marks it as a door to a record rather than to an editable day.
+    // Case-insensitive: the chip is upper-cased by CSS, so `innerText` shouts
+    // and the DOM text does not.
+    await page
+      .getByRole('button', { name: /Springer Mountain → Gooch Mountain Shelter/ })
+      .click()
+
+    const summary = page.getByRole('dialog', { name: 'Your day' })
+    await expect(summary).toBeVisible()
+
+    // EVERYTHING HERE IS BEHIND THE HIKER, which is Plan.tsx's guardrail and
+    // the one this card is most likely to break: it arrives at the end of a
+    // day, when the next one is the tempting thing to offer. So the figures
+    // are the day's own, the photos are what was kept, and the note is for
+    // future you rather than a plan for tomorrow.
+    await expect(summary.getByText(/your day, from what you filed/i)).toBeVisible()
+    await expect(summary.getByText(/Photos you kept/)).toBeVisible()
+    await expect(summary.getByRole('button', { name: 'Keep' })).toBeVisible()
+  })
+
+  test('exit: closing the day summary leaves the timeline underneath', async ({
+    page,
+  }) => {
+    await aSectionsTimeline(page)
+    await page
+      .getByRole('button', { name: /Springer Mountain → Gooch Mountain Shelter/ })
+      .click()
+    const summary = page.getByRole('dialog', { name: 'Your day' })
+    await expect(summary).toBeVisible()
+
+    await summary.getByRole('button', { name: /^Close/ }).click()
+
+    await expect(summary).toHaveCount(0)
+    // Back on the timeline rather than on the hike above it — a close that
+    // unwound one level too far would lose the place a hiker was reading.
+    await expect(page.getByRole('button', { name: 'Days', exact: true })).toBeVisible()
+  })
+
+  test('states: the ribbon is an orientation — every band is named in words, and none of it is a figure', async ({
+    page,
+  }) => {
+    await aSectionsTimeline(page)
+    await page.getByRole('button', { name: 'Hike', exact: true }).click()
+
+    // THE WHOLE POINT OF THE RIBBON IS THAT IT CANNOT BE READ (TrailRibbon.tsx:
+    // roughly 7½ miles per pixel on a phone, so a three-day trip is eight
+    // pixels). What carries the meaning is therefore the accessible name on
+    // each band, not its width — and that is what this asserts.
+    await expect(
+      page.getByRole('button', { name: 'Springer → Neels Gap, walked' }),
+    ).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Neels Gap → Dicks Creek Gap, part walked' }),
+    ).toBeVisible()
+
+    // A gap says what is NOT walked and between which two places, rather than
+    // being a stretch of empty track a hiker has to interpret.
+    await expect(
+      page.getByRole('button', { name: /^Not walked: Dicks Creek Gap to / }),
+    ).toBeVisible()
+
+    // The two ends are labelled, so the ribbon is anchored to real places.
+    await expect(page.getByText(/^Springer Mountain$/i)).toBeVisible()
+    await expect(page.getByText(/mi walked · [\d.,]+ mi to go/)).toBeVisible()
+  })
+})

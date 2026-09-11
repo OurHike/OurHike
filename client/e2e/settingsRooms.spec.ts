@@ -361,3 +361,188 @@ test.describe('the download window, on a phone holding nothing', () => {
     await expect(trailData.getByText(/nothing here to press/i)).toBeVisible()
   })
 })
+
+/**
+ * "Put this on your home screen", which sits above the download because that
+ * is the one moment somebody is already deciding to make the map work without
+ * signal (screens/InstallPrompt.tsx).
+ *
+ * THE USER AGENT IS THE FIXTURE, and it is worth being exact about what that
+ * is and is not. features/FLOW_TESTING.md's device axis is the VIEWPORT — the
+ * phone-versus-desktop fork `lib/useDesktop.ts` makes — and its engine axis is
+ * Chromium versus WebKit; neither is run here. This is the third thing:
+ * `detectInstallPlatform()` branches on `navigator.userAgent` and on nothing
+ * else, so overriding the agent is the whole of the device this component can
+ * see, and these three tests attest exactly that branch and no platform
+ * behaviour beyond it. Which is also why the prompt is invisible in every
+ * other spec in this suite: the default Chromium agent reads as `other`, and
+ * `other` correctly renders nothing.
+ */
+test.describe('the install prompt, by device', () => {
+  /** The download window, where the prompt lives. Repeated rather than shared
+   *  with the describe below, because each device is its own context. */
+  async function openDownloadWindow(page: Page) {
+    const legend = await openLegend(page)
+    await legend.getByRole('button', { name: /^Choose what to download/ }).click()
+    const window_ = page.getByRole('dialog', { name: 'Offline map' })
+    await expect(window_).toBeVisible()
+    return window_
+  }
+
+  test('states: a desktop browser is offered nothing, because installing means little for a carried map', async ({
+    page,
+  }) => {
+    // The suite's own default agent, which `detectInstallPlatform()` reads as
+    // `other`. Asserting the ABSENCE is the point: this is what every other
+    // spec in the suite is looking at without knowing it.
+    await openDownloadWindow(page)
+    await expect(
+      page.getByRole('heading', { name: 'Add OurHike to your home screen' }),
+    ).toHaveCount(0)
+  })
+
+  test.describe('on iOS', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
+    })
+
+    test('states: with no install API at all, iOS is told what to tap and warned about Safari', async ({
+      page,
+    }) => {
+      await openDownloadWindow(page)
+
+      await expect(
+        page.getByRole('heading', { name: 'Add OurHike to your home screen' }),
+      ).toBeVisible()
+
+      // NO BUTTON, EVER. Safari has no install API, so a button here would be
+      // one that silently does nothing — the failure the module's header names.
+      await expect(page.getByRole('button', { name: 'Install OurHike' })).toHaveCount(0)
+      await expect(page.getByText(/Scroll down and tap/)).toBeVisible()
+
+      // The two things a hiker cannot find out for themselves and would be
+      // hurt by: the other browsers cannot do it, and iOS can bin the map.
+      await expect(page.getByText(/other browsers cannot install it/)).toBeVisible()
+      await expect(
+        page.getByText(/clear a web app.s storage when space runs short/),
+      ).toBeVisible()
+    })
+  })
+
+  test.describe('on Android', () => {
+    test.use({
+      userAgent:
+        'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
+    })
+
+    test('states: the button appears only once the browser has said the page really qualifies', async ({
+      page,
+    }) => {
+      await openDownloadWindow(page)
+
+      // BEFORE. Chromium has fired nothing, so `canPrompt` is false and the
+      // honest answer is the menu path rather than a button that might do
+      // nothing when pressed.
+      await expect(page.getByRole('button', { name: 'Install OurHike' })).toHaveCount(0)
+      await expect(page.getByText(/Tap Install app, or Add to Home screen/)).toBeVisible()
+
+      // AFTER. `beforeinstallprompt` is Chromium's own signal and is not
+      // something a test can wait for on a dev server, so it is dispatched —
+      // the event IS the state under test, and firing it is the same move
+      // e2e/data/builder.spec.ts makes by aborting a request: make the state
+      // deterministic rather than chase it.
+      await page.evaluate(() => {
+        const event = new Event('beforeinstallprompt') as Event & {
+          prompt?: () => Promise<void>
+          userChoice?: Promise<{ outcome: string }>
+        }
+        event.prompt = () => Promise.resolve()
+        event.userChoice = Promise.resolve({ outcome: 'dismissed' })
+        window.dispatchEvent(event)
+      })
+
+      await expect(page.getByRole('button', { name: 'Install OurHike' })).toBeVisible()
+      // The steps go when the button arrives — two answers to one question
+      // would be worse than either.
+      await expect(page.getByText(/Tap Install app, or Add to Home screen/)).toHaveCount(
+        0,
+      )
+    })
+  })
+})
+
+/**
+ * The second download on the window, which is the stretch rather than the
+ * trail (screens/StretchCard.tsx, #558).
+ *
+ * Both of its states are reachable on a phone holding nothing, and they are
+ * different refusals rather than one: without a hike there is no stretch to
+ * offer, and with one there is a stretch but no list of pieces to cut it from.
+ */
+test.describe('just the stretch you’re walking', () => {
+  async function openDownloadWindow(page: Page) {
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+    await page.getByRole('button', { name: 'Legend', exact: true }).click()
+    await page
+      .getByRole('dialog', { name: 'Legend' })
+      .getByRole('button', { name: /^Choose what to download/ })
+      .click()
+    const window_ = page.getByRole('dialog', { name: 'Offline map' })
+    await expect(window_).toBeVisible()
+    return window_
+  }
+
+  test('states: with no hike set, it says where to set one rather than offering a stretch it cannot name', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await page.goto('/')
+    const window_ = await openDownloadWindow(page)
+
+    // The card names its own door — More › Your hike — rather than leaving a
+    // hiker to find the one screen in the app that answers this.
+    await expect(window_.getByText('Just the stretch you’re walking')).toBeVisible()
+    await expect(
+      window_.getByText(/Set the hike you.re on — More › Your hike/),
+    ).toBeVisible()
+    // And says what it would offer instead, so the refusal carries the reason
+    // to act on it.
+    await expect(
+      window_.getByText(/only the ground it crosses, instead of the whole trail/),
+    ).toBeVisible()
+  })
+
+  test('states: with a hike set, the refusal changes to the one that is actually true', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await page.goto('/')
+
+    // Set it through the screen the card points at, rather than by seeding —
+    // which is also what proves the card's own instruction works.
+    await page.getByRole('tab', { name: 'More' }).click()
+    await moreRow(page, 'You').click()
+    await page.getByRole('button', { name: 'Say where you are walking' }).click()
+    await page.getByLabel('Starting at mile').fill('100')
+    await page.getByLabel('Finishing at mile').fill('142')
+    await page.getByRole('button', { name: 'Save', exact: true }).click()
+    await expect(page.getByText('Northbound · mi 100 – 142')).toBeVisible()
+
+    const window_ = await openDownloadWindow(page)
+
+    // A DIFFERENT SENTENCE, and the difference is the test. The hike is known
+    // now, so the missing thing is the piece list — which arrives with signal
+    // and needs nothing pressed. The old refusal must be gone, or the card
+    // would be telling a hiker to do something they have just done.
+    await expect(
+      window_.getByText(/The list of pieces hasn.t reached this phone yet/),
+    ).toBeVisible()
+    await expect(window_.getByText(/Set the hike you.re on/)).toHaveCount(0)
+    // The escape hatch stays named: the whole trail above is still one tap.
+    await expect(
+      window_.getByText(/the whole trail above is still one tap/),
+    ).toBeVisible()
+  })
+})

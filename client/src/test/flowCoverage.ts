@@ -68,7 +68,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F1 first run',
     flow: { status: 'covered', spec: 'e2e/firstRunStates.spec.ts' },
   },
-  'screens/InstallPrompt.tsx': { step: 'F1 first run', flow: { status: 'planned' } },
+  'screens/InstallPrompt.tsx': {
+    step: 'F1 first run',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
 
   // ---- F2 Today -----------------------------------------------------------
   'screens/Today.tsx': {
@@ -91,6 +94,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
   },
+  // SAME BLOCKER AS THE RIBBON BELOW, read from the source rather than
+  // measured (2026-09-11): chrome/MapScreen.tsx renders the rail only when
+  // `waypoints !== undefined && elevation !== undefined`, and App.tsx's
+  // `elevation` is what `ribbonView` returns — "undefined on a null profile
+  // and MapScreen omits the block entirely". So the rail is absent for
+  // exactly the reason the ribbon draws nothing, and the same published
+  // elevation cell would move both.
   'chrome/NextUpRail.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/FieldNoteSection.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/TrailDataUpdate.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
@@ -204,7 +214,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F6 walking it',
     flow: { status: 'covered', spec: 'e2e/data/followMode.spec.ts' },
   },
-  'screens/DaySummary.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
+  'screens/DaySummary.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
   // STILL PLANNED, AND THE REASON IS A MEASUREMENT RATHER THAN AN OMISSION
   // (2026-09-11). e2e/data/followMode.spec.ts reaches the followed map, which
   // is where the ribbon draws — but the release it pins answers 404 for
@@ -218,10 +231,16 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // Covering this needs a walk under a published elevation cell, or that cell
   // published; neither is this spec's to decide.
   'chrome/ElevationRibbon.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
-  'screens/TrailRibbon.tsx': { step: 'F6 walking it', flow: { status: 'planned' } },
+  'screens/TrailRibbon.tsx': {
+    step: 'F6 walking it',
+    flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
+  },
 
   // ---- F7 when today changes ---------------------------------------------
-  'screens/HikeDay.tsx': { step: 'F7 when today changes', flow: { status: 'planned' } },
+  'screens/HikeDay.tsx': {
+    step: 'F7 when today changes',
+    flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
+  },
   'chrome/StepAwaySheet.tsx': {
     step: 'F7 when today changes',
     flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
@@ -260,7 +279,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
   },
-  'screens/StretchCard.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'screens/StretchCard.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
+  },
   'screens/HikeDetail.tsx': {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/data/findHike.spec.ts' },
@@ -294,7 +316,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // reporting/ReportWindow.tsx - one tap files, and "Anything to add?" is an
   // optional note after the fact. This form's own door is a waypoint card's,
   // which needs published waypoints this suite does not reach.
-  'screens/ReportForm.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
+  'screens/ReportForm.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/ClosureForm.tsx': {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },

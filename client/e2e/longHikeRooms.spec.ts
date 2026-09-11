@@ -329,3 +329,73 @@ test.describe('stepping off the trail, and being met on the way back', () => {
     await expect(page.getByText(/^paused\b/)).toHaveCount(0)
   })
 })
+
+test.describe('one day inside the hike', () => {
+  /** Today → "Open the day", which is the only door: HikeDay is a screen the
+   *  hike's own card opens, not a tab. */
+  async function openTheDay(page: Page): Promise<void> {
+    await walkingIt(page)
+    await page.getByRole('button', { name: 'Open the day' }).click()
+    await expect(
+      page.getByRole('heading', { name: /^Fri|^Sat|^Sun|^Mon|^Tue|^Wed|^Thu/ }),
+    ).toBeVisible()
+  }
+
+  test('entrance and states: the day names itself, and says plainly what this download cannot draw', async ({
+    page,
+  }) => {
+    await openTheDay(page)
+
+    // The day's own two figures, which the card on Today is already showing —
+    // the screen is a way in, not a second opinion.
+    await expect(
+      page.getByText(/Low Gap Shelter → Tray Mountain Shelter · [\d.]+ mi/),
+    ).toBeVisible()
+
+    // OMIT RATHER THAN GUESS (D13), on the two sections that have nothing to
+    // put in them. A phone holding no elevation profile says so and says what
+    // it still has; it does not draw a flat line and it does not leave the
+    // heading over an empty box.
+    await expect(
+      page.getByText('No elevation profile in this download — distance only.'),
+    ).toBeVisible()
+    await expect(
+      page.getByText(/Nothing of the journal.s kinds is on today.s stretch/),
+    ).toBeVisible()
+  })
+
+  test('states: nothing on this screen has to be pressed, and the screen says so', async ({
+    page,
+  }) => {
+    await openTheDay(page)
+
+    // THE RULE THE WHOLE SCREEN IS BUILT AROUND (HikeDay.tsx: "nothing here
+    // depends on a tap"), said to the hiker rather than only to the next
+    // agent. Day rollover comes from the calendar and miles from position, so
+    // a hiker who never opens this screen loses nothing — which is exactly
+    // the promise a "Call it a day" button would otherwise seem to break.
+    await expect(page.getByText(/Nothing waits on this button/)).toBeVisible()
+    await expect(page.getByText(/tomorrow simply opens as the next day/)).toBeVisible()
+
+    // And the three ways today can change are offered together, each of them
+    // an edit the hiker asks for rather than one the app performs.
+    for (const name of ['Stop short', 'Push on']) {
+      await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+    }
+    await expect(page.getByText(/Nothing moves until you say so/)).toBeVisible()
+  })
+
+  test('exit: the back control names the hike, and lands on Today', async ({ page }) => {
+    await openTheDay(page)
+
+    // Named rather than "‹ Back": the screen one level up is a specific hike,
+    // and a hiker who opened this from a card should be told which one they
+    // are going back to. `exact` because the chevron is `aria-hidden`, so the
+    // accessible name is the hike's name alone — which the "change which hike
+    // you're on" chip behind this screen also begins with.
+    await page.getByRole('button', { name: 'Springer → Katahdin', exact: true }).click()
+
+    await expect(page.getByRole('button', { name: 'Open the day' })).toBeVisible()
+    await expect(page.getByText(/Nothing waits on this button/)).toHaveCount(0)
+  })
+})

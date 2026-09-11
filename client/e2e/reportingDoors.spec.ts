@@ -244,3 +244,79 @@ test.describe('the mode switch, as a screen rather than a way through', () => {
     await second.close()
   })
 })
+
+/**
+ * The long form, which is the OTHER half of F9 and reached by a different door
+ * (screens/ReportForm.tsx). The report window files a simple kind on one tap;
+ * `step: 'form'` exists for the two kinds that have things to type, and
+ * "Say thanks" on Today is its shipped door.
+ *
+ * features/SAYING_THANKS.md's premise is the reason it is this form rather
+ * than another: a thanks is a REPORT TYPE, not a separate model, so it gets
+ * the same provenance lines as a blowdown — where it happened, and who signed
+ * it — and those two lines are what the tests below are about.
+ */
+test.describe('the form for the kinds you have to write', () => {
+  async function openThanks(page: Page): Promise<void> {
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Say thanks' }).click()
+    await expect(page.getByRole('heading', { name: 'Say thanks' })).toBeVisible()
+  }
+
+  test('entrance and states: it says where it will be filed from and who will sign it, before anything is typed', async ({
+    page,
+  }) => {
+    await openThanks(page)
+
+    // THE TWO PROVENANCE LINES, both of which are about not overclaiming.
+    //
+    // With no fix the form says the report will carry no location — it does
+    // not quietly send 0,0, which the submit handler's own comment calls "a
+    // confident, wrong place in the Atlantic" rather than a missing one.
+    await expect(
+      page.getByText(/No GPS fix — this report will have no location/),
+    ).toBeVisible()
+
+    // And the signature falls back to the WEAKEST claim rather than the
+    // strongest: "day", not "thru" (lib/reporterIdentity.ts). A form that
+    // signed every unset report as a thru-hiker would be putting a claim in
+    // a hiker's mouth on the one surface a maintainer reads for credibility.
+    await expect(page.getByText(/^Signed as not set · day$/)).toBeVisible()
+  })
+
+  test('states: the photo field is here and empty, with no claim attached to it', async ({
+    page,
+  }) => {
+    await openThanks(page)
+
+    // The field exists (#234 wired it; #89 had deliberately left it visible
+    // and disabled rather than removing it), and says nothing about a photo
+    // until there is one — no "0 photos", no placeholder thumbnail.
+    await expect(page.getByText('Photo', { exact: true })).toBeVisible()
+    await expect(page.getByText(/Photo attached —/)).toHaveCount(0)
+    await expect(page.getByText(/Shrinking the photo/)).toHaveCount(0)
+  })
+
+  test('exit: Cancel leaves without filing, and nothing lands in Your reports', async ({
+    page,
+  }) => {
+    await openThanks(page)
+    await page.getByRole('textbox').first().fill('The privy at Low Gap was spotless.')
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // Back on Today, and — the part that matters — the words are gone rather
+    // than filed. Checked at the one place a filed report would show up.
+    await expect(page.getByRole('heading', { name: 'Say thanks' })).toHaveCount(0)
+    await page.getByRole('tab', { name: 'More' }).click()
+    await page
+      .locator('.more__row')
+      .filter({ hasText: 'Volunteer & report' })
+      .first()
+      .click()
+    await page.getByRole('button', { name: 'Your reports' }).click()
+    await expect(page.getByText(/Nothing reported from this phone yet/)).toBeVisible()
+  })
+})

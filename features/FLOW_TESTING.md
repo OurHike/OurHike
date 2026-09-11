@@ -515,6 +515,15 @@ headed, and there is no display in CI or in an agent sandbox.
   nothing to assert. Covering it needs a walk under a published elevation cell, or that
   cell published — a pipeline question, not a suite one.
 
+  **`chrome/NextUpRail.tsx` is stuck behind the same door**, which is worth saying
+  because it does not look like an elevation feature: it is a strip of coming
+  waypoints. `chrome/MapScreen.tsx` renders it only when
+  `waypoints !== undefined && elevation !== undefined`, and App.tsx's `elevation` is
+  `ribbonView`'s return — "undefined on a null profile", at which point "MapScreen omits
+  the block entirely". So one published cell would move both, and neither moves without
+  it. Read from the source (2026-09-11) rather than measured, because the measurement
+  above already settles what the release serves.
+
   `preview-shots/following-a-day-hike.mjs` said the opposite twice, most recently "should
   now draw… stated as an expectation rather than a fact". The expectation was honest and
   about the wrong artifact; that header now carries the measurement.
@@ -563,6 +572,18 @@ headed, and there is no display in CI or in an agent sandbox.
   when the sign-in prompt offers email. Every build this project deploys therefore
   renders "Continue with Google" and nothing else, measured 2026-09-11. It returns
   when a sender does.
+- **One screen branches on the user agent, and that is a third thing from either
+  axis above.** `screens/InstallPrompt.tsx` is the only surface whose content is
+  decided by which phone it is, because `detectInstallPlatform()` reads
+  `navigator.userAgent` and nothing else. `e2e/settingsRooms.spec.ts` drives all
+  three of its branches with `test.use({ userAgent })` — iOS told what to tap
+  with no button anywhere (Safari has no install API, and "a button that
+  silently does nothing is worse than no button"), Android given the menu path
+  until `beforeinstallprompt` fires and the button then, and the suite's own
+  default agent shown nothing at all. **That is the branch, not the platform.**
+  Whether an install actually completes, whether iOS later evicts the storage,
+  whether the Capacitor shell changes any of it — none of that is attested here,
+  and none of it can be: it is the Phase 3 acceptance category above.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

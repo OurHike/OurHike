@@ -173,8 +173,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
 
   // ---- F12 the map --------------------------------------------------------
-  'chrome/MapScreen.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/Legend.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/MapScreen.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/mapRoom.spec.ts' },
+  },
+  'chrome/Legend.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/mapRoom.spec.ts' },
+  },
   'chrome/InViewSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/ClosureSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/SeriousWarningSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },

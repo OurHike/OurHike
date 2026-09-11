@@ -44,8 +44,9 @@ what the result was. New behaviour comes with tests — see TESTING.md.
 <!--
 Which hiker-facing flows this touches, and what now drives them in
 client/e2e/ — features/FLOW_TESTING.md has how a flow test is formed and the
-five axes one is asserted across (mode, device, engine, data freshness, a
-seeded hike rather than an empty install).
+six axes one is asserted across (mode, device, engine, data freshness,
+layout — the map has room and nothing covers it — and a seeded hike rather
+than an empty install).
 
 A screen added or changed moves its own row in client/src/test/flowCoverage.ts
 in this same PR; the client suite fails on a screen with no answer, and

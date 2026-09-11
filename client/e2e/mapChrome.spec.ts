@@ -65,6 +65,10 @@ import {
   ON_THE_TRAIL,
   ABOVE_THE_SEAM_ZOOM,
 } from './support/seed'
+import { writeIDBEntries } from './support/idb'
+// Untyped on purpose: a shot fixture is plain JavaScript, and its shape is the
+// app's contract with IndexedDB rather than a type this spec restates.
+import { DAY_HIKES } from '../preview-shots/fixtures/dayHike.mjs'
 
 /**
  * On the map tab, past first run.
@@ -383,5 +387,125 @@ test.describe('the map’s chrome', () => {
     await box.press('Escape')
     await expect(box).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible()
+  })
+})
+
+/**
+ * The door the map raises when a saved walk starts where the hiker is standing
+ * (chrome/DayHikesHere.tsx, #1008, storyboard frame D8) — the second way back
+ * into a day hike, and the one that matters at 8am with no signal.
+ *
+ * HERMETIC, WHICH IS WORTH SAYING because this is a map surface and the rest
+ * of them are not. `dayHikesNearHere` compares a fix against the walk's own
+ * first tapped end and nothing else: no junction graph, no waypoint index, no
+ * trail line. So the whole feature is reachable on a phone that has downloaded
+ * nothing, which is exactly the phone a hiker has at a trailhead.
+ *
+ * THE FIX IS A REAL ONE, through Playwright's geolocation rather than a stub,
+ * and it is placed at the fixture walk's own start rather than at a coordinate
+ * written down here — so the two cannot drift apart when the fixture moves.
+ */
+test.describe('the day hike that starts where you are', () => {
+  /** The fixture's first tapped end, read off the fixture. `lib/dayHikeShelf.ts`
+   *  measures to exactly this point, so standing on it is unambiguous. */
+  const START = DAY_HIKES.hikes[0].segments[0][0].coord as [number, number]
+
+  test.use({
+    permissions: ['geolocation'],
+    geolocation: { longitude: START[0], latitude: START[1] },
+  })
+
+  async function atTheTrailhead(page: Page): Promise<void> {
+    await seedPreferences(page)
+    await writeIDBEntries(page, [['ourhike:day-hikes', DAY_HIKES]])
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+  }
+
+  test('entrance and states: the door offers itself folded, and opens onto the walk it means', async ({
+    page,
+  }) => {
+    await atTheTrailhead(page)
+
+    // FOLDED FIRST. Nobody asked for this — it is the one occupant of the
+    // map's lower third that is not the answer to a tap (App.tsx's
+    // `lowerThirdTaken` exists to keep it from landing on one) — so it arrives
+    // as a line, not as a panel.
+    const door = page.getByRole('button', { name: 'A day hike starts here' })
+    await expect(door).toBeVisible()
+
+    await door.click()
+
+    const panel = page.getByRole('region', { name: 'Your day hikes near here' })
+    await expect(panel).toBeVisible()
+    await expect(panel.getByText(/Pine Meadow loop/)).toBeVisible()
+
+    // THE FIGURE SAYS WHAT KIND OF FIGURE IT IS, which is the assertion worth
+    // having on this card: "away" is a straight line to the start and not
+    // trail walked, and the card says so rather than letting a hiker read it
+    // as a walking distance. D14, on a screen where the difference could send
+    // somebody the wrong way round a ridge.
+    await expect(
+      panel.getByText(/straight line to the start, not trail walked/),
+    ).toBeVisible()
+    await expect(panel.getByText(/[\d.]+ mi away/)).toBeVisible()
+
+    // And a way out to the whole list, so the door is a shortcut rather than
+    // the only route to a saved walk.
+    await expect(panel.getByRole('button', { name: /All your day hikes/ })).toBeVisible()
+  })
+
+  test('states: putting it away clears it for this session, and it offers again on a cold boot', async ({
+    page,
+  }) => {
+    await atTheTrailhead(page)
+    await page.getByRole('button', { name: 'A day hike starts here' }).click()
+
+    await page.getByRole('button', { name: /^Put this away/ }).click()
+    await expect(
+      page.getByRole('region', { name: 'Your day hikes near here' }),
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: 'A day hike starts here' }),
+    ).toHaveCount(0)
+
+    // SESSION STATE, DELIBERATELY — the same shape as the welcome-back card's
+    // "Leave it". A hiker who waved it away at the car park and came back an
+    // hour later is still standing at the start of that walk, so the answer to
+    // "is this still true" has not changed. Asserted against a cold boot
+    // rather than a reload, for the reason bootFreshPage() documents.
+    const rebooted = await bootFreshPage(page)
+    try {
+      await rebooted.getByRole('tab', { name: 'Map' }).click()
+      await expect(
+        rebooted.getByRole('button', { name: 'A day hike starts here' }),
+      ).toBeVisible()
+    } finally {
+      await rebooted.close()
+    }
+  })
+
+  test('states: a walk this phone holds but is nowhere near raises no door at all', async ({
+    page,
+  }) => {
+    // The other side of the radius, and the one that keeps the door honest:
+    // `NEAR_START_MILES` is half a mile and `@unvalidated`, so a test that only
+    // ever drove the positive case would pass with the radius set to the whole
+    // continent. A degree of latitude is about 69 miles from the start.
+    await seedPreferences(page)
+    await writeIDBEntries(page, [['ourhike:day-hikes', DAY_HIKES]])
+    await page.context().setGeolocation({ longitude: START[0], latitude: START[1] + 1 })
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    // Waits on something that proves the fix landed before claiming the door
+    // is absent — otherwise this passes while the app is still looking for GPS
+    // and would pass with the feature deleted.
+    await expect(page.getByText(/Located/)).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'A day hike starts here' }),
+    ).toHaveCount(0)
   })
 })

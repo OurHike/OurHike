@@ -106,7 +106,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
-  'chrome/TrailDataUpdate.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/TrailDataUpdate.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/data/newerData.spec.ts' },
+  },
 
   // ---- F3 step 1, Hike ----------------------------------------------------
   'screens/PlanStart.tsx': {
@@ -157,7 +160,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'chrome/RouteMapPickBar.tsx': {
     step: 'F4 step 2 · Route',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
   'chrome/routeBuilderPanel.tsx': {
     step: 'F4 step 2 · Route',
@@ -302,7 +305,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F8 Plan',
     flow: { status: 'covered', spec: 'e2e/data/findHike.spec.ts' },
   },
-  'chrome/DayHikesHere.tsx': { step: 'F8 Plan', flow: { status: 'planned' } },
+  'chrome/DayHikesHere.tsx': {
+    step: 'F8 Plan',
+    flow: { status: 'covered', spec: 'e2e/mapChrome.spec.ts' },
+  },
 
   // ---- F9 reporting -------------------------------------------------------
   'screens/YourReports.tsx': {
@@ -370,7 +376,15 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
-  'chrome/RemovedPoiCard.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  // NOT BLOCKED AFTER ALL, and this ledger said otherwise until 2026-09-11:
+  // `retired_poi.geojson` ships inside EACH release, so the single pinned one
+  // already carries tombstones and no second release is needed. The door is
+  // the hiker's own work rather than the canvas — a retired place draws no pin
+  // — which is the part that made it look unreachable.
+  'chrome/RemovedPoiCard.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/newerData.spec.ts' },
+  },
   'chrome/PoiShareSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/PlaceSheet.tsx': {
     step: 'F12 the map',
@@ -404,6 +418,12 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F14 volunteering',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },
   },
+  // NOT A DRIVE PROBLEM, measured 2026-09-11: release 2026-09-10 publishes
+  // 1,943 artifacts and NONE of them is a workday or opportunities file, so
+  // there are no pins to tap and the panel correctly renders nothing. A spec
+  // cannot fix that; a publish can. Left `planned` rather than `unit-only`
+  // because the surface is meant to be drivable, and will be the day the
+  // pipeline publishes what it reads.
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': {

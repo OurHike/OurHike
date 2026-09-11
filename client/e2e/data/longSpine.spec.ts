@@ -342,3 +342,72 @@ test.describe('how long is a day', () => {
     ).toBeVisible()
   })
 })
+
+test.describe('choosing a stop on the map', () => {
+  test('entrance and states: the map door hands the whole screen to the map and says what a tap will do', async ({
+    page,
+  }) => {
+    await planALongHike(page)
+    const sheet = await openTheEntrance(page)
+
+    // THE SHEET OFFERS BOTH, and says the second one needs no button at all —
+    // which is the sentence worth pinning, because a hiker who does not read
+    // it will hunt for a control that was never the point.
+    await expect(
+      sheet.getByText(/or just tap the trail on the map\. No button first\./),
+    ).toBeVisible()
+
+    await sheet.getByRole('button', { name: /Pick on the map/ }).click()
+
+    // THE SHEET GETS OUT OF THE WAY. chrome/RouteMapPickBar.tsx's own header:
+    // "a slim bar over the map that says what a tap will do, while the map
+    // underneath is the whole screen." So the entrance must be GONE, not
+    // merely behind — asserted, because a bar that left a sheet up would be
+    // asking for a tap on a canvas the hiker cannot reach.
+    await expect(page.getByRole('dialog', ENTRANCE)).toHaveCount(0)
+
+    const bar = page.getByRole('dialog', { name: 'Choose on the map' })
+    await expect(bar).toBeVisible()
+    await expect(bar.getByText('Tap the trail where this stop goes.')).toBeVisible()
+  })
+
+  test('exit: Cancel goes back to the picker rather than out of the builder', async ({
+    page,
+  }) => {
+    await planALongHike(page)
+    const sheet = await openTheEntrance(page)
+    await sheet.getByRole('button', { name: /Pick on the map/ }).click()
+    const bar = page.getByRole('dialog', { name: 'Choose on the map' })
+    await expect(bar).toBeVisible()
+
+    await bar.getByRole('button', { name: 'Cancel' }).click()
+
+    // ONE LEVEL, NOT TWO, and the level is the PICKER — not the entrance the
+    // map door was pressed from. `onCancel` only clears `onMap`, so the stop
+    // pick itself survives and the hiker lands on the search screen for the
+    // same slot, still choosing the same stop. Getting this wrong was worth
+    // the failure: the first version of this test asserted the entrance sheet
+    // and went red, and the app was right — a Cancel that unwound two levels
+    // would drop the slot the hiker was filling.
+    await expect(bar).toHaveCount(0)
+    const picker = page.getByRole('dialog', {
+      name: /^Choose a stop$|^A distance from here$/,
+    })
+    await expect(picker).toBeVisible()
+
+    // The regex covers both of RouteStopPicker.tsx's two faces because which
+    // one comes back is a property of the SLOT, not of this exit: a start is
+    // picked as a distance from here, a later stop by searching. Asserting one
+    // name would be asserting which slot the entrance happened to open with.
+    // The claim is only that the picker is what the hiker lands on.
+  })
+
+  // THE REFUSAL BRANCH IS NOT DRIVEN HERE, and that is a gap rather than an
+  // omission. `refusedTap` prints "that tap is more than 3 mi from the trail —
+  // there's no honest mile to give it", which needs a tap more than
+  // MAX_OFF_TRAIL_MILES from any centerline vertex; the builder opens fitted
+  // to the stretch, so every point in the frame may well be inside that
+  // radius. What would settle it is measuring the frame's span in miles at
+  // the camera the builder opens with, which nobody has done —
+  // RouteMapPickBar.test.tsx holds the sentence meanwhile.
+})

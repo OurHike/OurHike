@@ -17,17 +17,30 @@
 
 import { DATA_RELEASE } from '../../src/lib/dataRelease'
 
-/** Where the app under test reads its data from, in the two shapes this
- *  suite runs in: the bucket directly (CI), or through the sandbox's
- *  same-origin proxy (playwright.config.ts's BYO_ORIGIN comment). */
-function manifestUrl(): string | null {
+/**
+ * Where the app under test reads its data from, in the two shapes this suite
+ * runs in: the bucket directly (CI), or through the sandbox's same-origin
+ * proxy (playwright.config.ts's BYO_ORIGIN comment).
+ *
+ * Exported because a spec occasionally needs a published artifact ITSELF
+ * rather than what the app did with it — e2e/data/newerData.spec.ts reads the
+ * release's tombstones to find a retired waypoint id, because writing one down
+ * would be pinning a release rather than the app. One home for the URL shape,
+ * so a spec and this preflight cannot come to disagree about where the bucket
+ * is.
+ */
+export function releaseArtifactUrl(name: string): string | null {
   const origin = process.env.FLOW_DATA_ORIGIN ?? ''
   if (origin !== '') {
-    return `${origin.replace(/\/+$/, '')}/data/environments/ua/releases/${DATA_RELEASE}/manifest.json`
+    return `${origin.replace(/\/+$/, '')}/data/environments/ua/releases/${DATA_RELEASE}/${name}`
   }
   const base = process.env.VITE_DATA_BASE_URL ?? ''
   if (base === '') return null
-  return `${base.replace(/\/+$/, '')}/releases/${DATA_RELEASE}/manifest.json`
+  return `${base.replace(/\/+$/, '')}/releases/${DATA_RELEASE}/${name}`
+}
+
+function manifestUrl(): string | null {
+  return releaseArtifactUrl('manifest.json')
 }
 
 export default async function preflight(): Promise<void> {

@@ -493,8 +493,18 @@ headed, and there is no display in CI or in an agent sandbox.
     would be looking for a needle. What would settle it is a camera derived from the published
     notice's own mile rather than written down — nobody has built that.
   - `chrome/PoiShareSheet.tsx` needs a photo this hiker took, which needs a camera.
-  - `chrome/RemovedPoiCard.tsx` needs a tombstone — a waypoint a NEWER release retired — so it
-    needs two releases, and this suite pins one.
+  - `chrome/RemovedPoiCard.tsx` **— this entry was wrong, and is kept as a correction
+    rather than deleted.** It said the card "needs a tombstone — a waypoint a NEWER
+    release retired — so it needs two releases, and this suite pins one." It does not:
+    `retired_poi.geojson` ships INSIDE each release, carrying the places that release
+    retired, so one pinned release already holds them. Measured 2026-09-11 against
+    2026-09-10: the artifact's first feature is a water point retired on 2026-08-19.
+    What made it look unreachable was the DOOR, not the data — a retired waypoint draws
+    no pin, so there is nothing on the canvas to tap, and the way in is a row in the
+    hiker's own work (App.tsx: "the same door a pin is"). `e2e/data/newerData.spec.ts`
+    drives it from a field note waiting in the outbox against a published tombstone.
+    The lesson is worth more than the entry: "needs two releases" was reasoned from the
+    feature's description and never checked against the manifest.
   - `chrome/ElevationChart.tsx` is behind `isDesktop` in `chrome/MapScreen.tsx`, so it is the
     desktop gap below rather than a data one.
 
@@ -635,6 +645,14 @@ entrance`, a test that predates this batch. It polled **55 times across the
   Nobody has done that. **No retry is wired in meanwhile**: a helper that
   re-seeded and reloaded until it worked would hide the one signal there is.
 
+- **The workday pins have nothing to draw, and that is a publish rather than a
+  drive.** `chrome/WorkdaySheet.tsx` and `chrome/workdayPanel.tsx` stay `planned`,
+  but not for want of a spec: measured 2026-09-11, release 2026-09-10 publishes
+  1,943 artifacts and **none** of them is a workday or opportunities file. The
+  panel correctly renders nothing, there are no pins to tap, and no test can
+  change that. They become drivable the day the pipeline publishes what
+  `lib/workProjects.ts` reads — at which point the drive is the same shape as the
+  club sheet's.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

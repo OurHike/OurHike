@@ -150,7 +150,13 @@ def _granit_source(**overrides):
     return source
 
 
-def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None):
+def _centerline_source():
+    """The A.T. fetch's centerline entry, as export_trails.load_line_sources
+    selects it: blaze metadata and not an external layer."""
+    return {"key": "centerline", "title": "A.T. Centerline", "url": "https://example.test/centerline", "blaze_default": "White"}
+
+
+def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None, centerline=None):
     raw_dir = tmp_path / "external"
     raw_dir.mkdir()
     out_dir = tmp_path / "processed"
@@ -164,6 +170,15 @@ def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None):
     monkeypatch.setattr(ex, "OUT_DIR", out_dir)
     monkeypatch.setattr(ex, "SOURCES_PATH", sources_path)
     monkeypatch.setattr(ex, "load_blaze_mapping", lambda: mapping or {})
+    # The A.T. fetch, for the shared-ground pairing (#1384): absent unless a
+    # test hands one in, so no test here reads a real data/raw/ by accident.
+    at_raw_dir = tmp_path / "at_raw"
+    at_raw_dir.mkdir()
+    monkeypatch.setattr(ex, "AT_RAW_DIR", at_raw_dir)
+    monkeypatch.setattr(ex, "AT_SOURCES_PATH", sources_path)
+    if centerline is not None:
+        (at_raw_dir / "centerline.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": centerline}))
+        sources_path.write_text(json.dumps({"_comment": "test fixture", "sources": [*sources, _centerline_source()]}))
 
     manifest = ex.main()
     body = json.loads((out_dir / ex.ARTIFACT_NAME).read_text())
@@ -1398,3 +1413,125 @@ def test_the_two_whites_sources_report_two_different_absences(tmp_path, monkeypa
 
     blazes = {f["properties"]["name"]: f["properties"]["blaze_color"] for f in body["features"]}
     assert blazes == {"Air Line": "None", "JEWELL": "Unknown"}
+
+
+# --------------------------------------------------------------------------
+# Shared ground (#1384): where two trails run on one treadway, a pair of
+# features on one chord - in the tiles, never in the lines file.
+# lib/concurrency.py's own suite pins the pairing; these pin where it goes.
+# --------------------------------------------------------------------------
+
+# A trail east along Harriman's latitude, and a second one joining it a few
+# metres north for its middle - about 0.5 km shared, well over the 50 m
+# minimum. Degrees: 0.0001 of latitude is 11 m.
+SHARED_HOST = [(-74.10, 41.25), (-74.09, 41.25)]
+SHARED_GUEST = [(-74.098, 41.2515), (-74.097, 41.25006), (-74.092, 41.25006), (-74.091, 41.2515)]
+
+
+def _two_trails_sharing_ground():
+    return {
+        "oprhp_trails": [
+            _feature(SHARED_HOST, _oprhp_properties(Name="Ramapo-Dunderberg Trail", Blaze="Red"), feature_id=1),
+            _feature(SHARED_GUEST, _oprhp_properties(Name="Suffern-Bear Mountain Trail", Blaze="Yellow"), feature_id=2),
+        ]
+    }
+
+
+def test_shared_ground_rides_in_the_tiles_and_never_in_the_lines_file(tmp_path, monkeypatch):
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        _two_trails_sharing_ground(),
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red", "Yellow": "Yellow"}}},
+    )
+
+    # The lines file is untouched: two trails, no pair property anywhere,
+    # because eleven other scripts read it as the network's topology.
+    assert len(body["features"]) == 2
+    assert not any("concurrent_with" in f["properties"] for f in body["features"])
+
+    # The pairs are their own file beside it, and the manifest counts them.
+    concurrent = manifest["concurrent"]
+    path = Path(concurrent["path"])
+    assert path.name == ex.CONCURRENT_ARTIFACT_NAME and path.parent == Path(manifest["path"]).parent
+    assert concurrent["sha256"] == ex.sha256_file(path)
+    assert concurrent["stretches"] == 1 and concurrent["feature_count"] == 2
+    assert concurrent["at_paired"] is False
+    pairs = json.loads(path.read_text())["features"]
+    assert sorted(
+        (p["properties"]["name"], p["properties"]["concurrent_with"], p["properties"]["concurrent_side"]) for p in pairs
+    ) == [
+        ("Ramapo-Dunderberg Trail", "Suffern-Bear Mountain Trail", 1),
+        ("Suffern-Bear Mountain Trail", "Ramapo-Dunderberg Trail", -1),
+    ]
+    # Each half draws through the same paint as any line: the five
+    # properties, in its own blaze.
+    assert {p["properties"]["blaze_color"] for p in pairs} == {"Red", "Yellow"}
+    assert all({"id", "source", "name", "blaze_color", "trail_status"} <= set(p["properties"]) for p in pairs)
+
+    # And the tiles carry them: the layer declares the two pair fields
+    # beside the five the lines have.
+    _, metadata = _tiles_header(manifest)
+    (layer,) = metadata["vector_layers"]
+    assert {"concurrent_with", "concurrent_source", "concurrent_side"} <= set(layer["fields"])
+
+
+def test_the_at_centerline_is_in_the_pool_when_the_fetch_is_there(tmp_path, monkeypatch, capsys):
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(SHARED_GUEST, _oprhp_properties(Name="Ramapo-Dunderberg Trail", Blaze="Red"))]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+        centerline=[_feature(SHARED_HOST, {"GlobalID": "at-1", "Name": "Appalachian National Scenic Trail"})],
+    )
+
+    concurrent = manifest["concurrent"]
+    assert concurrent["at_paired"] is True
+    assert concurrent["stretches"] == 1
+    pairs = json.loads(Path(concurrent["path"]).read_text())["features"]
+    at_half = next(p["properties"] for p in pairs if p["properties"]["source"] == "centerline")
+    # The A.T. is the donor - side +1 - in its own white, naming the trail
+    # it shares the treadway with, and with no status invented for it.
+    assert at_half["concurrent_side"] == 1
+    assert at_half["blaze_color"] == "White"
+    assert at_half["concurrent_with"] == "Ramapo-Dunderberg Trail"
+    assert at_half["concurrent_source"] == "oprhp_trails"
+    assert "trail_status" not in at_half
+    # The centerline itself is still not a network line.
+    assert [f["properties"]["source"] for f in body["features"]] == ["oprhp_trails"]
+    assert "paired over the network alone" not in capsys.readouterr().out
+
+
+def test_without_the_at_fetch_the_pairing_runs_over_the_network_alone_and_says_so(tmp_path, monkeypatch, capsys):
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        _two_trails_sharing_ground(),
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red", "Yellow": "Yellow"}}},
+    )
+
+    out = capsys.readouterr().out
+    assert "HELD BACK: shared ground is paired over the network alone" in out and "centerline" in out
+    assert manifest["concurrent"]["at_paired"] is False
+    assert manifest["concurrent"]["stretches"] == 1  # the network still pairs with itself
+    assert "network only" in out
+
+
+def test_a_network_with_no_shared_ground_still_cuts_its_tiles(tmp_path, monkeypatch):
+    manifest, _ = _run(
+        tmp_path,
+        monkeypatch,
+        [_oprhp_source()],
+        {"oprhp_trails": [_feature(HARRIMAN, _oprhp_properties())]},
+        mapping={"oprhp_trails": {"mapped": {"Red": "Red"}}},
+    )
+
+    concurrent = manifest["concurrent"]
+    assert concurrent["feature_count"] == 0 and concurrent["stretches"] == 0
+    assert json.loads(Path(concurrent["path"]).read_text()) == {"type": "FeatureCollection", "features": []}
+    _, metadata = _tiles_header(manifest)
+    (layer,) = metadata["vector_layers"]
+    assert not {"concurrent_with", "concurrent_source", "concurrent_side"} & set(layer["fields"])

@@ -198,3 +198,101 @@ jobs:
           name: flow-test-report
           path: client/playwright-report/
           retention-days: 14
+
+  # The data-backed half of the flow layer (client/e2e/data/), which reads the
+  # release lib/dataRelease.ts pins rather than driving a phone that has
+  # downloaded nothing. It is what makes the builder, the route and the
+  # waypoint screens drivable at all - #1387's gap - and the maintainer took
+  # the decision to run it here on 2026-09-11 with its cost stated.
+  #
+  # ITS OWN JOB, WHICH IS THE POINT. A test that reads a bucket can go red
+  # because the bucket did, and that failure is indistinguishable from a broken
+  # build in a log. Keeping it apart means the 97 hermetic tests in `flow`
+  # answer "is the client broken" on their own, and this job answers a
+  # different question that nobody has to untangle from theirs. The other two
+  # things holding the flakiness down are in playwright.config.ts's FLOW_DATA
+  # comment: the release is pinned and immutable, so the bytes cannot move
+  # under a run without a reviewed commit, and a preflight fetch reports an
+  # outage as an outage before any assertion runs.
+  #
+  # NOT REQUIRED, and should not be made so while it reads a network. A
+  # required check that can go red for a reason outside the repository blocks
+  # pull requests on somebody else's outage.
+  flow-data:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: scope
+        uses: ./.github/actions/changed-paths
+        with:
+          # The same list as `flow` above, plus the release pin: bumping
+          # DATA_RELEASE changes which bytes this job reads, which is exactly
+          # the change most worth re-running it for.
+          paths: client/ .github/workflows/client-tests.yml .github/actions/changed-paths/
+
+      # Where the data comes from, resolved the way every other workflow in
+      # this repository resolves it (ua.yml's "Resolve the data source"): the
+      # UA prefix of the configured bucket. UA rather than production because
+      # that is what this branch's pin names, and because UA is where a
+      # release lands first - a job that tested production would be testing
+      # the release before this one.
+      - id: data
+        if: steps.scope.outputs.run == 'true'
+        env:
+          UA_URL: ${{ vars.UA_DATA_BASE_URL }}
+          FROM_VAR: ${{ vars.DATA_BASE_URL }}
+          FROM_SECRET: ${{ secrets.DATA_BASE_URL }}
+        run: |
+          BASE="${FROM_VAR:-$FROM_SECRET}"
+          if [ -n "$UA_URL" ]; then
+            URL="$UA_URL"
+          elif [ -n "$BASE" ]; then
+            URL="$BASE/environments/ua"
+          else
+            URL=""
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          if [ -z "$URL" ]; then
+            echo "::notice::No data source is configured, so the data-backed flow tests have nothing to read and are skipped. See LAUNCH_CHECKLIST.md 1.5."
+          else
+            echo "Data source: $URL"
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.scope.outputs.run == 'true' && steps.data.outputs.url != ''
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        if: steps.scope.outputs.run == 'true' && steps.data.outputs.url != ''
+        run: npm ci
+
+      # Chromium alone and no `--with-deps`, for the reason the `flow` job
+      # gives above (#1361).
+      - name: Install Chromium
+        if: steps.scope.outputs.run == 'true' && steps.data.outputs.url != ''
+        run: npx playwright install chromium
+
+      # No proxy here, unlike the sandbox: a runner reaches the bucket itself,
+      # and the build carries the real base URL so the app requests it the way
+      # a deployed build does. scripts/data-proxy.mjs exists for the other
+      # case and says so on itself.
+      - name: Flow tests against the pinned release
+        if: steps.scope.outputs.run == 'true' && steps.data.outputs.url != ''
+        env:
+          VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
+        run: npm run test:e2e:data
+
+      - name: Keep the report when it fails
+        if: failure() && steps.scope.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flow-data-test-report
+          path: client/playwright-report/
+          retention-days: 14

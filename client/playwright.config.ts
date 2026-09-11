@@ -53,8 +53,62 @@ const COMMAND = process.env.CI
   ? 'npm run build && npm run preview -- --port 4173 --strictPort'
   : 'npm run dev -- --port 5173 --strictPort'
 
+/**
+ * THE DATA-BACKED HALF (`FLOW_DATA=1`), and what it costs.
+ *
+ * Everything in `e2e/` runs against a phone holding no published data, which
+ * is a real state and the one this suite could always reach. `e2e/data/` is
+ * the other half: the same app reading the release it actually ships against,
+ * so the builder has a junction graph, the map has waypoints, and the screens
+ * behind those become drivable at all.
+ *
+ * THE COST WAS STATED BEFORE IT WAS CHOSEN (the maintainer's call,
+ * 2026-09-11): a test that reads a bucket can go red because the bucket did,
+ * not because the build broke, and a suite nobody trusts has already failed.
+ * Three things hold that down, and they are why this is a separate mode
+ * rather than more tests in `e2e/`:
+ *
+ * 1. IT READS THE PINNED RELEASE, never `latest`. `lib/dataRelease.ts`'s
+ *    DATA_RELEASE is a committed constant and a release folder is immutable
+ *    once written, so the bytes under a run cannot change without a commit
+ *    somebody reviewed. This is the whole of why the flakiness is bounded.
+ * 2. IT IS ITS OWN CI JOB. A bucket outage reds `flow-data` and leaves the
+ *    97 hermetic tests in `flow` green, so the two failures never look alike.
+ * 3. IT PREFLIGHTS. `e2e/support/dataPreflight.ts` fetches the manifest
+ *    before any test runs and fails with "the bucket did not answer" rather
+ *    than letting thirty assertions fail one at a time.
+ *
+ * WHY IT REUSES THE SAME PORT rather than running beside the hermetic half:
+ * the bucket's CORS allowlist carries vite's two defaults and nothing else
+ * (scripts/screenshot.mjs's SHOT_HOST comment). A third port is a third
+ * origin, and the bucket answers a third origin with silence. So the two
+ * halves are two runs, never concurrent.
+ */
+const DATA_MODE = process.env.FLOW_DATA === '1'
+
+/**
+ * A server the caller already started, which the browser is pointed at
+ * instead of one this config builds.
+ *
+ * THE SANDBOX NEEDS THIS AND A LAPTOP DOES NOT. Headless Chromium here
+ * cannot reach data.ourhike.org at all - measured 2026-09-11:
+ * ERR_CONNECTION_RESET on every artifact, while `curl` to the same URL
+ * returns 200, because the egress proxy is a shell-level thing the browser
+ * does not use. `scripts/data-proxy.mjs` serves the built app and forwards
+ * `/data/*` to the bucket through curl, so the app reads real data
+ * same-origin and CORS never enters into it. Point this at that proxy and
+ * this config starts no server of its own.
+ */
+const BYO_ORIGIN = process.env.FLOW_DATA_ORIGIN ?? ''
+
 export default defineConfig({
-  testDir: './e2e',
+  // The hermetic half by default; `e2e/data/` only in FLOW_DATA mode, and
+  // never both, for the CORS reason above.
+  testDir: DATA_MODE ? './e2e/data' : './e2e',
+  testIgnore: DATA_MODE ? [] : ['data/**'],
+  // Runs before any test in FLOW_DATA mode and says whether the bucket
+  // answered, so an outage reads as an outage.
+  globalSetup: DATA_MODE ? './e2e/support/dataPreflight.ts' : undefined,
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   // One retry in CI only, and only because a real browser adds real animation
@@ -64,9 +118,15 @@ export default defineConfig({
   // retried into passing.
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
-  timeout: 30_000,
+  timeout: DATA_MODE ? 90_000 : 30_000,
+  // Every assertion in the data suite may be waiting on a fetch rather than on
+  // a render, and the artifacts are large: measured 2026-09-11 through the
+  // sandbox's proxy, the map had its waypoints about nine seconds after boot.
+  // The hermetic half keeps the short window on purpose - there, five seconds
+  // of waiting means something is wrong.
+  expect: { timeout: DATA_MODE ? 30_000 : 5_000 },
   use: {
-    baseURL: `http://localhost:${PORT}`,
+    baseURL: BYO_ORIGIN !== '' ? BYO_ORIGIN : `http://localhost:${PORT}`,
     trace: 'retain-on-failure',
     browserName: 'chromium',
     // `viewport` is its own nested option, not a flat width/height on `use` -
@@ -83,10 +143,18 @@ export default defineConfig({
       executablePath: chromiumExecutable(),
     },
   },
-  webServer: {
-    command: COMMAND,
-    url: `http://localhost:${PORT}/`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  // None where the caller brought their own (the sandbox's proxy above);
+  // otherwise the same build-and-serve as the hermetic half, carrying
+  // VITE_DATA_BASE_URL through so the bundle knows which bucket to read.
+  webServer:
+    BYO_ORIGIN !== ''
+      ? undefined
+      : {
+          command: COMMAND,
+          url: `http://localhost:${PORT}/`,
+          reuseExistingServer: !process.env.CI,
+          // The data build fetches 1,943 artifacts' worth of manifest before
+          // it draws anything, so it wants longer than a hermetic boot does.
+          timeout: DATA_MODE ? 180_000 : 60_000,
+        },
 })

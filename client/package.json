@@ -19,7 +19,8 @@
     "test": "vitest run --coverage",
     "test:nocov": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:data": "FLOW_DATA=1 playwright test"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",

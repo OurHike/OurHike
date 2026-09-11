@@ -26,6 +26,16 @@
  *   to it proves the same thing more slowly. An entry here is a decision
  *   somebody can disagree with, which is why it carries a sentence.
  *
+ * THE SUITE HAS TWO HALVES SINCE 2026-09-11, and a `spec` naming
+ * `e2e/data/` means the second one. `e2e/` drives a phone that has downloaded
+ * nothing - a real state, and the only one this suite could reach until now.
+ * `e2e/data/` drives the same app reading the release lib/dataRelease.ts
+ * pins, which is what makes the builder, the route and the waypoint screens
+ * drivable at all (the gap #1387 records). The cost of the second half is
+ * that it reads a network; playwright.config.ts's FLOW_DATA comment carries
+ * the three things that bound it, and it is its own CI job so a bucket outage
+ * never reads as a broken client.
+ *
  * The `step` field is the journey step from features/PATHWAY.md's spine, so
  * the ledger groups the way a hiker moves rather than the way the directory
  * sorts - and so "what is left on F6" is one filter rather than a reading.
@@ -109,7 +119,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
 
   // ---- F4 step 2, Route ---------------------------------------------------
   'chrome/DayHikePickBar.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
-  'chrome/DayHikePanel.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
+  'chrome/DayHikePanel.tsx': {
+    step: 'F4 step 2 · Route',
+    flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
+  },
   'chrome/RouteStopsPanel.tsx': {
     step: 'F4 step 2 · Route',
     flow: { status: 'planned' },
@@ -240,7 +253,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/mapRoom.spec.ts' },
   },
-  'chrome/InViewSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/InViewSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
+  },
   'chrome/ClosureSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/SeriousWarningSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/OrgNoticeSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },

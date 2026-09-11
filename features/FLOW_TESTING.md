@@ -360,9 +360,21 @@ server, and keeps the HTML report, traces included, for a fortnight when it fail
 - **No duplicating the vitest layer.** Where `App.pathway.test.tsx`, `App.dayHike.test.tsx`,
   `App.navigator.test.tsx` or `navigator.test.ts` already hold logic at the rendered layer, a
   flow spec proves _findable_, not the same branch again — and is usually shorter for it.
-- **Map data.** Chromium in an agent sandbox reaches nothing external (measured against
-  `data.ourhike.org` and `example.com` — `screenshot.mjs`'s own comment), so real tiles and a
-  real junction graph are not available; seed IndexedDB instead.
+- **Map data — half of this boundary lifted on 2026-09-11, and the half that stands is the
+  sandbox's.** Chromium in an agent sandbox still reaches nothing external directly (measured
+  again 2026-09-11: `ERR_CONNECTION_RESET` on every artifact, while `curl` to the same URL
+  returns 200 — the egress proxy is a shell-level thing the browser does not use). What
+  changed is that the suite now has a **second half**, `client/e2e/data/`, which reads the
+  release `lib/dataRelease.ts` pins: in CI a runner fetches the bucket directly, and in the
+  sandbox `scripts/data-proxy.mjs` serves the built app and the bucket from one origin so the
+  browser never makes a cross-origin request. So a real junction graph and real waypoints
+  **are** available now, in that half.
+
+  `client/e2e/` itself is unchanged and stays hermetic: it drives a phone that has downloaded
+  nothing, which is a real state and the one a hiker is in before their first download. Seed
+  IndexedDB there. The split is deliberate — `playwright.config.ts`'s `FLOW_DATA` comment
+  carries what reading a network costs and the three things that bound it, and the two halves
+  are two CI jobs so a bucket outage never reads as a broken client.
 - **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
   `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
   `@playwright/test`'s `test` through vitest's runner.
@@ -414,7 +426,15 @@ headed, and there is no display in CI or in an agent sandbox.
   tapping "Pick on the map" sweeps it with no bail sheet. `e2e/bailSheet.spec.ts` carries the
   repro written out in full as a `test.skip`, blocked on **#1387 — Neither the Playwright
   suite nor the screenshot recipes can put a live draft in the day-hike builder without a
-  reachable bucket**. The skip comes off in the change that closes it.
+  reachable bucket**.
+
+  **Part of that blocker is gone and the skip stays, which is worth being exact about.** Since
+  2026-09-11 `e2e/data/` reaches the builder with a real junction graph under it — proved:
+  step 1 offers its three doors instead of the refusal, and "Pick on the map" opens step 2.
+  What is still unproved is the next step, DROPPING A STOP, which means clicking a coordinate
+  on a map canvas and having the router accept it. Reaching the builder is not the same as
+  putting a live draft in it, and the skip comes off when a spec has actually done the second
+  thing rather than when it could plausibly try.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

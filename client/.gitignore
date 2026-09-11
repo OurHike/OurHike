@@ -15,6 +15,10 @@ dev-dist
 *.tsbuildinfo
 coverage
 
+# Playwright's own run artefacts (reports, traces) - not source, same as coverage above.
+playwright-report
+test-results
+
 # Local dev-only data slice (copied by hand from pipeline/data/processed/, see
 # README.md) - never committed, same "generated data doesn't get committed"
 # rule TECHNICAL_ARCHITECTURE.md already applies to pipeline/data/.

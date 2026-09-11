@@ -54,7 +54,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F1 first run',
     flow: { status: 'covered', spec: 'e2e/onboarding.spec.ts' },
   },
-  'chrome/PlaceField.tsx': { step: 'F1 first run', flow: { status: 'planned' } },
+  'chrome/PlaceField.tsx': {
+    step: 'F1 first run',
+    flow: { status: 'covered', spec: 'e2e/firstRunStates.spec.ts' },
+  },
   'screens/InstallPrompt.tsx': { step: 'F1 first run', flow: { status: 'planned' } },
 
   // ---- F2 Today -----------------------------------------------------------
@@ -117,14 +120,17 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/SectionPlanner.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
 
   // ---- F5 step 3, Details and Save ---------------------------------------
-  'screens/DayHikeCard.tsx': { step: 'F5 step 3 · Details', flow: { status: 'planned' } },
+  'screens/DayHikeCard.tsx': {
+    step: 'F5 step 3 · Details',
+    flow: { status: 'covered', spec: 'e2e/dayHikeCard.spec.ts' },
+  },
   'screens/PlanTargetSheet.tsx': {
     step: 'F5 step 3 · Details',
     flow: { status: 'planned' },
   },
   'screens/LeaveWithSomeone.tsx': {
     step: 'F5 step 3 · Details',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/dayHikeCard.spec.ts' },
   },
   'screens/ShareHike.tsx': { step: 'F5 step 3 · Details', flow: { status: 'planned' } },
   'chrome/AddDayHikeSheet.tsx': {
@@ -210,8 +216,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/PoiShareSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/PlaceSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/PressPlate.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/Search.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/Header.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/Search.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/mapChrome.spec.ts' },
+  },
+  'chrome/Header.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/mapChrome.spec.ts' },
+  },
   'chrome/HighlightSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
   'chrome/ElevationChart.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
 
@@ -265,7 +277,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/BackgroundPicker.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/SourcesSection.tsx': { step: 'F13 More', flow: { status: 'planned' } },
   'chrome/DownloadsLink.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/ReportBug.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/ReportBug.tsx': {
+    step: 'F13 More',
+    flow: { status: 'covered', spec: 'e2e/failurePaths.spec.ts' },
+  },
 
   // ---- The download, which is its own flow at every step ------------------
   'screens/Downloads.tsx': { step: 'The download', flow: { status: 'planned' } },
@@ -273,8 +288,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'screens/DownloadCard.tsx': { step: 'The download', flow: { status: 'planned' } },
 
   // ---- Failure paths ------------------------------------------------------
-  'screens/AppFailureReport.tsx': { step: 'Failure paths', flow: { status: 'planned' } },
-  'chrome/ErrorBoundary.tsx': { step: 'Failure paths', flow: { status: 'planned' } },
+  'screens/AppFailureReport.tsx': {
+    step: 'Failure paths',
+    flow: { status: 'covered', spec: 'e2e/failurePaths.spec.ts' },
+  },
+  'chrome/ErrorBoundary.tsx': {
+    step: 'Failure paths',
+    flow: { status: 'covered', spec: 'e2e/failurePaths.spec.ts' },
+  },
 
   // ---- Leaves: proved by a component test, not by a browser ---------------
   'chrome/ModeIcon.tsx': {

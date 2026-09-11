@@ -405,7 +405,13 @@ if selected_has client; then
        { [ -n "${CHROMIUM_PATH:-}" ] ||
          [ -d "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ] ||
          [ -d "${HOME}/.cache/ms-playwright" ]; }; then
-    step "client flow tests" npm --prefix client exec -- playwright test
+    # `npm --prefix client run`, not `npm --prefix client exec` - the same
+    # distinction CLIENT_TEST's own note above was written for, walked into
+    # again here. `run` executes the script with the working directory set to
+    # client/; `exec` does not, so Playwright resolved no config, fell back to
+    # scanning the repository from its root, and tried to parse App.css and a
+    # PNG as test files. The suite it then reported on was not this one.
+    step "client flow tests" npm --prefix client run test:e2e
   else
     echo "-- client flow tests: SKIPPED, no Playwright browser on this machine."
     echo "   Run 'cd client && npx playwright install chromium' once to turn"

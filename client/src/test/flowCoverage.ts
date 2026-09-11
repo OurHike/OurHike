@@ -73,7 +73,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/today.spec.ts' },
   },
-  'chrome/ModeSwitch.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/ModeSwitch.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'chrome/WelcomeBackCard.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/NextUpRail.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/FieldNoteSection.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
@@ -135,7 +138,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F5 step 3 · Details',
     flow: { status: 'covered', spec: 'e2e/dayHikeCard.spec.ts' },
   },
-  'screens/ShareHike.tsx': { step: 'F5 step 3 · Details', flow: { status: 'planned' } },
+  'screens/ShareHike.tsx': {
+    step: 'F5 step 3 · Details',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'chrome/AddDayHikeSheet.tsx': {
     step: 'F5 step 3 · Details',
     flow: { status: 'planned' },
@@ -208,9 +214,21 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
+  // STILL PLANNED, and the near miss is recorded because the door that looks
+  // like this screen's is not. reportingDoors.spec.ts drives "Report a
+  // problem" -> a kind, and the six simple kinds are answered INSIDE
+  // reporting/ReportWindow.tsx - one tap files, and "Anything to add?" is an
+  // optional note after the fact. This form's own door is a waypoint card's,
+  // which needs published waypoints this suite does not reach.
   'screens/ReportForm.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
-  'screens/ClosureForm.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
-  'reporting/ReportWindow.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
+  'screens/ClosureForm.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/ReportWindow.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
 
   // ---- F12 the map --------------------------------------------------------
@@ -252,7 +270,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F14 volunteering',
     flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
   },
-  'screens/VolunteerHours.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'screens/VolunteerHours.tsx': {
+    step: 'F14 volunteering',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/VolunteerImpact.tsx': {
     step: 'F14 volunteering',
     flow: { status: 'planned' },
@@ -260,6 +281,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'chrome/WorkdaySheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  // STILL PLANNED, probed rather than assumed (2026-09-11): More -> Volunteer
+  // & report offers "Report a problem", "Your reports" and the hours form,
+  // and nothing on it reaches a crew. Driving this through a route that does
+  // not exist is the claim the ledger's header forbids.
   'screens/GroupScreen.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
 
   // ---- F13 More, settings and identity -----------------------------------

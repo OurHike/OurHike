@@ -40,6 +40,8 @@ const STEWARDS: Stewards = [
     trust: null,
     licence: '© ATC, used with permission',
     attribution: null,
+    terms: null,
+    termsSource: null,
     layers: ['ATC Trail Updates'],
     keys: ['atc_trail_updates'],
   },

@@ -39,6 +39,66 @@ def source(key: str, provider: str, reaches: bool, **fields) -> dict:
     return {"key": key, "provider": provider, "reaches_hikers": reaches, **fields}
 
 
+class TestTermsTravelWithTheData:
+    """NJDEP's condition 2, and why this record carries more than a summary.
+
+    Their Data Distribution Agreement says the data "may not be reproduced or
+    redistributed without all the metadata provided" (quoted whole in
+    sources.json's `njdep_licence`). A steward row naming the organization and
+    summarising its licence in a line is not that, so the agreement itself is
+    published beside the lines it governs.
+    """
+
+    def test_publishes_a_blocks_full_terms_and_where_they_were_read(self):
+        out = export_sources.build_output(
+            registry(
+                source("a", "NJDEP", True, steward="NJ DEP"),
+                njdep_licence={
+                    "author": "NJ DEP",
+                    "license": "Permitted on conditions",
+                    "terms_verbatim": "Terms of Agreement 1. All data is provided, as is.",
+                    "terms_source": "https://example.invalid/item",
+                },
+            )
+        )
+
+        steward = out["stewards"][0]
+        assert steward["terms"] == "Terms of Agreement 1. All data is provided, as is."
+        assert steward["terms_source"] == "https://example.invalid/item"
+
+    def test_a_block_that_quotes_nothing_publishes_null_rather_than_an_empty_string(self):
+        # Most blocks record only a short form, and the card renders absent as
+        # nothing. An empty string would draw a disclosure that opens on
+        # nothing, which is the placeholder this screen refuses everywhere else.
+        out = export_sources.build_output(
+            registry(
+                source("a", "ATC", True, steward="Trail Org"),
+                atc_licence={"author": "Trail Org", "license": "© ATC, used with permission"},
+            )
+        )
+
+        assert out["stewards"][0]["terms"] is None
+        assert out["stewards"][0]["terms_source"] is None
+
+    def test_new_jersey_ships_carrying_njdeps_own_credit_sentence(self):
+        """The real registry, as it stands after the maintainer's decision of
+        2026-09-11 - the one case in this file that reads the live file rather
+        than a synthetic one, because the point is what actually ships.
+
+        Condition 3 requires NJDEP's credit/disclaimer sentence verbatim on any
+        map produced from their data. The registry's `attribution_required` is
+        that sentence; this asserts the shipped `attribution` IS it, byte for
+        byte, rather than a paraphrase somebody tidied.
+        """
+        real = json.loads((ROOT / "sources.json").read_text())
+        out = export_sources.build_output(real)
+
+        njdep = [s for s in out["stewards"] if s["provider"] == "NJDEP"]
+        assert len(njdep) == 1, "New Jersey ships, or this test is out of date"
+        assert njdep[0]["attribution"] == real["njdep_licence"]["attribution_required"]
+        assert njdep[0]["terms"] == real["njdep_licence"]["terms_verbatim"]
+
+
 class TestWhoGetsNamed:
     def test_names_a_steward_whose_data_reaches_hikers(self):
         out = export_sources.build_output(registry(source("a", "ATC", True, steward="Trail Org", attribution="© Trail Org")))

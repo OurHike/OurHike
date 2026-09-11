@@ -98,6 +98,34 @@ export function SourcesSection({ stewards }: SourcesSectionProps) {
               {steward.attribution !== null && (
                 <p className="sources__terms">{steward.attribution}</p>
               )}
+
+              {/* THE FULL AGREEMENT, where the steward's block quotes one.
+                  NJDEP's is why this exists: their Data Distribution Agreement
+                  says the data "may not be reproduced or redistributed without
+                  all the metadata provided", so the terms travel with the
+                  lines rather than being summarised away.
+
+                  BEHIND A DISCLOSURE, not inline. NJDEP's runs to 1,901
+                  characters; printed open it would be most of this screen and
+                  would bury the nine other organizations whose cards sit under
+                  it. Closed, it is present, findable and one tap from being
+                  read - which is what "provided with" asks for - and it opens
+                  to the agreement verbatim, never a paraphrase.
+
+                  The link is the other half: a hiker or a club can check this
+                  app's copy against the steward's own, which is the only way
+                  anybody could ever catch it drifting. */}
+              {steward.terms !== null && (
+                <details className="sources__agreement">
+                  <summary className="sources__agreement-open">The full terms</summary>
+                  <p className="sources__terms sources__terms--full">{steward.terms}</p>
+                  {steward.termsSource !== null && (
+                    <p className="sources__terms sources__source">
+                      Read from {steward.termsSource}
+                    </p>
+                  )}
+                </details>
+              )}
             </li>
           )
         })}

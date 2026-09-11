@@ -495,6 +495,100 @@ def test_a_source_that_declares_no_allowed_set_gets_the_default(tmp_path, monkey
     assert manifest["sources"]["oprhp_trails"]["dropped"] == {"not a foot trail: Foot='M'": 1}
 
 
+def _nj_statewide_source(**overrides):
+    """The shape of the real nj_statewide_trails entry, minus the prose.
+
+    THE ONLY SOURCE USING BOTH MECHANISMS, and it needs both. Its TRAIL_TYPE is
+    fully populated and names what a segment IS, so it can be an allowlist;
+    its HIKING column is 'U' (unrecorded) on 4,825 of 13,296 rows, so it cannot
+    be one, and is used only to drop the explicit 'N'. The registry entry's own
+    `foot_comment` carries the counts.
+    """
+    source = {
+        "key": "nj_statewide_trails",
+        "title": "Statewide Trails in New Jersey",
+        "kind": "external_arcgis_layer",
+        "url": "https://example.test/nj",
+        "steward": "New Jersey Department of Environmental Protection",
+        "attribution": "This (map/publication/report) was developed using NJDEP GIS digital data.",
+        "blaze_field": "BLAZE_COLOR",
+        "name_field": "TRAIL_NAME_SEGMENT",
+        "foot_field": "TRAIL_TYPE",
+        "foot_allowed": ["off-road", "connector", "side path"],
+        "excluded_when": {"HIKING": ["N"], "MOTORIZED_USE_ALLOWED": ["Y"]},
+        "reaches_hikers": True,
+    }
+    source.update(overrides)
+    return source
+
+
+def _nj_properties(**overrides):
+    props = {
+        "TRAIL_NAME_SEGMENT": "Vista Loop",
+        "BLAZE_COLOR": "Blue",
+        "TRAIL_TYPE": "off-road",
+        "HIKING": "Y",
+        "MOTORIZED_USE_ALLOWED": "N",
+    }
+    props.update(overrides)
+    return props
+
+
+def test_new_jersey_keeps_the_tread_and_drops_the_road_the_water_and_the_motor(tmp_path, monkeypatch):
+    """The filter that shipped when the maintainer cleared New Jersey (2026-09-11).
+
+    WHY IT IS WORTH A TEST OF ITS OWN rather than trusting the two mechanisms
+    that already have one. This layer is a compilation from 166 agencies and it
+    carries rows that are not trail at all - 1,085 on-road, 50 sidewalk, 36
+    crosswalk, 19 paddling, 9 parking (measured 2026-09-09) - so a filter that
+    regressed here would not draw a slightly-wrong trail, it would draw a road
+    or a river as one. build_trail_graph.py's own rule is that roads are not
+    edges; this is that rule holding at the exporter, where the rows enter.
+
+    The 'U' row is the one to read twice: it is KEPT. HIKING='U' means
+    unrecorded, and dropping it would delete 4,825 ordinary trails - the
+    nh_granit_trails trap, avoided by making TRAIL_TYPE the allowlist instead.
+    """
+    manifest, body = _run(
+        tmp_path,
+        monkeypatch,
+        [_nj_statewide_source()],
+        {
+            "nj_statewide_trails": [
+                _feature(HARRIMAN, _nj_properties(), feature_id=1),
+                # Unrecorded, and kept: absence is not a refusal.
+                _feature(HARRIMAN, _nj_properties(HIKING="U"), feature_id=2),
+                # A connector between trails is trail a hiker walks.
+                _feature(HARRIMAN, _nj_properties(TRAIL_TYPE="connector"), feature_id=3),
+                # None of these four is somewhere a hiker is routed.
+                _feature(HARRIMAN, _nj_properties(TRAIL_TYPE="on-road"), feature_id=4),
+                _feature(HARRIMAN, _nj_properties(TRAIL_TYPE="water"), feature_id=5),
+                _feature(HARRIMAN, _nj_properties(TRAIL_TYPE="parking"), feature_id=6),
+                _feature(HARRIMAN, _nj_properties(HIKING="N"), feature_id=7),
+                # Off-road, hiking not denied, and motorized - the row the
+                # written specification would have shipped. See the registry
+                # entry's foot_comment: dropping it is one step beyond that
+                # specification, taken deliberately.
+                _feature(HARRIMAN, _nj_properties(MOTORIZED_USE_ALLOWED="Y"), feature_id=8),
+            ]
+        },
+        mapping={"nj_statewide_trails": {"mapped": {"Blue": "Blue"}}},
+    )
+
+    assert [f["properties"]["id"] for f in body["features"]] == [
+        "nj_statewide_trails:1",
+        "nj_statewide_trails:2",
+        "nj_statewide_trails:3",
+    ]
+    assert manifest["sources"]["nj_statewide_trails"]["dropped"] == {
+        "not a foot trail: TRAIL_TYPE='on-road'": 1,
+        "not a foot trail: TRAIL_TYPE='water'": 1,
+        "not a foot trail: TRAIL_TYPE='parking'": 1,
+        "excluded use: HIKING='N'": 1,
+        "excluded use: MOTORIZED_USE_ALLOWED='Y'": 1,
+    }
+
+
 def test_a_source_declaring_no_foot_field_keeps_every_row(tmp_path, monkeypatch):
     # NYNJTC publishes hiking trails and nothing else, so there are no use
     # flags to read. Absent must not mean excluded, or registering a source

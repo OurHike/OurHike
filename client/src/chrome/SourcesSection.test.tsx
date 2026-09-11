@@ -13,6 +13,8 @@ const ATC = {
   trust: null,
   licence: '© ATC, used with permission',
   attribution: null,
+  terms: null,
+  termsSource: null,
   layers: ['A.T. Centerline', 'A.T. Shelters'],
   keys: [],
 }
@@ -23,8 +25,29 @@ const OSM = {
   trust: 'community',
   licence: null,
   attribution: '(c) OpenStreetMap contributors',
+  terms: null,
+  termsSource: null,
   layers: ['OSM water point sources'],
   keys: [],
+}
+
+/** A steward whose block quotes its terms whole — NJDEP's shape, which is the
+ *  reason `terms` exists at all: their agreement forbids redistributing the
+ *  data without the metadata, so the agreement has to be on the screen the
+ *  data is accounted for on. Shortened here; the claim is the mechanism, and
+ *  pinning 1,901 characters of somebody else's licence in a test would pin the
+ *  fixture rather than the screen. */
+const WITH_TERMS = {
+  provider: 'NJDEP',
+  name: 'New Jersey Department of Environmental Protection',
+  trust: 'authoritative',
+  licence: 'NJDEP Data Distribution Agreement: reuse permitted on conditions',
+  attribution:
+    'This (map/publication/report) was developed using NJDEP GIS digital data.',
+  terms: 'Terms of Agreement 1. All data is provided, as is.',
+  termsSource: 'https://example.invalid/item',
+  layers: ['NJ State Park Service Trails'],
+  keys: ['njdep_park_trails'],
 }
 
 const BOTH: Stewards = [ATC, OSM]
@@ -97,5 +120,37 @@ describe('the sources section', () => {
     render(<SourcesSection stewards={[ATC]} />)
 
     expect(screen.getByText(/2 layers/)).toBeInTheDocument()
+  })
+
+  it('carries a steward’s full terms, closed, where their block quotes them', () => {
+    // NJDEP's condition 2 in one assertion: the agreement is ON the screen
+    // with the data, not summarised into the one-line licence above it. Closed
+    // by default, because 1,901 characters open would bury every other
+    // organization's card - present and one tap away is what "provided with"
+    // asks for.
+    render(<SourcesSection stewards={[WITH_TERMS]} />)
+
+    const disclosure = screen.getByText('The full terms')
+    expect(disclosure).toBeInTheDocument()
+    expect(disclosure.closest('details')).not.toHaveAttribute('open')
+
+    // Verbatim, and reachable: jsdom renders a closed <details>'s children, so
+    // this asserts the text is THERE rather than that it is visible — which is
+    // the right claim, since the licence condition is about the terms being
+    // carried, and the disclosure state is a layout decision above it.
+    expect(
+      screen.getByText('Terms of Agreement 1. All data is provided, as is.'),
+    ).toBeInTheDocument()
+    // And where the copy came from, so it can be checked against the
+    // steward's own — the only way anybody catches this app's copy drifting.
+    expect(screen.getByText(/https:\/\/example\.invalid\/item/)).toBeInTheDocument()
+  })
+
+  it('offers no disclosure for a steward whose block quotes nothing', () => {
+    // Most stewards record only a short form, and that is not a gap to fill
+    // with an empty "The full terms" that opens on nothing.
+    render(<SourcesSection stewards={BOTH} />)
+
+    expect(screen.queryByText('The full terms')).not.toBeInTheDocument()
   })
 })

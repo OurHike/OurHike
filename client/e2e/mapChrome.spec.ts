@@ -261,7 +261,7 @@ test.describe('the map’s chrome', () => {
     await expect(legend.getByText(/affected · week of/)).toHaveCount(0)
   })
 
-  test('states: below the pin seam the legend says the app is not drawing waypoints, and there is no In view door (D10)', async ({
+  test('states: below the pin seam the legend says waypoints appear from a closer zoom, and the In view door is absent for want of points rather than zoom (D10)', async ({
     page,
   }) => {
     // The camera the app opens on is the whole corridor, which is below
@@ -275,6 +275,17 @@ test.describe('the map’s chrome', () => {
     // are present asserted beside it: chrome/MapScreen.tsx offers "In view"
     // only where `pointsShown.length > 0`, and a header that failed to draw
     // at all would otherwise pass this.
+    //
+    // THE SEAM DOES NOT GATE THIS DOOR, and the title used to read as though
+    // it did. The gate is `pointsShown.length > 0 && !buildingDayHike &&
+    // !isDesktop` — no zoom term anywhere in it — so the door is missing here
+    // because this suite's phone holds no waypoints at all, not because the
+    // camera is out at the corridor. Measured against the published preview
+    // at the same z7 camera on UA's data (2026-09-11): the header reads
+    // "IN VIEW · 906". A reader who took the old title at face value would
+    // have believed the opposite of what the build does. The test below is
+    // the half that proves the real rule, by finding the door still absent at
+    // a zoom where pins WOULD be drawn.
     await expect(page.getByRole('button', { name: /In view/ })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Legend', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible()

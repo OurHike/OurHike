@@ -375,6 +375,7 @@ server, and keeps the HTML report, traces included, for a fortnight when it fail
   IndexedDB there. The split is deliberate — `playwright.config.ts`'s `FLOW_DATA` comment
   carries what reading a network costs and the three things that bound it, and the two halves
   are two CI jobs so a bucket outage never reads as a broken client.
+
 - **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
   `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
   `@playwright/test`'s `test` through vitest's runner.
@@ -387,11 +388,11 @@ They are a way of writing the specs this document asks for, not a different stan
 everything above still applies to what they produce, and the ledger still refuses a
 screen nobody considered.
 
-| agent | what it does | what it writes |
-| --- | --- | --- |
-| `playwright-test-planner` | opens a screen, explores it, and writes down its controls, paths and states | a markdown plan in `client/specs/` |
-| `playwright-test-generator` | takes one plan item, performs it in a real browser, and records what it did | one spec file in `client/e2e/` |
-| `playwright-test-healer` | runs the suite, pauses on each failure, inspects the live page, and fixes the spec | edits to an existing spec |
+| agent                       | what it does                                                                       | what it writes                     |
+| --------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------- |
+| `playwright-test-planner`   | opens a screen, explores it, and writes down its controls, paths and states        | a markdown plan in `client/specs/` |
+| `playwright-test-generator` | takes one plan item, performs it in a real browser, and records what it did        | one spec file in `client/e2e/`     |
+| `playwright-test-healer`    | runs the suite, pauses on each failure, inspects the live page, and fixes the spec | edits to an existing spec          |
 
 **Where the pieces are.** The agent definitions are in the repository's own
 `.claude/agents/`, beside its skills, rather than the `client/.claude/` the installer
@@ -439,14 +440,14 @@ headed, and there is no display in CI or in an agent sandbox.
   **The live draft is no longer the blocker. The repro is.** Two separate things were in the
   way, and only one of them is left.
 
-  *A live day-hike draft is reachable now*, and the door is "Edit the route" on a saved
+  _A live day-hike draft is reachable now_, and the door is "Edit the route" on a saved
   walk's card: it loads the walk's legs into step 2 and puts the builder in the state a
   hiker reaches by tapping. `e2e/data/builder.spec.ts` drives it — the shape control and
   "Use this route ›" present where the empty builder withholds them, the legs as an ordered
   list, the honest climb refusal, and R3 proved with something worth keeping (back to step 1,
   re-enter, all seven legs still there).
 
-  *Dropping a stop by tapping still cannot be aimed*, and it was tried so the next person
+  _Dropping a stop by tapping still cannot be aimed_, and it was tried so the next person
   need not. Measured 2026-09-11 against release 2026-09-10, at the `ON_THE_TRAIL` camera the
   map specs share: a coarse sweep of the builder's map region produced one accepted tap out
   of about ninety and never a second; a fine sweep at 18-pixel spacing produced none at all
@@ -478,6 +479,7 @@ headed, and there is no display in CI or in an agent sandbox.
   always shows: the two-tap gesture spelled out, and "Roads are drawn, never routed on" —
   `build_trail_graph.py`'s rule that roads are not edges, surfaced on the one screen where a
   hiker would otherwise try.
+
 - **The map's canvas answers four more questions nobody can drive yet**, and they are four
   different reasons rather than one. `e2e/data/mapSheets.spec.ts` (2026-09-11) took the
   waypoint card, the trail line's sheet, the long-press plate and the notices list, all of
@@ -502,6 +504,7 @@ headed, and there is no display in CI or in an agent sandbox.
   rather than through the middle. The comment that first shipped with it said "a point on a
   published trail", which was a guess nobody had checked and would have sent the next person
   hunting for a bug in the tap handler.
+
 - **The elevation ribbon has a screen to draw on and no data under it.**
   `e2e/data/followMode.spec.ts` (2026-09-11) reaches the followed map, which is where
   `chrome/ElevationRibbon.tsx` lives, so the surface is no longer out of reach — but the
@@ -515,6 +518,7 @@ headed, and there is no display in CI or in an agent sandbox.
   `preview-shots/following-a-day-hike.mjs` said the opposite twice, most recently "should
   now draw… stated as an expectation rather than a fact". The expectation was honest and
   about the wrong artifact; that header now carries the measurement.
+
 - **A race is not something a flow test should chase — refuse the request instead.** The
   route builder's entrance blamed the hiker's download while the waypoints were still
   arriving ("This download predates trail miles on waypoints… Newer trail data carries
@@ -533,6 +537,32 @@ headed, and there is no display in CI or in an agent sandbox.
 
   Reach for `page.route` whenever a state is a race: aborting or delaying the artifact
   makes the state deterministic, and the assertion then says what it means.
+
+- **Three screens sit behind an account, and the flow build cannot have one.**
+  `screens/IdentitySetup.tsx` is mounted only after `account !== null` (App.tsx's
+  "signing in hands on to the step it was standing in front of"), and
+  `screens/Registry.tsx` and `screens/Moderation.tsx` behind `useModerator`, which
+  needs an account before it will so much as ask for a role. There is no account to
+  seed: `lib/auth.ts`'s `currentAccount()` goes through `getAuthClient()`, which
+  returns null when `VITE_SUPABASE_URL` is unset — as it is in `npm run dev` and in
+  the CI preview build this suite drives. So the wall is the BUILD, not the drive,
+  and no `page.route` or seeded key gets past it: there is no client to hand a
+  session to. Measured 2026-09-11 by driving More → You, which reads "not signed in"
+  and offers one provider.
+
+  What would settle it is a flow-only build with a Supabase project behind it and a
+  seeded session, which is a second CI service and a set of credentials in a public
+  repository's test job — a bigger decision than the coverage it buys.
+  `e2e/more.spec.ts` already asserts the registry's gate is SHUT, which is the half
+  of D4 that can be proved from outside.
+
+- **`screens/EmailSignIn.tsx` is not a gap at all — it is unreachable on purpose**,
+  and the ledger now says `unit-only` rather than `planned`. `ENABLED_PROVIDERS`
+  defaults to `google` alone because Supabase's built-in sender "is not a delivery
+  path this project can ship on" (`lib/supabase.ts`), and the screen is mounted only
+  when the sign-in prompt offers email. Every build this project deploys therefore
+  renders "Continue with Google" and nothing else, measured 2026-09-11. It returns
+  when a sender does.
 - **The engine axis has never been run** — see above. Chromium only, everywhere this has been
   written.
 - **The desktop project does not exist yet**, so every assertion here is a phone assertion.

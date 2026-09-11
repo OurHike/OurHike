@@ -87,7 +87,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F2 Today',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
-  'chrome/WelcomeBackCard.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
+  'chrome/WelcomeBackCard.tsx': {
+    step: 'F2 Today',
+    flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
+  },
   'chrome/NextUpRail.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/FieldNoteSection.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
   'chrome/TrailDataUpdate.tsx': { step: 'F2 Today', flow: { status: 'planned' } },
@@ -117,8 +120,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F3 step 1 · Hike',
     flow: { status: 'covered', spec: 'e2e/planRooms.spec.ts' },
   },
-  'screens/HikeSetup.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
-  'screens/HikePicker.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
+  'screens/HikeSetup.tsx': {
+    step: 'F3 step 1 · Hike',
+    flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
+  },
+  'screens/HikePicker.tsx': {
+    step: 'F3 step 1 · Hike',
+    flow: { status: 'covered', spec: 'e2e/more.spec.ts' },
+  },
 
   // ---- F4 step 2, Route ---------------------------------------------------
   'chrome/DayHikePickBar.tsx': {
@@ -142,7 +151,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
   'chrome/RouteHover.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
-  'chrome/SectionPlanner.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
+  'chrome/SectionPlanner.tsx': {
+    step: 'F4 step 2 · Route',
+    flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
+  },
 
   // ---- F5 step 3, Details and Save ---------------------------------------
   'screens/DayHikeCard.tsx': {
@@ -212,7 +224,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'screens/HikeDay.tsx': { step: 'F7 when today changes', flow: { status: 'planned' } },
   'chrome/StepAwaySheet.tsx': {
     step: 'F7 when today changes',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/longHikeRooms.spec.ts' },
   },
 
   // ---- F8 Plan ------------------------------------------------------------
@@ -395,7 +407,20 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: { status: 'covered', spec: 'e2e/settingsRooms.spec.ts' },
   },
   'screens/IdentitySetup.tsx': { step: 'F13 More', flow: { status: 'planned' } },
-  'screens/EmailSignIn.tsx': { step: 'F13 More', flow: { status: 'planned' } },
+  'screens/EmailSignIn.tsx': {
+    step: 'F13 More',
+    flow: {
+      // Not "planned": no build this project ships can render it. Measured
+      // 2026-09-11 by driving More → You → Sign in, which offers "Continue
+      // with Google" and nothing else. lib/supabase.ts is why - email left
+      // ENABLED_PROVIDERS' default because Supabase's built-in sender "is
+      // not a delivery path this project can ship on", and this screen is
+      // only mounted when SignInPrompt offers the email provider. It comes
+      // back with a sender behind it, and a flow test comes back with it.
+      status: 'unit-only',
+      why: 'Unreachable in any shipped build: ENABLED_PROVIDERS defaults to google alone (lib/supabase.ts), and this screen is mounted only when the sign-in prompt offers email. EmailSignIn.test.tsx holds the form; a flow test would need a build flag no deployment sets.',
+    },
+  },
   'screens/SignInPrompt.tsx': {
     step: 'F13 More',
     flow: { status: 'covered', spec: 'e2e/identityRooms.spec.ts' },

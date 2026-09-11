@@ -211,3 +211,96 @@ test.describe('More, and the settings behind it', () => {
     await expect(page.getByRole('heading', { name: /^your hike$/i })).toBeVisible()
   })
 })
+
+/**
+ * The one screen More REPLACES rather than pushes (App.tsx: "reached from here
+ * and nowhere else, so there is nothing behind it worth keeping visible"), and
+ * the only place in the app where a hike is two typed mile markers.
+ *
+ * DRIVEN WITHOUT A DOWNLOAD, which is this suite's whole premise and also the
+ * state the screen is most careful in: with no trail data there is no length
+ * to measure a whole-trail shortcut against, and the screen says so.
+ */
+test.describe('saying where you are walking', () => {
+  async function openThePicker(page: Page): Promise<void> {
+    await openMore(page)
+    await row(page, 'You').click()
+    await page.getByRole('button', { name: 'Say where you are walking' }).click()
+    await expect(page.getByRole('heading', { name: /^your hike$/i })).toBeVisible()
+  }
+
+  test('entrance and states: with nothing downloaded it says why the shortcuts cannot work, and offers the numbers anyway', async ({
+    page,
+  }) => {
+    await openThePicker(page)
+
+    // THE SENTENCE IS THE POINT. A shortcut that reads "Whole trail" has to
+    // know how long the trail is, and this phone has downloaded nothing - so
+    // the screen names the reason and leaves the mile fields, which need no
+    // published length at all.
+    await expect(
+      page.getByText(/The trail data is still arriving, so the whole-trail shortcuts/),
+    ).toBeVisible()
+    await expect(page.getByLabel('Starting at mile')).toBeVisible()
+    await expect(page.getByLabel('Finishing at mile')).toBeVisible()
+
+    // The screen opens refusing, because two blank fields are not a hike, and
+    // the refusal is the live reading rather than a separate error.
+    await expect(
+      page.getByText(
+        'Two different mile markers describe a hike; the same one twice doesn’t.',
+      ),
+    ).toBeVisible()
+  })
+
+  test('states: the reading follows the numbers, and says which way they point', async ({
+    page,
+  }) => {
+    await openThePicker(page)
+    await page.getByLabel('Starting at mile').fill('100')
+    await page.getByLabel('Finishing at mile').fill('142')
+
+    // Direction comes from the two miles rather than from a control, which is
+    // the screen's whole argument for having no direction control.
+    await expect(page.getByText('Northbound · 42 mi')).toBeVisible()
+
+    // Swap them and the same two numbers mean the other way - nothing else
+    // typed, nothing else chosen.
+    await page.getByLabel('Starting at mile').fill('142')
+    await page.getByLabel('Finishing at mile').fill('100')
+    await expect(page.getByText('Southbound · 42 mi')).toBeVisible()
+  })
+
+  test('states: the same mile twice is refused as a sentence, and saving it is not offered as done', async ({
+    page,
+  }) => {
+    await openThePicker(page)
+    await page.getByLabel('Starting at mile').fill('100')
+    await page.getByLabel('Finishing at mile').fill('100')
+
+    // "A hike" needs two different ends. The screen says so in the same place
+    // it would otherwise print the distance, rather than beside a control.
+    await expect(
+      page.getByText(
+        'Two different mile markers describe a hike; the same one twice doesn’t.',
+      ),
+    ).toBeVisible()
+    await expect(page.getByText(/Northbound|Southbound/)).toHaveCount(0)
+  })
+
+  test('exit: Cancel goes back to You, with nothing saved', async ({ page }) => {
+    await openThePicker(page)
+    await page.getByLabel('Starting at mile').fill('100')
+    await page.getByLabel('Finishing at mile').fill('142')
+
+    await page.getByRole('button', { name: 'Cancel' }).click()
+
+    // Back on the page it replaced, and the row still reads as no hike set -
+    // a Cancel that saved what was typed would be the screen deciding for the
+    // hiker on the way out.
+    await expect(page.getByRole('heading', { name: /^you$/i })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: 'Say where you are walking' }),
+    ).toBeVisible()
+  })
+})

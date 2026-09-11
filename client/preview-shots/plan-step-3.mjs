@@ -45,8 +45,19 @@ export default async function drive(page) {
   await page.getByText('Where from?').waitFor()
 
   // A start by name, through the picker every stop field opens (frame 4d).
-  const start = page.getByRole('button', { name: /Start/ }).first()
-  await start.waitFor({ timeout: 5000 }).catch(() => {})
+  //
+  // THE LOCATOR WAS WRONG AND THE GUARDS HID IT (2026-09-11). This asked for
+  // a button named "Start"; "START" is a LABEL over three options, and the
+  // options are the buttons — so `start.count()` was 0 on every run, the
+  // `return` fired, and this recipe has been photographing the ENTRANCE
+  // SHEET under a caption that hedges for exactly that ("or, where the drive
+  // could not name a start, the stop picker or the entrance sheet asking
+  // where from"). No false claim was published, and no step 3 either.
+  //
+  // Found by e2e/data/longSpine.spec.ts, which drives this same path and
+  // therefore could not use `.catch(() => {})` to look like it worked.
+  const start = page.getByRole('button', { name: /Shelter, town, or/ }).first()
+  await start.waitFor({ timeout: 15000 }).catch(() => {})
   if ((await start.count()) === 0) return
   await start.click()
   const search = page.getByLabel('Search for a stop')

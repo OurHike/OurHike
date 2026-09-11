@@ -105,7 +105,10 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F3 step 1 · Hike',
     flow: { status: 'covered', spec: 'e2e/bailSheet.spec.ts' },
   },
-  'chrome/RouteStopPicker.tsx': { step: 'F3 step 1 · Hike', flow: { status: 'planned' } },
+  'chrome/RouteStopPicker.tsx': {
+    step: 'F3 step 1 · Hike',
+    flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
+  },
   'chrome/RouteEntranceSheet.tsx': {
     step: 'F3 step 1 · Hike',
     flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
@@ -128,7 +131,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'chrome/RouteStopsPanel.tsx': {
     step: 'F4 step 2 · Route',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
   'chrome/RouteMapPickBar.tsx': {
     step: 'F4 step 2 · Route',
@@ -136,7 +139,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
   'chrome/routeBuilderPanel.tsx': {
     step: 'F4 step 2 · Route',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
   'chrome/RouteHover.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
   'chrome/SectionPlanner.tsx': { step: 'F4 step 2 · Route', flow: { status: 'planned' } },
@@ -157,7 +160,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // guards a body that needs the preview it is standing in for.
   'screens/PlanTargetSheet.tsx': {
     step: 'F5 step 3 · Details',
-    flow: { status: 'planned' },
+    flow: { status: 'covered', spec: 'e2e/data/longSpine.spec.ts' },
   },
   'screens/LeaveWithSomeone.tsx': {
     step: 'F5 step 3 · Details',

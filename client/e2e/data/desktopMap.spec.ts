@@ -455,3 +455,57 @@ test.describe('a row tapped in the journal', { tag: '@desktop' }, () => {
     ).toBeVisible()
   })
 })
+
+test.describe('the canvas under the chart', { tag: '@desktop' }, () => {
+  test('states: the map gives the chart its height AND resizes to it, rather than drawing past its box', async ({
+    page,
+  }) => {
+    // chrome/MapScreen.tsx keeps an effect on `[liveMap, isDesktop, hasChart]`
+    // whose whole job is to tell MapLibre its box changed when the chart takes
+    // the foot of the screen. The comment above it says why it cannot be left
+    // to CSS: "the canvas has to follow that change too."
+    //
+    // THIS IS THE INVISIBLE FAILURE AGAIN, and the worst-behaved of the set.
+    // Without the resize the element is still 554 px tall and the canvas is
+    // still the 771 px one MapLibre built for the taller box — so the map
+    // renders at the wrong scale inside its frame. Nothing throws, the chart
+    // draws correctly, and a screenshot looks like a map. What is wrong is
+    // WHERE THINGS ARE ON IT, which is the first of CLAUDE.md's four ways this
+    // app can hurt somebody.
+    //
+    // Measured 2026-09-11 against release 2026-09-10, this project's 1280x800:
+    //
+    //   nothing taken      the map's box 771 px tall
+    //   a hike taken       the box 554 px, and the canvas 554 px with it
+    //
+    // Asserted as "the canvas matches its box" rather than as 554, because 554
+    // is this viewport's arithmetic and the claim is that the two agree.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await page.goto('/')
+    await seedLongHike(page)
+    await page.getByRole('tab', { name: 'Map' }).click()
+
+    // The chart is the thing that takes the height, so it is the wait.
+    await expect(
+      page.getByRole('application', { name: /Elevation profile/ }),
+    ).toBeVisible({
+      timeout: NETWORK_BOUND_MS,
+    })
+
+    const region = await page.getByRole('region', { name: 'Trail map' }).boundingBox()
+    const canvas = await page.locator('canvas.maplibregl-canvas').boundingBox()
+    if (region === null || canvas === null) {
+      throw new Error('the map region or its canvas has no box, so one never mounted')
+    }
+
+    // A pixel of slack for sub-pixel layout; anything larger is the canvas
+    // disagreeing with the element it is painted into.
+    expect(Math.abs(canvas.height - region.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(canvas.width - region.width)).toBeLessThanOrEqual(1)
+
+    // And the chart really did take height off it, so the test above is
+    // comparing two numbers the chart moved rather than two that never changed.
+    expect(region.height).toBeLessThan(700)
+  })
+})

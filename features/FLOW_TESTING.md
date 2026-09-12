@@ -106,36 +106,47 @@ release: `chrome/ElevationChart.tsx` and `chrome/RouteHover.tsx`, neither of whi
 renders at all, plus the planning column's own room — the R2 measurement in the Layout axis
 below, which needed a routed draft before it could be taken.
 
-Four more went in on 2026-09-11 after a count rather than a hunch: **`grep -c isDesktop`
-across `src/` returns 40 branch sites in five components** (`App.tsx`, `chrome/MapScreen.tsx`,
-`screens/Plan.tsx`, `screens/Downloads.tsx`, and `lib/useDesktop.ts` itself), and the first
-pass of these specs left several with no assertion at all. The four are the ones whose
-failure is INVISIBLE — nothing crashes, nothing misaligns, and a screenshot looks right:
+**The device axis is now enumerated rather than sampled**, after a first pass that picked
+what looked interesting and a second that had to admit it. `grep -n 'isDesktop\|useDesktop'`
+across `src/` returns 43 lines; 15 are imports, hook calls, dependency arrays or a comment,
+which leaves **28 behavioural forks** in five components. Every one of them now has an
+assertion, and the table below is the audit — if a fork is added, it goes in this table with
+its test or with the reason it has none.
 
-- **the plate does not fold on a pan**, where the phone trades its status strip for an
-  eyebrow (the room audit of 2026-09-10). The gesture sets the latch at both widths; only
-  the render reads `!isDesktop`, so the wrong branch quietly costs a laptop its strip;
-- **the figures have one home** — `figures={!isDesktop}` withholds them from the builder bar
-  because the column prints them. Both are mounted on a laptop, inches apart, so the wrong
-  branch prints the same mileage twice rather than breaking anything. Measured: the
-  distance appears exactly once on the whole screen;
-- **In view is a face of the rail, not a pull-up over the map.** The hermetic half can pin
-  that the rail HAS both faces; it cannot pin that the phone's door is ABSENT, because with
-  nothing downloaded neither width draws one and the absence passes for the wrong reason.
-  Measured against release 2026-09-10: the phone gets one button reading `IN VIEW · 3` and
-  no tab, the laptop the tab and no button;
-- **the C5 defect**, which only a laptop can have: a row tapped in Today's journal opens the
-  card and leaves the tab — and therefore the column — where it was. Until #1373 every "see
-  it on the map" door switched tabs at every width, which on a laptop unmounted the journal
-  the row was tapped in. A regression is silent in a screenshot, since the card is open and
-  the map is behind it either way; the assertion that matters is that the column is still
-  there.
+| fork | what differs | asserted by |
+| --- | --- | --- |
+| `App` map mount, `tabOverMap`, Today overlay, journal column | the map is mounted at every tab; Today is beside it, not instead | Today beside the map; the reach floors |
+| `App` `planStepBeside` | step 1–3 stand in the column | step 1 in the column; the R2 reach table |
+| `App` `showMap` | "see it on the map" keeps the tab | **new** — hermetic (the day card) and data (a journal row) |
+| `App` `mapShownUnder` | Today with a live draft raises no bail sheet | the worked example |
+| `App` `useRouteHover` gate | the plate exists only here | the hover tests |
+| `App` `docked` review, review/bar slots | the review is the column, not a sheet over the map | the review region; the step-3 reach floor (a fall-through drops it to the phone's 0%) |
+| `App` `hikeWindowHidesMap` | a window beside the map, not instead of it | **new** — `app__map-held` absent |
+| `App` `sidebarModeSwitch` / `modeSwitch` | the mode is a radiogroup in the shell | the radiogroup test |
+| `App` `modeReadout` | and is NOT also a door in the map header | **new** |
+| `App` sidebar hike switch | the tab row has no room for it | the switch test |
+| `App` `figures` | the bar withholds what the column prints | the one-home test |
+| `MapScreen` `railed` | the legend is a region, and stands down for a step column | the legend test; step 1 |
+| `MapScreen` chart effects | the box shrinks AND the canvas follows it | **new** — canvas matches its box |
+| `MapScreen` `folded` | a pan does not cost the strip | the pan test |
+| `MapScreen` `inView` | a face of the rail, not a pull-up | the In view test |
+| `MapScreen` attribution | credits inline, nothing behind a disclosure | the credits test |
+| `MapScreen` `next-up-band` | the chart replaces the band | **new** |
+| `Plan` `onBench` | the days get a bench | the bench test |
+| `Downloads` | the laptop sentence | the download test |
 
-**Not every one of the 40 is asserted, and this does not claim otherwise.** The one known
-gap worth naming is `hikeWindowHidesMap` in `App.tsx` — a hike window hides the map on a
-phone and does not on a laptop, "which is the ordinary desktop case for placing a point".
-No spec drives it. Nobody has audited the other branch sites one by one; the four above were
-picked by reading the fork, not by a coverage tool.
+**Each "new" row is a fork whose failure is invisible** — nothing throws, nothing misaligns,
+and a screenshot of the wrong branch looks right. The canvas one is the worst behaved: without
+its resize the map draws at the wrong scale inside the right frame, so every position on it is
+wrong while the chart beside it is correct. That is the first of CLAUDE.md's four ways this app
+can hurt somebody, hiding behind a picture that looks fine.
+
+**One asymmetry found while writing these, and left as it is.** `hikeWindowHidesMap` carries
+`!isDesktop`, but the `inert` and `aria-hidden` beside it do not — so with a hike window open a
+laptop shows the map and simultaneously hides it from assistive technology. That may well be
+right (the map is context, not a control, while the window has focus), but it is not written
+down anywhere as a decision, and a role-based assertion here would pass for the wrong reason at
+both widths. The test asserts the hold class and the reach instead, and says so.
 
 `App.desktopSpine.test.tsx` and `desktopLayout.test.ts` still hold the desktop layout at the
 rendered layer, which is the cheaper place for the arithmetic. The division is the one this

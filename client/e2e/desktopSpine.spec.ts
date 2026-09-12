@@ -425,4 +425,172 @@ test.describe('the laptop layout', { tag: '@desktop' }, () => {
       0,
     )
   })
+
+  test('states: "see it on the map" keeps the tab here, because the map is already beside it', async ({
+    page,
+  }) => {
+    // THE C5 DEFECT AT ITS OTHER DOOR. e2e/data/desktopMap.spec.ts drives it
+    // from a journal row, which needs a position fix and a release; this is
+    // the same rule at a door a hermetic build can reach, and the rule is the
+    // point: App.tsx's `showMap` is ONE callback every "see it on the map"
+    // door reads - "the condition is the tab, not the caller, because it is
+    // the tab that says whether the map is visible". A guard written per door
+    // is a guard somebody adds a door without.
+    //
+    // Measured 2026-09-11, the identical drive at both widths: the phone
+    // leaves Today for the Map tab, the laptop stays where it is.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await page.goto('/')
+    await seedLongHike(page)
+    await page.getByRole('tab', { name: 'Today' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'See this day on the map' }).click()
+
+    // THE TAB DID NOT MOVE. On a phone this same press selects Map, because
+    // there the map is another screen and not going to it would be a door
+    // that did nothing.
+    await expect(page.getByRole('tab', { name: 'Today', selected: true })).toBeVisible()
+    await expect(page.getByRole('tab', { name: 'Map', selected: false })).toBeVisible()
+    // And the map is still the thing beside it, rather than a tab away.
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+  })
+
+  test('states: opening the day does not take the map away, where a phone has to give it up', async ({
+    page,
+  }) => {
+    // `hikeWindowHidesMap = hikeWindowOpen && !hikePointOnMap && !isDesktop`.
+    // A phone has one screen, so a window over it IS instead of the map; a
+    // laptop puts the window beside a map that stays drawn, "which is the
+    // ordinary desktop case for placing a point".
+    //
+    // ASSERTED BY THE HOLD CLASS AND BY REACH, not by the region's role -
+    // and that is worth writing down rather than working around, because it
+    // is the one asymmetry here: `inert` and `aria-hidden` are applied at
+    // BOTH widths (App.tsx passes `hikeWindowOpen && !hikePointOnMap` to
+    // them, without the width), so `getByRole` finds no map at either width
+    // and a role-based assertion would pass for the wrong reason.
+    //
+    // Measured 2026-09-11, the identical drive: the phone gets
+    // `app__map-held`, the laptop does not.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await page.goto('/')
+    await seedLongHike(page)
+    await page.getByRole('tab', { name: 'Today' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Open the day' }).click()
+    await expect(page.getByRole('heading', { name: /\d/ }).first()).toBeVisible()
+
+    await expect(page.locator('.app__map-held')).toHaveCount(0)
+    await expect(page.locator('.map-screen').first()).toBeVisible()
+  })
+
+  test('states: the map header carries no mode read-out here, because the sidebar holds it', async ({
+    page,
+  }) => {
+    // The other half of the mode test above, which asserted the sidebar's
+    // radiogroup and called itself "not a chip in the tab row" without ever
+    // checking the row. `modeReadout = isDesktop ? {} : { mode, onOpenMode }`
+    // in App.tsx: the phone's map header carries the mode and a door into the
+    // switch, and the laptop's does not because the sidebar's radiogroup is
+    // already the one home for it.
+    //
+    // TWO HOMES IS THE DEFECT, not one missing. A mode showing in both places
+    // can disagree with itself the moment one of them is switched, and would
+    // look entirely correct in a screenshot of either.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'day')
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    // The sidebar's block is the home, and it is a radiogroup rather than a
+    // door into a sheet - a laptop has the room to show the choice itself.
+    await expect(page.getByRole('radiogroup', { name: /Today I.m/ })).toBeVisible()
+
+    // And the header's door is absent. Measured 2026-09-11: the phone draws
+    // exactly one such button here and the laptop none.
+    await expect(page.getByRole('button', { name: /^Day hike$/i })).toHaveCount(0)
+  })
+
+  test('states: the band along the map\u2019s foot is a phone\u2019s, and the chart replaces it here', async ({
+    page,
+  }) => {
+    // `{!isDesktop && (<div className="next-up-band">…)}` in
+    // chrome/MapScreen.tsx: "above the breakpoint the full chart below
+    // replaces the ribbon, and the rail's cards would double the chart's own
+    // annotations."
+    //
+    // The band is UNCONDITIONAL on a phone - it carries the map's credit even
+    // with no profile downloaded, "because the credit may not depend on
+    // whether a profile happened to download" - so its absence here is a
+    // width fork and not an empty-data state. That is why this can be
+    // hermetic at all: with nothing downloaded the phone still draws one.
+    //
+    // Measured 2026-09-11, nothing downloaded: the phone draws one band, the
+    // laptop none. The credit it carries is not lost - the first test in this
+    // file pins it inline on the map instead.
+    await seedPreferences(page)
+    await seedHikerMode(page, 'day')
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    await expect(page.locator('.next-up-band')).toHaveCount(0)
+  })
+})
+
+/**
+ * THE PHONE SIDE OF TWO OF THE FORKS ABOVE, and the only untagged describe in
+ * this file — so the phone project runs it and the desktop project greps it
+ * out, which is the pairing it exists to be.
+ *
+ * WHY IT EXISTS AT ALL. Two of the assertions above are `toHaveCount(0)` on a
+ * CLASS rather than on a role: `app__map-held`, which has no accessible name
+ * because it is a visual hold, and `next-up-band`, which is a container. A
+ * class-based absence is the one assertion shape that goes green when somebody
+ * RENAMES the thing — the locator matches nothing, the expectation passes, and
+ * the fork it was guarding is unguarded from then on without a single test
+ * going red.
+ *
+ * `next-up-band` was already safe by accident: chrome/MapScreen.test.tsx
+ * asserts it exists in the phone render, so a rename reds that. `app__map-held`
+ * was asserted NOWHERE as present — `grep -rn app__map-held` found it in
+ * App.tsx, App.css and one absence assertion — so a rename would have made the
+ * desktop test permanently vacuous. This is the positive control that stops
+ * that, and it doubles as the phone behaviour the desktop test contrasts with.
+ */
+test.describe('what the phone does with the same two doors', () => {
+  test('states: a hike window takes the map on a phone, which is the fork the laptop tests measure against', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await seedHikerMode(page, 'long')
+    await page.goto('/')
+    await seedLongHike(page)
+    await page.getByRole('tab', { name: 'Today' }).click()
+    await page.getByRole('button', { name: 'Open the day' }).click()
+    await expect(page.getByRole('heading', { name: /\d/ }).first()).toBeVisible()
+
+    // The class the laptop test asserts the ABSENCE of. One here, none there.
+    await expect(page.locator('.app__map-held')).toHaveCount(1)
+  })
+
+  test('states: the band along the map’s foot is drawn here, with nothing downloaded', async ({
+    page,
+  }) => {
+    await seedPreferences(page)
+    await seedHikerMode(page, 'day')
+    await page.goto('/')
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
+    // Unconditional on a phone — the band carries the map's credit even with
+    // no profile, which is why the laptop's `toHaveCount(0)` is a width fork
+    // and not an empty-data state.
+    await expect(page.locator('.next-up-band')).toHaveCount(1)
+  })
 })

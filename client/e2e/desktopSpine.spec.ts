@@ -571,6 +571,28 @@ test.describe('what the phone does with the same two doors', () => {
     await seedHikerMode(page, 'long')
     await page.goto('/')
     await seedLongHike(page)
+
+    // THE MAP HAS TO HAVE BEEN MOUNTED ONCE, and this line is the whole
+    // lesson of the first version of this test, which went straight to Today
+    // and asserted the hold. Measured 2026-09-12, the identical drive:
+    //
+    //   straight to Today, open the day   app__map-held 0, .map-screen 0
+    //   the Map tab first, then that      app__map-held 1, .map-screen 1
+    //
+    // App.tsx mounts the map on `mapNeededNow || mapKept`. On a laptop
+    // `mapNeededNow` is true from the first frame, so the map is always
+    // there; on a phone it is true only on the Map tab, and `mapKept` is
+    // what holds it afterwards (#1081's permanent mount). A phone that has
+    // never opened the map has no map to hold, so the class has nothing to
+    // attach to and the count is 0 for a reason that has nothing to do with
+    // the fork this test is pairing.
+    //
+    // It failed on CI and not here, because the run I checked had started
+    // before this test existed - so the visit is the fix and the honest
+    // green is the one below it.
+    await page.getByRole('tab', { name: 'Map' }).click()
+    await expect(page.getByRole('region', { name: 'Trail map' })).toBeVisible()
+
     await page.getByRole('tab', { name: 'Today' }).click()
     await page.getByRole('button', { name: 'Open the day' }).click()
     await expect(page.getByRole('heading', { name: /\d/ }).first()).toBeVisible()

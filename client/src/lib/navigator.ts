@@ -172,6 +172,22 @@ export function returnsToOrigin(screen: Screen): boolean {
   return screen.kind === 'more'
 }
 
+/**
+ * Whether two screens are the same one for `screensLeft`'s purpose - which is
+ * the only caller, and the reason this is identity rather than equality.
+ *
+ * `find` COMPARES TRUE WHATEVER ITS FACETS, and that is a decision rather
+ * than an oversight: the finder holds no state a hiker would lose, so two
+ * finders differing only in which chips are lit are the same screen to leave.
+ * Nothing else treats them as equal - `push` appends unconditionally, so
+ * opening the finder with different facets still gets those facets.
+ *
+ * WHAT WOULD MAKE THIS WRONG: the finder gaining something unsaved - a typed
+ * query worth keeping, a part-built filter. `screensLeft` feeds the bail
+ * guard, so a `find` that is never reported as left is a `find` the guard can
+ * never protect, silently and with no test going red. Whoever gives the
+ * finder state to lose has to come back here.
+ */
 export function sameScreen(a: Screen, b: Screen): boolean {
   if (a.kind !== b.kind) return false
   switch (a.kind) {

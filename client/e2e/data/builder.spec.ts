@@ -28,7 +28,7 @@ import {
   ON_THE_TRAIL,
   ABOVE_THE_SEAM_ZOOM,
 } from '../support/seed'
-import { editTheSavedRoute } from '../support/savedWalk'
+import { editTheSavedRoute, GRAPH_READY_MS } from '../support/savedWalk'
 
 /** Room for GRAPH_READY_MS, which is larger than playwright.config.ts's
  *  data-mode per-test ceiling because the junction graph resolving a saved
@@ -354,3 +354,100 @@ test.describe('the map, with waypoints published', () => {
     await expect(page.getByRole('dialog', { name: /In view/ })).toBeVisible()
   })
 })
+
+/**
+ * The floor the maintainer asked for on 2026-09-12: "make sure that the map
+ * gets at least 75% of the screen height, always."
+ *
+ * WHAT IS MEASURED IS WHAT A THUMB CAN REACH, not the map element's height,
+ * and that distinction is the whole bug. Before this, at 390x844 with a route
+ * in the builder, the map's BOX was 480 px - 57% of the screen, which would
+ * have passed a naive assertion - while the bar sat over its bottom 321 px and
+ * left 159 px, 19%, that a tap could land on. The complaint was not that the
+ * map looked small. It was that it could not be used.
+ *
+ * MEASURED 2026-09-12 against release 2026-09-10, the identical drive:
+ *
+ *              390x844              375x667
+ *   before     159 px  (19%)        not measured
+ *   after      635 px  (75.2%)      502 px  (75.3%)
+ *
+ * and step 3, where the review card covered all but 83 px (9.8%), now leaves
+ * the same 635 px.
+ *
+ * Both phone sizes, because the budget in screens/plan.css is a share of the
+ * viewport and a share that holds at one height can fail at another - the
+ * shorter phone is where the fixed 74 px below the map costs proportionally
+ * most.
+ */
+const MAP_FLOOR = 0.75
+
+async function freeMapFraction(page: Page): Promise<number> {
+  const height = page.viewportSize()?.height ?? 0
+  if (height === 0)
+    throw new Error('no viewport, so there is no floor to measure against')
+  return page.evaluate((viewport) => {
+    const box = (selector: string) => {
+      const node = document.querySelector(selector)
+      if (node === null) return null
+      const rect = node.getBoundingClientRect()
+      return { top: rect.top, bottom: rect.bottom }
+    }
+    const map = box('[aria-label="Trail map"]') ?? box('[aria-label="Map"]')
+    if (map === null) return 0
+    // Everything the planning spine draws OVER the map. The panel is not here
+    // because it sits above the map in flow and has already taken its room
+    // out of the map's own box.
+    const covers = [box('.day-hike-bar'), box('.day-hike-card')].filter(
+      (each): each is { top: number; bottom: number } => each !== null,
+    )
+    const firstCover =
+      covers.length > 0 ? Math.min(...covers.map((c) => c.top)) : map.bottom
+    return Math.max(0, Math.min(map.bottom, firstCover) - map.top) / viewport
+  }, height)
+}
+
+for (const phone of [
+  { name: '390x844', width: 390, height: 844 },
+  { name: '375x667', width: 375, height: 667 },
+]) {
+  test.describe(`the map's floor while planning, ${phone.name}`, () => {
+    test.use({ viewport: { width: phone.width, height: phone.height } })
+
+    test('states: the map keeps three quarters of the screen at step 2 and at step 3', async ({
+      page,
+    }) => {
+      await editTheSavedRoute(page)
+
+      const atRoute = await freeMapFraction(page)
+      expect(
+        atRoute,
+        `step 2 left the map ${(atRoute * 100).toFixed(1)}% of the screen`,
+      ).toBeGreaterThanOrEqual(MAP_FLOOR)
+
+      // AND THE BAR IS STILL USABLE, which is the other half of the bargain:
+      // the floor is bought by capping the bar, so the way on has to survive
+      // the capping. It is pinned rather than scrolled (screens/plan.css).
+      await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
+
+      await page
+        .getByRole('button', { name: /Use this route/ })
+        .first()
+        .click()
+      // The same door and the same budget the rest of this file waits on:
+      // step 3 is behind the graph resolving the route, not behind a render.
+      await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible({
+        timeout: GRAPH_READY_MS,
+      })
+
+      const atDetails = await freeMapFraction(page)
+      expect(
+        atDetails,
+        `step 3 left the map ${(atDetails * 100).toFixed(1)}% of the screen`,
+      ).toBeGreaterThanOrEqual(MAP_FLOOR)
+
+      // The review's own way on, for the same reason.
+      await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible()
+    })
+  })
+}

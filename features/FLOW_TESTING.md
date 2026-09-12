@@ -258,13 +258,27 @@ The rules, which are PATHWAY.md's **R2 · The map never leaves** finally given a
 
   | step                         | phone, 390×844 | laptop, 1280×800 |
   | ---------------------------- | -------------- | ---------------- |
-  | step 2 · Route, builder open | **8%**         | **93%**          |
-  | step 3 · Details, review     | **0%**         | **100%**         |
+  | step 2 · Route, builder open | **8%** → 75%   | **93%**          |
+  | step 3 · Details, review     | **0%** → 75%   | **100%**         |
 
-  The phone's builder covers all but a sliver and its review covers the map outright, which
-  is R2's "stacked" working exactly as written; the laptop's costs the map essentially
-  nothing. The floors are the laptop half with headroom, and they are what would go red if a
-  column started overlapping the canvas at a width where it did not have to.
+  The laptop's column costs the map essentially nothing, and the floors are that half with
+  headroom — what would go red if a column started overlapping the canvas at a width where
+  it did not have to.
+
+  **The phone's two numbers were read as R2 working and were not.** "Stacked" was taken to
+  license the builder covering all but a sliver and the review covering the map outright, so
+  8% and 0% went into this table as a description rather than as a defect. The maintainer
+  found it the way a hiker would, on 2026-09-12: *"I can't select things on the map."* A
+  panel and a bar that between them left 159 px of a 844 px screen is not a map stacked
+  under a sheet; it is a map that cannot be used, and the measurement was sitting right here
+  saying so.
+
+  `screens/plan.css` now spends a budget against a floor — 75svh for the map, everything
+  else divided out of what is left — and `e2e/data/builder.spec.ts` asserts the floor at
+  both phone sizes and both steps, measuring what a thumb can REACH rather than the map
+  element's height. That distinction is the whole lesson: before the fix the map's box was
+  480 px, 57% of the screen, and a naive assertion on the element would have passed while a
+  tap still had 159 px to land in.
 - Every floor above is `@unvalidated` as a hiker-facing number. They are measurements of
   today's layout, not findings about how much map somebody needs to navigate by — which
   nothing here has established, and which field testing would settle.

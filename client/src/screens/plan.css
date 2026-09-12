@@ -2585,7 +2585,14 @@
   right: 0;
   bottom: 0;
   z-index: 3;
-  max-height: 60%;
+  /* 60% of the map's own height until 2026-09-12, which is how the bar came
+     to cover 321 px of a 480 px map. Now the other 58% of the sheets' budget
+     (see the floor above the panel). The foot is pinned below, so what
+     scrolls is the reading - the prompt, the figures, the shape control and
+     the tools - and never the way on. */
+  max-height: calc(var(--planning-sheets) * 0.58);
+  /* Same reason as the panel's: the cap is the border box, not the content. */
+  box-sizing: border-box;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2764,6 +2771,7 @@
   z-index: 3;
   max-height: 85%;
   overflow-y: auto;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -3121,6 +3129,37 @@
    phone, unlike src/desktop.css - this IS the phone layout, and the rail is
    the variant. --------------------------------------------------------- */
 
+/* THE MAP'S FLOOR WHILE PLANNING ON A PHONE, and the budget everything else
+   spends against it.
+
+   The maintainer's instruction, 2026-09-12: "make sure that the map gets at
+   least 75% of the screen height, always." The complaint behind it was not
+   that the map looked small - it was that a tap could not land on it.
+
+   MEASURED BEFORE, at 390x844 with a seven-leg route in the builder: the
+   panel took 292 px off the top, the map's box was 480 px, and the bar sat
+   over its bottom 321 px - so the map a thumb could actually reach was
+   159 px, 19% of the screen. e2e/data/desktopMap.spec.ts's own R2 table said
+   the same thing from the other side: 8% reachable at step 2, 0% at step 3.
+
+   The floor is expressed as a BUDGET rather than as three separate caps, so
+   the invariant holds when somebody adds a row rather than depending on them
+   remembering to re-derive it. The band and the tab bar are measured rather
+   than assumed: 27 px and 45 px at both phone sizes this suite drives
+   (2026-09-12). Nothing is deleted - the panel and the bar both scroll
+   inside their share, and the bar's foot is pinned so the way on never
+   scrolls out of reach. */
+:root {
+  --planning-map-floor: 75svh;
+  --planning-chrome: calc(100svh - var(--planning-map-floor));
+  /* What sits BELOW the map and therefore also spends the budget: the
+     attribution band (27 px) and the tab bar (45 px), measured at both phone
+     sizes 2026-09-12. Rounded UP to 74, so the floor is never missed by the
+     rounding rather than by the layout. */
+  --planning-below-map: 74px;
+  --planning-sheets: calc(var(--planning-chrome) - var(--planning-below-map));
+}
+
 .day-hike-panel {
   flex: 0 0 auto;
   display: flex;
@@ -3134,12 +3173,16 @@
      panel that grows without limit would reintroduce it through the top of
      the screen instead of the bottom.
 
-     35% rather than the 45% this shipped at first, measured off this pull
-     request's own preview at 390x844: with the details open the panel was
-     taking 39% of the screen and the map was left a band in the middle,
-     narrower than the bottom sheet had ever made it. The cap is what the
-     panel scrolls inside; nothing in it is lost. */
-  max-height: 35%;
+     It was 45%, then 35%, and both were picked by eye against a preview. It
+     is now a share of the floor's budget above rather than a number of its
+     own, because a cap that is not derived from the map's floor is a cap
+     that silently stops honouring it. 42% of the sheets' budget - the panel
+     reads, the bar acts, and the bar needs the taller share for its foot.
+     The cap is what the panel scrolls inside; nothing in it is lost. */
+  max-height: calc(var(--planning-sheets) * 0.42);
+  /* The cap must include the padding, or the budget is quietly overspent by
+     it: measured 2026-09-12, a 58 px cap drew an 80 px panel. */
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
@@ -4164,6 +4207,13 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding-top: 0.25rem;
+  /* PINNED, because the bar now scrolls inside a much smaller cap and the
+     way on must not be the thing that scrolls away. Sticky rather than a
+     second flex row outside the scroller: the foot keeps its place in the
+     reading order, so a screen reader still meets it last. */
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-surface);
 }
 
 .day-hike-bar__back {
@@ -4254,6 +4304,24 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* STEP 3 OVER THE MAP SPENDS THE SAME BUDGET AS STEP 2, and until 2026-09-12
+   it did not: `max-height: 85%` left the map 83 px of 844 - 9.8% - which is
+   the state the maintainer could not tap on. Scoped to the canvas, because
+   the same card docked in Plan's own list is a different surface with a whole
+   screen to itself and no map underneath to protect. */
+.map-screen__canvas > .day-hike-card {
+  max-height: var(--planning-sheets);
+}
+
+/* Pinned for the reason the bar's foot is: the card now scrolls inside a much
+   smaller cap, and "Save this day hike" is the one control that must not be
+   the thing that scrolls away. */
+.map-screen__canvas > .day-hike-card .day-hike-card__foot {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-surface);
 }
 
 .day-hike-card__foot {

@@ -16,6 +16,16 @@
 // Nobody's data is in the frame by construction: no account, no saved
 // hikes seeded, no location fix, and the walk is a ring of taps around a
 // shelter chosen by name.
+//
+// RE-PHOTOGRAPHED FOR THE MAP'S FLOOR (2026-09-12). The maintainer could not
+// tap the map while planning on a phone: measured at 390x844 with a route in
+// the builder, the panel took 292 px off the top and the bar sat over the
+// map's bottom 321 px, leaving 159 px - 19% of the screen - that a finger
+// could land on. screens/plan.css now spends a budget against a 75svh floor,
+// so what this frame is evidence for is the map having three quarters of the
+// screen with the panel and the bar both still legible and the way on still
+// pinned where a thumb reaches it.
+// Step 3 was the worse half: the review covered all but 83 px, 9.8%.
 import { walkInHarriman } from './day-hike-builder.mjs'
 
 export const caption =

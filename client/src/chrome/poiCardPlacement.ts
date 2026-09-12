@@ -28,6 +28,13 @@ export interface ScreenPoint {
 export interface CardPlacement {
   left: number
   top: number
+  /**
+   * Set only when neither side of the pin holds the whole card: the room on
+   * the side it took, for the card to cap its height at and scroll inside
+   * (chrome.css's .poi-card__peek). Absent, the card is as tall as its
+   * content.
+   */
+  maxHeight?: number
 }
 
 /** Air between the pin's drawn edge and the card. */
@@ -43,7 +50,8 @@ const PIN_HALF_PX = POI_PIN_SIZE / 2
 
 /**
  * Places the card above the pin, centred - flipped below when there is no
- * room, slid sideways when the pin is near an edge.
+ * room, slid sideways when the pin is near an edge, and capped to the roomier
+ * side when neither side holds it whole.
  *
  * The same decision MapLibre's own Popup makes on every camera move, rather
  * than a placement chosen once when the card opens: a pin tapped near the top
@@ -51,15 +59,35 @@ const PIN_HALF_PX = POI_PIN_SIZE / 2
  * not a below-card frozen in its opening pose.
  */
 export function placePoiCard(pin: ScreenPoint, card: Size, canvas: Size): CardPlacement {
-  // Above unless above does not fit and below does. When NEITHER fits - a
-  // short viewport, or jsdom's zero-height one - above wins, because a card
-  // over the top edge still shows its lower lines and a card past the bottom
-  // edge shows nothing.
+  // Above unless above does not fit and below does.
   const above = pin.y - PIN_HALF_PX - CARD_GAP_PX - card.height
   const below = pin.y + PIN_HALF_PX + CARD_GAP_PX
   const fitsAbove = above >= CARD_EDGE_MARGIN_PX
   const fitsBelow = below + card.height <= canvas.height - CARD_EDGE_MARGIN_PX
-  const top = fitsAbove || !fitsBelow ? above : below
+  let top = fitsAbove || !fitsBelow ? above : below
+  let maxHeight: number | undefined
+
+  // When NEITHER fits, the card takes the side with more room and caps itself
+  // to that room, so its head is on screen and it still ends short of the pin
+  // it describes; what does not fit scrolls inside (chrome.css's
+  // .poi-card__peek). This used to be "above wins, because a card over the
+  // top edge still shows its lower lines" - true when the peek was a name and
+  // a mile, and false once it carried the answer row (#1122): the room audit
+  // of 2026-09-10 (#1374) found a shelter's ~410px peek on a 375×667 phone's
+  // ~470px map with its name and its close button above the screen, off the
+  // top by 25px. jsdom's zero-height canvas never lands here: `fitsAbove` is
+  // true for any pin low enough, whatever the canvas measures.
+  if (!fitsAbove && !fitsBelow) {
+    const roomAbove = pin.y - PIN_HALF_PX - CARD_GAP_PX - CARD_EDGE_MARGIN_PX
+    const roomBelow = canvas.height - below - CARD_EDGE_MARGIN_PX
+    if (roomAbove >= roomBelow) {
+      top = CARD_EDGE_MARGIN_PX
+      maxHeight = roomAbove
+    } else {
+      top = below
+      maxHeight = roomBelow
+    }
+  }
 
   let left = pin.x - card.width / 2
 
@@ -78,5 +106,5 @@ export function placePoiCard(pin: ScreenPoint, card: Size, canvas: Size): CardPl
     left = Math.max(Math.min(left, pin.x), pin.x - card.width)
   }
 
-  return { left, top }
+  return maxHeight === undefined ? { left, top } : { left, top, maxHeight }
 }

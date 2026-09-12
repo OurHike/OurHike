@@ -139,6 +139,23 @@ export interface DayHikeDraft {
   /** Whether the hiker asked to walk back to the first tap. */
   looped: boolean
   /**
+   * Whether the hiker asked to turn round at the last tap and walk the same
+   * ground back (#1373, step 2's "Out and back").
+   *
+   * A DRAFT FLAG AND NEVER A STORED ONE. The saved record needs no new field
+   * for it - {@link walkEnds} writes the taps and then the taps again in
+   * reverse, so a saved out-and-back is an ordinary walk whose ends happen
+   * to retrace, which lib/dayHikeCard.ts already resolves (the follow suite
+   * has held one since #1040). Keeping it as a flag while building is what
+   * lets the shape control switch between the three shapes without the
+   * hiker re-tapping the walk, and lets a new tap reopen it the way a tap
+   * reopens a closed loop.
+   *
+   * Mutually exclusive with `looped`: both bring the walk back to its first
+   * tap, by different ground.
+   */
+  outAndBack: boolean
+  /**
    * Miles of a DRAWN line that had no maintained trail under them, measured
    * along the stroke (#983, frame `1k`). Zero for a tapped walk.
    *
@@ -156,6 +173,7 @@ export const EMPTY_DRAFT: DayHikeDraft = {
   segments: [[]],
   refusal: null,
   looped: false,
+  outAndBack: false,
   droppedMiles: 0,
 }
 
@@ -200,12 +218,13 @@ export function tapAt(
   if (found === null) {
     return { ...draft, refusal: OFF_NETWORK_REFUSAL }
   }
-  // A new tap reopens a closed loop rather than being appended after the
-  // return leg, which would be a walk nobody described.
+  // A new tap reopens a closed loop - or an out-and-back - rather than
+  // being appended after the return leg, which would be a walk nobody
+  // described.
   const segments = draft.segments.map((stretch, at) =>
     at === draft.segments.length - 1 ? [...stretch, found] : stretch,
   )
-  return { ...draft, segments, refusal: null, looped: false }
+  return { ...draft, segments, refusal: null, looped: false, outAndBack: false }
 }
 
 /**
@@ -233,7 +252,13 @@ export function drawStroke(
   if (stretches.length === 0) {
     return { ...EMPTY_DRAFT, refusal: NOTHING_DRAWN_ON_TRAIL, droppedMiles }
   }
-  return { segments: stretches, refusal: null, looped: false, droppedMiles }
+  return {
+    segments: stretches,
+    refusal: null,
+    looped: false,
+    outAndBack: false,
+    droppedMiles,
+  }
 }
 
 /** What a drawn line that never touched a maintained trail is told. */
@@ -251,7 +276,13 @@ export const NOTHING_DRAWN_ON_TRAIL =
  */
 export function startStretch(draft: DayHikeDraft): DayHikeDraft {
   if (!canStartStretch(draft)) return draft
-  return { ...draft, segments: [...draft.segments, []], refusal: null, looped: false }
+  return {
+    ...draft,
+    segments: [...draft.segments, []],
+    refusal: null,
+    looped: false,
+    outAndBack: false,
+  }
 }
 
 /**
@@ -264,7 +295,7 @@ export function startStretch(draft: DayHikeDraft): DayHikeDraft {
  * a thing this model can describe.
  */
 export function canStartStretch(draft: DayHikeDraft): boolean {
-  return currentStretch(draft).length >= 2 && !draft.looped
+  return currentStretch(draft).length >= 2 && !draft.looped && !draft.outAndBack
 }
 
 /**
@@ -279,7 +310,9 @@ export function undoTap(draft: DayHikeDraft): DayHikeDraft {
   // Closing the loop was one action, so undoing it is one action too. Slicing
   // a point at the same time would silently take back two edits, and the
   // second one is a tap the hiker placed on purpose.
-  if (draft.looped) return { ...draft, looped: false }
+  if (draft.looped || draft.outAndBack) {
+    return { ...draft, looped: false, outAndBack: false }
+  }
 
   // Starting a stretch is one action too, and this is the same rule one level
   // up: an empty last stretch is a "start a new stretch" the hiker has not
@@ -292,6 +325,7 @@ export function undoTap(draft: DayHikeDraft): DayHikeDraft {
       segments: draft.segments.slice(0, -1),
       refusal: null,
       looped: false,
+      outAndBack: false,
     }
   }
 
@@ -302,6 +336,7 @@ export function undoTap(draft: DayHikeDraft): DayHikeDraft {
     ),
     refusal: null,
     looped: false,
+    outAndBack: false,
   }
 }
 
@@ -355,16 +390,120 @@ export function removeTap(draft: DayHikeDraft, ordinal: number): DayHikeDraft {
   // stretch, and it is the one being built.
   if (segments.length === 0) segments.push([])
 
-  const looped =
-    draft.looped && segments.length === 1 && segments[segments.length - 1].length >= 2
+  const stillAWalk = segments.length === 1 && segments[segments.length - 1].length >= 2
+  const looped = draft.looped && stillAWalk
+  const outAndBack = draft.outAndBack && stillAWalk
 
-  return { ...draft, segments, refusal: null, looped }
+  return { ...draft, segments, refusal: null, looped, outAndBack }
 }
 
 /** Frame `1j`'s "Close the loop". */
 export function loopDraft(draft: DayHikeDraft): DayHikeDraft {
   if (!canCloseLoop(draft)) return draft
-  return { ...draft, looped: true, refusal: null }
+  return { ...draft, looped: true, outAndBack: false, refusal: null }
+}
+
+/**
+ * The three shapes a walk can take (#1373, step 2 - frame 4a's
+ * "Point to point / Out and back / Loop").
+ *
+ * One control where "Close the loop" stood alone. A loop and an out-and-back
+ * both come back to the first tap; a point-to-point does not. The shape is
+ * asked of the draft rather than kept beside it, so the control and the
+ * router cannot disagree about which walk this is.
+ */
+export type DraftShape = 'point-to-point' | 'out-and-back' | 'loop'
+
+export function draftShape(draft: DayHikeDraft): DraftShape {
+  if (draft.looped) return 'loop'
+  if (draft.outAndBack) return 'out-and-back'
+  return 'point-to-point'
+}
+
+/**
+ * Which shapes the control offers, in the design's order - or none.
+ *
+ * NONE rather than "point to point only" while there is nothing to shape: a
+ * single tap is not a walk, and a control with one answer is a label
+ * wearing a control's clothes. And none across a gap, for
+ * {@link canCloseLoop}'s reason - there is no defined way back over ground
+ * the app declined to route, and offering it would let a hiker save a walk
+ * that can never be re-resolved. The absence is the refusal (D10), and the
+ * bar's gap sentence beside it is the reason.
+ */
+export function shapesOffered(draft: DayHikeDraft): DraftShape[] {
+  if (draft.segments.length !== 1 || currentStretch(draft).length < 2) return []
+  return ['point-to-point', 'out-and-back', 'loop']
+}
+
+/** Give the walk a shape. Unchanged when that shape is not on offer. */
+export function shapeDraft(draft: DayHikeDraft, shape: DraftShape): DayHikeDraft {
+  if (!shapesOffered(draft).includes(shape)) return draft
+  return {
+    ...draft,
+    looped: shape === 'loop',
+    outAndBack: shape === 'out-and-back',
+    refusal: null,
+  }
+}
+
+/**
+ * The walk's ends as a saved record keeps them: every stretch that is a
+ * walk, with an out-and-back written out as the taps and then the taps
+ * again in reverse.
+ *
+ * The ONE place the shape flag becomes stored geometry, so the builder's
+ * status (which routes the same mirrored list) and the record it saves
+ * describe the same ground. A stretch of fewer than two taps is dropped
+ * here for the reason App.tsx's save gives: a "start a new stretch" the
+ * hiker never finished describes a place rather than a walk, and
+ * lib/dayHikeCard.ts cannot resolve one.
+ */
+export function walkEnds(draft: DayHikeDraft): GraphPoint[][] {
+  return draft.segments
+    .filter((stretch) => stretch.length >= 2)
+    .map((stretch) => (draft.outAndBack ? thereAndBack(stretch) : stretch))
+}
+
+/** The taps, then the taps again from the last one home - the return leg
+ *  routes over the same forced turns in reverse, so it is the same ground
+ *  walked the other way rather than the router's own shortest way back. */
+function thereAndBack(points: readonly GraphPoint[]): GraphPoint[] {
+  return [...points, ...points.slice(0, -1).reverse()]
+}
+
+/**
+ * A saved walk's ends replayed as taps, for editing it (#1373, D1).
+ *
+ * Null when this phone's graph refuses any end - the map has changed under
+ * the record, and a draft holding some of the walk would be a different walk
+ * wearing the saved one's name. The caller says so rather than opening an
+ * empty builder as if the hiker had asked for one.
+ *
+ * Each stretch is replayed through {@link tapAt} rather than built directly,
+ * so an edited walk obeys every rule a tapped one does - the same snapping,
+ * the same refusals - and the loop is closed last, as the hiker would.
+ */
+export function draftFromWalk(
+  index: TrailGraphIndex,
+  segments: readonly (readonly LonLat[])[],
+  looped: boolean,
+): DayHikeDraft | null {
+  let draft = EMPTY_DRAFT
+  for (let at = 0; at < segments.length; at += 1) {
+    if (at > 0) {
+      const next = startStretch(draft)
+      if (next === draft) return null
+      draft = next
+    }
+    for (const end of segments[at]) {
+      draft = tapAt(index, draft, end)
+      if (draft.refusal !== null) return null
+    }
+  }
+  if (!looped) return draft
+  const closed = loopDraft(draft)
+  return closed === draft ? null : closed
 }
 
 export function clearDraft(): DayHikeDraft {
@@ -396,9 +535,13 @@ export function stretchRoute(
   index: TrailGraphIndex,
   points: readonly GraphPoint[],
   looped: boolean,
+  outAndBack = false,
 ): GraphRoute | null {
   if (points.length < 2) return null
-  return looped ? closeTheLoop(index, [...points]) : routeThrough(index, [...points])
+  if (looped) return closeTheLoop(index, [...points])
+  // The mirrored list is the same one `walkEnds` saves, so what the bar
+  // prices and what the record keeps are one walk.
+  return routeThrough(index, outAndBack ? thereAndBack(points) : [...points])
 }
 
 /**
@@ -492,7 +635,7 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
       if (points === draft.segments[draft.segments.length - 1]) continue
       return { kind: 'unroutable' }
     }
-    const route = stretchRoute(index, points, draft.looped)
+    const route = stretchRoute(index, points, draft.looped, draft.outAndBack)
     if (route === null) return { kind: 'unroutable' }
     stretches.push({ points, route })
     legsBySegment.set(at, route.legs.length)

@@ -47,7 +47,7 @@ import {
   attachAtcUpdateTaps,
   type AtcUpdatePoint,
 } from './atcUpdateLayers'
-import { attachClosureData, type ClosureBand } from './closureLayers'
+import { attachClosureData, attachClosureTaps, type ClosureBand } from './closureLayers'
 import { attachClosureTape } from './closureTape'
 import {
   attachCorridorData,
@@ -58,7 +58,12 @@ import {
 import { attachDroughtData, setDroughtVisible, type DroughtBand } from './droughtLayers'
 import { attachCoverageSeams } from './coverageLayers'
 import type { SeamEdge } from '../lib/coverageCells'
-import { attachWarningData, attachWarningIcon, type WarningPoint } from './warningLayers'
+import {
+  attachWarningData,
+  attachWarningIcon,
+  attachWarningTaps,
+  type WarningPoint,
+} from './warningLayers'
 import {
   attachWorkdayData,
   attachWorkdayIcon,
@@ -144,7 +149,7 @@ export interface MapViewProps {
    * (#1306) - the active long hike's `trailId` (lib/trips.ts), App.tsx's
    * `chosenTrailId`, since #1352. Built into the style and re-pointed in
    * place when it changes (map/style.ts's attachChosenTrail), never a
-   * rebuild. Null is first launch: every line dotted, nothing ghosted.
+   * rebuild. Null is first launch: every line untaken, nothing ghosted.
    */
   chosenTrailId?: string | null
   /** Which background to draw - see lib/userPreferences.ts. */
@@ -232,6 +237,11 @@ export interface MapViewProps {
   /** A tap landed on an ATC band, by band id. The shell decides what to show
    *  - this component deliberately does not know what a sheet is. */
   onSelectAtcUpdate?: (bandId: string) => void
+  /** A tap landed on the closure tape, by closure id (#1373, F12) - the tap
+   *  #245 left waiting. Hits only, like the ATC band's. */
+  onSelectClosure?: (closureId: string) => void
+  /** A tap landed on a serious-warning pin, by report id (#1373, F12). */
+  onSelectWarning?: (reportId: string) => void
   /**
    * Moderator-escalated warnings, as points. NEVER a notification - see the
    * header of warningLayers.ts.
@@ -513,6 +523,8 @@ export function MapView({
   atcUpdates = NO_ATC_UPDATES,
   atcUpdatePoints = NO_ATC_POINTS,
   onSelectAtcUpdate,
+  onSelectClosure,
+  onSelectWarning,
   warnings = NO_WARNINGS,
   workdays = NO_WORKDAYS,
   disputes = NO_DISPUTES,
@@ -1184,6 +1196,20 @@ export function MapView({
     if (pressPlateOpen) return
     return attachAtcUpdateTaps(map, onSelectAtcUpdate)
   }, [map, onSelectAtcUpdate, onRouteTap, pressPlateOpen])
+
+  // The two safety marks (#1373, F12), under the same suppressions: a point
+  // dropped on barrier tape must not also open its sheet over the builder.
+  useEffect(() => {
+    if (map === null || onSelectClosure === undefined || onRouteTap !== undefined) return
+    if (pressPlateOpen) return
+    return attachClosureTaps(map, onSelectClosure)
+  }, [map, onSelectClosure, onRouteTap, pressPlateOpen])
+
+  useEffect(() => {
+    if (map === null || onSelectWarning === undefined || onRouteTap !== undefined) return
+    if (pressPlateOpen) return
+    return attachWarningTaps(map, onSelectWarning)
+  }, [map, onSelectWarning, onRouteTap, pressPlateOpen])
 
   useEffect(() => {
     if (map === null || onViewportChange === undefined) return

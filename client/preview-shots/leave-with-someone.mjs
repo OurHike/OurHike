@@ -8,7 +8,8 @@
 // person's plan, even an invented person's), and the preview block already
 // shows the app-composed half of the card.
 
-export const caption = 'Leave this with someone'
+export const caption =
+  'Leave it with someone — the plain-text card somebody at home keeps (#1008, frame D6; the row is step 3’s, #1373)'
 export const alt =
   'The leave-with-someone sheet: typed fields and the plain-text card preview'
 
@@ -64,7 +65,7 @@ export default async function drive(page) {
 
   await page.getByRole('tab', { name: 'Plan' }).click()
   await page.getByRole('button', { name: /Pine Meadow loop/ }).click()
-  await page.getByRole('button', { name: 'Leave this with someone' }).click()
+  await page.getByRole('button', { name: 'Leave it with someone' }).click()
   // The sheet is up once the card preview prints the app-composed line.
   await page.getByText(/on marked trails/).waitFor()
 }

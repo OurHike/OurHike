@@ -8,14 +8,16 @@ import {
   trailsInView,
 } from './trailsInView'
 import {
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   BLAZE_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
-  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   TAPPABLE_BLAZE_LAYER_IDS,
 } from './style'
 import {
+  BADGE_ANCHOR_PROPERTY,
+  TRAIL_BADGE_ANCHORS,
   BADGE_CHIP_PROPERTY,
   BADGE_MARK_PROPERTY,
   TRAIL_BADGE_SOURCE_ID,
@@ -74,7 +76,7 @@ describe('trailsInView', () => {
   it('lists every named trail the blaze layers are drawing, once each', () => {
     const map = mapWith({
       [BLAZE_LAYER_ID]: [AT],
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Long Path', 'oprhp_trails', [[-74.05, 41.22]], 'Aqua'),
         // The same trail from a second tile.
         line('Long Path', 'oprhp_trails', [[-74.04, 41.23]], 'Aqua'),
@@ -98,7 +100,7 @@ describe('trailsInView', () => {
     // the same `if (name === null) continue` that already kept every
     // unnamed nearby line out above the seam.
     const map = mapWith({
-      [NETWORK_OVERVIEW_DOTTED_LAYER_ID]: [
+      [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID]: [
         line(
           'Long Path',
           'nynjtc_long_path',
@@ -120,10 +122,67 @@ describe('trailsInView', () => {
     expect(trails[0].anchor).not.toBeNull()
   })
 
+  it('names a marked trail off the registry when the sketch carries no name (2026-09-11)', () => {
+    // THE BUCKET'S OWN SHAPE, not a hypothetical: the published
+    // network_overview.geojson carries `source`, `blaze_color` and
+    // `trail_status` and nothing else - 38 features, none named, read live
+    // 2026-09-11 - because the publish that would refresh it is held back
+    // with the network file it sketches. The maintainer's frame of that day
+    // is the A.T. wearing its pill over the Hudson and the Long Path in aqua
+    // beside it wearing nothing. The registry knows the name and the mark;
+    // map/trailBadges.ts's registryNameForSource is why taking the name from
+    // there says nothing the mark did not.
+    const map = mapWith({
+      [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID]: [
+        line(
+          null,
+          'nynjtc_long_path',
+          [
+            [-74.2, 41.2],
+            [-74.0, 41.3],
+          ],
+          'Aqua',
+        ),
+      ],
+    })
+
+    const trails = trailsInView(map as unknown as MapLibreMap)
+    expect(trails.map((t) => t.name)).toEqual(['Long Path'])
+    expect(trails[0].throughRoute).toBe(true)
+    expect(trails[0].anchor).not.toBeNull()
+  })
+
+  it('leaves the unnamed haze unnamed - only a marked source gets the fallback', () => {
+    // The forty fine lines of a state park are one folded feature per
+    // (source, blaze, status) with no name, and they must stay off the list:
+    // the fallback fires for the two sources BADGE_MARK_BY_SOURCE declares,
+    // and a park's feed is not one of them. This is the half of the change
+    // that keeps "Trails in view" a list of trails rather than of sources.
+    const map = mapWith({
+      [NETWORK_OVERVIEW_UNTAKEN_LAYER_ID]: [
+        line(null, 'oprhp_trails', [[-74.06, 41.21]], 'Red'),
+        line(null, 'dec_hiking_trails', [[-74.05, 41.22]], 'Blue'),
+      ],
+    })
+
+    expect(trailsInView(map as unknown as MapLibreMap)).toEqual([])
+  })
+
+  it('lets the data’s own name beat the registry’s', () => {
+    // ATC's feed says "Appalachian National Scenic Trail"; the registry says
+    // "Appalachian Trail". The feed is what a hiker reads on the badge, and
+    // the fallback must never quietly rename a trail that arrived named.
+    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+
+    expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
+      'Appalachian National Scenic Trail',
+    ])
+  })
+
   it('puts through-routes first, then the chosen system, then the rest by name', () => {
     const map = mapWith({
       [BLAZE_LAYER_ID]: [line('Zebra Spur', 'side_trails', [[-74.05, 41.22]]), AT],
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Beech Trail', 'oprhp_trails', [[-74.06, 41.21]]),
         line('Arden-Surebridge Trail', 'oprhp_trails', [[-74.07, 41.21]]),
       ],
@@ -148,11 +207,24 @@ describe('trailsInView', () => {
     expect(trailsInView(map as unknown as MapLibreMap)).toEqual([])
   })
 
-  it('anchors a badge on a vertex at the middle of the longest visible run', () => {
-    // Three in-view vertices, evenly spaced: the middle one.
-    const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
+  it('anchors a badge on the in-view vertex nearest the frame’s centre (the review of #1374)', () => {
+    // Pixel space (the mock projects identically, and reports a 390x844
+    // canvas): a line across the screen at y = 400, a vertex every 19 px.
+    // The frame's centre is (195, 422); the nearest vertex is at 190.
+    const map = mapWith({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          Array.from({ length: 21 }, (_, i) => [i * 19, 400] as [number, number]),
+          'White',
+        ),
+      ],
+    })
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
     const [at] = trailsInView(map as unknown as MapLibreMap)
-    expect(at.anchor).toEqual([-74.1, 41.25])
+    expect(at.anchor).toEqual([190, 400])
+    expect(at.badgeFit).toBe('full')
   })
 
   it('ignores the part of a tile-clipped piece that runs off screen', () => {
@@ -180,15 +252,33 @@ describe('trailsInView', () => {
     ]).toContainEqual(at.anchor)
   })
 
-  it('picks the piece that shows the most of the trail when it comes back per tile', () => {
+  it('reads every piece of a trail that comes back per tile, nearest the centre first', () => {
+    // The old rule kept the longest piece and threw the rest away, so a
+    // trail whose long piece ran along the top of the frame was badged up
+    // there while a short piece of it sat by the centre. Pixel space: a
+    // long piece along y = 100 and a two-vertex piece by the centre.
     const map = mapWith({
       [BLAZE_LAYER_ID]: [
-        line('Appalachian National Scenic Trail', 'centerline', [[-74.9, 41.9]], 'White'),
-        AT,
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          Array.from({ length: 21 }, (_, i) => [i * 19, 100] as [number, number]),
+          'White',
+        ),
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [
+            [176, 440],
+            [214, 440],
+          ],
+          'White',
+        ),
       ],
     })
+    map.bounds = { west: 0, south: 0, east: 390, north: 844 }
     const [at] = trailsInView(map as unknown as MapLibreMap)
-    expect(at.anchor).toEqual([-74.1, 41.25])
+    expect(at.anchor?.[1]).toBe(440)
   })
 
   it('reports no anchor for a trail whose drawn vertices are all off screen', () => {
@@ -225,7 +315,7 @@ describe('trailsInView', () => {
 
   it('reads both halves of both splits, and nothing before the style holds them', () => {
     const map = mapWith({
-      [BLAZE_DOTTED_LAYER_ID]: [line('Fault Line', 'unheard_of', [[-74.05, 41.22]])],
+      [BLAZE_UNTAKEN_LAYER_ID]: [line('Fault Line', 'unheard_of', [[-74.05, 41.22]])],
       [NEARBY_BLAZE_LAYER_ID]: [line('Adopted Trail', 'centerline', [[-74.05, 41.22]])],
     })
     expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
@@ -246,7 +336,9 @@ describe('badgeFeatures', () => {
     const { features } = badgeFeatures(trailsInView(map as unknown as MapLibreMap))
 
     expect(features).toHaveLength(1)
-    expect(features[0].geometry).toEqual({ type: 'Point', coordinates: [-74.1, 41.25] })
+    // The vertex nearest the frame's centre, which in this degree-space
+    // fixture (the mock projects degrees straight to px) is the eastmost.
+    expect(features[0].geometry).toEqual({ type: 'Point', coordinates: [-74, 41.3] })
     expect(features[0].properties).toMatchObject({
       id: 'centerline:chain:0',
       name: 'Appalachian National Scenic Trail',
@@ -269,6 +361,7 @@ describe('badgeFeatures', () => {
           chosen: true,
           anchor: null,
           badgeFit: 'full',
+          badgeAnchor: 'left',
           properties: {},
         },
       ]).features,
@@ -341,20 +434,17 @@ describe('the chrome over the canvas (#1283, the second preview frame)', () => {
   }
   const PLATE = { top: 110, right: 0, bottom: 62, left: 0 }
 
-  it('anchors the badge in the clear when the trail’s longest stretch runs under the plate', () => {
-    // The A.T. over Harriman: most of it along the top of the canvas, under
-    // the identity plate, and a tail down the left edge in the clear.
+  it('anchors the badge in the clear when the vertex nearest the centre runs under the plate', () => {
+    // Two vertices: one under the identity plate at y = 100, 322 px from
+    // the frame's centre, and one in the clear at y = 760, 338 px from it.
     const map = screenMap({
       [BLAZE_LAYER_ID]: [
         line(
           'Appalachian National Scenic Trail',
           'centerline',
           [
-            [0, 300],
-            [100, 200],
-            [150, 60],
-            [250, 40],
-            [390, 50],
+            [195, 100],
+            [195, 760],
           ],
           'White',
         ),
@@ -363,10 +453,13 @@ describe('the chrome over the canvas (#1283, the second preview frame)', () => {
     const [withoutInsets] = trailsInView(map as unknown as MapLibreMap)
     const [withInsets] = trailsInView(map as unknown as MapLibreMap, PLATE)
 
-    // Free of insets the middle of the whole run is under the plate.
+    // Free of insets the nearer vertex wins, under the plate.
+    expect(withoutInsets.anchor).toEqual([195, 100])
     expect(withoutInsets.anchor?.[1]).toBeLessThan(PLATE.top)
-    // With them it is on the stretch a hiker can see.
-    expect(withInsets.anchor).toEqual([100, 200])
+    // With them the clear runs come first, and the plate hangs above the
+    // vertex - the one anchor that keeps it inside the frame's foot.
+    expect(withInsets.anchor).toEqual([195, 760])
+    expect(withInsets.badgeFit).toBe('full')
   })
 
   it('falls back to the whole canvas for a trail with no vertex in the clear', () => {
@@ -390,7 +483,7 @@ describe('the chrome over the canvas (#1283, the second preview frame)', () => {
 
   it('still lists a trail that is only under the plate: it is on the map', () => {
     const map = screenMap({
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Long Path', 'oprhp_trails', [[100, 30]], 'Aqua'),
       ],
     })
@@ -460,20 +553,22 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(taken.chosen).toBe(true)
   })
 
-  it('walks outward from the middle to the first vertex with a free plate position', () => {
+  it('fans out from the centre to the first vertex with room, and takes the mark where the full plate has none', () => {
     // A shelter on the trail just short of the middle, its box reaching
-    // from x = 161 to 209: every position round the middle vertex overlaps
-    // it, as does every one round the vertices either side. Two vertices
-    // short of the middle, at 152, the plate hung off the vertex's left -
-    // the `right` anchor, its text block ending 3.6 px before the vertex
-    // and the plate's paper and the engine's padding reaching 12 px past
-    // that - ends at 160.4, clear of the box by under a pixel. The margin
-    // is that small on purpose: it is the geometry the placer tests, to the
-    // decimal, and the model this replaced called positions free that the
-    // placer dropped (the fifth preview frame, 2026-09-08).
+    // from x = 161 to 209. The full plate is some 240 px wide on a 390 px
+    // frame, so no position anywhere keeps it both inside the frame and
+    // clear of that box - hung to either side it runs off an edge, centred
+    // above or below it still spans the pin's column - and the search
+    // falls to the mark. The mark's 36 px box, hung off the right of the
+    // vertex at 228 (33 px from the centre, one vertex nearer than 152 on
+    // the other side), starts at 223.6, clear of the pin by 14 px; at 209
+    // and 171 every position of it touches the box. The margins are the
+    // geometry the placer tests, to the decimal (the fifth preview frame,
+    // 2026-09-08).
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap)
-    expect(at.anchor).toEqual([152, 400])
+    expect(at.anchor).toEqual([228, 400])
+    expect(at.badgeFit).toBe('mark')
   })
 
   it('reads every pin layer placed before the badge, not the waypoints alone', () => {
@@ -485,13 +580,9 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(map.featureQueries.some((q) => q.layers.includes(WARNING_LAYER_ID))).toBe(true)
   })
 
-  it('falls back to the mark alone where the full plate has no room, at a vertex where the mark has', () => {
-    // With the chrome's bands in force the plate must fit inside the
-    // canvas between them; a pin at the middle of a trail across a phone
-    // leaves no 240 px strip on either side of its box for the full plate.
-    // The mark's 32 px plate does fit: at the same vertex the full search
-    // reached first, two short of the middle, hung off the vertex's left,
-    // ending 0.6 px clear of the pin's box.
+  it('reads the chrome’s bands as the frame too, and lands in the same place', () => {
+    // The plate and the tab bar take the top and the foot; the line at
+    // y = 400 is between them, so the answer is the one above.
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap, {
       top: 110,
@@ -500,13 +591,14 @@ describe('the pins in view (#1283, the third preview frame)', () => {
       left: 0,
     })
     expect(at.badgeFit).toBe('mark')
-    expect(at.anchor).toEqual([152, 400])
+    expect(at.anchor).toEqual([228, 400])
   })
 
-  it('hands over the middle, in full, where not even the mark has room', () => {
+  it('hands over the mark on the nearest vertex where not even the mark has room', () => {
     // Pins every nineteen pixels along the whole line: nothing fits
-    // anywhere, so the middle goes to the placer as it is, and the placer
-    // decides.
+    // anywhere, so the mark goes on the vertex nearest the centre and the
+    // layer, allowed to overlap (map/trailBadges.ts), draws it there -
+    // never nothing.
     const map = screenMap({
       [BLAZE_LAYER_ID]: [ACROSS],
       [POI_LAYER_ID]: Array.from({ length: 21 }, (_, i) => pin(i * 19, 400)),
@@ -517,8 +609,40 @@ describe('the pins in view (#1283, the third preview frame)', () => {
       bottom: 62,
       left: 0,
     })
-    expect(at.badgeFit).toBe('full')
+    expect(at.badgeFit).toBe('mark')
     expect(at.anchor).toEqual([190, 400])
+  })
+
+  it('reads the whole line at a coarser pitch when it is longer than the cap, rather than only its densest mile', () => {
+    // The z9 frame of the review of #1374, in screen space: two thousand
+    // vertices a tenth of a px apart under a pin every nineteen px (the
+    // seam's tile geometry through Harriman, pins on every stretch of it),
+    // and eighty sparse vertices in the clear beyond them. The six hundred
+    // nearest the centre all lie under the pins, so a search cut at the
+    // centre finds nothing and drops the mark on the nearest vertex - under
+    // a pin. Sampled along the line, the clear stretch is reached.
+    const dense = Array.from(
+      { length: 2001 },
+      (_, i) => [100 + i / 10, 400] as [number, number],
+    )
+    const clear = Array.from({ length: 80 }, (_, i) => [301 + i, 400] as [number, number])
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line(
+          'Appalachian National Scenic Trail',
+          'centerline',
+          [...dense, ...clear],
+          'White',
+        ),
+      ],
+      [POI_LAYER_ID]: Array.from({ length: 11 }, (_, i) => pin(100 + i * 20, 400)),
+    })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).not.toBeNull()
+    // Past the last pin at x = 300: on the clear stretch, where the mark's
+    // box clears the pin's (the placer's own test, plateBox against the
+    // obstacle), rather than on the vertex nearest the centre under a pin.
+    expect((at.anchor as [number, number])[0]).toBeGreaterThan(300)
   })
 
   it('takes the full form wherever it fits, and says so on the feature', () => {
@@ -527,11 +651,41 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(trails[0].badgeFit).toBe('full')
     const { features } = badgeFeatures(trails)
     expect(features[0].properties).toMatchObject({ fit: 'full' })
+    // Mid-screen the plate fits only above or below the vertex - a 390 px
+    // screen is narrower than the vertex plus a plate on either side - and
+    // whichever side it is, the feature says so.
+    expect(TRAIL_BADGE_ANCHORS).toContain(features[0].properties?.[BADGE_ANCHOR_PROPERTY])
+  })
+
+  it('hands the layer the side it chose, so a plate at the right edge is drawn leftward', () => {
+    // One vertex twenty px from the right edge. The plate to the right of
+    // it ('left', the first anchor) would run off the screen; to the left
+    // of it ('right') it fits whole. The engine, allowed to overlap, would
+    // draw the first anchor on its list regardless (the phone frame at
+    // 05e9506a), so the choice rides the feature and the layer reads it.
+    const map = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line('Appalachian National Scenic Trail', 'centerline', [[370, 400]], 'White'),
+      ],
+    })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.badgeFit).toBe('full')
+    expect(at.badgeAnchor).toBe('right')
+    const { features } = badgeFeatures([at])
+    expect(features[0].properties).toMatchObject({ [BADGE_ANCHOR_PROPERTY]: 'right' })
+
+    // And the mirror: at the left edge the first anchor fits, and is kept.
+    const mirror = screenMap({
+      [BLAZE_LAYER_ID]: [
+        line('Appalachian National Scenic Trail', 'centerline', [[20, 400]], 'White'),
+      ],
+    })
+    expect(trailsInView(mirror as unknown as MapLibreMap)[0].badgeAnchor).toBe('left')
   })
 
   it('searches only for a through-route, which is the only line that gets a badge', () => {
     const map = screenMap({
-      [NEARBY_BLAZE_DOTTED_LAYER_ID]: [
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
         line('Long Path', 'oprhp_trails', [[100, 400]], 'Aqua'),
       ],
     })

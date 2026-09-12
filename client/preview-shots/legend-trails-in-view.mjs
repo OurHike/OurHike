@@ -14,8 +14,8 @@
 // is the overview sketch, which publishes no `name` - so at the opening
 // camera the block would show the A.T. alone, which is true and is not the
 // picture. Over the park the full lines draw from the tiles, and the rows
-// are the A.T. (solid, `taken`) over a column of dotted rows in their own
-// blaze hues: Long Path, Ramapo-Dunderberg, Arden-Surebridge and the rest
+// are the A.T. (`taken`) over a column of ghosted rows in their own blaze
+// hues: Long Path, Ramapo-Dunderberg, Arden-Surebridge and the rest
 // of what crosses one z12 frame. The same frame and the same seeding as
 // network-above-the-seam.mjs, for its reasons.
 //
@@ -42,18 +42,21 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 
 // WHAT THE FRAME ACTUALLY HOLDS, checked against the photographed PNG
 // (2026-09-09): two rows, not a column of them - the A.T. marked `taken`,
-// and "Fingerboard Shelter Side Trail" SOLID in its blue blaze rather than
-// dotted. That is right and is worth the caption saying so rather than
-// glossing it: a side trail of the chosen system draws at full strength on
-// purpose (map/nearbyTrails.ts's CHOSEN_SYSTEM_SOURCES holds `side_trails`
-// beside `centerline`, and that file argues the decision at length). So the
-// frame shows the taken system whole - through-route and spur - which is a
-// better illustration than the dotted column the caption used to promise
-// and this preview's bucket cannot yet draw.
+// and "Fingerboard Shelter Side Trail" at full strength in its blue blaze
+// rather than ghosted. That is right and is worth the caption saying so
+// rather than glossing it: a side trail of the chosen system draws at full
+// strength on purpose (map/nearbyTrails.ts's CHOSEN_SYSTEM_SOURCES holds
+// `side_trails` beside `centerline`, and that file argues the decision at
+// length). So the frame shows the taken system whole - through-route and
+// spur - which is a better illustration than the ghosted column the caption
+// used to promise and this preview's bucket cannot yet draw. Every swatch
+// is a solid line since 2026-09-10 (map/style.ts's header, rule 2): the
+// rows were solid against dotted until then, and the word `taken` and the
+// ghosting are what separate them now.
 export const caption =
-  'The legend over Harriman at zoom 12 — the "Trails in view" block above the pin grid (#1283), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws solid rather than dotted, because a spur of the taken system is part of it (map/nearbyTrails.ts). The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
+  'The legend over Harriman at zoom 12 — the "Trails in view" block, at the foot of the panel under the pin grid and its switches since 2026-09-10 (it opened the panel from #1283 until the maintainer moved it down: "takes up a lot of space"), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws at full strength rather than ghosted, because a spur of the taken system is part of it (map/nearbyTrails.ts). Every swatch is a solid line — the dotted rows went with the map’s dot rhythm (2026-09-10). The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
 export const alt =
-  'The legend sheet over the map screen, opening with a "Trails in view" heading over two rows: a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail", above the waypoint category grid'
+  'The legend sheet over the map screen: the waypoint category grid first, ending on its Closure and Serious warning rows with the "Read all trail notices" door directly under them, then the Showing, Verified, Alerts and Drought switches, and at the foot a "Trails in view" heading over two rows - a solid white line swatch inside its dark casing beside "Appalachian National Scenic Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail" - above the downloaded-map block'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */
@@ -88,9 +91,13 @@ export default async function drive(page) {
   // The header's icon button, by its visually-hidden name (chrome/Header.tsx).
   await page.getByRole('button', { name: 'Legend' }).click()
 
-  // The block is at the top of the sheet, which opens scrolled to the top;
-  // waiting for the heading is the settle.
-  await page.getByRole('heading', { name: 'Trails in view' }).waitFor()
+  // The block is at the FOOT of the sheet since 2026-09-10 (it opened the
+  // sheet until the maintainer moved it down), and the sheet opens scrolled
+  // to the top, so the heading is brought into view the way legend.mjs
+  // brings its Showing control in - by the element the shot is about.
+  const heading = page.getByRole('heading', { name: 'Trails in view' })
+  await heading.waitFor()
+  await heading.scrollIntoViewIfNeeded()
 
   // `taken` with no tap behind it. Left as a wait rather than dropped: on a
   // build whose bucket has no nearby_trails.pmtiles the rows still hold the

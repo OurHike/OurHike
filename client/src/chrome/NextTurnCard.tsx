@@ -25,11 +25,24 @@
 // owes - but it is not this change, and a link promising a list that does not
 // exist would be worse than the one that says what it does.
 
+import { useState } from 'react'
+
 import type { DayHikeTurn } from '../lib/dayHikeTurns'
 import { blazeLabel } from '../lib/blaze'
 import { turnSummary } from '../lib/turnText'
 import { formatDistance, type UnitSystem } from '../lib/units'
+import { PoiRow } from './PoiRow'
 import './chrome.css'
+
+/** One thing still ahead on the route (#1373, frame 6b): a waypoint the
+ *  walk passes, with the miles to it from where the hiker is. */
+export interface AheadRow {
+  key: string
+  /** The waypoint's type - the map's own pin at row scale. */
+  kind: string
+  title: string
+  milesAway: number
+}
 
 export interface NextTurnCardProps {
   /**
@@ -55,6 +68,33 @@ export interface NextTurnCardProps {
   units?: UnitSystem
   onOpenTurn: () => void
   onStopFollowing: () => void
+  /**
+   * The hiker has walked off their download (#1373, frame 6a). The strip
+   * still says it; this card says it again at its head, in the strip's own
+   * words, because the card is the one thing on this screen a thumb is
+   * already on and "you have walked off your download" is the one map
+   * condition with something to do about it. The door is the download
+   * sheet, and it is offered only where the shell has one.
+   */
+  outsideDownload?: boolean
+  onTakeStretch?: () => void
+  /**
+   * What is still ahead on the route (frame 6b): the water it passes and
+   * anything else the shell can place on it, each with the miles to it.
+   * Undefined off-route and before a fix, where nothing is ahead of a
+   * position nobody has.
+   */
+  ahead?: readonly AheadRow[]
+  /** Miles walked so far - the figure the finish ask prints. */
+  walkedMi?: number
+  /**
+   * The finish, asked and never assumed (frame 6c). Pressing "Finish here"
+   * asks once, on this card; "Finish this walk" is the commit and "Still
+   * going" is nothing at all. No arrival detector stands behind it: a
+   * finish this app declared for a hiker at the wrong trailhead would be
+   * crying wolf on the one record that says a walk was done.
+   */
+  onFinish?: () => void
 }
 
 export function NextTurnCard({
@@ -67,13 +107,70 @@ export function NextTurnCard({
   units = 'imperial',
   onOpenTurn,
   onStopFollowing,
+  outsideDownload = false,
+  onTakeStretch,
+  ahead,
+  walkedMi,
+  onFinish,
 }: NextTurnCardProps) {
   const blaze = blazeLabel(onTrailBlaze)
   const nowOn = onTrail === null ? blaze : `${onTrail} · ${blaze.toLowerCase()}`
+  // The ask replaces the card's body in the same frame - one surface
+  // continuing, the convention every sheet on this map keeps.
+  const [asking, setAsking] = useState(false)
+
+  const coverage = outsideDownload ? (
+    <div className="next-turn__coverage" role="note">
+      <p className="next-turn__coverage-title">Outside what you downloaded</p>
+      <p className="next-turn__coverage-body">
+        The trail line and your position still work.
+      </p>
+      {onTakeStretch !== undefined && (
+        <button type="button" className="next-turn__link" onClick={onTakeStretch}>
+          Take this stretch
+        </button>
+      )}
+    </div>
+  ) : null
+
+  if (asking && onFinish !== undefined) {
+    return (
+      <div className="next-turn" role="group" aria-label="Done for the day?">
+        <p className="next-turn__ask-title">Done for the day?</p>
+        <p className="next-turn__ask-figures">
+          {walkedMi === undefined ? null : `${formatDistance(walkedMi, units)} walked`}
+        </p>
+        <p className="next-turn__ask-note">
+          Nothing to tap if you&rsquo;d rather not — this asks again tomorrow morning and
+          never closes the walk for you.
+        </p>
+        <div className="next-turn__ask-actions">
+          <button
+            type="button"
+            className="next-turn__finish"
+            onClick={() => {
+              setAsking(false)
+              onFinish()
+            }}
+          >
+            Finish this walk
+          </button>
+          <button
+            type="button"
+            className="next-turn__link"
+            onClick={() => setAsking(false)}
+          >
+            Still going
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   if (!positionKnown) {
     return (
       <div className="next-turn">
+        {coverage}
         {/* No distances, no turn, no trail name. Everything this card
             normally says is a claim about where somebody is standing, and
             nothing here knows. What survives is the mode and the way out. */}
@@ -97,6 +194,7 @@ export function NextTurnCard({
 
   return (
     <div className="next-turn">
+      {coverage}
       {turn === null ? (
         /* The state most of a loop's last leg is in, and worth saying out
            loud rather than leaving the slot empty: on a network where a
@@ -113,6 +211,50 @@ export function NextTurnCard({
           </span>
           <span className="next-turn__instruction">{turnSummary(turn.onto)}</span>
         </button>
+      )}
+
+      {/* WHAT'S LEFT TODAY (frame 6b): the miles still ahead, the water the
+          route passes before its end, and the finish - each with the miles
+          to it from here, and no time to any of them, for the reason the
+          turn above carries none. "Finish here instead" is the design's
+          door onto the ask below; the same ask is a tap away whether a
+          hiker is at the trailhead or a mile short of it. */}
+      {ahead !== undefined && (
+        <section className="next-turn__left" aria-label="What’s left today">
+          <p className="next-turn__left-head">
+            <span>What&rsquo;s left today</span>
+            <span className="next-turn__left-figure">
+              {formatDistance(toGoMi, units)}
+            </span>
+          </p>
+          <ul className="next-turn__left-rows">
+            {ahead.map((row) => (
+              <li key={row.key}>
+                <PoiRow
+                  kind={row.kind}
+                  title={row.title}
+                  trailing={formatDistance(row.milesAway, units)}
+                />
+              </li>
+            ))}
+            <li>
+              <PoiRow
+                kind="finish"
+                title="The finish"
+                trailing={formatDistance(toGoMi, units)}
+              />
+            </li>
+          </ul>
+          {onFinish !== undefined && (
+            <button
+              type="button"
+              className="next-turn__link"
+              onClick={() => setAsking(true)}
+            >
+              Finish here instead<span aria-hidden="true"> ›</span>
+            </button>
+          )}
+        </section>
       )}
 
       <div className="next-turn__foot">

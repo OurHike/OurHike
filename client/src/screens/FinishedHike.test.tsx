@@ -24,7 +24,6 @@ const PROPS = {
   onOpenSection: vi.fn(),
   onAllSections: vi.fn(),
   onShare: vi.fn(),
-  onExport: vi.fn(),
   onStartAnother: vi.fn(),
   onBack: vi.fn(),
 }
@@ -75,11 +74,13 @@ describe('the record afterwards', () => {
     expect(screen.getAllByText(/this download has no elevation profile/)).toHaveLength(1)
   })
 
-  it('commits to export, in the words FEATURES.md already used', () => {
+  it('offers no export door while nothing can write one (#1373, D10)', () => {
+    // The commitment is FEATURES.md's and stays there. The door this screen
+    // had was wired to a handler that did nothing, and a button is a claim
+    // that the promise is kept.
     render(<FinishedHike {...PROPS} />)
-    expect(
-      screen.getByText(/the trail belongs to the trails, not to this app/),
-    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Export/ })).toBeNull()
+    expect(screen.queryByText(/GPX|GeoJSON/)).toBeNull()
   })
 
   it('promises the hike stays exactly as it is when another one starts', async () => {

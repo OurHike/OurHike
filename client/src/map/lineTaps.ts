@@ -23,6 +23,8 @@
 
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { atcBandIdAt } from './atcUpdateLayers'
+import { closureIdAt } from './closureLayers'
+import { warningIdAt } from './warningLayers'
 import { highlightIdAt } from './corridorLayers'
 import { poiIdAt } from './poiTaps'
 import {
@@ -72,6 +74,9 @@ export interface TappedLine {
   closureKind: string | null
   closureReason: string | null
   closureSource: string | null
+  /** The other trail on this stretch of treadway, on a shared-ground half
+   *  (#1384, map/sharedGround.ts); null on every plain line. */
+  sharedWith: string | null
   /** Whether the tap landed on the trail's BADGE rather than its line
    *  (#1306): a badge takes an untaken trail, a line only ever informs. */
   badge: boolean
@@ -195,6 +200,9 @@ function asTappedLine(
     closureKind: stringProp(feature.properties, 'closure_kind'),
     closureReason: stringProp(feature.properties, 'closure_reason'),
     closureSource: stringProp(feature.properties, 'closure_source'),
+    // The other trail on this stretch, on a shared-ground half (#1384,
+    // map/sharedGround.ts); absent on every plain line.
+    sharedWith: stringProp(feature.properties, 'concurrent_with'),
     at: nearestVertex(feature.geometry, near),
   }
 }
@@ -215,6 +223,13 @@ export function tappedLineAt(
   // aimed at, and their handlers will act on this same click.
   if (poiIdAt(map, point) !== null) return null
   if (atcBandIdAt(map, point) !== null) return null
+  // The closure tape and the serious-warning pin (#1373, F12), for the same
+  // reason and one more: both are safety marks drawn ON the line, and a tap
+  // on barrier tape that opened the trail's blaze sheet instead of the
+  // closure would answer the wrong question on the one path that is about
+  // danger.
+  if (closureIdAt(map, point) !== null) return null
+  if (warningIdAt(map, point) !== null) return null
   // And a highlight mark (#858), for the same reason: it is a small target a
   // hiker aimed at, sitting on the corridor line that is always under it.
   if (highlightIdAt(map, point) !== null) return null
@@ -247,9 +262,10 @@ export function tappedLineAt(
   // and querying only the first meant a tap on any trail this app does not
   // call the through-route reported nothing at all. That is the sheet #134
   // built and #979 hangs an action on, unreachable on exactly the trails a
-  // day hike is made of. Since #1283 each of those is split into a solid
-  // and a dotted half, and every line outside the chosen system is on a
-  // dotted one - so the list is the style's own, not two names spelled here.
+  // day hike is made of. Since #1283 each of those is split into a taken
+  // and an untaken half, and every line outside the chosen system is on an
+  // untaken one - so the list is the style's own, not two names spelled
+  // here.
   //
   // Rule 2 below is unchanged and is what makes the extra layers safe:
   // among several lines the narrow specific one wins, and a ghosted trail is

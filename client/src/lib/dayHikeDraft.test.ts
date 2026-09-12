@@ -18,17 +18,22 @@ import {
   canCloseLoop,
   canStartStretch,
   clearDraft,
+  draftFromWalk,
   draftPoints,
+  draftShape,
   draftStatus,
   EMPTY_DRAFT,
   loopDraft,
   NETWORK_STILL_ARRIVING,
   OFF_NETWORK_REFUSAL,
+  shapeDraft,
+  shapesOffered,
   startStretch,
   stretchRoute,
   tapAt,
   removeTap,
   undoTap,
+  walkEnds,
 } from './dayHikeDraft'
 import { buildGraphIndex, type RouteLeg, type TrailGraph } from './trailGraph'
 
@@ -283,6 +288,108 @@ describe('closing the loop', () => {
 
     expect(reopened.looped).toBe(false)
     expect(draftPoints(reopened)).toHaveLength(3)
+  })
+})
+
+describe('the shape (#1373, step 2)', () => {
+  const two = () => tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+
+  it('offers nothing to shape until there is a walk, then all three', () => {
+    expect(shapesOffered(EMPTY_DRAFT)).toEqual([])
+    expect(shapesOffered(tapAt(index, EMPTY_DRAFT, ON_TRAIL))).toEqual([])
+    expect(shapesOffered(two())).toEqual(['point-to-point', 'out-and-back', 'loop'])
+    expect(draftShape(two())).toBe('point-to-point')
+  })
+
+  it('walks out and back over the same ground: twice the miles, the climb mirrored', () => {
+    const out = stretchRoute(index, draftPoints(two()), false)
+    const back = stretchRoute(index, draftPoints(two()), false, true)
+
+    expect(out).not.toBeNull()
+    expect(back).not.toBeNull()
+    expect(back?.miles).toBeCloseTo((out?.miles ?? 0) * 2, 5)
+    // Priced by the status too, the way the bar reads it.
+    const status = draftStatus(index, shapeDraft(two(), 'out-and-back'))
+    expect(status.kind).toBe('routed')
+    if (status.kind === 'routed') {
+      expect(status.miles).toBeCloseTo((out?.miles ?? 0) * 2, 5)
+    }
+  })
+
+  it('is one of the three at a time, and point to point takes both back', () => {
+    const outAndBack = shapeDraft(two(), 'out-and-back')
+    expect(draftShape(outAndBack)).toBe('out-and-back')
+    expect(outAndBack.looped).toBe(false)
+
+    const loop = shapeDraft(outAndBack, 'loop')
+    expect(draftShape(loop)).toBe('loop')
+    expect(loop.outAndBack).toBe(false)
+
+    expect(draftShape(shapeDraft(loop, 'point-to-point'))).toBe('point-to-point')
+  })
+
+  it('will not take a shape it does not offer', () => {
+    const one = tapAt(index, EMPTY_DRAFT, ON_TRAIL)
+    expect(shapeDraft(one, 'out-and-back')).toBe(one)
+  })
+
+  it('undo takes the shape back as one action, and a new tap reopens it', () => {
+    const outAndBack = shapeDraft(two(), 'out-and-back')
+    expect(draftPoints(undoTap(outAndBack))).toHaveLength(2)
+    expect(undoTap(outAndBack).outAndBack).toBe(false)
+
+    const reopened = tapAt(index, outAndBack, UP_SEVEN_HILLS)
+    expect(reopened.outAndBack).toBe(false)
+    expect(draftPoints(reopened)).toHaveLength(3)
+  })
+
+  it('is not offered across a gap, and starting a stretch takes it back', () => {
+    const outAndBack = shapeDraft(two(), 'out-and-back')
+    // A shaped walk is closed: nothing continues past its return.
+    expect(canStartStretch(outAndBack)).toBe(false)
+    const open = startStretch(two())
+    expect(shapesOffered(open)).toEqual([])
+    expect(open.outAndBack).toBe(false)
+  })
+
+  it('saves as the taps and the taps again home, so the record needs no flag', () => {
+    const ends = walkEnds(shapeDraft(two(), 'out-and-back'))
+    expect(ends).toHaveLength(1)
+    expect(ends[0]).toHaveLength(3)
+    expect(ends[0][0]).toBe(ends[0][2])
+    // And a plain walk saves as its taps alone.
+    expect(walkEnds(two())[0]).toHaveLength(2)
+  })
+})
+
+describe('replaying a saved walk for editing (#1373, D1)', () => {
+  const coords = (draft: ReturnType<typeof tapAt>) =>
+    draft.segments.map((stretch) => stretch.map((point) => point.at))
+
+  it('rebuilds the taps, the stretches and the loop, in that order', () => {
+    const built = loopDraft(tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER))
+    const again = draftFromWalk(index, coords(built), true)
+
+    expect(again).not.toBeNull()
+    expect(draftPoints(again as never)).toHaveLength(2)
+    expect(again?.looped).toBe(true)
+    expect(draftStatus(index, again as never).kind).toBe('routed')
+  })
+
+  it('keeps a gap as a gap', () => {
+    const two = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    const across = tapAt(
+      index,
+      tapAt(index, startStretch(two), UP_SEVEN_HILLS),
+      SEVEN_HILLS_END,
+    )
+    const again = draftFromWalk(index, coords(across), false)
+
+    expect(again?.segments).toHaveLength(2)
+  })
+
+  it('refuses the whole walk when this graph refuses one end, rather than half of it', () => {
+    expect(draftFromWalk(index, [[ON_TRAIL, OFF_TRAIL]], false)).toBeNull()
   })
 })
 

@@ -3,7 +3,7 @@
 //
 // Every sentence is decided in lib/highlightDetail.ts, where it is testable
 // without a canvas; this only lays them out, on ClubSheet's classes - which are
-// LineSheet's, which are AtcUpdateSheet's - so all four read as one family.
+// LineSheet's, which are OrgNoticeSheet's - so all four read as one family.
 //
 // Lines that are null are OMITTED, never placeholdered. The absences here are
 // ordinary rather than exceptional: a highlight that leaves the A.T. has no

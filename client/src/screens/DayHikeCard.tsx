@@ -57,15 +57,31 @@
 // comment is a display outrunning its source.
 
 import { useState } from 'react'
+import { useDraftField } from '../lib/useDraftField'
 
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
 import { distinctLegSources, type DayHike } from '../lib/dayHikes'
 import type { PlanTextLegs } from '../lib/dayHikePlanText'
+import {
+  STOP_FAR_OFF_COURSE_FEET,
+  stoppingMinutes,
+  type DayHikeStop,
+} from '../lib/dayHikeStops'
+import { WATER_SAID_OFF_FEET, type RouteWater } from '../lib/dayHikeWater'
 import { blazeLabel, blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
+import { HIKER_MODE_LABELS } from '../lib/hikerMode'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { paceEstimate, type PaceProfile } from '../lib/pace'
-import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import {
+  formatDistance,
+  formatElevation,
+  formatShortDistance,
+  MIN_STATED_FEET,
+  type UnitSystem,
+} from '../lib/units'
+import { PoiRow } from '../chrome/PoiRow'
+import { StepRail } from '../chrome/StepRail'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
 import './plan.css'
 
@@ -92,6 +108,16 @@ export interface DayHikeCardProps {
   /** review: Done pressed, nothing stored yet - Save is the primary action.
    *  saved: opened from the Plan tab, where delete lives. */
   mode: 'review' | 'saved'
+  /** Whether Today leads with a walk dated today - true in day mode, where
+   *  Today's order puts the walk first, and false in the other two, where a
+   *  dated day hike sits with the hiker's other hikes further down
+   *  (screens/Today.tsx's `order`). The just-saved line reads it, so a
+   *  long-hiker is not promised a top card Today will not give. */
+  leadsToday?: boolean
+  /** Whether the card is docked beside the map rather than a sheet over it
+   *  (desktop.css's rail, #1373 frame 16b): then it is a region, not a
+   *  dialog - the rule lib/useDesktop.ts states for the persistent legend. */
+  docked?: boolean
   onSave?: () => void
   onClose: () => void
   onDelete?: () => void
@@ -108,6 +134,43 @@ export interface DayHikeCardProps {
    * stored cache, which is a list of figures rather than ground.
    */
   onFollow?: () => void
+  /**
+   * Open this walk in the builder at step 2 (#1373, D1). Saved mode only,
+   * and only when the graph can place the hike - like `onFollow`, for the
+   * same reason: editing is re-routing, and there is no route to edit when
+   * the card is leaning on its stored cache.
+   */
+  onEdit?: () => void
+  /**
+   * Whether this walk is the one being followed right now. Editing it stops
+   * following, and D1's rule is that the screen says so BEFORE it happens
+   * rather than the next-turn card vanishing - so with this true, the edit
+   * door asks first.
+   */
+  following?: boolean
+  /** Review only - the rail's first stop, back to "Where do you want to
+   *  go?" with the route kept (#1373, R3). */
+  onBackToStepOne?: () => void
+  /** The name as a field (frame 5a). Omitted, the name is a heading. */
+  onRename?: (name: string) => void
+  /**
+   * The published water points along the walk, on its own mile axis
+   * (lib/dayHikeWater.ts). Empty prints NOTHING: an absent row is the honest
+   * state of a thin water layer, and "no water on this route" would be a
+   * claim about the ground rather than about the data.
+   */
+  waterOnRoute?: readonly RouteWater[]
+  /** The shelters and campsites the hiker picked as stops, placed on the
+   *  walk (lib/dayHikeStops.ts). */
+  stops?: readonly DayHikeStop[]
+  /**
+   * Just saved (frame 5c): the card opens as the landing after Save, with
+   * the line saying where the walk now lives. `today` is the phone's own
+   * day (YYYY-MM-DD), so the line can say whether that is now or on the
+   * walk's date.
+   */
+  justSaved?: boolean
+  today?: string
 }
 
 export function DayHikeCard({
@@ -123,17 +186,32 @@ export function DayHikeCard({
   onDelete,
   onSetDate,
   onFollow,
+  onEdit,
+  following = false,
+  onBackToStepOne,
+  onRename,
+  waterOnRoute = [],
+  stops = [],
+  justSaved = false,
+  leadsToday = true,
+  docked = false,
+  today,
 }: DayHikeCardProps) {
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
   // Delete and its neighbour look alike, and one of them has no way back.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  // D1's ask, in the same one-surface-continuing frame delete uses.
+  const [confirmingEdit, setConfirmingEdit] = useState(false)
   // "Leave this with someone" (frame D6) replaces the card in the same
   // sheet frame - one surface continuing, the bar-to-card convention.
   const [leaving, setLeaving] = useState(false)
+  // The name as typed, handed over on blur or Enter (lib/useDraftField.ts).
+  const name = useDraftField(hike.name, (next) => onRename?.(next))
 
   const legs = resolved !== null ? resolved.legs : hike.figures.legs
   const miles = resolved !== null ? resolved.miles : hike.figures.miles
   const gaps = dayHikeGaps(hike)
+  const stopMinutes = stoppingMinutes(stops)
   // Grouped by stretch where the app can see the seams, flat where it
   // cannot. The live resolution routes each segment separately and keeps
   // them apart; the cache holds one flat list, so it can only be handed over
@@ -215,14 +293,55 @@ export function DayHikeCard({
   const ground = hike.looped ? 'loop' : 'route'
 
   return (
-    <div className="day-hike-card" role="dialog" aria-label={hike.name}>
+    <div
+      className="day-hike-card"
+      role={docked ? 'region' : 'dialog'}
+      aria-label={hike.name}
+    >
       <button type="button" className="route-stops__close" onClick={onClose}>
         <span className="visually-hidden">Close the day hike</span>
         <span aria-hidden="true">×</span>
       </button>
 
+      {/* Step 3 of three, on the review (#1373, frame 5a): the route you
+          chose, read before it is saved. Step 2 is the map behind this
+          card and step 1 the question before it; both stay doors with the
+          route kept (R3). A SAVED card is not on the spine - it is a record
+          opened from a shelf - so it carries no rail. */}
+      {mode === 'review' && (
+        <StepRail
+          step={3}
+          kind={HIKER_MODE_LABELS.day}
+          onStep={(step) => {
+            if (step === 2) onClose()
+            else if (step === 1) onBackToStepOne?.()
+          }}
+        />
+      )}
+
+      {justSaved && <p className="day-hike-card__eyebrow">Saved</p>}
+
       <div className="day-hike-card__head">
-        <h2 className="day-hike-card__title">{hike.name}</h2>
+        {onRename === undefined ? (
+          <h2 className="day-hike-card__title">{hike.name}</h2>
+        ) : (
+          // The name as a field (frame 5a), so a walk named off its longest
+          // leg - "Pine Meadow Trail" - can be called what the hiker calls
+          // it. The heading role stays on the text for the dialog's name.
+          <label className="day-hike-card__name">
+            <span className="day-hike-card__heading">Name</span>
+            <input
+              type="text"
+              value={name.draft}
+              maxLength={80}
+              onChange={(event) => name.setDraft(event.target.value)}
+              onBlur={name.flush}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') name.flush()
+              }}
+            />
+          </label>
+        )}
         <span className="day-hike-card__when">
           {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
           {hike.looped && <span className="day-hike-card__badge">LOOP</span>}
@@ -326,6 +445,83 @@ export function DayHikeCard({
             ? 'This phone’s current trail map can’t place this walk, so these are the figures from the day it was saved — and ways off can’t be worked out.'
             : 'This phone has no trail network, so these are the figures from the day this hike was saved — and ways off can’t be worked out.'}
         </p>
+      )}
+
+      {/* WATER ON ROUTE (frame 5a): the published water points the walk
+          passes, at the mile it reaches them. Absent rather than "none"
+          when there are none - lib/dayHikeWater.ts's header is the reason,
+          and it is the safety reason. Each row is the map's own pin at row
+          scale (chrome/PoiRow.tsx), so the shape a hiker learns here is the
+          one they look for on the ground. */}
+      {waterOnRoute.length > 0 && (
+        <section className="day-hike-card__section">
+          <h3 className="day-hike-card__heading">Water on route</h3>
+          <ul className="day-hike-card__rows">
+            {waterOnRoute.map((water) => (
+              <li key={`${water.poiId}:${water.alongMi}`}>
+                <PoiRow
+                  kind="water"
+                  title={water.name}
+                  meta={[
+                    `${formatDistance(water.alongMi, units)} in`,
+                    water.offCourseFeet >= WATER_SAID_OFF_FEET
+                      ? `${formatShortDistance(water.offCourseFeet, units)} off the walk`
+                      : null,
+                  ]
+                    .filter((part) => part !== null)
+                    .join(' · ')}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* The stops the hiker chose, with the two facts they chose them on -
+          the builder's row (chrome/DayHikePanel.tsx) said again where the
+          walk is read whole. Each figure only where it was published:
+          absent capacity is not zero, absent water is not "no water". */}
+      {stops.length > 0 && (
+        <section className="day-hike-card__section">
+          <h3 className="day-hike-card__heading">Shelters &amp; campsites</h3>
+          <ul className="day-hike-card__rows">
+            {stops.map((stop) => {
+              // A stop's `mile` is the walk's own axis - trail miles from
+              // the first tap (lib/dayHikeStops.ts), a distance and not the
+              // pipeline's marker - so it converts like any distance, and
+              // is named as one here for test/unitDisplay.test.ts's guard.
+              const alongMi = stop.mile
+              return (
+                <li key={stop.poiId}>
+                  <PoiRow
+                    kind={stop.type}
+                    title={stop.name}
+                    meta={[
+                      `${formatDistance(alongMi, units)} in`,
+                      stop.capacity !== undefined ? `sleeps ${stop.capacity}` : null,
+                      stop.waterDistanceFt !== undefined
+                        ? `water ${formatShortDistance(
+                            Math.max(MIN_STATED_FEET, stop.waterDistanceFt),
+                            units,
+                          )}`
+                        : null,
+                      stop.offCourseFeet > STOP_FAR_OFF_COURSE_FEET
+                        ? `${formatShortDistance(stop.offCourseFeet, units)} off the walk`
+                        : null,
+                    ]
+                      .filter((part) => part !== null)
+                      .join(' · ')}
+                  />
+                </li>
+              )
+            })}
+          </ul>
+          {stopMinutes !== null && (
+            <p className="day-hike-card__note">
+              Stops add about {stopMinutes} min, on top of the walking.
+            </p>
+          )}
+        </section>
       )}
 
       {legs.length > 0 && (
@@ -443,38 +639,111 @@ export function DayHikeCard({
       )}
 
       {mode === 'review' ? (
-        <>
+        // SAVE IS THE LAST BUTTON, NOT A STEP (D7): the foot of step 3 is
+        // the way back to the route and the commit, nothing between.
+        <div className="day-hike-card__foot">
+          <button
+            type="button"
+            className="day-hike-card__back"
+            onClick={onClose}
+            aria-label="Back to Route, step 2"
+          >
+            <span aria-hidden="true">‹ </span>Route
+          </button>
           <button type="button" className="plan__primary" onClick={onSave}>
             Save this day hike
           </button>
-          <button type="button" className="day-hike-card__quiet" onClick={onClose}>
-            Back to the map
-          </button>
-        </>
+        </div>
       ) : (
         <>
-          {/* The saved hike's one primary action (frame D6): the only
-              safety-shaped thing in the day flow that is not a map, and
-              the thing a hiker opens this card for on the morning of. */}
-          <button
-            type="button"
-            className="plan__primary"
-            onClick={() => setLeaving(true)}
-          >
-            Leave this with someone
-          </button>
-          {/* And the door out of the planning room and onto the ground
-              (#1041). Under "Leave this with someone" rather than over it,
-              which is the order of the morning: the card somebody else keeps
-              is written before the walk starts, and following is the walk
-              starting. Absent, not disabled, when the graph cannot place the
-              hike - a greyed control is a promise the app cannot say why it
-              is not keeping. */}
+          {/* Where the walk now lives (frame 5c), said once, on the card
+              that opens after Save. Today leads with a walk dated today
+              (screens/Today.tsx), so the sentence says WHEN rather than
+              promising a place a walk with no date will not take. */}
+          {justSaved && (
+            <p className="day-hike-card__note" role="status">
+              {hike.date === null
+                ? leadsToday
+                  ? 'Give it a date and it leads Today that day.'
+                  : 'Give it a date and Today lists it that day.'
+                : hike.date === today
+                  ? leadsToday
+                    ? 'This walk is now the top card on Today.'
+                    : 'Today lists it with your other hikes.'
+                  : leadsToday
+                    ? `It leads Today on ${dayLongDateLabel(hike.date)}.`
+                    : `Today lists it on ${dayLongDateLabel(hike.date)}, with your other hikes.`}
+            </p>
+          )}
+          {/* THE DOOR ONTO THE GROUND IS THE PRIMARY (frame 5c, D4's one
+              grammar: Today's card, this one and the follow card all say
+              "Walk this"). It used to read "Follow this hike on the map"
+              under "Leave this with someone", which the earlier frame D6
+              made the card's one primary; the flow review reverses that
+              order - a walk is what the card is for, and the card somebody
+              else keeps is one row under it. Absent, not disabled, when the
+              graph cannot place the hike - a greyed control is a promise
+              the app cannot say why it is not keeping. */}
           {onFollow !== undefined && resolved !== null && (
-            <button type="button" className="day-hike-card__follow" onClick={onFollow}>
-              Follow this hike on the map
+            <button type="button" className="plan__primary" onClick={onFollow}>
+              Walk this
             </button>
           )}
+          {/* The only safety-shaped thing in the day flow that is not a map
+              (frame D6): the plain-text card somebody at home keeps. */}
+          <button
+            type="button"
+            className="day-hike-card__follow"
+            onClick={() => setLeaving(true)}
+          >
+            Leave it with someone<span aria-hidden="true"> ›</span>
+          </button>
+          {/* The door into step 2 (#1373, D1). A saved walk used to be
+              final: the only way to change a stop was to delete the hike
+              and tap it out again. Absent over the stored cache, like the
+              follow door - the builder needs the graph to place the taps.
+
+              WHEN THE WALK IS BEING FOLLOWED, THE DOOR ASKS FIRST. Following
+              is a claim about a route; the moment the route is being edited
+              the claim is false, and a hiker who loses the next-turn card
+              without being told loses their trust in it. The sentence is
+              the design's, verbatim. The ground already walked is kept
+              because nothing here touches it - the walked ranges and the
+              journal never depended on following. */}
+          {onEdit !== undefined &&
+            resolved !== null &&
+            (confirmingEdit ? (
+              <div
+                className="day-hike-card__confirm day-hike-card__confirm--stack"
+                role="group"
+                aria-label="Editing a hike you are walking"
+              >
+                <p className="day-hike-card__confirm-sentence">
+                  You are walking this one. Changing the route stops following it &mdash;
+                  the next-turn card goes away and the walk you have already done is kept.
+                </p>
+                <div className="day-hike-card__confirm">
+                  <button type="button" className="day-hike-card__quiet" onClick={onEdit}>
+                    Edit it
+                  </button>
+                  <button
+                    type="button"
+                    className="day-hike-card__quiet"
+                    onClick={() => setConfirmingEdit(false)}
+                  >
+                    Keep following
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="day-hike-card__quiet"
+                onClick={() => (following ? setConfirmingEdit(true) : onEdit())}
+              >
+                Edit the route
+              </button>
+            ))}
           {confirmingDelete ? (
             <div className="day-hike-card__confirm">
               <span>Delete this day hike?</span>

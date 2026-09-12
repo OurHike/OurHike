@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TRAILS } from '../lib/trails'
 import {
   CHOSEN_SYSTEM_SOURCES,
-  NEARBY_TRAIL_DASHARRAY,
   chosenSystemFilter,
   nearbyTrailFilter,
   nearbyTrailOpacityExpression,
@@ -16,11 +15,11 @@ import {
   BACKDROP_LAYER_ID,
   BLAZE_LAYER_ID,
   MAP_BACKDROP,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   TAPPABLE_BLAZE_LAYER_IDS,
   TRAIL_OVERVIEW_SOURCE_ID,
   TRAILS_SOURCE_ID,
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
 } from './style'
@@ -674,7 +673,7 @@ describe('POI pins', () => {
     expect(map.layerIds).toEqual(expect.arrayContaining([...TAPPABLE_BLAZE_LAYER_IDS]))
     expect(onTrailsInView).toHaveBeenLastCalledWith([])
 
-    map.renderedFeatures.set(NEARBY_BLAZE_DOTTED_LAYER_ID, [
+    map.renderedFeatures.set(NEARBY_BLAZE_UNTAKEN_LAYER_ID, [
       {
         properties: { name: 'Long Path', source: 'oprhp_trails', blaze_color: 'Aqua' },
         geometry: { type: 'LineString', coordinates: [[0, 0]] },
@@ -1262,17 +1261,18 @@ describe('keeping the opening camera inside what the download covers', () => {
 })
 
 describe('the taken trail (#1306)', () => {
-  it('builds an untaken map with every line dotted and the sketch dotted', () => {
+  it('builds an untaken map with every line on the untaken side, the sketch at that weight', () => {
     render(<MapView {...PROPS} />)
     const [map] = MockMap.live
     const style = map.options.style as {
       layers: Array<{ id: string; paint?: Record<string, unknown>; filter?: unknown }>
     }
     const sketch = style.layers.find((layer) => layer.id === TRAIL_OVERVIEW_LAYER_ID)
-    const solid = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
-    expect(sketch?.paint?.['line-dasharray']).toEqual(NEARBY_TRAIL_DASHARRAY)
+    const taken = style.layers.find((layer) => layer.id === BLAZE_LAYER_ID)
+    // Solid either way since 2026-09-10 (map/style.ts's header, rule 2).
+    expect(sketch?.paint?.['line-dasharray']).toBeUndefined()
     expect(sketch?.paint?.['line-width']).toEqual(sketchWidthExpression([]))
-    expect(solid?.filter).toEqual(chosenSystemFilter([]))
+    expect(taken?.filter).toEqual(chosenSystemFilter([]))
   })
 
   it('re-points every split in place when a trail is taken, without rebuilding the map', () => {
@@ -1288,15 +1288,12 @@ describe('the taken trail (#1306)', () => {
     expect(map.filters.get(BLAZE_LAYER_ID)).toEqual(
       chosenSystemFilter(CHOSEN_SYSTEM_SOURCES),
     )
-    expect(map.filters.get(BLAZE_DOTTED_LAYER_ID)).toEqual(
+    expect(map.filters.get(BLAZE_UNTAKEN_LAYER_ID)).toEqual(
       nearbyTrailFilter(CHOSEN_SYSTEM_SOURCES),
     )
-    expect(map.paintProperties.get(`${BLAZE_DOTTED_LAYER_ID}/line-opacity`)).toEqual(
+    expect(map.paintProperties.get(`${BLAZE_UNTAKEN_LAYER_ID}/line-opacity`)).toEqual(
       nearbyTrailOpacityExpression(CHOSEN_SYSTEM_SOURCES),
     )
-    expect(
-      map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-dasharray`),
-    ).toBeUndefined()
     expect(map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-width`)).toEqual(
       sketchWidthExpression(CHOSEN_SYSTEM_SOURCES),
     )

@@ -46,6 +46,7 @@ const PROPS = {
   onUndo: null,
   refusedTap: false,
   onBreakIntoDays: vi.fn(),
+  onBackToStepOne: vi.fn(),
   onRecordWalked: vi.fn(),
   onClose: vi.fn(),
 }
@@ -120,7 +121,7 @@ describe('the editable route', () => {
     expect(screen.getByText('NOBO · 32.5 mi')).toBeInTheDocument()
   })
 
-  it('wires editing, adding, breaking into days and closing', async () => {
+  it('wires editing, adding, using the route, going back and closing', async () => {
     const user = userEvent.setup()
     render(<RouteStopsPanel {...PROPS} />)
 
@@ -130,8 +131,19 @@ describe('the editable route', () => {
     await user.click(screen.getByRole('button', { name: /Add a stop on the way/ }))
     expect(PROPS.onAddStop).toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Break into days' }))
+    // Step 2's way on (#1373): the target sheet is the long hike's step 3.
+    await user.click(screen.getByRole('button', { name: 'Use this route' }))
     expect(PROPS.onBreakIntoDays).toHaveBeenCalled()
+
+    // And its way back, twice over: the foot, and the rail's first stop.
+    await user.click(screen.getByRole('button', { name: 'Back to Hike, step 1' }))
+    expect(PROPS.onBackToStepOne).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Step 1, Long hike' }))
+    expect(PROPS.onBackToStepOne).toHaveBeenCalledTimes(2)
+    // The rail reads step 2 as where the hiker stands, the kind never asked.
+    expect(screen.getByRole('navigation', { name: 'Planning steps' })).toHaveTextContent(
+      'Route',
+    )
 
     // The same stretch in the past tense (#789).
     await user.click(screen.getByRole('button', { name: 'I already walked this' }))
@@ -159,7 +171,7 @@ describe('the editable route', () => {
       // nothing, stated as a measurement, above controls that decline to act.
       expect(screen.queryByText(/0\.0 mi/)).toBeNull()
       expect(screen.queryByText(/walking/)).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Break into days' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Use this route' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'I already walked this' })).toBeNull()
     })
 
@@ -171,7 +183,7 @@ describe('the editable route', () => {
       ).toBeInTheDocument()
       expect(screen.getByText('1 point')).toBeInTheDocument()
       expect(screen.queryByText(/0\.0 mi/)).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Break into days' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Use this route' })).toBeNull()
       expect(screen.queryByRole('button', { name: 'I already walked this' })).toBeNull()
     })
 

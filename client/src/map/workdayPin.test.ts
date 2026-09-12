@@ -77,37 +77,48 @@ describe('the workday pin’s colour', () => {
   })
 })
 
-describe('the workday glyph', () => {
-  it('is one ring, because two would punch a hole through the hat', () => {
-    // The rasteriser fills even-odd. A dome ring overlapping a brim ring
-    // would cancel where they overlap, which is the middle of the hat.
+describe('the workday glyph (#1373, P38)', () => {
+  it('is one closed outline, because three shapes would cancel where they overlap', () => {
+    // The rasteriser fills even-odd. A handle, a stem and a blade drawn as
+    // three polygons would punch holes where the stem meets the other two.
     expect(WORKDAY_GLYPH).toHaveLength(1)
   })
 
-  it('is wider than it is tall, which no waypoint glyph is', () => {
+  it('is taller than it is wide, with a waist - a shovel, not a hat and not a waypoint', () => {
     const xs = WORKDAY_GLYPH[0].map(([x]) => x)
     const ys = WORKDAY_GLYPH[0].map(([, y]) => y)
     const width = Math.max(...xs) - Math.min(...xs)
     const height = Math.max(...ys) - Math.min(...ys)
+    expect(height).toBeGreaterThan(width)
 
-    // The silhouette claim in the module header, measured. Shape is the
-    // primary channel; this is the part of the shape that carries it.
-    expect(width).toBeGreaterThan(height)
+    // The handle's top edge is wider than the stem under it: the T that
+    // reads as a tool in silhouette.
+    const handle = WORKDAY_GLYPH[0].filter(([, y]) => y === 0.08).map(([x]) => x)
+    const stem = WORKDAY_GLYPH[0]
+      .filter(([, y]) => y === 0.2 || y === 0.5)
+      .map(([x]) => x)
+    expect(Math.max(...handle) - Math.min(...handle)).toBeGreaterThan(0.12)
+    expect(stem).toContain(0.44)
+    expect(stem).toContain(0.56)
   })
 
-  it('is not one of the waypoint silhouettes redrawn', () => {
-    const hat = WORKDAY_GLYPH[0].map(([x, y]) => `${x},${y}`).join(' ')
-    for (const type of Object.keys(POI_COLORS)) {
-      expect(poiGlyphPath(type)).not.toBe(hat)
+  it('is the same tool the mode switch draws - symmetric about the stem', () => {
+    // ModeIcon.tsx claims the switch, the read-out and this pin share one
+    // shape; the pin is traced from its geometry, and the trace is
+    // mirror-symmetric about x = 0.5 like the SVG it comes from.
+    for (const [x, y] of WORKDAY_GLYPH[0]) {
+      const mirrored = WORKDAY_GLYPH[0].find(
+        ([mx, my]) => Math.abs(mx - (1 - x)) < 0.002 && Math.abs(my - y) < 0.002,
+      )
+      expect(mirrored).toBeDefined()
     }
   })
 
-  it('sits flat along the bottom of the box', () => {
-    const brim = WORKDAY_GLYPH[0].filter(([, y]) => y === 0.78)
-
-    // Two corners at the same y is what makes a brim a brim rather than a
-    // dome sitting on a point.
-    expect(brim).toHaveLength(2)
+  it('is not one of the waypoint silhouettes redrawn', () => {
+    const shovel = WORKDAY_GLYPH[0].map(([x, y]) => `${x},${y}`).join(' ')
+    for (const type of Object.keys(POI_COLORS)) {
+      expect(poiGlyphPath(type)).not.toBe(shovel)
+    }
   })
 })
 

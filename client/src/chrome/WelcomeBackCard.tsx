@@ -15,7 +15,9 @@ import { shortDate } from '../lib/hikeText'
 import '../screens/today.css'
 
 export interface WelcomeBackCardProps {
-  /** How many dated days are still ahead, and the date they start from. Null
+  /** How many dated days are not yet walked - behind today included, since
+   *  a hiker back from a pause has days dated in the past still on the plan
+   *  - and the date they start from. Null
    *  when nothing is dated - and then there is nothing to offer moving, so
    *  the card says only the quiet line. */
   dated: { count: number; from: string } | null

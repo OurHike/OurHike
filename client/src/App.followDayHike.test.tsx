@@ -15,7 +15,7 @@
 // rendered consequence), never a tick, and the file is run three times
 // before any push.
 
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { RELEASE_MANIFEST_PATH } from './lib/dataRelease'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -24,6 +24,8 @@ import App from './App'
 import { DAY_HIKE_SOURCE_ID } from './map/dayHikeLayers'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
+import { OPEN_WALK_KEY } from './lib/openWalk'
+import { TRIPS_KEY } from './lib/trips'
 import { ELEVATION_STORE_KEY } from './lib/trailData'
 import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
 import { appHarness, MILE_LAT } from './test/appHarness'
@@ -310,9 +312,7 @@ async function startFollowing(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
     await screen.findByRole('button', { name: /Pine Meadow to Seven Hills/ }),
   )
-  await user.click(
-    await screen.findByRole('button', { name: 'Follow this hike on the map' }),
-  )
+  await user.click(await screen.findByRole('button', { name: 'Walk this' }))
 }
 
 describe('following a day hike, end to end', () => {
@@ -403,7 +403,9 @@ describe('following a day hike, end to end', () => {
     expect(await screen.findByText(/Waiting for GPS/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
     // And the header still says which mode this is, so the two agree.
-    expect(screen.getByText(/Day hike/)).toBeInTheDocument()
+    // Scoped to the plate: the tab bar under the map carries the mode
+    // read-out too (#1373, R11), and says it in the same words.
+    expect(within(screen.getByRole('banner')).getByText(/Day hike/)).toBeInTheDocument()
   })
 
   it('stops following when a builder opens, rather than covering it', async () => {
@@ -426,6 +428,9 @@ describe('following a day hike, end to end', () => {
     // The day room's primary goes straight into the builder (App.tsx wires
     // onNewDayHike to openDayHike), which is the sweep under test.
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
+    // Through step 1 (#1373): the primary lands on "Where do you want to
+    // go?", and the map door is the builder.
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
 
     await waitFor(() => {
       expect(
@@ -433,6 +438,173 @@ describe('following a day hike, end to end', () => {
       ).not.toBeInTheDocument()
     })
     expect(screen.queryByText(/Waiting for GPS/i)).not.toBeInTheDocument()
+  })
+
+  it('edits the walk being followed from its card: asked first, then following stops and the builder holds the route (#1373, D1)', async () => {
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    await screen.findByText('turn left onto Seven Hills Trail')
+
+    // Back to the card on the Plan tab. Following is still on, so the edit
+    // door asks with the design's sentence before it does anything.
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow to Seven Hills/ }),
+    )
+    await user.click(await screen.findByRole('button', { name: 'Edit the route' }))
+    expect(screen.getByText(/You are walking this one/)).toBeInTheDocument()
+    expect(screen.getByText('turn left onto Seven Hills Trail')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Edit it' }))
+
+    // The next-turn card is gone, the builder is up at step 2 holding the
+    // saved walk's own legs - not an empty builder - and Save would land
+    // back on the same record.
+    await waitFor(() => {
+      expect(
+        screen.queryByText('turn left onto Seven Hills Trail'),
+      ).not.toBeInTheDocument()
+    })
+    expect(
+      await screen.findByRole('region', { name: 'Build a day hike' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText(/2 legs ·/)).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: 'Planning steps' })).toHaveTextContent(
+      'Route',
+    )
+  })
+
+  it('finishes the walk when asked, logs today, and lands on the saved card (#1373, frame 6c)', async () => {
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+    await screen.findByText('turn left onto Seven Hills Trail')
+
+    // What's left today rides the card once a position is known: the finish
+    // with the miles to it, and the door onto the ask.
+    const left = await screen.findByRole('region', { name: 'What’s left today' })
+    expect(left).toHaveTextContent('The finish')
+    await user.click(within(left).getByRole('button', { name: 'Finish here instead' }))
+    expect(screen.getByRole('group', { name: 'Done for the day?' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Finish this walk' }))
+
+    // Following is over, the walk is logged for today, and the saved card
+    // is where the hiker lands - on the Plan tab.
+    await waitFor(() => {
+      expect(
+        screen.queryByText('turn left onto Seven Hills Trail'),
+      ).not.toBeInTheDocument()
+    })
+    await waitFor(() => {
+      const stored = app.store.get(DAY_HIKES_KEY) as {
+        hikes: Array<{ walks?: Array<{ date: string }> }>
+      }
+      expect(stored.hikes[0].walks?.[0]?.date).toBe(new Date().toISOString().slice(0, 10))
+    })
+    expect(
+      await screen.findByRole('tab', { name: 'Plan', selected: true }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('dialog', { name: 'Pine Meadow to Seven Hills' }),
+    ).toBeInTheDocument()
+    // And nothing is left open for the morning to ask about.
+    expect(app.store.get(OPEN_WALK_KEY)).toBeUndefined()
+  })
+
+  it('remembers a walk left open and asks the next morning - never closing it itself (frame 6d)', async () => {
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    // Followed on an earlier day, and nobody said how it ended.
+    app.store.set(OPEN_WALK_KEY, { hikeId: 'followed-hike', day: '2026-08-01' })
+    await serveGraph()
+
+    render(<App />)
+    const card = await screen.findByRole('region', { name: 'A walk is still open' })
+    expect(card).toHaveTextContent('Pine Meadow to Seven Hills')
+    // Nothing was logged by the app on its own.
+    expect(
+      (app.store.get(DAY_HIKES_KEY) as { hikes: Array<{ walks?: unknown[] }> }).hikes[0]
+        .walks,
+    ).toBeUndefined()
+
+    await user.click(within(card).getByRole('button', { name: 'Finished it' }))
+    await waitFor(() => {
+      const stored = app.store.get(DAY_HIKES_KEY) as {
+        hikes: Array<{ walks?: Array<{ date: string }> }>
+      }
+      expect(stored.hikes[0].walks?.[0]?.date).toBe('2026-08-01')
+    })
+    await waitFor(() => {
+      expect(screen.queryByRole('region', { name: 'A walk is still open' })).toBeNull()
+    })
+    expect(app.store.get(OPEN_WALK_KEY)).toBeUndefined()
+  })
+
+  it('notes the walk as open when following starts, and Stop clears it', async () => {
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    await serveGraph()
+
+    await startFollowing(user)
+    await waitFor(() => {
+      expect(app.store.get(OPEN_WALK_KEY)).toEqual({
+        hikeId: 'followed-hike',
+        day: new Date().toISOString().slice(0, 10),
+      })
+    })
+    await user.click(await screen.findByRole('button', { name: 'Stop' }))
+    await waitFor(() => {
+      expect(app.store.get(OPEN_WALK_KEY)).toBeUndefined()
+    })
+  })
+
+  it('keeps the follow eyebrow in front of an active long hike’s name (the inventory’s C15)', async () => {
+    const user = userEvent.setup()
+    app.onboard({ location_permission_requested: true })
+    app.putTrailData()
+    app.store.set(DAY_HIKES_KEY, HIKE)
+    app.store.set(TRIPS_KEY, {
+      trips: [],
+      openId: null,
+      groups: [],
+      hikes: [
+        {
+          id: 'hike-1',
+          name: 'Springer → Katahdin',
+          type: 'thru',
+          trailId: 'AT',
+          status: 'walking',
+          points: [
+            { poiId: 's3', name: 'Front Shelter', mile: 3.2 },
+            { poiId: 's22', name: 'Beyond Shelter', mile: 22.2 },
+          ],
+          tripIds: [],
+        },
+      ],
+      activeHikeId: 'hike-1',
+    })
+    await serveGraph()
+
+    await startFollowing(user)
+    await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
+
+    // The plate reads the walk being followed, not the hike the app is on.
+    expect(await screen.findByText(/Day hike · leg 1 of 2/)).toBeInTheDocument()
   })
 
   it('gives the map back when following stops', async () => {
@@ -453,9 +625,11 @@ describe('following a day hike, end to end', () => {
         screen.queryByText('turn left onto Seven Hills Trail'),
       ).not.toBeInTheDocument()
     })
-    // Back to the A.T.'s own header, and to its own honest refusal about a
-    // fix two thousand miles off the corridor.
-    expect(screen.getByText('Off the trail')).toBeInTheDocument()
+    // Back to the map's own plate. Nothing is taken on this phone, so the
+    // slot says where the fix stands rather than "Off the trail" - which
+    // would be a claim about a trail nobody chose (the review of #1374).
+    expect(screen.getByText('Located · tap a trail to take it')).toBeInTheDocument()
+    expect(screen.queryByText('Off the trail')).toBeNull()
   })
 
   it('draws the ground walked twice, on a walk that re-uses one edge', async () => {
@@ -477,9 +651,7 @@ describe('following a day hike, end to end', () => {
     await user.click(
       await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
     )
-    await user.click(
-      await screen.findByRole('button', { name: 'Follow this hike on the map' }),
-    )
+    await user.click(await screen.findByRole('button', { name: 'Walk this' }))
     await app.reportFixAtMile(mileAtLatitude(41.25), -74.095)
     // Waits on the follow state itself, not on a tick: the drawing and this
     // line come from the same resolution, so a rendered distance proves the

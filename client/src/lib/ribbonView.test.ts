@@ -54,6 +54,9 @@ function inputs(over: Partial<RibbonInputs> = {}): RibbonInputs {
     fixClientMile: null,
     fixPlanMile: null,
     fixWindow: null,
+    // Taken by default: these cases are about the precedence once there is
+    // a subject. "a profile needs a subject" has its own block below.
+    trailTaken: true,
     ...over,
   }
 }
@@ -115,6 +118,60 @@ describe('ribbonView precedence', () => {
 
     expect(view?.source).toBe('planned-stretch')
     expect(view?.domain.startMile).toBeCloseTo(10, 2)
+  })
+})
+
+// The maintainer's review of #1374: "Only show when a user has their hike
+// selected." A profile needs a subject - a route being built, a walk being
+// followed, or a taken trail - and otherwise draws nothing.
+describe('a profile needs a subject', () => {
+  it('draws nothing at rest with no trail taken - not the whole trail, not the map view, not the fix window', () => {
+    expect(ribbonView(inputs({ trailTaken: false }))).toBeUndefined()
+    expect(
+      ribbonView(
+        inputs({ trailTaken: false, mapStretch: { startMile: 10, endMile: 30 } }),
+      ),
+    ).toBeUndefined()
+    expect(
+      ribbonView(
+        inputs({
+          trailTaken: false,
+          fixClientMile: 20,
+          fixPlanMile: 20,
+          fixWindow: { startMile: 19, endMile: 29 },
+        }),
+      ),
+    ).toBeUndefined()
+  })
+
+  it('still draws a route being built, which is a subject of its own', () => {
+    const view = ribbonView(
+      inputs({ trailTaken: false, planStretch: { startMile: 10, endMile: 30 } }),
+    )
+    expect(view?.source).toBe('planned-stretch')
+  })
+
+  it('still draws a followed day hike, which brings its own samples', () => {
+    const view = ribbonView(
+      inputs({
+        trailTaken: false,
+        profile: null,
+        todaysWalk: {
+          kind: 'route',
+          samples: [
+            { mile: 0, elevationFt: 900 },
+            { mile: 1, elevationFt: 1100 },
+            { mile: 2, elevationFt: 1000 },
+          ],
+          alongMi: 0.5,
+        },
+      }),
+    )
+    expect(view?.source).toBe('todays-walk')
+  })
+
+  it('draws the whole trail once one is taken, as before', () => {
+    expect(ribbonView(inputs({ trailTaken: true }))?.source).toBe('whole-trail')
   })
 })
 

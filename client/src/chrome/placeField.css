@@ -1,0 +1,170 @@
+/* The place field (chrome/PlaceField.tsx): the finder's search field and
+   place rows (screens/findHike.css), kept to the same measurements so the
+   two read as one control wherever a hiker names a place. */
+
+.place-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.place-field__search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  transition: box-shadow var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.place-field__search:focus-within {
+  box-shadow: var(--shadow-focus);
+}
+
+.place-field__search-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--fg-3);
+}
+
+.place-field__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 15px;
+  color: var(--fg-1);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.place-field__input::placeholder {
+  color: var(--fg-3);
+}
+
+.place-field__input:disabled {
+  color: var(--fg-3);
+}
+
+.place-field__places {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.place-field__place {
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    border-color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.place-field__place[aria-pressed='true'] {
+  border-color: var(--brand-primary);
+  background: var(--bg-surface);
+}
+
+.place-field__name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.place-field__meta {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+.place-field__empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+/* The sheet that changes the kept place (chrome/PlaceSheet.tsx): the
+   closure sheet's bottom-anchored shape (chrome.css .closure-sheet) in the
+   surface's own border rather than the danger rule, since nothing here is a
+   warning. */
+.place-sheet {
+  /* Fixed rather than absolute: it opens over More, whose screen has no
+     positioned ancestor at the fragment level the shell renders it from,
+     and a sheet docked to the viewport's foot is right on every tab. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  max-height: 70%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-4, 16px);
+  padding-bottom: max(var(--space-4, 16px), env(safe-area-inset-bottom, 0));
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-2);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+}
+
+.place-sheet__current,
+.place-sheet__note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+
+.place-sheet__note {
+  font-size: 12px;
+  color: var(--fg-3);
+}
+
+.place-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.place-sheet__primary,
+.place-sheet__secondary {
+  min-height: var(--min-touch-target, 44px);
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.place-sheet__primary {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+}
+
+.place-sheet__secondary {
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+}

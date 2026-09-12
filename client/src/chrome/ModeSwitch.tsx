@@ -18,14 +18,9 @@
 // copies of a three-way control is how one of them quietly becomes a
 // dropdown. The surface passes a variant class; the semantics stay here.
 
-import { HIKER_MODE_VALUES, type HikerMode } from '../lib/hikerMode'
+import { HIKER_MODE_LABELS, HIKER_MODE_VALUES, type HikerMode } from '../lib/hikerMode'
+import { ModeIcon } from './ModeIcon'
 import './modeSwitch.css'
-
-const MODE_LABELS: Record<HikerMode, string> = {
-  day: 'Day hike',
-  long: 'Long hike',
-  volunteer: 'Volunteer',
-}
 
 export interface ModeSwitchProps {
   mode: HikerMode
@@ -74,7 +69,11 @@ export function ModeSwitch({
           // control that sometimes ignores a tap.
           onClick={() => onChange(value)}
         >
-          {MODE_LABELS[value]}
+          {/* The glyph is decorative - the word is the segment's name - and
+              it is the same glyph the read-out above the tab bar and the
+              volunteer pin draw (chrome/ModeIcon.tsx). */}
+          <ModeIcon mode={value} size={16} className="mode-switch__icon" />
+          <span>{HIKER_MODE_LABELS[value]}</span>
         </button>
       ))}
     </div>

@@ -108,7 +108,8 @@
   /* ---------- Brand mark: the foot of the sidebar ---------- */
 
   /* The bottom-left corner of the page, which exists only in this layout - on a
-     phone this element is not drawn at all (chrome.css).
+     phone this element is not drawn at all (chrome.css, since 2026-09-10; the
+     mode chip has the phone bar's left end).
 
      It is the LAST child of a column whose tab list grows, so it is carried to
      the bottom edge by the layout rather than pinned there: no absolute
@@ -128,10 +129,6 @@
     /* Aligned with the tab labels above it rather than centred in the column.
        The sidebar has one left edge and everything in it reads off that. */
     align-items: flex-start;
-    /* Back to DOM order. On a phone the mark is pulled ahead of the tabs to
-       reach the left end of the row; here it belongs after them, at the foot
-       of the column. */
-    order: 0;
   }
 
   /* Room for the real mark once the bar is a 13rem column rather than a strip
@@ -702,6 +699,17 @@
     flex-direction: column;
   }
 
+  /* Nothing in the column gives up its height. A flex column lets a child
+     shrink to its `min-height`, and the switch rows set one (44px, the touch
+     floor) - so once the panel's content was taller than the panel, the
+     Alerts row shrank to 44px under a three-line sentence and the Drought
+     rule drew through "either way." (the Hudson desktop render, 2026-09-10,
+     the legend reordered under #1374). The panel scrolls; its rows do not
+     fold. */
+  .legend--persistent > * {
+    flex-shrink: 0;
+  }
+
   /* The rule that does the pushing. The block, not the link inside it: the
      background choice and the way to the download are one thing at the foot of
      this panel (chrome.css), and pushing only the link would put the panel's
@@ -1266,7 +1274,41 @@
     gap: 0.7rem;
     padding: 1rem 1.25rem 1.1rem;
     border-bottom: 0;
-    border-right: 1px solid var(--border-1);
+    /* THE COLUMN IS ON THE RIGHT OF THE MAP, since the maintainer's review of
+       #1374 ("that 3 step process should be a sidebar on the map. Match the
+       original design"). #1194 put the rail first in the row, beside the
+       navigation; the design's frame puts the map in the middle and the
+       step column at the right edge - where the legend rail already lives,
+       so a hiker's eye goes to one place for "the panel about this map"
+       whether reading or building. `order` moves it without moving the DOM:
+       the panel stays first in the markup, so a keyboard still reaches the
+       route being built before the map it is built on, and the phone's
+       band above the map is untouched. The border follows the side. */
+    order: 1;
+    border-right: 0;
+    border-left: 1px solid var(--border-1);
+    overflow-y: auto;
+  }
+
+  /* The bar's controls at the foot of the column rather than along the
+     bottom of the map (the same review). chrome/DayHikePanel.tsx renders
+     the bar in `controls` above the breakpoint; here its sheet frame comes
+     off - no anchoring, no rounded top, no shadow - and it sits under the
+     route with a rule between, pushed to the column's foot the way the
+     legend pushes its download block. Its figures are gone (the bar's
+     `figures` prop): "Your route" above already prints them. */
+  .day-hike-panel__controls {
+    margin-top: auto;
+  }
+  .day-hike-panel__controls .day-hike-bar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 0.85rem 0 0;
+    border-top: 1px solid var(--border-1);
+    border-radius: 0;
+    box-shadow: none;
+    z-index: auto;
   }
 
   /* No collapse on a desktop: the rail has the height, so a control whose
@@ -1314,6 +1356,71 @@
      is the whole right-hand side. */
   .day-hike-bar {
     max-height: 40%;
+  }
+
+  /* Step 3 in the same rail (#1373, frame 16b). The review card the phone
+     draws as a sheet over the map - `.day-hike-card` in plan.css is an
+     absolute box at `bottom: 0` - is handed to MapScreen's `builderPanel`
+     slot above the breakpoint, so it is the first child of `.map-screen__body`
+     and a column beside the map exactly as step 2's panel is. The sheet
+     frame comes off: the rail's width, the body's full height, no rounded
+     top edge and no shadow, because nothing is under it to be over. Step 3
+     is then read against the route it describes, which is what the width
+     is for, and the map is never covered on a desktop - §6's rule.
+
+     `relative`, not `static`, for the reason .legend--persistent gives
+     above: the card's close button is absolute against the card, and a
+     static card would hand it to the map body's corner instead. `inset:
+     auto` clears the sheet's `left/right/bottom: 0`, which would otherwise
+     be read as relative offsets. */
+  .map-screen__body > .day-hike-card {
+    position: relative;
+    inset: auto;
+    flex: 0 0 21.75rem;
+    max-height: none;
+    padding: 1rem 1.25rem 1.1rem;
+    border-top: 0;
+    border-radius: 0;
+    box-shadow: none;
+    /* On the right, with step 2's column (the review of #1374). */
+    order: 1;
+    border-right: 0;
+    border-left: 1px solid var(--border-1);
+  }
+
+  /* The same slot holds the walked record's review when the walk being
+     recorded is one already done (`recorded: 'walked'` hands the review to
+     WalkedHike rather than DayHikeCard) - the same sheet frame, shed the
+     same way. Written twice rather than as one grouped selector so the
+     layout test can read each block on its own. */
+  .map-screen__body > .walked-hike {
+    position: relative;
+    inset: auto;
+    flex: 0 0 21.75rem;
+    max-height: none;
+    padding: 1rem 1.25rem 1.1rem;
+    border-radius: 0;
+    box-shadow: none;
+    /* On the right, with step 2's column (the review of #1374). */
+    order: 1;
+    border-right: 0;
+    border-left: 1px solid var(--border-1);
+  }
+
+  /* STEP 1 BESIDE THE MAP (the review of #1374; the design's R2, "the map
+     never leaves"). On a phone step 1 is the Plan tab's own page; on a
+     laptop the shell hands it to the same slot as steps 2 and 3, so the
+     three steps are one column at the right edge of one map, and a hiker
+     who picks "Pick on the map" watches the column turn into the builder
+     without the map moving. The page's own padding stays; the column gets
+     the rail's width and its own scroll. */
+  .map-screen__body > .plan-start {
+    flex: 0 0 21.75rem;
+    min-height: 0;
+    overflow-y: auto;
+    order: 1;
+    border-left: 1px solid var(--border-1);
+    background: var(--bg-page);
   }
 }
 

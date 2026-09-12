@@ -446,3 +446,77 @@ describe('the trail mark', () => {
     expect(buildLineDetail(SPUR_LINE, spur(), [ROCKY_RUN]).trailMark).toBeNull()
   })
 })
+
+describe('two trails on one treadway (#1384)', () => {
+  it('says which other trail shares the stretch, in the map’s own voice', () => {
+    const detail = buildLineDetail(
+      {
+        id: 'oprhp:rd~shared~centerline:9~0',
+        source: 'oprhp_trails',
+        name: 'Ramapo-Dunderberg',
+        blazeColor: 'Red',
+        sharedWith: 'Appalachian National Scenic Trail',
+      },
+      {},
+      [],
+    )
+
+    // The A.T. by the name this build calls it, not the published one.
+    expect(detail.sharedLine).toBe('Shares this stretch with the Appalachian Trail.')
+  })
+
+  it('names a park trail with "the" and leaves an article it already has alone', () => {
+    const at = buildLineDetail(
+      {
+        id: 'centerline:9~shared~oprhp:rd~0',
+        source: 'centerline',
+        name: 'Appalachian National Scenic Trail',
+        blazeColor: 'White',
+        sharedWith: 'Ramapo-Dunderberg',
+      },
+      {},
+      [],
+    )
+    expect(at.sharedLine).toBe('Shares this stretch with the Ramapo-Dunderberg.')
+
+    const already = buildLineDetail(
+      {
+        id: 'x',
+        source: 'oprhp_trails',
+        name: 'Escarpment Trail',
+        blazeColor: 'Blue',
+        sharedWith: 'The Long Path',
+      },
+      {},
+      [],
+    )
+    expect(already.sharedLine).toBe('Shares this stretch with The Long Path.')
+  })
+
+  it('says nothing about sharing on a plain line, or on a half whose partner is blank', () => {
+    const plain = buildLineDetail(
+      {
+        id: 'oprhp:1',
+        source: 'oprhp_trails',
+        name: 'Ramapo-Dunderberg',
+        blazeColor: 'Red',
+      },
+      {},
+      [],
+    )
+    expect(plain.sharedLine).toBeNull()
+
+    const blank = buildLineDetail(
+      {
+        id: 'oprhp:1',
+        source: 'oprhp_trails',
+        name: 'Ramapo-Dunderberg',
+        blazeColor: 'Red',
+        sharedWith: '  ',
+      },
+      {},
+      [],
+    )
+    expect(blank.sharedLine).toBeNull()
+  })
+})

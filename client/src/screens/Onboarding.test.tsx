@@ -53,24 +53,50 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-/** Moves forward via each step's own primary - "Continue", or the size
- *  step's "Keep going" (#1054). The location step is answered explicitly with
- *  Allow / Not now, since which one is pressed is the thing under test. */
+/** Moves forward one card at a time, the way a hiker who answers nothing
+ *  would: the value card's "Get set up", the size card's "Download …"
+ *  (#1054 - the transfer starts on the step that asks), and the skip on
+ *  the "what brings you out?" and "where do you hike?" cards, which have no
+ *  primary until a mode or a place is taken. The location card is answered explicitly with Turn on
+ *  location / Not now, since which one is pressed is the thing under test. */
 async function advance(user: ReturnType<typeof userEvent.setup>, times: number) {
   for (let i = 0; i < times; i++) {
-    await user.click(screen.getByRole('button', { name: /^continue$|^keep going$/i }))
+    const primary = screen.queryByRole('button', { name: /^get set up$|^download\b/i })
+    if (primary !== null) await user.click(primary)
+    else await user.click(screen.getByRole('button', { name: /^skip\b/i }))
   }
 }
 
-/** The step's decline control - "Skip", or the size step's "Decide this
- *  later", which is the same promise in the words of what it declines. */
-const SKIP = /^skip$|^decide this later$/i
+/** Each card's decline control - a "Skip —" that says what skipping means,
+ *  the size step's "Decide this later", the location step's "Not now": the
+ *  same promise in the words of what it declines. */
+const SKIP = /^skip\b|^decide this later$|^not now$/i
+
+/** The places index as first run's second card resolves against it. */
+const PLACES = {
+  generatedAt: '2026-09-10T00:00:00Z',
+  trailRadiusMiles: 5,
+  trailMilesMeasured: true,
+  places: [
+    {
+      id: 'oprhp_park_polygons:1',
+      name: 'Harriman State Park',
+      kind: 'park' as const,
+      category: 'State Park',
+      state: 'NY',
+      lon: -74.1,
+      lat: 41.25,
+      bbox: [-74.2, 41.2, -74.0, 41.3] as const,
+      trailMiles: 46.3,
+    },
+  ],
+}
 
 describe('Onboarding', () => {
   it('starts on the value-proposition step', () => {
     render(<Onboarding {...PROPS} />)
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/what ourhike/i)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/no signal/i)
   })
 
   it('counts steps from the live step list, not a hardcoded total', () => {
@@ -132,7 +158,7 @@ describe('Onboarding', () => {
     vi.mocked(usePublishedSizes).mockReturnValue(MANIFEST)
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     for (const level of [/light/i, /standard/i, /fine/i]) {
       expect(screen.getByRole('radio', { name: level })).toBeEnabled()
@@ -154,7 +180,7 @@ describe('Onboarding', () => {
     vi.mocked(usePublishedSizes).mockReturnValue({})
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     for (const level of [/light/i, /standard/i, /fine/i]) {
       expect(screen.getByRole('radio', { name: level })).toBeEnabled()
@@ -176,7 +202,7 @@ describe('Onboarding', () => {
     // asserting the same rule the tabs were asserting before it.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     expect(screen.queryByRole('tablist')).toBeNull()
     expect(screen.getByText(HIKING_SHEET.summary)).toBeInTheDocument()
@@ -193,7 +219,7 @@ describe('Onboarding', () => {
     // still has no dial at all.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     const levels = screen.getAllByRole('radio')
     expect(levels).toHaveLength(3)
@@ -213,7 +239,7 @@ describe('Onboarding', () => {
     // step, and every level shown is the hiking sheet's own, operable one.
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     expect(screen.queryByText(/usgs/i)).toBeNull()
     expect(screen.queryByText(USGS_SHEET.summary)).toBeNull()
@@ -224,7 +250,7 @@ describe('Onboarding', () => {
   it('marks Standard as the recommended size', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     expect(screen.getByRole('radio', { name: /standard/i })).toBeChecked()
   })
@@ -232,7 +258,7 @@ describe('Onboarding', () => {
   it('never offers to take single sections later - per-section downloads are retired', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 1)
+    await advance(user, 3)
 
     expect(screen.queryByText(/section/i)).not.toBeInTheDocument()
   })
@@ -243,17 +269,17 @@ describe('Onboarding', () => {
 
     expect(screen.queryByText(/location/i)).not.toBeInTheDocument()
 
-    await advance(user, 2)
+    await advance(user, 4)
 
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/location/i)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/where you are/i)
   })
 
   it('promises on the location step that position never leaves the phone', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
-    await advance(user, 2)
+    await advance(user, 4)
 
-    expect(screen.getByText(/never leaves (your|the) phone/i)).toBeInTheDocument()
+    expect(screen.getByText(/never sent anywhere/i)).toBeInTheDocument()
   })
 
   it('never asks about notifications anywhere in first run', async () => {
@@ -292,19 +318,20 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
+    await advance(user, 1)
     await user.click(screen.getByRole('button', { name: SKIP }))
 
-    expect(screen.getByText(`Step 2 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
+    expect(screen.getByText(`Step 3 of ${ONBOARDING_STEPS.length}`)).toBeInTheDocument()
   })
 
   it('finishes with the chosen level', async () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
-    await advance(user, 1)
+    await advance(user, 3)
     await user.click(screen.getByRole('radio', { name: /fine/i }))
     await advance(user, 1)
-    await user.click(screen.getByRole('button', { name: /allow/i }))
+    await user.click(screen.getByRole('button', { name: /turn on location/i }))
 
     expect(PROPS.onComplete).toHaveBeenCalledWith(
       expect.objectContaining({ hikingDetailLevel: 'fine' }),
@@ -315,7 +342,7 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
-    await advance(user, 2)
+    await advance(user, 4)
     await user.click(screen.getByRole('button', { name: /not now/i }))
 
     expect(PROPS.onComplete).toHaveBeenCalledWith(
@@ -331,7 +358,7 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} onStartDownload={onStartDownload} />)
 
-    await advance(user, 2)
+    await advance(user, 4)
 
     expect(onStartDownload).toHaveBeenCalledTimes(1)
   })
@@ -343,7 +370,7 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} onStartDownload={onStartDownload} />)
 
-    await advance(user, 1)
+    await advance(user, 3)
     await user.click(screen.getByRole('button', { name: /decide this later/i }))
 
     expect(onStartDownload).not.toHaveBeenCalled()
@@ -357,7 +384,7 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} onChangeLevel={onChangeLevel} />)
 
-    await advance(user, 1)
+    await advance(user, 3)
     await user.click(screen.getByRole('radio', { name: /fine/i }))
 
     expect(onChangeLevel).toHaveBeenCalledWith('fine')
@@ -375,7 +402,7 @@ describe('Onboarding', () => {
         }}
       />,
     )
-    await advance(user, 2)
+    await advance(user, 4)
 
     expect(screen.getByText(/downloading while you finish up/i)).toBeInTheDocument()
     expect(screen.getByText('34%')).toBeInTheDocument()
@@ -407,14 +434,168 @@ describe('Onboarding', () => {
     const user = userEvent.setup()
     render(<Onboarding {...PROPS} />)
 
-    for (let step = 0; step < ONBOARDING_STEPS.length; step++) {
+    // Past the first card, then each card's own decline in turn.
+    await advance(user, 1)
+    for (let step = 1; step < ONBOARDING_STEPS.length; step++) {
       await user.click(screen.getByRole('button', { name: SKIP }))
     }
 
     // Skipping must not leave the app with no map to download.
     expect(PROPS.onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ hikingDetailLevel: 'standard' }),
+      expect.objectContaining({
+        hikingDetailLevel: 'standard',
+        locationRequested: false,
+        defaultPlace: null,
+      }),
     )
+  })
+
+  it('"Skip — take me to the map" on the first card is the whole flow with every default', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: /^skip — take me to the map$/i }))
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith({
+      hikingDetailLevel: 'standard',
+      locationRequested: false,
+      defaultPlace: null,
+      hikerMode: null,
+    })
+  })
+})
+
+// --- What brings you out (the maintainer's review of #1374, 2026-09-10) -------
+
+describe('the "what brings you out?" card', () => {
+  it('is the second card, preselects nothing, and offers no way on until a mode is taken', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+
+    await advance(user, 1)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      /what brings you out/i,
+    )
+    const radios = screen.getAllByRole('radio')
+    expect(radios.map((radio) => radio.textContent)).toEqual([
+      expect.stringMatching(/^Day hike/),
+      expect.stringMatching(/^Long hike/),
+      expect.stringMatching(/^Volunteer/),
+    ])
+    // Nothing chosen for the hiker: the silent default this card exists to
+    // replace would be the default drawn as a choice.
+    expect(radios.every((radio) => radio.getAttribute('aria-checked') === 'false')).toBe(
+      true,
+    )
+    expect(screen.queryByRole('button', { name: /^continue/i })).toBeNull()
+  })
+
+  it('finishes with the mode taken, and Continue names it', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+
+    await advance(user, 1)
+    await user.click(screen.getByRole('radio', { name: /^Long hike/ }))
+    expect(screen.getByRole('radio', { name: /^Long hike/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    await user.click(screen.getByRole('button', { name: 'Continue as long hike' }))
+    // On to the place card, then through with every default.
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      /where do you hike/i,
+    )
+    await advance(user, 2)
+    await user.click(screen.getByRole('button', { name: 'Not now' }))
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ hikerMode: 'long' }),
+    )
+  })
+
+  it('skipped, it says what skipping means and finishes with no mode chosen', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} />)
+
+    await advance(user, 1)
+    const skip = screen.getByRole('button', { name: /^skip/i })
+    expect(skip).toHaveTextContent(/day hike for now/i)
+    expect(skip).toHaveTextContent(/change it on today/i)
+    await user.click(skip)
+    await advance(user, 2)
+    await user.click(screen.getByRole('button', { name: 'Not now' }))
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ hikerMode: null }),
+    )
+  })
+})
+
+// --- Where you hike (#1373, the design's frame 1b) ---------------------------
+
+describe('the "where do you hike?" card', () => {
+  it('is the third card, resolves a typed name against the index, and finishes with the place taken', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} places={PLACES} placesSettled online />)
+
+    await advance(user, 2)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      /where do you hike/i,
+    )
+    expect(
+      screen.getByText(/kept with your settings.*change it any time in more → you\./i),
+    ).toBeInTheDocument()
+    // No "Use" button until there is something to use (D10).
+    expect(screen.queryByRole('button', { name: /^use /i })).toBeNull()
+
+    await user.type(screen.getByRole('searchbox', { name: 'Where do you hike' }), 'harr')
+    await user.click(screen.getByRole('button', { name: /Harriman State Park/ }))
+    await user.click(screen.getByRole('button', { name: 'Use Harriman State Park' }))
+
+    // The size card follows, and the location card names the fallback.
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/whole trail/i)
+    await user.click(screen.getByRole('button', { name: /decide this later/i }))
+    await user.click(
+      screen.getByRole('button', { name: 'Use Harriman State Park instead' }),
+    )
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({
+        locationRequested: false,
+        defaultPlace: {
+          id: 'oprhp_park_polygons:1',
+          name: 'Harriman State Park',
+          kind: 'park',
+          category: 'State Park',
+          state: 'NY',
+          lon: -74.1,
+          lat: 41.25,
+          bbox: [-74.2, 41.2, -74.0, 41.3],
+        },
+      }),
+    )
+  })
+
+  it('skipped, it finishes with no place and the location card offers plain "Not now"', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} places={PLACES} placesSettled online />)
+
+    await advance(user, 4)
+    await user.click(screen.getByRole('button', { name: 'Not now' }))
+
+    expect(PROPS.onComplete).toHaveBeenCalledWith(
+      expect.objectContaining({ defaultPlace: null, locationRequested: false }),
+    )
+  })
+
+  it('with nothing on the phone to search, says so and still lets the hiker on', async () => {
+    const user = userEvent.setup()
+    render(<Onboarding {...PROPS} placesSettled online={false} />)
+
+    await advance(user, 2)
+
+    expect(screen.getByRole('status')).toHaveTextContent(/arrives with signal/i)
+    expect(screen.getByRole('button', { name: /^skip/i })).toBeInTheDocument()
   })
 })
 

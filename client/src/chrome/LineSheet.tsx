@@ -7,7 +7,7 @@
 // features/SPUR_TRAILS.md §3 specifies the spur section. Every sentence
 // here is decided in lib/lineDetail.ts, where it is testable without a
 // canvas - this component only lays the lines out, on the same classes
-// AtcUpdateSheet already renders with so the two sheets read as one family.
+// OrgNoticeSheet already renders with so the two sheets read as one family.
 //
 // Lines that are null are OMITTED, never placeholdered. A spur with no
 // resolved destination shows no destination line at all - not "Unknown
@@ -41,9 +41,32 @@ export interface LineSheetProps {
    * of this door is that it starts from a line already on the screen.
    */
   onAddToDayHike?: () => void
+  /**
+   * Whether this line's trail is the one taken (the maintainer's review of
+   * #1374): by a long hike, which names its trail by construction and
+   * cannot be let go from here; by a tap on this sheet, which can; or not
+   * at all. Undefined where the line is not a registry trail - a side trail
+   * is not a thing the plate names - and then neither sentence nor button
+   * is drawn, on this sheet's own rule.
+   */
+  taken?: 'hike' | 'tap' | null
+  /** Take this trail: the plate names it and wears its mark, its profile
+   *  draws under the map. Passed only where the line's source maps to a
+   *  registry trail (map/trailBadges.ts's trailIdForSource). */
+  onTakeTrail?: () => void
+  /** Let a tapped trail go - the plate back to the place or to "No trail
+   *  taken". Passed only when `taken` is 'tap'. */
+  onLetGo?: () => void
 }
 
-export function LineSheet({ detail, onClose, onAddToDayHike }: LineSheetProps) {
+export function LineSheet({
+  detail,
+  onClose,
+  onAddToDayHike,
+  taken,
+  onTakeTrail,
+  onLetGo,
+}: LineSheetProps) {
   return (
     <div className="closure-sheet" role="dialog" aria-label="Trail line">
       <div className="legend__head">
@@ -103,6 +126,13 @@ export function LineSheet({ detail, onClose, onAddToDayHike }: LineSheetProps) {
         <p className="closure-sheet__range">{detail.extentLine}</p>
       )}
 
+      {/* Two trails on one treadway (#1384, map/sharedGround.ts): the
+          two-tone line says there are two, and this says which other one.
+          On the range class, since it is a fact about where the trail is. */}
+      {detail.sharedLine !== null && (
+        <p className="closure-sheet__range">{detail.sharedLine}</p>
+      )}
+
       {/* The long-term closure (§3). On `closure-sheet__status`, which is the
           class ClosureSheet gives its own "Closed" line - one vocabulary for
           "do not walk this", which is the argument §3 won: a hiker learns one
@@ -140,6 +170,30 @@ export function LineSheet({ detail, onClose, onAddToDayHike }: LineSheetProps) {
       {onAddToDayHike !== undefined && detail.closureLine === null && (
         <button type="button" className="line-sheet__add" onClick={onAddToDayHike}>
           Add this point to a day hike
+        </button>
+      )}
+
+      {/* Taking the trail (the review of #1374): what puts its name and mark
+          on the plate. A sentence where it is already taken, a button where
+          it can be, and the let-go only for a trail a tap took - a hike's
+          trail is the hike's to change, in Plan. */}
+      {taken === 'hike' && (
+        <p className="closure-sheet__meta">Your hike is on this trail.</p>
+      )}
+      {taken === 'tap' && (
+        <p className="closure-sheet__meta">
+          Your trail &mdash; the map is named for it. Let it go and the map goes back to
+          your place.
+        </p>
+      )}
+      {taken === 'tap' && onLetGo !== undefined && (
+        <button type="button" className="line-sheet__add" onClick={onLetGo}>
+          Let this trail go
+        </button>
+      )}
+      {(taken === null || taken === undefined) && onTakeTrail !== undefined && (
+        <button type="button" className="line-sheet__add" onClick={onTakeTrail}>
+          Take this trail
         </button>
       )}
     </div>

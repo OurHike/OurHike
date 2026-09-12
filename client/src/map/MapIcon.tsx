@@ -29,13 +29,14 @@
 //
 // And since #1283 a fourth, which is a line and not a pin: the trail swatch
 // beside each row of the legend's "Trails in view" block, drawn as the map
-// draws that line - solid or dotted, at its own tier's width, in its own
-// ink, ghosted if it is not the chosen system's. Every number in it comes
-// from map/style.ts and map/nearbyTrails.ts, for the reason the pins' come
-// from poiIcons.ts: a second table of blaze hexes or dash pitches in this
-// file is the drift the header above exists to prevent.
+// draws that line - solid, at its own tier's width, in its own ink over its
+// casing, ghosted if it is not the chosen system's. Every number in it
+// comes from map/style.ts and map/nearbyTrails.ts, for the reason the pins'
+// come from poiIcons.ts: a second table of blaze hexes in this file is the
+// drift the header above exists to prevent.
 
 import {
+  badgeCenters,
   glyphPath,
   pinGeometry,
   poiColor,
@@ -45,21 +46,16 @@ import {
   RIM_DASHES,
   type PoiConfidence,
 } from './poiIcons'
+import './mapIcon.css'
 import { WARNING_GLYPH, WARNING_ICON_ID } from './warningPin'
 import { blazePaintColor } from '../lib/blaze'
 import type { SheetAppearance } from './liveTopo'
-import {
-  NEARBY_TRAIL_DASHARRAY,
-  NEARBY_TRAIL_OPACITY,
-  CHOSEN_TRAIL_OPACITY,
-} from './nearbyTrails'
+import { NEARBY_TRAIL_OPACITY, CHOSEN_TRAIL_OPACITY } from './nearbyTrails'
 import {
   CASING_OVERHANG,
-  NEAR_WHITE_BLAZES,
   PRIMARY_TRAIL_WIDTH,
   RED_LIGHT_BLAZE_COLOR,
   SIDE_TRAIL_WIDTH,
-  inksNearWhiteAsCasing,
   redLightActive,
   trailCasingColor,
 } from './style'
@@ -136,17 +132,47 @@ interface PinProps {
   color: string
   path: string
   confidence: PoiConfidence
+  /** The categories riding this pin as badges (#524), in SITE_MEMBER_TYPES'
+   *  order - a shelter carrying a privy and water wears them rather than
+   *  three pins fighting for one spot. Empty draws the plain pin. */
+  members?: readonly string[]
 }
 
-function Pin({ className, color, path, confidence }: PinProps) {
+/**
+ * How far past the pin's own edge its badges reach, in unit terms - the same
+ * arithmetic sitePinPadding does in pixels, so a badged SVG grows exactly as
+ * the badged image does and the disc stays at the centre of both.
+ */
+function badgeReach(count: number): number {
+  let reach = 0
+  for (const { x, y } of badgeCenters(count, PIN.badge)) {
+    reach = Math.max(
+      reach,
+      Math.abs(x) + PIN.badge.radius,
+      Math.abs(y) + PIN.badge.radius,
+    )
+  }
+  return Math.max(0, reach - PIN.rOuter)
+}
+
+function Pin({ className, color, path, confidence, members = [] }: PinProps) {
   // Verified pins have no dasharray attribute at all rather than a solid-
   // looking one, so "this rim is unbroken" is visible in the DOM.
   const broken = confidence === 'low'
+  const pad = badgeReach(members.length)
+  const badges = badgeCenters(members.length, PIN.badge).map((spot, index) => ({
+    cx: PIN.center + spot.x,
+    cy: PIN.center + spot.y,
+    path: poiGlyphPath(members[index]),
+    ink: poiColor(members[index]),
+  }))
 
   return (
     <svg
       className={className}
-      viewBox="0 0 1 1"
+      // The box grows symmetrically for the badges, as the raster's image
+      // does (sitePinPadding), so the disc stays on the row's centre line.
+      viewBox={`${-pad} ${-pad} ${1 + 2 * pad} ${1 + 2 * pad}`}
       // Decorative here: every row that carries one of these already names its
       // category in text beside it, and a screen reader announcing "Water,
       // Water" is worse than one announcing it once.
@@ -190,7 +216,71 @@ function Pin({ className, color, path, confidence }: PinProps) {
         strokeWidth={PIN.edgeWidth}
         strokeDasharray={broken ? rimDashes(EDGE_RADIUS) : undefined}
       />
+      {/* A member badge is the same pin at badge scale (poiIcons.ts): the
+          category's own accent disc, its silhouette in halo white, a white
+          ring and the dark hairline outside. Drawn after the pin so it sits
+          over the halo where the two cross, as buildPinImage inks it. */}
+      {badges.map((badge, index) => (
+        <g key={members[index]} className="map-icon__badge" data-member={members[index]}>
+          <circle
+            cx={badge.cx}
+            cy={badge.cy}
+            r={PIN.badge.radius}
+            fill={PIN_HALO_COLOR}
+          />
+          <circle cx={badge.cx} cy={badge.cy} r={PIN.badge.rDisc} fill={badge.ink} />
+          <g
+            transform={`translate(${badge.cx - PIN.badge.glyphBox / 2} ${
+              badge.cy - PIN.badge.glyphBox / 2
+            }) scale(${PIN.badge.glyphBox})`}
+          >
+            <path d={badge.path} fill={PIN_HALO_COLOR} fillRule="evenodd" />
+          </g>
+          <circle
+            cx={badge.cx}
+            cy={badge.cy}
+            r={PIN.badge.radius - PIN.badge.edgeWidth / 2}
+            fill="none"
+            stroke={PIN_EDGE_COLOR}
+            strokeWidth={PIN.badge.edgeWidth}
+          />
+        </g>
+      ))}
     </svg>
+  )
+}
+
+/**
+ * The bare silhouette on a tinted square - the review's PoiGlyph in its
+ * default mode, and Today's own category chip (today.css) given one home: the
+ * type's accent at ~22% over the card, the glyph in the accent. For lists
+ * where the pin's halo and rim would be noise, and where "which kind of
+ * place" is the only thing the glyph has to say.
+ */
+function Tile({
+  className,
+  color,
+  path,
+}: {
+  className?: string
+  color: string
+  path: string
+}) {
+  return (
+    <span
+      className={['map-icon-tile', className].filter(Boolean).join(' ')}
+      style={{ '--chip-accent': color } as React.CSSProperties}
+      aria-hidden="true"
+    >
+      <svg viewBox="0 0 1 1" focusable="false">
+        <path
+          className="map-icon__glyph"
+          d={path}
+          fill="currentColor"
+          fillRule="evenodd"
+        />
+      </svg>
+    </span>
   )
 }
 
@@ -282,11 +372,12 @@ export interface TrailLineSwatchProps {
   blazeColor: string | null
   /** Drawn at the through-route width, or the side-trail width. */
   throughRoute: boolean
-  /** In the chosen system: solid and full-strength. Otherwise dotted and
-   *  ghosted, exactly as the map draws every other line. */
+  /** In the chosen system: full-strength. Otherwise ghosted, exactly as the
+   *  map draws every other line. (It decided solid against dotted until
+   *  2026-09-10 - map/style.ts's header, rule 2.) */
   chosen: boolean
-  /** Which sheet the map is drawn in, for the casing ink and the near-white
-   *  rule. Defaults to the field day sheet, which is what a legend rendered
+  /** Which sheet the map is drawn in, for the casing ink and red light.
+   *  Defaults to the field day sheet, which is what a legend rendered
    *  without a map behind it should assume. */
   appearance?: SheetAppearance
   className?: string
@@ -295,13 +386,12 @@ export interface TrailLineSwatchProps {
 /**
  * One trail line, as the map draws it, in a 24px box (#1283).
  *
- * Solid or dotted follows `chosen`, the width follows `throughRoute`, and
- * the ink follows the same three rules map/style.ts's blazeLineColor keeps:
- * red light's one hue, a near-white blaze inked in the casing colour with no
- * casing on a day sheet, and the blaze's own hex otherwise. The dot pitch is
- * NEARBY_TRAIL_DASHARRAY's - two line widths - and the casing under a dotted
- * line is dotted at the same pitch, which SVG makes trivial (its dasharray
- * is absolute) where MapLibre needed a second constant.
+ * Opacity follows `chosen`, the width follows `throughRoute`, and the ink
+ * follows the rules map/style.ts's blazeLineColor keeps for a CASED line:
+ * red light's one hue, or the blaze's own hex over the sheet's casing - a
+ * white blaze white with its dark edge, the way the real line draws it
+ * since 2026-09-10 (the near-white dark ink is the uncased sketches' rule
+ * only, DARK_INKED_BLAZE_LAYER_IDS, and no sketch has a legend row).
  */
 export function TrailLineSwatch({
   blazeColor,
@@ -311,23 +401,11 @@ export function TrailLineSwatch({
   className,
 }: TrailLineSwatchProps) {
   const width = throughRoute ? PRIMARY_TRAIL_WIDTH : SIDE_TRAIL_WIDTH
-  const nearWhite = blazeColor !== null && NEAR_WHITE_BLAZES.includes(blazeColor)
-  // `!chosen` since #1306, exactly as the map's own layers do it
-  // (DARK_INKED_BLAZE_LAYER_IDS): the dark ink is the DOTTED line's rule,
-  // and a taken near-white trail keeps its white blaze and its casing. A
-  // swatch that kept inking it dark would be the legend contradicting the
-  // canvas beside it, which is the failure this component exists to prevent.
-  const inkedAsCasing = nearWhite && !chosen && inksNearWhiteAsCasing(appearance)
   const casing = trailCasingColor(appearance)
   const ink = redLightActive(appearance)
     ? RED_LIGHT_BLAZE_COLOR
-    : inkedAsCasing
-      ? casing
-      : blazePaintColor(blazeColor ?? 'Unknown')
+    : blazePaintColor(blazeColor ?? 'Unknown')
   const opacity = chosen ? CHOSEN_TRAIL_OPACITY : NEARBY_TRAIL_OPACITY
-  // The blaze's dots are `width` wide at a pitch of NEARBY_TRAIL_DASHARRAY[1]
-  // widths; in SVG's absolute units that is one number both strokes share.
-  const dash = chosen ? undefined : `0 ${NEARBY_TRAIL_DASHARRAY[1] * width}`
   const path = `M ${width} ${SWATCH / 2} H ${SWATCH - width}`
 
   return (
@@ -337,20 +415,16 @@ export function TrailLineSwatch({
       // Decorative, like the pins: the row names the trail beside it.
       aria-hidden="true"
       focusable="false"
-      data-drawn={chosen ? 'solid' : 'dotted'}
     >
-      {!inkedAsCasing && (
-        <path
-          className="map-icon__trail-casing"
-          d={path}
-          fill="none"
-          stroke={casing}
-          strokeWidth={width + CASING_OVERHANG * 2}
-          strokeLinecap="round"
-          strokeOpacity={CASING_OPACITY * opacity}
-          strokeDasharray={dash}
-        />
-      )}
+      <path
+        className="map-icon__trail-casing"
+        d={path}
+        fill="none"
+        stroke={casing}
+        strokeWidth={width + CASING_OVERHANG * 2}
+        strokeLinecap="round"
+        strokeOpacity={CASING_OPACITY * opacity}
+      />
       <path
         className="map-icon__trail-blaze"
         d={path}
@@ -359,7 +433,6 @@ export function TrailLineSwatch({
         strokeWidth={width}
         strokeLinecap="round"
         strokeOpacity={opacity}
-        strokeDasharray={dash}
       />
     </svg>
   )
@@ -376,9 +449,21 @@ export interface MapIconProps {
    *  is a claim about a waypoint's existence. */
   confidence?: PoiConfidence
   className?: string
+  /** The categories riding a site pin as badges - see PinProps. */
+  members?: readonly string[]
+  /** `pin` (the default) is the map's own pin; `tile` is the bare silhouette
+   *  on a tinted square, for lists (#1373). A closure and a warning have no
+   *  tile form - a warning is its pin, a closure is its tape. */
+  variant?: 'pin' | 'tile'
 }
 
-export function MapIcon({ type, confidence = 'high', className }: MapIconProps) {
+export function MapIcon({
+  type,
+  confidence = 'high',
+  className,
+  members,
+  variant = 'pin',
+}: MapIconProps) {
   if (type === CLOSURE_TYPE) return <ClosureBand className={className} />
 
   if (type === WARNING_ICON_ID) {
@@ -404,12 +489,17 @@ export function MapIcon({ type, confidence = 'high', className }: MapIconProps) 
     )
   }
 
+  if (variant === 'tile') {
+    return <Tile className={className} color={poiColor(type)} path={poiGlyphPath(type)} />
+  }
+
   return (
     <Pin
       className={className}
       color={poiColor(type)}
       path={poiGlyphPath(type)}
       confidence={confidence}
+      members={members}
     />
   )
 }

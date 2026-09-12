@@ -70,9 +70,11 @@ const SHELTER = {
 const app = appHarness({ navigator: { geolocation: true }, objectUrls: true })
 const store = app.store
 
-/** Onboarded, location allowed, trail data already on the phone. */
+/** Onboarded, location allowed, trail data already on the phone, and the
+ *  A.T. taken - these flows are a hiker on the trail, and since the review
+ *  of #1374 the mile is the taken trail's to give (lib/takenTrail.ts). */
 function hikerOnTrail(overrides: Record<string, unknown> = {}) {
-  app.onboard({ location_permission_requested: true, ...overrides })
+  app.onboard({ location_permission_requested: true, ...overrides }, { takenTrail: 'AT' })
   app.putTrailData({ pois: [SHELTER] })
 }
 

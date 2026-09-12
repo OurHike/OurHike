@@ -120,3 +120,81 @@ describe('when nothing knows where the hiker is', () => {
     expect(screen.queryByRole('button', { name: 'This turn' })).not.toBeInTheDocument()
   })
 })
+
+describe('walking it (#1373, F6)', () => {
+  it('says at its head, in the strip’s own words, when the hiker has walked off the download - with the door', async () => {
+    const onTakeStretch = vi.fn()
+    render(<NextTurnCard {...PROPS} outsideDownload onTakeStretch={onTakeStretch} />)
+
+    const note = screen.getByRole('note')
+    expect(note).toHaveTextContent('Outside what you downloaded')
+    expect(note).toHaveTextContent('The trail line and your position still work.')
+    await userEvent.click(screen.getByRole('button', { name: 'Take this stretch' }))
+    expect(onTakeStretch).toHaveBeenCalledOnce()
+
+    cleanup()
+    render(<NextTurnCard {...PROPS} />)
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('keeps the coverage note even while nothing knows where the hiker is', () => {
+    render(<NextTurnCard {...PROPS} positionKnown={false} outsideDownload />)
+    expect(screen.getByRole('note')).toHaveTextContent('Outside what you downloaded')
+  })
+
+  it('lists what is left today - the water ahead and the finish, each with its miles and no time', () => {
+    render(
+      <NextTurnCard
+        {...PROPS}
+        ahead={[
+          {
+            key: 'w1',
+            kind: 'water',
+            title: 'Spring at Murray property',
+            milesAway: 0.4,
+          },
+        ]}
+        walkedMi={3.0}
+        onFinish={vi.fn()}
+      />,
+    )
+
+    const left = screen.getByRole('region', { name: 'What’s left today' })
+    expect(left).toHaveTextContent('3.4 mi')
+    expect(left).toHaveTextContent('Spring at Murray property')
+    expect(left).toHaveTextContent('0.4 mi')
+    expect(left).toHaveTextContent('The finish')
+    // No ≈time and no minutes on any row - only distances.
+    expect(left).not.toHaveTextContent(/≈|\bmin\b|\d ?h\b/)
+  })
+
+  it('prints no what’s-left at all with nothing to place it against', () => {
+    render(<NextTurnCard {...PROPS} />)
+    expect(screen.queryByRole('region', { name: 'What’s left today' })).toBeNull()
+  })
+
+  it('asks before it finishes, and "Still going" changes nothing', async () => {
+    const onFinish = vi.fn()
+    render(<NextTurnCard {...PROPS} ahead={[]} walkedMi={6.4} onFinish={onFinish} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finish here instead' }))
+    const ask = screen.getByRole('group', { name: 'Done for the day?' })
+    expect(ask).toHaveTextContent('6.4 mi walked')
+    expect(ask).toHaveTextContent(/never closes the walk for you/)
+    expect(onFinish).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Still going' }))
+    expect(onFinish).not.toHaveBeenCalled()
+    expect(screen.queryByRole('group', { name: 'Done for the day?' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Finish here instead' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Finish this walk' }))
+    expect(onFinish).toHaveBeenCalledOnce()
+  })
+
+  it('offers no finish door without a handler behind it', () => {
+    render(<NextTurnCard {...PROPS} ahead={[]} walkedMi={1} />)
+    expect(screen.queryByRole('button', { name: 'Finish here instead' })).toBeNull()
+  })
+})

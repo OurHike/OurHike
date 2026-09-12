@@ -39,6 +39,23 @@ Which of `npm test` / `pytest` / `ruff` / a real device on a real trail, and
 what the result was. New behaviour comes with tests — see TESTING.md.
 -->
 
+## Flow tests
+
+<!--
+Which hiker-facing flows this touches, and what now drives them in
+client/e2e/ — features/FLOW_TESTING.md has how a flow test is formed and the
+six axes one is asserted across (mode, device, engine, data freshness,
+layout — the map has room and nothing covers it — and a seeded hike rather
+than an empty install).
+
+A screen added or changed moves its own row in client/src/test/flowCoverage.ts
+in this same PR; the client suite fails on a screen with no answer, and
+`planned` is a real answer.
+
+A change that reaches no hiker-facing flow says so in one line. That is a real
+answer and takes ten seconds.
+-->
+
 ## Data pipelines
 
 <!--

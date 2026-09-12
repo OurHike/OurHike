@@ -47,6 +47,28 @@ describe('SeriousWarningSheet', () => {
     expect(screen.getByText(/July 24/)).toBeInTheDocument()
   })
 
+  it('still says who stood behind it when the wire carries no date, and no mile when it cannot be placed', () => {
+    // #1373, F12: the sheet is on the pin now, fed from the live list, and
+    // a report the download could not place or a date nobody stamped gets
+    // an absence rather than an invention (D13).
+    render(
+      <SeriousWarningSheet
+        {...PROPS}
+        warning={{ ...WARNING, confirmedAt: null, mile: null }}
+      />,
+    )
+
+    // Who stood behind it, and that the date is missing - the published
+    // baseline never carries one (export_conditions.py bakes no
+    // verified_at), so a badge that went quiet about the date would go
+    // quiet on every offline read.
+    expect(
+      screen.getByText('Confirmed by club moderators · date not on this download'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/July 24/)).toBeNull()
+    expect(screen.queryByText(/^mi /)).toBeNull()
+  })
+
   it('explains why the phone stayed silent', () => {
     render(<SeriousWarningSheet {...PROPS} />)
 

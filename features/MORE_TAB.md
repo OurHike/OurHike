@@ -95,6 +95,8 @@ in front of you"), and the same reasoning applies to exact row order inside one.
 
 ## What this does not decide
 
+**Both decided since, 2026-09-10 ([#1373](https://github.com/OurHike/OurHike/issues/1373)).** `Your hike`'s home is the Plan tab's hike room ([#1329](https://github.com/OurHike/OurHike/issues/1329)); More → You keeps the row as a second door, and a desktop's sidebar carries the switch on every screen. And `Contribute` is now the **Volunteer & report** row, carrying Report a problem beside "Your reports" — what this phone is waiting to send and has sent, with status — so the seam #759's nudges will meet is a list a hiker can read rather than a toggle. The tab strip this doc proposed was replaced by destination rows on the maintainer's approval ([#1062](https://github.com/OurHike/OurHike/pull/1062)); the four groups survive as the rows. What follows is the record as it stood.
+
 Two overlaps this doc noticed while auditing the current screen, and is
 deliberately not resolving:
 

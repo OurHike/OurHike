@@ -1098,6 +1098,37 @@
   cursor: pointer;
 }
 
+/* Two figures and nothing else (#1373, frame 8b): walked and to go, at the
+   size the hike room's own line prints them. No bar here - the room draws
+   one, and this screen's job is the pieces under the figures. */
+.whats-left__figures {
+  display: flex;
+  gap: var(--space-4, 16px);
+  margin: 0;
+}
+
+.whats-left__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.whats-left__figure-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.whats-left__figure-value {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
 .whats-left__total {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -2485,6 +2516,12 @@
   flex-direction: column;
   gap: 0.2rem;
   width: 100%;
+  /* Border-box, said out loud: the pressable doors are <button>s, which
+     the browser sizes border-box on its own, and the refused door is a
+     <div>, which it does not - so at 100% plus its padding the refusal
+     sentence ran off the right edge of the desktop column in the preview
+     at a7eda732 while the door under it fit. */
+  box-sizing: border-box;
   padding: 0.85rem 0.95rem;
   text-align: left;
   background: var(--bg-surface);
@@ -2548,7 +2585,14 @@
   right: 0;
   bottom: 0;
   z-index: 3;
-  max-height: 60%;
+  /* 60% of the map's own height until 2026-09-12, which is how the bar came
+     to cover 321 px of a 480 px map. Now the other 58% of the sheets' budget
+     (see the floor above the panel). The foot is pinned below, so what
+     scrolls is the reading - the prompt, the figures, the shape control and
+     the tools - and never the way on. */
+  max-height: calc(var(--planning-sheets) * 0.58);
+  /* Same reason as the panel's: the cap is the border box, not the content. */
+  box-sizing: border-box;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2727,6 +2771,7 @@
   z-index: 3;
   max-height: 85%;
   overflow-y: auto;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -3084,6 +3129,37 @@
    phone, unlike src/desktop.css - this IS the phone layout, and the rail is
    the variant. --------------------------------------------------------- */
 
+/* THE MAP'S FLOOR WHILE PLANNING ON A PHONE, and the budget everything else
+   spends against it.
+
+   The maintainer's instruction, 2026-09-12: "make sure that the map gets at
+   least 75% of the screen height, always." The complaint behind it was not
+   that the map looked small - it was that a tap could not land on it.
+
+   MEASURED BEFORE, at 390x844 with a seven-leg route in the builder: the
+   panel took 292 px off the top, the map's box was 480 px, and the bar sat
+   over its bottom 321 px - so the map a thumb could actually reach was
+   159 px, 19% of the screen. e2e/data/desktopMap.spec.ts's own R2 table said
+   the same thing from the other side: 8% reachable at step 2, 0% at step 3.
+
+   The floor is expressed as a BUDGET rather than as three separate caps, so
+   the invariant holds when somebody adds a row rather than depending on them
+   remembering to re-derive it. The band and the tab bar are measured rather
+   than assumed: 27 px and 45 px at both phone sizes this suite drives
+   (2026-09-12). Nothing is deleted - the panel and the bar both scroll
+   inside their share, and the bar's foot is pinned so the way on never
+   scrolls out of reach. */
+:root {
+  --planning-map-floor: 75svh;
+  --planning-chrome: calc(100svh - var(--planning-map-floor));
+  /* What sits BELOW the map and therefore also spends the budget: the
+     attribution band (27 px) and the tab bar (45 px), measured at both phone
+     sizes 2026-09-12. Rounded UP to 74, so the floor is never missed by the
+     rounding rather than by the layout. */
+  --planning-below-map: 74px;
+  --planning-sheets: calc(var(--planning-chrome) - var(--planning-below-map));
+}
+
 .day-hike-panel {
   flex: 0 0 auto;
   display: flex;
@@ -3097,12 +3173,16 @@
      panel that grows without limit would reintroduce it through the top of
      the screen instead of the bottom.
 
-     35% rather than the 45% this shipped at first, measured off this pull
-     request's own preview at 390x844: with the details open the panel was
-     taking 39% of the screen and the map was left a band in the middle,
-     narrower than the bottom sheet had ever made it. The cap is what the
-     panel scrolls inside; nothing in it is lost. */
-  max-height: 35%;
+     It was 45%, then 35%, and both were picked by eye against a preview. It
+     is now a share of the floor's budget above rather than a number of its
+     own, because a cap that is not derived from the map's floor is a cap
+     that silently stops honouring it. 42% of the sheets' budget - the panel
+     reads, the bar acts, and the bar needs the taller share for its foot.
+     The cap is what the panel scrolls inside; nothing in it is lost. */
+  max-height: calc(var(--planning-sheets) * 0.42);
+  /* The cap must include the padding, or the budget is quietly overspent by
+     it: measured 2026-09-12, a 58 px cap drew an 80 px panel. */
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
@@ -4083,4 +4163,304 @@
    keeps that subtree's scroll position and its focus history intact. */
 .hike-window--stood-aside {
   visibility: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Step 2 on the day-hike builder (#1373, frame 4a).
+
+   THE SHAPE, one control where "Close the loop" stood alone: Point to point,
+   Out and back, Loop. A radio row in the bar's own chip idiom, so the chosen
+   shape reads the way draw mode's pressed toggle already does. Absent while
+   there is nothing to shape (lib/dayHikeDraft.ts's shapesOffered).
+
+   THE FOOT, the spine's two doors: "‹ Hike" back to step 1 with the draft
+   kept, and "Use this route ›" on. The way on wears the bar's primary; the
+   way back is quiet, because it costs nothing. ------------------------------ */
+
+.day-hike-bar__shape {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.day-hike-bar__shape-option {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0.4rem 0.4rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.day-hike-bar__shape-option[aria-checked='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+  font-weight: 600;
+}
+
+.day-hike-bar__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+  /* PINNED, because the bar now scrolls inside a much smaller cap and the
+     way on must not be the thing that scrolls away. Sticky rather than a
+     second flex row outside the scroller: the foot keeps its place in the
+     reading order, so a screen reader still meets it last. */
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-surface);
+}
+
+.day-hike-bar__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.day-hike-bar__foot .day-hike-bar__action--done {
+  flex: 0 1 auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-pill, 999px);
+  font-weight: 600;
+}
+
+/* The rail inside the panel: compact, since the panel is capped at 35% of a
+   phone and every row it holds is a row of map it does not. The rail's own
+   stylesheet sets the stops; this only tightens the frame around them. */
+.day-hike-panel .step-rail {
+  padding: 0 0 0.45rem;
+  border-bottom: 1px solid var(--border-1);
+  background: none;
+}
+
+/* D1's ask on the saved card (screens/DayHikeCard.tsx): the sentence over
+   its two answers, in the frame delete's confirm already uses. */
+.day-hike-card__confirm--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.day-hike-card__confirm-sentence {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+/* ---------------------------------------------------------------------------
+   Step 3 on the day-hike card (#1373, frames 5a and 5c). The rail inside
+   the sheet, the name as a field, the waypoint rows, the foot with the way
+   back and Save as the last button, and the "Saved" eyebrow. ----------- */
+
+.day-hike-card .step-rail {
+  padding: 0 2.5rem 0.45rem 0;
+  background: none;
+}
+
+.day-hike-card__eyebrow {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-card__name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.day-hike-card__name input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.6rem;
+  font: inherit;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+
+.day-hike-card__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* STEP 3 OVER THE MAP SPENDS THE SAME BUDGET AS STEP 2, and until 2026-09-12
+   it did not: `max-height: 85%` left the map 83 px of 844 - 9.8% - which is
+   the state the maintainer could not tap on. Scoped to the canvas, because
+   the same card docked in Plan's own list is a different surface with a whole
+   screen to itself and no map underneath to protect. */
+.map-screen__canvas > .day-hike-card {
+  max-height: var(--planning-sheets);
+}
+
+/* Pinned for the reason the bar's foot is: the card now scrolls inside a much
+   smaller cap, and "Save this day hike" is the one control that must not be
+   the thing that scrolls away. */
+.map-screen__canvas > .day-hike-card .day-hike-card__foot {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-surface);
+}
+
+.day-hike-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.day-hike-card__foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.day-hike-card__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+/* Step 3 for a long hike (#1373, frame 5b) on the target sheet: the rail,
+   the route's own head, the days before they are kept, and the foot. */
+.plan-target .step-rail {
+  padding: 0 0 0.45rem;
+  background: none;
+}
+
+.plan-target__route {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.plan-target__route-title {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.plan-target__route-figures {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.plan-target__day-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-target__all-days {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+
+.plan-target__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.plan-target__foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.plan-target__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+/* The cascade's diff before it applies, and the one undo after (#1373,
+   frames 7a-7b). The rows are DayRow's; this frames them in the actions
+   sheet and gives the foot its two doors. */
+.plan__diff {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.plan__diff-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.plan__diff-foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.plan__undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+}
+
+.plan__undo-button {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.6rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
 }

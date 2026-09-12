@@ -67,7 +67,7 @@
 // is a claim about the bucket, and it wants checking against the bucket
 // rather than against a comment.
 
-import { useId } from 'react'
+import { useId, type ReactNode } from 'react'
 
 import { blazePaintColor } from '../lib/blaze'
 import type { DraftStatus, DayHikeDraft } from '../lib/dayHikeDraft'
@@ -92,6 +92,8 @@ import {
   MIN_STATED_FEET,
 } from '../lib/units'
 import type { UnitSystem } from '../lib/units'
+import { HIKER_MODE_LABELS } from '../lib/hikerMode'
+import { StepRail } from './StepRail'
 import '../screens/plan.css'
 
 export interface DayHikePanelProps {
@@ -99,6 +101,13 @@ export interface DayHikePanelProps {
   status: DraftStatus
   stops: readonly DayHikeStop[]
   units: UnitSystem
+  /**
+   * The rail's step 1 door (#1373, rule R3): back to "Where do you want to
+   * go?" with this draft kept. The same move the bar's "‹ Hike" makes; the
+   * rail is where a hiker reads which step they are on, so it opens the
+   * one behind as well.
+   */
+  onBackToStepOne: () => void
   /** The routed walk's time with its baseline, or null when unpriceable. */
   walking: PaceEstimate | null
   hiddenLabels: HiddenLabelLayers
@@ -108,6 +117,17 @@ export interface DayHikePanelProps {
   /** Phone only: whether the detail body is open. Always open on a desktop. */
   detailsOpen: boolean
   onToggleDetails: () => void
+  /**
+   * The builder's controls - the bar (chrome/DayHikePickBar.tsx) - at the
+   * foot of this column on a laptop (the maintainer's review of #1374: the
+   * design's step 2 is one column on the right of the map holding the
+   * rail, the shape, the stops, the tools and the foot, and the bar along
+   * the bottom of the map was the phone's thumb-reach answer drawn where
+   * there is no thumb). The shell passes the same element it would have
+   * put over the map, so the two breakpoints run one component with one
+   * state; the phone never passes it, and the bar stays over the canvas.
+   */
+  controls?: ReactNode
 }
 
 /**
@@ -124,7 +144,7 @@ export interface DayHikePanelProps {
  * cannot resolve, and inventing "Reeves -> somewhere" here would be the same
  * invention one screen earlier.
  */
-function routeTitle(status: DraftStatus): string {
+export function routeTitle(status: DraftStatus): string {
   if (status.kind !== 'routed' || status.legs.length === 0) return 'A new day hike'
   const named = status.legs.map((leg) => leg.name).filter((name) => name !== null)
   if (named.length === 0) return 'A new day hike'
@@ -155,6 +175,7 @@ export function DayHikePanel({
   status,
   stops,
   units,
+  onBackToStepOne,
   walking,
   hiddenLabels,
   onToggleLabel,
@@ -162,6 +183,7 @@ export function DayHikePanel({
   onRemoveTurn,
   detailsOpen,
   onToggleDetails,
+  controls,
 }: DayHikePanelProps) {
   const bodyId = useId()
   const routed = status.kind === 'routed' ? status : null
@@ -171,6 +193,16 @@ export function DayHikePanel({
 
   return (
     <section className="day-hike-panel" aria-label="Your route">
+      {/* Step 2 of three (#1373). The kind on the first stop is the mode's
+          answer - a day hike is what this builder builds - and never asked
+          again (D6). */}
+      <StepRail
+        step={2}
+        kind={HIKER_MODE_LABELS.day}
+        onStep={(step) => {
+          if (step === 1) onBackToStepOne()
+        }}
+      />
       <div className="day-hike-panel__head">
         <div className="day-hike-panel__title-block">
           <p className="day-hike-panel__eyebrow">Your route</p>
@@ -350,6 +382,9 @@ export function DayHikePanel({
           })}
         </div>
       </div>
+      {controls !== undefined && (
+        <div className="day-hike-panel__controls">{controls}</div>
+      )}
     </section>
   )
 }

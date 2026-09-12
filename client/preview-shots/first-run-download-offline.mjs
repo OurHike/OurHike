@@ -31,7 +31,7 @@
 export const caption =
   'The same offer with the manifest blocked — a size withheld rather than guessed (#1167)'
 export const alt =
-  'The second first-run card over the hero photo: "Take the whole trail with you" with three size options — Light, Standard marked as recommended, and Fine — each reading "Unknown offline" where a figure would normally be, all three still selectable, above a Keep going button and a Decide this later link'
+  'The fourth first-run card over the hero photo: "Take the whole trail with you" with three size options — Light, Standard marked as recommended, and Fine — each reading "Unknown offline" where a figure would normally be, all three still selectable, above a Download button carrying the chosen size and a Decide this later link'
 
 // First run is the subject, so the runner must not skip it.
 export const entry = true
@@ -39,11 +39,21 @@ export const entry = true
 export default async function drive(page) {
   // Abort the manifest, not the whole origin: the point is a build that is
   // working normally and simply has not been told what the artifacts weigh.
-  // Blocking everything would photograph a broken app instead.
+  // Blocking everything would photograph a broken app instead. Both
+  // spellings: the sizes read `releases/<pin>/manifest.json` since the
+  // release folder landed (lib/dataRelease.ts), and this recipe blocked only
+  // the old root `latest.json` - so the card was priced, the "Unknown
+  // offline" rung never appeared, and the camera reported it could not take
+  // this frame on every pull request that touched it (#1373's did).
   await page.route('**/latest.json', (route) => route.abort())
+  await page.route('**/manifest.json', (route) => route.abort())
   await page.reload({ waitUntil: 'load' })
 
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Get set up' }).click()
+  // Past the mode card (the review of #1374) and the place card (#1373,
+  // frame 1b), each by its own skip.
+  await page.getByRole('button', { name: /^Skip — day hike/ }).click()
+  await page.getByRole('button', { name: /^Skip/ }).click()
 
   // Wait on the rung rather than a timer - it both settles the shot and
   // asserts the state actually arrived. If a future change gives the picker a

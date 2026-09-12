@@ -200,7 +200,7 @@ export const SUGGESTED_HIKES_DOCUMENT = {
 
 /** Seed the kept copy, then reload so the app wakes up owning it - the
  *  same move day-hike-list.mjs makes for its store. */
-export async function seedSuggestedHikes(page) {
+export async function seedSuggestedHikes(page, document = SUGGESTED_HIKES_DOCUMENT) {
   await page.evaluate(
     ({ document }) =>
       new Promise((done, fail) => {
@@ -219,8 +219,30 @@ export async function seedSuggestedHikes(page) {
           write.onerror = () => fail(write.error)
         }
       }),
-    { document: SUGGESTED_HIKES_DOCUMENT },
+    { document },
   )
   await page.reload({ waitUntil: 'load' })
   await page.getByText('Suggested hikes').waitFor()
+}
+
+/**
+ * The same document with every climb removed, which is the shape the
+ * PUBLISHED routes actually have.
+ *
+ * MEASURED, 2026-09-11, against release 2026-09-10: not one of the nine
+ * routes in `suggested_hikes.json` carries a climb, so `hikeEstimate` prices
+ * none of them and every card reads "no time — climb unmeasured". The fixture
+ * above is a mix on purpose — five priced walks and one unmeasured — because
+ * its recipes are about the card's two shapes. This one is the phone a hiker
+ * has today, and it is the only way to photograph what Today withholds when
+ * nothing can be priced.
+ */
+export const UNPRICED_HIKES_DOCUMENT = {
+  ...SUGGESTED_HIKES_DOCUMENT,
+  hikes: SUGGESTED_HIKES_DOCUMENT.hikes.map((hike) => ({ ...hike, climb: null })),
+}
+
+/** `seedSuggestedHikes` over the unpriced document. */
+export async function seedUnpricedHikes(page) {
+  await seedSuggestedHikes(page, UNPRICED_HIKES_DOCUMENT)
 }

@@ -1,0 +1,97 @@
+/* The planning spine's rail (chrome/StepRail.tsx, #1373). Semantic tokens. */
+
+.step-rail {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-1);
+  background: var(--surface-card);
+}
+
+.step-rail__list {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step-rail__step {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* The line between stops grows to fill; a stop stays at its own width. */
+.step-rail__step + .step-rail__step::before {
+  content: '';
+  flex: 1;
+  min-width: 12px;
+  height: 1px;
+  margin-right: 8px;
+  background: var(--border-2);
+}
+
+.step-rail__step {
+  flex: 0 0 auto;
+}
+
+.step-rail__step + .step-rail__step {
+  flex: 1 1 auto;
+}
+
+.step-rail__door,
+.step-rail__stop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+
+.step-rail__door {
+  cursor: pointer;
+}
+
+.step-rail__mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border-2);
+  background: var(--surface-card);
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.step-rail__label {
+  font-size: 14px;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.step-rail__step--current .step-rail__mark {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.step-rail__step--current .step-rail__label {
+  color: var(--fg-1);
+  font-weight: 600;
+}
+
+.step-rail__step--done .step-rail__mark {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.step-rail__step--done .step-rail__label {
+  color: var(--fg-1);
+}

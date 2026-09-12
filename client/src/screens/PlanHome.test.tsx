@@ -3,12 +3,13 @@
 // label says.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanHome, planRoomFor, type PlanHomeProps } from './PlanHome'
 import { DEFAULT_TRAIL_ID, type Hike } from '../lib/hikes'
-import { PlanKindSheet } from '../chrome/PlanKindSheet'
+import { PlanStart } from './PlanStart'
+import { STANDARD_PACE } from '../lib/pace'
 import type { DayHike } from '../lib/dayHikes'
 import type { Trip } from '../lib/trips'
 
@@ -80,6 +81,7 @@ const PROPS: PlanHomeProps = {
   onOpenGroup: vi.fn(),
   onAllTrips: vi.fn(),
   onAllDayHikes: vi.fn(),
+  onAllWalked: vi.fn(),
   onNewDayHike: vi.fn(),
   onNewTrip: vi.fn(),
   onResumeDraft: vi.fn(),
@@ -135,12 +137,52 @@ describe('the day room', () => {
       />,
     )
 
-    // Three rows, to-walk first; the fourth is behind the All door.
-    expect(screen.getByRole('button', { name: /Pine Meadow loop/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Breakneck/ })).not.toBeInTheDocument()
+    // Three rows still to walk; the walked one is not fourth in this list
+    // but on its own shelf (#1373, D5), and the All door counts every hike.
+    const yours = screen.getByText('Your day hikes').closest('section') as HTMLElement
+    expect(
+      within(yours).getByRole('button', { name: /Pine Meadow loop/ }),
+    ).toBeInTheDocument()
+    expect(within(yours).queryByText(/Breakneck/)).toBeNull()
+    const walked = screen.getByText('Walked').closest('section') as HTMLElement
+    expect(within(walked).getByText(/Breakneck/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'All 4 ›' }))
     expect(onAllDayHikes).toHaveBeenCalled()
+  })
+
+  it('keeps walked history on one shelf of its own, with a door to all of it (#1373, D5)', async () => {
+    // The review's reachability audit: a walk already done was reachable
+    // "only if you scroll past the plans". Now it is a shelf, and its door
+    // opens the list on the walked shelf alone.
+    const user = userEvent.setup()
+    const onAllWalked = vi.fn()
+    render(
+      <PlanHome
+        {...PROPS}
+        room="day"
+        dayHikes={[
+          dayHike('Breakneck Ridge', { recorded: 'walked', date: '2026-08-02' }),
+          dayHike('Storm King', { recorded: 'walked' }),
+        ]}
+        onAllWalked={onAllWalked}
+      />,
+    )
+
+    // Nothing still to walk, so no to-walk shelf at all - never a header
+    // over an empty list.
+    expect(screen.queryByText('Your day hikes')).toBeNull()
+    const walked = screen.getByText('Walked').closest('section') as HTMLElement
+    // The row says walked and when; an undated walk says so rather than
+    // wearing "no date yet", which is a plan's phrase.
+    expect(within(walked).getByText('3.4 mi · walked sun 2 aug')).toBeInTheDocument()
+    expect(within(walked).getByText('3.4 mi · walked · no date')).toBeInTheDocument()
+    // No count of Sundays, no span, no streak: a shelf of everything ever
+    // walked is where value #1's rule would break first.
+    expect(walked.textContent).not.toMatch(/in a row|streak|%/i)
+
+    await user.click(within(walked).getByRole('button', { name: 'All 2 walked' }))
+    expect(onAllWalked).toHaveBeenCalled()
   })
 
   it('shows no trip furniture at all - no groups, no recent trips, no hikes', () => {
@@ -181,29 +223,36 @@ describe('the day room', () => {
     expect(screen.getByText(/does not include the trail network/i)).toBeInTheDocument()
   })
 
-  it('says exactly PlanKindSheet’s sentence for the missing network - two surfaces, one claim', () => {
+  it('says exactly step 1’s sentence for the missing network - two surfaces, one claim', () => {
     // This used to be a pin against two hand-written copies drifting. Since
     // #1049 both screens read lib/trailNetworkText.ts, so they cannot drift -
     // and the test stays, because what it really guards is that a hiker sees
-    // ONE claim about one missing artifact wherever they meet it.
+    // ONE claim about one missing artifact wherever they meet it. The second
+    // surface was chrome/PlanKindSheet.tsx until #1373 retired it (D6); it
+    // is screens/PlanStart.tsx now, the spine's step 1.
     const network = { kind: 'absent', because: 'not-in-release' } as const
     render(<PlanHome {...PROPS} room="day" onNewDayHike={null} network={network} />)
     const home = screen.getByRole('note').textContent
     cleanup()
-    // The sheet carries a SECOND note - the walked door's "isn't built yet" -
-    // so this one is found by its own sentence rather than by the role.
     render(
-      <PlanKindSheet
+      <PlanStart
+        mode="day"
         network={network}
-        walkedAvailable={false}
-        onPickDayHike={vi.fn()}
-        onPickTrip={vi.fn()}
-        onPickWalked={vi.fn()}
-        onClose={vi.fn()}
+        hasFix={false}
+        hikes={[]}
+        near={null}
+        units="imperial"
+        pace={STANDARD_PACE}
+        onNamePlace={vi.fn()}
+        onWhereIAm={vi.fn()}
+        onPickOnMap={vi.fn()}
+        onFindHike={vi.fn()}
+        onOpenSuggestedHike={vi.fn()}
+        onCancel={vi.fn()}
       />,
     )
-    const sheet = screen.getByText(/trail network/i).textContent
-    expect(home).toBe(sheet)
+    const step = screen.getByRole('note').textContent
+    expect(home).toBe(step)
   })
 
   it('never tells anybody to wait for a data sync (#1049)', () => {
@@ -378,6 +427,63 @@ describe("the hike's own room (#1329, handoff §4)", () => {
     })
 
     expect(container.querySelector('.plan-home__bar')).toBeNull()
+  })
+
+  it("offers What's left beside the two figures, and only where something is left", async () => {
+    // #791's screen used to sit at the foot of the hike zoom, two taps down
+    // and past every section row; frame 8a puts it on the figures it is
+    // about. A finished hike (nothing left) gets no door to a sentence.
+    const user = userEvent.setup()
+    const onWhatsLeft = vi.fn()
+    inRoom({ onWhatsLeft })
+
+    await user.click(screen.getByRole('button', { name: /What.s left/ }))
+    expect(onWhatsLeft).toHaveBeenCalled()
+
+    cleanup()
+    inRoom({
+      onWhatsLeft,
+      activeHike: hike({ points: [{ name: 'Springer', mile: 12 }] }),
+    })
+    expect(screen.queryByRole('button', { name: /What.s left/ })).toBeNull()
+
+    cleanup()
+    inRoom()
+    expect(screen.queryByRole('button', { name: /What.s left/ })).toBeNull()
+  })
+
+  it('shelves the day hikes on this trail with a door to all of them, walked ones apart', async () => {
+    // "Day hikes on this trail" showed three and stopped: a hiker in this
+    // room with a fourth had no way to it short of switching mode. And the
+    // walked ones get the same shelf of their own the day room has (D5).
+    const user = userEvent.setup()
+    const onAllDayHikes = vi.fn()
+    const onAllWalked = vi.fn()
+    inRoom({
+      dayHikes: [
+        dayHike('Pine Meadow loop', { date: '2026-09-12' }),
+        dayHike('Breakneck Ridge', { recorded: 'walked', date: '2026-08-02' }),
+      ],
+      onAllDayHikes,
+      onAllWalked,
+    })
+
+    const toWalk = screen
+      .getByText('Day hikes on this trail')
+      .closest('section') as HTMLElement
+    expect(
+      within(toWalk).getByRole('button', { name: /Pine Meadow loop/ }),
+    ).toBeInTheDocument()
+    expect(within(toWalk).queryByText(/Breakneck/)).toBeNull()
+    await user.click(within(toWalk).getByRole('button', { name: 'All 2 ›' }))
+    expect(onAllDayHikes).toHaveBeenCalled()
+
+    const walked = screen
+      .getByText('Walked on this trail')
+      .closest('section') as HTMLElement
+    expect(within(walked).getByText('3.4 mi · walked sun 2 aug')).toBeInTheDocument()
+    await user.click(within(walked).getByRole('button', { name: 'All 1 walked' }))
+    expect(onAllWalked).toHaveBeenCalled()
   })
 
   it('separates the sections in the hike from the ones that are not', async () => {

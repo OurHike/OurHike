@@ -21,6 +21,7 @@ import {
   budgetVerdict,
   usage,
   PHONE,
+  PHONE_SMALL,
   DESKTOP,
   CAPTURE_SCALE,
   BYTE_BUDGET,
@@ -54,6 +55,11 @@ describe('the defaults', () => {
   it('can photograph the built app, which is what CI deploys', () => {
     expect(parseArgs(['whatever']).dist).toBe(false)
     expect(parseArgs(['whatever', '--dist']).dist).toBe(true)
+  })
+
+  it('takes the smallest phone when asked, for a frame whose claim is that a screen fits on one', () => {
+    expect(parseArgs(['whatever', '--small']).viewport).toEqual(PHONE_SMALL)
+    expect(PHONE_SMALL).toMatchObject({ width: 375, height: 667, isMobile: true })
   })
 
   it('takes a laptop viewport for the marketing site', () => {

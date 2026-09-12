@@ -52,6 +52,38 @@ describe('useWorkdayPanel', () => {
     ])
   })
 
+  it('widens and narrows the pins with the window, and lists the rows a map prints (#1373, frame 14d)', () => {
+    // NOW is a Thursday; a workday twenty days out is past the fortnight
+    // and inside the month.
+    const later = project({ id: 'later', starts_on: '2026-09-02', ends_on: '2026-09-02' })
+    const { result } = panel([project(), later])
+    expect(result.current.mapScreen.workdayWindow).toBe('fortnight')
+    expect(result.current.mapScreen.workdays?.map((pin) => pin.id)).toEqual([
+      'nynjtc-bear-mountain-2026-08-15',
+    ])
+    // Held: everything the widest window has, so the list is offered while
+    // any exist.
+    expect(result.current.mapScreen.workdaysHeld).toBe(2)
+
+    act(() => result.current.mapScreen.onChangeWorkdayWindow?.('month'))
+    expect(result.current.mapScreen.workdays?.map((pin) => pin.id)).toEqual([
+      'nynjtc-bear-mountain-2026-08-15',
+      'later',
+    ])
+    expect(result.current.mapScreen.workdayRows?.map((row) => row.title)).toEqual([
+      'Bear Mountain stonework',
+      'Bear Mountain stonework',
+    ])
+    // No fix, so no distance - the row says nothing rather than a number.
+    expect(result.current.mapScreen.workdayRows?.[0].awayMi).toBeNull()
+
+    act(() => result.current.mapScreen.onChangeWorkdayWindow?.('weekend'))
+    // Saturday 15 August is the coming weekend; the one on 2 September is not.
+    expect(result.current.mapScreen.workdays?.map((pin) => pin.id)).toEqual([
+      'nynjtc-bear-mountain-2026-08-15',
+    ])
+  })
+
   it('draws nothing at all from a stale feed', () => {
     // Absolute, and the reason is in the module: the Volunteer tab can say
     // "this list is out of date" in words, and a pin has no hedged form. A

@@ -117,6 +117,33 @@ describe('the shelves', () => {
     expect(onOpen).toHaveBeenCalledWith('Pine Meadow loop')
   })
 
+  it('opens on the walked shelf alone when asked (#1373, D5)', () => {
+    // The Plan home's "Walked" shelf opens this list on the history and
+    // nothing else: no to-walk rows, no sorts (they order what is still to
+    // walk) and no builder door - a hiker looking at their history came for
+    // the history.
+    render(
+      <DayHikeList
+        {...PROPS}
+        shelf="walked"
+        at={{ lon: -74.09, lat: 41.25 }}
+        dayHikes={[
+          dayHike('Pine Meadow loop', { date: '2026-09-12' }),
+          dayHike('Seven Hills, out and back'),
+          dayHike('Breakneck Ridge', { recorded: 'walked', date: '2026-08-02' }),
+        ]}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Walked · 1 hike')
+    expect(screen.queryByText('Ready to walk')).toBeNull()
+    expect(screen.queryByText(/Pine Meadow loop/)).toBeNull()
+    const walked = screen.getByText('Walked').closest('section') as HTMLElement
+    expect(within(walked).getByText(/Breakneck Ridge/)).toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Order these by' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Plan a day hike' })).toBeNull()
+  })
+
   it('renders no walked shelf when nothing is walked - no header over an empty list', () => {
     render(<DayHikeList {...PROPS} dayHikes={[dayHike('Pine Meadow loop')]} />)
     expect(screen.queryByText('Walked')).not.toBeInTheDocument()
@@ -165,6 +192,39 @@ describe('the sorts', () => {
   it('with no fix there are no sort chips at all - no dead controls', () => {
     render(<DayHikeList {...PROPS} dayHikes={three} at={null} />)
     expect(screen.queryByRole('button', { name: 'nearest me' })).not.toBeInTheDocument()
+  })
+})
+
+describe('opened from the map’s ask (#1373, D5)', () => {
+  it('opens in distance order when asked to, without a chip to find', () => {
+    const near = dayHike('Pine Meadow loop', { date: '2026-09-12' })
+    const far = dayHike('Breakneck Ridge', {
+      date: '2026-09-13',
+      segments: [
+        [
+          { coord: [-73.0, 41.0], poiId: null },
+          { coord: [-73.01, 41.0], poiId: null },
+        ],
+      ],
+    })
+    render(
+      <DayHikeList
+        {...PROPS}
+        // Newest first would put Breakneck first; the ask puts the near one.
+        dayHikes={[far, near]}
+        at={{ lon: -74.095, lat: 41.25 }}
+        initialSort="nearest"
+      />,
+    )
+
+    const rows = screen.getAllByRole('button', {
+      name: /Pine Meadow loop|Breakneck Ridge/,
+    })
+    expect(rows[0]).toHaveTextContent('Pine Meadow loop')
+    expect(screen.getByRole('button', { name: 'nearest me' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 })
 

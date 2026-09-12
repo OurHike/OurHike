@@ -5,9 +5,9 @@
 // tapped: the shot is the offer, and tapping it in a preview would start a
 // transfer against whatever the preview serves.
 export const caption =
-  'First run, step 2 — the size offer, with every figure now read from the manifest (#1167)'
+  'First run, card 4 of 5 — the size offer, with every figure now read from the manifest (#1167)'
 export const alt =
-  'The second first-run card over the hero photo: "Take the whole trail with you", three enabled size options — Light, Standard marked as recommended, and Fine — each with its whole-sheet size, a Keep going button and a Decide this later link'
+  'The fourth first-run card over the hero photo: "Take the whole trail with you", three enabled size options — Light, Standard marked as recommended, and Fine — each with its whole-sheet size, a Download button carrying the chosen size and a Decide this later link'
 
 // RE-POINTED BY #1167, which took the hand-copied sizes out of
 // hikingDetail.ts. Every figure on this card now comes from `latest.json`, so
@@ -22,5 +22,9 @@ export const alt =
 export const entry = true
 
 export default async function drive(page) {
-  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('button', { name: 'Get set up' }).click()
+  // Past the mode card (the review of #1374) and the place card (#1373,
+  // frame 1b), each by its own skip.
+  await page.getByRole('button', { name: /^Skip — day hike/ }).click()
+  await page.getByRole('button', { name: /^Skip/ }).click()
 }

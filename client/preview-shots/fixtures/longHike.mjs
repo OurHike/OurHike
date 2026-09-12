@@ -151,8 +151,21 @@ export function finishedStore(today = new Date()) {
   }
 }
 
-/** Seed the store and the mode, then reload so the app wakes up owning
- *  both - day-hike-list.mjs's move, with a second key. */
+/**
+ * Seed the store and the mode, then reload so the app wakes up owning both -
+ * day-hike-list.mjs's move, with a second key.
+ *
+ * `build` is typed as returning `unknown` rather than being left to inference
+ * from its default. Without the annotation TypeScript reads the parameter's
+ * type off `tripStore` alone, and `finishedStore` - which is the whole point
+ * of the parameter existing - then fails to assign, because a finished hike
+ * has `activeHikeId: null` where an active one has a string. The fixtures
+ * really do differ there; it is the seed that does not care.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {(today?: Date) => unknown} [build]
+ * @returns {Promise<void>}
+ */
 export async function seedLongHike(page, build = tripStore) {
   await page.evaluate(
     ({ store: seeded }) =>

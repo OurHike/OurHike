@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { MockMap } from '../test/mocks/maplibre-gl'
 import { drawsNearbyTrails, TRAIL_SOURCE_PROPERTY } from './drawnBlazes'
 import {
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   BLAZE_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
 } from './style'
 import type { Map as MapLibreMap } from 'maplibre-gl'
@@ -89,8 +89,8 @@ describe('nothing taken (#1306)', () => {
     // The sentence this answers for explains a dimming; with no system taken
     // nothing is dimmed, and the legend must not say otherwise.
     const map = new MockMap({})
-    map.layerIds = [BLAZE_LAYER_ID, BLAZE_DOTTED_LAYER_ID, NEARBY_BLAZE_DOTTED_LAYER_ID]
-    map.renderedFeatures.set(NEARBY_BLAZE_DOTTED_LAYER_ID, [
+    map.layerIds = [BLAZE_LAYER_ID, BLAZE_UNTAKEN_LAYER_ID, NEARBY_BLAZE_UNTAKEN_LAYER_ID]
+    map.renderedFeatures.set(NEARBY_BLAZE_UNTAKEN_LAYER_ID, [
       {
         properties: { source: 'oprhp_trails' },
         geometry: { type: 'LineString', coordinates: [] },

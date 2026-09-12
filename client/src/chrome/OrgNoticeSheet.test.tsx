@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
-import { AtcUpdateSheet } from './AtcUpdateSheet'
+import { OrgNoticeSheet } from './OrgNoticeSheet'
 import type { AtcUpdate } from '../lib/atcUpdates'
 import type { Stewards } from '../lib/stewards'
 
@@ -40,6 +40,8 @@ const STEWARDS: Stewards = [
     trust: null,
     licence: '© ATC, used with permission',
     attribution: null,
+    terms: null,
+    termsSource: null,
     layers: ['ATC Trail Updates'],
     keys: ['atc_trail_updates'],
   },
@@ -50,7 +52,7 @@ afterEach(cleanup)
 describe('whose claim this is', () => {
   it('names the Appalachian Trail Conservancy on the notice itself', () => {
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -69,7 +71,7 @@ describe('whose claim this is', () => {
     // Without this the sheet reads as OurHike asserting a closure it never
     // verified, which misrepresents the ATC as much as it misleads the hiker.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -84,7 +86,7 @@ describe('whose claim this is', () => {
     // The one wrong belief that could put somebody somewhere worse than the
     // closed trail is that the app is routing them around it.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -99,7 +101,7 @@ describe('whose claim this is', () => {
     // `ClosureReason` would render a Detour as "Closed" - a claim ATC did
     // not make.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={{ ...UPDATE, category: 'Detour' }}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -114,7 +116,7 @@ describe('whose claim this is', () => {
 describe('both dates, because there are two', () => {
   it('shows the date ATC last edited the notice', () => {
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -129,7 +131,7 @@ describe('both dates, because there are two', () => {
     // A notice ATC edited yesterday that nobody here has looked at since May
     // is a real state. Showing only one date would hide half of it.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -146,7 +148,7 @@ describe('both dates, because there are two', () => {
 
   it('says it cannot tell rather than inventing a review date', () => {
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={null}
         stewards={STEWARDS}
@@ -161,7 +163,7 @@ describe('both dates, because there are two', () => {
     // "Updated —" invites the reader to supply their own guess, and an
     // invented date on a safety notice is worse than an absent one.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={{ ...UPDATE, updated_at: 'not a date' }}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -179,7 +181,7 @@ describe('the link, which is the detail', () => {
     // The artifact carries facts and not ATC's prose, so this link is the
     // whole of what a hiker can read about the notice.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -192,7 +194,7 @@ describe('the link, which is the detail', () => {
 
   it('opens it in a new tab without handing over the opener', () => {
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -208,7 +210,7 @@ describe('the link, which is the detail', () => {
     // refuses one on the way in too, so this is the second line rather than
     // the only one.
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={{ ...UPDATE, source_url: 'javascript:alert(1)' }}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -223,7 +225,7 @@ describe('the link, which is the detail', () => {
 describe('where it is', () => {
   it('gives the mile range to a tenth, with the states', () => {
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}
@@ -236,7 +238,7 @@ describe('where it is', () => {
 
   it('writes a point notice as one mile', () => {
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={{
           ...UPDATE,
           start_mile_marker: 1503.6,
@@ -255,7 +257,7 @@ describe('where it is', () => {
   it('closes when asked', () => {
     const onClose = vi.fn()
     render(
-      <AtcUpdateSheet
+      <OrgNoticeSheet
         update={UPDATE}
         reviewedAt={REVIEWED}
         stewards={STEWARDS}

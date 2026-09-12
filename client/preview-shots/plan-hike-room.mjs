@@ -26,6 +26,14 @@
 // it, the blaze-bordered "Carry on with" card, and "This hike, end to end"
 // carrying `mi walked · mi to go` over a two-band bar.
 //
+// 2026-09-10, re-photographed for #1373 (frame 8a): "What's left ›" now sits
+// beside "This hike, end to end", on the figures it is about - it used to be
+// at the foot of the hike zoom, two taps down. The day-hike shelves under
+// the sections carry "All N ›" doors and walked walks get a shelf of their
+// own (D5); the preview seeds no day hikes, so neither shows here, and
+// PlanHome.test.tsx holds both. whats-left.mjs is the screen the new door
+// opens.
+//
 // TWO BANDS, AND COUNT THEM. There is no third. The handoff overrides
 // features/SEGMENTS.md's derived-gap idea for these screens in as many words
 // — "no gap rows, no gap arithmetic, no dashed gap band" — and no percentage
@@ -35,7 +43,7 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 
 export const caption = 'Plan, in the long-hike state — the room the hike is about (#1329)'
 export const alt =
-  'The Plan tab headed "you’re planning / Springer → Katahdin" with a "Switch hike" button, a "Rename" link beside "Carry on with", a blaze-bordered card to carry on with, a "This hike, end to end" card printing miles walked and miles to go over a two-colour bar, a list of the sections on the hike, and a primary button reading "Plan a section"'
+  'The Plan tab headed "you’re planning / Springer → Katahdin" with a "Switch hike" button, a "Rename" link beside "Carry on with", a blaze-bordered card to carry on with, a "This hike, end to end" card with a "What’s left" link beside its title, printing miles walked and miles to go over a two-colour bar, a list of the sections on the hike, and a primary button reading "Plan a section"'
 
 export default async function drive(page) {
   await seedLongHike(page)

@@ -222,6 +222,20 @@ jobs:
       # workflow by hand, points the same build at UA's prefix instead: the
       # formula is ua.yml's own, computed rather than typed out for the same
       # reason it is there (features/DATA_ENVIRONMENTS.md).
+      #
+      # ONE FALLBACK, AND ONLY WHEN PRODUCTION CANNOT SERVE THE BUILD AT ALL
+      # (2026-09-10, #1374). A branch may pin DATA_RELEASE to an id that UA
+      # holds and production does not yet - the pin moves ahead of the
+      # release train's production leg, exactly as dataRelease.ts describes.
+      # Against production such a build 404s its own manifest and every
+      # data-bearing screen fails: the maintainer read the first-run place
+      # field as "not enabled" on a phone that loaded the automatic build in
+      # the minutes between a push and the UA dispatch that followed it. So
+      # the automatic run checks the pin against production the way ua.yml's
+      # guard checks it against UA, and where production has no folder of
+      # that name but UA does, it previews UA and says so in the comment.
+      # Production stays the default in every other case, which is #1383's
+      # decision; this only declines to publish a preview of nothing.
       - name: Resolve the data source
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         id: data
@@ -231,15 +245,34 @@ jobs:
           DATA_ENVIRONMENT: ${{ inputs.data_environment }}
         run: |
           BASE="${FROM_VAR:-$FROM_SECRET}"
-          if [ "$DATA_ENVIRONMENT" = "ua" ]; then
+          ENVIRONMENT="${DATA_ENVIRONMENT:-production}"
+          BANNER=""
+          if [ "$ENVIRONMENT" = "ua" ]; then
+            BANNER='**Previewing UA data** (`environments/ua`), not production - see features/DATA_ENVIRONMENTS.md.'
+          elif [ -n "$BASE" ]; then
+            release=$(sed -n "s/^export const DATA_RELEASE = '\\(.*\\)'$/\\1/p" client/src/lib/dataRelease.ts)
+            if [ -z "$release" ]; then
+              echo "::warning::Could not read DATA_RELEASE out of client/src/lib/dataRelease.ts - previewing production without checking the pin resolves there."
+            elif curl -fsS --retry 3 --max-time 30 -o /dev/null "${BASE%/}/releases/${release}/manifest.json" 2>/dev/null; then
+              echo "Pinned release ${release} resolves at ${BASE%/}."
+            elif curl -fsS --retry 3 --max-time 30 -o /dev/null "${BASE%/}/environments/ua/releases/${release}/manifest.json"; then
+              echo "Pinned release ${release} is not on production yet, and is on UA - previewing UA."
+              ENVIRONMENT="ua"
+              BANNER="**Previewing UA data** (\`environments/ua\`), not production: this branch pins \`DATA_RELEASE\` to \`${release}\`, which production does not carry yet - see features/DATA_ENVIRONMENTS.md."
+            else
+              echo "::warning::DATA_RELEASE is pinned to ${release}, which neither production nor UA carries - previewing production, and the app will find no data."
+            fi
+          fi
+          if [ "$ENVIRONMENT" = "ua" ]; then
             URL="${BASE:+${BASE%/}/environments/ua}"
           else
             URL="$BASE"
           fi
-          echo "Data source: ${URL:-<none>} (${DATA_ENVIRONMENT:-production})"
+          echo "Data source: ${URL:-<none>} (${ENVIRONMENT})"
           {
             echo "url=$URL"
-            echo "environment=${DATA_ENVIRONMENT:-production}"
+            echo "environment=${ENVIRONMENT}"
+            echo "banner=$BANNER"
           } >> "$GITHUB_OUTPUT"
 
       # Same Supabase project as production (see pages.yml) - a preview where
@@ -518,7 +551,7 @@ jobs:
             stays the same as you push - it always serves the latest build of this pull
             request.
 
-            ${{ steps.data.outputs.environment == 'ua' && '**Previewing UA data** (`environments/ua`), not production - see features/DATA_ENVIRONMENTS.md.' || '' }}
+            ${{ steps.data.outputs.banner }}
 
             ${{ steps.wait.outputs.note }}
 

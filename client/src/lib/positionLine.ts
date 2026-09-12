@@ -30,6 +30,7 @@ import type { GeolocationState } from './useGeolocation'
 import type { HikeDirection } from '../chrome/Header'
 import { followPosition, type FollowState } from './dayHikeFollow'
 import type { UnitSystem } from './units'
+import { mileMarker } from './planDisplay'
 
 export interface PositionLineInputs {
   /** What the watch is actually doing (lib/useGeolocation.ts). */
@@ -96,6 +97,18 @@ export interface PositionLineInputs {
    * denied permission or a lost fix any less true.
    */
   follow?: FollowState | null
+  /**
+   * Whether any trail is taken at all - a long hike's, or one tapped on the
+   * map (lib/takenTrail.ts) - since the maintainer's review of #1374. Below
+   * the GPS states, which are true whatever is taken, and below a followed
+   * walk, which measures its own ground; above the mile, because the mile
+   * is a reading against a trail and "Off the trail" is a claim about one.
+   * With nothing taken there is no trail to be off, so the slot says where
+   * the fix stands and what would give it a mile. Defaults to true so every
+   * caller that never asks - the follow header, the Today read-out - is
+   * unaffected.
+   */
+  trailTaken?: boolean
   /** Which units the follow reading converts to. Defaulted like every other
    *  units prop here, and read ONLY by that reading - see followPosition for
    *  why the A.T. mile stays a mile. */
@@ -108,12 +121,10 @@ export interface PositionLineInputs {
  * Fixed precision keeps the number from changing width as the hiker walks,
  * which would otherwise make the whole header twitch.
  */
-function formatMile(mile: number): string {
-  return mile.toLocaleString('en-US', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })
-}
+/** A trail mile marker as the position line prints it: lib/planDisplay.ts's
+ *  `mileMarker`, the one home for the trail's own axis - never a converted
+ *  distance, which is why neither is in lib/units.ts. */
+const formatMile = mileMarker
 
 export function positionLine({
   gps,
@@ -123,6 +134,7 @@ export function positionLine({
   trailReady,
   unmeasuredTrail = null,
   follow = null,
+  trailTaken = true,
   units = 'imperial',
 }: PositionLineInputs): string {
   // First, because it is the only one of these the hiker chose, and the only
@@ -155,6 +167,8 @@ export function positionLine({
   // because a day hike routes over the junction graph and needs no
   // centerline at all.
   if (follow !== null) return followPosition(follow, units)
+
+  if (!trailTaken) return 'Located · tap a trail to take it'
 
   // A fix, and nowhere to put it. Two different reasons, and they are not
   // interchangeable: one is the app missing data, the other is a claim about

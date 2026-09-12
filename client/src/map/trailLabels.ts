@@ -158,7 +158,7 @@ export const TRAIL_LABEL_FILTER: unknown[] = [
  * what #930 said should settle it, and did: labels start where the map
  * starts, and map/labelLadder.ts's tiers stage which labels win above this
  * floor. §8's worry is answered by the split rather than by a floor - a
- * park's forty trails are dotted and ghosted at z7, and a name on a dotted
+ * park's forty trails are fine and ghosted at z7, and a name on a ghosted
  * line is context, not a subject.
  *
  * WHAT ACTUALLY DRAWS BELOW THE SEAM is less than this floor allows, and the
@@ -166,7 +166,7 @@ export const TRAIL_LABEL_FILTER: unknown[] = [
  * overview sketch (NETWORK_OVERVIEW_SOURCE_ID), which
  * export_nearby_trails.py's write_overview publishes with `source`,
  * `blaze_color` and `trail_status` only - no `name`, because it merges lines
- * by those three. So the Long Path is drawn dotted at the state camera and
+ * by those three. So the Long Path is drawn at the state camera and
  * cannot be named there until the overview artifact carries names, which is
  * a pipeline change and a publish (#1283 records it). The A.T.'s own side
  * trails are the only lines this floor names below z9 today.

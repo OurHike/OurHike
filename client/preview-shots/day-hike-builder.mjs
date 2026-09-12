@@ -120,10 +120,19 @@
 // per cell, and #1231 is the decision that would shrink it. Until one of
 // those lands, the ring's arithmetic below is derived and not measured.
 
+//
+// RE-PHOTOGRAPHED FOR THE MAP'S FLOOR (2026-09-12). The maintainer could not
+// tap the map while planning on a phone: measured at 390x844 with a route in
+// the builder, the panel took 292 px off the top and the bar sat over the
+// map's bottom 321 px, leaving 159 px - 19% of the screen - that a finger
+// could land on. screens/plan.css now spends a budget against a 75svh floor,
+// so what this frame is evidence for is the map having three quarters of the
+// screen with the panel and the bar both still legible and the way on still
+// pinned where a thumb reaches it.
 export const caption =
-  'The day-hike builder with a walk in it: the route order, a stop row, the mile marks (#1194, #1212)'
+  'Step 2 — the day-hike builder with a walk in it: the rail, the route order, a stop row, the shape control and the foot (#1194, #1212, #1373 frame 4a)'
 export const alt =
-  'Either the redesigned day-hike builder holding a walk - a panel across the top of the screen headed "Your route" with Distance, Climb and Walking figures, an expanded body listing the route order with a stop row for Fingerboard Shelter, the map in the middle with the route cased dark and its mile marks, and the builder bar with Cancel, Undo and Draw instead along the bottom - or the same builder still waiting for its first tap, where the search found no such shelter or no tap landed on a trail; or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
+  'Either the day-hike builder holding a walk - a panel across the top of the screen opening with a three-stop rail reading Day hike ✓, Route and Details with Route lit, then "Your route" with Distance, Climb and Walking figures and an expanded body listing the route order with a stop row for Fingerboard Shelter; the map in the middle with the route cased dark and its mile marks; and the builder bar along the bottom with Cancel, a Shape row reading Point to point, Out and back and Loop, Undo and Draw instead, and a foot with "‹ Hike" and "Use this route ›" - or the same builder still waiting for its first tap, where the search found no such shelter or no tap landed on a trail; or, where this build has no junction graph, step 1 with its sentence saying the trail network is not on the phone in place of the map door'
 
 // The cell index is hashed before it is trusted and the cell under the camera
 // is fetched, hashed and merged after the door opens, so the builder can take
@@ -233,16 +242,17 @@ export async function walkInHarriman(page) {
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Plan' }).click()
   // The empty state's primary, which is what a preview holding no saved plans
-  // shows. It opens the fork rather than either builder.
+  // shows. Since #1373 it opens step 1 - "Where do you want to go?" - and the
+  // map door there is the builder (the kind sheet it used to open is gone).
   await page.getByRole('button', { name: 'Start on the map' }).click()
-  await page.getByRole('dialog', { name: 'What are you planning?' }).waitFor()
+  await page.getByRole('heading', { name: 'Where do you want to go?' }).waitFor()
 
-  // The door is a BUTTON only while the network is ready; the withheld form
-  // is a div with the same name, so this locator is the test for which frame
-  // this build can reach. Waited on rather than counted immediately - the
-  // cell index (#1257 stage 3) is still being fetched and hashed when the
-  // sheet opens.
-  const door = page.getByRole('button', { name: /A day hike/ })
+  // The map door exists only while the network is ready; without it step 1
+  // prints the refusal sentence and a Try again instead (D10), so this
+  // locator is the test for which frame this build can reach. Waited on
+  // rather than counted immediately - the cell index (#1257 stage 3) is
+  // still being fetched and hashed when step 1 opens.
+  const door = page.getByRole('button', { name: 'Pick on the map' })
   await door.waitFor({ timeout: 20000 }).catch(() => {})
   if ((await door.count()) === 0) return
 

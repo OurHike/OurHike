@@ -16,7 +16,7 @@
 // false. Both mean the trail is shut. Provenance is a question about WHO
 // says so, and it is answered where a hiker can actually read an answer: the
 // banner names the ATC first (lib/atcUpdates.ts) and the sheet carries their
-// name, their date and a link to their page (chrome/AtcUpdateSheet.tsx).
+// name, their date and a link to their page (chrome/OrgNoticeSheet.tsx).
 //
 // The same reasoning lib/closureStyle.ts applies to blazes applies here in
 // miniature: the distinction that matters is structural rather than
@@ -39,10 +39,20 @@
 // trail the notice is about plus the shelter, ford or crossing the notice is
 // about. Two earlier passes read that as a number to shave and both were
 // shaving the wrong number: at ANY findable size, opaque ink covers ground.
-// The mark is now a burst of red spokes around an open centre at the same
-// 40px, so the ground reads through it - see ATC_NOTICE_BURST below, and
-// the note below ATC_UPDATE_POINT_SIZE_EXPRESSION for the layer that went
-// with it.
+// #1071 made the mark a burst of red spokes around an open centre at the same
+// 40px, so the ground read through it.
+//
+// AND SINCE 2026-09-10 THE SHAPE IS THE HAZARD TRIANGLE, on the maintainer's
+// call ("adopt the warning icon we made" - asked which mark was meant, the
+// answer was map/warningPin.ts's triangle, for the ATC notice marks too). It
+// is the serious-warning pin's own glyph drawn BARE - no disc, no halo - in
+// the closure red at the same 40px, so what #1071 bought survives: the
+// triangle is a band with an exclamation in an empty middle, and the ground
+// reads through the hole (map/atcNoticeMark.ts, and its test measures the
+// ink). What changed is the vocabulary: one triangle means "look", and the
+// same triangle on a 44px disc means a person confirmed something serious
+// here - two weights of one mark rather than a burst nothing else on the map
+// shared a shape with.
 
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
@@ -213,25 +223,19 @@ export const ATC_UPDATE_POINT_SIZE_EXPRESSION = [
 /**
  * The dark edge round the red, as a fraction of the mark's drawn radius.
  *
- * NOT the band's 2px `CLOSURE_CASING_WIDTH`, which is what the disc carried,
- * and the first render of the burst is why. A casing runs down BOTH sides of
- * every spoke, so 2px of it eats 4px out of each gap - and eight spokes inside
- * 40px have only about 7px of gap to spend in the first place. What came out
- * was a black disc with red spokes drawn on it: precisely the thing being
- * replaced.
- *
- * Two measurements, because the spokes were re-cut after that render and only
- * the first belongs to the picture: at the half-width that failed, the band's
- * casing left **1.7px** of daylight; at the shipped half-width below it would
- * still leave only **2.9px**, against **4.5px** with this hairline. So the
- * fatter casing is not survivable at either geometry, which is why the ratio is
- * a constant under test rather than a detail.
- *
  * `radius / 15` is map/poiIcons.ts's own `edgeWidth`, the hairline every
- * waypoint pin on this map already carries, so this is the map's existing edge
- * treatment rather than a number invented to make the gaps work. 1.33px at 40
+ * waypoint pin on this map already carries, so this is the map's existing
+ * edge treatment rather than a number invented for this mark: 1.33px at 40
  * across, and it scales with the mark rather than swamping it as the camera
  * pulls back.
+ *
+ * NOT the band's 2px `CLOSURE_CASING_WIDTH`, and the burst of #1071 is why
+ * that is a constant under test rather than a detail: a casing runs down
+ * BOTH sides of every edge, and with the band's casing the burst's first
+ * render was a black disc with red spokes on it (1.7px of daylight between
+ * spokes, measured 2026-08-27). The triangle has fewer edges than eight
+ * spokes had, but its band is 3.7px of red at walking zoom and would lose
+ * most of that to a 2px outline on each side for the same reason.
  */
 export const ATC_NOTICE_CASING_RATIO = 1 / 15
 
@@ -239,110 +243,21 @@ export const ATC_NOTICE_CASING_WIDTH =
   (ATC_UPDATE_POINT_DRAWN_WIDTH / 2) * ATC_NOTICE_CASING_RATIO
 
 /**
- * The radius the RED reaches, which is the drawn radius less its casing.
+ * The square the glyph fills, in CSS pixels: the drawn width less a casing on
+ * each side.
  *
  * Derived in that direction, so the number a reader can see on a screen - the
  * outer edge of the ink - stays {@link ATC_UPDATE_POINT_DRAWN_WIDTH} and this
- * follows from it. It is the same derivation the disc's diameter used, and for
- * the same reason: declared the other way round the two drift the moment the
- * casing width moves.
+ * follows from it. It is the same derivation the disc's diameter and the
+ * burst's fill radius used, and for the same reason: declared the other way
+ * round the two drift the moment the casing width moves. The triangle's
+ * outer ring reaches 0.98 of its box (map/warningPin.ts), so the widest ink
+ * with its casing is a hair under the drawn width, never over it -
+ * src/test/atcAlertProminence.test.ts holds the sum, and
+ * map/atcNoticeMark.test.ts measures the reach off the pixels.
  */
-export const ATC_NOTICE_FILL_RADIUS =
-  ATC_UPDATE_POINT_DRAWN_WIDTH / 2 - ATC_NOTICE_CASING_WIDTH
-
-/** The shape of a point notice, as polar geometry rather than as a polygon. */
-export interface AtcNoticeBurst {
-  /** How many spokes radiate from the centre. */
-  spokes: number
-  /** Bearing of the first spoke, in radians. */
-  phase: number
-  /** Where a spoke starts, as a fraction of {@link ATC_NOTICE_FILL_RADIUS}. */
-  innerRadius: number
-  /** The centre dot's radius, as the same fraction. */
-  hubRadius: number
-  /** A spoke's angular half-width at `innerRadius`, in radians. */
-  innerHalfWidth: number
-  /** A spoke's angular half-width at the rim, in radians. */
-  tipHalfWidth: number
-}
-
-/**
- * An open-centre burst: eight spokes round a ring of clear ground, with a small
- * dot on the coordinate itself.
- *
- * POLAR RATHER THAN A POLYGON, and that is what makes the casing exact. A
- * spoke's lateral half-width at radius `r` is an ANGLE, so adding `casing / r`
- * to it adds the same number of PIXELS of outline all the way along the spoke.
- * A scaled-up copy of the outline - the obvious way to do this with the polygon
- * rasteriser map/poiIcons.ts already has - would give an edge that was thin at
- * the hub and fat at the tip.
- *
- * THE NUMBERS, and what each is answering:
- *
- *  - **8 spokes.** The count is a trade between the two ends of the zoom ramp
- *    and it was picked off rendered specimens, not reasoned: eleven spokes look
- *    better in the hand and close up at z5, where the whole mark is 16px. Eight
- *    is the largest count whose gaps survive the bottom of the ramp.
- *  - **`innerRadius` 0.5.** Half the mark is the open ring. This is the whole
- *    point of the shape - what a notice is drawn ON (a shelter pin, the
- *    centerline, a ford) sits in that hole and stays readable.
- *  - **`hubRadius` 0.13.** A 2.4px dot, small enough to leave the hole open and
- *    large enough to say WHERE. Without it the mark is a ring, and a ring reads
- *    as drawn AROUND something rather than as marking it.
- *  - **`tipHalfWidth` 0.2 rad against a 0.785 rad pitch**, so a spoke covers
- *    just over half the pitch at the rim and the gap covers the rest. Measured
- *    on the shipped geometry at walking zoom: 7.5px of red against 4.5px of
- *    clear ground once the casing has taken its bite out of both sides.
- *    map/atcNoticeMark.test.ts computes both rather than trusting this comment.
- *  - **`innerHalfWidth` 0.13 rad**, narrower than the tip, so each spoke tapers
- *    outward. A parallel-sided spoke reads as a cog; a tapered one reads as
- *    radiating, which is the thing being said.
- *
- * Together these put 760.1px² of ink on the map where the disc put 1,256.6px²
- * - 60.5%, measured 2026-08-27 off the rendered alpha of the shipped image
- * rather than off this arithmetic. map/atcNoticeMark.test.ts re-measures it.
- */
-export const ATC_NOTICE_BURST: AtcNoticeBurst = {
-  spokes: 8,
-  // Straight up. Any phase draws the same mark rotated, but a fixed one means
-  // every notice on the map is the identical image rather than eight of them.
-  phase: -Math.PI / 2,
-  innerRadius: 0.5,
-  hubRadius: 0.13,
-  innerHalfWidth: 0.13,
-  tipHalfWidth: 0.2,
-}
-
-/**
- * How wide a spoke and the clear ground beside it are at the rim, in CSS pixels.
- *
- * The property this whole change is bought with is a number of TRANSPARENT
- * pixels, so it is computed rather than asserted in prose - the first render of
- * the burst carried the band's 2px casing, which left 1.7px of daylight between
- * neighbouring spokes and produced a dark disc with red spokes on it. That
- * failure was invisible in the geometry and obvious in the picture, and this is
- * what lets a test see it too: put `CLOSURE_CASING_WIDTH` back and
- * lib/atcUpdateStyle.test.ts goes red on 2.9px, measured 2026-08-27.
- *
- * Takes a drawn width rather than reading the constant, so a caller can ask the
- * same question at the bottom of the zoom ramp - which is where the gaps are
- * scarce and where a spoke count is really decided.
- */
-export function atcNoticeRimWidths(drawnWidth: number = ATC_UPDATE_POINT_DRAWN_WIDTH): {
-  spoke: number
-  gap: number
-} {
-  const casing = (drawnWidth / 2) * ATC_NOTICE_CASING_RATIO
-  const rim = drawnWidth / 2 - casing
-  const pitch = (Math.PI * 2) / ATC_NOTICE_BURST.spokes
-
-  return {
-    spoke: 2 * ATC_NOTICE_BURST.tipHalfWidth * rim,
-    // Both sides of the gap lose a hairline to the casing of the spoke beside
-    // it, which is the term the first pass left out.
-    gap: (pitch - 2 * ATC_NOTICE_BURST.tipHalfWidth) * rim - 2 * casing,
-  }
-}
+export const ATC_NOTICE_GLYPH_BOX =
+  ATC_UPDATE_POINT_DRAWN_WIDTH - 2 * ATC_NOTICE_CASING_WIDTH
 
 // THE GLOW IS GONE (#1071), and this note is the receipt. It is a comment
 // rather than a constant because nothing is left to name - but a layer that
@@ -354,27 +269,29 @@ export function atcNoticeRimWidths(drawnWidth: number = ATC_UPDATE_POINT_DRAWN_W
 // looking at that part of the screen. It is deleted rather than dimmed, and the
 // honest way to put that is that real conspicuity was given up.
 //
-// WHY IT COULD NOT SIMPLY STAY. A 54px wash of red behind an open burst is the
-// solid disc back again in a softer spelling - the ground between the spokes
-// would be washed exactly where the burst exists to let it through. Keeping
+// WHY IT COULD NOT SIMPLY STAY. A 54px wash of red behind an open mark is the
+// solid disc back again in a softer spelling - the ground inside the band
+// would be washed exactly where the hole exists to let it through. Keeping
 // both would have meant keeping neither.
 //
 // WHAT REPLACES IT IS SHAPE RATHER THAN AREA. Nothing else on this map is a
-// radial burst: every waypoint and the serious-warning pin are discs
-// (map/poiIcons.ts), and every closure and ATC band is a line. So the mark is
-// still unlike its neighbours at a glance, and it keeps every other conspicuity
-// property it had - the closure red, the 40px reach, being drawn over every
-// other layer (map/style.ts), and `icon-allow-overlap` so the collision engine
-// can never drop one.
+// bare glyph: every waypoint and the serious-warning pin are discs
+// (map/poiIcons.ts), and every closure and ATC band is a line - the burst
+// #1071 chose was unlike its neighbours for the same reason, and the bare
+// hazard triangle that replaced it on 2026-09-10 is too, while sharing the
+// serious-warning pin's glyph so the two read as one vocabulary. The mark
+// keeps every other conspicuity property it had - the closure red, the 40px
+// reach, being drawn over every other layer (map/style.ts), and
+// `icon-allow-overlap` so the collision engine can never drop one.
 //
 // @unvalidated Nobody has watched a hiker find one of these on a phone, in sun,
 // while walking. A specimen sheet rendered at z5/z9/z13 is what this decision
 // was made on, and a specimen sheet cannot answer a question about peripheral
-// vision. What would settle it is field use. If the burst turns out to be
+// vision. What would settle it is field use. If the triangle turns out to be
 // harder to find than the disc was, the fix is a glow back on a ZOOM RAMP -
 // strong at corridor zoom where the mark is 16px and there is no detail to
-// lose, faint in the hand where the spokes are large and the ground under them
-// is what a hiker came for - and not one strength everywhere, which is the
+// lose, faint in the hand where the band is wide and the ground inside it is
+// what a hiker came for - and not one strength everywhere, which is the
 // shape of the fault this change is fixing.
 
 /**

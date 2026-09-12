@@ -40,13 +40,17 @@
 // cased white line but a single dark one - a near-white blaze on paper is
 // inked in the casing colour with no casing - and it is the ONLY solid line:
 // every other trail in the park is a dot rhythm in its own blaze hue,
-// ghosted as before, with its name set along it. Somewhere on the A.T.'s
+// ghosted as before, with its name set along it. (Both of those are gone
+// since 2026-09-10: every line is solid, and the A.T. is its white blaze
+// with its dark casing whether or not it is taken - map/style.ts's header,
+// rule 2. What separates the taken A.T. from the park's trails in this
+// frame is its width, its full strength against their ghosting, and its
+// badge.) Somewhere on the A.T.'s
 // longest visible stretch sits its badge, a paper pill carrying the ATC mark
 // and the full name. Amended (#1307): the Long Path can wear one too now,
 // wherever its own longest visible stretch has room - it joined
 // PRIMARY_TRAIL_SOURCES/BADGE_SOURCES the same way the A.T. holds them,
-// still dotted and ghosted rather than solid, since neither list is the
-// takeable one. Whether the Long Path's line is prominent enough in THIS
+// still ghosted rather than taken, since neither list is the takeable one. Whether the Long Path's line is prominent enough in THIS
 // frame to earn one is unverified from a sandbox with no rendered tiles, so
 // the caption claims only what can wear a badge now, not what does in this
 // crop. What the caption has to name is which line is solid and which
@@ -64,21 +68,34 @@
 // map/trailBadges.ts's header argues for, and the full plate with the name
 // is what a less crowded stretch gets. The caption claims the plate and the
 // mark; whether the name is beside them is what the frame answers.
-// TAKEN IN THE DRIVE (#1306). Nothing is taken on first launch - the A.T.
-// would be a dotted dark line like every other - so the drive opens the
-// legend, takes the A.T. from its row, and closes the legend again before the
-// frame. What the caption claims about "the one solid line" is a claim about
-// the taken state, and this is how the recipe reaches it.
+// TAKEN BY THE HIKE, NOT BY A TAP (#1352). Nothing is taken on first launch,
+// and the drive used to open the legend and take the A.T. from its row; since
+// the state merge that tap opens the "Which long hike?" sheet instead, so the
+// wait for "Close legend" hung for its full timeout and the frame was never
+// shot (caught on the local rig, 2026-09-10, when this recipe was touched
+// for the solid lines). What replaces it is what legend-trails-in-view.mjs
+// already does: seed an active A.T. hike (fixtures/longHike.mjs, nobody's
+// data) before the reload, so the A.T. is taken BECAUSE the hiker is on it -
+// one state, read in two places - and the legend never opens. What the
+// caption claims about full strength against ghosting is a claim about the
+// taken state, and this is how the recipe reaches it.
+import { seedLongHike } from './fixtures/longHike.mjs'
+
 export const caption =
-  'Harriman at zoom 12, the A.T. taken from its legend row in the drive (#1306) — the A.T. is the one solid line, a white blaze with its dark casing (#1306) and wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail is a dot rhythm in its own blaze hue with its name set along it (#1283); the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
+  'Harriman at zoom 12, the A.T. taken from its legend row in the drive (#1306) — the A.T. a solid white blaze with its dark casing at full strength, wearing its badge (the ATC mark on a paper plate, with the name beside it wherever the pins leave room for one); every other trail a solid line too since 2026-09-10 (the dot rhythm of #1283 is gone), in its own blaze hue, ghosted, with its name set along it; the park’s trails appear once nearby_trails.pmtiles is in the bucket this preview reads'
 export const alt =
-  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid white line inside a thin dark casing, with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as dotted lines in their own colours around and across it, each with its name running along it'
+  'The map screen over Harriman State Park at zoom 12: the A.T. as a single solid white line inside a thin dark casing, with a small paper plate on it carrying the round ATC trail mark, and the name Appalachian National Scenic Trail beside the mark where the surrounding pins leave room; the park’s other blazed trails as fainter solid lines in their own colours around and across it, each with its name running along it'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */
 export const wait = 6000
 
 export default async function drive(page) {
+  // The hike first: it is what makes the A.T. taken at all (the header's
+  // last paragraph). Its reload lands on the entry screen; the camera write
+  // below survives it in sessionStorage either way.
+  await seedLongHike(page)
+
   // lib/cameraMemory.ts's contract: { center: [lon, lat], zoom }, read back
   // with every field validated, and null on anything that does not convince.
   // Lake Tiorati, where the A.T., the Ramapo-Dunderberg and the Long Path's
@@ -95,14 +112,4 @@ export default async function drive(page) {
   // through an init script on the CONTEXT (scripts/screenshot.mjs's
   // skipFirstRun), which re-runs on every document rather than only the first.
   await page.getByRole('tab', { name: 'Map' }).click()
-
-  // Take the A.T. (#1306): the legend's row is the one control a driver can
-  // reach - the badge is WebGL. Wait for the rows to be measured off the
-  // settled frame before tapping, then close the legend so the canvas is the
-  // frame; the map re-points its splits in place, no rebuild.
-  await page.getByRole('button', { name: 'Legend' }).click()
-  await page
-    .getByRole('button', { name: /Appalachian National Scenic Trail/ })
-    .click({ timeout: 15000 })
-  await page.getByRole('button', { name: 'Close legend' }).click()
 }

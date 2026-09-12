@@ -3,12 +3,15 @@
 // longer one of them, and MORE_TAB.md for why the third tab reads "Settings"
 // rather than "More".
 //
-// This bar is also where the OurHike mark lives, because on both layouts the
-// bar IS the bottom-left corner of the page. On a desktop it becomes the left
-// sidebar (desktop.css) and the mark sits at the foot of it, icon over
-// wordmark. On a phone it is a horizontal strip and the mark is the icon
-// alone, left of the tabs - the wordmark has nowhere to go there without
-// taking width off a thumb target.
+// This bar is also where the OurHike mark lives on a desktop, because there
+// the bar IS the bottom-left corner of the page: it becomes the left sidebar
+// (desktop.css) and the mark sits at the foot of it, icon over wordmark. On a
+// phone the bar is a horizontal strip of thumb targets and carries no mark at
+// all since 2026-09-10 (the room audit for #1374): the left end of the row is
+// spent on the mode chip below, which says something the tabs do not, and the
+// 24px icon that sat there was 32px of the tabs' width spent on branding. The
+// mark is kept in the markup for the sidebar; chrome.css decides which layout
+// draws it.
 //
 // The mark rides here rather than on the map itself because the map is the
 // product, and a watermark over it costs terrain a hiker may be reading. In the
@@ -36,6 +39,8 @@
 
 import type { ReactNode } from 'react'
 import { TABS, type TabId } from './tabs'
+import { HIKER_MODE_LABELS, type HikerMode } from '../lib/hikerMode'
+import { ModeIcon } from './ModeIcon'
 import logoIcon from '../design-system/assets/logo-icon.svg'
 
 export interface TabBarProps {
@@ -67,11 +72,68 @@ export interface TabBarProps {
    * header instead.
    */
   hikeSwitch?: ReactNode
+  /**
+   * Which of the three modes the hiker is in, read out as the left chip of
+   * the tab row (#1373, review rule R11): "Four tabs and the mode, on every
+   * screen … a read-out that opens the one control, never a second switch."
+   * A chip in the row rather than a row of its own since 2026-09-10: the
+   * room audit at 375×667 measured the bar at 105px - three rows, the brand
+   * mark alone on the first - against 45px with the chip in the row.
+   *
+   * A READ-OUT, NOT A SWITCH. The phone's bar is a strip of thumb targets and
+   * App.test.tsx pins that no radiogroup lives in it; this row is one button
+   * that opens the one ModeSwitch (on Today's header) rather than a copy of
+   * it. The shell passes it on the phone only - the desktop sidebar carries
+   * the switch itself through `modeSwitch`, and a read-out under a switch
+   * would answer the same question twice. First run passes nothing: the
+   * shell does not exist yet.
+   */
+  mode?: HikerMode
+  /** Open the one mode control. Without it the row still reads, as text. */
+  onOpenMode?: () => void
 }
 
-export function TabBar({ active, onSelect, modeSwitch, hikeSwitch }: TabBarProps) {
+export function TabBar({
+  active,
+  onSelect,
+  modeSwitch,
+  hikeSwitch,
+  mode,
+  onOpenMode,
+}: TabBarProps) {
+  const readout =
+    mode === undefined ? null : (
+      <>
+        <ModeIcon mode={mode} size={18} className="tab-bar__mode-icon" />
+        <span className="tab-bar__mode-word">{HIKER_MODE_LABELS[mode]}</span>
+        {onOpenMode !== undefined && (
+          <>
+            <span className="tab-bar__mode-caret" aria-hidden="true">
+              ▾
+            </span>
+          </>
+        )}
+      </>
+    )
+
   return (
     <nav className="tab-bar" aria-label="Main">
+      {readout !== null &&
+        (onOpenMode === undefined ? (
+          <div className="tab-bar__readout">
+            <span className="visually-hidden">Today I’m </span>
+            {readout}
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="tab-bar__readout tab-bar__readout--opens"
+            onClick={onOpenMode}
+            aria-label={`Today I’m ${HIKER_MODE_LABELS[mode!].toLowerCase()}. Switch mode`}
+          >
+            {readout}
+          </button>
+        ))}
       <div className="tab-bar__tabs" role="tablist">
         {TABS.map((tab) => (
           <button

@@ -203,10 +203,12 @@ describe('the mile a hiker reads, on a trail this build cannot measure', () => {
     expect(screen.queryByRole('img', { name: /elevation profile/i })).toBeNull()
   })
 
-  it('leaves a hiker with no long hike on the A.T. shell, unchanged', async () => {
-    // No active hike is MEASURABLE, not unmeasurable - the app is the A.T.'s
-    // whether or not a hike has been set up, which is today's behaviour and
-    // the thing this change must not quietly alter.
+  it('leaves a hiker with no long hike, on a taken A.T., measured as before', async () => {
+    // No active hike is MEASURABLE, not unmeasurable: with the A.T. taken
+    // from the map (lib/takenTrail.ts, the review of #1374) the shell
+    // measures on it whether or not a hike has been set up, which is
+    // today's behaviour and the thing this change must not quietly alter.
+    app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })

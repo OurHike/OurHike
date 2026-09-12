@@ -33,7 +33,7 @@ request quietly succeeding.
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.time import UtcDatetime
 from app.models.report import ReporterType
@@ -154,6 +154,49 @@ class MapStyle(str, Enum):
     ridgeline = "ridgeline"
 
 
+class PlaceKind(str, Enum):
+    """Mirrors client/src/lib/places.ts `PLACE_KINDS` exactly - the kinds the
+    places index publishes (#1371), and therefore the only kinds a hiker can
+    have named."""
+
+    park = "park"
+    town = "town"
+    trailhead = "trailhead"
+    parking = "parking"
+    trail = "trail"
+
+
+class DefaultPlace(BaseModel):
+    """Where this hiker hikes (client/src/lib/defaultPlace.ts): the place
+    named on first run's "Where do you hike?" - a park, a town, a trailhead -
+    snapshotted in full rather than referenced by id, because the places
+    index can change under a phone and the map's fallback centre must keep
+    working the morning a release moves.
+
+    A place, never a fix. The permission card's promise that location "is
+    read on this phone and never sent anywhere" is about GPS fixes, which
+    this object cannot hold: it is a row a hiker chose by name. It syncs so a
+    second device opens on the same place - the maintainer's decision of
+    2026-09-10 (OurHike/OurHike#1374), reversing the first draft's phone-only
+    store. Strict like its parent: a shape the client did not send is a 422,
+    and a coordinate off the globe is refused here rather than repaired on
+    every phone that reads it back.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    kind: PlaceKind
+    lon: float = Field(ge=-180, le=180)
+    lat: float = Field(ge=-90, le=90)
+    state: str | None = None
+    category: str | None = None
+    within: str | None = None
+    # west, south, east, north - the index's own order.
+    bbox: tuple[float, float, float, float] | None = None
+
+
 class PreferencesIn(BaseModel):
     """What a client PUTs to `/preferences/me` - a full replace of the
     synced blob, not a partial patch (see the router's upsert docstring)."""
@@ -250,6 +293,12 @@ class PreferencesIn(BaseModel):
     onboarding_completed: bool = False
     download_choice_made: bool = False
     location_permission_requested: bool = False
+
+    # Where this hiker hikes (#1373's first-run card, synced since #1374 at
+    # the maintainer's decision). Defaulted to None like drought_layer_shown
+    # and for the same reason: every row written before this key existed
+    # must still read back through PreferencesOut.
+    default_place: DefaultPlace | None = None
 
 
 class PreferencesOut(PreferencesIn):

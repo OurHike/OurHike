@@ -28,6 +28,8 @@ const STEWARDS: Stewards = [
     trust: null,
     licence: null,
     attribution: null,
+    terms: null,
+    termsSource: null,
     layers: [],
     keys: ['oprhp_trails'],
   },
@@ -37,6 +39,8 @@ const STEWARDS: Stewards = [
     trust: null,
     licence: null,
     attribution: null,
+    terms: null,
+    termsSource: null,
     layers: [],
     keys: ['nynjtc_long_path'],
   },
@@ -139,6 +143,9 @@ describe("the hiker's own line", () => {
     expect(screen.getByRole('textbox')).toHaveValue('Blueberries on the open rock.')
 
     fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Cold start.' } })
+    // Handed over on blur, not per keystroke (lib/useDraftField.ts).
+    expect(props.onSetNote).not.toHaveBeenCalled()
+    fireEvent.blur(screen.getByRole('textbox'))
     expect(props.onSetNote).toHaveBeenCalledWith('Cold start.')
   })
 

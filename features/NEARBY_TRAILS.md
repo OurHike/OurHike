@@ -103,13 +103,18 @@ real blaze hue — and add the one new value this feature introduces:
   last-drawn. Ghosting adds a third channel (opacity) for a distinction the AT-only map
   never had to draw. *(Amended 2026-09-08,
   [#1283](https://github.com/OurHike/OurHike/issues/1283): this said "every line stays
-  solid; the no-dash rule holds". It no longer does — a nearby trail is now also a
+  solid; the no-dash rule holds". For two days it did not — a nearby trail was also a
   **dot rhythm**, a fourth channel on a layer of its own under the chosen system's solid
   lines, because at the opening camera opacity alone could not say which of a
-  country's worth of threads the map was about. Ghosting is unchanged and applies to
-  both halves of the split; the argument above for opacity over a halo or a hue
-  survives a dash pattern untouched. WIREFRAMES.md §3 carries the amended rule, the
-  through-route badge, and the near-white ink that goes with them.)*
+  country's worth of threads the map was about. Amended again 2026-09-10,
+  [#1374](https://github.com/OurHike/OurHike/pull/1374): the maintainer took the dots
+  off a z13 frame — "the dashes are distracting" — so every line stays solid and the
+  no-dash rule holds once more. The layer split #1283 built stays: its untaken half
+  draws under the chosen system's and at the network's far weight below the seam, which
+  with opacity is what now separates the two. Ghosting is unchanged throughout;
+  the argument above for opacity over a halo or a hue was never about the dash.
+  WIREFRAMES.md §3 carries both amendments, the through-route badge, and where the
+  near-white ink still applies.)*
 
 The tradeoff this choice accepts, stated so nobody rediscovers it: blaze identity weakens
 on exactly the trails a hiker might be thinking of taking. Two things recover it — the hue
@@ -142,13 +147,15 @@ evidence; until then it stands.
 
 **Re-argued 2026-09-09, for the badge only ([#1306](https://github.com/OurHike/OurHike/issues/1306) —
 First launch takes no trail: every line dotted until the hiker takes one from its badge or
-legend row).** The case above is against a one-tap switch on a *line* at a junction, and it
+legend row).** *(The title's "dotted" is the dot rhythm of #1283, gone since 2026-09-10 —
+"untaken" is the word now, and the argument below did not depend on the dots.)* The case above is against a one-tap switch on a *line* at a junction, and it
 still holds for lines: a tap on any line opens the sheet and switches nothing. A through-route's
 **badge** is a different thing — a deliberate thumb target the design chose over bare along-line
 names precisely so there would be one — and the maintainer's call is that a tap on it *takes* the
 trail, as does a tap on the trail's row in the legend's "Trails in view" block. Nothing is taken
-on first launch. What taking changes is the lines (solid against dotted) and the legend's
-`taken`; the mile frame, the ribbon, the numbers and the POI set stay the A.T.'s, which is what
+on first launch. What taking changes is the lines (full strength against ghosted, and the
+taken trail's own weight below the seam — solid against dotted until 2026-09-10) and the
+legend's `taken`; the mile frame, the ribbon, the numbers and the POI set stay the A.T.'s, which is what
 keeps this outside the argument above rather than a reversal of it.
 
 ## 3. Closed trails — the closure vocabulary, reused
@@ -358,6 +365,24 @@ at the *right* prominence, which the dilemma's two horns both lacked. The smear 
 stays cut: the overview is 31 merged features, not 21,805. What #557 still owns is
 unchanged — the park as the below-seam *subject*, tappable, with marquee routes told
 apart from park trails.
+
+**And a through-route in the overview wears its badge, from the registry where the
+published sketch has no name (2026-09-11, [#1374](https://github.com/OurHike/OurHike/pull/1374)).**
+`write_overview` has named the trails clearing `NAMED_TRAIL_THRESHOLD_MILES` since #1307,
+with `through_route: true` beside the name, and `test_export_nearby_trails.py` pins it.
+The copy in the bucket does not carry that yet: measured live on 2026-09-11, UA's
+`network_overview.geojson` is **38 features and not one of them named** — `source`,
+`blaze_color` and `trail_status` only — because the publish that would refresh it is held
+back with `nearby_trails.geojson`, which `publish.py` gates on `reaches_hikers` and two
+New Jersey sources have carried `false` since #1293. The visible cost was the maintainer's
+own frame: the A.T. on its pill over the Hudson and the Long Path in aqua beside it
+wearing nothing, because `map/trailsInView.ts` skips a feature with no name. So the client
+falls back to `lib/trails.ts`'s name for a source the badge already marks
+(`map/trailBadges.ts`'s `registryNameForSource`) — the same claim `BADGE_MARK_BY_SOURCE`
+already makes about which registry trail a line is, and firing for those two sources
+alone, so a park's folded haze stays unnamed and off the list. **Both halves stand**: the
+fallback is what a hiker sees today, and the republish is what makes the data say it
+itself.
 The stretch model (CORRIDOR_VIEW's `named` basis) carries over unchanged — "Breakneck
 Ridge loop" is a stretch with a citation like "Franconia Ridge" is.
 

@@ -3,7 +3,7 @@
 // and a pre-#753 download is refused rather than planned dishonestly.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { PlanTargetSheet } from './PlanTargetSheet'
@@ -145,11 +145,7 @@ describe("the hiker's own pace, on a sheet that is already open", () => {
     )
 
     const dayCount = () =>
-      Number(
-        /Lay out (\d+) days?/.exec(
-          screen.getByRole('button', { name: /Lay out \d+ days?/ }).textContent ?? '',
-        )?.[1],
-      )
+      Number(/(\d+) days?/.exec(screen.getByText(/ · \d+ days?/).textContent ?? '')?.[1])
 
     const atStandard = dayCount()
     rerender(<PlanTargetSheet {...PROPS} elevation={profile} pace={slow} />)
@@ -171,11 +167,7 @@ describe("the hiker's own pace, on a sheet that is already open", () => {
     // nine hours, whether it is asked cold or after a detour through five.
     const hoursSlider = () => screen.getByLabelText('Walking hours per day')
     const dayCount = () =>
-      Number(
-        /Lay out (\d+) days?/.exec(
-          screen.getByRole('button', { name: /Lay out \d+ days?/ }).textContent ?? '',
-        )?.[1],
-      )
+      Number(/(\d+) days?/.exec(screen.getByText(/ · \d+ days?/).textContent ?? '')?.[1])
 
     const cold = render(
       <PlanTargetSheet {...PROPS} elevation={flatProfile()} pace={STANDARD_PACE} />,
@@ -199,7 +191,7 @@ describe('laying out', () => {
 
     await user.click(screen.getByRole('button', { name: 'Miles' }))
     // 30 miles at a 15-mile default target over stops at 10/15/20: two days.
-    const cta = screen.getByRole('button', { name: /Lay out \d+ days/ })
+    const cta = screen.getByRole('button', { name: 'Save this long hike' })
     await user.click(cta)
 
     expect(PROPS.onLayOut).toHaveBeenCalledTimes(1)
@@ -218,7 +210,7 @@ describe('laying out', () => {
     fireEvent.change(screen.getByLabelText('First day (optional)'), {
       target: { value: '2026-05-12' },
     })
-    await user.click(screen.getByRole('button', { name: /Lay out \d+ days/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
     expect(plan.days[0].date).toBe('2026-05-12')
@@ -229,7 +221,7 @@ describe('laying out', () => {
     const user = userEvent.setup()
     render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
 
-    await user.click(screen.getByRole('button', { name: /Lay out \d+ days/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
     const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
     expect(plan.days.every((day) => day.date === undefined)).toBe(true)
   })
@@ -237,9 +229,9 @@ describe('laying out', () => {
   it('re-prices the days as the target moves', () => {
     render(<PlanTargetSheet {...PROPS} elevation={null} />)
 
-    const before = screen.getByRole('button', { name: /Lay out \d+ days/ }).textContent
+    const before = screen.getByText(/ · \d+ days/).textContent
     fireEvent.change(screen.getByLabelText('Miles per day'), { target: { value: '7' } })
-    const after = screen.getByRole('button', { name: /Lay out \d+ days/ }).textContent
+    const after = screen.getByText(/ · \d+ days/).textContent
 
     expect(after).not.toBe(before)
   })
@@ -262,7 +254,7 @@ describe('laying out', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: /Lay out \d+ days/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
     const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
 
     const viaIndex = plan.stops.findIndex((stop) => stop.mile === 15)
@@ -285,7 +277,7 @@ describe('a download from before #753', () => {
     )
 
     expect(screen.getByText(/predates trail miles/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Lay out/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Save this long hike' })).toBeNull()
   })
 })
 
@@ -312,7 +304,7 @@ describe('the rest rhythm (#798)', () => {
     })
     expect(screen.getByText('every 1 day')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /^Lay out/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     const plan = PROPS.onLayOut.mock.calls[0][0] as HikePlan
     expect(plan.rhythm).toEqual({ everyDays: 1, kind: 'zero' })
@@ -325,9 +317,7 @@ describe('the rest rhythm (#798)', () => {
 
     // Two walking days over this fixture's 30 flat miles, and the button
     // says so while no rest is asked for.
-    expect(screen.getByRole('button', { name: /^Lay out/ })).toHaveTextContent(
-      'Lay out 2 days',
-    )
+    expect(screen.getByText(/ · \d+ days/)).toHaveTextContent('· 2 days')
 
     fireEvent.change(screen.getByLabelText('A rest day every how many walking days'), {
       target: { value: '1' },
@@ -337,9 +327,7 @@ describe('the rest rhythm (#798)', () => {
     // button used to keep saying 2: it counted the generator's boundaries,
     // and applyRhythm ran afterwards inside the handler - so the only figure
     // on the sheet described a stage rather than the plan.
-    expect(screen.getByRole('button', { name: /^Lay out/ })).toHaveTextContent(
-      'Lay out 3 days',
-    )
+    expect(screen.getByText(/ · \d+ days/)).toHaveTextContent('· 3 days')
   })
 
   it('lays out exactly the number of days it promised', async () => {
@@ -353,11 +341,9 @@ describe('the rest rhythm (#798)', () => {
     })
 
     const promised = Number(
-      /Lay out (\d+)/.exec(
-        screen.getByRole('button', { name: /^Lay out/ }).textContent ?? '',
-      )?.[1],
+      / · (\d+) days/.exec(screen.getByText(/ · \d+ days/).textContent ?? '')?.[1],
     )
-    await user.click(screen.getByRole('button', { name: /^Lay out/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     expect(onLayOut).toHaveBeenCalledTimes(1)
     expect(onLayOut.mock.calls[0][0].days).toHaveLength(promised)
@@ -374,5 +360,98 @@ describe('the rest rhythm (#798)', () => {
 
     await user.click(screen.getByRole('button', { name: 'Nearo' }))
     expect(screen.getByText(/is a zero where there isn’t one/)).toBeInTheDocument()
+  })
+})
+
+describe('step 3 of the spine (#1373, frame 5b)', () => {
+  it('wears the rail with the route kept behind both doors, only on the spine', async () => {
+    const user = userEvent.setup()
+    const onBackToStepOne = vi.fn()
+    render(
+      <PlanTargetSheet
+        {...PROPS}
+        elevation={flatProfile()}
+        onBackToStepOne={onBackToStepOne}
+      />,
+    )
+
+    const rail = screen.getByRole('navigation', { name: 'Planning steps' })
+    expect(rail).toHaveTextContent('Long hike')
+    await user.click(screen.getByRole('button', { name: 'Step 2, Route' }))
+    expect(PROPS.onCancel).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Step 1, Long hike' }))
+    expect(onBackToStepOne).toHaveBeenCalledTimes(1)
+    await user.click(screen.getByRole('button', { name: 'Back to Route, step 2' }))
+    expect(PROPS.onCancel).toHaveBeenCalledTimes(2)
+
+    // The Plan tab's inline section planner mounts the same sheet off the
+    // spine, and there the rail would claim steps nobody walked.
+    cleanup()
+    render(<PlanTargetSheet {...PROPS} elevation={flatProfile()} />)
+    expect(screen.queryByRole('navigation', { name: 'Planning steps' })).toBeNull()
+  })
+
+  it('heads with the route and its figures, and lists the days before they are kept, each priced', async () => {
+    const user = userEvent.setup()
+    render(
+      <PlanTargetSheet
+        {...PROPS}
+        route={[{ mile: 0, name: 'Springer' }, { mile: 30 }]}
+        elevation={flatProfile()}
+        onBackToStepOne={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Miles' }))
+
+    expect(
+      screen.getByRole('heading', { name: 'Springer → mi 30.0' }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/30(\.0)? mi · 2 days · 0 ft up/)).toBeInTheDocument()
+
+    const days = screen.getByRole('region', { name: 'The days' })
+    const rows = within(days).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('D1')
+    expect(rows[0]).toHaveTextContent('→ campsite at 15')
+    expect(rows[1]).toHaveTextContent('→ mi 30.0')
+    // Never distance alone (R7): the time at the hiker's pace rides each row.
+    expect(rows[0]).toHaveTextContent(/≈/)
+    expect(screen.queryByRole('button', { name: /All \d+ days/ })).toBeNull()
+  })
+
+  it('shows the first four days and a door to the rest', async () => {
+    const user = userEvent.setup()
+    render(
+      <PlanTargetSheet
+        {...PROPS}
+        route={[{ mile: 0 }, { mile: 30 }]}
+        pois={[...POIS, poi('s3', 'shelter', 5), poi('s4', 'shelter', 25)]}
+        elevation={flatProfile()}
+        onBackToStepOne={vi.fn()}
+      />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Miles' }))
+    // Five miles a day over thirty, with a stop every five: six days.
+    fireEvent.change(screen.getByLabelText('Miles per day'), { target: { value: '5' } })
+
+    const days = screen.getByRole('region', { name: 'The days' })
+    expect(within(days).getAllByRole('listitem').length).toBeLessThanOrEqual(4)
+    const all = screen.getByRole('button', { name: /All \d+ days/ })
+    const count = Number(/All (\d+) days/.exec(all.textContent ?? '')?.[1])
+    expect(count).toBeGreaterThan(4)
+    await user.click(all)
+    expect(within(days).getAllByRole('listitem')).toHaveLength(count)
+    expect(screen.queryByRole('button', { name: /All \d+ days/ })).toBeNull()
+  })
+
+  it('withholds the days’ times, never fakes them, with no profile - and says so on the row', async () => {
+    const user = userEvent.setup()
+    render(<PlanTargetSheet {...PROPS} elevation={null} onBackToStepOne={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'Miles' }))
+    const days = screen.getByRole('region', { name: 'The days' })
+    for (const row of within(days).getAllByRole('listitem')) {
+      expect(row).not.toHaveTextContent(/≈/)
+      expect(row).toHaveTextContent(/no profile/)
+    }
   })
 })

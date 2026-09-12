@@ -57,6 +57,12 @@ import {
 } from '../lib/downloadActivity'
 import { formatBytes, formatBytesLive } from '../lib/formatBytes'
 import { Tabs } from './Tabs'
+import { PlaceField } from '../chrome/PlaceField'
+import { snapshotPlace, type DefaultPlace } from '../lib/defaultPlace'
+import { NO_PLACES, type Place, type PlacesDocument } from '../lib/places'
+import type { UnitSystem } from '../lib/units'
+import { HIKER_MODE_LABELS, HIKER_MODE_VALUES, type HikerMode } from '../lib/hikerMode'
+import { ModeIcon } from '../chrome/ModeIcon'
 import './onboarding.css'
 
 /**
@@ -77,6 +83,27 @@ export interface OnboardingResult {
    *  actually shows, so the preference written matches the choice made. */
   hikingDetailLevel: HikingDetailLevel
   locationRequested: boolean
+  /** Where the hiker said they hike (#1373, frame 1b), or null when the
+   *  step was skipped. A snapshot for lib/defaultPlace.ts, never an id. */
+  defaultPlace: DefaultPlace | null
+  /**
+   * What brings them out - Day hike, Long hike or Volunteer - or null when
+   * the card was skipped, which the card says aloud means Day hike (the
+   * shell's DEFAULT_HIKER_MODE). Null rather than 'day' so the shell can
+   * tell a choice from a default and write only the choice.
+   */
+  hikerMode: HikerMode | null
+}
+
+/**
+ * One line under each mode, in Today's own voice (screens/Today.tsx's setup
+ * heads say the same things at more length). Copy, not data: the labels are
+ * lib/hikerMode.ts's and only the sentence is this card's.
+ */
+const MODE_NOTES: Record<HikerMode, string> = {
+  day: 'Out and back by dark. Walks near you, and a builder for one of your own.',
+  long: 'One trail, broken into days. Sections, water and camp to camp.',
+  volunteer: 'Workdays and the crew, with the trail in the background.',
 }
 
 export interface OnboardingProps {
@@ -98,6 +125,18 @@ export interface OnboardingProps {
   /** What is moving right now (lib/downloadActivity.ts), for the inline
    *  panel - null while nothing is. */
   downloadActivity?: DownloadActivity | null
+  /**
+   * The places the "where do you hike?" step resolves against (#1373,
+   * lib/usePlaces.ts), and whether every read of them has answered. Omitted,
+   * the step says there is nothing on the phone to search and offers the
+   * way past - the field never blocks the flow.
+   */
+  places?: PlacesDocument
+  placesSettled?: boolean
+  online?: boolean
+  /** For the miles of trail a place row prints. Imperial until the hiker
+   *  has said otherwise, which on first run they have not. */
+  units?: UnitSystem
 }
 
 /**
@@ -176,8 +215,19 @@ export function Onboarding({
   onChangeLevel,
   onStartDownload,
   downloadActivity = null,
+  places = NO_PLACES,
+  placesSettled = true,
+  online = false,
+  units = 'imperial',
 }: OnboardingProps) {
   const [stepIndex, setStepIndex] = useState(0)
+  // The mode taken on the "what brings you out?" card, or null until one is
+  // - and null on through the skip, which is the shell's cue to keep its
+  // default rather than write a choice nobody made.
+  const [mode, setMode] = useState<HikerMode | null>(null)
+  // The row taken on the "where do you hike?" step, held as the live index
+  // row until the flow finishes and snapshots it (lib/defaultPlace.ts).
+  const [place, setPlace] = useState<Place | null>(null)
   // Standard is pre-selected, so skipping every step still leaves a usable
   // map to download rather than no choice at all.
   const [hikingLevel, setHikingLevel] = useState<HikingDetailLevel>('standard')
@@ -246,7 +296,21 @@ export function Onboarding({
     )
 
   const finish = (locationRequested: boolean) =>
-    onComplete({ hikingDetailLevel: hikingLevel, locationRequested })
+    onComplete({
+      hikingDetailLevel: hikingLevel,
+      locationRequested,
+      defaultPlace: place === null ? null : snapshotPlace(place),
+      hikerMode: mode,
+    })
+
+  /** What the size step's primary says it will do, with the chosen rung's
+   *  own figure - "Download 458.4 MB" - or just the verb while the manifest
+   *  has not said what the rung weighs. */
+  const chosenRung = hikingDetailOptions(publishedSizes).find((o) => o.id === hikingLevel)
+  const downloadLabel =
+    chosenRung?.sizeBytes == null
+      ? 'Download'
+      : `Download ${formatBytes(chosenRung.sizeBytes)}`
 
   const next = () => {
     if (stepIndex < ONBOARDING_STEPS.length - 1) setStepIndex(stepIndex + 1)
@@ -344,10 +408,12 @@ export function Onboarding({
 
         {step.id === 'what-ourhike-is' && (
           <section className="onboarding__step">
-            <h1 className="onboarding__title">What OurHike is</h1>
+            <h1 className="onboarding__title">
+              A map that works where there is no signal.
+            </h1>
             <p>
-              The whole trail&rsquo;s topo map lives on your phone. It works with no bars
-              and no data plan &mdash; the way the trail actually is.
+              Trails, water, shelters and resupply from the organizations that maintain
+              them &mdash; downloaded to this phone.
             </p>
             {/*
               The money sentence, and the one thing on this screen that has to
@@ -389,6 +455,77 @@ export function Onboarding({
           </section>
         )}
 
+        {/* What brings them out (the maintainer's review of #1374, 2026-09-10):
+            the mode was being assigned silently, and it decides what Today
+            shows and what step 1 builds. Three radios, none preselected - a
+            default drawn as a choice would be the silent assignment in
+            better clothes - and the primary is absent until one is taken
+            (D10: no dead control). The skip says what skipping means. */}
+        {step.id === 'hiker-mode' && (
+          <section className="onboarding__step">
+            <h1 className="onboarding__title">What brings you out?</h1>
+            <p>
+              Today changes with the answer &mdash; what leads, what is nearby, what a
+              plan builds. Switch it any day from the Today screen.
+            </p>
+            <div className="onboarding__modes" role="radiogroup" aria-label="Today I'm">
+              {HIKER_MODE_VALUES.map((offered) => (
+                <button
+                  key={offered}
+                  type="button"
+                  role="radio"
+                  aria-checked={offered === mode}
+                  className={
+                    offered === mode
+                      ? 'onboarding__mode onboarding__mode--on'
+                      : 'onboarding__mode'
+                  }
+                  onClick={() => setMode(offered)}
+                >
+                  <ModeIcon mode={offered} size={22} className="onboarding__mode-icon" />
+                  <span className="onboarding__mode-text">
+                    <span className="onboarding__mode-name">
+                      {HIKER_MODE_LABELS[offered]}
+                    </span>
+                    <span className="onboarding__mode-note">{MODE_NOTES[offered]}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Where the hiker hikes (#1373, the design's frame 1b). A place,
+            not a permission: the map has somewhere to open before location
+            is asked for, and somewhere to fall back to whenever GPS has no
+            fix. The sentence under the field is the promise
+            lib/defaultPlace.ts and lib/userPreferences.ts keep: a place
+            named from a published index, kept with the synced preferences
+            since the maintainer's decision of 2026-09-10, and never a fix. */}
+        {step.id === 'default-place' && (
+          <section className="onboarding__step">
+            <h1 className="onboarding__title">Where do you hike?</h1>
+            <p>
+              So we can put a trail in front of you before you turn location on &mdash;
+              and fall back to it whenever GPS cannot get a fix.
+            </p>
+            <PlaceField
+              places={places}
+              settled={placesSettled}
+              online={online}
+              units={units}
+              picked={place}
+              onPick={setPlace}
+              label="Where do you hike"
+            />
+            <p className="onboarding__reassurance">
+              Kept with your settings &mdash; on this phone, and with your account once
+              you sign in, so another device opens here too. Change it any time in More
+              &rarr; You.
+            </p>
+          </section>
+        )}
+
         {step.id === 'map-size' && (
           <section className="onboarding__step">
             <h1 className="onboarding__title">Take the whole trail with you</h1>
@@ -416,10 +553,11 @@ export function Onboarding({
 
         {step.id === 'location-permission' && (
           <section className="onboarding__step">
-            <h1 className="onboarding__title">Your location</h1>
+            <h1 className="onboarding__title">Show where you are on it?</h1>
             <p>
-              OurHike works with no signal at all. Your position never leaves your phone
-              &mdash; nothing about where you are is sent anywhere.
+              Location is read on this phone and never sent anywhere. Without it the map
+              still works &mdash; it just cannot tell you which side of the ridge you are
+              on.
             </p>
             <div className="onboarding__actions">
               <button
@@ -427,14 +565,17 @@ export function Onboarding({
                 className="onboarding__primary"
                 onClick={() => finish(true)}
               >
-                Allow location
+                Turn on location
               </button>
+              {/* The fallback, named (frame 1d): declining is a choice of
+                  what the map opens on instead, and where a place was given
+                  the button says so rather than "Not now". */}
               <button
                 type="button"
                 className="onboarding__secondary"
                 onClick={() => finish(false)}
               >
-                Not now
+                {place === null ? 'Not now' : `Use ${place.name} instead`}
               </button>
             </div>
           </section>
@@ -442,33 +583,86 @@ export function Onboarding({
 
         {downloadActivity !== null && <DownloadPanel activity={downloadActivity} />}
 
+        {/* Each card's own pair (#1373, the design's F1): a primary that says
+            what it does and a skip that says what skipping means. The
+            location card carries its pair inside the step, since both of
+            its buttons finish the flow. */}
         <div className="onboarding__nav">
-          {step.id === 'map-size' ? (
+          {step.id === 'what-ourhike-is' && (
+            <>
+              <button type="button" className="onboarding__primary" onClick={next}>
+                Get set up
+              </button>
+              {/* Straight to the map, with every default: the standard
+                  sheet still offered from Today, no place, no location. */}
+              <button
+                type="button"
+                className="onboarding__skip"
+                onClick={() => finish(false)}
+              >
+                Skip &mdash; take me to the map
+              </button>
+            </>
+          )}
+          {step.id === 'hiker-mode' && (
+            <>
+              {/* Absent until a mode is taken, for the place card's reason
+                  below; the skip is the way on and says what it means. */}
+              {mode !== null && (
+                <button type="button" className="onboarding__primary" onClick={next}>
+                  Continue as {HIKER_MODE_LABELS[mode].toLowerCase()}
+                </button>
+              )}
+              <button
+                type="button"
+                className="onboarding__skip"
+                onClick={() => {
+                  setMode(null)
+                  next()
+                }}
+              >
+                Skip &mdash; day hike for now, change it on Today
+              </button>
+            </>
+          )}
+          {step.id === 'default-place' && (
+            <>
+              {/* No primary until there is a place to use - a "Use" button
+                  with nothing behind it would be the dead control D10
+                  forbids, and the skip is the honest way on. */}
+              {place !== null && (
+                <button type="button" className="onboarding__primary" onClick={next}>
+                  Use {place.name}
+                </button>
+              )}
+              <button
+                type="button"
+                className="onboarding__skip"
+                onClick={() => {
+                  setPlace(null)
+                  next()
+                }}
+              >
+                Skip &mdash; I&rsquo;ll set this later
+              </button>
+            </>
+          )}
+          {step.id === 'map-size' && (
             <>
               {/* The step's own pair (#1054): the primary starts the
-                  transfer it has just sized, the ghost declines it without
-                  ceremony - and the Today screen holds the door open for a
-                  phone that decided later. */}
+                  transfer it has just sized - and says how much, which is
+                  the design's one change to it - the ghost declines it
+                  without ceremony, and the Today screen holds the door open
+                  for a phone that decided later. */}
               <button
                 type="button"
                 className="onboarding__primary"
                 onClick={startDownloadAndGo}
               >
-                Keep going
+                {downloadLabel}
               </button>
               <button type="button" className="onboarding__skip" onClick={next}>
                 Decide this later
-              </button>
-            </>
-          ) : (
-            <>
-              {step.id !== 'location-permission' && (
-                <button type="button" className="onboarding__primary" onClick={next}>
-                  Continue
-                </button>
-              )}
-              <button type="button" className="onboarding__skip" onClick={next}>
-                Skip
               </button>
             </>
           )}

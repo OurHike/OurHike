@@ -68,7 +68,6 @@ import { sheetVariant, type SheetAppearance } from './liveTopo'
 import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
 import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
 import { whenStyleReady } from './styleReady'
-import { TRAIL_LABEL_MIN_ZOOM } from './trailLabels'
 
 export const TRAIL_BADGE_SOURCE_ID = 'trail-badges'
 export const TRAIL_BADGE_LAYER_ID = 'trail-badge'
@@ -84,7 +83,7 @@ export const TRAIL_BADGE_LAYER_ID = 'trail-badge'
  * A badge is a claim that the line is a destination, so exactly the tier the
  * map already keys width and sort order off wears one. That is what keeps the
  * badge count roughly constant as networks are added: a state park's forty
- * trails add forty dotted lines and forty along-line names, and no badges.
+ * trails add forty fine lines and forty along-line names, and no badges.
  * The Long Path joined this tier at #1307, the first source promoted off
  * export_nearby_trails.py's write_overview naming it below the seam.
  */
@@ -129,6 +128,47 @@ export function trailIdForSource(source: string | null | undefined): string | nu
   return BADGE_MARK_BY_SOURCE[source] ?? null
 }
 
+/**
+ * The name the registry gives a marked source, or null - what a badge prints
+ * when the DATA carries no name (#1374, the maintainer's frame of
+ * 2026-09-11).
+ *
+ * THE SKETCH BELOW THE SEAM IS THE CASE THIS EXISTS FOR. Under
+ * POI_PIN_MIN_ZOOM the other organizations' trails draw from one coarse file
+ * (lib/config.ts's NETWORK_OVERVIEW_KEY), and the copy in the bucket carries
+ * `source`, `blaze_color` and `trail_status` and nothing else - 38 features,
+ * none of them named, read live 2026-09-11. export_nearby_trails.py's
+ * write_overview has named its qualifying trails since #1307, and its test
+ * pins that; the artifact is simply older than the exporter, because the
+ * publish that would refresh it is held back with the network file it
+ * sketches (two New Jersey sources carry `reaches_hikers: false` since
+ * #1293). So the Long Path drew below the seam with no name, and
+ * map/trailsInView.ts's `if (name === null) continue` left it unbadged and
+ * off the "Trails in view" list, while the A.T. beside it kept both - the
+ * A.T. draws from its own file, which is named at every zoom.
+ *
+ * NAMING IT FROM THE REGISTRY IS THE SAME CLAIM THE MARK ALREADY MAKES. The
+ * badge's mark is keyed off `source` through BADGE_MARK_BY_SOURCE above,
+ * because nothing publishes a `trail_id` (this file's header). A source in
+ * that table has already been declared to BE one registry trail; taking that
+ * trail's name from lib/trails.ts when the feature carries none says nothing
+ * the mark did not. It fires for exactly the two sources in that table, so no
+ * unnamed haze gains a name: the forty fine lines of a state park have no
+ * entry and stay unnamed, which is what keeps them out of the list.
+ *
+ * THE DATA'S NAME ALWAYS WINS where there is one, which is why this is a
+ * fallback and not a lookup. The registry calls the A.T. "Appalachian Trail"
+ * and ATC's feed calls it "Appalachian National Scenic Trail"; the feed is
+ * what a hiker reads on the badge today and that does not change. In
+ * practice this never fires for `centerline` at all - the A.T.'s own file
+ * carries names at every zoom - and it is written to be correct if it did.
+ */
+export function registryNameForSource(source: string | null | undefined): string | null {
+  const trail =
+    source === null || source === undefined ? undefined : BADGE_MARK_BY_SOURCE[source]
+  return trail === undefined ? null : (TRAILS[trail]?.name ?? null)
+}
+
 export function trailMarkImageId(source: string | null | undefined): string | null {
   const trail =
     source === null || source === undefined ? undefined : BADGE_MARK_BY_SOURCE[source]
@@ -148,6 +188,11 @@ export function bareImageId(id: string): string {
  *  map/trailsInView.ts, read by the layer's `text-field`. */
 export type BadgeFit = 'full' | 'mark'
 export const BADGE_FIT_PROPERTY = 'fit'
+
+/** Which side of its vertex the badge sits - one of TRAIL_BADGE_ANCHORS,
+ *  chosen by map/trailsInView.ts and read by the layer's `text-anchor`.
+ *  The placer's, not the engine's: see the layout below. */
+export const BADGE_ANCHOR_PROPERTY = 'anchor'
 
 /** The chip a blaze falls through to. Every palette member has one, derived
  *  from BLAZE_PALETTE_MEMBERS so lib/blaze.ts's closed-palette rule (#782)
@@ -196,7 +241,10 @@ export const TRAIL_BADGE_TEXT_SIZE = 12
 
 /**
  * Where the plate may sit around its vertex, in the order the placer tries
- * them (#1283).
+ * them (#1283). THE PLACER'S LIST, NOT THE LAYER'S, since the review of
+ * #1374: the layer draws the one anchor map/trailsInView.ts writes on the
+ * feature (BADGE_ANCHOR_PROPERTY) rather than trying these itself - see
+ * `text-anchor` in the layout below for why it may not.
  *
  * ONE POSITION WAS NOT ENOUGH, and the first preview frame is the evidence:
  * over Harriman at z12 the A.T.'s badge anchored beside a water pin, pins
@@ -627,7 +675,12 @@ export function buildTrailBadgeLayer(
     id: TRAIL_BADGE_LAYER_ID,
     type: 'symbol',
     source: TRAIL_BADGE_SOURCE_ID,
-    minzoom: TRAIL_LABEL_MIN_ZOOM,
+    // No floor of its own (the review of #1374): the badge draws wherever
+    // the placer put one, and the placer only has a vertex to put it on
+    // where a named line layer is drawing - the line layers' own floors
+    // are the badge's. TRAIL_LABEL_MIN_ZOOM floored this at 4, and the
+    // opening camera on a laptop fits the corridor a shade below it, which
+    // is one of the two frames the review found nameless.
     filter: ['!=', ['to-string', ['get', BADGE_NAME_PROPERTY]], ''] as never,
     layout: {
       'symbol-placement': 'point',
@@ -666,10 +719,20 @@ export function buildTrailBadgeLayer(
       ] as never,
       'text-font': ['Noto Sans Regular'],
       'text-size': TRAIL_BADGE_TEXT_SIZE,
-      'text-variable-anchor': [...TRAIL_BADGE_ANCHORS] as never,
+      // THE PLACER'S ANCHOR, NOT THE ENGINE'S. This was `text-variable-anchor`
+      // over TRAIL_BADGE_ANCHORS until the review of #1374, and that was
+      // right while the engine also did the collision pass: it tried the
+      // same list and kept the first that fit. Allowing overlap (below)
+      // took the collision pass away and left the anchor pass, which then
+      // accepts the FIRST anchor on the list for every feature - there is
+      // nothing left for a later one to be better at - so a plate the placer
+      // had given the mirror anchor at the right edge was drawn to the right
+      // regardless, half off the screen (the phone frame at 05e9506a). The
+      // placer already chose; the feature says which, and the layer obeys.
+      'text-anchor': ['get', BADGE_ANCHOR_PROPERTY] as never,
       'text-radial-offset': TRAIL_BADGE_RADIAL_OFFSET,
-      // Justified toward whichever anchor won, so the mark stays the end
-      // nearest the line on either side of it.
+      // Justified toward the anchor, so the mark stays the end nearest the
+      // line on either side of it.
       'text-justify': 'auto',
       // No wrapping for any name the data holds: the longest published
       // through-route name is 33 characters (trailLabels.ts's measurement),
@@ -677,6 +740,17 @@ export function buildTrailBadgeLayer(
       'text-max-width': 40,
       'text-letter-spacing': 0.02,
       'symbol-sort-key': LABEL_TIER.routeTrail,
+      // ALWAYS DRAWN (the maintainer's review of #1374): map/trailsInView.ts
+      // already keeps the plate clear of every pin, warning, workday and
+      // notice and inside the frame, and falls back to the bare mark where
+      // nothing fits - so the engine's own collision pass, which dropped the
+      // badge whole wherever a basemap label or a pin box touched it (the
+      // opening camera, and the review's z12 frame), has nothing left to
+      // decide. Allowed to overlap rather than ignoring placement: the
+      // badge still claims its box, so the along-line names and the sheet's
+      // own labels placed after it keep yielding to it as they did.
+      'icon-allow-overlap': true,
+      'text-allow-overlap': true,
     },
     paint: {
       'text-color': badgeTextColor(appearance),

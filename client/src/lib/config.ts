@@ -204,6 +204,14 @@ export const TRAILS_OVERVIEW_KEY = 'trails_overview.geojson'
  * asks latest.json before it asks the bucket, answers every tile empty when
  * the manifest names no archive, and the sketch below the seam still draws.
  *
+ * TWO PROPERTIES THE TILES CARRY THAT THE FILE THEY ARE CUT FROM DOES NOT
+ * (#1384, export_nearby_trails.py's SHARED GROUND block): where two trails
+ * run on one treadway, the tiles also hold a PAIR of features on one chord,
+ * each with `concurrent_with` (the other trail's name) and `concurrent_side`
+ * (+1 or -1). map/sharedGround.ts draws them as two halves of one line, and
+ * the network's own layers exclude them. A release cut before the pairing
+ * existed carries neither property and draws exactly as it did.
+ *
  * @release optional - inside its parent's `reaches_hikers` branch in
  * publish.py's collect_artifacts, held back and shipped as one decision with
  * the lines it is cut from.
@@ -545,6 +553,25 @@ export const RETIRED_POI_KEY = 'retired_poi.geojson'
 // @release optional - gated in publish.py on a manifest the exporter writes
 // only when a reviewed row exists; see the paragraph above.
 export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
+
+// The places a hiker can name before anything is downloaded - parks, towns,
+// trailheads, parking areas and the long trails - published by
+// pipeline/export_places.py, which lands with PR #1372 (#1371) and is not
+// in this tree until it merges; until it is published, first run's place
+// field reads "not published yet" and offers Skip. Read by lib/placesData.ts for first
+// run's "where do you hike?" step (#1373, frame 1b), whose answer becomes the
+// map's fallback centre whenever GPS has no fix, and for every place search
+// after it. Kept in IndexedDB through the same cache the conditions ride, so
+// the search works with no signal once it has arrived once.
+//
+// Every figure a row prints is the exporter's own measurement over the
+// lines that run published it, and the document says when nothing could be
+// measured (`trailMilesMeasured: false`) - absent means unknown, never zero.
+//
+// @release optional - the exporter writes a manifest publish.py collects;
+// a release built before it existed has none, which the client reads as
+// "nothing to search yet" and never as a failed download.
+export const PLACES_KEY = 'places.json'
 
 // 'crossing' was listed here while it was still an empty FeatureCollection, so
 // that it would start working the day the pipeline filled it rather than

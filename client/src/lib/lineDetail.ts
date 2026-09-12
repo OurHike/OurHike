@@ -80,6 +80,9 @@ export interface TappedLineFacts {
    *  polygon crossing another org's trail must not be read in that org's
    *  name. */
   closureSource?: string | null
+  /** The other trail sharing this stretch of treadway, from a shared-ground
+   *  half's `concurrent_with` (#1384, map/sharedGround.ts). */
+  sharedWith?: string | null
 }
 
 export interface LineDetail {
@@ -115,6 +118,10 @@ export interface LineDetail {
    *  temporary closures never reached this line at all - false since #964's
    *  area-derived records, which is #1142.) */
   closureLine: string | null
+  /** "Shares this stretch with the Ramapo-Dunderberg." on a shared-ground
+   *  half (#1384); null on every plain line. The sentence is the point of
+   *  tapping the two-tone: the line says two trails, and this says which. */
+  sharedLine: string | null
   /** "Not the trail you chose. Switching happens in the picker." - §2's
    *  refusal, said rather than implied. Null on the chosen trail's own lines,
    *  where there is nothing to refuse. */
@@ -404,6 +411,25 @@ export function buildLineDetail(
   // spur's record name is a spur's, never a trail's.
   const trail = trailForName(chosenThroughRoute ? trailName : line.name)
 
+  const sharedWith =
+    typeof line.sharedWith === 'string' && line.sharedWith.trim() !== ''
+      ? line.sharedWith.trim()
+      : null
+  // In the map's own voice: "the Long Path", "the Ramapo-Dunderberg" - and
+  // the A.T. by the name this build calls it, not the published one, since
+  // "Appalachian National Scenic Trail" is nobody's word for it on a sheet
+  // headed "Appalachian Trail".
+  const sharedName =
+    sharedWith === null
+      ? null
+      : sharedWith === 'Appalachian National Scenic Trail'
+        ? `the ${trailName}`
+        : /^(the|a|an) /i.test(sharedWith)
+          ? sharedWith
+          : `the ${sharedWith}`
+  const sharedLine =
+    sharedName === null ? null : `Shares this stretch with ${sharedName}.`
+
   return {
     heading: `${blazeLabel(line.blazeColor)} · ${kind}`,
     // A CHOSEN through-route's name is already the heading (kind IS
@@ -419,6 +445,7 @@ export function buildLineDetail(
     sourceLine: source === null ? null : `From ${source}.`,
     extentLine,
     closureLine,
+    sharedLine,
     // §2's refusal, and the sheet is where it is SAID rather than merely
     // enacted. The argument, from the doc: making a nearby trail the chosen
     // one swaps the mile frame, the elevation ribbon, the Naismith numbers and

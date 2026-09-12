@@ -1,0 +1,854 @@
+# Flow testing (Playwright)
+
+[TESTING.md](../TESTING.md) is the project's testing philosophy and this does not replace
+it. This is the flow layer specifically: what it is for, how a flow test is formed, what
+every flow has to be tested across, and what must be tested. TESTING.md's long-term
+strategy item 3 asked for exactly this layer — "a real-browser layer lands between jsdom
+and the trail" — and #1386 is where it started.
+
+`client/src/test/reachability.test.ts` names the ladder: "Imported is weaker than
+rendered, and rendered is weaker than findable... A door a hiker can find without knowing
+the screen exists is the review's standard, and that is read from the screens, not from
+this graph." The client suite proves _imported_ (that graph) and _rendered_ (7,255 vitest
+assertions) exhaustively. Nothing proved _findable_ — that a hiker, in a real browser, can
+tap their way from the app's real entry point to a screen — or its mirror, _exitable_.
+jsdom does not run real layout, real CSS visibility, real focus and event dispatch, or the
+real bundled build a phone loads; a component can pass every unit test and still be
+unreachable, or un-leaveable, in a real browser. That gap — not a shortage of tests — is
+what lets a broken flow through a large, disciplined suite.
+
+## The four rules
+
+**1. Entrance.** Every screen has at least one test that reaches it by a real,
+currently-shipped door — an actual tap sequence from boot, never a URL and never an
+injected navigator state — and asserts it is actually visible. `toBeVisible` is the floor
+and not the ceiling: it means a non-empty box that is not `visibility: hidden`, which a
+sliver and a wholly covered element both satisfy. Where a screen's _size_ is part of what
+it promises, the Layout axis below is what asserts it.
+
+**2. Exit.** Every screen can be left. Where a move is guarded (the bail sheet — decision
+**D8**), the test drives every branch — `proceed` and `stay`, and each button behind them
+— and asserts the end state each promises, not just that the sheet opened. Where a move is
+unguarded, the test still drives the escape and asserts it lands: a swallowed tap is
+exactly the regression this rule exists to catch, and "nothing is guarding it" is not the
+same claim as "it works".
+
+**3. States, across every axis below.** Not the happy path plus a shrug. A screen's states
+are read off its own conditional rendering, and the axes in the next section are the ones
+that have already produced defects here.
+
+**4. Visible at design time.** Whoever specs a screen writes its entrance, its exit and its
+states down as part of that spec — the same way `features/PATHWAY.md` and #1374's ledger
+already narrate what each screen became. A spec that says "Details, and Save" without
+saying what Details shows with no water on the route, or what happens when the tab bar is
+tapped mid-save, has specified the happy path and called it the screen.
+
+## The axes every flow is tested across
+
+A "state" here is not a vague adjective. These six axes are the ones this app actually
+varies along, each with a defect or a code branch behind it rather than a hypothetical.
+
+### Mode — day, long, **and volunteer**
+
+`lib/hikerMode.ts` has three values and the third is routinely forgotten, including by the
+first pass of this suite. The mode is not cosmetic: it re-ranks Today, picks Plan's room,
+and answers step 1's first question.
+
+- **Today** renders one of three arrangements from three `order` arrays. Day with nothing
+  planned heads "Nothing planned today"; long with no hike heads "You have no hike yet";
+  **volunteer has no setup head at all** — `setup` is a two-branch ternary, so it is null in
+  volunteer mode, and the crew card leads instead (`today__card--volunteer-lead`).
+- **Plan** has two rooms, not three: `screens/PlanHome.tsx` — "VOLUNTEER GETS THE DAY ROOM,
+  and there is no third room." Volunteer plans as a day hiker (`PlanStart.tsx`'s
+  `planMode = mode === 'long' ? 'long' : 'day'`), so a day-room assertion covers it and a
+  third room would be wrong to test for.
+- The rule: **if a screen reads the mode, all three modes are asserted.** If it demonstrably
+  does not, one is enough and the spec says which and why.
+
+### Device — phone and desktop
+
+`lib/useDesktop.ts`'s breakpoint is a real fork, not a reflow, and the worked example is
+the one that cost this suite an afternoon: the bail guard is
+`move.to === 'tab' && mapShownUnder(state.tab) && !mapShownUnder(move.tab)`, and
+`mapShownUnder` is `tab === 'map' || (isDesktop && tab === 'today')`. So **tapping Today
+while a builder is live is a guarded exit on a phone and not an exit at all on a desktop**,
+because the desktop keeps the map beside Today. A suite that ran only one width would call
+the other's behaviour a bug.
+
+**Both projects exist since 2026-09-11.** `playwright.config.ts` runs `phone` at 390×844
+(the viewport `client/scripts/screenshot.mjs` sizes against, so a spec and a shot describe
+the same device) and `desktop` at 1280×800. They are split by **tag**, not by directory: a
+spec tagged `@desktop` runs only on the desktop project, and the phone project
+`grepInvert`s the same tag. Most specs are meaningful at one width, and running all of them
+at both would assert the wrong layout twice.
+
+Two things about the desktop project are load-bearing rather than incidental, and both are
+written on the config:
+
+- **1280 rather than 901.** `DESKTOP_MIN_WIDTH` is 900, so a viewport a pixel over it would
+  make every desktop assertion depend on that constant not moving. 1280 is a laptop, and a
+  change to the breakpoint that broke the fork would then break these specs loudly rather
+  than leave them passing against a width nobody uses.
+- **`isMobile: false, hasTouch: false`, not merely a wider box.** `chrome/useRouteHover.ts`
+  checks `(pointer: fine)` and answers null without one — correct, because a thumb has no
+  hover — so a wide viewport still reporting coarse touch would make the hover plate
+  untestable and look like a bug in the hook. Measured 2026-09-11: the desktop context
+  reports `pointer: fine`.
+
+Two specs carry the tag. **`e2e/desktopSpine.spec.ts`** is hermetic and holds the forks that
+are pure chrome: the legend as a `region` rather than a `dialog`, the rail's two faces in one
+`tablist`, Today beside the map, the mode block as a named `radiogroup`, the map's credits
+inline with nothing behind a disclosure, the download's laptop sentence, the plan bench at
+the day zoom, the sidebar hike switch, the map's room measured at this width, and the worked
+example above — tapping Today with a live route draft raises no bail sheet and the draft
+survives. **`e2e/data/desktopMap.spec.ts`** holds what needs a laptop *and* a
+release: `chrome/ElevationChart.tsx` and `chrome/RouteHover.tsx`, neither of which a phone
+renders at all, plus the planning column's own room — the R2 measurement in the Layout axis
+below, which needed a routed draft before it could be taken.
+
+**The device axis is now enumerated rather than sampled**, after a first pass that picked
+what looked interesting and a second that had to admit it. `grep -n 'isDesktop\|useDesktop'`
+across `src/` returns 43 lines; 15 are imports, hook calls, dependency arrays or a comment,
+which leaves **28 behavioural forks** in five components. Every one of them now has an
+assertion, and the table below is the audit — if a fork is added, it goes in this table with
+its test or with the reason it has none.
+
+| fork | what differs | asserted by |
+| --- | --- | --- |
+| `App` map mount, `tabOverMap`, Today overlay, journal column | the map is mounted at every tab; Today is beside it, not instead | Today beside the map; the reach floors |
+| `App` `planStepBeside` | step 1–3 stand in the column | step 1 in the column; the R2 reach table |
+| `App` `showMap` | "see it on the map" keeps the tab | **new** — hermetic (the day card) and data (a journal row) |
+| `App` `mapShownUnder` | Today with a live draft raises no bail sheet | the worked example |
+| `App` `useRouteHover` gate | the plate exists only here | the hover tests |
+| `App` `docked` review, review/bar slots | the review is the column, not a sheet over the map | the review region; the step-3 reach floor (a fall-through drops it to the phone's 0%) |
+| `App` `hikeWindowHidesMap` | a window beside the map, not instead of it | **new** — `app__map-held` absent |
+| `App` `sidebarModeSwitch` / `modeSwitch` | the mode is a radiogroup in the shell | the radiogroup test |
+| `App` `modeReadout` | and is NOT also a door in the map header | **new** |
+| `App` sidebar hike switch | the tab row has no room for it | the switch test |
+| `App` `figures` | the bar withholds what the column prints | the one-home test |
+| `MapScreen` `railed` | the legend is a region, and stands down for a step column | the legend test; step 1 |
+| `MapScreen` chart effects | the box shrinks AND the canvas follows it | **new** — canvas matches its box |
+| `MapScreen` `folded` | a pan does not cost the strip | the pan test |
+| `MapScreen` `inView` | a face of the rail, not a pull-up | the In view test |
+| `MapScreen` attribution | credits inline, nothing behind a disclosure | the credits test |
+| `MapScreen` `next-up-band` | the chart replaces the band | **new** |
+| `Plan` `onBench` | the days get a bench | the bench test |
+| `Downloads` | the laptop sentence | the download test |
+
+**Each "new" row is a fork whose failure is invisible** — nothing throws, nothing misaligns,
+and a screenshot of the wrong branch looks right. The canvas one is the worst behaved: without
+its resize the map draws at the wrong scale inside the right frame, so every position on it is
+wrong while the chart beside it is correct. That is the first of CLAUDE.md's four ways this app
+can hurt somebody, hiding behind a picture that looks fine.
+
+**One asymmetry found while writing these, and left as it is.** `hikeWindowHidesMap` carries
+`!isDesktop`, but the `inert` and `aria-hidden` beside it do not — so with a hike window open a
+laptop shows the map and simultaneously hides it from assistive technology. That may well be
+right (the map is context, not a control, while the window has focus), but it is not written
+down anywhere as a decision, and a role-based assertion here would pass for the wrong reason at
+both widths. The test asserts the hold class and the reach instead, and says so.
+
+`App.desktopSpine.test.tsx` and `desktopLayout.test.ts` still hold the desktop layout at the
+rendered layer, which is the cheaper place for the arithmetic. The division is the one this
+document draws everywhere: those two prove the numbers, these two prove *findable*.
+
+### Engine — Chromium and WebKit, which is the iOS-versus-Android question
+
+The client is one codebase wrapped by Capacitor, so **there is no iOS build and Android
+build of the logic** — there is one web bundle in two WebViews. TESTING.md's Platforms
+section already draws this line and this layer inherits it exactly:
+
+- **What an engine project can attest.** Playwright's Chromium and WebKit are the engines
+  the two WebViews embed, so running the same specs on both is a cheap, CI-runnable check
+  of the differences that are _rendering and JS engine_ differences. TESTING.md's own words:
+  "which makes an engine-level smoke check cheap and runnable in CI."
+- **What it cannot.** Storage eviction and WebKit's seven-day cap, permission prompt flows,
+  background GPS, real touch, HEIC decoding, service-worker semantics inside a Capacitor
+  shell serving from a local origin. These are platform policy and device behaviour. They
+  are Phase 3 acceptance runs on real devices plus field testing — a documented manual
+  procedure, the same category as the full USGS fetch. **Appium, not Playwright, is the
+  tool if those are ever automated**, and nothing here pretends otherwise.
+- **Status: not yet run.** A WebKit project is a four-line addition to `projects`, and it is
+  deliberately not added yet, because no environment this suite has been written in has
+  WebKit installed (`/opt/pw-browsers` holds Chromium alone), and a project whose first run
+  is in CI is a project whose first result is a red pull request. Whoever turns it on runs
+  it locally first, in an environment with `npx playwright install webkit`, and fixes what
+  the engine difference turns up in the same change. `@unvalidated` until then.
+
+### Data freshness — live, cached, and absent
+
+The same screen prints different numbers with different provenance, and CLAUDE.md's "never
+let a display outrun its source" is the rule this axis defends. The worked example is
+`screens/DayHikeCard.tsx`, which has all three and says which it is showing:
+
+- **Live** — the graph resolved the walk, so the figures are today's and ways off can be
+  worked out.
+- **Cached** — `resolved === null`, so the card prints the figures stored at save time
+  under a sentence naming that, and deliberately prints no climb over them.
+- **Which absence** — the same null forks again on `networkAvailable`: "This phone's current
+  trail map can't place this walk…" versus "This phone has no trail network…", because what
+  a hiker can do about it differs.
+
+Every screen that reads published data has some version of this. **A flow test asserts the
+sentence, not just the number** — a card that silently swaps cached figures for live ones is
+the defect, and the number alone cannot see it. Note that the sandbox and CI's dev server
+both reach _no_ graph, so the cached branch is the one a spec gets by default and the live
+branch needs the fixture #1387 tracks.
+
+### Layout — the map has room, and nothing is covering it
+
+**`toBeVisible()` does not mean visible.** It means the element has a non-empty box and is
+not `visibility: hidden`. A map squeezed to a sliver, or sitting whole underneath a sheet,
+passes it — which is exactly the failure this app keeps having, and the reason rule 1 above
+is necessary but nowhere near sufficient.
+
+Measured on the trail screen at 390×844 (2026-09-11, `client/e2e/support/layout.ts`):
+
+| state                 | the map's box            | how much of it a finger could land on |
+| --------------------- | ------------------------ | ------------------------------------- |
+| map tab, nothing open | 0.915 of viewport height | **88%**                               |
+| legend open           | 0.915                    | **28%**                               |
+| Today tab             | 0.915                    | **0%**                                |
+
+**The box is identical in all three.** No assertion on width, height or visibility can tell
+them apart. So the measurement is a grid of points over the map's own box, each asked
+`document.elementFromPoint` — "if a finger landed here, what would it hit?" — and counted as
+reach when the answer is the map. That is the hiker's question rather than the layout
+engine's, it needs no list of what might be covering the map, and it survives a box that
+lies.
+
+The rules, which are PATHWAY.md's **R2 · The map never leaves** finally given a number:
+
+- **A screen whose subject is the map asserts a reach floor**, not a box. `mapRoom.spec.ts`
+  holds the map tab to 0.80 against a measured 0.88 — the gap is the map's own controls,
+  which R8 puts there deliberately.
+- **An open sheet leaves the map a share and gives it back.** 0.20 against a measured 0.28
+  with the legend up, whose own `legend.css` says `max-height: 60%`. This is the floor a
+  sheet outgrowing its max-height breaks — the defect `preview-shots/legend.mjs`'s header
+  records having already hit once, where the sheet grew past that height after its contents
+  landed. **A sheet that will not close hides the map as completely as one that is too big**,
+  so the dismissal is asserted in the same test.
+- **Floors name their state, never the whole app.** A map covered by Today on a phone with
+  nothing being followed is R2 working; a rule that forbade it would assert the wrong thing
+  everywhere but the map tab. **But "Today has no map" is itself only one state:** the map
+  is on Today while a walk is being followed (F6 — the next-turn card sits over it), and on
+  a desktop always (`mapShownUnder` is `tab === 'map' || (isDesktop && tab === 'today')`).
+  Both need the floor, and the following one needs it most — that is the screen a hiker
+  reads while moving. **The desktop half is asserted now** (`e2e/desktopSpine.spec.ts`),
+  and against the *uncovered* floor rather than a sheet floor, because above the breakpoint
+  Today beside the map is not a covering at all. Measured 2026-09-11 at 1280×800:
+
+  | state                | the map's box            | how much of it a pointer could land on |
+  | -------------------- | ------------------------ | -------------------------------------- |
+  | map tab              | 0.979 of viewport height | **95%**                                |
+  | Today tab            | 0.964                    | **89%**                                |
+  | Plan home            | no map region at all     | —                                      |
+
+  A laptop reaches *more* of its map than a phone reaches of its (88%), which is the
+  opposite of the intuition and worth writing down: the rail is a column beside the canvas
+  rather than a sheet over it. The following case is still unasserted — it needs a resolved
+  route the suite cannot produce (#1387 — measured 2026-09-11, the saved card offers neither
+  "Walk this" nor "Edit the route" without one) — and `mapRoom.spec.ts` carries it written
+  out as a `test.skip`.
+- **R2 on the planning spine, which nobody had measured until now.** The builders are where
+  the rule is hardest to keep and easiest to lose, because the column they open is the widest
+  thing in the app — and the only evidence either way used to be a stylesheet read as a
+  string. Measured 2026-09-11 against release 2026-09-10, the identical drive in both
+  projects (`e2e/data/desktopMap.spec.ts`):
+
+  | step                         | phone, 390×844 | laptop, 1280×800 |
+  | ---------------------------- | -------------- | ---------------- |
+  | step 2 · Route, builder open | **8%** → 75%   | **93%**          |
+  | step 3 · Details, review     | **0%** → 75%   | **100%**         |
+
+  The laptop's column costs the map essentially nothing, and the floors are that half with
+  headroom — what would go red if a column started overlapping the canvas at a width where
+  it did not have to.
+
+  **The phone's two numbers were read as R2 working and were not.** "Stacked" was taken to
+  license the builder covering all but a sliver and the review covering the map outright, so
+  8% and 0% went into this table as a description rather than as a defect. The maintainer
+  found it the way a hiker would, on 2026-09-12: *"I can't select things on the map."* A
+  panel and a bar that between them left 159 px of a 844 px screen is not a map stacked
+  under a sheet; it is a map that cannot be used, and the measurement was sitting right here
+  saying so.
+
+  `screens/plan.css` now spends a budget against a floor — 75svh for the map, everything
+  else divided out of what is left — and `e2e/data/builder.spec.ts` asserts the floor at
+  both phone sizes and both steps, measuring what a thumb can REACH rather than the map
+  element's height. That distinction is the whole lesson: before the fix the map's box was
+  480 px, 57% of the screen, and a naive assertion on the element would have passed while a
+  tap still had 159 px to land in.
+- Every floor above is `@unvalidated` as a hiker-facing number. They are measurements of
+  today's layout, not findings about how much map somebody needs to navigate by — which
+  nothing here has established, and which field testing would settle.
+
+The same measurement is what any "is it displaying properly" question should reach for.
+Rendered size and occlusion are the two things a real browser knows and jsdom cannot, so
+they are the two things this layer is uniquely able to assert — and until #1386 it was
+asserting neither.
+
+### Hike profile — an empty install is not the app
+
+Most defects live past the empty state, and the empty state is what a spec gets for free.
+Seed a real hike and drive against it:
+
+- `client/preview-shots/fixtures/longHike.mjs` — `tripStore()` (a hike with two sections,
+  eight days in, days dated around today), `finishedStore()` (the same walked end to end),
+  and `seedLongHike(page)`.
+- `client/preview-shots/fixtures/dayHike.mjs` — `DAY_HIKES` and `seedDayHikes(page)`: one
+  saved day hike with its legs, figures and a second organisation's credit.
+- Both are **nobody's data** by construction — invented names, invented figures, no account,
+  no location fix — and both are shared with the shot recipes, so a fixture is fixed in one
+  place. Dates are relative to the browser's own today, deliberately: a fixture pinned to a
+  date photographs a card in September and no card at all in March.
+
+## What "entrance" and "exit" are, mechanically
+
+`client/src/lib/navigator.ts` is the one navigator (#1373, phase 0): four tabs
+(`today` | `map` | `plan` | `more`), each with a stack of `Screen`s, and one `navigate()`
+every move goes through.
+
+- A `push` is an **entrance**, and is never guarded — "a card or a sheet opened over step 2
+  leaves the step on the stack and is not asked about."
+- An **exit** is whatever a `tab` / `back` / `home` / `replace` move drops from a stack, _if
+  the currently-set guard says so_. The guard is `(leaving, move, state) => B | null`, run
+  against a throwaway copy before the move is committed; a non-null return **parks** the move
+  as `state.pending` and nothing changes until `proceed()` or `stay()`.
+- **`leaving` can be empty on a real exit** — "the builders live on the map", not on a stack.
+  Never infer guardedness from the stack diff; assert on whether the sheet appears.
+- `keptAcrossTabs` (only `more` screens survive a tab switch) and `returnsToOrigin` (only
+  `more` screens' Back returns to the tab that opened them) are the two hard-coded
+  exceptions.
+- **Not a router.** Nothing touches the URL or History API, so no spec may shortcut to a
+  screen with `page.goto()`. Every entrance is a real tap sequence from boot — which is the
+  only way "findable" means anything.
+
+## How a spec is formed
+
+- **Seed IndexedDB, then boot.** `support/seed.ts` writes preferences, hiker mode and taken
+  trail through `page.addInitScript` — _not_ `page.evaluate`, because a fresh page is on
+  `about:blank`, an opaque origin IndexedDB refuses outright. The fixtures above use
+  `page.evaluate` + `page.reload()` instead, which works because a drive has already
+  navigated.
+- **Geolocation is Playwright's own** — `context.setGeolocation` and `grantPermissions`, not
+  a stub; a real browser has no seam to mock. `latOfMile()` keeps a mile meaning the same
+  thing here as in `appHarness.ts`.
+- **Locators are accessible-role queries**, exactly as the vitest suite and every shot recipe
+  already write them. Never CSS selectors: a class is markup the component owns no contract
+  over. Prefer the full `aria-label` where one exists (`'Back to Hike, step 1'`) over the
+  visible glyph.
+- **Mind the punctuation.** JSX text uses `&rsquo;` and renders `’`; a JS string attribute
+  usually carries a straight `'`. A locator that guesses wrong matches nothing. Use a regex
+  wildcard when it does not matter.
+- **Wait on something observable, never a fixed timeout** — CLAUDE.md's rule and TESTING.md's
+  rule 2. `preview-shots/legend.mjs` polls `scrollHeight` until it stops changing rather than
+  sleeping a guessed duration.
+- **Run anything awaiting an effect three times before pushing.** A real browser adds real
+  animation frames and real network waterfalls on top of what vitest's mocks already made
+  ordering-sensitive.
+- **A wait budget copied from another spec is not a measurement, and the data half is where
+  that bites.** `e2e/data/desktopMap.spec.ts` took `NETWORK_BOUND_MS = 60_000` from
+  `longSpine.spec.ts`, whose drives never wait on the junction graph resolving a saved walk.
+  Measured 2026-09-11 against release 2026-09-10, the identical drive: the file alone on one
+  worker finished all seven tests in 53 s; inside the whole data suite, with two workers
+  sharing one origin, that single door ran past 60 s and the test went red on the wait rather
+  than on a claim. **Run a new data spec inside the whole suite, not only on its own** — a
+  budget that holds with the machine to itself says nothing about the budget CI needs, and
+  the red it produces is the worst kind: a timeout that reports nothing about the app.
+- **A sweep that finds nothing is usually a camera, not a grid — and re-sweeping the same
+  points is not a wait.** `e2e/data/desktopMap.spec.ts` hunts the drawn route by moving the
+  pointer across the map's box, because `chrome/RouteHover.tsx` answers only a pointer on
+  the line. The first version swept once and threw; when that failed about one run in three,
+  the second re-swept the SAME coordinates for 60 s and called it waiting on an observable.
+  It is not — identical coordinates are the same lottery ticket drawn twice, and CI drew it
+  four times and lost four times (run 34647748197, both tests, both retries), where the
+  sandbox had been winning.
+
+  Measured 2026-09-11 against release 2026-09-10, a 17-by-17 sweep of the map's own box:
+  **0, 0, 0, and once 1 of 289 points** raised the plate on the camera the builder opens on,
+  against **20 of 289** with the camera seeded onto the walk. Density was never the fix
+  either — a 16 px scan of **1,974 points** on the builder's own camera raised it zero times.
+  The builder opens on the corridor rather than on the route it is editing, which draws a
+  2.9 mi walk as a mark a few tens of pixels long
+  (**#1404 — The route builder opens on the corridor rather than on the route it is
+  editing**).
+
+  So: when a sweep comes back empty, ask where the camera is before making the grid finer or
+  the wait longer. `seedCamera` is the answer, and the failure path now reads
+  `ourhike:camera` back — App.tsx writes the settled camera there on every `moveend` — so a
+  future failure says whether the line was undrawn or merely out of frame. That read is on
+  the failure path only: asserting the camera up front would add a second way to go red, and
+  the plate is the observable the test is about.
+- **Assert the mechanism or the number, and say which** — TESTING.md's rule holds here too. A
+  flow test that pins a rendered figure is pinning a fixture; what it is usually there to
+  prove is that the screen was reachable and said which figures it was showing.
+
+## What must be tested
+
+The list below is the battery, by journey step. It is written as behaviours rather than
+files so it survives refactors — TESTING.md's own convention for its client list. Each step
+is tested across the axes above that it actually varies along.
+
+**F1 first run** — all five cards reachable in order; each card's skip does what its own
+words say (card 1's skip finishes the whole flow, cards 2–3's advance); no primary appears
+before a choice is taken (decision D10); the download card's figure comes from the manifest
+and reads "Unknown offline" without one; the flow cannot be re-entered once finished; a skip
+writes no choice the hiker did not make.
+
+**F2 Today** — the setup head per mode, **all three**; the pinned Find/Plan bar present in
+every state; the download `Notice` present and absent; a walk dated today leading as its own
+card; "Ahead of you" and "Today so far" rows; the alerts block when a closure or warning is
+ahead; the journal with a fix, the honest sentence without one; the outbox line; the
+next-morning ask after a walk left open.
+
+**F3 step 1 · Hike** — reached from Today's pinned Plan and from the Plan tab's own primary;
+the rail reads the mode's kind; the three doors, each **absent rather than disabled** when it
+cannot work (D10); the network refusal as a sentence with a retry; the published shelf and
+its chips landing pre-filtered; Cancel landing in Plan's room whatever door opened it.
+
+**F4 step 2 · Route** — the rail on both builders; "‹ Hike" back to step 1 with the draft
+kept (R3); the shape control's three values; undo; the gap-crossing acknowledgement; a
+route that cannot be routed saying so.
+
+**F5 step 3 · Details and Save** — the review card under the rail; the name field committing
+on blur rather than per keystroke; water and stop rows **absent rather than "none"** when
+there is nothing to list; "‹ Route" keeping the name and date; Save landing on the saved
+card; the saved card's doors — Walk this, Leave it with someone, Edit the route, Delete —
+and the edit door restoring the name and stopping the follow.
+
+**F6 walking it** — the follow card's turn and leg; the coverage note at its head; "What's
+left today" once a position is known; **the finish asked, never assumed**; "Still going"
+changing nothing; the next morning asking once with no default.
+
+**F7 when today changes** — each cascade move priced; "Leave it alone" as a choice; the diff
+before it applies; one undo; the day screen's three ends landing on the timeline with the
+call sheet open.
+
+**F8 Plan** — both rooms; "What's left" with its two figures and its way back; the walked
+shelf and its door; a hike's sections; a finished hike's record printing distance alone with
+the note that says why.
+
+**F9 reporting** — the report window; a report queued offline and sent on reconnect with the
+authoring timestamp; "Your reports" showing waiting and sent with status; "Your photos and
+notes" saying what is not kept there.
+
+**F12 the map** — In view counting what is actually in view; the legend's fold and its
+switches; the two safety sheets on their taps and **the tap order between them**; a waypoint
+card; the search's waypoints and places.
+
+**F13 More** — every settings screen reachable and leaveable; the source registry behind its
+gate; the trace recorder behind #1201's gate; unit, theme and map-style choices surviving a
+reload.
+
+**F14 volunteering** — the workday window's three spans; workdays in view; a place search
+fitting the map to a park.
+
+**The download** — every state of the one flow that can fill a phone: choosing a tier,
+progress, resume after a lost connection, "Unknown offline", and what the card says when
+the release manifest cannot be read.
+
+**Failure paths** — the error boundary catching a thrown screen and offering the report
+door rather than a white page.
+
+## The ledger, and why a new screen cannot skip it
+
+`client/src/test/flowCoverage.ts` holds one entry per screen module — `covered` with the
+spec that drives it, `planned`, or `unit-only` with a reason — and
+`flowCoverage.test.ts` walks the same three directories `reachability.test.ts` does and
+fails when a module has no entry, when an entry names a module that has gone, when a
+`covered` entry points at a spec that does not exist, or when an exemption carries no
+reason.
+
+That is the mechanism behind rule 4. **A new screen fails the client suite until somebody
+says how it is driven** — and `planned` is a real answer, so the cost of honesty is one
+line. What it refuses is the third state: a screen nobody considered, which is how a flow
+ships with nothing watching it and nobody able to say that was a decision.
+
+## When this happens
+
+**Before the pull request, not after it.** The same place `scripts/test.sh` and
+`scripts/pipelines.sh` already sit in the routine:
+
+1. The change adds or alters a screen → its flow-coverage entry moves in the same change.
+2. `npx playwright test` in `client/` — three times for anything ordering-sensitive.
+3. `scripts/test.sh` as usual; the flow-coverage guard rides the ordinary client suite, so
+   a missing entry is caught by the run a contributor already makes.
+4. The pull request's **Flow tests** section says which flows the change touches and what
+   now drives them — or that nothing user-facing changed, which is a real answer that takes
+   ten seconds.
+
+A battery written after the feature is a battery written against the code rather than
+against the intent, by someone who has already forgotten which states were meant to exist.
+That is the whole reason this is a pre-PR step and not a cleanup sweep.
+
+**And CI runs it on every pull request** — `client-tests.yml`'s `flow` job, added
+2026-09-11 at the maintainer's ask that these agents be wired in for every pull request.
+Until then this whole layer was written and never run by anything but a person choosing
+to: the suite existed, the pull request template asked which flows a change drove, and no
+check read either answer. A test nobody runs is a comment with a longer syntax.
+
+The job carries the same scope gate as the unit suite and the same deliberate absence of
+a job-level `if:`, so a change touching nothing under `client/` finishes it green rather
+than leaving a required check unreported. It installs Chromium alone — the engine axis
+above says why WebKit is not on yet — builds the real bundle rather than running the dev
+server, and keeps the HTML report, traces included, for a fortnight when it fails.
+
+## Boundaries
+
+- **No visual regression.** `toHaveScreenshot()` is not used. Pictures are
+  `client/preview-shots/`'s job (`.claude/skills/pr-screenshot/SKILL.md`); this suite asserts
+  DOM and accessibility state.
+- **No duplicating the vitest layer.** Where `App.pathway.test.tsx`, `App.dayHike.test.tsx`,
+  `App.navigator.test.tsx` or `navigator.test.ts` already hold logic at the rendered layer, a
+  flow spec proves _findable_, not the same branch again — and is usually shorter for it.
+- **Map data — half of this boundary lifted on 2026-09-11, and the half that stands is the
+  sandbox's.** Chromium in an agent sandbox still reaches nothing external directly (measured
+  again 2026-09-11: `ERR_CONNECTION_RESET` on every artifact, while `curl` to the same URL
+  returns 200 — the egress proxy is a shell-level thing the browser does not use). What
+  changed is that the suite now has a **second half**, `client/e2e/data/`, which reads the
+  release `lib/dataRelease.ts` pins: in CI a runner fetches the bucket directly, and in the
+  sandbox `scripts/data-proxy.mjs` serves the built app and the bucket from one origin so the
+  browser never makes a cross-origin request. So a real junction graph and real waypoints
+  **are** available now, in that half.
+
+  `client/e2e/` itself is unchanged and stays hermetic: it drives a phone that has downloaded
+  nothing, which is a real state and the one a hiker is in before their first download. Seed
+  IndexedDB there. The split is deliberate — `playwright.config.ts`'s `FLOW_DATA` comment
+  carries what reading a network costs and the three things that bound it, and the two halves
+  are two CI jobs so a bucket outage never reads as a broken client.
+
+- **Vitest owns `src/`, Playwright owns `e2e/`.** `vite.config.ts` scopes vitest's include to
+  `src/` — its default glob does not stop there and swept up `e2e/*.spec.ts`, running
+  `@playwright/test`'s `test` through vitest's runner.
+
+## The three agents, and what each is good for
+
+`npx playwright init-agents --loop=claude` (run 2026-09-11, at the maintainer's ask)
+installs Playwright's own test agents and the MCP server they drive a browser through.
+They are a way of writing the specs this document asks for, not a different standard:
+everything above still applies to what they produce, and the ledger still refuses a
+screen nobody considered.
+
+| agent                       | what it does                                                                       | what it writes                     |
+| --------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------- |
+| `playwright-test-planner`   | opens a screen, explores it, and writes down its controls, paths and states        | a markdown plan in `client/specs/` |
+| `playwright-test-generator` | takes one plan item, performs it in a real browser, and records what it did        | one spec file in `client/e2e/`     |
+| `playwright-test-healer`    | runs the suite, pauses on each failure, inspects the live page, and fixes the spec | edits to an existing spec          |
+
+**Where the pieces are.** The agent definitions are in the repository's own
+`.claude/agents/`, beside its skills, rather than the `client/.claude/` the installer
+writes — Claude Code is run from the repository root here, and an agent nobody's editor
+can see is an agent nobody uses. `.mcp.json` is at the root for the same reason, and
+carries `--config client/playwright.config.ts` so the server still resolves the one
+Playwright project this repository has. `client/e2e/seed.spec.ts` is the state every
+agent run starts from; the installer's stub would have started each one on the first-run
+cards, so it seeds past them with `support/seed.ts`'s own helper and asserts that it
+worked.
+
+**What the healer must never do.** Its job is to make a spec describe the app correctly.
+It is not to make a red test green: a failure that is the app being wrong is a finding,
+and editing the assertion until it passes destroys exactly the signal this layer exists
+to produce. If the healer cannot make a spec pass without weakening what it claims, the
+spec stays red and the app gets the fix.
+
+**What the generator is weakest at, and this document is strongest at.** A generator
+records what it did; it does not know which of the six axes a screen varies along, that
+volunteer is a third mode, or that `toBeVisible` is not visible. So the useful division
+is: plan and generate the entrance and the happy path, then write the states and the
+layout floors by hand against the axes above. A generated spec is a draft until somebody
+has read it against the four rules.
+
+**`--headless` is in the MCP config deliberately.** The installer defaults the server to
+headed, and there is no display in CI or in an agent sandbox.
+
+## Known gaps
+
+- **`sweepForBuilder` is the one exit the guard cannot see.** #1374's review found it: a live
+  day-hike draft under step 1 survives an ordinary tab tap, but switching mode to Long and
+  tapping "Pick on the map" sweeps it with no bail sheet. `e2e/bailSheet.spec.ts` carries the
+  repro written out in full as a `test.skip`, blocked on **#1387 — Neither the Playwright
+  suite nor the screenshot recipes can put a live draft in the day-hike builder without a
+  reachable bucket**.
+
+  **Part of that blocker is gone and the skip stays, which is worth being exact about.** Since
+  2026-09-11 `e2e/data/` reaches the builder with a real junction graph under it — proved:
+  step 1 offers its three doors instead of the refusal, and "Pick on the map" opens step 2.
+  What is still unproved is the next step, DROPPING A STOP, which means clicking a coordinate
+  on a map canvas and having the router accept it. Reaching the builder is not the same as
+  putting a live draft in it, and the skip comes off when a spec has actually done the second
+  thing rather than when it could plausibly try.
+
+  **The live draft is no longer the blocker. The repro is.** Two separate things were in the
+  way, and only one of them is left.
+
+  _A live day-hike draft is reachable now_, and the door is "Edit the route" on a saved
+  walk's card: it loads the walk's legs into step 2 and puts the builder in the state a
+  hiker reaches by tapping. `e2e/data/builder.spec.ts` drives it — the shape control and
+  "Use this route ›" present where the empty builder withholds them, the legs as an ordered
+  list, the honest climb refusal, and R3 proved with something worth keeping (back to step 1,
+  re-enter, all seven legs still there).
+
+  _Dropping a stop by tapping still cannot be aimed_, and it was tried so the next person
+  need not. Measured 2026-09-11 against release 2026-09-10, at the `ON_THE_TRAIL` camera the
+  map specs share: a coarse sweep of the builder's map region produced one accepted tap out
+  of about ninety and never a second; a fine sweep at 18-pixel spacing produced none at all
+  (consecutive clicks that close together are read as a double-click and zoom the map
+  instead of tapping it); twenty taps on the middle of the frame produced neither a stop nor
+  the road refusal, twice, because the middle of that frame is open ground where the bar
+  correctly says nothing. Nothing in the suite can ask the map where the tread is — the same
+  wall `tapTheTrail` works around by sweeping for a sheet that opens. It no longer blocks the
+  skip, because the edit door reaches the same state.
+
+  **What the skipped test now needs is rewriting, not unblocking.** Its drive was written
+  against an older step 1 — a "Start from" doors group, a "Where I am" door, a "Where from?"
+  heading — and this build's step 1 is "Where do you want to go?" with "Pick on the map" and
+  "Draw it myself". Driving the mode switch from the mode chip lands on Today in long mode,
+  where there is no "Pick on the map" at all, so the repro's middle steps no longer exist as
+  written. The gap it describes may well still be real; what is certain is that nobody can
+  tell from the test as it stands, which is the worse of the two states to leave it in.
+
+  **One thing the attempt settled, and it is the opposite of a gap.** A day-hike draft under
+  step 1 is PARKED, not swept: leaving the whole flow by the tab bar asks nothing, and Plan
+  then carries "Back to your route", which restores every leg. `e2e/data/builder.spec.ts`
+  pins both halves. The long-hike builder asks in the same position, and that asymmetry reads
+  as a missing guard until you follow it through — the day builder simply reaches the bail
+  sheet's own "Keep it for later" outcome without asking the question, because nothing is at
+  risk. Which sharpens what #1387's gap is actually about: the SWEEP, where the draft is
+  dropped and unrecoverable, and not the park.
+
+  The attempt also produced `chrome/DayHikePickBar.tsx`, covered on the two sentences it
+  always shows: the two-tap gesture spelled out, and "Roads are drawn, never routed on" —
+  `build_trail_graph.py`'s rule that roads are not edges, surfaced on the one screen where a
+  hiker would otherwise try.
+
+- **The map's canvas answers four more questions nobody can drive yet**, and they are four
+  different reasons rather than one. `e2e/data/mapSheets.spec.ts` (2026-09-11) took the
+  waypoint card, the trail line's sheet, the long-press plate and the notices list, all of
+  which needed a release under the map. What it could not take:
+
+  - `chrome/ClosureSheet.tsx`, `chrome/SeriousWarningSheet.tsx` and
+    `chrome/alertSheetsPanel.tsx` open on a tap on an ALERT PIN — **and this entry used to
+    say the sweep would be "looking for a needle", which was the wrong diagnosis.** There is
+    no needle. Measured 2026-09-11 against the UA environment the suite reads:
+    `conditions/closures.json` carries **0 closures** and `conditions/reports.json` **0
+    reports**, and a serious warning *is* an escalated report. So the panel has nothing to
+    place, the marks never draw, and a camera derived from a published notice's own mile —
+    the fix the old entry proposed — would find nothing when it got there. **#1400 — Two
+    safety sheets have no published data to open them, so the map's alert taps go
+    untested** carries the three ways out (a seeded fixture, a published sample row, or an
+    accepted gap stated in the open). This is the third of CLAUDE.md's four ways the app
+    can hurt somebody, so the gap is worth more than its line count.
+  - `chrome/OrgNoticeSheet.tsx` **is covered now, and was in this list by association rather
+    than by measurement.** It does not open on an alert pin: it opens from the notices list
+    in the legend, which is a row a finger can find without knowing where anything sits on
+    the canvas. `e2e/data/mapSheets.spec.ts` drives it and pins the safety sentence — that
+    what a hiker is reading is the organization's notice "not OurHike's", and that OurHike
+    "has not checked the trail itself, and does not work out detours".
+  - `chrome/PoiShareSheet.tsx` **— this entry was wrong too.** It said the sheet "needs a
+    photo this hiker took, which needs a camera". The card's other door, "Add from your
+    photos", is a plain file input — the one a hiker uses when the picture is already in
+    their library — so `setInputFiles` reaches the share sheet with no camera and no fake.
+    `e2e/data/mapSheets.spec.ts` drives it with eight pixels built as bytes inside the spec,
+    never a file in the tree and never anybody's picture, and asserts the wording that
+    differs by door: a picked photo says "A copy sized for this card — your library has the
+    original", where a taken one says "this small copy is the only one". Getting that pair
+    backwards would tell a hiker their only copy is safe somewhere it is not.
+  - `chrome/RemovedPoiCard.tsx` **— this entry was wrong, and is kept as a correction
+    rather than deleted.** It said the card "needs a tombstone — a waypoint a NEWER
+    release retired — so it needs two releases, and this suite pins one." It does not:
+    `retired_poi.geojson` ships INSIDE each release, carrying the places that release
+    retired, so one pinned release already holds them. Measured 2026-09-11 against
+    2026-09-10: the artifact's first feature is a water point retired on 2026-08-19.
+    What made it look unreachable was the DOOR, not the data — a retired waypoint draws
+    no pin, so there is nothing on the canvas to tap, and the way in is a row in the
+    hiker's own work (App.tsx: "the same door a pin is"). `e2e/data/newerData.spec.ts`
+    drives it from a field note waiting in the outbox against a published tombstone.
+    The lesson is worth more than the entry: "needs two releases" was reasoned from the
+    feature's description and never checked against the manifest.
+  - `chrome/ElevationChart.tsx` is behind `isDesktop` in `chrome/MapScreen.tsx`, so it was
+    the desktop gap rather than a data one — and is now **covered by both halves at once**:
+    `e2e/data/desktopMap.spec.ts` is the spec that needs a laptop *and* a release. It pins
+    the resting state (no trail taken, no chart — "a picture of a trail nobody had chosen"),
+    the chart drawn once a hike is seeded, the keyboard promise in its accessible name
+    ("Arrow keys move the cursor", "Escape clears"), and the pointer read-out as a *pair*,
+    because a height with no mile cannot be checked against the map and a mile with no
+    height is not why anybody hovered.
+
+  **And one measurement worth carrying:** the camera both map specs seed
+  (`ON_THE_TRAIL` in `e2e/support/seed.ts`) is NEAR the A.T., not on it — measured against
+  release 2026-09-10, the centerline crosses that frame about nine tenths of the way across
+  rather than through the middle. The comment that first shipped with it said "a point on a
+  published trail", which was a guess nobody had checked and would have sent the next person
+  hunting for a bug in the tap handler.
+
+- **The elevation ribbon has a screen to draw on and no data under it.**
+  `e2e/data/followMode.spec.ts` (2026-09-11) reaches the followed map, which is where
+  `chrome/ElevationRibbon.tsx` lives, so the surface is no longer out of reach — but the
+  profile arrives as CELLS, and against release 2026-09-10 the two under that walk answer
+  404 (`trail_graph_elevation_cell_n41w075.json` and
+  `trail_graph_profile_cell_n41w075.json`) while the whole-corridor
+  `elevation_profile.json` answers 200. The ribbon correctly renders nothing, so there is
+  nothing to assert. Covering it needs a walk under a published elevation cell, or that
+  cell published — a pipeline question, not a suite one, and filed as **#1401 — The
+  elevation cells under the followed walk 404, so the ribbon and the next-up rail both draw
+  nothing**.
+
+  **`chrome/NextUpRail.tsx` is stuck behind the same door**, which is worth saying
+  because it does not look like an elevation feature: it is a strip of coming
+  waypoints. `chrome/MapScreen.tsx` renders it only when
+  `waypoints !== undefined && elevation !== undefined`, and App.tsx's `elevation` is
+  `ribbonView`'s return — "undefined on a null profile", at which point "MapScreen omits
+  the block entirely". So one published cell would move both, and neither moves without
+  it. Read from the source (2026-09-11) rather than measured, because the measurement
+  above already settles what the release serves.
+
+  `preview-shots/following-a-day-hike.mjs` said the opposite twice, most recently "should
+  now draw… stated as an expectation rather than a fact". The expectation was honest and
+  about the wrong artifact; that header now carries the measurement.
+
+- **A race is not something a flow test should chase — refuse the request instead.** The
+  route builder's entrance blamed the hiker's download while the waypoints were still
+  arriving ("This download predates trail miles on waypoints… Newer trail data carries
+  them"), because its condition was "no stop carries a mile", which an empty stop set
+  satisfies. Measured 2026-09-11 against release 2026-09-10: opening the builder straight
+  after boot showed the refusal, and the same sheet left alone had recovered twenty
+  seconds later.
+
+  **The first test written for it passed with the defect in place**, because alone on the
+  machine the fetch beat the drive — the worst kind of test, and caught only by reverting
+  the fix to check. The test that works refuses the waypoint request outright
+  (`page.route('**/poi_*.geojson', (route) => route.abort())`), which is the same
+  condition with no stopwatch, and is the "absent" case the data-freshness axis above
+  already asks every screen to be driven in. It goes red on the defect and green on the
+  fix, checked both ways.
+
+  Reach for `page.route` whenever a state is a race: aborting or delaying the artifact
+  makes the state deterministic, and the assertion then says what it means.
+
+- **Three screens sit behind an account, and the flow build cannot have one.**
+  `screens/IdentitySetup.tsx` is mounted only after `account !== null` (App.tsx's
+  "signing in hands on to the step it was standing in front of"), and
+  `screens/Registry.tsx` and `screens/Moderation.tsx` behind `useModerator`, which
+  needs an account before it will so much as ask for a role. There is no account to
+  seed: `lib/auth.ts`'s `currentAccount()` goes through `getAuthClient()`, which
+  returns null when `VITE_SUPABASE_URL` is unset — as it is in `npm run dev` and in
+  the CI preview build this suite drives. So the wall is the BUILD, not the drive,
+  and no `page.route` or seeded key gets past it: there is no client to hand a
+  session to. Measured 2026-09-11 by driving More → You, which reads "not signed in"
+  and offers one provider.
+
+  What would settle it is a flow-only build with a Supabase project behind it and a
+  seeded session, which is a second CI service and a set of credentials in a public
+  repository's test job — a bigger decision than the coverage it buys, and one for the
+  maintainer rather than for a spec: **#1399 — The flow suite has no account, so the
+  three screens behind one cannot be driven**.
+  `e2e/more.spec.ts` already asserts the registry's gate is SHUT, which is the half
+  of D4 that can be proved from outside.
+
+- **`screens/EmailSignIn.tsx` is not a gap at all — it is unreachable on purpose**,
+  and the ledger now says `unit-only` rather than `planned`. `ENABLED_PROVIDERS`
+  defaults to `google` alone because Supabase's built-in sender "is not a delivery
+  path this project can ship on" (`lib/supabase.ts`), and the screen is mounted only
+  when the sign-in prompt offers email. Every build this project deploys therefore
+  renders "Continue with Google" and nothing else, measured 2026-09-11. It returns
+  when a sender does.
+- **One screen branches on the user agent, and that is a third thing from either
+  axis above.** `screens/InstallPrompt.tsx` is the only surface whose content is
+  decided by which phone it is, because `detectInstallPlatform()` reads
+  `navigator.userAgent` and nothing else. `e2e/settingsRooms.spec.ts` drives all
+  three of its branches with `test.use({ userAgent })` — iOS told what to tap
+  with no button anywhere (Safari has no install API, and "a button that
+  silently does nothing is worse than no button"), Android given the menu path
+  until `beforeinstallprompt` fires and the button then, and the suite's own
+  default agent shown nothing at all. **That is the branch, not the platform.**
+  Whether an install actually completes, whether iOS later evicts the storage,
+  whether the Capacitor shell changes any of it — none of that is attested here,
+  and none of it can be: it is the Phase 3 acceptance category above.
+- **The field note's rotating word is held for a card, and a fold throws it away.**
+  #1122 deals the affirmative one-tap answer from a list of synonyms — "Flowing",
+  "Running", "Water's on", "Flowing fine" — and `chrome/FieldNoteSection.tsx` says
+  it is "PICKED ONCE PER WAYPOINT AND HELD", because re-rolling "would change the
+  word under a hiker's thumb". `e2e/data/mapSheets.spec.ts` was written to assert
+  that and went red.
+
+  **Measured 2026-09-11 against release 2026-09-10**, on one water waypoint:
+  the word is stable while the card stays at one height — eight reads, zero
+  changes, the card re-placed by a map nudge between each — and changes when the
+  card is pulled open and folded back: **5 changes in 8 folds on one run, 3 in 8
+  on another**, about what a uniform re-roll over four words would give.
+
+  The cause is in `chrome/PoiCard.tsx` rather than in the section:
+  `conditions('peek')` and `conditions('open')` are rendered at different
+  positions in its tree, so the fold unmounts `FieldNoteSection` and its
+  `useState` goes with it — the held rotation, and with it `filed`, any typed
+  note and any attached photo. The reset-during-render the file documents at
+  length works perfectly within one mount and cannot survive a remount.
+
+  **No assertion is written for it**, because a test that pinned the current
+  behaviour would go red the day somebody fixes it. The spec carries the
+  measurement where the test would have been, so the next person does not
+  rediscover it, and it is reported on #1374 — the file predates that branch, so
+  it is out of its diff.
+
+- **The seeded camera is not always the camera the map opens at**, about once in
+  three runs of `e2e/data/mapSheets.spec.ts`, and the failure it produces reads
+  like a slow load rather than like what it is.
+
+  Measured 2026-09-11, three full runs of that file with a 180-second test
+  budget: 17/17, 17/17, 16/17. The single failure was `a waypoint's card ›
+entrance`, a test that predates this batch. It polled **55 times across the
+  full 90 seconds** for the legend's "Trails in view" section and never got it —
+  and the legend it did get read "0 of 3 waypoints fit at this zoom" and
+  "Maintained by the Smoky Mountain Hiking Club". Both are BELOW-the-seam text,
+  so the map was somewhere under `POI_PIN_MIN_ZOOM` rather than at the
+  `ABOVE_THE_SEAM_ZOOM` the helper seeded, and the section it was waiting for
+  could never have appeared. A viewport holding only three waypoints is a small
+  region, not the whole corridor, so the centre looks right and the zoom does
+  not.
+
+  **What it is not**: not the sketch wait being too short (the budget was spent
+  in full), and not something this batch introduced. What would settle it is
+  reading the camera back after boot and asserting it, which would turn a
+  90-second wait for an impossible condition into an immediate, honest failure —
+  and would say whether the app's own opening fit is overriding
+  `lib/cameraMemory.ts` or whether the seed is losing a race to write it.
+  Nobody has done that. **No retry is wired in meanwhile**: a helper that
+  re-seeded and reloaded until it worked would hide the one signal there is.
+
+  **Seen again 2026-09-11**, in a full run of the data suite rather than of
+  that file alone, and this time it took `a photo the hiker keeps › exit` —
+  the same signature, a wait on the legend's `In view` door that could never
+  resolve at the zoom the map actually opened at. So it is the file's flake
+  rather than any one test's, it survives being run beside everything else,
+  and the fix is still the one above: read the camera back after boot and
+  assert it.
+
+- **The workday pins have nothing to draw, and that is a publish rather than a
+  drive.** `chrome/WorkdaySheet.tsx` and `chrome/workdayPanel.tsx` stay `planned`,
+  but not for want of a spec: measured 2026-09-11, release 2026-09-10 publishes
+  1,943 artifacts and **none** of them is a workday or opportunities file. The
+  panel correctly renders nothing, there are no pins to tap, and no test can
+  change that. They become drivable the day the pipeline publishes what
+  `lib/workProjects.ts` reads — at which point the drive is the same shape as the
+  club sheet's. Filed as **#1402 — No workday artifact is published, so the
+  volunteer pins and their sheet have nothing to draw**.
+- **The highlight sheet has no door rather than no test.** `chrome/HighlightSheet.tsx`
+  opens on a tap on a highlight mark, and `map/corridorLayers.ts` removed those marks on
+  2026-09-08 (#1292) — "the maintainer's call was that the opening camera shows trail lines
+  only". So the sheet, its data and its tap path are all still built and nothing on the
+  canvas raises it. Measured 2026-09-11: `highlights.json` publishes 10 highlights, and a
+  full sweep at McAfee Knob's own miles finds trail lines and nothing else, above the seam
+  and below it. That is a decision rather than a coverage gap — draw the marks in a band
+  above the seam, or retire the sheet with its module — and it is **#1403 — The highlight
+  marks were removed from the map, so HighlightSheet has no door — give it one or retire
+  it**.
+- **The engine axis has never been run** — see above. Chromium only, everywhere this has been
+  written.
+- **`Today.tsx`'s pinned-bar comment cites "rule R4"** for "Find and Plan on every state of
+  this screen, forever", but PATHWAY.md's R4 is "The mode stays global". Probably a citation
+  from the original review's numbering. Not fixed here; flagged so the next person checks a
+  rule number against PATHWAY.md rather than against another comment.
+- **PATHWAY.md reuses "D" for two independently-numbered lists** — six defects (D1–D6) and
+  fourteen decisions (D1–D14). Defect D5 and decision D8 are both about the bail sheet. Every
+  citation in this document says which list.

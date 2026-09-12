@@ -372,9 +372,29 @@ sheet anchored to the bottom of the canvas at `max-height: 60%`, and above the
 breakpoint it stayed that way — a letterboxed map with a sheet across the foot
 of it on a 27" display, which is exactly the "sheet that covers the map" the
 paragraph above rules out. Since [#1194](https://github.com/OurHike/OurHike/issues/1194)
-the information moves into a 348px left rail (`chrome/DayHikePanel.tsx`) — the
+the information moves into a 348px rail (`chrome/DayHikePanel.tsx`) — the
 route's figures, its ordered legs and stops, and the map-label toggles — and the
-map takes the whole remaining frame.
+map takes the whole remaining frame. **Amended 2026-09-10 ([#1374](https://github.com/OurHike/OurHike/pull/1374)
+review):** the rail is the column on the *right* of the map, where the legend's
+column already lives, and it holds the builder's controls at its foot — the bar
+along the bottom of the map was the phone's thumb-reach answer drawn where
+there is no thumb. Step 1 takes the same column (`plan-step-1-desktop.mjs`),
+so the three steps are one column at one map's edge, and a figure follows the
+pointer over the route (`chrome/useRouteHover.ts`).
+
+**Step 3 reads against its own route.** The rail's next stop, applied with
+[#1373](https://github.com/OurHike/OurHike/issues/1373). The review of a built
+walk — its name, date, figures, the water and stops it passes, and Save as the
+last button — was the builder's last surface still drawn as a sheet above the
+breakpoint: `.day-hike-card` at `bottom: 0` and 85% of the canvas, over the
+very route it summarises. Now the shell hands the same card to the
+builder-panel slot on a desktop, so it is the 348px column step 2 just wore
+and the map keeps the whole frame beside it, route uncovered; `desktop.css`
+takes the sheet frame off and keeps the card positioned for its own close
+button. The phone's sheet is unchanged. The same change fixes the journal
+column's one broken promise: a tap on a journal row used to switch to the Map
+tab on every width, which on a desktop unmounted the column the row was tapped
+in. It now keeps Today, and the card opens over the map beside the list.
 
 **The long hike's nine surfaces become windows.** The same rule, applied a
 second time and for the same reason.

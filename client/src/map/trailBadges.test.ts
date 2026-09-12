@@ -3,6 +3,7 @@ import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   attachTrailBadgeImages,
+  registryNameForSource,
   BADGE_FIT_PROPERTY,
   BADGE_SOURCES,
   bareImageId,
@@ -48,6 +49,20 @@ function pixel(
 function rgb(hex: string): [number, number, number] {
   return [...parseHex(hex)] as [number, number, number]
 }
+
+describe('the layer', () => {
+  it('is allowed to overlap, because the placer already kept it clear (the review of #1374)', () => {
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    expect(layout['icon-allow-overlap']).toBe(true)
+    expect(layout['text-allow-overlap']).toBe(true)
+    // Still claiming its box, so what is placed after it yields to it.
+    expect(layout['icon-ignore-placement']).toBeUndefined()
+    expect(layout['text-ignore-placement']).toBeUndefined()
+  })
+})
 
 describe('who earns a badge', () => {
   it('is exactly the through-route tier the style keys width and sort order off', () => {
@@ -237,5 +252,34 @@ describe('attachTrailBadgeImages', () => {
     map.layerIds = [TRAIL_BADGE_LAYER_ID]
     map.emit('styledata')
     expect(map.images.size).toBe(0)
+  })
+})
+
+describe('registryNameForSource', () => {
+  // The fallback the published sketch below the seam needs: 38 features
+  // carrying source, blaze and status and no name at all (read live
+  // 2026-09-11), because the publish that would refresh it is held back with
+  // the network file it sketches.
+  it('names a source the badge already marks', () => {
+    expect(registryNameForSource('nynjtc_long_path')).toBe('Long Path')
+    expect(registryNameForSource('centerline')).toBe('Appalachian Trail')
+  })
+
+  it('names nothing else - a park feed stays unnamed, which is what keeps it off the list', () => {
+    expect(registryNameForSource('oprhp_trails')).toBeNull()
+    expect(registryNameForSource('dec_hiking_trails')).toBeNull()
+    expect(registryNameForSource('')).toBeNull()
+    expect(registryNameForSource(null)).toBeNull()
+    expect(registryNameForSource(undefined)).toBeNull()
+  })
+
+  it('answers for exactly the sources that carry a mark, so the two cannot drift', () => {
+    // A source gains a name the moment it gains a mark, and never before:
+    // both read BADGE_MARK_BY_SOURCE, which is the file's one answer to
+    // "which registry trail is this line".
+    for (const source of BADGE_SOURCES) {
+      expect(trailMarkImageId(source)).not.toBeNull()
+      expect(registryNameForSource(source)).not.toBeNull()
+    }
   })
 })

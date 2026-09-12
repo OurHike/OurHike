@@ -31,6 +31,8 @@ import { REPORTER_TYPES } from '../lib/contributionFlow'
 import { MapDetailPicker } from './MapDetailPicker'
 import { typeLabel } from '../chrome/legendLabels'
 import { ModeSwitch } from '../chrome/ModeSwitch'
+import { placeTitle } from '../chrome/PlaceField'
+import type { DefaultPlace } from '../lib/defaultPlace'
 import type { HikerMode } from '../lib/hikerMode'
 import { HIDEABLE_TYPES, hiddenTypesFrom, toggleType } from '../lib/waypointVisibility'
 import { MapStylePicker } from './MapStylePicker'
@@ -52,6 +54,16 @@ export interface SettingsProps {
   /** The "today I'm…" mode, reflected under You - see YouSettingsProps. */
   mode?: HikerMode
   onChangeMode?: (mode: HikerMode) => void
+  modePending?: boolean
+  /**
+   * Where this hiker hikes (#1373, lib/defaultPlace.ts) and the door to
+   * change it - the promise first run makes under its field: "Kept on this
+   * phone. Change it any time in More → You." On the phone like the mode,
+   * never a UserPreferences key: a location must not join the synced
+   * blob. Optional as a pair; absent renders no row rather than a dead one.
+   */
+  defaultPlace?: DefaultPlace | null
+  onChangeDefaultPlace?: () => void
   /**
    * The background, written through its own callback rather than `onChange`.
    *
@@ -160,6 +172,11 @@ export interface YouSettingsProps {
    */
   mode?: HikerMode
   onChangeMode?: (mode: HikerMode) => void
+  /** "Which long hike?" is open over the switch - chrome/ModeSwitch.tsx. */
+  modePending?: boolean
+  /** See SettingsProps. */
+  defaultPlace?: DefaultPlace | null
+  onChangeDefaultPlace?: () => void
 }
 
 // The account row (Phase E5) states plainly that signing out keeps
@@ -176,6 +193,9 @@ export function YouSettings({
   onChange,
   mode,
   onChangeMode,
+  modePending = false,
+  defaultPlace,
+  onChangeDefaultPlace,
 }: YouSettingsProps) {
   return (
     <section className="settings__group">
@@ -187,7 +207,34 @@ export function YouSettings({
       {mode !== undefined && onChangeMode !== undefined && (
         <div className="settings__row settings__row--mode">
           <span className="settings__label">Today I&rsquo;m</span>
-          <ModeSwitch mode={mode} onChange={onChangeMode} variant="paper" />
+          <ModeSwitch
+            mode={mode}
+            onChange={onChangeMode}
+            variant="paper"
+            pending={modePending}
+          />
+        </div>
+      )}
+
+      {/* Where the hiker hikes (#1373): the place first run asked for, or
+          "Not set", and the one door to change it - the sheet the shell
+          opens. Read as a value and changed by a button rather than typed
+          here, because the answer has to be a row of the places index and
+          a free-text field would let somebody type a place the map cannot
+          open on. */}
+      {onChangeDefaultPlace !== undefined && (
+        <div className="settings__row">
+          <span className="settings__label">Where you hike</span>
+          <span className="settings__value">
+            {defaultPlace == null ? 'Not set' : placeTitle(defaultPlace)}
+          </span>
+          <button
+            type="button"
+            className="settings__action settings__action--row"
+            onClick={onChangeDefaultPlace}
+          >
+            {defaultPlace == null ? 'Set' : 'Change'}
+          </button>
         </div>
       )}
 
@@ -386,6 +433,15 @@ export function AccountSyncSettings({
           they have never been offered. */}
       <p className="settings__note">
         Photos stay on this phone. Syncing them is not built yet.
+      </p>
+      {/* And the one thing that is phone-local by design rather than by
+          absence (#1373, inventory P16): a group is a way of looking at
+          trips, not a record - lib/tripGroups.ts - so it never travels and
+          is not listed above as unsent. Said here so a hiker on a second
+          phone knows why their groups are not on it. */}
+      <p className="settings__note">
+        Groups of trips stay on this phone too — they are a way of arranging trips, and
+        the trips themselves are what travels.
       </p>
 
       <button

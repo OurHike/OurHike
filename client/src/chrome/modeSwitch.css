@@ -13,6 +13,10 @@
 }
 
 .mode-switch__segment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex: 1;
   min-height: var(--min-touch-target, 44px);
   /* border-box, stated because the prototype shipped the opposite and its
@@ -64,4 +68,9 @@
    one chosen rather than as one of three. */
 .mode-switch__segment--pending {
   opacity: 0.55;
+}
+
+.mode-switch__icon {
+  flex: none;
+  opacity: 0.85;
 }

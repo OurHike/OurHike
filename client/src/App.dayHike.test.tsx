@@ -22,12 +22,13 @@ import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { NETWORK_STILL_ARRIVING } from './lib/dayHikeDraft'
 import { DAY_HIKES_KEY } from './lib/dayHikes'
+import { DAY_HIKES_SYNC_KEY } from './lib/dayHikeSyncState'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
 import { TRAIL_GRAPH_CELLS_KEY, trailGraphCellKey } from './lib/config'
 import { CAMERA_MEMORY_KEY } from './lib/cameraMemory'
 import { TRIPS_KEY } from './lib/trips'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './map/poiLayers'
-import { appHarness, latOfMile, openMapTab } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab, stubDesktop } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -301,7 +302,10 @@ async function openDoor(user: ReturnType<typeof userEvent.setup>) {
   render(<App />)
   await user.click(await screen.findByRole('tab', { name: 'Plan' }))
   await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
-  return await screen.findByRole('dialog', { name: 'What are you planning?' })
+  // Step 1 of the spine (#1373, screens/PlanStart.tsx) where the kind sheet
+  // stood: the kind is the mode on the bar, and "Pick on the map" is the
+  // day-hike builder's door.
+  return await screen.findByRole('heading', { name: 'Where do you want to go?' })
 }
 
 /** The live map with the tap listener attached - a wait on something
@@ -382,7 +386,7 @@ describe('shelters and campsites as stops (#1194)', () => {
     await serveGraph()
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     await screen.findByText(/Tap a trail to walk it/)
 
     const map = await liveMap()
@@ -463,7 +467,7 @@ describe('the day-hike builder, end to end', () => {
 
     // The graph loaded, so the day-hike option is a BUTTON - waiting on this
     // rendered consequence is what proves the fetch landed, not a timer.
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
 
     // Frame 1j's bar, on the trail tab, listening.
     expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
@@ -496,9 +500,10 @@ describe('the day-hike builder, end to end', () => {
     expect(await screen.findByText(/2 legs ·/)).toBeInTheDocument()
     expect(screen.getByText(/NY–NJ Trail Conference · 1 leg/)).toBeInTheDocument()
 
-    // Close the loop, then Done - which exists only now that a route does.
-    await user.click(screen.getByRole('button', { name: 'Close the loop' }))
-    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    // Loop, on the shape control, then "Use this route" - which exists only
+    // now that a route does (#1373, step 2).
+    await user.click(screen.getByRole('radio', { name: 'Loop' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
 
     // Done opens frame `1l`'s card as a REVIEW - nothing stored yet. Every
     // edge the fixture holds is on this loop, so the ways-off block prints
@@ -533,6 +538,57 @@ describe('the day-hike builder, end to end', () => {
     expect(hike.segments[0][0].coord[0]).toBeCloseTo(-74.095, 2)
     expect(hike.figures.miles).toBeGreaterThan(0)
     expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+
+    // SAVE LANDS ON THE SAVED CARD (#1373, frame 5c), on the Plan tab: the
+    // record just written, "Saved" over it, "Walk this" first, and the line
+    // saying where it lives - not the map with nothing on it.
+    expect(
+      await screen.findByRole('tab', { name: 'Plan', selected: true }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('Saved')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Walk this' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/Give it a date/)
+    expect(screen.queryByRole('navigation', { name: 'Planning steps' })).toBeNull()
+  })
+
+  it('goes back to step 1 by "‹ Hike" with the route kept, and the rail’s second stop returns to it (#1373, R3)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    await serveGraph()
+
+    await openDoor(user)
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+
+    // Back to "Where do you want to go?" - no bail sheet, because nothing
+    // is being left: the draft stays live on the map behind step 1.
+    await user.click(screen.getByRole('button', { name: 'Back to Hike, step 1' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Where do you want to go?' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: 'Keep this half-built route?' }),
+    ).toBeNull()
+    expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
+
+    // Step 1 knows a route waits: its rail's second stop is the door back,
+    // and the walk is as it was - one leg, not an empty builder.
+    await user.click(screen.getByRole('button', { name: 'Step 2, Route' }))
+    expect(
+      await screen.findByRole('region', { name: 'Build a day hike' }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText(/1 leg ·/)).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map', selected: true })).toBeInTheDocument()
+
+    // The rail's own first stop is the same door.
+    await user.click(screen.getByRole('button', { name: 'Step 1, Day hike' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Where do you want to go?' }),
+    ).toBeInTheDocument()
   })
 
   it('keeps a date set on the review card across a trip back to the map (#1008)', async () => {
@@ -542,24 +598,24 @@ describe('the day-hike builder, end to end', () => {
     await serveGraph()
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
     await tapWhenRoutable(map, -74.095, 41.25)
     await tap(map, -74.085, 41.25)
-    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
 
     // Date it on the review card, then go back to look at the route again -
     // which is the only thing that button is for, since the map is frozen
     // while the card is up.
     const when = (await screen.findByLabelText('When')) as HTMLInputElement
     await user.type(when, '2026-09-12')
-    await user.click(screen.getByRole('button', { name: 'Back to the map' }))
+    await user.click(screen.getByRole('button', { name: 'Back to Route, step 2' }))
     expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
 
     // Done rebuilds the record from the draft. The date has to survive that,
     // or it is lost silently - and it is the field the list, the split and
     // the trailhead door all read.
-    await user.click(await screen.findByRole('button', { name: 'Done' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
     await user.click(await screen.findByRole('button', { name: 'Save this day hike' }))
 
     await waitFor(() => {
@@ -578,7 +634,7 @@ describe('the day-hike builder, end to end', () => {
     await serveGraph()
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
 
     // ~5 km north of anything routable - tapped until the graph can answer.
@@ -618,7 +674,7 @@ describe('the day-hike builder, end to end', () => {
     await serveGraph({ withGeometry: false })
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
 
     await tap(map, -74.095, 41.25)
@@ -642,7 +698,7 @@ describe('the day-hike builder, end to end', () => {
     const requested = await serveGraph({ withGeometry: false })
 
     await openDoor(user)
-    await user.click(await screen.findByRole('button', { name: /A day hike/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
 
     const asked = () => requested.filter((url) => url.includes(GEOMETRY_KEY)).length
@@ -665,7 +721,7 @@ describe('the day-hike builder, end to end', () => {
 
     const door = await openDoor(user)
     expect(door).toBeInTheDocument()
-    await screen.findByRole('button', { name: /A day hike/ })
+    await screen.findByRole('button', { name: 'Pick on the map' })
 
     // The routing half of the cell under the camera loads at launch; the
     // geometry half must not have been asked for yet - it is by far the
@@ -673,7 +729,7 @@ describe('the day-hike builder, end to end', () => {
     expect(requested.some((url) => url.includes(GRAPH_KEY))).toBe(true)
     expect(requested.some((url) => url.includes(GEOMETRY_KEY))).toBe(false)
 
-    await user.click(screen.getByRole('button', { name: /A day hike/ }))
+    await user.click(screen.getByRole('button', { name: 'Pick on the map' }))
     await waitFor(() => {
       expect(requested.some((url) => url.includes(GEOMETRY_KEY))).toBe(true)
     })
@@ -728,6 +784,13 @@ describe('the day-hike builder, end to end', () => {
     })
     expect(screen.getByRole('heading', { name: 'Sections' })).toBeInTheDocument()
 
+    // Opening a card and putting it away is not an edit of any hike (#1373,
+    // P41): the sync ledger has nothing to carry for it. Both writes used to
+    // go through the ledger-marking save, and every surviving hike was
+    // queued for upload on every tap on a row.
+    const ledger = app.store.get(DAY_HIKES_SYNC_KEY) as { dirty?: string[] } | undefined
+    expect(ledger?.dirty ?? []).toEqual([])
+
     // Back to the day room, and the row is still there to reopen.
     await user.click(screen.getByRole('tab', { name: 'Today' }))
     await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
@@ -751,6 +814,46 @@ describe('the day-hike builder, end to end', () => {
     })
     const stored = app.store.get(DAY_HIKES_KEY) as { hikes: unknown[] }
     expect(stored.hikes).toHaveLength(0)
+  })
+
+  it('edits a saved hike at step 2 and saves back over the same record (#1373, D1)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+    app.store.set(DAY_HIKES_KEY, { hikes: [SAVED_HIKE], openId: null })
+
+    render(<App />)
+    await user.click(await screen.findByRole('tab', { name: 'Plan' }))
+    await user.click(
+      await screen.findByRole('button', { name: /Pine Meadow out and back/ }),
+    )
+    const card = await screen.findByRole('dialog', { name: 'Pine Meadow out and back' })
+    // Nobody is following it, so the door opens straight into the builder
+    // - on the map, at step 2, holding the saved ends as taps rather than
+    // an empty walk.
+    await user.click(within(card).getByRole('button', { name: 'Edit the route' }))
+    expect(
+      await screen.findByRole('region', { name: 'Build a day hike' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map', selected: true })).toBeInTheDocument()
+    expect(await screen.findByText(/legs? ·/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('dialog', { name: 'Pine Meadow out and back' }),
+    ).not.toBeInTheDocument()
+
+    // Straight through: Use this route, then Save. One record, the same id
+    // - never a second row beside the first.
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
+    await user.click(await screen.findByRole('button', { name: 'Save this day hike' }))
+    await waitFor(() => {
+      const stored = app.store.get(DAY_HIKES_KEY) as {
+        hikes: Array<{ id: string; segments: unknown[][] }>
+      }
+      expect(stored.hikes).toHaveLength(1)
+      expect(stored.hikes[0].id).toBe(SAVED_HIKE.id)
+    })
   })
 
   it('opens a saved hike’s card from the Today tab, where the shelf also lives', async () => {
@@ -801,15 +904,7 @@ describe('the day-hike builder, end to end', () => {
     // Matched on the query rather than answering true to everything, for
     // App.test.tsx's reason: this shell also asks matchMedia whether it is
     // standalone and whether the pointer is fine.
-    vi.stubGlobal(
-      'matchMedia',
-      vi.fn((query: string) => ({
-        matches: query.includes('min-width: 900px'),
-        media: query,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      })),
-    )
+    stubDesktop()
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData()
@@ -929,6 +1024,9 @@ describe('the day-hike builder, end to end', () => {
     await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'Plan a day hike' }))
+    // Through step 1 (#1373): the day room's primary lands on "Where do you
+    // want to go?", and the map door is the builder.
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
     const map = await liveMap()
     // `tapWhenRoutable` for the FIRST tap, not plain `tap`. This door is
     // reached through the day room rather than through the trail tab's own
@@ -952,6 +1050,9 @@ describe('the day-hike builder, end to end', () => {
     // to the hike is the app's mode control since #1317, and then in through
     // the gap door, which calls openRouteBuilderFrom directly.
     await user.click(await screen.findByRole('tab', { name: 'Today' }))
+    // Leaving a live draft by the bar asks first (#1373, D8); kept for later,
+    // which is what the bar used to do silently.
+    await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
     await user.click(await screen.findByRole('radio', { name: 'Long hike' }))
     await user.click(await screen.findByRole('tab', { name: 'Plan' }))
     await user.click(
@@ -1121,10 +1222,10 @@ describe('the day-hike builder, end to end', () => {
     // A sentence, not a dead control - and the other two doors still work.
     // Since #1257 stage 3 the door reads the cell INDEX rather than waiting
     // for a graph to arrive: no index in the release, no day hikes.
-    expect(screen.queryByRole('button', { name: /A day hike/ })).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /A multi-day section/ }),
-    ).toBeInTheDocument()
+      screen.queryByRole('button', { name: 'Pick on the map' }),
+    ).not.toBeInTheDocument()
+    // The long hike is the mode's business now (D6), not a second door here.
 
     // AND THE SENTENCE IS THE TRUE ONE (#1049). `withGraph: false` serves a
     // 404, which is exactly what production serves today (#1048) - so this is
@@ -1132,5 +1233,99 @@ describe('the day-hike builder, end to end', () => {
     // them to wait for a data sync that was never coming.
     expect(screen.getByText(/does not include the trail network/i)).toBeInTheDocument()
     expect(screen.queryByText(/data sync/i)).not.toBeInTheDocument()
+  })
+})
+
+// --- Step 3 on a desktop (#1373, frame 16b) ---------------------------------
+
+describe('step 3 on a desktop', () => {
+  it('keeps the builder’s controls at the foot of the column, and its figures in the column alone (the review of #1374)', async () => {
+    stubDesktop()
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+
+    render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await screen.findByRole('heading', { name: 'Where do you want to go?' })
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
+    const bar = await screen.findByRole('region', { name: 'Build a day hike' })
+    // In the column, under "Your route", and nowhere over the canvas.
+    const column = bar.closest('.day-hike-panel')
+    expect(column).not.toBeNull()
+    expect(bar.closest('.day-hike-panel__controls')).not.toBeNull()
+    expect(bar.closest('.map-screen__canvas')).toBeNull()
+    expect(column?.parentElement?.className).toBe('map-screen__body')
+
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    // The column prints the distance once, in its stats; the bar in it does
+    // not print the leg count and miles a second time.
+    await screen.findByText('Distance')
+    expect(screen.queryByText(/1 leg ·/)).toBeNull()
+    expect(
+      within(column as HTMLElement).getByRole('button', { name: /Use this route/ }),
+    ).toBeInTheDocument()
+    expect(
+      within(column as HTMLElement).getByRole('radiogroup', { name: 'Shape' }),
+    ).toBeInTheDocument()
+  })
+
+  it('reads the review in the rail beside the route, and still saves from there', async () => {
+    // The same walk the end-to-end case builds, above the breakpoint. On a
+    // phone the review is a sheet over the canvas (`routeSheet`); here the
+    // shell hands the same card to the builder-panel slot, so it is the
+    // first child of the map body - the rail step 2 wore - and the map
+    // beside it shows the route the card describes. Matched on the query,
+    // for the reason the journal-column case above gives.
+    stubDesktop()
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData()
+    app.store.set('ourhike:stewards', STEWARDS)
+    await serveGraph()
+
+    render(<App />)
+    // A desktop builds its map from launch, so the first frame's tab bar is
+    // the bare one App draws while the archive store answers - a click on
+    // it lands on an element the map screen then replaces. Wait for the map
+    // itself, as the journal-column case does, then reach for the tab.
+    await screen.findByRole('region', { name: /trail map/i })
+    await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Start on the map' }))
+    await screen.findByRole('heading', { name: 'Where do you want to go?' })
+    await user.click(await screen.findByRole('button', { name: 'Pick on the map' }))
+    expect(await screen.findByText(/Tap a trail to walk it/)).toBeInTheDocument()
+    const map = await liveMap()
+    await tapWhenRoutable(map, -74.095, 41.25)
+    await tap(map, -74.085, 41.25)
+    // Routed: the way on appears. (The bar's "1 leg ·" line is the phone's;
+    // on a laptop the column's stats carry the figures - the case above.)
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
+
+    const save = await screen.findByRole('button', { name: 'Save this day hike' })
+    const card = save.closest('.day-hike-card')
+    expect(card).not.toBeNull()
+    // The rail, not the sheet: a child of the body, and nowhere inside the
+    // canvas the phone's sheet floats over.
+    expect(card?.parentElement?.className).toBe('map-screen__body')
+    expect(card?.closest('.map-screen__canvas')).toBeNull()
+    // And no second copy of it in the sheet slot - the slot stays empty
+    // rather than falling through to the pick bar under it.
+    expect(screen.getAllByRole('button', { name: 'Save this day hike' })).toHaveLength(1)
+    expect(screen.queryByText(/Tap a trail to walk it/)).not.toBeInTheDocument()
+
+    // The same handlers: Save lands the one record from the rail.
+    await user.click(save)
+    await waitFor(() => {
+      expect(app.store.get(DAY_HIKES_KEY)).toBeDefined()
+    })
+    const stored = app.store.get(DAY_HIKES_KEY) as { hikes: unknown[] }
+    expect(stored.hikes).toHaveLength(1)
   })
 })

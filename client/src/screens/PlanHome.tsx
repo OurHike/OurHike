@@ -132,6 +132,13 @@ export interface PlanHomeProps {
   onOpenGroup: (id: string) => void
   onAllTrips: () => void
   onAllDayHikes: () => void
+  /** Open the walked shelf of that list - every walk already done, and
+   *  nothing else (#1373, D5). */
+  onAllWalked: () => void
+  /** Open "What's left" (#791) straight from the hike's room (#1373, frame
+   *  8a). Undefined where there is no hike to ask it of, and the room then
+   *  offers nothing rather than a door to a screen about another hike. */
+  onWhatsLeft?: () => void
   /** Open the day-hike builder, or null when this phone has no junction
    *  graph - null renders the sentence, never a dead button. */
   onNewDayHike: (() => void) | null
@@ -173,6 +180,8 @@ export function PlanHome({
   onOpenGroup,
   onAllTrips,
   onAllDayHikes,
+  onAllWalked,
+  onWhatsLeft,
   onNewDayHike,
   onNewTrip,
   onResumeDraft,
@@ -204,6 +213,9 @@ export function PlanHome({
         onOpenTrip={onOpenTrip}
         onOpenDayHike={onOpenDayHike}
         onAllTrips={onAllTrips}
+        onAllDayHikes={onAllDayHikes}
+        onAllWalked={onAllWalked}
+        onWhatsLeft={onWhatsLeft}
         onAddDayHikeToHike={onAddDayHikeToHike}
         onNewTrip={onNewTrip}
         onResumeDraft={onResumeDraft}
@@ -220,6 +232,7 @@ export function PlanHome({
       draftKind={draftKind}
       onOpenDayHike={onOpenDayHike}
       onAllDayHikes={onAllDayHikes}
+      onAllWalked={onAllWalked}
       onNewDayHike={onNewDayHike}
       onResumeDraft={onResumeDraft}
       network={network}
@@ -287,6 +300,9 @@ interface HikeRoomProps {
   onOpenTrip: (id: string) => void
   onOpenDayHike: (id: string) => void
   onAllTrips: () => void
+  onAllDayHikes: () => void
+  onAllWalked: () => void
+  onWhatsLeft?: () => void
   onAddDayHikeToHike?: () => void
   /**
    * Move a section into this hike, or out of it (#1367).
@@ -349,6 +365,9 @@ function HikeRoom({
   onOpenTrip,
   onOpenDayHike,
   onAllTrips,
+  onAllDayHikes,
+  onAllWalked,
+  onWhatsLeft,
   onAddDayHikeToHike,
   onNewTrip,
   onResumeDraft,
@@ -356,6 +375,7 @@ function HikeRoom({
   const [renaming, setRenaming] = useState(false)
   const [draftName, setDraftName] = useState('')
   const figures = hikeFigures(hike, trips, pois)
+  const onTrail = splitDayHikes(dayHikes)
   const sections = trips.filter((trip) => hike.tripIds.includes(trip.id))
   /**
    * The sections that are NOT in this hike, on their own shelf.
@@ -466,7 +486,22 @@ function HikeRoom({
       </section>
 
       <section className="plan-home__section">
-        <span className="plan-home__title">This hike, end to end</span>
+        <div className="plan-home__section-head">
+          <span className="plan-home__title">This hike, end to end</span>
+          {/* STRAIGHT TO "WHAT'S LEFT" (#791) from the figures it is about
+              (#1373, frame 8a). It used to live at the foot of the hike
+              zoom - two taps down and past every section row - which is the
+              review's finding about this tab: a hiker who has not planned
+              before was given storage rather than the next thing. Only
+              where something IS left: on a finished hike the screen would
+              open to say so, and a door to a sentence is the pattern
+              LineSheet's rule exists to stop. */}
+          {onWhatsLeft !== undefined && figures.leftMi > 0 && (
+            <button type="button" className="plan-home__all" onClick={onWhatsLeft}>
+              What&rsquo;s left ›
+            </button>
+          )}
+        </div>
         <div className="plan-home__row plan-home__row--figures">
           <span className="plan-home__meta">
             {formatDistance(figures.walkedMi, units)} walked ·{' '}
@@ -565,27 +600,35 @@ function HikeRoom({
         </section>
       )}
 
-      {dayHikes.length > 0 && (
+      {onTrail.toWalk.length > 0 && (
         <section className="plan-home__section">
-          <div className="plan-home__title">Day hikes on this trail</div>
-          {[...splitDayHikes(dayHikes).walked, ...splitDayHikes(dayHikes).toWalk]
-            .slice(0, RECENT_DAY_HIKES)
-            .map((dayHike) => (
-              <button
-                type="button"
-                className="plan-home__row"
-                key={dayHike.id}
-                onClick={() => onOpenDayHike(dayHike.id)}
-              >
-                <span className="plan-home__row-name">{dayHike.name}</span>
-                <span className="plan-home__meta">
-                  {formatDistance(dayHike.figures.miles, units)} ·{' '}
-                  {dayHike.date !== null ? dayLongDateLabel(dayHike.date) : 'no date yet'}
-                </span>
-              </button>
-            ))}
+          <div className="plan-home__section-head">
+            <span className="plan-home__title">Day hikes on this trail</span>
+            {/* The door this shelf never had (#1373, frame 8a): it showed
+                three and stopped, so a hiker in the long-hike room with a
+                fourth day hike had no way to it short of switching mode. */}
+            <button type="button" className="plan-home__all" onClick={onAllDayHikes}>
+              All {dayHikes.length} ›
+            </button>
+          </div>
+          {onTrail.toWalk.slice(0, RECENT_DAY_HIKES).map((dayHike) => (
+            <DayHikeRow
+              key={dayHike.id}
+              dayHike={dayHike}
+              units={units}
+              onOpen={() => onOpenDayHike(dayHike.id)}
+            />
+          ))}
         </section>
       )}
+
+      <WalkedShelf
+        title="Walked on this trail"
+        walked={onTrail.walked}
+        units={units}
+        onOpen={onOpenDayHike}
+        onAll={onAllWalked}
+      />
 
       {/* A day hike on this trail counts toward the hike like any section
           does (#1317). Dashed like `route-stops__add`, because it adds a row
@@ -625,6 +668,101 @@ function HikeRoom({
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * One saved day hike on a home's shelf.
+ *
+ * The cached figures, which exist for exactly this row: a list must not load
+ * the routing graph to say "3.4 mi". The card a tap opens re-derives against
+ * the live graph and says so when it cannot. A walked one says "walked" with
+ * its date (frame 8a's `6.4 mi · walked Sat 12 Sep`) - the same word the
+ * list's shelf uses, so a row and the shelf it came from agree.
+ */
+function DayHikeRow({
+  dayHike,
+  units,
+  onOpen,
+}: {
+  dayHike: DayHike
+  units: UnitSystem
+  onOpen: () => void
+}) {
+  const walked = dayHike.recorded === 'walked'
+  const when = dayHike.date !== null ? dayLongDateLabel(dayHike.date) : null
+  return (
+    <button type="button" className="plan-home__row" onClick={onOpen}>
+      <span className="plan-home__row-name">{dayHike.name}</span>
+      <span className="plan-home__meta">
+        {formatDistance(dayHike.figures.miles, units)} ·{' '}
+        {walked
+          ? when === null
+            ? 'walked · no date'
+            : `walked ${when}`
+          : (when ?? 'no date yet')}
+      </span>
+    </button>
+  )
+}
+
+/**
+ * ONE SHELF FOR WALKED HISTORY (#1373, D5).
+ *
+ * The review's reachability audit found a walk already done was reachable
+ * "only if you scroll past the plans": the day room listed to-walk hikes
+ * first and walked ones after, three rows in all, so the history was behind
+ * the plans on the home and behind "Ready to walk" on the list. This is the
+ * shelf both rooms now carry, walked walks and nothing else, newest first,
+ * with its own door to the list opened on the walked shelf alone
+ * (DayHikeList's `shelf="walked"`).
+ *
+ * Absent when it holds nothing - a header over an empty list is a shelf with
+ * a label and no answer on it (#805) - and the door's accessible name says
+ * "walked", because a second "All N ›" on the same screen is two buttons a
+ * screen reader cannot tell apart.
+ *
+ * No count of walks, no span of dates, no streak: those are GroupScreen's
+ * figures for a set that has been GROUPED, and a shelf of everything ever
+ * walked wearing "14 Sundays in a row" is exactly where value #1's rule
+ * against prescriptive gamification would be broken first.
+ */
+function WalkedShelf({
+  title,
+  walked,
+  units,
+  onOpen,
+  onAll,
+}: {
+  title: string
+  walked: readonly DayHike[]
+  units: UnitSystem
+  onOpen: (id: string) => void
+  onAll: () => void
+}) {
+  if (walked.length === 0) return null
+  return (
+    <section className="plan-home__section">
+      <div className="plan-home__section-head">
+        <span className="plan-home__title">{title}</span>
+        <button
+          type="button"
+          className="plan-home__all"
+          aria-label={`All ${walked.length} walked`}
+          onClick={onAll}
+        >
+          All {walked.length} ›
+        </button>
+      </div>
+      {walked.slice(0, RECENT_DAY_HIKES).map((dayHike) => (
+        <DayHikeRow
+          key={dayHike.id}
+          dayHike={dayHike}
+          units={units}
+          onOpen={() => onOpen(dayHike.id)}
+        />
+      ))}
+    </section>
   )
 }
 
@@ -718,6 +856,7 @@ interface DayHikesHomeProps {
   draftKind: 'day' | 'trip' | null
   onOpenDayHike: (id: string) => void
   onAllDayHikes: () => void
+  onAllWalked: () => void
   onAllTrips: () => void
   onNewDayHike: (() => void) | null
   onResumeDraft: () => void
@@ -736,6 +875,7 @@ function DayHikesHome({
   draftKind,
   onOpenDayHike,
   onAllDayHikes,
+  onAllWalked,
   onAllTrips,
   onNewDayHike,
   onResumeDraft,
@@ -743,7 +883,6 @@ function DayHikesHome({
   onRetryNetwork,
 }: DayHikesHomeProps) {
   const shelf = splitDayHikes(dayHikes)
-  const recent = [...shelf.toWalk, ...shelf.walked]
 
   return (
     <div className="plan-home plan-home--day">
@@ -775,7 +914,7 @@ function DayHikesHome({
         </section>
       )}
 
-      {dayHikes.length > 0 && (
+      {shelf.toWalk.length > 0 && (
         <section className="plan-home__section">
           <div className="plan-home__section-head">
             <span className="plan-home__title">Your day hikes</span>
@@ -783,26 +922,24 @@ function DayHikesHome({
               All {dayHikes.length} ›
             </button>
           </div>
-          {recent.slice(0, RECENT_DAY_HIKES).map((dayHike) => (
-            <button
-              type="button"
-              className="plan-home__row"
+          {shelf.toWalk.slice(0, RECENT_DAY_HIKES).map((dayHike) => (
+            <DayHikeRow
               key={dayHike.id}
-              onClick={() => onOpenDayHike(dayHike.id)}
-            >
-              <span className="plan-home__row-name">{dayHike.name}</span>
-              {/* The cached figures, which exist for exactly this row: a list
-                  must not load the routing graph to say "3.4 mi". The card a
-                  tap opens re-derives against the live graph and says so when
-                  it cannot. */}
-              <span className="plan-home__meta">
-                {formatDistance(dayHike.figures.miles, units)} ·{' '}
-                {dayHike.date !== null ? dayLongDateLabel(dayHike.date) : 'no date yet'}
-              </span>
-            </button>
+              dayHike={dayHike}
+              units={units}
+              onOpen={() => onOpenDayHike(dayHike.id)}
+            />
           ))}
         </section>
       )}
+
+      <WalkedShelf
+        title="Walked"
+        walked={shelf.walked}
+        units={units}
+        onOpen={onOpenDayHike}
+        onAll={onAllWalked}
+      />
 
       {dayHikes.length === 0 && (
         // Both conditions carry the sentence: the exchange runs only with an

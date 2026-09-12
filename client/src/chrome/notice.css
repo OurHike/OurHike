@@ -1,0 +1,90 @@
+/* One notice, three tones (chrome/Notice.tsx, #1373).
+ *
+ * Semantic tokens only - themeTokens.test.ts fails this file the moment it
+ * names a base colour. The urgent tone reads the danger roles, which are what
+ * the serious-warning red becomes on ink; the warn tone reads the caution
+ * surface (amber by day, its deep form at night) the same way the elevation
+ * ribbon's caveat band does. */
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  background: var(--surface-card);
+  box-sizing: border-box;
+}
+
+.notice--warn {
+  background: var(--surface-warning);
+  border-color: var(--accent-blaze-orange);
+}
+
+.notice--urgent {
+  border-color: var(--danger-strong);
+}
+
+.notice__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.notice__title {
+  margin: 0;
+  font-family: var(--font-body, sans-serif);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--fg-1);
+}
+
+.notice--urgent .notice__title {
+  color: var(--danger);
+}
+
+.notice__body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+
+/* Both doors are real buttons at the app's own minimum target; the link
+   keeps its text-only look because it is the detail under the sentence,
+   not a second primary. */
+.notice__link,
+.notice__action {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.notice__link {
+  margin-top: 4px;
+  text-align: left;
+}
+
+.notice__action {
+  flex: none;
+  align-self: flex-start;
+  padding: 0 4px;
+  transition: color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.notice__action:hover,
+.notice__link:hover {
+  color: var(--brand-primary-hover);
+}

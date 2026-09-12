@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Legend } from './Legend'
+import { Legend, NAMED_TRAILS_SHOWN } from './Legend'
 import { GHOSTED_TRAILS_NOTE } from '../lib/legendContents'
 import { HIDEABLE_TYPES } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
@@ -106,6 +106,21 @@ describe('the ghosting sentence (#783)', () => {
     const after = withNote.container.querySelectorAll('button, input, select').length
 
     expect(after).toBe(before)
+  })
+})
+
+describe('the ask for your own day hikes (#1373, D5)', () => {
+  it('offers it only when the shell can answer it', async () => {
+    const user = userEvent.setup()
+    const onDayHikesNearHere = vi.fn()
+    render(<Legend {...PROPS} onDayHikesNearHere={onDayHikesNearHere} />)
+
+    await user.click(screen.getByRole('button', { name: /Your day hikes near here/ }))
+    expect(onDayHikesNearHere).toHaveBeenCalled()
+
+    cleanup()
+    render(<Legend {...PROPS} />)
+    expect(screen.queryByRole('button', { name: /Your day hikes near here/ })).toBeNull()
   })
 })
 
@@ -967,6 +982,35 @@ describe('the way to every ATC notice (#687)', () => {
       Node.DOCUMENT_POSITION_FOLLOWING,
     )
   })
+
+  it('sits directly under the serious-warning row, above the switches (2026-09-10)', () => {
+    // The maintainer's call: the grid ends on its two safety rows, and the
+    // notices are the same kind of thing - what is wrong on the trail - so
+    // the door to all of them follows the key to them rather than sitting
+    // past four switches at the foot.
+    const { container } = render(
+      <Legend
+        {...PROPS}
+        noticeCount={6}
+        onOpenNotices={vi.fn()}
+        onOnlyType={vi.fn()}
+        onShowAllTypes={vi.fn()}
+      />,
+    )
+
+    const atcLink = screen.getByRole('button', { name: /trail notices/ })
+    const warningRow = rowFor('Serious warning')
+    const showing = container.querySelector('.legend__shown')!
+    expect(
+      warningRow.compareDocumentPosition(atcLink) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      atcLink.compareDocumentPosition(showing) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // Nothing between the row and the door.
+    const grid = container.querySelector('.legend__pins')!
+    expect(grid.nextElementSibling).toBe(atcLink)
+  })
 })
 
 // Showing one category alone, and the stored preference behind it (#530). The
@@ -1510,6 +1554,7 @@ describe('the "Trails in view" block (#1283)', () => {
       chosen: true,
       anchor: [-74.1, 41.25] as [number, number],
       badgeFit: 'full' as const,
+      badgeAnchor: 'left',
       properties: {},
     },
     {
@@ -1521,12 +1566,15 @@ describe('the "Trails in view" block (#1283)', () => {
       chosen: false,
       anchor: null,
       badgeFit: 'full' as const,
+      badgeAnchor: 'left',
       properties: {},
     },
   ]
 
-  it('lists one row per trail the map is drawing, above the pin grid', () => {
-    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+  it('lists one row per trail the map is drawing, below the pin grid and its switches', () => {
+    const { container } = render(
+      <Legend {...PROPS} trailsInView={TRAILS} onToggleAlerts={vi.fn()} />,
+    )
 
     const block = screen.getByRole('region', { name: 'Trails in view' })
     expect(
@@ -1537,10 +1585,17 @@ describe('the "Trails in view" block (#1283)', () => {
       'Appalachian National Scenic Trail · taken',
       'Long Path',
     ])
-    // Above the pin grid: the block precedes the first pin row in the DOM.
+    // Below the pin grid and the switches under it, above the foot: the
+    // block opened the panel until 2026-09-10, and the maintainer moved it
+    // down ("takes up a lot of space") so the key a hiker opens the panel
+    // for is what the panel opens on.
     const pinRow = rowFor('Water')
+    const alerts = container.querySelector('.legend__alerts')!
     expect(
-      block.compareDocumentPosition(pinRow) & Node.DOCUMENT_POSITION_FOLLOWING,
+      pinRow.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      alerts.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
 
@@ -1575,15 +1630,52 @@ describe('the "Trails in view" block (#1283)', () => {
     )
   })
 
-  it('draws the taken trail solid and every other row dotted, as the map does', () => {
+  it('draws every row solid and marks the taken one in words, as the map does', () => {
+    // The rows were solid against dotted until 2026-09-10 (map/style.ts's
+    // header, rule 2). What still separates them on the canvas is opacity,
+    // and on this panel the word.
     render(<Legend {...PROPS} trailsInView={TRAILS} />)
     const block = screen.getByRole('region', { name: 'Trails in view' })
     const [at, longPath] = within(block).getAllByRole('listitem')
 
-    expect(at.querySelector('svg')?.getAttribute('data-drawn')).toBe('solid')
-    expect(longPath.querySelector('svg')?.getAttribute('data-drawn')).toBe('dotted')
+    for (const row of [at, longPath]) {
+      expect(row.querySelector('.map-icon__trail-blaze')).not.toHaveAttribute(
+        'stroke-dasharray',
+      )
+    }
     expect(within(at).getByText('taken')).toBeInTheDocument()
     expect(within(longPath).queryByText('taken')).toBeNull()
+  })
+
+  it('names five and folds the rest by name, never by blaze (#1373, R10)', async () => {
+    // The review condenses the block after five rows; the maintainer took
+    // the blaze rows off this panel (2026-08-25), so what folds is the tail
+    // of the same named list and the door unfolds it in place.
+    const user = userEvent.setup()
+    const many = Array.from({ length: 7 }, (_, index) => ({
+      ...TRAILS[1],
+      name: `Trail ${index + 1}`,
+    }))
+    render(<Legend {...PROPS} trailsInView={many} />)
+
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).getAllByRole('listitem')).toHaveLength(NAMED_TRAILS_SHOWN)
+    expect(within(block).getByRole('heading')).toHaveTextContent('5 of 7')
+    expect(within(block).queryByText(/blaze/i)).toBeNull()
+
+    await user.click(within(block).getByRole('button', { name: '2 more, by name ›' }))
+    expect(within(block).getAllByRole('listitem')).toHaveLength(7)
+    expect(within(block).getByRole('heading')).toHaveTextContent('7 of 7')
+
+    await user.click(within(block).getByRole('button', { name: 'Fewer ›' }))
+    expect(within(block).getAllByRole('listitem')).toHaveLength(NAMED_TRAILS_SHOWN)
+  })
+
+  it('folds nothing at five or fewer, so the common case has no door', () => {
+    render(<Legend {...PROPS} trailsInView={TRAILS} />)
+    const block = screen.getByRole('region', { name: 'Trails in view' })
+    expect(within(block).queryByRole('button', { name: /more, by name/ })).toBeNull()
+    expect(within(block).getByRole('heading')).toHaveTextContent(/^Trails in view$/)
   })
 
   it('prints no mileage, because nothing published carries a trail’s length', () => {
@@ -1647,14 +1739,27 @@ describe('the "Trails in view" block (#1283)', () => {
   })
 
   it('keeps the ghosting sentence directly under the rows it explains', () => {
-    render(<Legend {...PROPS} trailsInView={TRAILS} ghostedTrailsDrawn />)
+    const { container } = render(
+      <Legend
+        {...PROPS}
+        trailsInView={TRAILS}
+        ghostedTrailsDrawn
+        onOpenDownloads={vi.fn()}
+      />,
+    )
     const block = screen.getByRole('region', { name: 'Trails in view' })
     const note = screen.getByText(GHOSTED_TRAILS_NOTE)
     expect(
       block.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+    // And the two travel together to the foot: the note is after the pin
+    // rows now, and still before the downloaded-map block.
     expect(
-      note.compareDocumentPosition(rowFor('Water')) & Node.DOCUMENT_POSITION_FOLLOWING,
+      rowFor('Water').compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    const foot = container.querySelector('.legend__downloads')!
+    expect(
+      note.compareDocumentPosition(foot) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
   })
 })

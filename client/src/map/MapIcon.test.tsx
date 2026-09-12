@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { MapIcon, TrailLineSwatch } from './MapIcon'
 import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
-import { NEARBY_TRAIL_DASHARRAY, NEARBY_TRAIL_OPACITY } from './nearbyTrails'
+import { NEARBY_TRAIL_OPACITY } from './nearbyTrails'
 import {
   CASING_OVERHANG,
   PRIMARY_TRAIL_WIDTH,
@@ -282,30 +282,20 @@ describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
     )
   })
 
-  it('draws the chosen system solid and everything else as the map’s dot rhythm', () => {
-    const solid = swatch({ chosen: true })
-    expect(
-      part(solid, 'map-icon__trail-blaze').getAttribute('stroke-dasharray'),
-    ).toBeNull()
-    expect(solid.getAttribute('data-drawn')).toBe('solid')
-
-    const dotted = swatch({ chosen: false })
-    // Zero-length dashes, NEARBY_TRAIL_DASHARRAY[1] line widths apart - and
-    // the casing at the same absolute pitch, so its dots sit under the
-    // blaze's.
-    const pitch = `0 ${NEARBY_TRAIL_DASHARRAY[1] * SIDE_TRAIL_WIDTH}`
-    expect(part(dotted, 'map-icon__trail-blaze').getAttribute('stroke-dasharray')).toBe(
-      pitch,
-    )
-    expect(part(dotted, 'map-icon__trail-casing').getAttribute('stroke-dasharray')).toBe(
-      pitch,
-    )
-    expect(dotted.getAttribute('data-drawn')).toBe('dotted')
+  it('draws every line solid, in and out of the chosen system, as the map does', () => {
+    // Solid against dotted until 2026-09-10 (map/style.ts's header, rule
+    // 2): the swatch follows the canvas, and the canvas has no dots.
+    for (const chosen of [true, false]) {
+      const line = swatch({ chosen })
+      for (const cls of ['map-icon__trail-blaze', 'map-icon__trail-casing']) {
+        expect(part(line, cls).getAttribute('stroke-dasharray'), cls).toBeNull()
+      }
+    }
   })
 
   it('ghosts a line outside the chosen system by the map’s own opacity', () => {
-    const dotted = swatch({ chosen: false })
-    expect(num(part(dotted, 'map-icon__trail-blaze'), 'stroke-opacity')).toBe(
+    const ghosted = swatch({ chosen: false })
+    expect(num(part(ghosted, 'map-icon__trail-blaze'), 'stroke-opacity')).toBe(
       NEARBY_TRAIL_OPACITY,
     )
     expect(
@@ -316,22 +306,22 @@ describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
     ).toBe(1)
   })
 
-  it('inks a DOTTED White blaze in the casing colour with no casing on a day sheet, and keeps both on a dark one', () => {
-    // `chosen: false` since #1306: the dark ink is the dotted line's rule,
-    // and the swatch follows the map's own DARK_INKED_BLAZE_LAYER_IDS.
-    const day = swatch({ blazeColor: 'White', throughRoute: true, chosen: false })
-    expect(day.querySelector('.map-icon__trail-casing')).toBeNull()
-    expect(part(day, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
-      trailCasingColor({ theme: 'light' }),
-    )
-
-    // Taken, on the same day sheet, it is the white blaze with its casing -
-    // the swatch saying what the canvas beside it is drawing.
-    const taken = swatch({ blazeColor: 'White', throughRoute: true, chosen: true })
-    expect(taken.querySelector('.map-icon__trail-casing')).not.toBeNull()
-    expect(part(taken, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
-      blazePaintColor('White'),
-    )
+  it('keeps a White blaze white with its casing on every sheet, taken or not', () => {
+    // The dark ink was the dotted line's rule (#1306) and the dots are gone
+    // (2026-09-10): a legend row is always a cased line, and on the canvas
+    // every cased line keeps its white blaze - the swatch saying what the
+    // canvas beside it is drawing. The uncased sketches, which do ink dark
+    // on a day sheet, have no row here.
+    for (const chosen of [false, true]) {
+      const day = swatch({ blazeColor: 'White', throughRoute: true, chosen })
+      expect(day.querySelector('.map-icon__trail-casing')).not.toBeNull()
+      expect(part(day, 'map-icon__trail-casing').getAttribute('stroke')).toBe(
+        trailCasingColor({ theme: 'light' }),
+      )
+      expect(part(day, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+        blazePaintColor('White'),
+      )
+    }
 
     const night = swatch({
       blazeColor: 'White',

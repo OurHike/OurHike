@@ -265,6 +265,126 @@ describe('MapScreen', () => {
     expect(screen.getByRole('searchbox')).toBeInTheDocument()
   })
 
+  it('lists what is in view from the header, and a row opens the pin’s card (#1373, frame 12a)', async () => {
+    const user = userEvent.setup()
+    const onSelectPoi = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        onSelectPoi={onSelectPoi}
+        waypointTotal={23}
+        viewportPoints={[
+          {
+            id: 'w1',
+            type: 'water',
+            lat: 39.5,
+            lon: -77.5,
+            confidence: 'high',
+            name: 'A spring',
+          },
+          // Outside the viewport (PROPS.bbox spans 39–40°N), so neither the
+          // count nor the list holds it: the first version listed every
+          // waypoint on the phone under "In view".
+          {
+            id: 'w2',
+            type: 'shelter',
+            lat: 41.2,
+            lon: -74.1,
+            confidence: 'high',
+            name: 'A far shelter',
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    const sheet = screen.getByRole('dialog', { name: 'In view' })
+    expect(
+      within(sheet).getByRole('heading', { name: 'In view · 1 of 23' }),
+    ).toBeInTheDocument()
+    expect(within(sheet).queryByText(/A far shelter/)).toBeNull()
+
+    await user.click(within(sheet).getByRole('button', { name: /A spring/ }))
+    expect(onSelectPoi).toHaveBeenCalledWith('w1')
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+  })
+
+  it('closes In view when the legend opens, and does not bring it back when the legend closes', async () => {
+    // One sheet in the lower third, in both directions (#1374 review): the
+    // first version hid In view behind an open legend and showed it again,
+    // unasked, when the legend closed.
+    const user = userEvent.setup()
+    const { rerender } = render(<MapScreen {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    expect(screen.getByRole('dialog', { name: 'In view' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /legend/i }))
+    expect(PROPS.onOpenLegend).toHaveBeenCalled()
+    rerender(<MapScreen {...PROPS} legendOpen />)
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+
+    rerender(<MapScreen {...PROPS} legendOpen={false} />)
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+
+    // And the other way: opening In view asks the shell to close the legend.
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    expect(PROPS.onCloseLegend).toHaveBeenCalled()
+  })
+
+  it('lists a workday inside the viewport under In view, and not one outside it (#1373, frame 14d)', async () => {
+    const user = userEvent.setup()
+    const onSelectWorkday = vi.fn()
+    const row = (id: string, lon: number, lat: number) => ({
+      id,
+      title: `Workday ${id}`,
+      club: 'NYNJTC',
+      dates: 'Sep 12',
+      awayMi: null,
+      capacity: null,
+      contact: null,
+      lat,
+      lon,
+    })
+    render(
+      <MapScreen
+        {...PROPS}
+        // PROPS.bbox spans west -78 to east -77, south 39 to north 40.
+        workdayRows={[row('in', -77.5, 39.5), row('out', -70, 45)]}
+        workdaysHeld={2}
+        workdayWindow="fortnight"
+        onChangeWorkdayWindow={vi.fn()}
+        onSelectWorkday={onSelectWorkday}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'In view, 1' }))
+    const section = screen.getByRole('region', { name: 'Workdays in view' })
+    expect(
+      within(section).getByRole('button', { name: /Workday in/ }),
+    ).toBeInTheDocument()
+    expect(within(section).queryByText(/Workday out/)).toBeNull()
+
+    await user.click(within(section).getByRole('button', { name: /Workday in/ }))
+    expect(onSelectWorkday).toHaveBeenCalledWith('in')
+    expect(screen.queryByRole('dialog', { name: 'In view' })).toBeNull()
+  })
+
+  it('offers no In view door with nothing drawn, and renders the two safety sheets in the sheet slot', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[]}
+        closureSheet={<p>the closure sheet</p>}
+        warningSheet={<p>the warning sheet</p>}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: /In view/ })).toBeNull()
+    expect(screen.getByText('the closure sheet')).toBeInTheDocument()
+    expect(screen.getByText('the warning sheet')).toBeInTheDocument()
+  })
+
   it('wires the header buttons to the legend and search handlers', async () => {
     const user = userEvent.setup()
     render(<MapScreen {...PROPS} />)
@@ -977,93 +1097,90 @@ describe('the way to every ATC notice, from the legend (#687)', () => {
   })
 })
 
-describe('the bottom banner for new ATC alerts (#687)', () => {
+describe('the new-notice dot on the legend button (#687; a dot rather than a banner since 2026-09-10)', () => {
   // Independent of noticeCount above - a screen can hold six notices and
   // none of them new, which is the ordinary case now that the 72-hour gate
-  // lives in lib/atcAlertsBanner.ts rather than here. MapScreen only renders
-  // what it is told; the gate itself is that module's own test.
+  // lives in lib/notices.ts rather than here. MapScreen only renders what it
+  // is told; the gate itself is that module's own test.
+  const dot = (container: HTMLElement) => container.querySelector('.map-header__badge')
 
   it('is not there when nothing is new', () => {
-    render(<MapScreen {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />)
+    const { container } = render(
+      <MapScreen {...PROPS} noticeCount={6} onOpenNotices={vi.fn()} />,
+    )
 
-    expect(screen.queryByRole('button', { name: /new alerts? issued/i })).toBe(null)
+    expect(dot(container)).toBe(null)
+    expect(screen.getByRole('button', { name: 'Legend' })).toBeInTheDocument()
   })
 
-  it('appears once something is, outside any legend or notice-count prop', () => {
-    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
+  it('appears once something is, and the legend button says how many', () => {
+    const { container } = render(
+      <MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />,
+    )
 
+    expect(dot(container)).not.toBe(null)
     expect(
-      screen.getByRole('button', { name: '2 new trail notices issued' }),
+      screen.getByRole('button', { name: 'Legend, 2 new trail notices' }),
     ).toBeInTheDocument()
   })
 
-  it('counts one alert without pluralising it', () => {
+  it('counts one notice without pluralising it', () => {
     render(<MapScreen {...PROPS} newNoticeCount={1} onOpenNotices={vi.fn()} />)
 
     expect(
-      screen.getByRole('button', { name: 'New trail notice issued' }),
+      screen.getByRole('button', { name: 'Legend, 1 new trail notice' }),
     ).toBeInTheDocument()
   })
 
-  it('opens the same list a tap on the legend row would', async () => {
-    const onOpenNotices = vi.fn()
-    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={onOpenNotices} />)
-
-    await userEvent.click(
-      screen.getByRole('button', { name: /new trail notices issued/ }),
-    )
-
-    expect(onOpenNotices).toHaveBeenCalledTimes(1)
-  })
-
-  it('offers a silence control that does not also open the list', async () => {
-    const onOpenNotices = vi.fn()
-    const onSilenceNewNotices = vi.fn()
+  it('says how many are new on the legend’s own notices row, where the door is', () => {
     render(
       <MapScreen
         {...PROPS}
+        legendOpen
+        noticeCount={6}
         newNoticeCount={2}
-        onOpenNotices={onOpenNotices}
-        onSilenceNewNotices={onSilenceNewNotices}
+        onOpenNotices={vi.fn()}
       />,
     )
 
-    await userEvent.click(
-      screen.getByRole('button', { name: 'Silence new trail notices' }),
-    )
-
-    expect(onSilenceNewNotices).toHaveBeenCalledTimes(1)
-    expect(onOpenNotices).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('button', { name: 'Read all 6 trail notices · 2 new' }),
+    ).toBeInTheDocument()
   })
 
-  it('omits the silence control when the shell offers none', () => {
-    render(<MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />)
+  it('costs the map no row - the banner this replaced is gone', () => {
+    // 61px of map on a phone whenever ATC had posted in the last 72 hours,
+    // measured on the rig at 375x667 (the room audit for #1374).
+    const { container } = render(
+      <MapScreen {...PROPS} newNoticeCount={2} onOpenNotices={vi.fn()} />,
+    )
 
-    expect(screen.queryByRole('button', { name: /silence/i })).toBe(null)
+    expect(container.querySelector('.map-screen__new-alerts')).toBe(null)
+    expect(screen.queryByRole('button', { name: /new trail notices issued/ })).toBe(null)
   })
 
   it('is announced politely rather than as a live safety alert', () => {
     // role="alert" is reserved for what changes what a hiker does next - the
     // strip above the header (#232), which already keeps that role to
-    // itself and gets no button inside it. This banner is announced instead
-    // through aria-live="polite", not role="status" - StatusStrip.tsx (the
-    // "Offline" flag, sync age) already owns that role on this same screen,
-    // and a second region claiming it would make "the status region"
+    // itself and gets no button inside it. The dot's sentence is announced
+    // instead through aria-live="polite", not role="status" - StatusStrip.tsx
+    // (the "Offline" flag, sync age) already owns that role on this same
+    // screen, and a second region claiming it would make "the status region"
     // ambiguous to a screen reader and to a role query alike.
     const { container } = render(
       <MapScreen
         {...PROPS}
         closureAhead="Trail closed 5.0 mi ahead · Storm damage"
         newNoticeCount={2}
+        newNoticeLabel="2 new trail notices · Appalachian Trail Conservancy"
         onOpenNotices={vi.fn()}
       />,
     )
 
     expect(within(alertBand(container)).queryByRole('button')).toBe(null)
-    expect(container.querySelector('.map-screen__new-alerts')).toHaveAttribute(
-      'aria-live',
-      'polite',
-    )
+    expect(
+      container.querySelector('.map-header__actions [aria-live="polite"]'),
+    ).toHaveTextContent('2 new trail notices · Appalachian Trail Conservancy')
   })
 })
 
@@ -1120,6 +1237,53 @@ describe('the desktop chart (#135)', () => {
     }
   }
 
+  it('carries In view as the legend rail’s second face, one face at a time (#1374 review)', async () => {
+    // The phone's sheet is absolute against the window; on a desktop it
+    // covered the sidebar, the journal and the legend counting the same
+    // points. The rail beside the map now switches between the two.
+    const restore = stubDesktop()
+    try {
+      const user = userEvent.setup()
+      const onSelectPoi = vi.fn()
+      render(
+        <MapScreen
+          {...PROPS}
+          onSelectPoi={onSelectPoi}
+          viewportPoints={[
+            {
+              id: 'w1',
+              type: 'water',
+              lat: 39.5,
+              lon: -77.5,
+              confidence: 'high',
+              name: 'A spring',
+            },
+          ]}
+        />,
+      )
+
+      // No header door above the breakpoint: the rail is where the list is.
+      expect(screen.queryByRole('button', { name: /^In view, \d+/ })).toBeNull()
+      expect(screen.getByRole('region', { name: /legend/i })).toBeInTheDocument()
+
+      await user.click(screen.getByRole('tab', { name: 'In view · 1' }))
+      const panel = screen.getByRole('region', { name: 'In view' })
+      expect(within(panel).getByRole('button', { name: /A spring/ })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: /legend/i })).toBeNull()
+      // Docked, the list has nothing to close.
+      expect(within(panel).queryByRole('button', { name: 'Close' })).toBeNull()
+
+      await user.click(within(panel).getByRole('button', { name: /A spring/ }))
+      expect(onSelectPoi).toHaveBeenCalledWith('w1')
+
+      await user.click(screen.getByRole('tab', { name: 'Legend' }))
+      expect(screen.getByRole('region', { name: /legend/i })).toBeInTheDocument()
+      expect(screen.queryByRole('region', { name: 'In view' })).toBeNull()
+    } finally {
+      restore()
+    }
+  })
+
   it('stands the chart and the persistent legend down for the day-hike builder', () => {
     // #1194. BOTH of the legend's props have to be gated, and that is the
     // half this got wrong first: Legend.tsx renders unless
@@ -1144,6 +1308,12 @@ describe('the desktop chart (#135)', () => {
     } finally {
       restore()
     }
+  })
+
+  it('draws the hover plate inside the canvas, positioned where the shell says (the review of #1374)', () => {
+    render(<MapScreen {...PROPS} hoverPlate={<div data-testid="hover">Hovering</div>} />)
+    const plate = screen.getByTestId('hover')
+    expect(plate.closest('.map-screen__canvas')).not.toBeNull()
   })
 
   it('gives the chart and the legend back the moment the builder closes', () => {

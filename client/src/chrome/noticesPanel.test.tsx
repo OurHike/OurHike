@@ -75,6 +75,8 @@ const STEWARDS: Stewards = [
     trust: null,
     licence: null,
     attribution: null,
+    terms: null,
+    termsSource: null,
     layers: [],
     keys: [ATC_SOURCE_KEY],
   },
@@ -84,6 +86,8 @@ const STEWARDS: Stewards = [
     trust: 'authoritative',
     licence: null,
     attribution: null,
+    terms: null,
+    termsSource: null,
     layers: [],
     keys: ['nynjtc_trail_alerts'],
   },
@@ -133,20 +137,11 @@ describe('useNoticesPanel', () => {
     act(() => result.current.mapScreen.onOpenNotices?.())
 
     expect(result.current.mapScreen.noticeList).not.toBeNull()
-    // Opening the list silences the banner, exactly as its own dismiss does:
-    // a hiker who went and read them has looked.
+    // Opening the list silences the dot - the one way to, since the banner
+    // and its own dismiss went (2026-09-10): a hiker who went and read them
+    // has looked.
     expect(result.current.mapScreen.newNoticeCount).toBe(0)
     expect(localStorage.getItem(ATC_SILENCE_KEY)).toBe(hoursBefore(1))
-  })
-
-  it('silences the banner without opening anything', () => {
-    const { result } = panel([update()])
-
-    act(() => result.current.mapScreen.onSilenceNewNotices?.())
-
-    expect(result.current.mapScreen.newNoticeCount).toBe(0)
-    // The dismiss is not a way into the list - it is the other answer to it.
-    expect(result.current.mapScreen.noticeList).toBeNull()
   })
 
   it('starts silenced when this phone has a watermark already', () => {
@@ -222,22 +217,24 @@ describe('a second publisher, through the same hook', () => {
     )
   })
 
-  it('writes one watermark per organization when a hiker dismisses the banner', () => {
+  it('writes one watermark per organization when a hiker reads the list', () => {
     // THE LIVE BUG #1083 NAMES. One shared key meant dismissing ATC silenced
-    // NYNJTC too, for notices the hiker had never been shown.
+    // NYNJTC too, for notices the hiker had never been shown. Reading the
+    // list is the dismissal now (the banner's own × went with the banner,
+    // 2026-09-10), and it still writes one watermark per organization shown.
     const { result } = panel([update()], [orgNotice()])
 
-    act(() => result.current.mapScreen.onSilenceNewNotices?.())
+    act(() => result.current.mapScreen.onOpenNotices?.())
 
     expect(localStorage.getItem(ATC_SILENCE_KEY)).toBe(hoursBefore(1))
     expect(localStorage.getItem(NYNJTC_SILENCE_KEY)).toBe(hoursBefore(2))
     expect(result.current.mapScreen.newNoticeCount).toBe(0)
   })
 
-  it('does not silence one organization when the other is dismissed on its own', () => {
+  it('does not silence one organization when only the other was shown', () => {
     const { result } = panel([], [orgNotice()])
 
-    act(() => result.current.mapScreen.onSilenceNewNotices?.())
+    act(() => result.current.mapScreen.onOpenNotices?.())
 
     expect(localStorage.getItem(NYNJTC_SILENCE_KEY)).toBe(hoursBefore(2))
     expect(localStorage.getItem(ATC_SILENCE_KEY)).toBeNull()

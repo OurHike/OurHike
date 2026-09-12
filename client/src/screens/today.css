@@ -76,16 +76,6 @@
   color: var(--fg-chrome-3);
 }
 
-/* The no-mile states, in the same slot at a size the sentences deserve -
-   "Location is off" at 52px would read as a headline about a failure. */
-.today__position-sentence {
-  margin: 6px 0 0;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 19px;
-  font-weight: 500;
-  color: var(--fg-chrome-1);
-}
-
 .today__greeting {
   margin: 10px 0 0;
   font-family: var(--font-body, sans-serif);
@@ -156,20 +146,23 @@
   background: var(--border-1);
 }
 
-.today__row {
-  display: flex;
-  gap: 10px;
-}
-
-.today__gutter {
-  flex: none;
-  width: 42px;
-  padding-top: 14px;
+/* The label's door to the rest of what it heads ("All 34 ›", frame 2a),
+   after the rule: `order` puts it past the ::after line, which flex treats
+   as the last child otherwise. Mono like the label, in the brand ink so it
+   reads as the one pressable thing on the line. */
+.today__rule-link {
+  order: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--fg-3);
-  text-align: right;
+  font-size: 11px;
+  letter-spacing: var(--tracking-eyebrow, 0.12em);
+  text-transform: uppercase;
+  color: var(--brand-primary);
+  white-space: nowrap;
+  cursor: pointer;
 }
 
 .today__card {
@@ -191,27 +184,6 @@
   cursor: pointer;
   font: inherit;
   color: inherit;
-}
-
-/* The category chip: the pin's own accent at ~22% over the card, holding the
-   real silhouette (map/poiIcons.ts) at chip scale. The accent arrives as an
-   inline custom property from POI_COLORS - the registry the map itself
-   paints from - so the chip and the pin cannot disagree. */
-.today__chip {
-  flex: none;
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-m, 8px);
-  background: color-mix(in srgb, var(--chip-accent) 22%, var(--surface-card));
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.today__chip svg {
-  width: 22px;
-  height: 22px;
-  fill: var(--chip-accent);
 }
 
 .today__entry-text {
@@ -778,4 +750,70 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   color: var(--fg-chrome-3);
+}
+
+/* ---------- The setup head and the "have less time?" chips (#1373, F2) ---------- */
+
+.today__setup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.today__setup-title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.today__setup-line {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.today__have-less {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.today__have-less-chip {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---------- On-trail conditions (#1373, F2) ---------- */
+
+/* A stop and its answers, as one block: the waypoint row above the card's
+   own peek (chrome.css .poi-card__peek-conditions), on the card surface so
+   the two read as one question. */
+.today__condition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+}
+
+.today__rule-note {
+  margin-left: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
 }

@@ -1,106 +1,115 @@
-// The ATC point-notice mark, as raw RGBA pixels (#1071).
+// The ATC point-notice mark, as raw RGBA pixels: the hazard triangle, bare.
 //
-// lib/atcUpdateStyle.ts decides WHAT this looks like - the spoke count, the
-// taper, how much of the middle stays open, and why the glow that used to sit
-// behind it is gone. This file only turns those numbers into an image, which is
-// the division map/warningPin.ts already keeps with lib/seriousWarnings.ts.
+// lib/atcUpdateStyle.ts decides WHAT this looks like - the size, the colour,
+// the hairline - and why; this file only turns those numbers into an image,
+// which is the division map/warningPin.ts already keeps with
+// lib/seriousWarnings.ts.
 //
-// WHY IT IS NOT map/poiIcons.ts's RASTERISER. That one fills POLYGONS by
-// even-odd crossing count, and a burst spelled as a polygon has two problems
-// this shape cannot afford:
+// THE SHAPE IS THE SERIOUS-WARNING PIN'S GLYPH, on the maintainer's call of
+// 2026-09-10 ("adopt the warning icon we made" - asked which mark was meant,
+// the answer was the hazard triangle, for the ATC notice marks too). It was
+// an eight-spoke burst from #1071 until then, and the burst's reasons are
+// kept here because the triangle keeps them:
 //
-//  1. The casing. A dark edge gets drawn there by insetting a ring inside the
-//     shape's own outline, which works for a disc because a disc's outline is
-//     one circle. A burst's outline is eight tapered wedges plus a dot, and
-//     insetting each of them by hand is nine chances to get a hairline wrong -
-//     and a scaled-up copy, the obvious shortcut, gives an edge that is thin at
-//     the hub and fat at the tip.
-//  2. The tips. Every spoke ends on an arc of the mark's rim, so a polygon
-//     spelling needs a fan of vertices per tip and the smoothness of the mark
-//     becomes a step count.
+//  1. THE GROUND READS THROUGH. A point notice is placed ON the centerline
+//     (map/atcUpdateLayers.ts), so a solid mark hid the trail the notice is
+//     about plus the shelter or ford the notice is about; #1071 made the mark
+//     mostly hole. The hazard triangle is a BAND with an exclamation standing
+//     in the empty middle (map/warningPin.ts), so the hole is still most of
+//     the mark: 688.7 px² of ink at 40 px against the disc's 1,256.6 px²
+//     (54.8%; the burst put 760.1 px²), measured 2026-09-10 off the rendered
+//     alpha, which atcNoticeMark.test.ts re-measures.
+//  2. IT IS NOT THE SERIOUS-WARNING PIN. That pin is the same glyph on a
+//     44 px disc with a halo; this is the glyph alone, in the closure red, at
+//     40 px. A hiker who has learned the disc learns that the triangle means
+//     "look" and the disc means "a person confirmed something serious here"
+//     - one vocabulary, two weights - where a second disc four pixels smaller
+//     would have been the same mark with the difference hidden in the size.
 //
-// In POLAR terms both problems disappear. A spoke's lateral half-width at
-// radius r is an ANGLE, so `casing / r` radians of extra width is exactly
-// `casing` PIXELS of outline at every radius; and "inside the rim" is a
-// comparison against r rather than a polygon at all. {@link insideBurst} is the
-// entire shape, and the casing is that same predicate sampled a second time
-// with everything grown by the hairline.
+// WHY IT IS NOT map/poiIcons.ts's `buildPinImage`: that draws a disc, a halo
+// and an edge and then the glyph inside them, and the disc is the thing this
+// mark must not have. What IS shared is the fill rule - `insideGlyph`, the
+// even-odd crossing count every pin's glyph is cut with - the output type, the
+// 2x pixel ratio, the hex parse and the 3x3 supersample.
 //
-// WHAT IS SHARED WITH THE PINS, deliberately, so this mark cannot drift away
-// from the map it sits on: the output type, the 2x pixel ratio, the hex parse
-// and the 3x3 supersample. Only the shape is its own.
+// THE CASING is the shape grown by the hairline: a sample is dark when it is
+// not inside the glyph but within `casing` pixels of any edge of any ring.
+// That is the Minkowski sum of the glyph with a disc of the casing's radius,
+// so the outline is one width everywhere - down the outside of the band, up
+// the inside of the hole, and round the exclamation - without insetting or
+// scaling any ring by hand, which is the trap the burst's polar spelling
+// existed to avoid for a shape with eight tapered spokes.
 
 import {
-  ATC_NOTICE_BURST,
   ATC_NOTICE_CASING_WIDTH,
-  ATC_NOTICE_FILL_RADIUS,
+  ATC_NOTICE_GLYPH_BOX,
   ATC_UPDATE_CASING_COLOR,
   ATC_UPDATE_COLOR,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
-  type AtcNoticeBurst,
 } from '../lib/atcUpdateStyle'
-import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
-
-const TAU = Math.PI * 2
+import {
+  insideGlyph,
+  parseHex,
+  POI_PIN_PIXEL_RATIO,
+  type Glyph,
+  type PoiIconImage,
+} from './poiIcons'
+import { WARNING_GLYPH } from './warningPin'
 
 /** Sub-samples per axis. Three, because map/poiIcons.ts uses three and a mark
  *  anti-aliased to a different standard from the pins beside it would read as
  *  a different weight of ink rather than as a different shape. */
 const SUPERSAMPLE = 3
 
-/** The smallest signed angle between two bearings, as a magnitude. */
-function bearingGap(a: number, b: number): number {
-  return Math.abs(((((a - b) % TAU) + TAU + Math.PI) % TAU) - Math.PI)
+/** The glyph this mark draws: the hazard triangle, shared with the
+ *  serious-warning pin so the two cannot drift into two triangles. */
+export const ATC_NOTICE_GLYPH: Glyph = WARNING_GLYPH
+
+/** Distance from a point to the nearest edge of any ring, in the glyph's own
+ *  0-1 box. */
+function edgeDistance(glyph: Glyph, x: number, y: number): number {
+  let nearest = Infinity
+  for (const ring of glyph) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const [ax, ay] = ring[j]
+      const [bx, by] = ring[i]
+      const vx = bx - ax
+      const vy = by - ay
+      const length2 = vx * vx + vy * vy
+      const t =
+        length2 === 0
+          ? 0
+          : Math.max(0, Math.min(1, ((x - ax) * vx + (y - ay) * vy) / length2))
+      const dx = x - (ax + t * vx)
+      const dy = y - (ay + t * vy)
+      nearest = Math.min(nearest, Math.hypot(dx, dy))
+    }
+  }
+  return nearest
 }
 
 /**
- * Is this offset from the mark's centre inside the burst?
+ * Is this offset from the mark's centre, in image pixels, inside the glyph
+ * grown by `grow` pixels?
  *
- * `grow`, in the same pixels as everything else here, dilates the whole shape
- * uniformly - the hub, the rim, the inner ends of the spokes and their sides.
- * That is what draws the casing: sample once with `grow` set to the hairline
- * for the dark edge, once with it at zero for the red, and the difference
- * between the two answers is an outline of constant width.
- *
- * Exported for map/atcNoticeMark.test.ts, which asserts the property the whole
- * change turns on - that the ring between the hub and the spokes, and the gaps
- * between the spokes, are OUTSIDE the grown shape too and therefore carry no
- * ink at all.
+ * `grow` at zero is the red; `grow` at the casing width is the red plus its
+ * dark outline, and the difference between the two answers is the outline.
+ * `box` is the glyph's 0-1 square in image pixels. Exported for
+ * atcNoticeMark.test.ts, which holds the property the shape is chosen for:
+ * that the hole inside the band, off the exclamation, is outside the grown
+ * shape too and so carries no ink at all.
  */
-export function insideBurst(
-  burst: AtcNoticeBurst,
-  fillRadius: number,
+export function insideNoticeMark(
+  box: number,
   dx: number,
   dy: number,
   grow: number,
 ): boolean {
-  const radius = Math.hypot(dx, dy)
-
-  // The dot on the coordinate, first, so it is drawn whatever the spokes do.
-  if (radius <= burst.hubRadius * fillRadius + grow) return true
-  if (radius > fillRadius + grow) return false
-
-  const inner = burst.innerRadius * fillRadius
-  // The open ring. This one line is the feature: between the hub and the inner
-  // end of the spokes there is nothing, so whatever the notice is drawn on
-  // reads straight through the middle of it.
-  if (radius < inner - grow) return false
-
-  const pitch = TAU / burst.spokes
-  const bearing = Math.atan2(dy, dx)
-  const nearest = Math.round((bearing - burst.phase) / pitch) * pitch + burst.phase
-  const offAxis = bearingGap(bearing, nearest)
-
-  const along =
-    (Math.min(Math.max(radius, inner), fillRadius) - inner) / (fillRadius - inner)
-  const halfWidth =
-    burst.innerHalfWidth + (burst.tipHalfWidth - burst.innerHalfWidth) * along
-
-  // `grow / radius` is the angle that adds `grow` pixels of width at this
-  // radius. The floor stops it exploding near the centre - unreachable in
-  // practice, since the hub returns above, but a predicate that can divide by
-  // zero is one edit away from doing it.
-  return offAxis <= halfWidth + grow / Math.max(radius, 0.5)
+  const x = dx / box + 0.5
+  const y = dy / box + 0.5
+  if (insideGlyph(ATC_NOTICE_GLYPH, x, y)) return true
+  if (grow <= 0) return false
+  return edgeDistance(ATC_NOTICE_GLYPH, x, y) * box <= grow
 }
 
 /**
@@ -114,7 +123,7 @@ export function insideBurst(
  *
  * Sub-samples in the same shape map/poiIcons.ts's `buildPinImage` does: the
  * colour is the mean of the samples that HAD colour and coverage is carried by
- * alpha alone. Averaging over all nine instead would fringe every spoke with
+ * alpha alone. Averaging over all nine instead would fringe every edge with
  * half-transparent dark pixels, because the transparent samples beside it carry
  * a colour of their own into the mean - and on a mark that is mostly edge, that
  * fringe is most of the mark.
@@ -122,7 +131,7 @@ export function insideBurst(
 export function buildAtcNoticeIcon(): PoiIconImage {
   const pixels = ATC_UPDATE_POINT_DRAWN_WIDTH * POI_PIN_PIXEL_RATIO
   const center = pixels / 2
-  const fillRadius = ATC_NOTICE_FILL_RADIUS * POI_PIN_PIXEL_RATIO
+  const box = ATC_NOTICE_GLYPH_BOX * POI_PIN_PIXEL_RATIO
   const casing = ATC_NOTICE_CASING_WIDTH * POI_PIN_PIXEL_RATIO
 
   const red = parseHex(ATC_UPDATE_COLOR)
@@ -131,17 +140,9 @@ export function buildAtcNoticeIcon(): PoiIconImage {
   const data = new Uint8ClampedArray(pixels * pixels * 4)
   const step = 1 / SUPERSAMPLE
   const samples = SUPERSAMPLE * SUPERSAMPLE
-  // The furthest a pixel's own samples can sit from its centre, so the skip
-  // below is exact rather than approximate - the same derivation `buildPinImage`
-  // spells out for its own corner skip.
-  const reach = Math.SQRT2 * (0.5 - step / 2)
 
   for (let py = 0; py < pixels; py += 1) {
     for (let px = 0; px < pixels; px += 1) {
-      const cx = px + 0.5 - center
-      const cy = py + 0.5 - center
-      if (Math.hypot(cx, cy) > fillRadius + casing + reach) continue
-
       let r = 0
       let g = 0
       let b = 0
@@ -153,8 +154,8 @@ export function buildAtcNoticeIcon(): PoiIconImage {
           const dy = py + (sy + 0.5) * step - center
 
           let ink: readonly [number, number, number] | null = null
-          if (insideBurst(ATC_NOTICE_BURST, fillRadius, dx, dy, 0)) ink = red
-          else if (insideBurst(ATC_NOTICE_BURST, fillRadius, dx, dy, casing)) ink = dark
+          if (insideNoticeMark(box, dx, dy, 0)) ink = red
+          else if (insideNoticeMark(box, dx, dy, casing)) ink = dark
 
           if (ink !== null) {
             r += ink[0]

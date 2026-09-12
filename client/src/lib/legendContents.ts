@@ -228,6 +228,28 @@ function isWithin(point: MapPoint, bbox: BoundingBox): boolean {
  *   (map/drawnPois.ts), keyed by type alone so it joins these rows without a
  *   translation step. Omitted where nobody measured.
  */
+/**
+ * The points the map is drawing inside `bbox` - what "In view" lists, on
+ * the rule the legend counts by (below) plus the categories the hiker has
+ * hidden, which the legend still lists as rows and the map does not draw.
+ * One function, because the first "In view" list took every waypoint on
+ * the phone and headed itself "In view · 387" over a map showing one
+ * shelter (#1374 review).
+ */
+export function pointsInView(
+  points: readonly MapPoint[],
+  bbox: BoundingBox,
+  verifiedOnly: boolean,
+  hiddenTypes: ReadonlySet<string>,
+): MapPoint[] {
+  return points.filter(
+    (point) =>
+      isWithin(point, bbox) &&
+      !hiddenTypes.has(point.type) &&
+      (!verifiedOnly || point.confidence === 'high' || NEVER_HIDEABLE.has(point.type)),
+  )
+}
+
 export function computeLegendContents(
   bbox: BoundingBox,
   points: MapPoint[],

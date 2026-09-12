@@ -453,7 +453,17 @@ export function PlanScreen({
       },
       target: plan.target.walkingHours as number | null,
     }
-  }, [plan, elevation])
+    // `pace` IS a dependency, and was missing until #1374's review. The
+    // closure above prices a leg with it, so without it here a hiker who
+    // moves the pace control keeps a planner that splits their days at the
+    // pace they moved AWAY from - and the sheet this feeds is handed a fresh
+    // `pace` beside the stale closure, so the two disagree on the same
+    // screen. The neighbouring memo on line 437 had it right all along.
+    //
+    // Which way it was wrong is the part that matters: a hiker slowing their
+    // pace got days priced at the faster one, which is an optimistic time
+    // estimate on the path that decides whether they beat the dark.
+  }, [plan, elevation, pace])
 
   if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
     if (dayListOpen) {

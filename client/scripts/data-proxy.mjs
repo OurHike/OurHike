@@ -57,7 +57,6 @@ const TYPES = {
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-let seq = 0
 function curl(url, range) {
   return new Promise((resolve) => {
     const dir = mkdtempSync(join(tmpdir(), 'rp-'))

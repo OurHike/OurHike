@@ -2896,7 +2896,16 @@ function App() {
       advisoryAhead: pick(closureLane.broad, atcLane.broad),
     }
     // Keyed on the mile, not the fix - see fixMile (#1111).
-  }, [placedClosures, atcUpdates, fixMile, heading, units])
+    // `noticeOrg` IS a dependency, and was missing until #1374's review. It
+    // is a memo over the stewards artifact, which loads after boot, and
+    // `orgProviderFrom` falls back to the RAW SOURCE KEY for a source it has
+    // no steward for - so without it here the banner kept the pre-registry
+    // answer and a hiker read "atc_trail_updates" where the line is supposed
+    // to carry the organization's own short form. Self-corrected while
+    // walking, because `fixMile` and `heading` change with every fix; stuck
+    // for a hiker standing still or without a fix, which is when somebody is
+    // most likely to be reading it.
+  }, [noticeOrg, placedClosures, atcUpdates, fixMile, heading, units])
 
   /**
    * Every published report placed on the mile axis.
@@ -3325,7 +3334,13 @@ function App() {
     return pois
       .filter((poi) => disputed.has(poi.id))
       .map((poi) => ({ poiId: poi.id, lon: poi.lon, lat: poi.lat }))
-  }, [disputes, pois])
+    // `mapMounted` IS a dependency, and was missing until #1374's review -
+    // the guard on the first line reads it. On a phone it flips true only when
+    // the hiker opens the Map tab, which is normally AFTER `pois` and
+    // `disputes` have loaded, so the memo stayed on its pre-mount
+    // NO_DISPUTED_POINTS and the disputed waypoints never drew. The
+    // neighbouring `mapPointsFrom` memo below had it right all along.
+  }, [mapMounted, disputes, pois])
 
   // What the map draws, built only once there is a map (#1303,
   // lib/legendContents.ts's mapPointsFrom). A phone landing on Today mounts no

@@ -2086,6 +2086,42 @@ describe('nothing taken (#1306)', () => {
     expect([...CHOSEN_TRAIL_SPLIT_LAYERS].map(([id]) => id).sort()).toEqual(readers)
   })
 
+  it('ghosts the shared-ground halves with the system, which attachChosenTrail has to re-point (#1384)', () => {
+    // The halves read the chosen system through their PAINT, never their
+    // filter - theirs is SHARED_GROUND_FILTER - so the ledger test above
+    // cannot see them, and that is exactly how they came to be left out of
+    // attachChosenTrail: built with nothing taken and then taking the A.T.
+    // left a shared stretch's untaken half at full strength beside a network
+    // that had just ghosted, and the reverse left both halves at 0.45 while
+    // everything else went full.
+    //
+    // Held against the network's own blaze rather than against a spelled-out
+    // expression, because the claim is "the same ghosting as every other
+    // line" - a hardcoded opacity would satisfy a literal and fail this.
+    for (const built of [taken, untaken]) {
+      expect(
+        layerIn(built, SHARED_GROUND_BLAZE_LAYER_ID)?.paint?.['line-opacity'],
+      ).toEqual(layerIn(built, NEARBY_BLAZE_LAYER_ID)?.paint?.['line-opacity'])
+    }
+
+    // NOT in CHOSEN_TRAIL_SPLIT_LAYERS, and this is the half that has to stay
+    // true: that loop also writes setFilter, which would replace
+    // SHARED_GROUND_FILTER with the chosen-system filter and hand every pair
+    // feature back to the plain layers - the duplicate centred line the
+    // exclusion exists to prevent. attachChosenTrail carries its own block.
+    expect([...CHOSEN_TRAIL_SPLIT_LAYERS].map(([id]) => id)).not.toContain(
+      SHARED_GROUND_BLAZE_LAYER_ID,
+    )
+
+    // The casing does not ghost with anything: it is the opaque mask over the
+    // two lines still drawing beneath the stretch.
+    for (const built of [taken, untaken]) {
+      expect(layerIn(built, SHARED_GROUND_CASING_LAYER_ID)?.paint?.['line-opacity']).toBe(
+        1,
+      )
+    }
+  })
+
   it("opens the network's lines at the prototype's weight, not a sub-pixel haze", () => {
     // 0.8 px dots at 45% were the tenth preview build's faint speckle over
     // New York - the maintainer read the opening camera as the A.T. alone.

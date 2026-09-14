@@ -246,13 +246,24 @@ export interface ReportSummary {
   timestamp: string
   /**
    * When a moderator confirmed it, or null (#1373, F12). The live wire has
-   * sent it since PR #647; the published baseline does NOT carry it -
-   * pipeline/export_conditions.py's PUBLIC_REPORTS_SQL selects no
-   * `verified_at` (read 2026-09-10), so every report read offline arrives
-   * without one, and the serious-warning sheet says so rather than printing
-   * a bare confirmation. Baking the field is the pipeline's change to make,
-   * not this file's claim to have made. Optional as well as nullable for the
-   * reason `ClosureSummary`'s geometry gives: a document without the key.
+   * sent it since PR #647, and the published baseline carries it too:
+   * pipeline/export_conditions.py's PUBLIC_REPORTS_SQL selects `verified_at`
+   * and REPORT_TIMESTAMP_FIELDS normalises it (read 2026-09-14).
+   *
+   * THIS COMMENT SAID THE OPPOSITE UNTIL THE v1.3.0 RELEASE REVIEW, and the
+   * way it went wrong is worth keeping rather than quietly correcting. It was
+   * written against a tree where the field really was absent, and the branch
+   * that baked it in landed nineteen minutes later the same afternoon; both
+   * merged into 0fa5a68a, where the sentence was false and dated and looked
+   * checked. That is the combination defect RELEASING.md §9 says a release
+   * review exists to catch, on a hazard-freshness surface RELEASING.md §8b
+   * makes load-bearing.
+   *
+   * So a null here now means the report genuinely has no confirmation, not
+   * that the download could not carry one - EXCEPT on a release published
+   * before #1377, whose baseline predates the column. Optional as well as
+   * nullable for the reason `ClosureSummary`'s geometry gives: a document
+   * without the key.
    */
   verified_at?: string | null
 }

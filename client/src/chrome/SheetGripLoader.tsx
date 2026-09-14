@@ -36,12 +36,28 @@ export function SheetGripLoader(props: GripProps) {
 
   useEffect(() => {
     let mounted = true
-    void import('./SheetGrip').then((module) => {
-      // The store-a-component-in-state trap: setState treats a function as an
-      // updater, so a bare `setGrip(module.default)` would call the component
-      // with the previous state as its props and store whatever it returned.
-      if (mounted) setGrip(() => module.default)
-    })
+    void import('./SheetGrip')
+      .then((module) => {
+        // The store-a-component-in-state trap: setState treats a function as
+        // an updater, so a bare `setGrip(module.default)` would call the
+        // component with the previous state as its props and store whatever
+        // it returned.
+        if (mounted) setGrip(() => module.default)
+      })
+      .catch(() => {
+        // A chunk that will not load leaves the sheet without a grip, which is
+        // exactly how the sheet behaved before the grip existed - so there is
+        // nothing to tell a hiker and nothing to retry. Swallowing it is the
+        // behaviour, not a shrug.
+        //
+        // It also has to be CAUGHT rather than left to float. A dynamic import
+        // started by a mounted component can resolve after a test has finished
+        // and its environment has been torn down, and vite's module runner
+        // then throws `TypeError: URL is not a constructor` reaching for a
+        // `URL` global jsdom has already taken away. Every test still passes
+        // and vitest still exits 1, because 34 unhandled rejections are 34
+        // unhandled rejections - which is how CI failed on 70c00467.
+      })
     return () => {
       mounted = false
     }

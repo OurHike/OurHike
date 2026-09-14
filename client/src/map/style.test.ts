@@ -14,6 +14,7 @@ import {
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import {
+  attachChosenTrail,
   buildMapStyle,
   TOPO_SOURCE_ID,
   TRAILS_SOURCE_ID,
@@ -115,6 +116,8 @@ import {
 import { LABEL_TIER } from './labelLadder'
 import { NETWORK_TILES_LAYER, NETWORK_TILES_URL } from './networkTiles'
 import { NEARBY_TRAILS_TILES_MAX_ZOOM, NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
+import { MockMap } from '../test/mocks/maplibre-gl'
+import { TRAILS } from '../lib/trails'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
 // load-bearing rather than decorative:
@@ -2120,6 +2123,31 @@ describe('nothing taken (#1306)', () => {
         1,
       )
     }
+  })
+
+  it('re-points the shared-ground halves when the taken trail changes (#1384)', () => {
+    // The test above holds what buildMapStyle SPELLS; this holds what
+    // attachChosenTrail WRITES, and only the second one fails against the
+    // defect - the halves were painted correctly at build time and then never
+    // updated again, so a style built before the hiker took anything kept
+    // first launch's ghosting for the life of the map.
+    const map = new MockMap({ style: buildMapStyle(STYLE_OPTIONS) })
+    attachChosenTrail(map as never, TRAILS.AT.id)
+
+    const written = map.paintProperties.get(
+      `${SHARED_GROUND_BLAZE_LAYER_ID}/line-opacity`,
+    )
+    expect(written).toEqual(
+      map.paintProperties.get(`${NEARBY_BLAZE_LAYER_ID}/line-opacity`),
+    )
+    expect(written).not.toBeUndefined()
+
+    // And the filter is left alone, which is the other half of why this layer
+    // gets its own block instead of a row in CHOSEN_TRAIL_SPLIT_LAYERS: that
+    // loop would have written the chosen-system filter over
+    // SHARED_GROUND_FILTER and put the pairs back in the plain layers' hands.
+    expect(map.filters.get(SHARED_GROUND_BLAZE_LAYER_ID)).toBeUndefined()
+    expect(map.filters.get(SHARED_GROUND_CASING_LAYER_ID)).toBeUndefined()
   })
 
   it("opens the network's lines at the prototype's weight, not a sub-pixel haze", () => {

@@ -20,6 +20,8 @@ const ATC = {
   trust: null,
   licence: '© ATC, used with permission',
   attribution: null,
+  terms: null,
+  termsSource: null,
   layers: ['A.T. Centerline', 'A.T. Shelters'],
   keys: ['centerline'],
 }
@@ -164,6 +166,8 @@ describe('the tapped-line sheet’s attribution table (#1142)', () => {
         name: 'New York State Office of Parks, Recreation and Historic Preservation',
         trust: null,
         licence: null,
+        terms: null,
+        termsSource: null,
         attribution:
           'New York State Office of Parks, Recreation and Historic Preservation',
         layers: [],
@@ -190,6 +194,8 @@ describe('the tapped-line sheet’s attribution table (#1142)', () => {
         trust: null,
         licence: null,
         attribution: null,
+        terms: null,
+        termsSource: null,
         layers: [],
         keys: ['centerline'],
       },

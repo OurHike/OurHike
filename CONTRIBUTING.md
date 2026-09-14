@@ -67,6 +67,7 @@ The per-part commands below are what it runs, and remain the reference.
 cd client
 npm ci
 npm test          # vitest with coverage
+npm run test:e2e  # playwright flow tests in a real browser (features/FLOW_TESTING.md)
 npm run typecheck
 npm run lint      # oxlint
 npm run format:check
@@ -144,6 +145,7 @@ The pipeline fetches large amounts of data from ATC, USGS and opentrail.org. Rea
 - Link the issue and let the merge close it — `Closes #42`. This is the mechanism that keeps the tracker honest, rather than someone remembering to tick a box. CI checks it: a PR that closes no issue fails **PR has a linked issue**. Attaching the issue through the sidebar's Development panel counts too, though that fires no event, so the check needs a manual re-run afterwards. A bare `#42` mention does not count — referring to an issue and resolving it are different claims.
 - If a change genuinely has no issue behind it — a typo, a revert, a dependency bump — label it `no-issue` rather than opening an issue for the sole purpose of closing it. The exemption is there so the rule does not manufacture the paperwork it exists to prevent. Dependabot labels its own pull requests ([`.github/dependabot.yml`](.github/dependabot.yml)), so the weekly bumps are nobody's to label by hand.
 - New behaviour comes with tests. See [TESTING.md](TESTING.md) for what is expected; the short version is that tests describe behaviour rather than implementation.
+- **A screen a hiker can reach comes with a flow test, in the same pull request.** [features/FLOW_TESTING.md](features/FLOW_TESTING.md) is how one is formed and the six axes it is asserted across — mode (all three, volunteer included), device, engine, data freshness, layout (the map has room and nothing is covering it — `toBeVisible()` cannot tell), and a seeded hike rather than an empty install. Checked rather than remembered: `client/src/test/flowCoverage.test.ts` fails the client suite when a screen module has no entry in the coverage ledger, and `planned` is a real entry. A battery written after the feature is written against the code rather than against the intent, by someone who has already forgotten which states were meant to exist.
 - If a change contradicts something in a design doc, update the doc in the same PR. A doc that disagrees with the code is worse than no doc.
 - Lint and format before pushing. CI checks both and will fail on formatting alone.
 

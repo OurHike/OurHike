@@ -80,7 +80,12 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
   onboarding_completed: bool
   download_choice_made: bool
   location_permission_requested: bool
+
+  # Where they hike (first run's "Where do you hike?", #1373)
+  default_place: {id, name, kind, lon, lat, state?, category?, within?, bbox?} | null   (default: null)
 ```
+
+`default_place` is a place the hiker **named** from the published places index — a park, a town, a trailhead — snapshotted in full, and it syncs so a second device opens on the same place (the maintainer's decision of 2026-09-10, [#1374](https://github.com/OurHike/OurHike/pull/1374)). It is never a GPS fix: the permission card's promise that location "is read on this phone and never sent anywhere" is about fixes, and nothing on this object may hold where somebody is standing (`client/src/lib/defaultPlace.test.ts` pins that no key does).
 
 **Deliberately excluded:** `show_closures` isn't a preference at all - Map Options already recommends it stay always-on, not user-hideable, since suppressing known safety information isn't the same kind of choice as picking a background tile style. It's a fixed display rule, not a setting.
 

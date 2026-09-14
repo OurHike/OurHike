@@ -28,7 +28,9 @@ import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
 import { Legend } from './Legend'
+import { InViewSheet } from './InViewSheet'
 import { useDesktop } from '../lib/useDesktop'
+import type { HikerMode } from '../lib/hikerMode'
 import { Search } from './Search'
 import { ElevationRibbon, type RibbonControl } from './ElevationRibbon'
 import type { RibbonView } from '../lib/ribbonView'
@@ -53,6 +55,7 @@ import type { DroughtBand } from '../map/droughtLayers'
 import type { ClosureBand } from '../map/closureLayers'
 import type { CorridorFeatureCollection } from '../map/corridorLayers'
 import type { WorkdayPoint } from '../map/workdayLayers'
+import type { WorkdayRow, WorkdayWindowId } from '../lib/workProjects'
 import type { DisputePoint } from '../map/disputeLayers'
 import type { AtcUpdatePoint } from '../map/atcUpdateLayers'
 import type { TappedLine } from '../map/lineTaps'
@@ -86,10 +89,12 @@ import type {
 import {
   computeLegendContents,
   legendDropSummary,
+  pointsInView,
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
 import type { SearchablePoi } from '../lib/searchPoi'
+import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
 import './chrome.css'
 
@@ -107,6 +112,11 @@ export interface MapScreenProps {
   /** The sidebar's "today I'm…" control, handed through to the TabBar this
    *  screen renders - see TabBarProps.modeSwitch for the contract. */
   modeSwitch?: ReactNode
+  /** The phone's mode read-out in the bar (#1373, R11: "four tabs and the
+   *  mode, on every screen") - see TabBarProps.mode. Absent on a desktop,
+   *  where the sidebar carries the switch itself. */
+  mode?: HikerMode
+  onOpenMode?: () => void
   /** The hike a hiker is on, as a control - passed straight through to the
    *  sidebar for the same reason (#1344). See TabBarProps.hikeSwitch. */
   hikeSwitch?: ReactNode
@@ -211,6 +221,16 @@ export interface MapScreenProps {
   workdays?: readonly WorkdayPoint[]
   /** Which workday a tap landed on. */
   onSelectWorkday?: (projectId: string) => void
+  /**
+   * The pinned workdays as rows, the widest window's count, and the window
+   * the pins are filtered to (#1373, frame 14d) - for "Workdays in view"
+   * under the In view list. All the workday panel's; this screen only
+   * narrows the rows to the viewport.
+   */
+  workdayRows?: readonly WorkdayRow[]
+  workdaysHeld?: number
+  workdayWindow?: WorkdayWindowId
+  onChangeWorkdayWindow?: (window: WorkdayWindowId) => void
   /** Places the field says are not there (#876), joined to coordinates. */
   disputes?: readonly DisputePoint[]
   /** The tapped workday's sheet, or null - the atcUpdateSheet pattern: the
@@ -222,6 +242,23 @@ export interface MapScreenProps {
    *  reason `selectedPoi` is: the map draws bands, and the app is what knows
    *  whose notice a band belongs to. */
   atcUpdateSheet?: ReactNode
+  /** The closure tape was tapped, by closure id (#1373, F12), and the sheet
+   *  the shell renders for it - the atcUpdateSheet pattern, on the mark
+   *  #245 drew and left for a tap. */
+  onSelectClosure?: (closureId: string) => void
+  closureSheet?: ReactNode
+  /** A serious-warning pin was tapped, by report id (#1373, F12), and its
+   *  sheet - the same pattern, on the pin #292 drew. */
+  onSelectWarning?: (reportId: string) => void
+  warningSheet?: ReactNode
+  /**
+   * For "In view" (#1373, frame 12a): how many waypoints the phone holds in
+   * all, and a waypoint's mile on the centerline where the download can
+   * place it. Both optional; the list counts only the viewport and orders
+   * by name without them.
+   */
+  waypointTotal?: number
+  waypointMileOf?: (poiId: string) => number | undefined
   /** A trail line was tapped, as its published facts - null for a tap that
    *  landed elsewhere, which is how the sheet dismisses (#134). Stable
    *  across renders, like `onSelectPoi`. */
@@ -271,6 +308,23 @@ export interface MapScreenProps {
    * feature to move into it (#937).
    */
   builderPanel?: ReactNode
+  /**
+   * The figure following the pointer over a route being built, on a laptop
+   * (chrome/RouteHover.tsx, the review of #1374). A slot for `builderPanel`'s
+   * reason: what the route is called and weighs is the shell's. Rendered
+   * inside the canvas, positioned in canvas px.
+   */
+  hoverPlate?: ReactNode
+  /**
+   * A day-hike draft is live, at any step - the builder at step 2, or the
+   * review at step 3, which the phone shows as a sheet (`routeSheet`) and
+   * the desktop in the rail (`builderPanel`). What stands down for the
+   * builder - the legend, In view, the corridor's own ribbon and next-up
+   * rail, all about a different trail than the walk being built - stands
+   * down for the review on both breakpoints; read from the panel alone,
+   * the phone's step 3 brought the whole-A.T. profile back under the card.
+   */
+  dayHikeLive?: boolean
   /** The press-and-hold plate (#1137). A slot for the same reason as the
    *  sheets above - but unlike them it DOES anchor to a point on the
    *  canvas, so it positions itself and this screen only gives it the
@@ -316,30 +370,40 @@ export interface MapScreenProps {
    * exactly as `atcUpdateSheet` does.
    */
   noticeCount?: number
-  /** Opens that list - from the Legend row and from the bottom banner below,
-   *  both of which are simply "a hiker asked to see it". */
+  /** Opens that list - from the Legend row, which is simply "a hiker asked
+   *  to see it". */
   onOpenNotices?: () => void
   /** The full list of notices, or null when it is closed. */
   noticeList?: ReactNode
   /**
    * How many notices this screen is holding that their publisher touched in
    * the last 72 hours and the hiker has not already silenced (lib/notices.ts,
-   * #687). Zero, or the shell not passing it, renders no banner.
+   * #687). Zero, or the shell not passing it, renders no dot.
+   *
+   * A DOT ON THE LEGEND BUTTON SINCE 2026-09-10, AND A COUNT ON THE LEGEND'S
+   * NOTICES ROW (Header.tsx, Legend.tsx), where until then it was a banner
+   * row at the foot of the main column. The row cost 61px of map on a phone
+   * whenever it had something to say (measured on the rig at 375×667, the
+   * room audit for #1374), and the maintainer chose the dot from the mocked
+   * options. Silencing is now only ever "a hiker read the list" - the row's
+   * own × went with it (chrome/noticesPanel.tsx still writes the watermarks
+   * when the list opens).
    *
    * Deliberately not derived from `noticeCount` above - that is every notice
    * the app holds, drawn or not, and this is the much narrower "something
-   * changed recently" question the bottom banner exists to answer. The two can
-   * and usually do disagree: most visits hold several notices and none of them
+   * changed recently" question the dot exists to answer. The two can and
+   * usually do disagree: most visits hold several notices and none of them
    * new.
    *
-   * ONE BANNER ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 calls
+   * ONE DOT ACROSS ORGANIZATIONS (#1083). features/ORG_NOTICES.md §5 called
    * the banner "a scarce surface rather than a record"; a second one is more
    * chrome this screen doesn't have room for. So the count merges and every
    * row survives in the list.
    */
   newNoticeCount?: number
   /**
-   * What that banner says, built by the shell.
+   * What the screen reader hears for it, built by the shell (Header.tsx's
+   * live region).
    *
    * A STRING RATHER THAN A COUNT AND A LIST OF ORGANIZATIONS, because naming
    * an organization means resolving its `source_key` through the published
@@ -349,10 +413,6 @@ export interface MapScreenProps {
    * does not compose it.
    */
   newNoticeLabel?: string
-  /** Silences the bottom banner without opening the list - the quick "not
-   *  now" beside `onOpenNotices`'s "show me". Omitted, no silence control
-   *  is drawn. */
-  onSilenceNewNotices?: () => void
   /**
    * The published trail data this phone does not have, and the two answers to
    * it (#919). Undefined renders nothing, which is the state on every launch
@@ -401,6 +461,10 @@ export interface MapScreenProps {
   onCloseSearch: () => void
   searchablePois: SearchablePoi[]
   onSelectSearchResult: (poi: SearchablePoi) => void
+  /** The places index for the search (#1373, frame 14d) - see
+   *  SearchProps.places. Both absent on a phone that holds none. */
+  places?: readonly Place[]
+  onSelectPlace?: (place: Place) => void
   bbox: BoundingBox
   /**
    * Every POI the app holds. Named for the legend, which is what first needed
@@ -425,6 +489,9 @@ export interface MapScreenProps {
    *  it, per the legend's rule that a control is drawn only where it goes
    *  somewhere. */
   onTakeTrail?: (trail: TrailInView) => void
+  /** The legend's "Your day hikes near here" (#1373, D5), passed through
+   *  for the legend's own reason: absent without a fix and a saved plan. */
+  onDayHikesNearHere?: () => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /** One tap to show a single category, and the way back from it (#530). Passed
@@ -785,8 +852,18 @@ export function MapScreen({
   workdays,
   onSelectWorkday,
   workdaySheet,
+  workdayRows,
+  workdaysHeld,
+  workdayWindow,
+  onChangeWorkdayWindow,
   disputes,
   atcUpdateSheet,
+  onSelectClosure,
+  closureSheet,
+  onSelectWarning,
+  warningSheet,
+  waypointTotal,
+  waypointMileOf,
   onSelectLine,
   lineSheet,
   routeDrawing = null,
@@ -799,6 +876,8 @@ export function MapScreen({
   pressPlateOpen,
   routeSheet,
   builderPanel,
+  hoverPlate,
+  dayHikeLive,
   pressPlate,
   followBand,
   followAnnouncement = null,
@@ -807,7 +886,6 @@ export function MapScreen({
   noticeList,
   newNoticeCount = 0,
   newNoticeLabel,
-  onSilenceNewNotices,
   trailDataUpdate,
   warnings,
   alertsShown = true,
@@ -817,6 +895,8 @@ export function MapScreen({
   journal,
   modeSwitch,
   hikeSwitch,
+  mode,
+  onOpenMode,
   hikeName,
   onSwitchHike,
   onOpenLegend,
@@ -827,6 +907,8 @@ export function MapScreen({
   onCloseSearch,
   searchablePois,
   onSelectSearchResult,
+  places,
+  onSelectPlace,
   bbox,
   viewportPoints,
   ghostedTrailsDrawn,
@@ -834,6 +916,7 @@ export function MapScreen({
   onTrailsInView,
   chosenTrailId = null,
   onTakeTrail,
+  onDayHikesNearHere,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -897,6 +980,28 @@ export function MapScreen({
   // tells a screen reader it is.
   const isDesktop = useDesktop()
 
+  // THE PLATE FOLDS ON THE HIKER'S FIRST GESTURE (#1374, the room audit of
+  // 2026-09-10) and opens again on a tap - Header.tsx draws it, this owns it.
+  // A gesture rather than a timer or a zoom: a pan or a pinch is the moment
+  // the hiker starts using the map instead of reading about it, and MapView
+  // already tells `originalEvent`-driven moves from the app's own framing
+  // (`fromGesture`), so the shell re-framing the camera after a download does
+  // not fold the plate under somebody who has not touched it. Phone only: a
+  // desktop has the room, and the same state simply never applies there.
+  //
+  // The wrapper is handed to MapView unconditionally, where the raw prop used
+  // to be: the fold needs the gesture signal whether or not the shell wants
+  // viewport reports, and MapView attaches its `moveend` listener only when it
+  // has a handler to call.
+  const [plateFolded, setPlateFolded] = useState(false)
+  const handleViewportChange = useCallback(
+    (bbox: BoundingBox, fromGesture: boolean) => {
+      if (fromGesture) setPlateFolded(true)
+      onViewportChange?.(bbox, fromGesture)
+    },
+    [onViewportChange],
+  )
+
   // How much of the canvas the floating chrome covers (#1283), for the
   // through-route badge's anchor. The top band is MEASURED off the float
   // column - the identity plate plus whatever stacks under it, which grows
@@ -910,6 +1015,37 @@ export function MapScreen({
   // is a frame where one does.
   const floatRef = useRef<HTMLDivElement | null>(null)
   const [floatBottom, setFloatBottom] = useState(0)
+  /** "In view" (#1373, frame 12a): the list of what the map is drawing,
+   *  opened from the header and closed like the legend. Local, like the
+   *  legend's own open state used to be: nothing outside this screen opens
+   *  or reads it. */
+  const [inViewOpen, setInViewOpen] = useState(false)
+  /**
+   * Which face the desktop's rail shows (#1374 review): the persistent
+   * legend, or the In view list docked in the same 17rem column. One face at
+   * a time, switched at the column's head - the desktop's form of the
+   * phone's "one sheet in the lower third". Nothing on a phone reads this.
+   */
+  const [railFace, setRailFace] = useState<'legend' | 'in-view'>('legend')
+  /** The pinned workdays inside the viewport (#1373, frame 14d) - the same
+   *  "in view" the legend and the waypoint list mean. */
+  // What the map is drawing inside the viewport, on the legend's own rule:
+  // the "In view" count and list (#1373, frame 12a).
+  const pointsShown = useMemo(
+    () => pointsInView(viewportPoints, bbox, verifiedOnly, hiddenTypes),
+    [viewportPoints, bbox, verifiedOnly, hiddenTypes],
+  )
+  const workdaysInView = useMemo(
+    () =>
+      (workdayRows ?? []).filter(
+        (row) =>
+          row.lon >= bbox.west &&
+          row.lon <= bbox.east &&
+          row.lat >= bbox.south &&
+          row.lat <= bbox.north,
+      ),
+    [workdayRows, bbox],
+  )
   useEffect(() => {
     const float = floatRef.current
     if (float === null) return
@@ -939,8 +1075,9 @@ export function MapScreen({
    * redesign was that its map was too small, and adding the rail alone made
    * that WORSE on a wide screen rather than better: measured on this pull
    * request's own preview at 1280x800, the tab sidebar (208px), the rail
-   * (348px) and the persistent legend (290px) left the map 434px, with the
-   * elevation chart taking another 200px of height under it. A rail that
+   * (348px) and the persistent legend (272px, desktop.css's 17rem) left the
+   * map 452px, with the elevation chart taking another 200px of height
+   * under it. A rail that
    * buys the map room by taking it from the map is not the fix anybody asked
    * for.
    *
@@ -962,8 +1099,37 @@ export function MapScreen({
    * whether a profile happened to download - so it may not depend on this
    * either.
    */
-  const buildingDayHike = builderPanel !== undefined && builderPanel !== null
+  const buildingDayHike =
+    dayHikeLive ?? (builderPanel !== undefined && builderPanel !== null)
 
+  /** The desktop's rail beside the map exists: the legend is persistent
+   *  there, and In view is its second face. Stood down with the legend
+   *  while a builder owns the screen. */
+  const railed = isDesktop && !buildingDayHike
+  // The head the rail's two faces share (#1374 review). Tabs, because that
+  // is what they are: one column, two faces, the map untouched either way.
+  const railFaces = railed ? (
+    <div className="rail-faces" role="tablist" aria-label="Beside the map">
+      <button
+        type="button"
+        role="tab"
+        className="rail-faces__face"
+        aria-selected={railFace === 'legend'}
+        onClick={() => setRailFace('legend')}
+      >
+        Legend
+      </button>
+      <button
+        type="button"
+        role="tab"
+        className="rail-faces__face"
+        aria-selected={railFace === 'in-view'}
+        onClick={() => setRailFace('in-view')}
+      >
+        {`In view · ${pointsShown.length}`}
+      </button>
+    </div>
+  ) : undefined
   // The live map, kept here as well as reported upward, because the waypoint
   // card anchors to a pin by projecting its coordinates through the map - and
   // the shell above owns the POI data, not the canvas. Tee'd rather than
@@ -1285,8 +1451,48 @@ export function MapScreen({
                 position={position}
                 hikeName={hikeName}
                 onSwitchHike={onSwitchHike}
-                onOpenLegend={onOpenLegend}
+                // The legend and the In view list share the lower third
+                // (below): opening either closes the other, in both
+                // directions, rather than one hiding behind the other and
+                // reappearing when it closes.
+                onOpenLegend={() => {
+                  setInViewOpen(false)
+                  onOpenLegend()
+                }}
                 onOpenSearch={onOpenSearch}
+                folded={plateFolded && !isDesktop}
+                onUnfold={() => setPlateFolded(false)}
+                newNotices={
+                  newNoticeCount > 0 && onOpenNotices !== undefined
+                    ? {
+                        count: newNoticeCount,
+                        label:
+                          newNoticeLabel ??
+                          (newNoticeCount === 1
+                            ? 'New trail notice issued'
+                            : `${newNoticeCount} new trail notices issued`),
+                      }
+                    : undefined
+                }
+                // The list of what the map is drawing (#1373, frame 12a) -
+                // offered once there is anything to list, and not while a
+                // builder owns the canvas, where the pins are stops. Not on
+                // a desktop: there the list is the legend rail's second
+                // face (`railFace`), reached from the rail's own head - the
+                // phone's sheet is absolute against the viewport and covered
+                // the sidebar, the journal and the legend counting the same
+                // points.
+                inView={
+                  pointsShown.length > 0 && !buildingDayHike && !isDesktop
+                    ? {
+                        count: pointsShown.length,
+                        onOpen: () => {
+                          onCloseLegend()
+                          setInViewOpen(true)
+                        },
+                      }
+                    : undefined
+                }
                 strip={
                   <StatusStrip
                     time={time}
@@ -1389,6 +1595,7 @@ export function MapScreen({
                 </button>
               )}
             </div>
+            {hoverPlate}
 
             <MapView
               topoArchiveUrl={topoArchiveUrl}
@@ -1410,6 +1617,8 @@ export function MapScreen({
               atcUpdates={drawnAtcUpdates}
               atcUpdatePoints={drawnAtcUpdatePoints}
               onSelectAtcUpdate={onSelectAtcUpdate}
+              onSelectClosure={onSelectClosure}
+              onSelectWarning={onSelectWarning}
               workdays={workdays}
               onSelectWorkday={onSelectWorkday}
               disputes={disputes}
@@ -1437,7 +1646,7 @@ export function MapScreen({
               bounds={bounds}
               archiveZooms={archiveZooms}
               boundsPadding={boundsPadding}
-              onViewportChange={onViewportChange}
+              onViewportChange={handleViewportChange}
               onTrailsInView={onTrailsInView}
               chromeInsets={chromeInsets}
               chosenTrailId={chosenTrailId}
@@ -1505,6 +1714,10 @@ export function MapScreen({
                 this is about a stretch of trail, so it sits where the search
                 sheet does and needs none of that. */}
             {atcUpdateSheet}
+            {/* The two safety sheets (#1373, F12), in the same slot family:
+                a stretch of tape and a pin, neither anchored to a card. */}
+            {closureSheet}
+            {warningSheet}
             {workdaySheet}
 
             {/* The line-detail sheet (#134), in the same slot family for the
@@ -1535,8 +1748,57 @@ export function MapScreen({
               pois={searchablePois}
               onSelect={onSelectSearchResult}
               onClose={onCloseSearch}
+              places={places}
+              onSelectPlace={onSelectPlace}
             />
           </div>
+
+          {/* What the map is drawing, as a list (#1373, frame 12a) - the same
+              points the legend counts, named. Over the same slot as the legend
+              and never beside it: opening one closes the other (the header's
+              two doors above), so the lower third has one sheet. A row opens
+              the same card a pin does. */}
+          <InViewSheet
+            open={
+              railed
+                ? railFace === 'in-view'
+                : inViewOpen && !legendOpen && !buildingDayHike
+            }
+            docked={railed}
+            head={railFaces}
+            points={pointsShown}
+            total={waypointTotal}
+            drawnNone={belowPoiZoom}
+            currentMile={hikerMile ?? null}
+            mileOf={waypointMileOf}
+            stalenessFor={waypoints?.stalenessFor}
+            units={units}
+            onSelectPoi={(id) => {
+              setInViewOpen(false)
+              onSelectPoi(id)
+            }}
+            // Offered while the widest window holds any workday at all,
+            // so a hiker can widen the window to reach one - never gated
+            // on the mode (lib/hikerMode.ts: a mode never hides a feature).
+            workdays={
+              workdaysHeld !== undefined &&
+              workdaysHeld > 0 &&
+              workdayWindow !== undefined &&
+              onChangeWorkdayWindow !== undefined &&
+              onSelectWorkday !== undefined
+                ? {
+                    rows: workdaysInView,
+                    window: workdayWindow,
+                    onChangeWindow: onChangeWorkdayWindow,
+                    onSelect: (id) => {
+                      setInViewOpen(false)
+                      onSelectWorkday(id)
+                    },
+                  }
+                : undefined
+            }
+            onClose={() => setInViewOpen(false)}
+          />
 
           <Legend
             // Stood down while the builder owns the screen - see
@@ -1549,13 +1811,15 @@ export function MapScreen({
             // preview photographed. Neither prop is state, so this is a mode
             // rather than a dismissal: cancel the builder and the panel is
             // back, still holding whatever the hiker had set in it.
-            open={legendOpen && !buildingDayHike}
-            persistent={isDesktop && !buildingDayHike}
+            open={legendOpen && !buildingDayHike && !(railed && railFace === 'in-view')}
+            persistent={railed && railFace === 'legend'}
+            head={railFaces}
             bbox={bbox}
             points={viewportPoints}
             ghostedTrailsDrawn={ghostedTrailsDrawn}
             trailsInView={trailsInView}
             onTakeTrail={onTakeTrail}
+            onDayHikesNearHere={onDayHikesNearHere}
             // The sheet the canvas beside it is drawn in, so each row's swatch
             // inks its line the way the map does (#1283).
             sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
@@ -1593,6 +1857,7 @@ export function MapScreen({
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}
             noticeCount={noticeCount}
+            newNoticeCount={newNoticeCount}
             onOpenNotices={onOpenNotices}
           />
         </div>
@@ -1663,56 +1928,10 @@ export function MapScreen({
           />
         )}
 
-        {/* "Something changed" rather than "here is everything" - the row
-            that used to sit under the alert strip and answer the second
-            question moved into the legend above, permanently reachable and
-            no longer costing every visit map height for it (#687). This one
-            answers only the first, and answers it far less often: it renders
-            solely while ATC has touched a live notice in the last 72 hours
-            and the hiker has not already silenced it
-            (lib/notices.ts).
-
-            At the FOOT of the main column instead - `aria-live="polite"`
-            rather than `role="alert"` (assertive) or `role="status"`: the
-            status strip above already owns that role for connectivity and
-            sync age (StatusStrip.tsx), and a second region claiming it would
-            make "the status region" ambiguous to a screen reader and to
-            `getByRole('status')` alike. Polite announcement is the part this
-            banner actually wants - "something is new" is not "something
-            changes what you do next", so it does not need `role="alert"`'s
-            interrupt either. Bottom rather than a float over the canvas: a
-            floating card would have to dodge the locate/compass stack and
-            the credit strip sharing that corner, by hand-tuned offsets that
-            drift the moment either changes size. A row in flow needs none of
-            that, on a phone or the desktop sidebar layout alike. */}
         {/* Beneath the alert row rather than above it, on the one occasion
             both are up: an organization's closure changes what a hiker does
             next, and newer waypoint data does not. The order is the ranking. */}
         {trailDataUpdate !== undefined && <TrailDataUpdate {...trailDataUpdate} />}
-        {newNoticeCount > 0 && onOpenNotices !== undefined && (
-          <div className="map-screen__new-alerts" aria-live="polite">
-            <button
-              type="button"
-              className="map-screen__new-alerts-button"
-              onClick={onOpenNotices}
-            >
-              {newNoticeLabel ??
-                (newNoticeCount === 1
-                  ? 'New trail notice issued'
-                  : `${newNoticeCount} new trail notices issued`)}
-            </button>
-            {onSilenceNewNotices !== undefined && (
-              <button
-                type="button"
-                className="map-screen__new-alerts-silence"
-                onClick={onSilenceNewNotices}
-              >
-                <span className="visually-hidden">Silence new trail notices</span>
-                <span aria-hidden="true">×</span>
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       <TabBar
@@ -1720,6 +1939,7 @@ export function MapScreen({
         onSelect={onSelectTab}
         modeSwitch={modeSwitch}
         hikeSwitch={hikeSwitch}
+        {...(mode === undefined ? {} : { mode, onOpenMode })}
       />
     </div>
   )

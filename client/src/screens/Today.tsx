@@ -50,8 +50,11 @@ import {
   type JournalPoi,
 } from '../lib/todayJournal'
 import { formatTodayEyebrow, splitPosition, todayGreeting } from '../lib/todayText'
-import { formatElevation } from '../lib/units'
-import { poiColor, poiGlyphPath } from '../map/poiIcons'
+import { formatDistance, formatElevation } from '../lib/units'
+import { localDay } from '../lib/passedToday'
+import { dayLongDateLabel } from '../lib/planDisplay'
+import { mileMarker } from '../lib/planDisplay'
+import { cachedEstimate } from '../lib/dayHikeShelf'
 import { typeLabel } from '../chrome/legendLabels'
 import {
   opportunitiesUsable,
@@ -62,9 +65,21 @@ import {
 import type { PassedPlace } from './Volunteer'
 import type { DayHike } from '../lib/dayHikes'
 import type { LonLat } from '../lib/trailGraph'
-import { shelfPicks, type SuggestedHike } from '../lib/suggestedHikes'
+import {
+  availableFacets,
+  shelfPicks,
+  timeBucketLabel,
+  type HikeFacets,
+  type SuggestedHike,
+} from '../lib/suggestedHikes'
 import { SuggestedHikeCard } from '../chrome/SuggestedHikeCard'
-import { HikeFinderIcon } from '../chrome/HikeFinderIcon'
+import { Notice } from '../chrome/Notice'
+import { PinnedBar } from '../chrome/PinnedBar'
+import { PoiRow } from '../chrome/PoiRow'
+import type { FieldNoteContext } from '../chrome/FieldNoteSection'
+import { FieldNoteSection } from './deferred'
+import { isNoteScopedType } from '../lib/fieldNotes'
+import type { NightBehind } from '../lib/nightsBehind'
 import { Button } from '../design-system/components'
 import '../chrome/chrome.css'
 import './today.css'
@@ -95,6 +110,9 @@ export interface TodayProps {
 
   mode: HikerMode
   onChangeMode: (mode: HikerMode) => void
+  /** The pick is not settled - "Which long hike?" is open over this screen
+   *  (chrome/ModeSwitch.tsx's `pending`). */
+  modePending?: boolean
 
   /**
    * The long hike leading this screen (#1317), or null when the app is not
@@ -163,6 +181,15 @@ export interface TodayProps {
    *  the provenance); opening one re-resolves the real route. */
   dayHikes: readonly DayHike[]
   onOpenDayHike: (id: string) => void
+  /**
+   * A walk this phone was following and never finished, from a day before
+   * today (#1373, frame 6d; lib/openWalk.ts). The morning asks - "Finished
+   * it" logs the walk for that day, "Not this time" forgets - and never
+   * closes it unasked. Null or absent prints nothing.
+   */
+  openWalk?: { hike: DayHike; day: string } | null
+  onFinishOpenWalk?: (id: string, day: string) => void
+  onDropOpenWalk?: () => void
 
   // The nothing-downloaded empty state: a starting point, not an apology.
   hasDownload?: boolean
@@ -172,13 +199,48 @@ export interface TodayProps {
    *  shelf. Empty collapses the whole section - a hiker with no suggestions
    *  costs no gap, and no rule with nothing under it. */
   suggestedHikes?: readonly SuggestedHike[]
-  /** The fix, so the shelf can pick the nearest starts. Null makes no
-   *  distance claim: the shelf takes the first published, and the rule
-   *  above it reads "Suggested hikes", not "near you". */
-  fixAt?: LonLat | null
-  /** Pushes the Find screen. The row renders only when there is somewhere
-   *  for it to go. */
-  onFindHike?: () => void
+  /**
+   * Where "near" is measured from, so the shelf can pick the nearest
+   * starts: the fix, or - since #1373 - the place the hiker said they hike
+   * (lib/defaultPlace.ts) when there is no fix. RANKING ONLY. Nothing here
+   * prints a distance or claims the hiker is standing there, which is why
+   * a stored place may stand in for a fix on this prop and on no other.
+   * Null makes no claim at all: the shelf takes the first published.
+   */
+  near?: LonLat | null
+  /** Pushes the Find screen - with facets already applied when a chip on
+   *  this screen asked for them ("Under 2 hours"). The row and the chips
+   *  render only when there is somewhere for them to go. */
+  onFindHike?: (facets?: Partial<HikeFacets>) => void
+  /**
+   * The pinned bar's other door (#1373, F2): the planning spine. The bar
+   * renders only with both doors - a Today outside the shell has neither,
+   * and a bar with one dead half is the control D10 forbids.
+   */
+  onPlanHike?: () => void
+  /** The long-hike set-up, for the "you have no hike yet" state's one door:
+   *  pick the trail on the map. */
+  onStartLongHike?: () => void
+  /** Start walking a saved day hike - the follow door (frame 2c's "Walk
+   *  this"), the same one the card offers. */
+  onWalkDayHike?: (id: string) => void
+  /**
+   * The one-tap answers for the hiker's own stops (#1373, frames 2c and
+   * 2d): the same context the waypoint card's conditions section files
+   * through, so a "Dry" tapped here and a "Dry" tapped on the card are the
+   * same note. `stopFacts` resolves a stop's waypoint on this phone; a stop
+   * whose waypoint is gone draws nothing rather than a row with nothing to
+   * tap. Both optional as a pair - absent, no section.
+   */
+  noteContext?: FieldNoteContext
+  stopFacts?: (poiId: string) => StopFacts | null
+  /** The hiking sheet's size at the chosen level, already formatted
+   *  (lib/formatBytes.ts), for the download notice - null while the
+   *  manifest has not said what it weighs. */
+  downloadSize?: string | null
+  /** The kept place's name (lib/defaultPlace.ts), when the shelf is ranked
+   *  from it rather than from a fix, for the setup sentence. */
+  placeName?: string | null
   /** Opens a suggested route's detail. Omitted - as it is until wireframe
    *  `1g` is designed - the cards render as things to read rather than as
    *  buttons that go nowhere (chrome/SuggestedHikeCard.tsx). */
@@ -262,6 +324,19 @@ export interface LongHikeToday {
     onTakeZero: () => void
     onSeeOnMap: () => void
   } | null
+  /** The last nights' sites (lib/nightsBehind.ts), for "On-trail
+   *  conditions · last 3 days" (#1373, frame 2d). Absent renders nothing. */
+  nights?: readonly NightBehind[]
+}
+
+/** What a stop's answers need that the stop record does not carry: the
+ *  waypoint as this phone holds it (lib/trailData.ts), and its mile. */
+export interface StopFacts {
+  type: string
+  lat: number
+  lon: number
+  mile?: number
+  unverified?: boolean
 }
 
 export function Today({
@@ -276,6 +351,7 @@ export function Today({
   trailLinesMissing = false,
   mode,
   onChangeMode,
+  modePending = false,
   longHike = null,
   pois,
   currentMile,
@@ -298,12 +374,22 @@ export function Today({
   onSayThanks,
   dayHikes,
   onOpenDayHike,
+  openWalk = null,
+  onFinishOpenWalk,
+  onDropOpenWalk,
   hasDownload = true,
   onOpenDownloads,
   suggestedHikes = NO_SUGGESTIONS,
-  fixAt = null,
+  near = null,
   onFindHike,
   onOpenSuggestedHike,
+  onPlanHike,
+  onStartLongHike,
+  onWalkDayHike,
+  noteContext,
+  stopFacts,
+  downloadSize = null,
+  placeName = null,
 }: TodayProps) {
   // Memoized because this screen re-renders for reasons that have nothing to do
   // with it (#1090). It is the home screen now, so it is mounted while the GPS
@@ -388,42 +474,17 @@ export function Today({
             dot === null || presentation === null
               ? typeLabel(entry.type)
               : `${typeLabel(entry.type)} · ${presentation.words}`
+          // ONE WAYPOINT ROW, EVERYWHERE (#1373, the shared PoiRow): the
+          // journal prints the distance through lib/units.ts like every
+          // other figure (rule R6) - it used to format miles by hand here.
           return (
-            <div key={entry.id} className="today__row">
-              <span className="today__gutter">
-                {entry.distanceMi.toLocaleString('en-US', {
-                  minimumFractionDigits: 1,
-                  maximumFractionDigits: 1,
-                })}
-              </span>
-              <button
-                type="button"
-                className="today__card today__card--entry"
-                onClick={() => onOpenPoi(entry.id)}
-              >
-                {/* The real silhouette from map/poiIcons.ts, never a redrawn
-                    one - the chip's accent is the pin's own colour, mixed
-                    over the card by CSS. */}
-                <span
-                  className="today__chip"
-                  style={{ '--chip-accent': poiColor(entry.type) } as React.CSSProperties}
-                  aria-hidden="true"
-                >
-                  <svg viewBox="0 0 1 1" focusable="false">
-                    <path d={poiGlyphPath(entry.type)} fillRule="evenodd" />
-                  </svg>
-                </span>
-                <span className="today__entry-text">
-                  <span className="today__entry-name">{entry.name}</span>
-                  <span className="today__entry-meta">{meta}</span>
-                </span>
-                {dot !== null && presentation !== null && (
-                  <span className={dot}>
-                    <span className="visually-hidden">{presentation.words}</span>
-                  </span>
-                )}
-              </button>
-            </div>
+            <PoiRow
+              key={entry.id}
+              kind={entry.type}
+              title={entry.name}
+              meta={`${formatDistance(entry.distanceMi, units)} · ${meta}`}
+              onOpen={() => onOpenPoi(entry.id)}
+            />
           )
         })}
       </>
@@ -455,41 +516,19 @@ export function Today({
           <span className="today__rule-label">Today so far</span>
         </div>
         {passedPlaces.map((place) => (
-          <div key={place.id} className="today__row">
-            <span className="today__gutter">
-              {place.mile.toLocaleString('en-US', {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1,
-              })}
-            </span>
-            <button
-              type="button"
-              className="today__card today__card--entry"
-              onClick={() => onOpenPoi(place.id)}
-            >
-              <span
-                className="today__chip"
-                style={{ '--chip-accent': poiColor(place.type) } as React.CSSProperties}
-                aria-hidden="true"
-              >
-                <svg viewBox="0 0 1 1" focusable="false">
-                  <path d={poiGlyphPath(place.type)} fillRule="evenodd" />
-                </svg>
-              </span>
-              <span className="today__entry-text">
-                <span className="today__entry-name">{place.name}</span>
-                <span className="today__entry-meta">{typeLabel(place.type)}</span>
-              </span>
-            </button>
-          </div>
+          <PoiRow
+            key={place.id}
+            kind={place.type}
+            title={place.name}
+            // A mile marker on the trail's own axis - the position line's
+            // spelling, not a distance to convert.
+            meta={`mi ${mileMarker(place.mile)} · ${typeLabel(place.type)}`}
+            onOpen={() => onOpenPoi(place.id)}
+          />
         ))}
       </>
     ) : null
 
-  // The volunteer card renders in EVERY mode - that is the deal the tab's
-  // removal was approved on - and leads in volunteer mode. Its meta keeps
-  // Volunteer.tsx's four-way honesty: could-not-check, out-of-date, none
-  // posted, or the next real workday.
   const upcoming =
     opportunities !== null &&
     opportunitiesAsOf !== null &&
@@ -601,13 +640,139 @@ export function Today({
       </section>
     )
 
+  // TODAY'S WALK (#1373, frame 2c): the planned day hike dated today is the
+  // loaded state - the subject of the screen rather than a row in a list.
+  // Its figures print exactly as the card prints them (rule R6: one
+  // rounding rule, one source - lib/units.ts and lib/pace.ts through the
+  // cached climb, and no time at all where no climb was measured), and
+  // its two doors are the card's: open it, or start walking it.
+  const today = localDay(now)
+  const todaysWalk = dayHikes.find((hike) => hike.date === today) ?? null
+  const walkEstimate = todaysWalk === null ? null : cachedEstimate(todaysWalk, pace)
+  const walkCard =
+    todaysWalk === null ? null : (
+      <section className="today__card today__card--hike" aria-label="Today’s walk">
+        <p className="today__rule-label">Today · day hike</p>
+        <h2 className="today__hike-title">{todaysWalk.name}</h2>
+        <p className="today__hike-line">
+          {formatDistance(todaysWalk.figures.miles, units)}
+          {todaysWalk.figures.climb != null &&
+            ` · +${formatElevation(todaysWalk.figures.climb.gainFt, units)} / −${formatElevation(todaysWalk.figures.climb.lossFt, units)}`}
+          {walkEstimate !== null && ` · ${walkEstimate.text} walking`}
+          {todaysWalk.figures.climb == null && ' · no climb measured, so no time'}
+        </p>
+        {walkEstimate?.relativeLine != null && (
+          <p className="today__pace-line">{walkEstimate.relativeLine}</p>
+        )}
+        <div className="today__actions">
+          <button
+            type="button"
+            className="today__action"
+            onClick={() => onOpenDayHike(todaysWalk.id)}
+          >
+            Open the walk
+          </button>
+          {onWalkDayHike !== undefined && (
+            <button
+              type="button"
+              className="today__action"
+              onClick={() => onWalkDayHike(todaysWalk.id)}
+            >
+              Walk this
+            </button>
+          )}
+        </div>
+      </section>
+    )
+  const otherHikes = dayHikes.filter((hike) => hike !== todaysWalk)
+
+  // ON-TRAIL CONDITIONS (#1373, frames 2c and 2d): "the stops a hiker said
+  // they would make - three nights back on a long hike and this walk's own
+  // stops on a day hike, never everything they passed." Each is the
+  // waypoint card's own peek (chrome/FieldNoteSection.tsx), filed through
+  // the same context, so the answer costs one tap here instead of a trip
+  // through the map. Never counts, never dims: the peek's rules are its
+  // own. A stop this phone can no longer place draws nothing.
+  const conditionRows = (
+    rows: readonly { key: string; label: string; poiId: string; name: string }[],
+  ) =>
+    rows
+      .map((row) => {
+        const facts = stopFacts?.(row.poiId) ?? null
+        if (facts === null || noteContext === undefined || !isNoteScopedType(facts.type))
+          return null
+        return (
+          <div key={row.key} className="today__condition">
+            <PoiRow
+              kind={facts.type}
+              title={row.name}
+              meta={
+                facts.mile === undefined
+                  ? row.label
+                  : `${row.label} · mi ${mileMarker(facts.mile)}`
+              }
+              {...(facts.unverified ? { confidence: 'low' as const } : {})}
+            />
+            <FieldNoteSection
+              variant="peek"
+              poiId={row.poiId}
+              poiType={facts.type}
+              lat={facts.lat}
+              lon={facts.lon}
+              {...(facts.mile === undefined ? {} : { mile: facts.mile })}
+              unverified={facts.unverified ?? false}
+              context={noteContext}
+            />
+          </div>
+        )
+      })
+      .filter((row) => row !== null)
+  const conditionSet =
+    mode === 'day' && todaysWalk !== null && (todaysWalk.stops?.length ?? 0) > 0
+      ? {
+          note: 'your stops today',
+          rows: conditionRows(
+            (todaysWalk.stops ?? []).map((stop) => ({
+              key: stop.poiId,
+              label: 'your stop',
+              poiId: stop.poiId,
+              name: stop.name,
+            })),
+          ),
+        }
+      : mode === 'long' && longHike?.nights !== undefined && longHike.nights.length > 0
+        ? {
+            // The frame's own words: the nights are the sites, the days
+            // are the period they cover.
+            note: `last ${longHike.nights.length} ${longHike.nights.length === 1 ? 'day' : 'days'}`,
+            rows: conditionRows(
+              longHike.nights.map((night) => ({
+                key: `${night.label}-${night.poiId}`,
+                label: night.label,
+                poiId: night.poiId,
+                name: night.name,
+              })),
+            ),
+          }
+        : null
+  const conditions =
+    conditionSet === null || conditionSet.rows.length === 0 ? null : (
+      <>
+        <div className="today__rule">
+          <span className="today__rule-label">On-trail conditions</span>
+          <span className="today__rule-note">{conditionSet.note}</span>
+        </div>
+        {conditionSet.rows}
+      </>
+    )
+
   const hikes =
-    dayHikes.length > 0 ? (
+    otherHikes.length > 0 ? (
       <>
         <div className="today__rule">
           <span className="today__rule-label">Your day hikes</span>
         </div>
-        {dayHikes.map((hike) => (
+        {otherHikes.map((hike) => (
           <button
             key={hike.id}
             type="button"
@@ -620,10 +785,7 @@ export function Today({
                   printed for the list, re-derived the moment the hike
                   opens. */}
               <span className="today__entry-meta">
-                {hike.figures.miles.toLocaleString('en-US', {
-                  maximumFractionDigits: 1,
-                })}{' '}
-                mi
+                {formatDistance(hike.figures.miles, units)}
               </span>
             </span>
             <span className="today__volunteer-chevron" aria-hidden="true">
@@ -637,8 +799,37 @@ export function Today({
   // The shelf's picks, memoized with the journal's argument: this screen
   // re-renders on every fix and every clock tick, and the picks change only
   // when the routes or the fix do.
-  const picks = useMemo(() => shelfPicks(suggestedHikes, fixAt), [suggestedHikes, fixAt])
+  const picks = useMemo(() => shelfPicks(suggestedHikes, near), [suggestedHikes, near])
   const morePublished = suggestedHikes.length - picks.length
+
+  /**
+   * Which of the "Have less time?" chips have something to open.
+   *
+   * THE RULE IS THE FINDER'S AND THE CHIPS WERE NOT KEEPING IT.
+   * lib/suggestedHikes.ts states it for the whole feature - "a facet no route
+   * on the phone can answer (a time bucket when nothing can be priced…) is
+   * not offered" - and `availableFacets` is named there as "the one place
+   * that is decided". screens/FindHike.tsx asks it; this shelf did not, and
+   * rendered its two time chips unconditionally.
+   *
+   * MEASURED, 2026-09-11, against release 2026-09-10: not one of the nine
+   * published routes carries a measured climb, so `hikeEstimate` prices none
+   * of them, so `availableFacets` withholds `time` - and the finder correctly
+   * shows no Time door. Tapping "Under 2 h" on this shelf opened the finder
+   * on "0 hikes", every time, for every hiker. Three taps to a dead end that
+   * the screen one door along already knew was dead.
+   *
+   * Asking the same function is the fix rather than a condition of its own,
+   * because two answers to "can this be filtered" is how the pair drifted
+   * apart in the first place.
+   */
+  const offeredFacets = useMemo(
+    () => availableFacets(suggestedHikes, pace),
+    [suggestedHikes, pace],
+  )
+  const offersTime = offeredFacets.includes('time')
+  const offersDifficulty = offeredFacets.includes('difficulty')
+  const offersAnyChip = offersTime || offersDifficulty
 
   // SUGGESTED HIKES (#1284): routes somebody published, near the hiker, and
   // the way to the rest of them. The app surfaces them and names who wrote
@@ -650,7 +841,26 @@ export function Today({
     suggestedHikes.length > 0 ? (
       <>
         <div className="today__rule">
-          <span className="today__rule-label">Suggested hikes</span>
+          {/* "Near you" only when something is ranking them - a fix, or
+              the kept place - and "Suggested" otherwise, which is the
+              honest heading over a list in published order. */}
+          <span className="today__rule-label">
+            {near === null ? 'Suggested hikes' : 'Hikes near you'}
+          </span>
+          {/* The way to the rest, on the label (frame 2a's "All 34 ›")
+              rather than a second "Find a hike" under the shelf - the
+              pinned bar is that door, and the maintainer read the pair as
+              one screen with two of the same button (2026-09-10). A count
+              of routes, never of anybody. */}
+          {onFindHike !== undefined && morePublished > 0 && (
+            <button
+              type="button"
+              className="today__rule-link"
+              onClick={() => onFindHike()}
+            >
+              All {suggestedHikes.length} ›
+            </button>
+          )}
         </div>
         <div className="today__suggested-rail">
           {picks.map((hike) => (
@@ -666,43 +876,139 @@ export function Today({
             />
           ))}
         </div>
-        {onFindHike !== undefined && (
-          <button type="button" className="today__find" onClick={onFindHike}>
-            <HikeFinderIcon name="search" className="today__find-icon" />
-            <span className="today__find-label">Find a hike</span>
-            {/* How many the shelf did not show - a count of routes, never
-                of anybody. Absent when the shelf holds them all. */}
-            {morePublished > 0 && (
-              <span className="today__find-count">{morePublished} more ›</span>
-            )}
-          </button>
+        {/* "Have less time?" (#1373, frame 2a): the finder's own facets,
+            in its own words (lib/suggestedHikes.ts's labels), opened with
+            the filter already applied. Day mode only - the other two modes
+            are not looking for a walk to fit an afternoon. No "Loops": the
+            finder has no shape facet, and a chip that opened it unfiltered
+            would promise one. Under a rule of its own, the same label the
+            shelf wears, so the column reads as sections rather than a run
+            of unlike rows (the maintainer's read of it, 2026-09-10). */}
+        {onFindHike !== undefined && mode === 'day' && offersAnyChip && (
+          <div className="today__rule">
+            <span className="today__rule-label">Have less time?</span>
+          </div>
         )}
-        <p className="today__note">
-          Routes from community contributions. Check before traveling.
-        </p>
+        {onFindHike !== undefined && mode === 'day' && offersAnyChip && (
+          <div className="today__have-less" role="group" aria-label="Have less time?">
+            {offersTime && (
+              <button
+                type="button"
+                className="today__have-less-chip"
+                onClick={() => onFindHike({ time: 'under2' })}
+              >
+                {timeBucketLabel('under2')}
+              </button>
+            )}
+            {offersTime && (
+              <button
+                type="button"
+                className="today__have-less-chip"
+                onClick={() => onFindHike({ time: '2to4' })}
+              >
+                {timeBucketLabel('2to4')}
+              </button>
+            )}
+            {offersDifficulty && (
+              <button
+                type="button"
+                className="today__have-less-chip"
+                onClick={() => onFindHike({ difficulty: ['easy'] })}
+              >
+                Easy only
+              </button>
+            )}
+          </div>
+        )}
       </>
     ) : null
 
+  // THE DOWNLOAD, AS A NOTICE (#1373, F2): "download appears whenever it
+  // is needed and nowhere else" - the design's Notice in its warn tone, at
+  // the head of the column, where a card that read as one more entry stood.
+  // What it says stays true of a whole-corridor package: the size is the
+  // manifest's for the chosen level, and with none it says only what still
+  // works without the sheet.
   const download =
     !hasDownload && onOpenDownloads !== undefined ? (
-      <div className="today__card today__card--download">
-        <p className="today__entry-name">Take the whole trail with you</p>
-        <p className="today__note">
-          One download and the map works with no bars and no data plan — the way the trail
-          actually is.
-        </p>
-        <button type="button" className="today__action" onClick={onOpenDownloads}>
-          Choose a download
-        </button>
-      </div>
+      <Notice
+        tone="warn"
+        title="The topo sheet is not on this phone"
+        body={
+          downloadSize === null
+            ? 'Trails and waypoints work without it.'
+            : `${downloadSize}. Trails and waypoints work without it.`
+        }
+        action={{ label: 'Download', onClick: onOpenDownloads }}
+      />
     ) : null
 
-  const noJournal =
-    entries.length === 0 ? (
+  // THE SETUP HEAD (#1373, F2): "until a hike is loaded, Today is a
+  // different screen - a setup screen, not an empty list. Its contents come
+  // from the mode." The head leads the column and says what to do next;
+  // the bar at the foot is where to do it. Everything the column already
+  // carried stays under the head - the alerts, the journal from a fix, the
+  // crew card - because a screen that dropped the closure ahead on the
+  // grounds that nothing was planned would be the worse failure.
+  const setup =
+    mode === 'day' && todaysWalk === null ? (
+      <section className="today__setup" aria-labelledby="today-setup-title">
+        <h2 id="today-setup-title" className="today__setup-title">
+          Nothing planned today
+        </h2>
+        <p className="today__setup-line">
+          {suggestedHikes.length === 0
+            ? 'A builder for a route of your own — and published walks, once this phone holds any.'
+            : `Published walks${
+                placeName !== null
+                  ? `, nearest ${placeName} first,`
+                  : near !== null
+                    ? ', nearest you first,'
+                    : ' to pick from,'
+              } and a builder if none of them is yours.`}
+        </p>
+      </section>
+    ) : mode === 'long' && longHike == null ? (
+      <section className="today__setup" aria-labelledby="today-setup-title">
+        <h2 id="today-setup-title" className="today__setup-title">
+          You have no hike yet
+        </h2>
+        <p className="today__setup-line">
+          A long hike is one trail, broken into days. Pick the trail and OurHike will hold
+          the rest.
+        </p>
+        {/* The frame lists the long trails on the map here; the shell holds
+            no list of named lines off the map yet, so the one door is the
+            map itself, where the lines are (screens/HikeSetup.tsx). */}
+        {onStartLongHike !== undefined && (
+          <button type="button" className="today__action" onClick={onStartLongHike}>
+            Pick a trail on the map ›
+          </button>
+        )}
+        <p className="today__note">
+          Not on a long hike after all? Switch to Day hike above — nothing here is lost.
+        </p>
+      </section>
+    ) : null
+
+  // Frame 2e's last line: the bar is the same on the crew's day.
+  const walkingToo =
+    mode === 'volunteer' && onFindHike !== undefined && onPlanHike !== undefined ? (
       <p className="today__note">
-        {currentMile === undefined
-          ? 'The journal fills in from your position — nothing here claims to know where you are yet.'
-          : 'Nothing of the journal’s kinds is on this stretch of trail.'}
+        Walking today as well? Find and Plan are where they always are.
+      </p>
+    ) : null
+
+  // With no fix there is no journal and no sentence about one: a column
+  // that said "nothing here claims to know where you are yet" under a head
+  // that already says what to do next was filler, the maintainer's word
+  // for it (2026-09-10; frame 2a carries no such line). Located and empty
+  // is still worth a sentence, because then the absence is a fact about
+  // the stretch.
+  const noJournal =
+    entries.length === 0 && currentMile !== undefined ? (
+      <p className="today__note">
+        Nothing of the journal’s kinds is on this stretch of trail.
       </p>
     ) : null
 
@@ -710,6 +1016,11 @@ export function Today({
   // each slot is keyed by what it is so React reconciles a re-rank as a move
   // rather than a teardown.
   const named: Record<string, ReactNode> = {
+    setup,
+    download,
+    walk: walkCard,
+    conditions,
+    walkingToo,
     alerts,
     volunteer,
     soFar,
@@ -724,13 +1035,43 @@ export function Today({
   }
   const order =
     mode === 'volunteer'
-      ? ['alerts', 'volunteer', 'soFar', 'journal', 'climb', 'hikes', 'suggested']
+      ? [
+          'setup',
+          'download',
+          'alerts',
+          'volunteer',
+          'soFar',
+          'journal',
+          'climb',
+          'hikes',
+          'suggested',
+          'walkingToo',
+        ]
       : mode === 'day'
-        ? ['alerts', 'suggested', 'hikes', 'journal', 'climb', 'soFar', 'volunteer']
+        ? [
+            'setup',
+            'walk',
+            'download',
+            'alerts',
+            'suggested',
+            'hikes',
+            'journal',
+            'conditions',
+            'climb',
+            'soFar',
+            // No crew card on the day-hike home (maintainer, 2026-09-10,
+            // chosen from three drawn feet): a day hiker's volunteer door is
+            // More's, and the card at the foot of a page about today's walk
+            // was one more section to get mixed up in. The other two modes
+            // keep it - a long hike lives with the crew for months, and the
+            // volunteer mode is the crew.
+          ]
         : // The hike's own day LEADS, above the alerts - and the alerts
           // still render, one slot down. Nothing disappears; what changes is
           // what a hiker's eye lands on first (#1317, lib/hikerMode.ts).
           [
+            'setup',
+            'download',
             // Above the day's own leg: a hiker who has been away for a
             // fortnight is not looking for today's miles, they are looking
             // for what happened while they were gone.
@@ -738,6 +1079,7 @@ export function Today({
             'hikeDay',
             'alerts',
             'journal',
+            'conditions',
             'climb',
             'soFar',
             'volunteer',
@@ -775,13 +1117,19 @@ export function Today({
             .filter((part) => part !== null)
             .join(' · ')}
         </p>
-        {readout.kind === 'mile' ? (
+        {/* The mile, when there is one - and with none, nothing between the
+            date and the greeting. The no-mile sentences ("Location is off",
+            "Located · tap a trail to take it") used to print here at 19 px,
+            and the maintainer read them off the frame as filler (2026-09-10,
+            chosen from two drawn headers). They are the map plate's, and the
+            plate still prints them where a hiker is looking at the map; the
+            status row above carries Offline and No GPS fix, so a fault is
+            not silent here either. */}
+        {readout.kind === 'mile' && (
           <p className="today__readout">
             <span className="today__mile">{readout.mile}</span>
             <span className="today__mile-unit">{readout.unit}</span>
           </p>
-        ) : (
-          <p className="today__position-sentence">{readout.sentence}</p>
         )}
         <p className="today__greeting">{greeting}</p>
         {longHike?.awayLine != null && (
@@ -819,11 +1167,59 @@ export function Today({
           // adjusted from.
           <p className="today__pace-line">{estimate.relativeLine}</p>
         )}
-        <ModeSwitch mode={mode} onChange={onChangeMode} variant="chrome" />
+        <ModeSwitch
+          mode={mode}
+          onChange={onChangeMode}
+          variant="chrome"
+          pending={modePending}
+        />
       </header>
 
       <div className="today__paper">
-        {download}
+        {/* THE WALK LEFT OPEN (#1373, frame 6d): following ended with the
+            session and nobody said how the walk ended, so the morning asks
+            - once, at the head of the column, with both answers and no
+            default. Nothing here moves on its own: a walk nobody finished
+            is a question, not a record (WelcomeBackCard's rule, kept). The
+            design's "stopped counting at 6:12pm near…" is not printed: the
+            phone keeps no such record, on purpose. */}
+        {openWalk !== null &&
+          onFinishOpenWalk !== undefined &&
+          onDropOpenWalk !== undefined && (
+            <section
+              className="today__card today__card--hike"
+              aria-label="A walk is still open"
+            >
+              <p className="today__rule-label">
+                {dayLongDateLabel(openWalk.day)} · day hike
+              </p>
+              <h2 className="today__hike-title">
+                {openWalk.day === localDay(new Date(now.getTime() - 86_400_000))
+                  ? 'Yesterday’s walk is still open'
+                  : 'A walk is still open'}
+              </h2>
+              <p className="today__hike-line">
+                {openWalk.hike.name} ·{' '}
+                {formatDistance(openWalk.hike.figures.miles, units)}
+              </p>
+              <p className="today__setup-line">
+                You were walking it and nothing said how it ended. Say so, or leave it —
+                nothing changes on its own.
+              </p>
+              <div className="today__actions">
+                <button
+                  type="button"
+                  className="today__action"
+                  onClick={() => onFinishOpenWalk(openWalk.hike.id, openWalk.day)}
+                >
+                  Finished it
+                </button>
+                <button type="button" className="today__action" onClick={onDropOpenWalk}>
+                  Not this time
+                </button>
+              </div>
+            </section>
+          )}
         {sections}
         {/* TWO BUTTONS, EQUAL WIDTH AND EQUAL WEIGHT (#1133).
 
@@ -843,25 +1239,35 @@ export function Today({
             Both of those fills were failing contrast until #1132 - the
             secondary variant read a base palette token that cannot follow a
             theme, and both hardcoded a label colour that does not flip. This
-            row is why that got measured. */}
-        <div className="today__crew">
-          <Button
-            variant="secondary"
-            size="s"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={onStartReport}
-          >
-            Report a problem
-          </Button>
-          <Button
-            variant="primary"
-            size="s"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={onSayThanks}
-          >
-            Say thanks
-          </Button>
-        </div>
+            row is why that got measured.
+
+            NOT ON THE DAY-HIKE HOME, since the maintainer's read of the frame
+            (2026-09-10): the pair went with the crew card above it, and a day
+            hiker still has both doors where a problem is found - the map's
+            press plate (chrome/PressPlate.tsx) and the waypoint sheet's own
+            "Report a problem here too" - and More's Contribute group for the
+            rest. The outbox line below stays in every mode: what is waiting
+            to send is true whatever the day is for. */}
+        {mode !== 'day' && (
+          <div className="today__crew">
+            <Button
+              variant="secondary"
+              size="s"
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={onStartReport}
+            >
+              Report a problem
+            </Button>
+            <Button
+              variant="primary"
+              size="s"
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={onSayThanks}
+            >
+              Say thanks
+            </Button>
+          </div>
+        )}
 
         {/* WAITING, AND NOW SOMEWHERE TO GO. This line already existed - it
             hid at zero and pluralised - but it sat up in "Today so far", a
@@ -881,9 +1287,12 @@ export function Today({
           >
             <span className="today__outbox-dot" aria-hidden="true" />
             <span>
+              {/* The same sentence More prints (#1373, C16): the count is the
+                  whole outbox - notes, reports, photos, hours, closures - so
+                  no one noun was true of it. */}
               {queuedReportCount === 1
-                ? '1 note waiting to send'
-                : `${queuedReportCount} notes waiting to send`}
+                ? '1 waiting to send'
+                : `${queuedReportCount} waiting to send`}
             </span>
             <span className="today__outbox-chevron" aria-hidden="true">
               ›
@@ -895,6 +1304,19 @@ export function Today({
             is built around. */}
         <p className="today__footer">Everything here works with no signal.</p>
       </div>
+
+      {/* THE PINNED BAR (#1373, rule R4 and frames 2a-2e): Find and Plan on
+          every state of this screen, forever. Under the paper rather than
+          in it, so it stays put while the column scrolls, with the tab bar
+          under it. Emphasis goes to Plan while nothing is loaded - that is
+          the next step - and to neither once something is. */}
+      {onFindHike !== undefined && onPlanHike !== undefined && (
+        <PinnedBar
+          onFind={() => onFindHike()}
+          onPlan={onPlanHike}
+          emphasis={setup === null ? 'none' : 'plan'}
+        />
+      )}
     </div>
   )
 }

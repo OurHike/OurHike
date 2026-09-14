@@ -16,6 +16,7 @@
 #
 #   scripts/test.sh             the suites this branch's changes affect
 #   scripts/test.sh --all       every suite, the way a push to main runs them
+#   scripts/test.sh --no-flow   skip the browser-driven flow suite
 #   scripts/test.sh --list      what would run and why, without running it
 #   scripts/test.sh --since X   compare against X rather than origin/main
 #   scripts/test.sh --coverage  measure coverage too, as CI does
@@ -75,12 +76,14 @@ SCOPE_PY="$(python_with yaml || echo python3)"
 run_all=false
 list_only=false
 with_coverage=false
+skip_flow=false
 base_ref=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) run_all=true ;;
     --list) list_only=true ;;
     --coverage) with_coverage=true ;;
+    --no-flow) skip_flow=true ;;
     # The missing-value case checked here, not left to `shift` (#660): a
     # trailing `--since` used to hit the loop's own shift with nothing
     # left, and `set -e` killed the script with exit 1 and no output - the
@@ -379,6 +382,42 @@ if selected_has client; then
   # a suite that passes green while the shipped bundle draws a blank map.
   step "client tests"   "${CLIENT_TEST[@]}"
   step "client build"   npm --prefix client run build
+
+  # The flow layer (features/FLOW_TESTING.md), last because it is the slowest
+  # and because it drives the app the build above just proved can be built.
+  #
+  # HERE BECAUSE CI RUNS IT. This script's whole promise is "run what CI runs,
+  # before pushing", and client-tests.yml grew a `flow` job on 2026-09-11; a
+  # suite that gates a pull request and not this script is a round trip
+  # somebody pays for one push later.
+  #
+  # SKIPPED RATHER THAN FAILED WITHOUT A BROWSER, and said out loud either
+  # way. Playwright needs a Chromium it can find, which a fresh checkout does
+  # not have until `npx playwright install chromium` has been run once - and a
+  # contributor who has not is looking at an environment gap, not a defect in
+  # their change. The repository's own rule for a check the environment cannot
+  # run is to say so rather than to report a clean run nobody had, so that is
+  # what this prints. --no-flow is the same skip, chosen rather than diagnosed,
+  # for a loop where the browser is not the thing being changed.
+  if [ "$skip_flow" = true ]; then
+    echo "-- client flow tests: skipped (--no-flow)"
+  elif npm --prefix client exec -- playwright --version >/dev/null 2>&1 &&
+       { [ -n "${CHROMIUM_PATH:-}" ] ||
+         [ -d "${PLAYWRIGHT_BROWSERS_PATH:-/nonexistent}" ] ||
+         [ -d "${HOME}/.cache/ms-playwright" ]; }; then
+    # `npm --prefix client run`, not `npm --prefix client exec` - the same
+    # distinction CLIENT_TEST's own note above was written for, walked into
+    # again here. `run` executes the script with the working directory set to
+    # client/; `exec` does not, so Playwright resolved no config, fell back to
+    # scanning the repository from its root, and tried to parse App.css and a
+    # PNG as test files. The suite it then reported on was not this one.
+    step "client flow tests" npm --prefix client run test:e2e
+  else
+    echo "-- client flow tests: SKIPPED, no Playwright browser on this machine."
+    echo "   Run 'cd client && npx playwright install chromium' once to turn"
+    echo "   them on. CI runs them on every pull request regardless"
+    echo "   (.github/workflows/client-tests.yml's flow job)."
+  fi
 fi
 
 echo

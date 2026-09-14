@@ -86,6 +86,18 @@ describe('Header', () => {
     expect(buttons[1]).toHaveAccessibleName(/search/i)
   })
 
+  it('carries the In view door only when the shell has something to list (#1373, frame 12a)', async () => {
+    const user = userEvent.setup()
+    const onOpen = vi.fn()
+    render(<Header {...PROPS} inView={{ count: 6, onOpen }} />)
+
+    const buttons = screen.getAllByRole('button')
+    expect(buttons).toHaveLength(3)
+    expect(buttons[0]).toHaveAccessibleName('In view, 6')
+    await user.click(buttons[0])
+    expect(onOpen).toHaveBeenCalledTimes(1)
+  })
+
   it('opens the legend when the legend button is pressed', async () => {
     const user = userEvent.setup()
     render(<Header {...PROPS} />)

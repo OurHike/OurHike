@@ -21,6 +21,7 @@
 // there is one module that knows what an IndexedDB key for preferences is
 // called.
 
+import { normaliseDefaultPlace } from './defaultPlace'
 import {
   BACKGROUND_SOURCES,
   DEFAULT_PREFERENCES,
@@ -102,9 +103,13 @@ function dropUnknownEnumValues(
 export function normalisePreferences(
   stored: Partial<UserPreferences> | undefined,
 ): UserPreferences {
+  const merged = { ...DEFAULT_PREFERENCES, ...dropUnknownEnumValues(stored ?? {}) }
   return {
-    ...DEFAULT_PREFERENCES,
-    ...dropUnknownEnumValues(stored ?? {}),
+    ...merged,
+    // The one structured key: a place short of a named point on the globe
+    // is absent rather than trusted, the same rule the enums get above -
+    // a fallback centre at NaN is a map that fails to open.
+    default_place: normaliseDefaultPlace(merged.default_place),
   }
 }
 

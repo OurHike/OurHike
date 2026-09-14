@@ -68,6 +68,14 @@ export const DEFAULT_OUT_DIR = resolve(CLIENT_DIR, 'dist', '__screenshot')
  */
 export const PHONE = { width: 390, height: 844, isMobile: true, hasTouch: true }
 
+/**
+ * The small phone - an iPhone SE or 8 - that the room audit of 2026-09-10
+ * (#1374) rendered every screen at, and where the chrome first ran out of
+ * room: a recipe that exists to show a screen fitting (or scrolling) on the
+ * smallest phone this app is designed for asks for it with `small = true`.
+ */
+export const PHONE_SMALL = { width: 375, height: 667, isMobile: true, hasTouch: true }
+
 /** The marketing site (`site/`) is looked at on a laptop, not a phone. */
 export const DESKTOP = { width: 1280, height: 800, isMobile: false, hasTouch: false }
 
@@ -142,6 +150,7 @@ export function usage() {
     '  --wait=MS        settle time after load (default 3500)',
     '  --scale=N        device pixel ratio (default 2 - read CAPTURE_SCALE first)',
     '  --desktop        1280x800 and not a phone, for site/',
+    '  --small          375x667, the smallest phone this app is designed for',
     '  --full           the whole scrollable page, not just the viewport',
   ].join('\n')
 }
@@ -159,7 +168,7 @@ export function parseArgs(argv) {
     return found === undefined ? fallback : found.slice(name.length + 3)
   }
   const name = argv.find((arg) => !arg.startsWith('--'))
-  const viewport = flag('desktop') ? DESKTOP : PHONE
+  const viewport = flag('desktop') ? DESKTOP : flag('small') ? PHONE_SMALL : PHONE
   return {
     name,
     outDir: value('out', DEFAULT_OUT_DIR),

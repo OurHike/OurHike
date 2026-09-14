@@ -96,7 +96,9 @@ No highlight, no callout, and the profile still draws. Rolling ridge with nothin
 
 The line above was right about the question and wrong about the *device*. "Without a position there is no ahead" is a fact about the field question. It is not a fact about the phone, and treating it as one meant that a hiker planning a trip at their kitchen table on the phone they would carry saw no terrain at all, while the same person on a laptop got the whole chart.
 
-`lib/ribbonView.ts` now resolves **one of four** domains, and exactly one is true at a time. The precedence, highest first:
+**Amended 2026-09-10 ([#1374](https://github.com/OurHike/OurHike/pull/1374) review) — a profile needs a subject.** `whole-trail` was the resting view of every phone and every desk, so a fresh install drew the A.T.'s whole silhouette under a map nobody had claimed — on Today, over "Nothing planned today", and on the Map tab with a "Whole trail" button under it. The maintainer: "Only show when a user has their hike selected." The ribbon and the desktop chart now draw for a route being built, a walk being followed, or a trail that is taken — by the long hike the hiker is on, or by a tap on its line ("Take this trail", `lib/takenTrail.ts`) — and otherwise not at all: absent, never blank, since an empty ribbon reads as "nothing ahead of you". The precedence below is unchanged once there is a subject; `map-view`, `ahead` and `whole-trail` are simply never reached without one.
+
+`lib/ribbonView.ts` resolves **one of five** domains, and exactly one is true at a time. The precedence, highest first:
 
 | | The ribbon draws | Because |
 |---|---|---|

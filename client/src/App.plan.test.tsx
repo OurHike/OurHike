@@ -1,7 +1,8 @@
 // The planning flow end to end (#755 → #756 → #757), through the "route by
 // destination" builder: empty Plan tab → the entrance (where from, how far)
 // → the editable stop surface → a destination added between the ends →
-// "Break into days" → a target → a laid-out plan on the timeline, persisted
+// "Use this route" (step 2's way on; "Break into days" until #1373) → a
+// target → a laid-out plan on the timeline, persisted
 // with the added stop pinned.
 //
 // Its own file because it needs POIs that carry PIPELINE miles offset from
@@ -85,16 +86,19 @@ const POIS = [
   shelter(22, 'Beyond Shelter'),
 ]
 
-/** The 1i door (#977) now interposes on the one primary action: every path
- *  into a builder chooses its kind first. These tests want the trip. */
+/** The one primary action lands on step 1 of the spine (#1373, screens/
+ *  PlanStart.tsx), where the kind is the mode on the bar rather than a
+ *  question (D6). These tests want the A.T. route builder, so they run in
+ *  long mode and take the map door. */
 async function throughPlanKind(user: ReturnType<typeof userEvent.setup>) {
-  expect(
-    await screen.findByRole('dialog', { name: 'What are you planning?' }),
-  ).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: /A multi-day section/ }))
+  await screen.findByRole('heading', { name: 'Where do you want to go?' })
+  await user.click(screen.getByRole('button', { name: 'Pick on the map' }))
 }
 
 async function openEntrance(user: ReturnType<typeof userEvent.setup>) {
+  // Long mode: step 1 reads the kind off the bar (D6), and the builder
+  // these tests want is the long hike's.
+  app.store.set(HIKER_MODE_KEY, 'long')
   render(<App />)
 
   await user.click(await screen.findByRole('tab', { name: 'Plan' }))
@@ -173,7 +177,7 @@ describe('the planning flow', () => {
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /^Far Shelter/ })).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Break into days' }))
+    await user.click(screen.getByRole('button', { name: 'Use this route' }))
     expect(
       await screen.findByRole('dialog', { name: 'How long is a day?' }),
     ).toBeInTheDocument()
@@ -181,7 +185,7 @@ describe('the planning flow', () => {
 
     // At 8 mi/day the two legs (3.2→13.2, 13.2→22.2) plan as one day each.
     fireEvent.change(screen.getByLabelText('Miles per day'), { target: { value: '8' } })
-    await user.click(screen.getByRole('button', { name: 'Lay out 2 days' }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     // Landed on the timeline: both days, and the boundary the hiker chose.
     expect(await screen.findByText('DAY 1')).toBeInTheDocument()
@@ -288,8 +292,10 @@ describe('the planning flow', () => {
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
 
     // Detour into the day room's list, mid-route. This is the state that used
-    // to survive the trip being laid out.
+    // to survive the trip being laid out. Leaving by the bar asks first
+    // (#1373, D8); kept for later.
     await user.click(screen.getByRole('tab', { name: 'Today' }))
+    await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
     await user.click(await screen.findByRole('radio', { name: 'Day hike' }))
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
     await user.click(await screen.findByRole('button', { name: 'All 1 ›' }))
@@ -297,11 +303,11 @@ describe('the planning flow', () => {
 
     // Back to the half-built route, and finish it.
     await user.click(screen.getByRole('tab', { name: 'Map' }))
-    await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+    await user.click(await screen.findByRole('button', { name: 'Use this route' }))
     fireEvent.change(await screen.findByLabelText('Miles per day'), {
       target: { value: '8' },
     })
-    await user.click(screen.getByRole('button', { name: /^Lay out \d+ days?$/ }))
+    await user.click(screen.getByRole('button', { name: 'Save this long hike' }))
 
     // The trips room, showing the trip that was just made. (The trips HOME
     // rather than its timeline: #805 opens the tab on the home whenever
@@ -569,7 +575,10 @@ describe('the planning flow', () => {
     await user.click(screen.getByRole('button', { name: /What’s left/ }))
 
     // One walked stretch, one gap, and both of its ends offered.
-    expect(await screen.findByText(/12\.0 mi in 1 piece/)).toBeInTheDocument()
+    expect(await screen.findByText('in 1 piece')).toBeInTheDocument()
+    expect(screen.getByText('To go').closest('.whats-left__figure')).toHaveTextContent(
+      /12\.0 mi/,
+    )
     expect(
       screen.getByRole('button', { name: /North from Middle Shelter/ }),
     ).toBeInTheDocument()
@@ -627,8 +636,11 @@ describe('the planning flow', () => {
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
 
     // The draft survives a walk to the Plan tab and back - the entrance is
-    // never a toll gate on the way back to your own route.
+    // never a toll gate on the way back to your own route. Leaving is asked
+    // about once (#1373, D8), and "Keep it for later" is the old behaviour
+    // said out loud.
     await user.click(screen.getByRole('tab', { name: 'Plan' }))
+    await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
     await user.click(await screen.findByRole('button', { name: 'Back to your route' }))
     expect(await screen.findByRole('dialog', { name: 'Your route' })).toBeInTheDocument()
   })
@@ -955,6 +967,8 @@ describe('the planning flow', () => {
       // Settings → Map & Display → the slowest flat pace. The route is
       // untouched; only the hiker's own speed moved.
       await user.click(screen.getByRole('tab', { name: 'More' }))
+      // Asked before leaving the live route (#1373, D8); kept.
+      await user.click(await screen.findByRole('button', { name: 'Keep it for later' }))
       await user.click(await screen.findByRole('button', { name: /^the map/i }))
       fireEvent.change(await screen.findByLabelText('Flat pace'), {
         target: { value: String(MIN_FLAT_PACE_MPH) },
@@ -982,7 +996,7 @@ describe('the planning flow', () => {
       await tap(map, 3)
       await tap(map, 22)
 
-      await user.click(await screen.findByRole('button', { name: 'Break into days' }))
+      await user.click(await screen.findByRole('button', { name: 'Use this route' }))
       expect(
         await screen.findByRole('dialog', { name: 'How long is a day?' }),
       ).toBeInTheDocument()
@@ -1020,7 +1034,10 @@ describe('the ribbon while a trip is being planned', () => {
 
   it('draws the stretch as soon as the entrance has resolved two ends', async () => {
     const user = userEvent.setup()
-    app.onboard()
+    // The A.T. taken (lib/takenTrail.ts, the review of #1374): the fix
+    // window and the map view the ribbon falls back to are the taken
+    // trail's to draw; the stretch being planned draws regardless.
+    app.onboard({}, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
@@ -1061,10 +1078,15 @@ describe('the ribbon while a trip is being planned', () => {
 
   it('takes the lanes with it, and gives the fix window back on close', async () => {
     const user = userEvent.setup()
-    app.onboard({ location_permission_requested: true })
+    // The A.T. taken (the review of #1374): the fix window the ribbon gives
+    // back is the taken trail's, as is the map view it follows.
+    app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
+    // Long mode: step 1 reads the kind off the bar (D6), and the builder
+    // this test wants is the long hike's.
+    app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
@@ -1122,7 +1144,9 @@ describe('the ribbon while a trip is being planned', () => {
     // it outranks their fix - but only a real gesture does, and only until
     // they ask for themselves back.
     const user = userEvent.setup()
-    app.onboard({ location_permission_requested: true })
+    // The A.T. taken (the review of #1374): the fix window the ribbon gives
+    // back is the taken trail's, as is the map view it follows.
+    app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
@@ -1182,10 +1206,16 @@ describe('the ribbon while a trip is being planned', () => {
 
   it("offers the chart's own framing buttons, and only the ones that would do something", async () => {
     const user = userEvent.setup()
-    app.onboard()
+    // The A.T. taken (lib/takenTrail.ts, the review of #1374): the fix
+    // window and the map view the ribbon falls back to are the taken
+    // trail's to draw; the stretch being planned draws regardless.
+    app.onboard({}, { takenTrail: 'AT' })
     app.putTrailData({ pois: POIS })
     app.store.set(ELEVATION_STORE_KEY, profile())
 
+    // Long mode: step 1 reads the kind off the bar (D6), and the builder
+    // this test wants is the long hike's.
+    app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })

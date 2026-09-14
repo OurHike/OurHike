@@ -21,11 +21,11 @@
 
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
-  BLAZE_DOTTED_LAYER_ID,
+  BLAZE_UNTAKEN_LAYER_ID,
   BLAZE_LAYER_ID,
-  NEARBY_BLAZE_DOTTED_LAYER_ID,
+  NEARBY_BLAZE_UNTAKEN_LAYER_ID,
   NEARBY_BLAZE_LAYER_ID,
-  NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   NETWORK_OVERVIEW_LAYER_ID,
 } from './style'
 import { CHOSEN_SYSTEM_SOURCES, isNearbyTrail } from './nearbyTrails'
@@ -72,9 +72,9 @@ export function drawsNearbyTrails(
   // those artifacts.
   for (const layerId of [
     NEARBY_BLAZE_LAYER_ID,
-    NEARBY_BLAZE_DOTTED_LAYER_ID,
+    NEARBY_BLAZE_UNTAKEN_LAYER_ID,
     NETWORK_OVERVIEW_LAYER_ID,
-    NETWORK_OVERVIEW_DOTTED_LAYER_ID,
+    NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
   ]) {
     if (map.getLayer(layerId) === undefined) continue
     if (map.queryRenderedFeatures(undefined, { layers: [layerId] }).length > 0) {
@@ -86,11 +86,12 @@ export function drawsNearbyTrails(
   // feature there whose `source` is outside the chosen system is ghosted by
   // the same expression wherever it is drawn from, so the sentence follows
   // the paint. Both halves of the split, and the property is still read on
-  // the dotted half: a source-less feature lands there too (nearbyTrails.ts
-  // says why), and it is a fault rather than a second network.
+  // the untaken half: a source-less feature lands there too
+  // (nearbyTrails.ts says why), and it is a fault rather than a second
+  // network.
   if (map.getLayer(BLAZE_LAYER_ID) === undefined) return false
 
-  const layers = [BLAZE_LAYER_ID, BLAZE_DOTTED_LAYER_ID].filter(
+  const layers = [BLAZE_LAYER_ID, BLAZE_UNTAKEN_LAYER_ID].filter(
     (layerId) => map.getLayer(layerId) !== undefined,
   )
   const features = map.queryRenderedFeatures(undefined, { layers })

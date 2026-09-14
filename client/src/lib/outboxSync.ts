@@ -6,13 +6,19 @@
 // request, plus the guard that stops two flushes overlapping.
 
 import { useEffect } from 'react'
-import { flushOutbox, hasWorkThatNeedsNoAccount, type FlushResult } from './outbox'
+import {
+  flushOutbox,
+  hasWorkThatNeedsNoAccount,
+  type FlushResult,
+  type OutboxItem,
+} from './outbox'
 import {
   accessToken,
   sendOutboxItem,
   permanentFailureReason,
   API_CONFIGURED,
 } from './api'
+import { recordSentReport } from './sentReports'
 
 /**
  * The in-flight flush, if one is running.
@@ -54,7 +60,27 @@ async function run(): Promise<FlushResult | null> {
   // Neither module imports the other; this introduces them. Since
   // #577/#579 the send dispatches on what the item carries - a report or a
   // photo action - through one seam, so the queue stays one queue.
-  return flushOutbox(sendOutboxItem, permanentFailureReason)
+  return flushOutbox(sendAndRecord, permanentFailureReason)
+}
+
+/**
+ * Send, then remember that it went (#1373, frame 9d - "Your reports").
+ *
+ * THE LEDGER NEVER KEEPS AN ITEM QUEUED. A write that fails after the send
+ * succeeded is swallowed, because the report is filed: throwing here would
+ * hand the item back to the queue, and the next flush would re-POST it for
+ * the server to answer from the row it already has (#243) - a request spent
+ * to learn nothing. The ledger is the phone's memory, not the send's receipt.
+ * This is the seam that introduces the two modules, for the reason `run`
+ * gives above about transport meeting storage: neither imports the other.
+ */
+async function sendAndRecord(item: OutboxItem): Promise<void> {
+  await sendOutboxItem(item)
+  try {
+    await recordSentReport(item)
+  } catch {
+    // The send stands; see above.
+  }
 }
 
 /**

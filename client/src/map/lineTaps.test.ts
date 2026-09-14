@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
+import { CLOSURE_ID_PROPERTY } from './closureLayers'
+import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
 import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
-import { BLAZE_DOTTED_LAYER_ID, BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
+import { BLAZE_UNTAKEN_LAYER_ID, BLAZE_LAYER_ID, NEARBY_BLAZE_LAYER_ID } from './style'
+import { SHARED_GROUND_BLAZE_LAYER_ID } from './sharedGround'
 import { TRAIL_BADGE_LAYER_ID } from './trailBadges'
 import { CORRIDOR_HIGHLIGHT_LAYER_ID, HIGHLIGHT_ID_PROPERTY } from './corridorLayers'
 import { attachLineTaps, LINE_TAP_SLOP_PX, tappedLineAt } from './lineTaps'
@@ -70,6 +74,7 @@ describe('tapping a line', () => {
       closureKind: null,
       closureReason: null,
       closureSource: null,
+      sharedWith: null,
       badge: false,
       // No geometry on this fixture, so there is nothing to snap to and the
       // touch itself is the honest answer - the mock projects identically.
@@ -216,6 +221,62 @@ describe('tapping a line', () => {
     expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
   })
 
+  it('yields to the closure tape and to a serious-warning pin under the same thumb (#1373, F12)', () => {
+    // Both are safety marks drawn ON the line: a tap on barrier tape that
+    // opened the blaze sheet instead of the closure would answer the wrong
+    // question on the one path that is about danger.
+    const taped = buildMap()
+    taped.layerIds.push(CLOSURE_LAYER_ID)
+    taped.renderedFeatures.set(CLOSURE_LAYER_ID, [
+      { properties: { [CLOSURE_ID_PROPERTY]: 'c1' } },
+    ])
+    taped.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
+    expect(tappedLineAt(taped as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+
+    const pinned = buildMap()
+    pinned.layerIds.push(WARNING_LAYER_ID)
+    pinned.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    pinned.renderedFeatures.set(BLAZE_LAYER_ID, [line('side_trails:abc', 'side_trails')])
+    expect(tappedLineAt(pinned as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('answers a shared-ground half with the trail it shares the stretch with (#1384)', () => {
+    // The two halves of a paired stretch are their own layer over both
+    // stacks (map/sharedGround.ts); a touch on the stretch lands on a half,
+    // and the half carries the other trail's name.
+    const map = buildMap()
+    map.layerIds = [...map.layerIds, SHARED_GROUND_BLAZE_LAYER_ID]
+    const plain = line(
+      'oprhp:rd~shared~centerline:9~0',
+      'oprhp_trails',
+      'Red',
+      'Ramapo-Dunderberg',
+    )
+    const half = {
+      ...plain,
+      properties: {
+        ...plain.properties,
+        concurrent_with: 'Appalachian National Scenic Trail',
+        concurrent_side: -1,
+      } as Record<string, unknown>,
+    }
+    map.renderedFeatures.set(SHARED_GROUND_BLAZE_LAYER_ID, [half])
+    const onSelect = vi.fn()
+
+    attachLineTaps(map as unknown as MapLibreMap, onSelect)
+    map.emit('click', touchAt(120, 240))
+
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Ramapo-Dunderberg',
+        blazeColor: 'Red',
+        sharedWith: 'Appalachian National Scenic Trail',
+      }),
+    )
+  })
+
   it('prefers the side trail over the through-route at a junction', () => {
     // The AT is on screen almost everywhere and sorted above side trails, so
     // topmost-first would answer "the AT" for every tap near a junction -
@@ -254,6 +315,7 @@ describe('tapping a line', () => {
       closureKind: null,
       closureReason: null,
       closureSource: null,
+      sharedWith: null,
       badge: false,
       at: [10, 10],
     })
@@ -433,7 +495,7 @@ describe('the through-route badge (#1283)', () => {
   // Not a switch: features/NEARBY_TRAILS.md §2's decision stands.
   function badgeMap(): MockMap {
     const map = buildMap()
-    map.layerIds = [...map.layerIds, TRAIL_BADGE_LAYER_ID, BLAZE_DOTTED_LAYER_ID]
+    map.layerIds = [...map.layerIds, TRAIL_BADGE_LAYER_ID, BLAZE_UNTAKEN_LAYER_ID]
     return map
   }
 
@@ -497,15 +559,15 @@ describe('the through-route badge (#1283)', () => {
     expect(tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
   })
 
-  it('reads the dotted layers too, where every line outside the chosen system now draws', () => {
+  it('reads the untaken layers too, where every line outside the chosen system draws', () => {
     const map = badgeMap()
-    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [
+    map.renderedFeatures.set(BLAZE_UNTAKEN_LAYER_ID, [
       line('oprhp:42', 'oprhp_trails', 'Aqua', 'Long Path'),
     ])
 
     const tapped = tappedLineAt(map as unknown as MapLibreMap, { x: 10, y: 10 })
     expect(tapped?.name).toBe('Long Path')
     const queried = map.featureQueries.map((q) => q.layers)
-    expect(queried).toContainEqual(expect.arrayContaining([BLAZE_DOTTED_LAYER_ID]))
+    expect(queried).toContainEqual(expect.arrayContaining([BLAZE_UNTAKEN_LAYER_ID]))
   })
 })

@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 import {
   NOTICED_ABSENCE_DAYS,
   datedDaysAhead,
+  moveHikeDatedDaysToToday,
+  moveDatedDaysToToday,
   pausedDays,
   resumeOffer,
 } from './hikeResume'
@@ -81,28 +83,88 @@ describe('whether to offer a hike back', () => {
 })
 
 describe('what the offer counts', () => {
-  it('counts the dated days still ahead, and where they start', () => {
-    const counted = datedDaysAhead(
-      [
-        {
-          days: [{ date: '2026-08-28' }, { date: '2026-09-10' }, { date: '2026-09-11' }],
-        },
-        { days: [{ date: '2026-09-12' }, {}] },
-      ],
-      TODAY,
-    )
+  it('counts every dated day not yet walked - past dates included - and where they start', () => {
+    const counted = datedDaysAhead([
+      {
+        days: [
+          { date: '2026-08-27', walked: true },
+          { date: '2026-08-28' },
+          { date: '2026-09-10' },
+          { date: '2026-09-11' },
+        ],
+      },
+      { days: [{ date: '2026-09-12' }, {}] },
+    ])
 
-    // The one behind today is not "still dated ahead".
-    expect(counted).toEqual({ count: 3, from: '2026-09-10' })
+    // The one behind today is still on the plan, and it is the one a
+    // hiker back from a pause most needs moved (#1373, frame 6d); the
+    // walked one is a record and is not.
+    expect(counted).toEqual({ count: 4, from: '2026-08-28' })
   })
 
   it('counts nothing when nothing is dated', () => {
-    expect(datedDaysAhead([{ days: [{}, {}] }], TODAY)).toBeNull()
+    expect(datedDaysAhead([{ days: [{}, {}] }])).toBeNull()
   })
 
   it('says how long a hike has been paused, and refuses a future date', () => {
     expect(pausedDays(hike({ pausedOn: '2026-08-29' }), TODAY)).toBe(11)
     expect(pausedDays(hike(), TODAY)).toBeNull()
     expect(pausedDays(hike({ pausedOn: '2027-01-01' }), TODAY)).toBeNull()
+  })
+})
+
+describe('moveDatedDaysToToday (#1373, frame 6d - the handler "Move them to today" never had)', () => {
+  const dated = (dates: (string | undefined)[], walked = 0) => ({
+    target: { miles: 15 },
+    stops: dates
+      .map((_, i) => ({ mile: 470 + i * 15, resupply: false }))
+      .concat([{ mile: 470 + dates.length * 15, resupply: false }]),
+    days: dates.map((date, i) => ({
+      id: `d${i}`,
+      pinned: false,
+      generated: true,
+      ...(date === undefined ? {} : { date }),
+      ...(i < walked ? { walked: true } : {}),
+    })),
+  })
+
+  it('slides every dated day ahead by the same delta, so the rhythm is kept', () => {
+    const plan = dated(['2026-08-28', '2026-08-29', '2026-08-31'])
+    const moved = moveDatedDaysToToday(plan, '2026-09-10')
+    expect(moved.days.map((day) => day.date)).toEqual([
+      '2026-09-10',
+      '2026-09-11',
+      '2026-09-13',
+    ])
+  })
+
+  it('leaves walked days where they were - they are records', () => {
+    const plan = dated(['2026-08-28', '2026-08-29', '2026-08-30'], 1)
+    const moved = moveDatedDaysToToday(plan, '2026-09-10')
+    expect(moved.days[0].date).toBe('2026-08-28')
+    expect(moved.days.slice(1).map((day) => day.date)).toEqual([
+      '2026-09-10',
+      '2026-09-11',
+    ])
+  })
+
+  it('moves a whole hike by one delta, so its trips keep their spacing (#1374 review)', () => {
+    // Two sections, a fortnight apart. Moved separately, both would start
+    // today and the second would sit on top of the first.
+    const first = dated(['2026-08-28', '2026-08-29'])
+    const second = dated(['2026-09-15', '2026-09-16'])
+    const [a, b] = moveHikeDatedDaysToToday([first, second], '2026-09-10')
+    expect(a.days.map((day) => day.date)).toEqual(['2026-09-10', '2026-09-11'])
+    expect(b.days.map((day) => day.date)).toEqual(['2026-09-28', '2026-09-29'])
+    // A section with nothing dated rides along untouched, as the same object.
+    const undated = dated([undefined])
+    expect(moveHikeDatedDaysToToday([first, undated], '2026-09-10')[1]).toBe(undated)
+  })
+
+  it('moves nothing when nothing ahead is dated, or the plan already starts today', () => {
+    const undated = dated([undefined, undefined])
+    expect(moveDatedDaysToToday(undated, '2026-09-10')).toBe(undated)
+    const today = dated(['2026-09-10', '2026-09-11'])
+    expect(moveDatedDaysToToday(today, '2026-09-10')).toBe(today)
   })
 })

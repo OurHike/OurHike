@@ -23,7 +23,8 @@ import { appHarness, latOfMile, openMapTab } from './test/appHarness'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { TRIPS_KEY, type TripStore } from './lib/trips'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
-import { BLAZE_DOTTED_LAYER_ID } from './map/style'
+import { localDay } from './lib/passedToday'
+import { BLAZE_UNTAKEN_LAYER_ID } from './map/style'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -157,6 +158,15 @@ describe('every long-hike surface goes through one window', () => {
     const dock = windows()
     expect(dock).toHaveLength(1)
     expect(dock[0]?.className).toContain('hike-window--sheet')
+
+    // And the switch that opened it says the pick is not settled (#1317's
+    // rule, which nothing passed until #1373 - the inventory's C6): drawn
+    // as chosen-but-pending, so closing the sheet without picking and the
+    // mode going back is not a surprise. Queried behind the modal, which
+    // is inert to a hiker and exactly where the segment has to read right.
+    expect(
+      screen.getByRole('radio', { name: 'Long hike', hidden: true }).className,
+    ).toContain('mode-switch__segment--pending')
   })
 
   it('opens set-up in the same chrome rather than as a screen of its own', async () => {
@@ -402,9 +412,10 @@ describe('the Map tab names the hike and can change it (#1367)', () => {
     ).toBeInTheDocument()
   })
 
-  it('leaves the plate naming the trail when there is no hike', async () => {
+  it('says no trail is taken when there is no hike and nothing was tapped', async () => {
     // The eyebrow is not a hike slot - it answers "what am I looking at",
-    // and off a long hike the trail is still that answer.
+    // and with no hike and no trail taken the honest answer is that none is
+    // (the review of #1374); the A.T. is not assumed.
     const user = userEvent.setup()
     app.onboard()
     app.putTrailData({ pois: POIS })
@@ -412,8 +423,8 @@ describe('the Map tab names the hike and can change it (#1367)', () => {
 
     await user.click(await screen.findByRole('tab', { name: 'Map' }))
     await waitFor(() => {
-      expect(document.querySelector('.map-plate__eyebrow')?.textContent).toMatch(
-        /Appalachian Trail/,
+      expect(document.querySelector('.map-plate__eyebrow')?.textContent).toBe(
+        'No trail taken',
       )
     })
     expect(screen.queryByRole('button', { name: /Change which hike/ })).toBeNull()
@@ -497,7 +508,11 @@ describe('planning a section without leaving the room (#1344)', () => {
       ['From', 'Front Shelter'],
       ['To', 'Beyond Shelter'],
     ] as const) {
-      await user.click(screen.getByRole('button', { name: new RegExp(end) }))
+      // Anchored, and not "Today": the phone's bar now carries a "Today I’m…"
+      // read-out (#1373, lib/navigator.ts), and an unanchored /To/ matched
+      // it too. The field's own name runs its two spans together
+      // ("ToChoose a place ›"), so a word boundary would miss it.
+      await user.click(screen.getByRole('button', { name: new RegExp(`^${end}(?!day)`) }))
       const picker = await screen.findByRole('dialog', { name: 'Choose a stop' })
       await user.type(within(picker).getByLabelText('Search for a stop'), place)
       await user.click(
@@ -509,7 +524,7 @@ describe('planning a section without leaving the room (#1344)', () => {
 
     // Both ends named, so the SAME slot becomes the target sheet - the form
     // that already turns two ends into a plan (planDaysVia + buildPlan).
-    await user.click(await screen.findByRole('button', { name: /^Lay out \d+ days?$/ }))
+    await user.click(await screen.findByRole('button', { name: 'Save this long hike' }))
 
     // Kept AND on the hike.
     await waitFor(() => {
@@ -596,21 +611,21 @@ describe('the hike a hiker is on, in Plan (#1329)', () => {
 })
 
 describe('the hike a hiker is on is what the map takes (#1352)', () => {
-  /** The dotted side's filter, as map/nearbyTrails.ts builds it: the
-   *  negation of a membership test, so an EMPTY membership dots every line
-   *  and a non-empty one dots everything outside it. */
-  async function dottedFilter(): Promise<string> {
+  /** The untaken side's filter, as map/nearbyTrails.ts builds it: the
+   *  negation of a membership test, so an EMPTY membership puts every line
+   *  on that side and a non-empty one everything outside it. */
+  async function untakenFilter(): Promise<string> {
     await openMapTab()
     await waitFor(() => expect(MockMap.live.length).toBe(1))
     const style = MockMap.live[0].options.style as {
       layers: Array<{ id: string; filter?: unknown }>
     }
     return JSON.stringify(
-      style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)?.filter,
+      style.layers.find((layer) => layer.id === BLAZE_UNTAKEN_LAYER_ID)?.filter,
     )
   }
 
-  it('draws the A.T. solid when the active hike is on it, with no preference to set', async () => {
+  it('draws the A.T. as the taken trail when the active hike is on it, with no preference to set', async () => {
     // The whole point of the merge: nothing wrote `chosen_trail_id` here.
     // The hike says AT, so the map is about the A.T. - one state, read in
     // two places, rather than two states that can disagree.
@@ -620,15 +635,15 @@ describe('the hike a hiker is on is what the map takes (#1352)', () => {
     app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
 
-    expect(await dottedFilter()).toContain('centerline')
+    expect(await untakenFilter()).toContain('centerline')
   })
 
   it('takes nothing when the active hike is on a trail this build has no lines for', async () => {
     // THE HONEST-DEGRADE PATH, and the reason Part 1 could be shipped before
     // Part 2. `chosenSystemSources()` answers an empty list for every trail
     // but the A.T. (map/nearbyTrails.ts), so a hike on the Long Path leaves
-    // the map in its all-dotted state rather than picking a system it cannot
-    // stand behind. No crash, no wrong trail drawn solid - the same shape as
+    // the map in its all-untaken state rather than picking a system it
+    // cannot stand behind. No crash, no wrong trail taken - the same shape as
     // first launch, which is the truthful one until #1307's successor
     // publishes a second trail's sources.
     app.onboard()
@@ -640,6 +655,183 @@ describe('the hike a hiker is on is what the map takes (#1352)', () => {
     app.store.set(HIKER_MODE_KEY, 'long')
     render(<App />)
 
-    expect(await dottedFilter()).toContain('"literal",[]')
+    expect(await untakenFilter()).toContain('"literal",[]')
+  })
+})
+
+describe('when today changes (#1373, F7)', () => {
+  const today = localDay(new Date())
+  const tomorrow = localDay(new Date(Date.now() + 86_400_000))
+
+  /** A hike on a trip whose two days are dated today and tomorrow. */
+  function datedStore(over: Partial<TripStore> = {}): TripStore {
+    return hikeStore({
+      trips: [
+        {
+          id: 'trip-1',
+          name: 'This week',
+          plan: {
+            target: { miles: 15 },
+            stops: [
+              { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+              { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+              { mile: 22.2, name: 'Beyond Shelter', poiId: 's22', resupply: false },
+            ],
+            days: [
+              { id: 'd1', pinned: false, generated: true, date: today },
+              { id: 'd2', pinned: false, generated: true, date: tomorrow },
+            ],
+          },
+        },
+      ],
+      hikes: [{ ...hikeStore().hikes[0], tripIds: ['trip-1'] }],
+      ...over,
+    })
+  }
+
+  it('the day screen’s "Call it a day here" lands on the timeline’s call sheet (frame 7c)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    app.store.set(TRIPS_KEY, datedStore())
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open the day' }))
+    await user.click(await screen.findByRole('button', { name: 'Call it a day here' }))
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Call it a day' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
+  })
+
+  it('"Take a zero" on the day screen inserts one after today, dating the rest a day on', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    app.store.set(TRIPS_KEY, datedStore())
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open the day' }))
+    // The day screen's own control - Today's card carries one of the same
+    // name, which opens this screen.
+    await user.click(
+      within(await screen.findByRole('region', { name: 'Change today' })).getByRole(
+        'button',
+        {
+          name: 'Take a zero',
+        },
+      ),
+    )
+
+    await waitFor(() => {
+      const stored = app.store.get(TRIPS_KEY) as TripStore
+      const plan = stored.trips[0].plan
+      expect(plan.days).toHaveLength(3)
+      expect(plan.stops[1].mile).toBe(plan.stops[2].mile)
+      expect(plan.days[2].date).toBe(localDay(new Date(Date.now() + 2 * 86_400_000)))
+    })
+    expect(screen.getByRole('tab', { name: 'Plan', selected: true })).toBeInTheDocument()
+  })
+
+  it('"Take a zero" on the day screen edits the trip today is on, not the open one (#1374 review)', async () => {
+    // Two sections: an earlier, undated one left open on the Plan tab, and
+    // the dated one the day screen is showing. The zero belongs to the
+    // second, which is then opened so the timeline shows it - the first
+    // version edited whichever trip was open.
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    const earlier = {
+      id: 'trip-0',
+      name: 'Earlier section',
+      plan: {
+        target: { miles: 15 },
+        stops: [
+          { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+          { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+        ],
+        days: [{ id: 'e1', pinned: false, generated: true }],
+      },
+    }
+    app.store.set(
+      TRIPS_KEY,
+      datedStore({
+        trips: [earlier, ...datedStore().trips],
+        openId: 'trip-0',
+        hikes: [{ ...hikeStore().hikes[0], tripIds: ['trip-0', 'trip-1'] }],
+      }),
+    )
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: 'Open the day' }))
+    await user.click(
+      within(await screen.findByRole('region', { name: 'Change today' })).getByRole(
+        'button',
+        { name: 'Take a zero' },
+      ),
+    )
+
+    await waitFor(() => {
+      const stored = app.store.get(TRIPS_KEY) as TripStore
+      const dated = stored.trips.find((trip) => trip.id === 'trip-1')!
+      expect(dated.plan.days).toHaveLength(3)
+      expect(stored.trips.find((trip) => trip.id === 'trip-0')!.plan.days).toHaveLength(1)
+      expect(stored.openId).toBe('trip-1')
+    })
+  })
+
+  it('"Move them to today" on the welcome-back card moves the dated days (the inventory’s P30)', async () => {
+    const user = userEvent.setup()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    app.store.set(HIKER_MODE_KEY, 'long')
+    app.store.set(
+      TRIPS_KEY,
+      datedStore({
+        trips: [
+          {
+            id: 'trip-1',
+            name: 'This week',
+            plan: {
+              target: { miles: 15 },
+              stops: [
+                { mile: 3.2, name: 'Front Shelter', poiId: 's3', resupply: false },
+                { mile: 10.2, name: 'Middle Shelter', poiId: 's10', resupply: false },
+                { mile: 22.2, name: 'Beyond Shelter', poiId: 's22', resupply: false },
+              ],
+              days: [
+                { id: 'd1', pinned: false, generated: true, date: '2026-08-01' },
+                { id: 'd2', pinned: false, generated: true, date: '2026-08-03' },
+              ],
+            },
+          },
+        ],
+        hikes: [
+          {
+            ...hikeStore().hikes[0],
+            tripIds: ['trip-1'],
+            status: 'paused',
+            pausedOn: '2026-08-01',
+          },
+        ],
+      }),
+    )
+    render(<App />)
+
+    const card = await screen.findByRole('region', { name: 'Welcome back' })
+    await user.click(within(card).getByRole('button', { name: 'Move them to today' }))
+
+    await waitFor(() => {
+      const stored = app.store.get(TRIPS_KEY) as TripStore
+      expect(stored.trips[0].plan.days.map((day) => day.date)).toEqual([
+        today,
+        localDay(new Date(Date.now() + 2 * 86_400_000)),
+      ])
+      expect(stored.hikes[0].status).toBe('walking')
+    })
   })
 })

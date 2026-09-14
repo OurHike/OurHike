@@ -128,8 +128,18 @@ describe('the recipe contract', () => {
       alt: 'water-card',
       entry: false,
       desktop: false,
+      small: false,
       wait: DEFAULT_WAIT_MS,
     })
+  })
+
+  it('photographs the smallest phone only when a recipe asks for it', () => {
+    // `small` is the third viewport (screenshot.mjs's PHONE_SMALL, 375x667),
+    // opt-in and strictly boolean like `desktop` below: it exists for a frame
+    // whose claim is "fits on an SE", which the usual 390x844 cannot make.
+    expect(normaliseRecipe({}, 'x').small).toBe(false)
+    expect(normaliseRecipe({ small: true }, 'x').small).toBe(true)
+    expect(normaliseRecipe({ small: 375 }, 'x').small).toBe(false)
   })
 
   it('photographs a phone unless the recipe asks for the wide layout', () => {

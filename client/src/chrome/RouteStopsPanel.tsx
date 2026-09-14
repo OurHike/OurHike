@@ -27,6 +27,8 @@
 // below two stops instead of present and dead.
 
 import type { HikeDirection } from './Header'
+import { StepRail } from './StepRail'
+import { HIKER_MODE_LABELS } from '../lib/hikerMode'
 import type { PaceEstimate } from '../lib/pace'
 import { stopLabel } from '../lib/planDisplay'
 import { MAX_OFF_TRAIL_MILES } from '../lib/trailPosition'
@@ -89,8 +91,12 @@ export interface RouteStopsPanelProps {
    * would send somebody looking for a download that is already there.
    */
   unpriced?: 'no-profile' | 'unmeasured'
-  /** Carry this route into days - the plan flow (#756/#757). */
+  /** Carry this route into days - the plan flow (#756/#757). Step 2's
+   *  "Use this route" (#1373): the target sheet is the long hike's step 3
+   *  until F5 draws it inline. */
   onBreakIntoDays: () => void
+  /** Step 2's way back (#1373, rule R3): step 1, the draft kept. */
+  onBackToStepOne: () => void
   /** Keep this stretch as ground already walked (#789) - the same two ends,
    *  said in the past tense. */
   onRecordWalked: () => void
@@ -110,6 +116,7 @@ export function RouteStopsPanel({
   onUndo,
   refusedTap,
   onBreakIntoDays,
+  onBackToStepOne,
   onRecordWalked,
   onClose,
 }: RouteStopsPanelProps) {
@@ -128,6 +135,17 @@ export function RouteStopsPanel({
           <span className="visually-hidden">Close the route builder</span>
           <span aria-hidden="true">×</span>
         </button>
+
+        {/* Step 2 of three (#1373): this builder builds a long hike's
+            route, and the rail says so on its first stop rather than asking
+            (D6). Step 1 is a door back with the draft kept (R3). */}
+        <StepRail
+          step={2}
+          kind={HIKER_MODE_LABELS.long}
+          onStep={(step) => {
+            if (step === 1) onBackToStepOne()
+          }}
+        />
 
         <div className="route-stops__head">
           <span className="route-stops__count">
@@ -252,7 +270,7 @@ export function RouteStopsPanel({
               className="route-stops-bar__break"
               onClick={onBreakIntoDays}
             >
-              Break into days
+              Use this route<span aria-hidden="true"> ›</span>
             </button>
           </div>
           {/* The route's own baseline, priced from the summed terms rather
@@ -266,6 +284,14 @@ export function RouteStopsPanel({
             roll-up opens on somebody who has walked 600 miles and tells
             them the whole trail is ahead of them (#789). */}
           <div className="route-stops-bar__row">
+            <button
+              type="button"
+              className="route-stops-bar__back"
+              onClick={onBackToStepOne}
+              aria-label="Back to Hike, step 1"
+            >
+              <span aria-hidden="true">‹ </span>Hike
+            </button>
             <button
               type="button"
               className="route-stops-bar__recorded"

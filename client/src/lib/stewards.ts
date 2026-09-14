@@ -41,6 +41,25 @@ export interface Steward {
   licence: string | null
   /** What the licence obliges this app to say, verbatim. */
   attribution: string | null
+  /**
+   * The steward's terms in FULL, verbatim, where their registry block quotes
+   * them - against `licence` above, which is the one-line form.
+   *
+   * IT IS HERE BECAUSE ONE STEWARD'S TERMS REQUIRE IT. NJDEP's Data
+   * Distribution Agreement says their data "may not be reproduced or
+   * redistributed without all the metadata provided" (condition 2, quoted
+   * whole in pipeline/sources.json's `njdep_licence`), and a name plus a
+   * one-line summary is not that. So the agreement travels with the lines and
+   * is read where the lines are accounted for.
+   *
+   * Null for most stewards, and that is not a gap: a block that quotes its
+   * terms whole has decided they are worth a hiker reading, and one that
+   * records only a short form has not. Absent renders as nothing.
+   */
+  terms: string | null
+  /** Where `terms` was read from, so a hiker or a club can check this app's
+   *  copy against the steward's own. Null wherever `terms` is. */
+  termsSource: string | null
   /** The titles of the layers of theirs that ship. Their words, not ours. */
   layers: readonly string[]
   /** The registry keys behind those layers - what a graph edge's `source` is.
@@ -90,6 +109,11 @@ export function parseStewards(value: unknown): Stewards {
       trust: optionalString(record?.trust),
       licence: optionalString(record?.licence),
       attribution: optionalString(record?.attribution),
+      terms: optionalString(record?.terms),
+      // Snake case on the wire, camel here - the exporter writes
+      // `terms_source` beside `terms`, and this is the one field in the
+      // record whose two spellings differ.
+      termsSource: optionalString(record?.terms_source),
       layers: stringList(record?.layers),
       keys: stringList(record?.keys),
     })
@@ -208,7 +232,7 @@ export function orgProviderFrom(stewards: Stewards): (source: string | null) => 
  * Here rather than in the component that first needed it, because there are
  * two callers and were two implementations - NoticeList.tsx declared this
  * with a comment saying it was "one rule with one caller", while
- * AtcUpdateSheet.tsx inlined the same expression a few lines into its body.
+ * OrgNoticeSheet.tsx inlined the same expression a few lines into its body.
  * Two copies of one rule is the state where they can disagree, and this one
  * is a rule about ENGLISH rather than about notices or sheets, so neither
  * component was ever its home.

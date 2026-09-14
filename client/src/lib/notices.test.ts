@@ -263,6 +263,8 @@ describe('naming the organization', () => {
       trust: 'authoritative',
       licence: null,
       attribution: 'New York-New Jersey Trail Conference',
+      terms: null,
+      termsSource: null,
       layers: ['NYNJTC Trail Alerts'],
       keys: ['nynjtc_trail_alerts'],
     },

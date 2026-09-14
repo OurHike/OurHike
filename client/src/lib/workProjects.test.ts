@@ -6,7 +6,10 @@ import {
   sortWorkProjects,
   upcomingWorkProjects,
   workProjectDates,
+  workdayRow,
+  workdayWindowSpan,
   type WorkProjectSummary,
+  type WorkdayWindowId,
 } from './workProjects'
 
 // #760's rules, held: the fourteen-day window, the 48-hour ceiling past
@@ -55,6 +58,67 @@ describe('upcomingWorkProjects', () => {
     const completed = project({ status: 'completed' })
 
     expect(upcomingWorkProjects([over, cancelled, completed], NOW)).toEqual([])
+  })
+})
+
+describe('the day windows (#1373, frame 14d)', () => {
+  // NOW is Thursday 20 August; the coming weekend is Saturday 22 and
+  // Sunday 23.
+  it('reads "this weekend" as the coming Saturday and Sunday, in UTC days', () => {
+    expect(workdayWindowSpan('weekend', NOW)).toEqual({
+      from: Date.UTC(2026, 7, 22),
+      to: Date.UTC(2026, 7, 24),
+    })
+    // On the Sunday itself it is still this weekend, not the next.
+    expect(workdayWindowSpan('weekend', new Date('2026-08-23T09:00:00Z'))).toEqual({
+      from: Date.UTC(2026, 7, 22),
+      to: Date.UTC(2026, 7, 24),
+    })
+  })
+
+  it('filters each window to its own days, and drops what is over in every window', () => {
+    const saturday = project({
+      id: 'sat',
+      starts_on: '2026-08-22',
+      ends_on: '2026-08-22',
+    })
+    const monday = project({ id: 'mon', starts_on: '2026-08-24', ends_on: '2026-08-24' })
+    const next = project({ id: 'next', starts_on: '2026-09-12', ends_on: '2026-09-12' })
+    const over = project({ id: 'over', starts_on: '2026-08-18', ends_on: '2026-08-19' })
+    const all = [saturday, monday, next, over]
+
+    const ids = (window: WorkdayWindowId, now = NOW) =>
+      upcomingWorkProjects(all, now, window).map((p) => p.id)
+
+    expect(ids('fortnight')).toEqual(['sat', 'mon'])
+    expect(ids('weekend')).toEqual(['sat'])
+    expect(ids('month')).toEqual(['sat', 'mon', 'next'])
+    // Sunday morning: Saturday's workday is over and stays off the weekend
+    // list; a Sunday one would still be on it.
+    const sunday = project({ id: 'sun', starts_on: '2026-08-23', ends_on: '2026-08-23' })
+    expect(
+      upcomingWorkProjects(
+        [saturday, sunday],
+        new Date('2026-08-23T09:00:00Z'),
+        'weekend',
+      ).map((p) => p.id),
+    ).toEqual(['sun'])
+  })
+
+  it('prints a row the way the tab does, and a distance only with a fix and a placed row', () => {
+    const placed = project({ capacity: 12 })
+    const row = workdayRow(placed, 1400)
+    expect(row).toMatchObject({
+      title: 'Bear Mountain steps',
+      club: 'NY-NJ Trail Conference',
+      dates: 'Aug 24',
+      capacity: 12,
+      contact: 'mailto:volunteer@example.org',
+    })
+    expect(row?.awayMi).toBeCloseTo(7.6)
+    expect(workdayRow(placed, null)?.awayMi).toBeNull()
+    expect(workdayRow(project({ mile: null }), 1400)?.awayMi).toBeNull()
+    expect(workdayRow(project({ lat: null }), 1400)).toBeNull()
   })
 })
 

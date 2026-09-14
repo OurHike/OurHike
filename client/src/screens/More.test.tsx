@@ -141,7 +141,7 @@ describe('the volunteer row', () => {
     render(<More {...PROPS} queuedReportCount={2} />)
 
     const row = screen.getByRole('button', { name: /^Volunteer & report/ })
-    expect(row).toHaveTextContent('2 reports waiting to send')
+    expect(row).toHaveTextContent('2 waiting to send')
     expect(row).not.toHaveClass('more__row--alert')
   })
 
@@ -157,6 +157,46 @@ describe('the volunteer row', () => {
     const row = screen.getByRole('button', { name: /^Volunteer & report/ })
     expect(row).toHaveTextContent('1 report could not be sent')
     expect(row).toHaveClass('more__row--alert')
+  })
+})
+
+// --- The doors to what this phone holds (#1373, F9 and D5) -----------------
+
+describe('the doors to what this phone holds', () => {
+  it('offers Your reports under Contribute, says what went, and opens the shell’s screen', async () => {
+    const user = userEvent.setup()
+    render(<MoreWalkable yourReports={<p>the reports</p>} sentReportCount={6} />)
+
+    await user.click(screen.getByRole('button', { name: /^Volunteer & report/ }))
+    expect(screen.getByText('6 sent from this phone.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Your reports' }))
+    expect(screen.getByText('the reports')).toBeInTheDocument()
+
+    // Back goes UP, to the page the door was on, not home.
+    await user.click(screen.getByRole('button', { name: /Volunteer & report/ }))
+    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
+  })
+
+  it('offers Your photos and notes under You, and back returns to You', async () => {
+    const user = userEvent.setup()
+    render(<MoreWalkable yourWork={<p>the work</p>} />)
+
+    await user.click(screen.getByRole('button', { name: /^You/ }))
+    await user.click(screen.getByRole('button', { name: 'Your photos and notes' }))
+    expect(screen.getByText('the work')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /^‹ You$|^You$/ }))
+    expect(
+      screen.getByRole('button', { name: 'Your photos and notes' }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers neither door when the shell passes no screen behind it', () => {
+    render(<More {...PROPS} page="volunteer" />)
+    expect(screen.queryByRole('button', { name: 'Your reports' })).toBeNull()
+    cleanup()
+    render(<More {...PROPS} page="you" />)
+    expect(screen.queryByRole('button', { name: 'Your photos and notes' })).toBeNull()
   })
 })
 
@@ -285,13 +325,13 @@ describe('the volunteer & report page', () => {
   it('counts a single waiting report in the singular', () => {
     render(<More {...ON_VOLUNTEER} queuedReportCount={1} />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('1 report waiting to send.')
+    expect(screen.getByRole('status')).toHaveTextContent('1 waiting to send.')
   })
 
   it('counts several in the plural', () => {
     render(<More {...ON_VOLUNTEER} queuedReportCount={3} />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('3 reports waiting to send.')
+    expect(screen.getByRole('status')).toHaveTextContent('3 waiting to send.')
   })
 })
 
@@ -324,7 +364,7 @@ describe('the volunteer & report page, when a report was refused for good', () =
     // One waiting for signal, one refused. Rolling them together is the bug.
     render(<More {...ON_VOLUNTEER} queuedReportCount={1} stuckReports={STUCK} />)
 
-    expect(screen.getByRole('status')).toHaveTextContent('1 report waiting to send.')
+    expect(screen.getByRole('status')).toHaveTextContent('1 waiting to send.')
     expect(screen.getByRole('alert')).toHaveTextContent('1 report could not be sent.')
   })
 
@@ -382,6 +422,20 @@ describe('the volunteer & report page, when a report was refused for good', () =
     render(<More {...ON_VOLUNTEER} queuedReportCount={2} />)
 
     expect(screen.queryByRole('alert')).toBe(null)
+  })
+})
+
+describe('the registry entry (#1373, D4)', () => {
+  it('is absent for an ordinary hiker, like the moderation queue', () => {
+    render(<More {...PROPS} page="sources" />)
+    expect(screen.queryByRole('button', { name: 'The source registry' })).toBeNull()
+  })
+
+  it('appears, and opens the console, when the shell offers it', () => {
+    const onOpenRegistry = vi.fn()
+    render(<More {...PROPS} page="sources" onOpenRegistry={onOpenRegistry} />)
+    screen.getByRole('button', { name: 'The source registry' }).click()
+    expect(onOpenRegistry).toHaveBeenCalled()
   })
 })
 
@@ -606,7 +660,7 @@ describe('taking your data, or leaving (#895)', () => {
 
 // --- The GPS trace recorder's door (#1180) ---------------------------------
 
-describe('the GPS trace section on Safety & privacy', () => {
+describe('the GPS trace section, at the foot of Where this map comes from (#1373, D3)', () => {
   const TRACE = {
     status: {
       recording: false,
@@ -632,15 +686,15 @@ describe('the GPS trace section on Safety & privacy', () => {
   it('is absent from a build that does not wire it', () => {
     // An instrument, not a feature. A caller that passes nothing gets the
     // page every test written before now expects.
-    render(<More {...PROPS} page="safety" preferences={withLocation} />)
+    render(<More {...PROPS} page="sources" preferences={withLocation} />)
 
     expect(
       screen.queryByRole('heading', { name: 'Record a GPS trace' }),
     ).not.toBeInTheDocument()
   })
 
-  it('appears under Use my location once it is wired and location is on', () => {
-    render(<More {...PROPS} page="safety" preferences={withLocation} gpsTrace={TRACE} />)
+  it('appears under the build it tests once it is wired and location is on', () => {
+    render(<More {...PROPS} page="sources" preferences={withLocation} gpsTrace={TRACE} />)
 
     expect(
       screen.getByRole('heading', { name: 'Record a GPS trace' }),
@@ -655,7 +709,7 @@ describe('the GPS trace section on Safety & privacy', () => {
     render(
       <More
         {...PROPS}
-        page="safety"
+        page="sources"
         preferences={{ ...PROPS.preferences, location_permission_requested: false }}
         gpsTrace={TRACE}
       />,
@@ -675,7 +729,7 @@ describe('the GPS trace section on Safety & privacy', () => {
     render(
       <More
         {...PROPS}
-        page="safety"
+        page="sources"
         preferences={{ ...PROPS.preferences, location_permission_requested: false }}
         gpsTrace={{
           ...TRACE,
@@ -697,7 +751,7 @@ describe('the GPS trace section on Safety & privacy', () => {
     render(
       <More
         {...PROPS}
-        page="safety"
+        page="sources"
         preferences={{ ...PROPS.preferences, location_permission_requested: false }}
         gpsTrace={{
           ...TRACE,
@@ -718,7 +772,7 @@ describe('the GPS trace section on Safety & privacy', () => {
     render(
       <More
         {...PROPS}
-        page="safety"
+        page="sources"
         preferences={{ ...PROPS.preferences, location_permission_requested: false }}
         gpsTrace={{ ...TRACE, status: { ...TRACE.status, recording: false, samples: 0 } }}
       />,

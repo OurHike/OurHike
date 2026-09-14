@@ -525,6 +525,18 @@ function partDistance(pin: PoiDetail, part: PoiDetail, units: UnitSystem): strin
  * something untrue about where it is. `shown` is only ever a dependency, and it
  * is there because it changes the card's HEIGHT (see below).
  */
+/**
+ * The card's height with nothing capping it. `offsetHeight` is the capped
+ * height once a placement has set `maxHeight` (the peek then scrolls inside
+ * it), and a placement measured against the capped height would keep the cap
+ * after a pan had given the pin its room back. The peek is the only part of a
+ * tethered card that scrolls, so its overflow is the whole difference.
+ */
+function naturalHeight(card: HTMLElement): number {
+  const peek = card.querySelector<HTMLElement>('.poi-card__peek')
+  return card.offsetHeight + (peek === null ? 0 : peek.scrollHeight - peek.clientHeight)
+}
+
 function usePinAnchor(
   map: MapLibreMap | null,
   anchor: PoiDetail,
@@ -550,7 +562,7 @@ function usePinAnchor(
       const canvas = map.getCanvas()
       const next = placePoiCard(
         map.project([anchor.lon, anchor.lat]),
-        { width: card.current.offsetWidth, height: card.current.offsetHeight },
+        { width: card.current.offsetWidth, height: naturalHeight(card.current) },
         // The canvas's CSS size, which is the coordinate space `project`
         // answers in - `canvas.width` is that times the device pixel ratio.
         { width: canvas.clientWidth, height: canvas.clientHeight },
@@ -558,7 +570,10 @@ function usePinAnchor(
       // 'move' fires every animation frame of a pan; only re-render for a
       // placement that actually moved.
       setPlacement((previous) =>
-        previous !== null && previous.left === next.left && previous.top === next.top
+        previous !== null &&
+        previous.left === next.left &&
+        previous.top === next.top &&
+        previous.maxHeight === next.maxHeight
           ? previous
           : next,
       )
@@ -1113,6 +1128,10 @@ export function PoiCard({
           open || placement === null
             ? undefined
             : `translate(${placement.left}px, ${placement.top}px)`,
+        // The cap for a pin with less room than the card is tall
+        // (poiCardPlacement.ts); the peek scrolls inside it. Never on the
+        // opened card, whose height chrome.css owns.
+        maxHeight: open || placement === null ? undefined : placement.maxHeight,
         // The category accent, for the placeholder's wash and glyph. Inline
         // because only this file knows the type; the stylesheet cannot.
         ['--poi-accent' as string]: accent,

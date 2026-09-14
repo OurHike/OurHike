@@ -1,0 +1,147 @@
+/* One day of a plan (chrome/DayRow.tsx, #1373). Semantic tokens only.
+ *
+ * The row's min-height is set inline from lib/planDisplay.ts's dayRowHeight -
+ * walking hours, floored at the touch target - so it is not repeated here. */
+
+.day-row {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-1);
+  border-radius: 8px;
+  background: var(--surface-card);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.day-row__body {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  width: 100%;
+  padding: 10px 11px;
+  box-sizing: border-box;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--fg-1);
+  text-align: left;
+}
+
+.day-row__body--opens {
+  cursor: pointer;
+}
+
+.day-row__gutter {
+  flex: 0 0 30px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.day-row__resupply {
+  flex: none;
+  margin-top: 1px;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
+.day-row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.day-row__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* Mono means the app measured it. */
+.day-row__figures,
+.day-row__note {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-1);
+}
+
+.day-row__figures--baseline {
+  letter-spacing: 0.03em;
+  color: var(--fg-3);
+}
+
+.day-row__figures--unmeasured {
+  color: var(--fg-3);
+}
+
+.day-row__note {
+  color: var(--fg-2);
+}
+
+.day-row__terrain {
+  position: relative;
+  height: 58px;
+  border-top: 1px solid var(--border-1);
+  background: var(--surface-card-alt);
+}
+
+.day-row__terrain svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.day-row__high {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--fg-2);
+}
+
+.day-row__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border-top: 1px solid var(--border-1);
+  background: var(--bg-page);
+}
+
+.day-row__state {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-2);
+  white-space: nowrap;
+}
+
+.day-row__edit {
+  margin-left: auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--brand-primary);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.day-row--walked .day-row__body {
+  color: var(--fg-2);
+}
+
+.day-row--moved,
+.day-row--new {
+  border-color: var(--border-2);
+}

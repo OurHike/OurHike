@@ -6,19 +6,26 @@
 // same rasteriser (map/poiIcons.ts). Only the three things that are allowed to
 // differ do: size, colour, and the glyph.
 //
-// THE GLYPH IS A HARD HAT, AND THE SHAPE IS DOING THE WORK
+// THE GLYPH IS A SHOVEL (#1373, the inventory's P38), AND THE SHAPE IS
+// DOING THE WORK
 //
 // poiIcons.ts's rule is that shape is the primary channel and colour the
 // second - a pin has to survive glare, greyscale, and a hiker who is
 // colour-blind. The eight waypoint glyphs are a drop, a house, a tent, a bag,
 // two chevrons, a summit, a P and a privy door; warningPin.ts adds a hollow
-// triangle. A hat is a wide flat brim with a dome over it, which is none of
-// those in silhouette: it is the only glyph here that is wider than it is tall
-// and flat along the bottom.
+// triangle. A shovel is a T over a stem over a blade, which is none of those
+// in silhouette: the only glyph here with a narrow waist between two wider
+// ends.
 //
-// Drawn as ONE ring rather than a dome plus a brim, because the rasteriser
-// fills even-odd: two overlapping rings would cancel where they overlap and
-// punch a hole through the middle of the hat.
+// It used to be a hard hat, and chrome/ModeIcon.tsx claimed - since #1373's
+// phase 0 - that "the switch, the read-out above the tab bar and the
+// volunteer pin on the map all draw the same shape". The switch and the
+// read-out did; the pin did not, and the review's argument for making it
+// so is exactly that "the mark on the map and the word in the switch are
+// the same thing". So the geometry here is ModeIcon's shovel, upright rather
+// than tilted (a tilt reads as motion at 19px and as a smudge at 12px),
+// traced as ONE closed outline because the rasteriser fills even-odd: a
+// handle, a stem and a blade as three shapes would cancel where they overlap.
 //
 // THE COLOUR
 //
@@ -66,30 +73,48 @@ export const WORKDAY_COLOR = '#556011'
  */
 export { POI_PIN_SIZE as WORKDAY_PIN_SIZE } from './poiIcons'
 
-/** Points along a half-circle, in the 0-1 glyph box with y running down.
- *  From the right end of the diameter over the top to the left end. */
-function dome(cx: number, cy: number, r: number, steps = 14): Array<[number, number]> {
+/** One side of the blade's curve - a quadratic from the blade's corner down
+ *  to its point, sampled so the rasteriser gets a curve rather than a
+ *  chamfer. `sign` picks the side; the two halves meet at the point. */
+function bladeSide(sign: 1 | -1, steps = 6): Array<[number, number]> {
+  const [x0, y0] = [0.5 + sign * 0.26, 0.5]
+  const [cx, cy] = [0.5 + sign * 0.26, 0.84]
+  const [x1, y1] = [0.5, 0.92]
   const points: Array<[number, number]> = []
-  for (let i = 0; i <= steps; i += 1) {
-    const angle = Math.PI * (i / steps)
-    points.push([
-      Number((cx + r * Math.cos(angle)).toFixed(4)),
-      // Minus, because y runs down: the arc has to go UP over the brim.
-      Number((cy - r * Math.sin(angle)).toFixed(4)),
-    ])
+  for (let i = 1; i < steps; i += 1) {
+    const t = i / steps
+    const x = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * cx + t * t * x1
+    const y = (1 - t) * (1 - t) * y0 + 2 * (1 - t) * t * cy + t * t * y1
+    points.push([Number(x.toFixed(4)), Number(y.toFixed(4))])
   }
   return points
 }
 
 /**
- * The hard hat, as one closed outline: along the brim, up its right edge,
- * over the dome, down the left edge, closed by the rasteriser.
+ * The shovel, as one closed outline: across the handle's top, down its
+ * right end, in to the stem, down the stem to the blade's shoulder, out to
+ * the blade's corner, round to the point, and back up the mirror side.
  *
- * The brim runs wider than the dome on both sides, which is the part that
- * makes the silhouette read as a hat rather than as a tombstone.
+ * Every figure is ModeIcon.tsx's SHOVEL geometry (handle 0.34-0.66 at the
+ * top, stem 0.44-0.56, blade 0.26-0.74 curving to a point) shifted so the
+ * whole tool sits in the disc's inner box, the way the waypoint glyphs do.
  */
 export const WORKDAY_GLYPH: Glyph = [
-  [[0.06, 0.78], [0.94, 0.78], [0.94, 0.64], ...dome(0.5, 0.64, 0.3), [0.06, 0.64]],
+  [
+    [0.34, 0.08],
+    [0.66, 0.08],
+    [0.66, 0.2],
+    [0.56, 0.2],
+    [0.56, 0.5],
+    [0.76, 0.5],
+    ...bladeSide(1),
+    [0.5, 0.92],
+    ...bladeSide(-1).reverse(),
+    [0.24, 0.5],
+    [0.44, 0.5],
+    [0.44, 0.2],
+    [0.34, 0.2],
+  ],
 ]
 
 /** The pin image, ready for `map.addImage`. */

@@ -36,7 +36,7 @@
 // the same asymmetry validateTripStore states: losing one record is
 // survivable, losing every record is not.
 
-import { del, get, set } from 'idb-keyval'
+import { del, get, set, update } from 'idb-keyval'
 import { recordDayHikeEdits } from './dayHikeSyncState'
 import type { RouteClimb } from './trailGraph'
 
@@ -713,6 +713,50 @@ export async function saveDayHikes(store: DayHikeStore): Promise<void> {
  */
 export async function adoptDayHikes(store: DayHikeStore): Promise<void> {
   await set(DAY_HIKES_KEY, store)
+}
+
+/**
+ * Point the store at one hike - or at nothing - without recording an edit.
+ *
+ * `openId` is which card is on screen: a fact about this phone's screen, not
+ * about any hike, and it never travels (lib/useDayHikesSync.ts carries hikes
+ * and tombstones and nothing else). It used to be written through
+ * `saveDayHikes`, whose ledger marks EVERY surviving hike dirty on every save
+ * - so a tap on a row, and the close afterwards, each queued an upload of the
+ * whole shelf, indistinguishable from the hiker having edited all of it
+ * (#1373, inventory P41: `recordDayHikeEdits` above is the line that does
+ * it, and its own comment says over-marking is the cheaper side to err on
+ * - for a SAVE, which this is not).
+ *
+ * Reads before it writes for `saveDayHikes`' reason: the hikes written back
+ * are whatever is in the store now, so a sync landing between the tap and
+ * this write is kept rather than overwritten by React's copy. A pointer at
+ * a hike the store does not hold is written as null, `validateDayHikeStore`'s
+ * repair applied at write time rather than on the next read. Returns the
+ * store as written so a caller can mirror it into state, and writes nothing
+ * when the pointer already says this.
+ */
+export async function saveDayHikeOpenId(openId: string | null): Promise<DayHikeStore> {
+  // `update()` rather than get → set: its read and write share one
+  // readwrite transaction (lib/outbox.ts's `mutateQueue` says why), so a
+  // sync adopting a hike between this tap's read and its write cannot be
+  // written over - and a hike lost that way was gone for good, because this
+  // write deliberately leaves no ledger trace (above) for the next exchange
+  // to repair from.
+  let written: DayHikeStore | null = null
+  await update(DAY_HIKES_KEY, (stored: unknown) => {
+    const store =
+      stored === undefined || stored === null
+        ? EMPTY_DAY_HIKES
+        : (validateDayHikeStore(stored) ?? EMPTY_DAY_HIKES)
+    const pointer =
+      openId !== null && store.hikes.some((hike) => hike.id === openId) ? openId : null
+    written = pointer === store.openId ? store : { ...store, openId: pointer }
+    return written
+  })
+  // A test double whose `update` never calls back leaves nothing written;
+  // the store as it stands is then the honest answer.
+  return written ?? loadDayHikes()
 }
 
 /** Forget every day hike. Recorded as the hiker deleting each of them,

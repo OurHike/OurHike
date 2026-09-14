@@ -37,15 +37,17 @@
 // shelters, campsites and springs a thumb's width apart, so the vertex at the
 // middle of the run had a pin on every side and the map's one badge was
 // dropped on exactly the screen it was designed for. So the anchor is chosen
-// with the pins in view: the candidate vertices are walked outward from the
-// run's middle, and the first with a free pill position - the same eight
-// positions map/trailBadges.ts hands the placer, tested against the pins'
-// boxes here - wins. MapLibre still places the badge; this only asks it to
-// place one where there is room. Where no vertex has room the middle is
-// handed over anyway, and the placer decides. The box tested has to be the
-// one the placer will test, to the pixel, and the fifth preview frame is
-// what that sentence cost: plateBox() below says which box that is and how
-// the first model got it wrong.
+// with the pins in view: the candidate vertices - every in-view vertex of
+// every visible piece of the trail, nearest the frame's centre first - are
+// tried in turn, and the first with a free pill position inside the frame
+// - the same eight positions map/trailBadges.ts hands the placer, tested
+// against the pins' boxes here - wins; then the same again for the mark
+// alone; then the mark on the nearest vertex regardless. The layer is
+// allowed to overlap, so what this module chooses is what is drawn (the
+// maintainer's review of #1374: "the badge always finds a place"). The box
+// tested has to be the one the placer would have tested, to the pixel, and
+// the fifth preview frame is what that sentence cost: plateBox() below
+// says which box that is and how the first model got it wrong.
 //
 // "THE SCREEN" IS THE PART OF THE CANVAS A HIKER CAN SEE, and the second
 // preview frame is why that sentence is here. Over Harriman the A.T.'s
@@ -59,13 +61,20 @@
 // trails in view still reads the whole canvas: a trail under the plate is
 // still on the map.
 //
-// `@unvalidated` as a display choice: the longest-visible-run rule was
-// chosen against the handoff's four cameras, not watched on a phone in a
-// hiker's hand. What would settle it is somebody panning through a park
-// with a badge on screen and reporting whether it jumps in a way that
-// distracts - the alternative is anchoring to the vertex nearest the
-// screen's centre, which is steadier under panning and sits exactly where a
-// following hiker's own dot is.
+// NEAREST THE CENTRE, since the review of #1374 (2026-09-10). The first
+// rule anchored the badge at the middle of the longest visible run, and
+// this paragraph used to name the alternative - the vertex nearest the
+// screen's centre, "steadier under panning and exactly where a following
+// hiker's own dot is" - as the thing nobody had tried. The review's renders
+// of this branch tried it for us: at the opening camera the badge was
+// dropped whole, at z13 the plate hung half off the left edge, and at z12
+// a pin on every vertex of the longest run left the trail nameless while
+// another piece of it sat clear by the centre. So the centre rule is the
+// rule now, every piece counts, the frame is a bound, and the mark is the
+// floor. `@unvalidated` still, as a display choice: chosen against those
+// frames, not watched on a phone in a hiker's hand, and what would settle
+// it is the same report as before - somebody panning through a park with a
+// badge on screen and saying whether it jumps in a way that distracts.
 
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
@@ -74,6 +83,8 @@ import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
 import { whenStyleReady } from './styleReady'
 import {
+  registryNameForSource,
+  BADGE_ANCHOR_PROPERTY,
   BADGE_CHIP_PROPERTY,
   BADGE_FIT_PROPERTY,
   BADGE_MARK_PROPERTY,
@@ -222,6 +233,9 @@ function obstacleBoxes(map: TrailsInViewMap): Box[] {
 interface BadgeAnchor {
   point: Position
   fit: BadgeFit
+  /** Which side of the vertex the text block sits - one of
+   *  TRAIL_BADGE_ANCHORS, and the one the layer draws (below). */
+  anchor: string
 }
 
 /**
@@ -231,48 +245,130 @@ interface BadgeAnchor {
  * the same search for the mark's small plate; failing that, the middle
  * itself, in full, for the placer to decide.
  */
-function anchorWithRoom(
-  run: Run,
+/** A vertex the badge could sit on, with where it projects and how far that
+ *  is from the frame's centre. */
+interface Candidate {
+  point: Position
+  at: { x: number; y: number }
+  distance: number
+}
+
+/**
+ * How many vertices the search reads. At the opening camera the A.T.'s
+ * drawn geometry is thousands of vertices; trying every anchor of every one
+ * of them on each `idle` is work nobody would see.
+ *
+ * THINNED ALONG THE LINE, NOT CUT AT THE CENTRE. The first cut kept the six
+ * hundred nearest the centre, on the argument that the cap only bites at
+ * the overview, where the line is far from every pin. The z9 frame proved
+ * that wrong on both a phone and a laptop (rendered 2026-09-10, the review
+ * of #1374): tile geometry at the seam puts six hundred vertices inside a
+ * few miles of trail, the few miles nearest the centre over Harriman were
+ * the ones under a dozen pins, every plate and every mark collided, and
+ * the last resort put the mark on the vertex nearest the centre - under a
+ * pin, invisible. The clear stretch by Warwick was the six-hundred-and-first
+ * vertex and beyond. So a run longer than the cap is sampled evenly along
+ * its length first, and sorted by distance to the centre second: the same
+ * bound on the work, over the whole visible line rather than its densest
+ * mile. The figure itself stays @unvalidated - picked to bound the work;
+ * what would settle it is the cost of one pass at z9 on a slow phone.
+ */
+const CANDIDATE_LIMIT = 600
+
+/** Every `step`-th entry of `all`, the first kept, so a run longer than the
+ *  cap is read end to end at a coarser pitch rather than only at one end. */
+function thinned<T>(all: readonly T[], limit: number): T[] {
+  if (all.length <= limit) return [...all]
+  const step = Math.ceil(all.length / limit)
+  return all.filter((_, i) => i % step === 0)
+}
+
+/**
+ * Every in-view vertex of every visible piece of a trail, nearest the
+ * frame's centre first - the clear runs (under no chrome) ahead of the rest
+ * (the maintainer's review of #1374: "the badge always finds a place").
+ *
+ * The old rule took one run, the longest, and walked outward from its
+ * middle; a trail whose longest piece ran under the pins had nowhere to go
+ * even when another piece of it lay in the clear, and a badge anchored by
+ * the run's middle jumped as the run's ends came and went. Nearest the
+ * centre is steadier under panning and sits where a following hiker's own
+ * dot is - the alternative this file's header named and nobody had tried.
+ */
+function candidatesOf(
+  clearRuns: readonly Run[],
+  viewRuns: readonly Run[],
   map: TrailsInViewMap,
-  obstacles: readonly Box[],
-  clear: Box | null,
-  name: string,
-): BadgeAnchor {
-  const middle = midpointIndex(run)
-  if (obstacles.length === 0 && clear === null) {
-    return { point: run.points[middle], fit: 'full' }
+  centre: { x: number; y: number },
+): Candidate[] {
+  const seen = new Set<string>()
+  const list = (runs: readonly Run[]): Candidate[] => {
+    const points: Position[] = []
+    for (const run of runs) {
+      for (const point of run.points) {
+        const key = `${point[0]},${point[1]}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        points.push(point)
+      }
+    }
+    // Along the line first (the runs' own order), then by distance.
+    return thinned(points, CANDIDATE_LIMIT)
+      .map((point) => {
+        const at = map.project([point[0], point[1]])
+        return { point, at, distance: Math.hypot(at.x - centre.x, at.y - centre.y) }
+      })
+      .sort((a, b) => a.distance - b.distance)
   }
+  return [...list(clearRuns), ...list(viewRuns)].slice(0, CANDIDATE_LIMIT)
+}
+
+function withinFrame(box: Box, frame: Box): boolean {
+  return (
+    box.x1 >= frame.x1 && box.x2 <= frame.x2 && box.y1 >= frame.y1 && box.y2 <= frame.y2
+  )
+}
+
+/**
+ * Where the badge sits: the first candidate, nearest the centre first, with
+ * a position for the full plate that is inside the frame and clear of every
+ * pin; failing that the first with room for the mark alone; failing that,
+ * the mark on the nearest vertex, handed to the placer as it is.
+ *
+ * INSIDE THE FRAME is new with the review of #1374: the fourth zoom frame
+ * of that review's renders had "National Scenic Trail" cut in half at the
+ * left edge, a plate hung off the one vertex the old search reached. A
+ * plate that is not wholly on screen is not a name a hiker can read.
+ *
+ * THE LAST RESORT IS THE MARK, NOT THE FULL PLATE. The old code handed the
+ * middle over in full and let the engine drop it whole where it collided
+ * (the sixth preview frame of #1283, and the z12 frame of the review's
+ * renders, where a pin on every vertex left the trail nameless). The mark
+ * is 32 px, is the same tap target, and with the layer allowed to overlap
+ * (map/trailBadges.ts) it is always drawn - never nothing, which is what
+ * "always finds a place" has to mean when nothing fits.
+ */
+function anchorWithRoom(
+  candidates: readonly Candidate[],
+  obstacles: readonly Box[],
+  frame: Box,
+  name: string,
+): BadgeAnchor | null {
+  if (candidates.length === 0) return null
   for (const fit of ['full', 'mark'] as const) {
     const text = badgeTextSize(name, fit)
-    for (let step = 0; step < run.points.length; step += 1) {
-      for (const index of step === 0 ? [middle] : [middle - step, middle + step]) {
-        if (index < 0 || index >= run.points.length) continue
-        const point = run.points[index]
-        const at = map.project([point[0], point[1]])
-        for (const anchor of TRAIL_BADGE_ANCHORS) {
-          const box = plateBox(anchor, at, text)
-          if (
-            clear !== null &&
-            !(
-              box.x1 >= clear.x1 &&
-              box.x2 <= clear.x2 &&
-              box.y1 >= clear.y1 &&
-              box.y2 <= clear.y2
-            )
-          ) {
-            continue
-          }
-          if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
-          return { point, fit }
-        }
+    for (const candidate of candidates) {
+      for (const anchor of TRAIL_BADGE_ANCHORS) {
+        const box = plateBox(anchor, candidate.at, text)
+        if (!withinFrame(box, frame)) continue
+        if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
+        return { point: candidate.point, fit, anchor }
       }
     }
   }
-  return { point: run.points[middle], fit: 'full' }
+  return { point: candidates[0].point, fit: 'mark', anchor: TRAIL_BADGE_ANCHORS[0] }
 }
 
-/** The real MapLibre map - see map/drawnPois.ts for why not a structural
- *  stand-in. */
 export type TrailsInViewMap = MapLibreMap
 
 export interface TrailInView {
@@ -301,6 +397,15 @@ export interface TrailInView {
   /** Which form the badge takes at that vertex: the full plate, or the mark
    *  alone where nothing wider had room (map/trailBadges.ts's header). */
   badgeFit: BadgeFit
+  /** Which side of the vertex the badge sits, one of TRAIL_BADGE_ANCHORS -
+   *  the placer's own choice, written on the feature for the layer's
+   *  `text-anchor` (map/trailBadges.ts). THE ENGINE DOES NOT CHOOSE, since
+   *  the review of #1374: with the layer allowed to overlap, MapLibre's
+   *  variable-anchor pass accepts the first anchor on its list whatever the
+   *  placer found room for - the phone frame at 05e9506a drew the plate
+   *  off the right edge of the screen from a vertex the placer had given
+   *  the mirror anchor. So the list is the placer's order alone. */
+  badgeAnchor: string
   /** The published properties of the piece that named it, verbatim, so a tap
    *  on the badge can open the same sheet a tap on the line opens. */
   properties: Record<string, unknown>
@@ -390,23 +495,6 @@ function visibleRuns(part: Position[], bounds: Bounds): Run[] {
   return runs
 }
 
-/** The index of the vertex at half the run's length along it. */
-function midpointIndex(run: Run): number {
-  if (run.points.length === 1) return 0
-  const half = run.length / 2
-  let walked = 0
-  for (let i = 1; i < run.points.length; i += 1) {
-    const step = span(run.points[i - 1], run.points[i])
-    if (walked + step >= half) {
-      // The nearer of the segment's two ends: a vertex ON the line, which
-      // is the whole promise, rather than a point interpolated between two.
-      return half - walked < step / 2 ? i - 1 : i
-    }
-    walked += step
-  }
-  return run.points.length - 1
-}
-
 function stringProp(properties: Record<string, unknown>, key: string): string | null {
   const value = properties[key]
   return typeof value === 'string' && value !== '' ? value : null
@@ -472,54 +560,44 @@ export function trailsInView(
     north: bounds.getNorth(),
   }
   const clear = clearViewOf(map, insets, view)
-  // Resolved once per pass rather than per trail: the pins do not move
-  // between one trail's anchor and the next's, and neither does the clear.
-  let obstacles: readonly Box[] | undefined
-  let clearBox: Box | null | undefined
-  const placement = () => {
-    obstacles ??= obstacleBoxes(map)
-    if (clearBox === undefined) {
-      if (clear === view) {
-        clearBox = null
-      } else {
-        const container = map.getContainer()
-        clearBox = {
-          x1: insets.left,
-          y1: insets.top,
-          x2: container.clientWidth - insets.right,
-          y2: container.clientHeight - insets.bottom,
-        }
-      }
-    }
-    return { obstacles, clearBox }
+  // The frame a plate must sit inside - the canvas less the chrome's bands -
+  // and the point the search fans out from, its centre. Resolved once per
+  // pass, with the pins: none of it moves between one trail and the next.
+  const container = map.getContainer()
+  const frame: Box = {
+    x1: insets.left,
+    y1: insets.top,
+    x2: container.clientWidth - insets.right,
+    y2: container.clientHeight - insets.bottom,
   }
+  const centre = { x: (frame.x1 + frame.x2) / 2, y: (frame.y1 + frame.y2) / 2 }
+  let obstacles: readonly Box[] | undefined
+  const pins = () => (obstacles ??= obstacleBoxes(map))
 
   const features = map.queryRenderedFeatures(undefined, { layers })
-  const byName = new Map<
-    string,
-    TrailInView & { best: Run | null; bestClear: Run | null }
-  >()
+  const byName = new Map<string, TrailInView & { runs: Run[]; clearRuns: Run[] }>()
 
   for (const feature of features) {
     const properties = (feature.properties ?? {}) as Record<string, unknown>
-    const name = stringProp(properties, 'name')
-    if (name === null) continue
     const source = stringProp(properties, 'source') ?? ''
+    // The data's name, or the registry's for a source the badge already
+    // marks - which is what puts the Long Path's pill back below the seam,
+    // where the published sketch carries no names at all
+    // (map/trailBadges.ts's registryNameForSource says why, and why this
+    // cannot name the unnamed haze around it).
+    const name = stringProp(properties, 'name') ?? registryNameForSource(source)
+    if (name === null) continue
     const throughRoute = BADGE_SOURCES.includes(source)
     const takeable = trailIdForSource(source) !== null
     const inChosenSystem = chosen.includes(source)
 
-    let best: Run | null = null
-    let bestClear: Run | null = null
+    // Every visible run of every part, kept: the badge may sit on any of
+    // them (candidatesOf), so no piece is thrown away for being short.
+    const runs: Run[] = []
+    const clearRuns: Run[] = []
     for (const part of partsOf(feature.geometry)) {
-      for (const run of visibleRuns(part, view)) {
-        if (best === null || run.length > best.length) best = run
-      }
-      if (clear !== view) {
-        for (const run of visibleRuns(part, clear)) {
-          if (bestClear === null || run.length > bestClear.length) bestClear = run
-        }
-      }
+      runs.push(...visibleRuns(part, view))
+      if (clear !== view) clearRuns.push(...visibleRuns(part, clear))
     }
 
     const existing = byName.get(name)
@@ -533,23 +611,17 @@ export function trailsInView(
         chosen: inChosenSystem,
         anchor: null,
         badgeFit: 'full',
+        badgeAnchor: TRAIL_BADGE_ANCHORS[0],
         properties,
-        best,
-        bestClear,
+        runs,
+        clearRuns,
       })
       continue
     }
-    // A second piece of the same trail: the badge goes on whichever piece
-    // shows the most of it, and the through-route's piece names it.
-    if (best !== null && (existing.best === null || best.length > existing.best.length)) {
-      existing.best = best
-    }
-    if (
-      bestClear !== null &&
-      (existing.bestClear === null || bestClear.length > existing.bestClear.length)
-    ) {
-      existing.bestClear = bestClear
-    }
+    // A second piece of the same trail, tile-clipped or a second feature:
+    // its runs join the search, and the through-route's piece names it.
+    existing.runs.push(...runs)
+    existing.clearRuns.push(...clearRuns)
     if (throughRoute && !existing.throughRoute) {
       existing.throughRoute = true
       existing.takeable = takeable
@@ -561,23 +633,25 @@ export function trailsInView(
   }
 
   return [...byName.values()]
-    .map(({ best, bestClear, ...trail }) => {
-      // In the clear if any of the trail is; under the chrome only when all
-      // of it is, which still beats no badge - a plate at 94% shows a badge
-      // through it, faintly, and the placer may yet move it out. Only a
-      // through-route needs an anchor at all; the rest are listed, not
-      // badged, and are spared the search.
-      const run = bestClear ?? best
-      if (run === null || !trail.throughRoute) return { ...trail, anchor: null }
-      const { obstacles: pins, clearBox: within } = placement()
-      const { point, fit } = anchorWithRoom(
-        run,
-        map,
-        pins,
-        bestClear === null ? null : within,
+    .map(({ runs, clearRuns, ...trail }) => {
+      // Only a through-route needs an anchor at all; the rest are listed,
+      // not badged, and are spared the search. In the clear first: under
+      // the chrome only when all of the trail is, which still beats no
+      // badge - a plate at 94% shows a badge through it, faintly.
+      if (!trail.throughRoute || runs.length === 0) return { ...trail, anchor: null }
+      const placed = anchorWithRoom(
+        candidatesOf(clearRuns, runs, map, centre),
+        pins(),
+        frame,
         trail.name,
       )
-      return { ...trail, anchor: point, badgeFit: fit }
+      if (placed === null) return { ...trail, anchor: null }
+      return {
+        ...trail,
+        anchor: placed.point,
+        badgeFit: placed.fit,
+        badgeAnchor: placed.anchor,
+      }
     })
     .sort((a, b) => {
       if (a.throughRoute !== b.throughRoute) return a.throughRoute ? -1 : 1
@@ -608,6 +682,7 @@ export function badgeFeatures(trails: readonly TrailInView[]): GeoJSON.FeatureCo
           [BADGE_MARK_PROPERTY]: trailMarkImageId(trail.source) ?? '',
           [BADGE_CHIP_PROPERTY]: blazeChipImageId(trail.blazeColor),
           [BADGE_FIT_PROPERTY]: trail.badgeFit,
+          [BADGE_ANCHOR_PROPERTY]: trail.badgeAnchor,
         },
         geometry: { type: 'Point', coordinates: trail.anchor as Position },
       })),

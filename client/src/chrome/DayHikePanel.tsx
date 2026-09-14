@@ -67,7 +67,7 @@
 // is a claim about the bucket, and it wants checking against the bucket
 // rather than against a comment.
 
-import { useId } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 
 import { blazePaintColor } from '../lib/blaze'
 import type { DraftStatus, DayHikeDraft } from '../lib/dayHikeDraft'
@@ -92,6 +92,10 @@ import {
   MIN_STATED_FEET,
 } from '../lib/units'
 import type { UnitSystem } from '../lib/units'
+import { HIKER_MODE_LABELS } from '../lib/hikerMode'
+import { StepRail } from './StepRail'
+import { SheetGripLoader } from './SheetGripLoader'
+import { useDesktop } from '../lib/useDesktop'
 import '../screens/plan.css'
 
 export interface DayHikePanelProps {
@@ -99,6 +103,13 @@ export interface DayHikePanelProps {
   status: DraftStatus
   stops: readonly DayHikeStop[]
   units: UnitSystem
+  /**
+   * The rail's step 1 door (#1373, rule R3): back to "Where do you want to
+   * go?" with this draft kept. The same move the bar's "‹ Hike" makes; the
+   * rail is where a hiker reads which step they are on, so it opens the
+   * one behind as well.
+   */
+  onBackToStepOne: () => void
   /** The routed walk's time with its baseline, or null when unpriceable. */
   walking: PaceEstimate | null
   hiddenLabels: HiddenLabelLayers
@@ -108,6 +119,17 @@ export interface DayHikePanelProps {
   /** Phone only: whether the detail body is open. Always open on a desktop. */
   detailsOpen: boolean
   onToggleDetails: () => void
+  /**
+   * The builder's controls - the bar (chrome/DayHikePickBar.tsx) - at the
+   * foot of this column on a laptop (the maintainer's review of #1374: the
+   * design's step 2 is one column on the right of the map holding the
+   * rail, the shape, the stops, the tools and the foot, and the bar along
+   * the bottom of the map was the phone's thumb-reach answer drawn where
+   * there is no thumb). The shell passes the same element it would have
+   * put over the map, so the two breakpoints run one component with one
+   * state; the phone never passes it, and the bar stays over the canvas.
+   */
+  controls?: ReactNode
 }
 
 /**
@@ -124,7 +146,7 @@ export interface DayHikePanelProps {
  * cannot resolve, and inventing "Reeves -> somewhere" here would be the same
  * invention one screen earlier.
  */
-function routeTitle(status: DraftStatus): string {
+export function routeTitle(status: DraftStatus): string {
   if (status.kind !== 'routed' || status.legs.length === 0) return 'A new day hike'
   const named = status.legs.map((leg) => leg.name).filter((name) => name !== null)
   if (named.length === 0) return 'A new day hike'
@@ -155,6 +177,7 @@ export function DayHikePanel({
   status,
   stops,
   units,
+  onBackToStepOne,
   walking,
   hiddenLabels,
   onToggleLabel,
@@ -162,7 +185,19 @@ export function DayHikePanel({
   onRemoveTurn,
   detailsOpen,
   onToggleDetails,
+  controls,
 }: DayHikePanelProps) {
+  // The panel is the OTHER half of the planning options a hiker could not
+  // move (the maintainer, 2026-09-14). It sits in the flow above the map
+  // rather than over it, so what it takes the map does not get - measured
+  // 2026-09-14 at 270 px on a 390x844 screen with its own Details toggle
+  // already closed. Gripped at its lower edge, because that is the edge it
+  // shares with the map and the one a thumb reaches for.
+  //
+  // Phone only: on a desktop this is a 348px rail beside the map
+  // (src/desktop.css), taking nothing the map wanted.
+  const canResize = !useDesktop()
+  const sheet = useRef<HTMLElement | null>(null)
   const bodyId = useId()
   const routed = status.kind === 'routed' ? status : null
   const rows = routed === null ? [] : routeRows(routed.legs, stops, routed.gaps)
@@ -170,49 +205,60 @@ export function DayHikePanel({
   const stopping = stoppingMinutes(stops)
 
   return (
-    <section className="day-hike-panel" aria-label="Your route">
-      <div className="day-hike-panel__head">
-        <div className="day-hike-panel__title-block">
-          <p className="day-hike-panel__eyebrow">Your route</p>
-          <h2 className="day-hike-panel__title">{routeTitle(status)}</h2>
-          <p className="day-hike-panel__summary">{routeSummary(status, stops)}</p>
-        </div>
-        {/* Phone only - src/desktop.css hides it, where the rail is always
+    <section className="day-hike-panel" aria-label="Your route" ref={sheet}>
+      {/* Step 2 of three (#1373). The kind on the first stop is the mode's
+          answer - a day hike is what this builder builds - and never asked
+          again (D6). */}
+      <StepRail
+        step={2}
+        kind={HIKER_MODE_LABELS.day}
+        onStep={(step) => {
+          if (step === 1) onBackToStepOne()
+        }}
+      />
+      <div className="day-hike-panel__body" data-sheet-body>
+        <div className="day-hike-panel__head">
+          <div className="day-hike-panel__title-block">
+            <p className="day-hike-panel__eyebrow">Your route</p>
+            <h2 className="day-hike-panel__title">{routeTitle(status)}</h2>
+            <p className="day-hike-panel__summary">{routeSummary(status, stops)}</p>
+          </div>
+          {/* Phone only - src/desktop.css hides it, where the rail is always
             open and a control that cannot change anything is noise. */}
-        <button
-          type="button"
-          className="day-hike-panel__details-toggle"
-          aria-expanded={detailsOpen}
-          aria-controls={bodyId}
-          onClick={onToggleDetails}
-        >
-          {detailsOpen ? 'Hide' : 'Details'}
-        </button>
-      </div>
+          <button
+            type="button"
+            className="day-hike-panel__details-toggle"
+            aria-expanded={detailsOpen}
+            aria-controls={bodyId}
+            onClick={onToggleDetails}
+          >
+            {detailsOpen ? 'Hide' : 'Details'}
+          </button>
+        </div>
 
-      <dl className="day-hike-panel__stats">
-        <div className="day-hike-panel__stat">
-          <dt>Distance</dt>
-          <dd>{routed === null ? '—' : formatDistance(routed.miles, units)}</dd>
-        </div>
-        {/* The emphasised metric, per the handoff - climb is what makes a
+        <dl className="day-hike-panel__stats">
+          <div className="day-hike-panel__stat">
+            <dt>Distance</dt>
+            <dd>{routed === null ? '—' : formatDistance(routed.miles, units)}</dd>
+          </div>
+          {/* The emphasised metric, per the handoff - climb is what makes a
             day-hike time honest, and it is the figure a flat mileage hides. */}
-        <div className="day-hike-panel__stat day-hike-panel__stat--climb">
-          <dt>Climb</dt>
-          <dd>
-            {routed?.climb == null
-              ? 'Unknown'
-              : formatElevation(routed.climb.gainFt, units)}
-          </dd>
-        </div>
-        <div className="day-hike-panel__stat">
-          <dt>Walking</dt>
-          {/* The bar's own rule, not a second one: lib/pace.ts has already
+          <div className="day-hike-panel__stat day-hike-panel__stat--climb">
+            <dt>Climb</dt>
+            <dd>
+              {routed?.climb == null
+                ? 'Unknown'
+                : formatElevation(routed.climb.gainFt, units)}
+            </dd>
+          </div>
+          <div className="day-hike-panel__stat">
+            <dt>Walking</dt>
+            {/* The bar's own rule, not a second one: lib/pace.ts has already
               applied naismith.ts's `≈` and five-minute step, and no surface
               re-rounds it. A walk this phone cannot price prints nothing
               rather than a zero. */}
-          <dd>{walking === null ? '—' : walking.text}</dd>
-          {/* AND WHAT IT WAS ADJUSTED FROM (#851). This figure is the hiker's
+            <dd>{walking === null ? '—' : walking.text}</dd>
+            {/* AND WHAT IT WAS ADJUSTED FROM (#851). This figure is the hiker's
               own pace applied to Naismith, and the maintainer's decision on
               #851 is that no surface prints one without the other: a pace set
               optimistic in week one must not quietly become the number
@@ -220,136 +266,146 @@ export function DayHikePanel({
               pair for exactly this, and this stat printed half of it.
               Absent at the standard pace, which is most hikers - a caveat on
               every line reads like a caveat on none. */}
-          {walking?.relativeLine != null && (
-            <dd className="day-hike-panel__baseline">{walking.relativeLine}</dd>
-          )}
-        </div>
-      </dl>
+            {walking?.relativeLine != null && (
+              <dd className="day-hike-panel__baseline">{walking.relativeLine}</dd>
+            )}
+          </div>
+        </dl>
 
-      <div className="day-hike-panel__body" id={bodyId} hidden={!detailsOpen}>
-        {/* NOTHING TO SAY BEFORE THERE IS A WALK. With no route yet the stats
+        <div className="day-hike-panel__body" id={bodyId} hidden={!detailsOpen}>
+          {/* NOTHING TO SAY BEFORE THERE IS A WALK. With no route yet the stats
             row above already reads "— / Unknown / —", and repeating that as a
             paragraph is three lines of chrome on the screen whose complaint
             was that the chrome had taken the map. The block returns the
             moment a first leg routes. */}
-        {routed !== null && (
-          <div className="day-hike-panel__climb">
-            <p className="day-hike-panel__section-head">Climb</p>
-            {routed?.climb == null ? (
-              <p className="day-hike-panel__unknown">
-                This phone can&rsquo;t price the climb on this walk &mdash; either the
-                elevation download hasn&rsquo;t landed, or one of these trails has never
-                been measured.
-              </p>
-            ) : (
-              <>
-                <p className="day-hike-panel__climb-figures">
-                  <span className="day-hike-panel__climb-up">
-                    &uarr; {formatElevation(routed.climb.gainFt, units)}
-                  </span>
-                  <span className="day-hike-panel__climb-down">
-                    &darr; {formatElevation(routed.climb.lossFt, units)}
-                  </span>
+          {routed !== null && (
+            <div className="day-hike-panel__climb">
+              <p className="day-hike-panel__section-head">Climb</p>
+              {routed?.climb == null ? (
+                <p className="day-hike-panel__unknown">
+                  This phone can&rsquo;t price the climb on this walk &mdash; either the
+                  elevation download hasn&rsquo;t landed, or one of these trails has never
+                  been measured.
                 </p>
-                {/* The handoff's rail draws an elevation silhouette here, and
+              ) : (
+                <>
+                  <p className="day-hike-panel__climb-figures">
+                    <span className="day-hike-panel__climb-up">
+                      &uarr; {formatElevation(routed.climb.gainFt, units)}
+                    </span>
+                    <span className="day-hike-panel__climb-down">
+                      &darr; {formatElevation(routed.climb.lossFt, units)}
+                    </span>
+                  </p>
+                  {/* The handoff's rail draws an elevation silhouette here, and
                   this says why one is not drawn YET - a fact about this
                   screen, which is all it may honestly claim. It used to say
                   the shape was not published, which was false the day it was
                   written: see this file's header, and #1210 for the wiring
                   that is genuinely missing. */}
-                <p className="day-hike-panel__note">No profile drawn here yet.</p>
-              </>
-            )}
-            {stopping !== null && (
-              <p className="day-hike-panel__note">
-                Stops add about {stopping} min, on top of the walking.
+                  <p className="day-hike-panel__note">No profile drawn here yet.</p>
+                </>
+              )}
+              {stopping !== null && (
+                <p className="day-hike-panel__note">
+                  Stops add about {stopping} min, on top of the walking.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="day-hike-panel__rows">
+            <p className="day-hike-panel__section-head">
+              Route order &middot; tap the map to add
+            </p>
+            {rows.length === 0 ? (
+              <p className="day-hike-panel__empty">
+                Nothing yet. Tap a trail on the map to start walking it, then tap a
+                shelter or campsite to add a stop.
               </p>
+            ) : (
+              <ol className="day-hike-panel__list">
+                {rows.map((row) => (
+                  <RouteRowItem
+                    key={row.key}
+                    row={row}
+                    units={units}
+                    onRemoveStop={onRemoveStop}
+                  />
+                ))}
+              </ol>
             )}
           </div>
-        )}
 
-        <div className="day-hike-panel__rows">
-          <p className="day-hike-panel__section-head">
-            Route order &middot; tap the map to add
-          </p>
-          {rows.length === 0 ? (
-            <p className="day-hike-panel__empty">
-              Nothing yet. Tap a trail on the map to start walking it, then tap a shelter
-              or campsite to add a stop.
-            </p>
-          ) : (
-            <ol className="day-hike-panel__list">
-              {rows.map((row) => (
-                <RouteRowItem
-                  key={row.key}
-                  row={row}
-                  units={units}
-                  onRemoveStop={onRemoveStop}
-                />
-              ))}
-            </ol>
-          )}
-        </div>
-
-        {/* The turns, apart from the ordered list and deliberately so -
+          {/* The turns, apart from the ordered list and deliberately so -
             lib/dayHikeRows.ts explains that a tap in the middle of a leg has
             no honest mile, and a row with no mile in a mile-ordered list is a
             row in the wrong place. Numbered to match the marks on the map. */}
-        {turns.length > 0 && (
-          <div className="day-hike-panel__turns">
-            <p className="day-hike-panel__section-head">Your taps</p>
-            <ul className="day-hike-panel__turn-list">
-              {turns.map((turn) => (
-                <li key={turn.ordinal}>
-                  <button
-                    type="button"
-                    className="day-hike-panel__turn"
-                    onClick={() => onRemoveTurn(turn.ordinal)}
-                  >
-                    <span aria-hidden="true">{turn.label}</span>
-                    <span className="day-hike-panel__sr">
-                      Remove tap {turn.label}
-                      {turn.endsStretch ? ', which ends a stretch' : ''}
-                    </span>
-                    <span className="day-hike-panel__turn-x" aria-hidden="true">
-                      &times;
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+          {turns.length > 0 && (
+            <div className="day-hike-panel__turns">
+              <p className="day-hike-panel__section-head">Your taps</p>
+              <ul className="day-hike-panel__turn-list">
+                {turns.map((turn) => (
+                  <li key={turn.ordinal}>
+                    <button
+                      type="button"
+                      className="day-hike-panel__turn"
+                      onClick={() => onRemoveTurn(turn.ordinal)}
+                    >
+                      <span aria-hidden="true">{turn.label}</span>
+                      <span className="day-hike-panel__sr">
+                        Remove tap {turn.label}
+                        {turn.endsStretch ? ', which ends a stretch' : ''}
+                      </span>
+                      <span className="day-hike-panel__turn-x" aria-hidden="true">
+                        &times;
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
 
-      {/* OUTSIDE the collapsible body on purpose: the label row is how a
+        {/* OUTSIDE the collapsible body on purpose: the label row is how a
           hiker finds what to tap next, so it has to be reachable while the
           details are closed and the map is at its tallest. That is the one
           place this panel departs from the handoff's phone frame, which puts
           the chips below the collapsed body and above the map - the same
           position, arrived at from the other direction. */}
-      <div className="day-hike-panel__labels">
-        <p className="day-hike-panel__section-head">Map labels</p>
-        <div className="day-hike-panel__label-grid">
-          {LABEL_LAYERS.map((spec) => {
-            const shown = labelLayerShown(hiddenLabels, spec.key)
-            return (
-              <button
-                key={spec.key}
-                type="button"
-                className="day-hike-panel__label-toggle"
-                aria-pressed={shown}
-                onClick={() => onToggleLabel(spec.key)}
-              >
-                <span className="day-hike-panel__label-name">{spec.label}</span>
-                <span className="day-hike-panel__label-tier" aria-hidden="true">
-                  {tierBadge(spec.tier)}
-                </span>
-              </button>
-            )
-          })}
+        <div className="day-hike-panel__labels">
+          <p className="day-hike-panel__section-head">Map labels</p>
+          <div className="day-hike-panel__label-grid">
+            {LABEL_LAYERS.map((spec) => {
+              const shown = labelLayerShown(hiddenLabels, spec.key)
+              return (
+                <button
+                  key={spec.key}
+                  type="button"
+                  className="day-hike-panel__label-toggle"
+                  aria-pressed={shown}
+                  onClick={() => onToggleLabel(spec.key)}
+                >
+                  <span className="day-hike-panel__label-name">{spec.label}</span>
+                  <span className="day-hike-panel__label-tier" aria-hidden="true">
+                    {tierBadge(spec.tier)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
+        {controls !== undefined && (
+          <div className="day-hike-panel__controls">{controls}</div>
+        )}
       </div>
+      {/* Last, because this panel's grip is its lower edge - the one it shares
+          with the map. Absent on a laptop, where the panel is a rail beside
+          the map and takes nothing the map wanted: a control that cannot
+          change anything is noise, which is the same argument src/desktop.css
+          already makes for hiding the Details toggle up there. */}
+      {canResize && <SheetGripLoader sheet={sheet} label="Your route" edge="bottom" />}
     </section>
   )
 }

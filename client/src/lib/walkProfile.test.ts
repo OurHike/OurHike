@@ -106,6 +106,17 @@ describe('where each sample sits', () => {
 })
 
 describe('what it refuses to draw', () => {
+  it('returns null when the sidecar is not the graph’s length - index-aligned or nothing (#1313)', () => {
+    // One array too few: production once carried a 42,103-entry sidecar
+    // against a 466,966-edge graph, and reading it by index would draw
+    // some other edge's climb under this walk. The walk below is drawable
+    // against the aligned PROFILES; the same walk against a misaligned
+    // copy is not, whichever edge it happens to land on.
+    expect(samplesFor()).not.toBeNull()
+    expect(samplesFor(undefined, PROFILES.slice(0, -1))).toBeNull()
+    expect(samplesFor(undefined, [...PROFILES, PROFILES[0]])).toBeNull()
+  })
+
   it('returns null when an edge of the walk was never measured', () => {
     expect(
       samplesFor(hikeThrough([WEST_END, EAST_END]), [PROFILES[0], null, null, null]),

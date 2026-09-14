@@ -39,7 +39,7 @@ export const caption =
   'A recording left open after "Use my location" was switched off (#1201) — the section stays, so Stop is still reachable, and the screen says why the count stopped rather than sending a tester outside to look for sky'
 
 export const alt =
-  'The Safety & privacy settings page scrolled to a GPS trace recording in progress. Above the section, the tail of the location explanation and the greyed-out "Hide my name on reports for..." row, marked LATER, and the note that closures and serious warnings are not a setting. Then "RECORD A GPS TRACE": a Recording row reading "0 readings \u00b7 just started", a Trail position row reading "waiting for a fix", an App stalls row reading "none longer than 50 ms", the question "What are you doing right now?" over the three marker buttons — Standing still, Walking, Off the trail — and their note. Below them, in warning red: "You turned \u201cUse my location\u201d off, so nothing is being recorded. Turn it back on to carry on, or stop the recording and keep what it already has \u2014 nothing recorded so far is lost either way." Then a note that the screen is not being kept awake, and a Stop recording button. No position, mile or accuracy figure appears anywhere in the frame, because none has been recorded.'
+  'The "Where this map comes from" page scrolled to a GPS trace recording in progress at its foot. Above the section, the tail of the bug-report links and the note calling the recorder a field-test tool. Then "RECORD A GPS TRACE": a Recording row reading "0 readings \u00b7 just started", a Trail position row reading "waiting for a fix", an App stalls row reading "none longer than 50 ms", the question "What are you doing right now?" over the three marker buttons — Standing still, Walking, Off the trail — and their note. Below them, in warning red: "You turned \u201cUse my location\u201d off, so nothing is being recorded. Turn it back on to carry on, or stop the recording and keep what it already has \u2014 nothing recorded so far is lost either way." Then a note that the screen is not being kept awake, and a Stop recording button. No position, mile or accuracy figure appears anywhere in the frame, because none has been recorded.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'More' }).click()
@@ -50,6 +50,12 @@ export default async function drive(page) {
   // other side.
   const useMyLocation = page.getByRole('checkbox', { name: 'Use my location' })
   if (!(await useMyLocation.isChecked())) await useMyLocation.check()
+  // Re-pointed 2026-09-10 (#1373, D3): the recorder is a field-test tool
+  // and lives at the foot of "Where this map comes from" now, under the
+  // build it tests - the location switch that gates it stays on Safety &
+  // privacy, which is why the drive visits that page first.
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: /Where this map comes from/ }).click()
   await page.getByRole('heading', { name: 'Record a GPS trace' }).waitFor()
 
   await page.getByRole('button', { name: 'Start recording' }).click()
@@ -58,8 +64,19 @@ export default async function drive(page) {
   // this caption would be worse than no photograph.
   await page.getByRole('button', { name: 'Stop recording' }).waitFor()
 
-  // The switch the hiker flips, and the whole point of the frame.
-  await useMyLocation.uncheck()
+  // The switch the hiker flips, and the whole point of the frame. It is a
+  // page away since the relocation: back to More, into Safety & privacy,
+  // off, and back to the recorder - which is exactly the walk a tester
+  // makes, and the recording survives it because the trace lives in the
+  // shell (App.tsx's `useGpsTrace`), not on the page. The preview at
+  // 88891547 caught the first version of this re-pointing reaching for the
+  // switch from the sources page, where it is not.
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: /safety & privacy/i }).click()
+  await page.getByRole('checkbox', { name: 'Use my location' }).uncheck()
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: /Where this map comes from/ }).click()
+  await page.getByRole('heading', { name: 'Record a GPS trace' }).waitFor()
 
   // Waited on because this sentence IS the change - `recordingTrouble` now
   // answers this case ahead of every other, since the others ("no GPS signal

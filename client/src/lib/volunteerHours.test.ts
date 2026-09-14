@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   hoursCsv,
   hoursTotals,
+  queuedHoursSummary,
   stateLabel,
   type VolunteerHoursSummary,
 } from './volunteerHours'
@@ -92,5 +93,73 @@ describe('hoursCsv', () => {
     ])
 
     expect(csv).toContain('"Cleared blowdowns, fixed the ""old"" waterbar"')
+  })
+})
+
+// A day still in the outbox, as the logbook has to show it. The mapping is
+// shared by the echo at log time and the restore at boot, so a change here
+// moves both - which is the reason it is a function rather than two object
+// literals in App.tsx.
+describe('a queued day', () => {
+  it('reads as claimed, carries the queue item’s own id and authored time, and keeps every optional field', () => {
+    const summary = queuedHoursSummary({
+      id: 'queued-1',
+      authoredAt: '2026-09-11T14:00:00.000Z',
+      volunteerHours: {
+        worked_on: '2026-09-10',
+        hours: 4,
+        activity: 'maintenance',
+        note: 'Cleared blowdowns',
+        club_id: 'club-7',
+        work_project_id: 'proj-3',
+        mile: 1204.2,
+        lat: 41.2,
+        lon: -74.6,
+      },
+    })
+
+    // CLAIMED IS THE HONEST STATE and the only one a queued day can have:
+    // nobody has confirmed it, because it has not reached anybody yet.
+    expect(summary.state).toBe('claimed')
+    expect(summary.confirmed_at).toBeNull()
+    // The queue item's id, so the server copy can replace the echo under the
+    // same id once it lands (App.tsx's `hoursRecords`).
+    expect(summary.id).toBe('queued-1')
+    expect(summary.recorded_at).toBe('2026-09-11T14:00:00.000Z')
+    expect(summary.hours).toBe(4)
+    expect(summary.note).toBe('Cleared blowdowns')
+    expect(summary.club_id).toBe('club-7')
+    expect(summary.work_project_id).toBe('proj-3')
+    expect(summary.mile).toBe(1204.2)
+  })
+
+  it('turns every absent optional into null rather than leaving it undefined', () => {
+    // The logbook and the CSV both read these as `T | null`; an `undefined`
+    // slipping through would print "undefined" in an export a club reads.
+    const summary = queuedHoursSummary({
+      id: 'queued-2',
+      authoredAt: '2026-09-11T14:00:00.000Z',
+      volunteerHours: { worked_on: '2026-09-10', hours: 2, activity: 'monitoring' },
+    })
+
+    expect(summary.club_id).toBeNull()
+    expect(summary.work_project_id).toBeNull()
+    expect(summary.note).toBeNull()
+    expect(summary.mile).toBeNull()
+    expect(summary.lat).toBeNull()
+    expect(summary.lon).toBeNull()
+  })
+
+  it('counts in the totals the logbook prints, so a restored day is not a silent zero', () => {
+    const restored = queuedHoursSummary({
+      id: 'queued-3',
+      authoredAt: '2026-09-11T14:00:00.000Z',
+      volunteerHours: { worked_on: '2026-09-10', hours: 4, activity: 'maintenance' },
+    })
+
+    expect(hoursTotals([restored])).toMatchObject({
+      daysWorked: 1,
+      unconfirmedHours: 4,
+    })
   })
 })

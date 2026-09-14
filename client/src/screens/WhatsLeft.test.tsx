@@ -65,10 +65,34 @@ afterEach(() => {
 })
 
 describe('what is left', () => {
-  it('counts the pieces and the miles in them', () => {
+  it('prints two figures - walked and to go - and the pieces under them', () => {
+    // 72 of 500 walked, in one piece. Two figures, deliberately (#1373,
+    // frame 8b): no percentage and no pace anybody could be behind.
     render(<WhatsLeft {...PROPS} />)
-    // 72 of 500 walked, in one piece.
-    expect(screen.getByText('428.0 mi in 1 piece')).toBeInTheDocument()
+    expect(screen.getByText('Walked').closest('.whats-left__figure')).toHaveTextContent(
+      /Walked\s*72\.0 mi/,
+    )
+    expect(screen.getByText('To go').closest('.whats-left__figure')).toHaveTextContent(
+      /To go\s*428\.0 mi/,
+    )
+    expect(screen.getByText('in 1 piece')).toBeInTheDocument()
+  })
+
+  it('offers the way back into the open section’s days, and only then', async () => {
+    // Frame 8b's "the way back into F7": the door exists where a section
+    // of this hike is open, and is absent - never dead - otherwise. And no
+    // export door beside it: no writer exists, and a door is a claim (D10).
+    const user = userEvent.setup()
+    const onChangePlan = vi.fn()
+    render(<WhatsLeft {...PROPS} onChangePlan={onChangePlan} />)
+
+    await user.click(screen.getByRole('button', { name: /Change the plan from here/ }))
+    expect(onChangePlan).toHaveBeenCalled()
+    expect(screen.queryByText(/Export/)).toBeNull()
+
+    cleanup()
+    render(<WhatsLeft {...PROPS} />)
+    expect(screen.queryByRole('button', { name: /Change the plan/ })).toBeNull()
   })
 
   it('offers BOTH ends of a gap, and the direction follows the pick', async () => {

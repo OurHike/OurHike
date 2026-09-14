@@ -167,7 +167,7 @@ describe('what first run may do before the steps are done', () => {
 
   it('reads the trail line, and does not read the waypoints', async () => {
     render(<App />)
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
 
     // Waited on the line, because it is the read that comes first in the same
     // hook: a run where it has landed and the waypoints have not is the state
@@ -178,7 +178,7 @@ describe('what first run may do before the steps are done', () => {
 
   it('rasterises none of the 46 pin images', async () => {
     render(<App />)
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
 
     await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
     expect(buildPoiIcons).not.toHaveBeenCalled()
@@ -200,7 +200,7 @@ describe('what first run may do before the steps are done', () => {
     // read the map would have been waiting for, so a shell that wanted one
     // has had everything it needs by the time this asserts.
     render(<App />)
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
 
     await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
     expect(MockMap.instances).toHaveLength(0)
@@ -211,7 +211,7 @@ describe('what first run may do before the steps are done', () => {
     // mile axis nothing is showing: the waypoint cards, the search rows and
     // the ribbon are all behind the card.
     render(<App />)
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
 
     await waitFor(() => expect(readsOf(TRAILS_BLOB_KEY)).toBeGreaterThan(0))
     expect(resolveTrailIndex).not.toHaveBeenCalled()
@@ -242,7 +242,7 @@ describe('what the launch mirror is allowed to say (#1301)', () => {
     // A phone whose record cannot be read looks like a first run, which is
     // the honest fallback and unchanged by #1301. What must NOT happen is
     // that reading it back becomes the next launch's answer.
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
     await new Promise((resolve) => setTimeout(resolve, 50))
 
     expect(readLaunchMirror()).toBeNull()
@@ -417,7 +417,7 @@ describe('what the shell paints before the phone has answered (#1301)', () => {
     render(<App />)
     await waitFor(() => expect(pending.length).toBeGreaterThan(0))
     expect(screen.queryByRole('tab', { name: 'Today' })).toBe(null)
-    expect(screen.queryByText('What OurHike is')).toBe(null)
+    expect(screen.queryByText('A map that works where there is no signal.')).toBe(null)
 
     // The record lands: every held read answers, and later reads answer at once.
     vi.mocked(get).mockImplementation(original)
@@ -435,8 +435,13 @@ describe('what a launch does once, and must not do twice', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await screen.findByText('What OurHike is')
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByText('A map that works where there is no signal.')
+    await user.click(screen.getByRole('button', { name: 'Get set up' }))
+
+    // Past the mode card with nothing chosen, then the place card with no
+    // place (#1373; the mode card is the review of #1374's).
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
+    await user.click(screen.getByRole('button', { name: /^skip — i/i }))
     // Declined, deliberately: this file counts what a LAUNCH costs, and
     // "Keep going" would start the download machinery on top of it (#1054).
     await user.click(screen.getByRole('button', { name: 'Decide this later' }))

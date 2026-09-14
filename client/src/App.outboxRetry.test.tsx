@@ -202,6 +202,6 @@ describe('Try again, on a report the server refused', () => {
     await waitFor(() => expect(mockedSend).toHaveBeenCalled())
     // Still queued, not lost.
     await waitFor(() => expect((store.get(OUTBOX_KEY) as unknown[]).length).toBe(1))
-    expect(screen.getByRole('status')).toHaveTextContent('1 report waiting to send.')
+    expect(screen.getByRole('status')).toHaveTextContent('1 waiting to send.')
   })
 })

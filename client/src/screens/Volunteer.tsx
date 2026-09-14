@@ -24,6 +24,7 @@ import {
   upcomingWorkProjects,
   workProjectDates,
   type WorkProjectSummary,
+  workdayAwayLine,
 } from '../lib/workProjects'
 import { syncAgeLabel } from '../lib/syncAge'
 import './volunteer.css'
@@ -203,9 +204,7 @@ export function Volunteer({
                     {project.mile !== null && gpsMile !== null && (
                       <>
                         <span aria-hidden="true"> · </span>
-                        {`${Math.abs(project.mile - gpsMile).toLocaleString('en-US', {
-                          maximumFractionDigits: 1,
-                        })} trail mi away`}
+                        {workdayAwayLine(Math.abs(project.mile - gpsMile))}
                       </>
                     )}
                     {project.capacity !== null && (

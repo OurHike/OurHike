@@ -11,6 +11,25 @@ afterEach(() => {
 })
 
 describe('the launch mirror', () => {
+  it('carries the taken trail, and repairs one this build does not know (the review of #1374)', () => {
+    writeLaunchMirror({ onboarding_completed: true, theme: 'auto' }, 'day', 'AT')
+    expect(readLaunchMirror()?.takenTrail).toBe('AT')
+
+    writeLaunchMirror({ onboarding_completed: true, theme: 'auto' }, 'day')
+    expect(readLaunchMirror()?.takenTrail).toBeNull()
+
+    window.localStorage.setItem(
+      LAUNCH_MIRROR_KEY,
+      JSON.stringify({
+        onboardingCompleted: true,
+        theme: 'auto',
+        hikerMode: 'day',
+        takenTrail: 'nope',
+      }),
+    )
+    expect(readLaunchMirror()?.takenTrail).toBeNull()
+  })
+
   it('reads back what the record wrote', () => {
     writeLaunchMirror({ onboarding_completed: true, theme: 'dark' }, 'volunteer')
 
@@ -18,6 +37,7 @@ describe('the launch mirror', () => {
       onboardingCompleted: true,
       theme: 'dark',
       hikerMode: 'volunteer',
+      takenTrail: null,
     })
   })
 
@@ -47,6 +67,7 @@ describe('the launch mirror', () => {
       theme: 'auto',
       // 'thru' is the middle mode's old word and maps forward (lib/hikerMode.ts).
       hikerMode: 'long',
+      takenTrail: null,
     })
   })
 

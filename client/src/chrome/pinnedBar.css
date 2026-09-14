@@ -1,0 +1,46 @@
+/* The persistent find/plan bar (chrome/PinnedBar.tsx, #1373). Semantic tokens. */
+
+.pinned-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-1);
+  background: var(--bg-sunken);
+}
+
+.pinned-bar__button {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast, 120ms) var(--ease-standard, ease),
+    color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.pinned-bar__button--primary {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: var(--fg-on-brand);
+}
+
+.pinned-bar__button:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pinned-bar__button {
+    transition: none;
+  }
+  .pinned-bar__button:active {
+    transform: none;
+  }
+}

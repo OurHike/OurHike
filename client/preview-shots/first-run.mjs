@@ -37,8 +37,14 @@
 // proof that a second of work bought nothing anybody could see.
 export const caption =
   'First run — over a photo drawn from the pool (#1054), and since #1324 over nothing else'
+// Re-pointed 2026-09-10 (#1373): five cards now (the mode card is the
+// review of #1374's), and the first one opens
+// with the design's sentence - "A map that works where there is no
+// signal." - over the money sentence, which stays word for word. The
+// buttons are the pair the design names, "Get set up" and "Skip — take me
+// to the map", where Continue and Skip stood.
 export const alt =
-  'The first-run entry card over a randomly drawn Appalachian Trail photograph, with the OurHike lockup, tagline and the photo’s credit on a dark plate in the top corner. Below it, step 1 of 3, “What OurHike is”: the map works with no bars and no data plan, and your money belongs with the people holding the tools — the ATC and other organizations who keep these trails open take members and donations directly, while OurHike takes no cut and holds no money. Then: no account, nothing to sign up for.'
+  'The first-run entry card over a randomly drawn Appalachian Trail photograph, with the OurHike lockup, tagline and the photo’s credit on a dark plate in the top corner. Below it, step 1 of 5, “A map that works where there is no signal.”: trails, water, shelters and resupply from the organizations that maintain them, downloaded to this phone; your money belongs with the people holding the tools — the ATC and other organizations who keep these trails open take members and donations directly, while OurHike takes no cut and holds no money; then no account, nothing to sign up for. Under the card, a Get set up button and a “Skip — take me to the map” link.'
 
 // The one recipe that must NOT skip first run — first run is the subject.
 export const entry = true

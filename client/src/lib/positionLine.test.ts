@@ -100,6 +100,29 @@ describe('positionLine', () => {
     expect(positionLine({ ...WALKING, mile: undefined })).toBe('Off the trail')
   })
 
+  // Nothing taken (the maintainer's review of #1374): there is no trail to
+  // be off, and no trail whose mile this is.
+  describe('with no trail taken', () => {
+    it('says where the fix stands and what would give it a mile, never a mile or "Off the trail"', () => {
+      expect(positionLine({ ...WALKING, trailTaken: false })).toBe(
+        'Located · tap a trail to take it',
+      )
+      expect(positionLine({ ...WALKING, mile: undefined, trailTaken: false })).toBe(
+        'Located · tap a trail to take it',
+      )
+    })
+
+    it('does not outrank a GPS state, which is true whatever is taken', () => {
+      expect(positionLine({ ...WALKING, enabled: false, trailTaken: false })).toBe(
+        'Location is off',
+      )
+    })
+
+    it('defaults to taken, so every caller that never asks is unaffected', () => {
+      expect(positionLine(WALKING)).toBe('mi 1,407.2 · NOBO')
+    })
+  })
+
   describe('a hike on a trail this build cannot measure (#1357)', () => {
     // The third reason the mile is missing, and the one the other two would
     // lie about. `lib/hikeText.ts` already refuses to CREATE such a hike -

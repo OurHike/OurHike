@@ -315,6 +315,58 @@
   font-weight: 600;
   color: var(--brand-primary);
 }
+
+/* The mode card's three rows (the maintainer's review of #1374): radios
+   drawn as rows, the mode's glyph ahead of its name and a one-line note
+   under it. The same surface and border the size picker's options use, so
+   the two choice cards read as one kind of thing; the selected row takes
+   the brand ink the way a chosen rung does. Rows, not the Today switch's
+   chips: a chip has no room for the sentence that says what each mode
+   changes, and that sentence is the card's whole reason to exist. */
+.onboarding__modes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-2, 8px);
+}
+.onboarding__mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: 10px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--bg-surface);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.onboarding__mode--on {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 1px var(--brand-primary) inset;
+  background: var(--bg-sunken);
+}
+.onboarding__mode-icon {
+  flex: none;
+  color: var(--brand-primary);
+}
+.onboarding__mode-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.onboarding__mode-name {
+  font-weight: 600;
+}
+.onboarding__mode-note {
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--fg-2);
+}
 .onboarding__actions,
 .onboarding__nav {
   display: flex;

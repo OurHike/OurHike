@@ -20,14 +20,17 @@
 // sheets it hosts (a tapped day's actions, call-it-a-day, the cascade, the
 // target sheet the shell passes in) dock to the screen's own bottom edge.
 
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   callableEnd,
   callItADay,
   cascadeChoices,
   nearestStop,
+  shiftPlan,
   type CalledEnd,
 } from '../lib/cascade'
+import { diffPlans } from '../lib/cascadeDiff'
+import { DayRow as SharedDayRow } from '../chrome/DayRow'
 import { ribbonSamples, type ElevationProfile } from '../lib/elevationProfile'
 import type { DayHike } from '../lib/dayHikes'
 import type { Hike, HikePiece, PlaceRef } from '../lib/hikes'
@@ -166,6 +169,9 @@ export interface PlanScreenProps {
    *  trailhead door opens it from another tab. */
   dayListOpen: boolean
   onDayListOpen: (open: boolean) => void
+  /** The list was opened by the map's "Your day hikes near here" (#1373,
+   *  D5), so it opens in distance order. */
+  dayListNearHere?: boolean
   /** Which builder holds a live draft, or null - each room offers a way back
    *  to its OWN draft and its own action otherwise, so the day room never
    *  puts a button into the trips builder. */
@@ -179,6 +185,18 @@ export interface PlanScreenProps {
   onToggleEndResupply: (dayIndex: number) => void
   /** The cascade hands back a whole re-planned plan rather than an edit. */
   onReplacePlan: (plan: HikePlan) => void
+  /**
+   * Open "call it a day" for the current day as soon as the timeline shows
+   * (#1373, frame 7c): the day screen's own "Call it a day here", "Stop
+   * short" and "Push on" all land here - the sheet offers the ends, and it
+   * lives on the timeline because the days behind it are the context for
+   * every choice on it. Acknowledged through `onCallTodayShown` so the ask
+   * fires once.
+   */
+  /** The index of the day to open the call sheet on, when the shell asks
+   *  (frame 7c); null when it does not. */
+  callToday?: number | null
+  onCallTodayShown?: () => void
   onDeletePlan: () => void
   /** The open trip's name, or null when nothing is open (#787). */
   tripName: string | null
@@ -262,6 +280,7 @@ export function PlanScreen({
   onTakeSectionOut,
   dayListOpen,
   onDayListOpen,
+  dayListNearHere = false,
   draftKind,
   onChangeTarget,
   onInsertZeroAfter,
@@ -270,6 +289,8 @@ export function PlanScreen({
   onToggleEndResupply,
   onReplacePlan,
   onDeletePlan,
+  callToday = null,
+  onCallTodayShown,
   tripName,
   openTripId,
   tripCount,
@@ -298,6 +319,29 @@ export function PlanScreen({
    *  when the recorded end moved something. */
   const [calling, setCalling] = useState<number | null>(null)
   const [cascading, setCascading] = useState(false)
+  /**
+   * The last cascade applied, for the one undo (#1373, frame 7b: "one
+   * action and one undo"). Offered while the plan on screen is still the
+   * one it produced - any other edit, and the undo would be of something
+   * the hiker no longer sees.
+   */
+  const [lastCascade, setLastCascade] = useState<{
+    before: HikePlan
+    after: HikePlan
+  } | null>(null)
+  // The day screen's door (frame 7c): the timeline, then the call sheet on
+  // the current day. An effect because the request arrives as a prop from
+  // the shell and the sheet is this screen's own state.
+  useEffect(() => {
+    if (callToday === null || plan === null) return
+    onCallTodayShown?.()
+    // The shell names the day, on the trip it opened for this; a day the
+    // plan no longer has (edited underneath the request) is not called.
+    if (callToday < 0 || callToday >= plan.days.length) return
+    setAtHome(false)
+    setSelectedDay(null)
+    setCalling(callToday)
+  }, [callToday, plan, onCallTodayShown])
   /** The walked day whose summary is open (#966), or null. Its own state
    *  rather than a mode on `selectedDay`, because the two are opened by
    *  different rows and one of them is a record with no actions on it. */
@@ -308,6 +352,11 @@ export function PlanScreen({
   const [summaryAfterCascade, setSummaryAfterCascade] = useState<number | null>(null)
   const [zoomWanted, setZoomWanted] = useState<PlanZoom>('days')
   const [whatsLeftOpen, setWhatsLeftOpen] = useState(false)
+  /** Which shelf the day-hike list opens on (#1373, D5): every hike, or the
+   *  walked ones alone. This screen's own, unlike `dayListOpen`, because
+   *  nothing outside Plan opens the walked shelf - the trailhead door that
+   *  lifted the boolean opens the whole list. */
+  const [listShelf, setListShelf] = useState<'all' | 'walked'>('all')
   /**
    * The tab opens on its home when there is something to choose between
    * (#805) - and straight into the plan when there is not, because a hiker
@@ -404,7 +453,17 @@ export function PlanScreen({
       },
       target: plan.target.walkingHours as number | null,
     }
-  }, [plan, elevation])
+    // `pace` IS a dependency, and was missing until #1374's review. The
+    // closure above prices a leg with it, so without it here a hiker who
+    // moves the pace control keeps a planner that splits their days at the
+    // pace they moved AWAY from - and the sheet this feeds is handed a fresh
+    // `pace` beside the stale closure, so the two disagree on the same
+    // screen. The neighbouring memo on line 437 had it right all along.
+    //
+    // Which way it was wrong is the part that matters: a hiker slowing their
+    // pace got days priced at the faster one, which is an optimistic time
+    // estimate on the path that decides whether they beat the dark.
+  }, [plan, elevation, pace])
 
   if (atHome && (trips.length > 1 || hikes.length > 0 || dayHikes.length > 0)) {
     if (dayListOpen) {
@@ -417,6 +476,8 @@ export function PlanScreen({
         <div className="plan plan--day plan--bounded">
           <DayHikeList
             dayHikes={dayHikes}
+            shelf={listShelf}
+            initialSort={dayListNearHere ? 'nearest' : 'recent'}
             units={units}
             at={gpsAt}
             pace={pace}
@@ -467,7 +528,27 @@ export function PlanScreen({
           }}
           onOpenGroup={onOpenGroup}
           onAllTrips={onOpenTrips}
-          onAllDayHikes={() => onDayListOpen(true)}
+          onAllDayHikes={() => {
+            setListShelf('all')
+            onDayListOpen(true)
+          }}
+          onAllWalked={() => {
+            setListShelf('walked')
+            onDayListOpen(true)
+          }}
+          // Only for the hike the room is ABOUT: `hike` here is the one the
+          // open trip belongs to (or the only one there is), and a door on
+          // the active hike's room that opened another hike's gaps would be
+          // the display outrunning its source.
+          onWhatsLeft={
+            hike !== null && activeHike !== null && hike.id === activeHike.id
+              ? () => {
+                  setWhatsLeftOpen(true)
+                  setZoomWanted('hike')
+                  setAtHome(false)
+                }
+              : undefined
+          }
           onNewDayHike={network.kind === 'ready' ? onNewDayHike : null}
           network={network}
           onRetryNetwork={onRetryNetwork}
@@ -559,6 +640,17 @@ export function PlanScreen({
             units={units}
             gpsMile={gpsMile}
             onPlanFrom={onPlanFrom}
+            // The way back into F7 (#1373, frame 8b): the open section's
+            // days, where the cascade lives. Only when a section of THIS
+            // hike is open and has days to show.
+            onChangePlan={
+              openTripId !== null && hike.tripIds.includes(openTripId) && views.length > 0
+                ? () => {
+                    setWhatsLeftOpen(false)
+                    setZoomWanted('days')
+                  }
+                : undefined
+            }
             onClose={() => setWhatsLeftOpen(false)}
           />
         ) : (
@@ -1056,13 +1148,36 @@ export function PlanScreen({
           target={plannerContext.target}
           options={plannerContext.options}
           units={units}
+          elevation={elevation}
+          pace={pace}
           onChoose={(next) => {
-            if (next !== null) onReplacePlan(next)
+            if (next !== null) {
+              setLastCascade({ before: plan, after: next })
+              onReplacePlan(next)
+            }
             setCascading(false)
             setSummaryDay(summaryAfterCascade)
             setSummaryAfterCascade(null)
           }}
         />
+      )}
+      {/* THE ONE UNDO (frame 7b). Offered only while the plan on screen is
+          the one the cascade made; any other edit takes it away rather
+          than undoing something the hiker no longer sees. */}
+      {lastCascade !== null && samePlan(plan, lastCascade.after) && (
+        <div className="plan__undo" role="status">
+          <span>Applied.</span>
+          <button
+            type="button"
+            className="plan__undo-button"
+            onClick={() => {
+              onReplacePlan(lastCascade.before)
+              setLastCascade(null)
+            }}
+          >
+            Undo
+          </button>
+        </div>
       )}
       {summaryDay !== null && views[summaryDay] !== undefined && (
         <DaySummary
@@ -1780,20 +1895,65 @@ interface CascadeSheetProps {
   pois: readonly StoredPoi[]
   /** The plan's own target in effort units, or null when it cannot be
    *  priced honestly (hours target, no profile) - shift is not offered
-   *  then. */
+   *  then, and neither is slowing it. */
   target: number | null
   options: Parameters<typeof cascadeChoices>[3]
   units: UnitSystem
+  /** For pricing the diff's rows the way the timeline prices its own. */
+  elevation: ElevationProfile | null
+  pace: PaceProfile
   /** The chosen plan, or null for "leave it". */
   onChoose: (next: HikePlan | null) => void
 }
 
 /**
- * Three outcomes, not one question (#758, wireframe 2b frame 2): every
- * consequence below is computed from the actual re-planned result, so the
- * sheet can never promise a finish the generator did not produce. Nowhere
- * here does "ahead" or "behind" appear - the day changed, and the plan can
- * follow or not; that is the whole framing.
+ * How much slower "Slow the target from here" asks for (#1373, frame 7a).
+ *
+ * @unvalidated. One notch, in the unit the plan is targeted in: two miles
+ * off a miles-a-day target, an hour off a walking-hours one. Nothing
+ * measured it; the design's own example (16 → 14) is where the two miles
+ * come from. What would settle it: how much a hiker who called a day short
+ * actually walks per day afterwards, which lib/dayReach.ts's walked-day
+ * miles could answer once enough recorded trips exist to read it off.
+ */
+export const SLOWER_BY = { miles: 2, walkingHours: 1 } as const
+/**
+ * The floor "Slow the target from here" stops at, in each unit.
+ *
+ * @unvalidated. Five miles and three hours are picked as the least a day
+ * on a long hike can honestly be called a walking day rather than a zero,
+ * which the cascade offers separately; nothing measured it. What would
+ * settle it: the shortest days recorded trips actually log as walked
+ * (lib/dayReach.ts), read for where "a short day" ends and "a zero with a
+ * stroll" begins.
+ */
+const SLOWEST = { miles: 5, walkingHours: 3 } as const
+
+/** One move the cascade offers, with the plan it would make. */
+interface Move {
+  key: 'shift' | 'absorb' | 'slow'
+  name: string
+  cost: string
+  plan: HikePlan
+}
+
+/**
+ * The moves, each with its cost, then the diff before any of them applies
+ * (#758 and #1373 frames 7a-7b): every consequence below is computed from
+ * the actual re-planned result, so the sheet can never promise a finish the
+ * generator did not produce. Nowhere here does "ahead" or "behind" appear -
+ * the day changed, and the plan can follow or not; that is the whole
+ * framing.
+ *
+ * Choosing a move shows WHAT MOVES first - every later day in the one row
+ * component the timeline lists them in, with the word and the note the diff
+ * gives it (lib/cascadeDiff.ts) - and "Apply this" is the commit. One
+ * action; the timeline offers one undo of it (PlanScreen's `lastCascade`).
+ *
+ * Not offered, said here: the design's "Move day 4's end" is calling the
+ * next day at a different stop, which is the call sheet's own job a day
+ * later; and "Cut a day" beyond what Absorb does would be a second
+ * planner call (planDaysExact at days - 1) with no rule for which day.
  */
 function CascadeSheet({
   plan,
@@ -1801,14 +1961,144 @@ function CascadeSheet({
   target,
   options,
   units,
+  elevation,
+  pace,
   onChoose,
 }: CascadeSheetProps) {
   const choices = useMemo(
     () => cascadeChoices(plan, pois, target, options),
     [plan, pois, target, options],
   )
+  const [chosen, setChosen] = useState<Move | null>(null)
 
   const finish = finishLabel(planDayViews(plan))
+  const targetUnit: 'miles' | 'walkingHours' =
+    'walkingHours' in plan.target ? 'walkingHours' : 'miles'
+
+  // "Slow the target from here": the same shift, at one notch less per day.
+  // Absent, not greyed, whenever shift itself is - a pin ahead, or a target
+  // this download cannot price.
+  const slower = useMemo(() => {
+    if (target === null || choices.shift === null) return null
+    const next = Math.max(SLOWEST[targetUnit], target - SLOWER_BY[targetUnit])
+    if (next >= target) return null
+    const outcome = shiftPlan(plan, pois, next, options)
+    return outcome === null ? null : { target: next, outcome }
+  }, [target, choices.shift, targetUnit, plan, pois, options])
+
+  const moves: Move[] = []
+  if (choices.shift !== null) {
+    moves.push({
+      key: 'shift',
+      name: 'Shift the rest out',
+      cost: `Same day lengths · ${
+        choices.shift.finishDate === null
+          ? deltaLabel(choices.shift.deltaDays)
+          : `finish ≈ ${finishLabel(planDayViews(choices.shift.plan))}`
+      }`,
+      plan: choices.shift.plan,
+    })
+  }
+  if (choices.absorb !== null) {
+    moves.push({
+      key: 'absorb',
+      name: 'Absorb the miles',
+      cost: `${finish === null ? 'Same number of days' : `Finish ≈ ${finish}, unchanged`} · the next ${
+        choices.absorb.days
+      } ${choices.absorb.days === 1 ? 'day averages' : 'days average'} ${formatDistance(
+        choices.absorb.averageMi,
+        units,
+      )}`,
+      plan: choices.absorb.plan,
+    })
+  }
+  if (slower !== null && target !== null) {
+    const inTarget = (value: number) =>
+      targetUnit === 'miles' ? formatDistance(value, units, 'trimmed') : `${value} h`
+    const was = inTarget(target)
+    const now = inTarget(slower.target)
+    moves.push({
+      key: 'slow',
+      name: 'Slow the target from here',
+      cost: `${was} → ${now} a day · ${deltaLabel(slower.outcome.deltaDays)} · the days to come only, nothing walked is rewritten`,
+      plan: slower.outcome.plan,
+    })
+  }
+
+  if (chosen !== null) {
+    const diff = diffPlans(plan, chosen.plan)
+    return (
+      <div className="plan__actions" role="dialog" aria-label="What this moves">
+        <p className="plan__actions-title">{chosen.name}</p>
+        <p className="plan__actions-note">What this moves</p>
+        <ol className="plan__diff">
+          {diff.rows.map(({ day, state, wasDate, wasDistanceMi, wasEnd }) => (
+            <li key={day.id}>
+              <SharedDayRow
+                label={day.dayNumber === null ? 'Zero' : `D${day.dayNumber}`}
+                title={
+                  day.zero ? `Zero at ${stopLabel(day.end)}` : `→ ${stopLabel(day.end)}`
+                }
+                distanceMi={Math.abs(day.end.mile - day.start.mile)}
+                {...(elevation === null || day.zero
+                  ? {}
+                  : {
+                      figures: priceLeg(
+                        legFigures(elevation, day.start.mile, day.end.mile, pace),
+                        pace,
+                      ),
+                    })}
+                units={units}
+                state={state === 'kept' ? (day.zero ? 'zero' : 'planned') : state}
+                note={[
+                  wasDate !== null
+                    ? day.date !== null
+                      ? `was ${dayDateLabel(wasDate)} · now ${dayDateLabel(day.date)}`
+                      : `was ${dayDateLabel(wasDate)} · now undated`
+                    : null,
+                  wasDistanceMi !== null
+                    ? `was ${formatDistance(wasDistanceMi, units)}`
+                    : null,
+                  wasEnd !== null ? `was → ${stopLabel(wasEnd)}` : null,
+                  state === 'new' && day.date !== null
+                    ? `new day · ${dayDateLabel(day.date)}`
+                    : null,
+                ]
+                  .filter((part) => part !== null)
+                  .join(' · ')}
+              />
+            </li>
+          ))}
+        </ol>
+        {diff.fewer > 0 && (
+          <p className="plan__actions-note" role="note">
+            {diff.fewer} {diff.fewer === 1 ? 'day fewer' : 'days fewer'} than the plan has
+            now.
+          </p>
+        )}
+        <p className="plan__actions-note">
+          Applying this is one action and one undo. Nothing you have walked changes.
+        </p>
+        <div className="plan__diff-foot">
+          <button
+            type="button"
+            className="plan__action plan__action--quiet"
+            onClick={() => setChosen(null)}
+            aria-label="Back to the other ways"
+          >
+            <span aria-hidden="true">‹ </span>Other ways
+          </button>
+          <button
+            type="button"
+            className="plan__primary"
+            onClick={() => onChoose(chosen.plan)}
+          >
+            Apply this
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="plan__actions" role="dialog" aria-label="The rest of the plan">
@@ -1816,40 +2106,20 @@ function CascadeSheet({
         Today changed. The days after it can follow, or not — your call.
       </p>
 
-      {choices.absorb !== null && (
+      {moves.map((move) => (
         <button
+          key={move.key}
           type="button"
           className="plan__action"
-          onClick={() => onChoose(choices.absorb!.plan)}
+          onClick={() => setChosen(move)}
         >
-          <span className="plan__choice-name">Absorb</span>
-          <span className="plan__choice-line">
-            {finish === null ? 'Same number of days' : `Finish ≈ ${finish}, unchanged`} ·
-            the next {choices.absorb.days}{' '}
-            {choices.absorb.days === 1 ? 'day averages' : 'days average'}{' '}
-            {formatDistance(choices.absorb.averageMi, units)}
-          </span>
+          <span className="plan__choice-name">{move.name}</span>
+          <span className="plan__choice-line">{move.cost}</span>
         </button>
-      )}
-
-      {choices.shift !== null && (
-        <button
-          type="button"
-          className="plan__action"
-          onClick={() => onChoose(choices.shift!.plan)}
-        >
-          <span className="plan__choice-name">Shift</span>
-          <span className="plan__choice-line">
-            Same day sizes ·{' '}
-            {choices.shift.finishDate === null
-              ? deltaLabel(choices.shift.deltaDays)
-              : `finish ≈ ${finishLabel(planDayViews(choices.shift.plan))}`}
-          </span>
-        </button>
-      )}
+      ))}
 
       <button type="button" className="plan__action" onClick={() => onChoose(null)}>
-        <span className="plan__choice-name">Leave it</span>
+        <span className="plan__choice-name">Leave it alone</span>
         <span className="plan__choice-line">
           {choices.leaveTomorrowMi === null
             ? 'Nothing after today'
@@ -1867,6 +2137,18 @@ function CascadeSheet({
         </p>
       )}
     </div>
+  )
+}
+
+/** Whether two plans list the same days with the same ends and dates -
+ *  what "the plan on screen is still the one the cascade made" means, since
+ *  the store may hand back a fresh object for the same plan. */
+function samePlan(a: HikePlan, b: HikePlan): boolean {
+  if (a === b) return true
+  if (a.days.length !== b.days.length || a.stops.length !== b.stops.length) return false
+  return (
+    a.days.every((day, i) => day.id === b.days[i].id && day.date === b.days[i].date) &&
+    a.stops.every((stop, i) => stop.mile === b.stops[i].mile)
   )
 }
 

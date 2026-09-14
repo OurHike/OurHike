@@ -31,8 +31,8 @@
 // screen, the line drawn as the map draws it, the name, and `taken` on the
 // trail the map is about. The maintainer's design handoff asked for it
 // because on the desktop this is a permanent panel beside a map that, since
-// the dot rhythm and the badges, is a sheet of lines only one of which wears
-// its name - and the block is the key to the rest. Rows are sorted the way
+// the badges, is a sheet of lines only one of which wears its name - and
+// the block is the key to the rest. Rows are sorted the way
 // the map ranks them: through-routes first, then the chosen system, then by
 // name. map/trailsInView.ts measures the list on the same settled frame as
 // the counts, so the panel cannot name a trail the canvas is not drawing.
@@ -116,6 +116,8 @@
 // is on lib/legendContents.ts's LegendRow, and the consequence here is that
 // the pin drawn is the solid-rimmed one.
 
+import { useState, type ReactNode } from 'react'
+
 import {
   computeLegendContents,
   GHOSTED_TRAILS_NOTE,
@@ -154,6 +156,11 @@ export interface LegendProps {
    *  panel that is always on screen as an `aria-modal` dialog would tell a
    *  screen-reader user the rest of the app is inert when it is not. */
   persistent?: boolean
+  /** What stands where the title would, on a persistent panel: the rail's
+   *  Legend / In view switch (chrome/MapScreen.tsx, #1374 review), so the
+   *  column beside the map has one head whichever face is up. Ignored on
+   *  the phone's sheet, which keeps its own title and close. */
+  head?: ReactNode
   bbox: BoundingBox
   points: MapPoint[]
   /** Whether a trail from outside the chosen system is on screen (#783), which
@@ -174,6 +181,14 @@ export interface LegendProps {
    * the same shape `.legend__toggle` already has.
    */
   onTakeTrail?: (trail: TrailInView) => void
+  /**
+   * "Your day hikes near here" (#1373, D5): the summonable form of the
+   * trailhead door. DayHikesHere is raised only when the fix happens to be
+   * near a saved start; this lets a hiker ASK, from the one sheet the map
+   * always has. Undefined without a fix to measure from or a saved day hike
+   * to measure to - and then the row is absent rather than dead.
+   */
+  onDayHikesNearHere?: () => void
   hiddenTypes: Set<string>
   onToggleType: (type: string) => void
   /**
@@ -340,24 +355,47 @@ export interface LegendProps {
    * whether or not any of it changed lately, is exactly the kind of rare
    * errand this panel's own download link already exists for - "a hiker
    * opens this all day to ask what is nearby, a handful of times ever to do
-   * this." What is actually NEW gets its own bottom banner on the map screen
-   * instead, which this row has no opinion about.
+   * this." What is actually NEW is a dot on the legend button and a count on
+   * this row (`newNoticeCount`).
    */
   noticeCount?: number
+  /**
+   * How many of them are new - touched in the last 72 hours and not yet
+   * silenced (lib/notices.ts). Said on the row since 2026-09-10, because the
+   * bottom banner that used to say it on the map screen folded into a dot on
+   * the legend button (Header.tsx, the room audit for #1374), and a dot needs
+   * a sentence somewhere: this row is where the door it points at is.
+   */
+  newNoticeCount?: number
   /** Opens the full list (chrome/NoticeList.tsx), rendered by the shell
    *  the same way `onOpenDownloads` is. */
   onOpenNotices?: () => void
 }
 
+/**
+ * How many named trails the block lists before folding (#1373, R10).
+ *
+ * @unvalidated - the review's own number, and a reading of a phone's
+ * height: five rows and the fold sit above the pin grid on a 60% sheet at
+ * 812px, which is the smallest phone this app is tested on. What would
+ * settle it is watching somebody open the legend on a stretch where two
+ * trail systems overlap and counting how many names they read before they
+ * scroll - which nobody has done, and which is the same test the header's
+ * no-blaze-rows note is waiting on.
+ */
+export const NAMED_TRAILS_SHOWN = 5
+
 export function Legend({
   open,
   persistent = false,
+  head,
   bbox,
   points,
   ghostedTrailsDrawn = false,
   trailsInView,
   sheetAppearance,
   onTakeTrail,
+  onDayHikesNearHere,
   hiddenTypes,
   onToggleType,
   onOnlyType,
@@ -385,8 +423,10 @@ export function Legend({
   hasDownload = false,
   downloadActivity = null,
   noticeCount = 0,
+  newNoticeCount = 0,
   onOpenNotices,
 }: LegendProps) {
+  const [allTrails, setAllTrails] = useState(false)
   if (!open && !persistent) return null
 
   // TWO LISTS, AND KEEPING THEM APART IS THE WHOLE OF #723.
@@ -463,90 +503,22 @@ export function Legend({
          keep, which is worse than not claiming it. screens/DownloadsDialog.tsx
          carries the same correction and the argument for it. */
     >
-      <div className="legend__head">
-        <h2 className="legend__title">Legend</h2>
-        {/* A close button on a panel that cannot be reopened is a trap: the
-            control that opens it is hidden at this width precisely because
-            the legend is always there. */}
-        {!persistent && (
-          <button type="button" className="legend__close" onClick={onClose}>
-            <span className="visually-hidden">Close legend</span>
-            <span aria-hidden="true">×</span>
-          </button>
-        )}
-      </div>
-
-      {/* The trails on screen (#1283), first, because the map is lines before
-          it is pins and the sentence under this block explains those lines.
-          One row per named trail, ranked as the map ranks them. */}
-      {trailsInView !== undefined && trailsInView.length > 0 && (
-        <section className="legend__trails" aria-label="Trails in view">
-          <h3 className="legend__title">Trails in view</h3>
-          <ul className="legend__trail-rows">
-            {trailsInView.map((trail) => {
-              const taken = trail.throughRoute && trail.chosen
-              const face = (
-                <>
-                  <TrailLineSwatch
-                    className="legend__swatch"
-                    blazeColor={trail.blazeColor}
-                    throughRoute={trail.throughRoute}
-                    chosen={trail.chosen}
-                    appearance={sheetAppearance}
-                  />
-                  <span className="legend__label">{trail.name}</span>
-                  {/* `taken`, in the slot a count would take, on the trail
-                      the map is about. No mileage on the others - the header
-                      says why the number is absent rather than estimated. */}
-                  {taken && <span className="legend__count">taken</span>}
-                  {/* And the affordance where a row can take its trail and
-                      has not (#1306): a takeable through-route's row is a
-                      button then, and a button that looks like a row is a
-                      control nobody finds. Gated on takeable rather than
-                      throughRoute since #1307 - a through-route this build
-                      cannot measure (the Long Path) earns a badge without
-                      earning this row's button. */}
-                  {onTakeTrail !== undefined && trail.takeable && !taken && (
-                    <span className="legend__count">take</span>
-                  )}
-                </>
-              )
-              return (
-                <li
-                  key={trail.name}
-                  className="legend__trail-row"
-                  aria-label={taken ? `${trail.name} · taken` : trail.name}
-                >
-                  {onTakeTrail === undefined || !trail.takeable ? (
-                    // Only a takeable through-route's row is a control: a
-                    // side trail has no registry trail to take (#1306), and
-                    // neither does a through-route this build cannot measure
-                    // (#1307) - a button that does nothing is worse than a
-                    // row.
-                    face
-                  ) : (
-                    <button
-                      type="button"
-                      className="legend__toggle"
-                      aria-pressed={taken}
-                      onClick={() => onTakeTrail(trail)}
-                    >
-                      {face}
-                    </button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
-        </section>
+      {persistent && head !== undefined ? (
+        head
+      ) : (
+        <div className="legend__head">
+          <h2 className="legend__title">Legend</h2>
+          {/* A close button on a panel that cannot be reopened is a trap: the
+              control that opens it is hidden at this width precisely because
+              the legend is always there. */}
+          {!persistent && (
+            <button type="button" className="legend__close" onClick={onClose}>
+              <span className="visually-hidden">Close legend</span>
+              <span aria-hidden="true">×</span>
+            </button>
+          )}
+        </div>
       )}
-
-      {/* features/NEARBY_TRAILS.md §1's sentence of state - directly under the
-          trail rows it explains (#1283 moved it up from above the pin grid,
-          where it sat because it is about the LINES on the map and everything
-          below it is about the pins). No control accompanies it, and that is
-          the decision rather than an omission. */}
-      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
 
       {/* Below the pin zoom this panel used to render the sentence below, which
           at the opening view is false in both halves: there is plenty here, and
@@ -752,6 +724,30 @@ export function Legend({
         </ul>
       )}
 
+      {/* The way to every ATC notice (#687), moved here from a permanent
+          button across the top of the map screen - it used to render
+          whenever the app held any notice at all, which given ATC almost
+          always has something live was almost always, so a hiker paid map
+          height for it on every visit rather than the times it actually had
+          news. What is genuinely new gets its own bottom banner on the map
+          screen instead; this is the quiet, permanent way to browse
+          everything ATC has posted. DIRECTLY UNDER THE SERIOUS-WARNING ROW
+          since 2026-09-10, the maintainer's call: the grid ends on its two
+          safety rows, and the notices are the same kind of thing as those
+          rows - what is wrong on the trail - so the door to all of them sits
+          where a hiker has just read the key to them, not past the switches
+          and above the downloaded-map block, which answers a different
+          question (#687 is explicit that conflating the two is what this
+          replaced). */}
+      {noticeCount > 0 && onOpenNotices !== undefined && (
+        <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
+          {noticeCount === 1
+            ? 'Read the 1 trail notice'
+            : `Read all ${noticeCount} trail notices`}
+          {newNoticeCount > 0 && ` · ${newNoticeCount} new`}
+        </button>
+      )}
+
       {/* Which categories are drawn. Under the grid rather than in it, because it
           is not a category: it cuts across every row at once. NOT gated on there
           being rows, for exactly the reason the verified control below is not -
@@ -922,25 +918,6 @@ export function Legend({
         </label>
       )}
 
-      {/* The way to every ATC notice (#687), moved here from a permanent
-          button across the top of the map screen - it used to render
-          whenever the app held any notice at all, which given ATC almost
-          always has something live was almost always, so a hiker paid map
-          height for it on every visit rather than the times it actually had
-          news. What is genuinely new gets its own bottom banner on the map
-          screen instead; this is the quiet, permanent way to browse
-          everything ATC has posted, trail-content-adjacent so it sits above
-          the downloaded-map block below rather than inside it - those answer
-          a different question and #687 is explicit that conflating them is
-          what this replaces. */}
-      {noticeCount > 0 && onOpenNotices !== undefined && (
-        <button type="button" className="legend__atc-link" onClick={onOpenNotices}>
-          {noticeCount === 1
-            ? 'Read the 1 trail notice'
-            : `Read all ${noticeCount} trail notices`}
-        </button>
-      )}
-
       {/* THE DOWNLOADED MAP, ALL OF IT, IN ONE BLOCK AT THE FOOT.
           The background choice used to open the panel and the way to the
           download has always closed it, which put the two ends of one question
@@ -959,6 +936,125 @@ export function Legend({
           desktop the panel is full height and this whole block is pushed to the
           bottom of it - see desktop.css, which pushes the block rather than the
           link precisely so the two do not come apart again. */}
+      {/* The trails on screen (#1283), LAST among the rows, above the foot.
+          It opened the panel until 2026-09-10 - "the map is lines before it
+          is pins" - and the maintainer moved it down off the frame: "Trails
+          in View takes up a lot of space". What a hiker opens this panel for
+          all day is the pin key and its switches, and a block of named
+          trails above them pushed that below the fold on a phone. One row
+          per named trail, ranked as the map ranks them; the ask and the
+          ghosting sentence travel with it, since both are about the lines. */}
+      {trailsInView !== undefined && trailsInView.length > 0 && (
+        <section className="legend__trails" aria-label="Trails in view">
+          <h3 className="legend__title">
+            Trails in view
+            {trailsInView.length > NAMED_TRAILS_SHOWN && (
+              <span className="legend__count">
+                {' '}
+                {allTrails ? trailsInView.length : NAMED_TRAILS_SHOWN} of{' '}
+                {trailsInView.length}
+              </span>
+            )}
+          </h3>
+          <ul className="legend__trail-rows">
+            {(allTrails ? trailsInView : trailsInView.slice(0, NAMED_TRAILS_SHOWN)).map(
+              (trail) => {
+                const taken = trail.throughRoute && trail.chosen
+                const face = (
+                  <>
+                    <TrailLineSwatch
+                      className="legend__swatch"
+                      blazeColor={trail.blazeColor}
+                      throughRoute={trail.throughRoute}
+                      chosen={trail.chosen}
+                      appearance={sheetAppearance}
+                    />
+                    <span className="legend__label">{trail.name}</span>
+                    {/* `taken`, in the slot a count would take, on the trail
+                      the map is about. No mileage on the others - the header
+                      says why the number is absent rather than estimated. */}
+                    {taken && <span className="legend__count">taken</span>}
+                    {/* And the affordance where a row can take its trail and
+                      has not (#1306): a takeable through-route's row is a
+                      button then, and a button that looks like a row is a
+                      control nobody finds. Gated on takeable rather than
+                      throughRoute since #1307 - a through-route this build
+                      cannot measure (the Long Path) earns a badge without
+                      earning this row's button. */}
+                    {onTakeTrail !== undefined && trail.takeable && !taken && (
+                      <span className="legend__count">take</span>
+                    )}
+                  </>
+                )
+                return (
+                  <li
+                    key={trail.name}
+                    className="legend__trail-row"
+                    aria-label={taken ? `${trail.name} · taken` : trail.name}
+                  >
+                    {onTakeTrail === undefined || !trail.takeable ? (
+                      // Only a takeable through-route's row is a control: a
+                      // side trail has no registry trail to take (#1306), and
+                      // neither does a through-route this build cannot measure
+                      // (#1307) - a button that does nothing is worse than a
+                      // row.
+                      face
+                    ) : (
+                      <button
+                        type="button"
+                        className="legend__toggle"
+                        aria-pressed={taken}
+                        onClick={() => onTakeTrail(trail)}
+                      >
+                        {face}
+                      </button>
+                    )}
+                  </li>
+                )
+              },
+            )}
+          </ul>
+          {/* THE REST BY NAME, NOT BY BLAZE (#1373, R10). The review condenses
+              the block after five rows and folds the rest "by their blazes";
+              the maintainer took the blaze rows off this panel on 2026-08-25
+              (the header) and this keeps that call: what folds is the tail
+              of the same named list, and the door unfolds it in place. A
+              park like Harriman draws forty lines, and five named rows plus
+              "35 more ›" is a legend; forty rows is a scroll past the pins
+              a hiker opened this sheet for. */}
+          {trailsInView.length > NAMED_TRAILS_SHOWN && (
+            <button
+              type="button"
+              className="legend__ask"
+              aria-expanded={allTrails}
+              onClick={() => setAllTrails((current) => !current)}
+            >
+              {allTrails
+                ? 'Fewer ›'
+                : `${trailsInView.length - NAMED_TRAILS_SHOWN} more, by name ›`}
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* The ask, where the trails are (#1373, D5): a hiker looking at what
+          is around them can ask what of THEIRS is. Opens the day-hike list
+          ordered by distance from the fix; the answer is a list rather than
+          a sentence because "none within half a mile" would be this sheet
+          inventing a threshold the list does not have. */}
+      {onDayHikesNearHere !== undefined && (
+        <button type="button" className="legend__ask" onClick={onDayHikesNearHere}>
+          Your day hikes near here ›
+        </button>
+      )}
+
+      {/* features/NEARBY_TRAILS.md §1's sentence of state - directly under the
+          trail rows it explains (#1283 moved it up from above the pin grid,
+          where it sat because it is about the LINES on the map and everything
+          below it is about the pins). No control accompanies it, and that is
+          the decision rather than an omission. */}
+      {ghostedTrailsDrawn && <p className="legend__note">{GHOSTED_TRAILS_NOTE}</p>}
+
       {/* Who looks after the ground under the hiker (#598).
           features/CORRIDOR_VIEW.md leaves open whether a club section should
           be tappable above the seam; this is the cheap half of the answer -

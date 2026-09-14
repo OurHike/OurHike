@@ -17,7 +17,8 @@
 // which is possible here only because nothing in this drive needs data the
 // preview does not have — the whole reason this screen is photographable and
 // the waypoint card of #953 is not.
-export const caption = "What you've put back — the impact panel (#969)"
+export const caption =
+  "What you've put back — the impact panel, after the app has been closed and reopened (#969)"
 export const alt =
   'The Volunteer page scrolled to a panel headed What you have put back, subtitled Kept for you seen by no one: two tiles reading 1 Day out and 3 Hours you wrote down, the second carrying 3 not yet confirmed by a club inside it, then a line saying field notes and water reports are not counted because the phone forgets what it filed, and a ticked Show what I have put back checkbox'
 
@@ -39,6 +40,23 @@ export default async function drive(page) {
   // either way, which is the whole point of that ordering.
 
   await page.getByRole('button', { name: 'Not now' }).click()
+
+  // AND THEN THE APP IS CLOSED AND REOPENED, which is the part of this shot
+  // that was not true until 2026-09-11. The logged day went to the outbox and
+  // was echoed into React state, and the echo was all the logbook read - so a
+  // volunteer who logged a day without an account and came back later found
+  // "Your hours" empty and this panel gone, while the reports row above still
+  // said "1 waiting to send". The section promises the opposite in its own
+  // copy: a day "is claimed in your name until a club confirms it - and it
+  // stays yours either way".
+  //
+  // A reload rather than a second page: this recipe's own seed is an init
+  // script the runner re-applies on every navigation, and the record lives in
+  // IndexedDB, which a reload keeps. So the frame below is the logbook AFTER
+  // a restart, which is the thing worth photographing.
+  await page.reload({ waitUntil: 'load' })
+  await page.getByRole('tab', { name: 'More' }).click()
+  await page.getByRole('button', { name: /volunteer/i }).click()
 
   // The panel itself, by the heading that IS the change. Scrolling to it rather
   // than to a pixel offset: the hours form and the record list above it grow

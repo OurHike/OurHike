@@ -37,8 +37,18 @@ export interface SeriousWarning {
   id: string
   type: string
   note: string
-  mile: number
-  confirmedAt: Date
+  /** Where the pin was drawn, on the centerline - or null for a report the
+   *  download could not place, which then prints no mile line (D13). */
+  mile: number | null
+  /** When a moderator confirmed it (`verified_at`), or null where this
+   *  phone's copy carries no date - which is every copy read from the
+   *  published baseline, since export_conditions.py does not bake the
+   *  field (lib/api.ts). The badge still says who stood behind the claim,
+   *  and says that the date is missing rather than inventing one or
+   *  falling silent about it: a hiker weighing a claim about a person is
+   *  entitled to know when somebody last stood behind it, and "the download
+   *  does not say" is the honest answer here. */
+  confirmedAt: Date | null
 }
 
 export interface SeriousWarningSheetProps {
@@ -58,22 +68,26 @@ export function SeriousWarningSheet({ warning, onClose }: SeriousWarningSheetPro
       </div>
 
       <p className="warning-sheet__badge">
-        {`Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
-          'en-US',
-          {
-            month: 'long',
-            day: 'numeric',
-            timeZone: 'UTC',
-          },
-        )}`}
+        {warning.confirmedAt === null
+          ? 'Confirmed by club moderators · date not on this download'
+          : `Confirmed by club moderators · ${warning.confirmedAt.toLocaleDateString(
+              'en-US',
+              {
+                month: 'long',
+                day: 'numeric',
+                timeZone: 'UTC',
+              },
+            )}`}
       </p>
 
-      <p className="closure-sheet__range">
-        {`mi ${warning.mile.toLocaleString('en-US', {
-          minimumFractionDigits: 1,
-          maximumFractionDigits: 1,
-        })}`}
-      </p>
+      {warning.mile !== null && (
+        <p className="closure-sheet__range">
+          {`mi ${warning.mile.toLocaleString('en-US', {
+            minimumFractionDigits: 1,
+            maximumFractionDigits: 1,
+          })}`}
+        </p>
+      )}
 
       <p className="warning-sheet__note">{warning.note}</p>
 

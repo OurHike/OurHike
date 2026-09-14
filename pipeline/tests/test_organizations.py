@@ -196,6 +196,29 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     any map. When that decision is taken and recorded they become
     `stated_by_org`, beside OPRHP's.
 
+    WHAT MOVED ON 2026-09-11, and it is the paragraph above coming true:
+    New Jersey's two layers went `unresolved` -> `stated_by_org`, 3 -> 1 on
+    that column and 8 -> 10 on this file's other one. The maintainer took the
+    decision the block was waiting for, and the two conditions were built
+    rather than declared satisfied: `attribution` on both entries is now
+    NJDEP's required credit/disclaimer sentence byte for byte, and
+    export_sources.py publishes the agreement itself (`terms_verbatim`) and
+    where it was read (`terms_source`) on the steward record, so it reaches
+    the Sources screen with the lines rather than being summarised away.
+    njdep_licence's `basis` carries what that does and does not settle -
+    "all the metadata provided" is NJDEP's phrase and plausibly reaches
+    further than one agreement and one link, and NJDEP has not been asked.
+
+    SO `stated_by_org` NOW COVERS THREE KINDS OF THING, not two, and the
+    paragraph above about it flattering the registry gets one more entry:
+    a federal public-domain work, terms somebody published and read, and now
+    terms somebody published whose conditions this project had to BUILD
+    something to meet. The third is the strongest of the three - it is the
+    only one where the organization named a condition and the code answers it
+    - and it is also the one most able to rot, because the condition is met by
+    a screen that somebody could simplify away. tests/test_export_sources.py's
+    `TestTermsTravelWithTheData` is what fails if they do.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -203,4 +226,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 8, "unresolved": 3}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 10, "unresolved": 1}

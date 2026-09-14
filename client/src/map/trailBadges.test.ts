@@ -3,6 +3,7 @@ import { MockMap } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import {
   attachTrailBadgeImages,
+  registryNameForSource,
   BADGE_FIT_PROPERTY,
   BADGE_SOURCES,
   bareImageId,
@@ -25,6 +26,7 @@ import {
   trailMarkImageId,
   WHITE_CHIP_GROUND,
 } from './trailBadges'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { PRIMARY_TRAIL_SOURCES } from './style'
 import { THROUGH_ROUTE_SOURCES } from './trailLabels'
 import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from '../lib/blaze'
@@ -48,6 +50,20 @@ function pixel(
 function rgb(hex: string): [number, number, number] {
   return [...parseHex(hex)] as [number, number, number]
 }
+
+describe('the layer', () => {
+  it('is allowed to overlap, because the placer already kept it clear (the review of #1374)', () => {
+    const layout = buildTrailBadgeLayer({ theme: 'light' }).layout as Record<
+      string,
+      unknown
+    >
+    expect(layout['icon-allow-overlap']).toBe(true)
+    expect(layout['text-allow-overlap']).toBe(true)
+    // Still claiming its box, so what is placed after it yields to it.
+    expect(layout['icon-ignore-placement']).toBeUndefined()
+    expect(layout['text-ignore-placement']).toBeUndefined()
+  })
+})
 
 describe('who earns a badge', () => {
   it('is exactly the through-route tier the style keys width and sort order off', () => {
@@ -237,5 +253,50 @@ describe('attachTrailBadgeImages', () => {
     map.layerIds = [TRAIL_BADGE_LAYER_ID]
     map.emit('styledata')
     expect(map.images.size).toBe(0)
+  })
+})
+
+describe('registryNameForSource', () => {
+  // The fallback the published sketch below the seam needs: 38 features
+  // carrying source, blaze and status and no name at all (read live
+  // 2026-09-11), because the publish that would refresh it is held back with
+  // the network file it sketches.
+  it('names a source the badge already marks', () => {
+    expect(registryNameForSource('nynjtc_long_path')).toBe('Long Path')
+    expect(registryNameForSource('centerline')).toBe('Appalachian Trail')
+  })
+
+  it('names nothing else - a park feed stays unnamed, which is what keeps it off the list', () => {
+    expect(registryNameForSource('oprhp_trails')).toBeNull()
+    expect(registryNameForSource('dec_hiking_trails')).toBeNull()
+    expect(registryNameForSource('')).toBeNull()
+    expect(registryNameForSource(null)).toBeNull()
+    expect(registryNameForSource(undefined)).toBeNull()
+  })
+
+  it('answers for exactly the sources that carry a mark, so the two cannot drift', () => {
+    // A source gains a name the moment it gains a mark, and never before:
+    // both read BADGE_MARK_BY_SOURCE, which is the file's one answer to
+    // "which registry trail is this line".
+    for (const source of BADGE_SOURCES) {
+      expect(trailMarkImageId(source)).not.toBeNull()
+      expect(registryNameForSource(source)).not.toBeNull()
+    }
+  })
+
+  it('stands down at the waypoint seam, so a pill never competes with a pin', () => {
+    // The maintainer, 2026-09-14: "when a user zooms in close enough to see a
+    // POI, the trail pills (AT & LP) should hide." The ceiling is the seam
+    // constant itself and not a literal, so the two cannot drift apart and
+    // leave pills on a map that has just filled with pins.
+    const layer = buildTrailBadgeLayer({ theme: 'light' })
+
+    expect(layer.maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    // maplibre reads `maxzoom` as exclusive: the badge is gone on the FIRST
+    // frame a waypoint can draw, rather than sharing that frame with it.
+    expect(layer.maxzoom).not.toBeGreaterThan(POI_PIN_MIN_ZOOM)
+    // And it still has no floor of its own - the line layers' floors are the
+    // badge's (the review of #1374), which this must not quietly reintroduce.
+    expect(layer.minzoom).toBeUndefined()
   })
 })

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FIT_PADDING } from './map/MapView'
 import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
-import { BLAZE_DOTTED_LAYER_ID } from './map/style'
+import { BLAZE_UNTAKEN_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, getMany, set, setMany, update } from 'idb-keyval'
@@ -147,11 +147,16 @@ function withDownloadedArchive() {
 }
 
 async function completeOnboarding(user: ReturnType<typeof userEvent.setup>) {
-  await screen.findByText('What OurHike is')
-  await user.click(screen.getByRole('button', { name: 'Continue' }))
+  await screen.findByText('A map that works where there is no signal.')
+  await user.click(screen.getByRole('button', { name: 'Get set up' }))
+
+  // Past the mode card with nothing chosen, then the place card with no
+  // place (#1373; the mode card is the review of #1374's).
+  await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
+  await user.click(screen.getByRole('button', { name: /^skip — i/i }))
   // The size step's own primary since #1054 - it also starts the download,
   // which these shell tests let run into their stubbed fetch.
-  await user.click(screen.getByRole('button', { name: 'Keep going' }))
+  await user.click(screen.getByRole('button', { name: /^download/i }))
   await user.click(screen.getByRole('button', { name: /not now/i }))
 }
 
@@ -190,7 +195,9 @@ describe('App shell', () => {
   it('opens on onboarding the very first time', async () => {
     render(<App />)
 
-    expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
+    expect(
+      await screen.findByText('A map that works where there is no signal.'),
+    ).toBeInTheDocument()
   })
 
   it('builds nothing behind the first-run steps, because nothing is behind them (#1324)', async () => {
@@ -224,7 +231,7 @@ describe('App shell', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
     // Not only about stray taps: MapView attaches a locate control, and
     // reaching it would raise the OS location prompt before the step whose
     // whole job is to explain why we are asking.
@@ -284,7 +291,9 @@ describe('App shell', () => {
     expect(
       await screen.findByRole('tab', { name: 'Today', selected: true }),
     ).toBeInTheDocument()
-    expect(screen.queryByText('What OurHike is')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('A map that works where there is no signal.'),
+    ).not.toBeInTheDocument()
   })
 
   it('needs no re-fit on a phone, because the card never framed the map (#1296/#1324)', async () => {
@@ -417,9 +426,12 @@ describe('App shell', () => {
     // skipping the onboarding step leaves behind, and what the default
     // preference is. The header used to tell them "Looking for GPS…" for the
     // life of the install, about a watch that had never started and never
-    // would (#312).
+    // would (#312). The sentence is the map plate's: Today's header prints
+    // the mile or nothing since the maintainer's read of its frame
+    // (2026-09-10), so the plate is where this honesty is read.
     returningHiker()
     render(<App />)
+    await openMapTab()
 
     expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
     expect(screen.queryByText(/looking for gps/i)).not.toBeInTheDocument()
@@ -438,10 +450,25 @@ describe('App shell', () => {
       download_choice_made: true,
       location_permission_requested: true,
     })
-    render(<App />)
+    // A watch that starts and never answers: jsdom has no geolocation at
+    // all, which the plate reports as "No GPS on this phone" - settled, and
+    // not the case this test is about.
+    Object.defineProperty(navigator, 'geolocation', {
+      value: { watchPosition: () => 1, clearWatch: () => {} },
+      configurable: true,
+    })
+    try {
+      render(<App />)
+      await openMapTab()
 
-    expect(await screen.findByText(/looking for gps/i)).toBeInTheDocument()
-    expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+      expect(await screen.findByText(/looking for gps/i)).toBeInTheDocument()
+      expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
+    } finally {
+      // Unmount before the stub goes: the watch's teardown calls clearWatch
+      // on whatever navigator holds at that moment.
+      cleanup()
+      Reflect.deleteProperty(navigator, 'geolocation')
+    }
   })
 
   it('moves between the two tabs', async () => {
@@ -1095,17 +1122,17 @@ describe('taking a trail (#1306)', () => {
     },
   }
 
-  it('takes nothing on first launch: the map is built with every line dotted', async () => {
+  it('takes nothing on first launch: the map is built with every line on the untaken side', async () => {
     returningHiker()
     render(<App />)
     await openMapTab()
     await waitFor(() => expect(MockMap.live.length).toBe(1))
     const [map] = MockMap.live
     const style = map.options.style as { layers: Array<{ id: string; filter?: unknown }> }
-    const dotted = style.layers.find((layer) => layer.id === BLAZE_DOTTED_LAYER_ID)
-    // The dotted side's filter is the negation of an empty membership: every
-    // line, the A.T. included.
-    expect(JSON.stringify(dotted?.filter)).toContain('"literal",[]')
+    const untaken = style.layers.find((layer) => layer.id === BLAZE_UNTAKEN_LAYER_ID)
+    // The untaken side's filter is the negation of an empty membership:
+    // every line, the A.T. included.
+    expect(JSON.stringify(untaken?.filter)).toContain('"literal",[]')
   })
 
   it('opens the hike picker from a tap on its badge, rather than taking it silently (#1352)', async () => {
@@ -1146,7 +1173,7 @@ describe('taking a trail (#1306)', () => {
     // A settled frame with the A.T. across it, as map/trailsInView.ts reads
     // one: identity projection, the line inside the viewport.
     map.bounds = { west: 0, south: 0, east: 390, north: 844 }
-    map.renderedFeatures.set(BLAZE_DOTTED_LAYER_ID, [AT_LINE])
+    map.renderedFeatures.set(BLAZE_UNTAKEN_LAYER_ID, [AT_LINE])
     await act(async () => {
       map.emit('idle')
     })
@@ -1532,7 +1559,9 @@ describe('a storage read that fails', () => {
 
     render(<App />)
 
-    expect(await screen.findByText('What OurHike is')).toBeInTheDocument()
+    expect(
+      await screen.findByText('A map that works where there is no signal.'),
+    ).toBeInTheDocument()
   })
 })
 
@@ -1576,7 +1605,10 @@ describe('the desktop planning station (#1054)', () => {
     const { container } = render(<App />)
 
     // The Today screen renders directly - no map region behind it.
-    expect(await screen.findByText(/location is off/i)).toBeInTheDocument()
+    await screen.findByRole('tab', { name: 'Today', selected: true })
+    expect(
+      await screen.findByText(/^Good (morning|afternoon|evening)/),
+    ).toBeInTheDocument()
     expect(container.querySelector('.map-screen__journal')).toBeNull()
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
   })
@@ -1601,7 +1633,7 @@ describe('the desktop planning station (#1054)', () => {
   it('keeps the mode switch out of the phone bar, which has no room for it', async () => {
     returningHiker()
     render(<App />)
-    await screen.findByText(/location is off/i)
+    await screen.findByRole('tab', { name: 'Today', selected: true })
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
     expect(within(nav).queryByRole('radiogroup')).toBe(null)

@@ -61,6 +61,7 @@ function draftOf(stretches: number[]): DayHikeDraft {
     segments: stretches.map((count) => Array.from({ length: count }, tap)),
     refusal: null,
     looped: false,
+    outAndBack: false,
     droppedMiles: 0,
   }
 }

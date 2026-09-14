@@ -31,11 +31,30 @@ describe('placing the waypoint card', () => {
     expect(placed.top).toBe(60 + PIN_HALF + CARD_GAP_PX)
   })
 
-  it('stays above when neither side fits - the bottom edge hides everything, the top edge only the head', () => {
-    const shortCanvas = { width: 400, height: 100 }
-    const placed = placePoiCard({ x: 200, y: 50 }, CARD, shortCanvas)
+  it('takes the roomier side and caps itself to it when neither side holds the whole card', () => {
+    // A 375×667 phone: about 470px of map between the header and the tab
+    // bar, and a shelter's peek of about 410px once it carries the answer
+    // row (#1122). The rule this replaced put the card above regardless, on
+    // the reasoning that the top edge only hides the head - and the head is
+    // the name and the close button, which the room audit of 2026-09-10
+    // (#1374) found 25px above the screen.
+    const tall = { width: 264, height: 410 }
+    const phone = { width: 375, height: 470 }
 
-    expect(placed.top).toBe(50 - PIN_HALF - CARD_GAP_PX - CARD.height)
+    const above = placePoiCard({ x: 200, y: 240 }, tall, phone)
+    expect(above.top).toBe(CARD_EDGE_MARGIN_PX)
+    expect(above.maxHeight).toBe(240 - PIN_HALF - CARD_GAP_PX - CARD_EDGE_MARGIN_PX)
+    // Capped, the card still ends clear of the pin it describes.
+    expect(above.top + above.maxHeight!).toBe(240 - PIN_HALF - CARD_GAP_PX)
+
+    const below = placePoiCard({ x: 200, y: 200 }, tall, phone)
+    expect(below.top).toBe(200 + PIN_HALF + CARD_GAP_PX)
+    expect(below.maxHeight).toBe(phone.height - below.top - CARD_EDGE_MARGIN_PX)
+  })
+
+  it('leaves the height alone whenever one side holds the whole card', () => {
+    expect(placePoiCard({ x: 200, y: 400 }, CARD, CANVAS).maxHeight).toBeUndefined()
+    expect(placePoiCard({ x: 200, y: 60 }, CARD, CANVAS).maxHeight).toBeUndefined()
   })
 
   it('slides right rather than hanging off the left edge', () => {

@@ -14,9 +14,9 @@
 // trail most needs saying.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { appHarness, openMapTab } from './test/appHarness'
+import { appHarness, latOfMile, openMapTab, stubDesktop } from './test/appHarness'
 import { PLANNED_HIKE_KEY } from './lib/plannedHike'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
@@ -55,6 +55,9 @@ vi.mock('./lib/api', () => ({
   // Disputes ride the same read as the notes they are computed from (#876).
   fetchDisputes: vi.fn(async () => []),
   fetchReports: vi.fn(async () => []),
+  // PoiCard -> useCommunityPhotos runs on mount; a factory missing it throws
+  // the card into the map boundary (App.dayHike.test.tsx's note).
+  fetchPoiPhotos: vi.fn(async () => []),
 }))
 
 // onLine because the map's own reads are gated on it (App.tsx): a navigator
@@ -67,7 +70,9 @@ const app = appHarness({
 const store = app.store
 
 beforeEach(() => {
-  app.onboard({ location_permission_requested: true })
+  // The A.T. taken (lib/takenTrail.ts, the review of #1374): a hike is
+  // optional, and the mile these cases read is the taken trail's.
+  app.onboard({ location_permission_requested: true }, { takenTrail: 'AT' })
   app.putTrailData()
 })
 
@@ -228,5 +233,80 @@ describe('setting one', () => {
     expect(
       await screen.findByRole('button', { name: /say where you are walking/i }),
     ).toBeInTheDocument()
+  })
+})
+
+/**
+ * A viewport wide enough for the desktop layout (lib/useDesktop.ts) -
+ * App.test.tsx's helper, and its reason: matched on the query rather than
+ * answering true to everything, because this shell asks `matchMedia` other
+ * questions too (standalone, fine pointer).
+ */
+function onADesktop() {
+  stubDesktop()
+}
+
+/** Five miles up the trail from the one fix above, so the journal has a row. */
+const MIDDLE_SHELTER = {
+  id: 's10',
+  type: 'shelter',
+  name: 'Middle Shelter',
+  lat: latOfMile(10),
+  lon: -77,
+  confidence: 'high',
+  mile: 10.2,
+}
+
+// --- A journal row, tapped (#1373, frame 16a) ------------------------------
+//
+// The row opens the waypoint's card on the map, framed - a search result's
+// behaviour (#527). WHICH TAB IT LANDS ON is the form factor's question: a
+// phone's Today covers the map, so the card can only be seen on the Map tab;
+// a desktop's Today reads beside the map (#1054), so the map is already
+// there - and switching tabs there did not move it, it unmounted the journal
+// the row was tapped in (the inventory's C5). The design's "tapping a row
+// moves the map instead of replacing the list" is this pair.
+describe('a tap on a row of the journal', () => {
+  it('keeps the desktop on Today, with the journal still beside the card', async () => {
+    onADesktop()
+    app.putTrailData({ pois: [MIDDLE_SHELTER] })
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('region', { name: /trail map/i })
+    await reportOneFix()
+
+    const journal = container.querySelector('.map-screen__journal')
+    expect(journal).not.toBeNull()
+    await user.click(
+      await within(journal as HTMLElement).findByRole('button', {
+        name: /Middle Shelter/,
+      }),
+    )
+
+    expect(await screen.findByRole('dialog', { name: 'Waypoint' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Today', selected: true })).toBeInTheDocument()
+    expect(container.querySelector('.map-screen__journal .today')).not.toBeNull()
+  })
+
+  it('lands a phone on the Map tab, which is the only place the card can be seen', async () => {
+    app.putTrailData({ pois: [MIDDLE_SHELTER] })
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    // The map has to be reached once for the watch to start, then Today is
+    // its own screen again with the map held behind it.
+    await openMapTab()
+    await screen.findByRole('region', { name: /trail map/i })
+    await reportOneFix()
+    await user.click(screen.getByRole('tab', { name: 'Today' }))
+
+    const today = container.querySelector('.today')
+    expect(today).not.toBeNull()
+    await user.click(
+      await within(today as HTMLElement).findByRole('button', { name: /Middle Shelter/ }),
+    )
+
+    expect(await screen.findByRole('dialog', { name: 'Waypoint' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Map', selected: true })).toBeInTheDocument()
+    expect(container.querySelector('.map-screen__journal')).toBeNull()
   })
 })

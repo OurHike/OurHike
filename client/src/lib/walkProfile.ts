@@ -113,6 +113,17 @@ export function walkProfile(
   steps: readonly WalkStep[],
   profiles: EdgeProfiles,
 ): ElevationSample[] | null {
+  // INDEX-ALIGNED OR NOTHING. The sidecar is one array per edge, and the
+  // only thing that makes `profiles[i]` the profile OF `edges[i]` is that
+  // the two were published together at the same length. A sidecar of a
+  // different length is one that was not (#1313 found production carrying
+  // a 42,103-entry sidecar against a 466,966-edge graph), and reading it by
+  // index would draw some other edge's climb under this walk - confidently,
+  // in the one figure a hiker uses to decide whether they beat the dark. A
+  // shorter sidecar already returned null below by running off its end;
+  // this makes the rule the check rather than the accident.
+  if (profiles.length !== graph.edges.length) return null
+
   const samples: ElevationSample[] = []
   let segment: number | null = null
 

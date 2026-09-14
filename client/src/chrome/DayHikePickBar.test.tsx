@@ -13,7 +13,7 @@
 //
 //   The refusal is shown, and #931's LATER row is drawn rather than omitted.
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { OFF_NETWORK_REFUSAL, type DayHikeDraft } from '../lib/dayHikeDraft'
@@ -93,6 +93,7 @@ const DRAFT: DayHikeDraft = {
   segments: [[]],
   refusal: null,
   looped: false,
+  outAndBack: false,
   droppedMiles: 0,
 }
 
@@ -123,11 +124,13 @@ function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}
     orgLabel,
     walking: flatWalk(135),
     onUndo: vi.fn(),
-    onCloseLoop: vi.fn(),
+    shape: 'point-to-point' as const,
+    shapes: ['point-to-point', 'out-and-back', 'loop'] as const,
+    onShape: vi.fn(),
     onStartStretch: vi.fn(),
     onDone: vi.fn(),
+    onBackToStepOne: vi.fn(),
     onCancel: vi.fn(),
-    canCloseLoop: true,
     canStartNew: false,
     drawing: false,
     onToggleDraw: vi.fn(),
@@ -138,6 +141,15 @@ function renderBar(overrides: Partial<Parameters<typeof DayHikePickBar>[0]> = {}
 }
 
 describe('the running total', () => {
+  it('leaves the figures to the column when told to, and keeps everything else (the review of #1374)', () => {
+    renderBar({ figures: false })
+    expect(screen.queryByText(/1 leg ·|legs ·/)).toBeNull()
+    // The controls and the organizations' tally are the bar's alone.
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Shape' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Use this route/ })).toBeInTheDocument()
+  })
+
   it('counts legs and prints the distance', () => {
     renderBar()
 
@@ -210,13 +222,19 @@ describe('what it refuses', () => {
     )
   })
 
-  it('offers no Done at all while the walk has no route', () => {
+  it('offers no way on at all while the walk has no route', () => {
     // Not a disabled button - LineSheet.tsx's rule, which the A.T. builder now
     // carries too: a control that looks pressable and is not teaches a hiker
     // the app is broken. A control that does not apply is absent.
     renderBar({ status: { kind: 'started' } })
 
-    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Use this route' }),
+    ).not.toBeInTheDocument()
+    // The way back is always there: it costs nothing (#1373, R3).
+    expect(
+      screen.getByRole('button', { name: 'Back to Hike, step 1' }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -227,28 +245,53 @@ describe('the controls', () => {
     expect(screen.queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
   })
 
-  it('undoes, closes the loop, finishes and cancels', () => {
+  it('undoes, shapes the walk, goes on, goes back and cancels', () => {
     const props = renderBar({ draft: { ...DRAFT, segments: [[{} as never]] } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
     expect(props.onUndo).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Close the loop' }))
-    expect(props.onCloseLoop).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('radio', { name: 'Loop' }))
+    expect(props.onShape).toHaveBeenCalledWith('loop')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use this route' }))
     expect(props.onDone).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to Hike, step 1' }))
+    expect(props.onBackToStepOne).toHaveBeenCalledTimes(1)
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(props.onCancel).toHaveBeenCalledTimes(1)
   })
+})
 
-  it('offers close-the-loop only when there is a loop to close', () => {
-    renderBar({ canCloseLoop: false })
+describe('the shape (#1373, frame 4a)', () => {
+  it('offers the three shapes in the design’s order, the current one checked', () => {
+    renderBar({ shape: 'out-and-back' })
 
+    const group = screen.getByRole('radiogroup', { name: 'Shape' })
     expect(
-      screen.queryByRole('button', { name: 'Close the loop' }),
-    ).not.toBeInTheDocument()
+      within(group)
+        .getAllByRole('radio')
+        .map((radio) => radio.textContent),
+    ).toEqual(['Point to point', 'Out and back', 'Loop'])
+    expect(within(group).getByRole('radio', { name: 'Out and back' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    )
+    expect(within(group).getByRole('radio', { name: 'Loop' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    )
+  })
+
+  it('is absent, never greyed, while there is nothing to shape (D10)', () => {
+    // A single tap, or a walk across a gap: lib/dayHikeDraft.ts offers no
+    // shape and the row goes, the way "Close the loop" always did.
+    renderBar({ shapes: [] })
+
+    expect(screen.queryByRole('radiogroup', { name: 'Shape' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Close the loop')).not.toBeInTheDocument()
   })
 })
 
@@ -383,7 +426,7 @@ describe('drawing, and the gap a hiker takes on (#983)', () => {
       status: routedFrom(ROUTE, 0.3),
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use this route' }))
 
     expect(props.onDone).not.toHaveBeenCalled()
     expect(screen.getByText(/cannot say it is walkable/)).toBeInTheDocument()
@@ -398,7 +441,7 @@ describe('drawing, and the gap a hiker takes on (#983)', () => {
       status: routedFrom(ROUTE, 0.3),
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use this route' }))
     fireEvent.click(screen.getByRole('button', { name: 'Back to the map' }))
 
     expect(props.onDone).not.toHaveBeenCalled()
@@ -410,7 +453,7 @@ describe('drawing, and the gap a hiker takes on (#983)', () => {
     // this one has to keep its weight for the walks that do cross something.
     const props = renderBar({ status: routedFrom(ROUTE, 0) })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use this route' }))
 
     expect(props.onDone).toHaveBeenCalledTimes(1)
     expect(screen.queryByText(/cannot say it is walkable/)).not.toBeInTheDocument()

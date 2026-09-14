@@ -12,33 +12,36 @@
 // only thing near the hiker's dot - it is one line in a thicket of them, and
 // width alone leads by 2 px in a forty-line park.
 //
-// This module adds the third channel NEARBY_TRAILS.md §1 specifies - OPACITY -
-// and, since #1283, the FOURTH: a dot rhythm for every line that is not the
-// chosen system's. The chosen trail stays widest and last-drawn, and hue still
-// comes from the reviewed blaze mapping. Ghosting is deliberately an opacity
-// fact rather than a hue fact, and that is the argument that beat the
-// alternatives: under red-light mode every blaze collapses to one hue
-// (MAP_STYLE_SPEC.md), so a halo or a hue shift would have erased the
-// distinction in exactly the light where a hiker most needs it. An opacity
-// difference survives red light, greyscale (WIREFRAMES.md `9d`), glare and
-// colour vision deficiency alike.
+// This module adds the third channel NEARBY_TRAILS.md §1 specifies - OPACITY.
+// The chosen trail stays widest and last-drawn, and hue still comes from the
+// reviewed blaze mapping. Ghosting is deliberately an opacity fact rather
+// than a hue fact, and that is the argument that beat the alternatives:
+// under red-light mode every blaze collapses to one hue (MAP_STYLE_SPEC.md),
+// so a halo or a hue shift would have erased the distinction in exactly the
+// light where a hiker most needs it. An opacity difference survives red
+// light, greyscale (WIREFRAMES.md `9d`), glare and colour vision deficiency
+// alike.
 //
-// THE DOT RHYTHM IS A FOURTH CHANNEL, NOT A REPLACEMENT FOR THE THIRD. "Lines
-// stay solid (no dash rhythms)" was this header's own sentence until #1283,
-// and the reason it changed is the opening camera: at z4 over the whole
-// country every published trail was a solid 0.8 px thread in its blaze hue,
-// and opacity alone could not say which of them the map was about. The
-// maintainer's design handoff (2026-09-08, chosen from six drawn directions)
-// makes the taken trail the ONLY solid line and everything else a dot
-// rhythm. Opacity is unaffected and still applies to both halves of the
-// split - the ghosting argument above survives a dash pattern untouched.
+// LINES STAY SOLID (NO DASH RHYTHMS). That was this header's own sentence
+// until #1283, which made every line outside the chosen system a dot rhythm
+// - the maintainer's design handoff of 2026-09-08, answering an opening
+// camera on which every published trail was a solid 0.8 px thread and
+// opacity alone could not say which the map was about - and it is the
+// sentence again since 2026-09-10, when the maintainer took the dots back
+// off a Hudson Highlands frame at z13 ("the dashes are distracting"). What
+// #1283 left behind and still holds is the opening camera's weight: an
+// untaken line below the seam draws at the network's far weight rather than
+// its own tier (map/style.ts's untakenTrailWidthExpression), and the taken
+// trail draws over it. map/style.ts's header, rule 2, has the whole history.
 //
-// WHY IT IS A LAYER SPLIT AND NOT A PAINT PROPERTY: `line-dasharray` is not
-// data-driven. It takes zoom expressions only, so `['case', isNearby, [0, 2],
-// ...]` is not something MapLibre will honour per feature. So the rule is two
+// WHY IT IS STILL A LAYER SPLIT: it was made one because `line-dasharray`
+// is not data-driven - it takes zoom expressions only, so a per-feature
+// dash was not something MapLibre would honour - and it stays one because
+// its two halves are named in every tap handler, probe and test, and what
+// changed on 2026-09-10 was the drawing, not the names. The rule is two
 // FILTERS, built here from CHOSEN_SYSTEM_SOURCES so that admitting a source
 // cannot leave one of them behind, and map/style.ts draws each side of the
-// split with the same builder and a different dasharray.
+// split with the same builder and a different width taper below the seam.
 //
 // WHY THIS FILE OWNS THE SOURCE LIST AND style.ts IMPORTS IT
 //
@@ -67,6 +70,7 @@
  * on this canvas so it can be argued with, not a value these frames decide."
  * Treat a number arrived at here as a starting point a reviewer may move.
  */
+import { SHARED_GROUND_EXCLUDED } from './sharedGround'
 import { TRAILS } from '../lib/trails'
 
 export const NEARBY_TRAIL_OPACITY = 0.45
@@ -122,8 +126,8 @@ export const CHOSEN_SYSTEM_SOURCES: readonly string[] = ['centerline', 'side_tra
  * (#1306 - the handoff's `chosenSystemSources`, "was a constant").
  *
  * Null - nothing taken, which is first launch - answers an EMPTY list, and
- * that is the all-dotted state: no line passes chosenSystemFilter(), every
- * line falls to the dotted side, and nothing is ghosted, because ghosting
+ * that is the all-untaken state: no line passes chosenSystemFilter(), every
+ * line falls to the untaken side, and nothing is ghosted, because ghosting
  * says which system a line belongs to and there is no system to belong to.
  * Reasoned from the prototype rather than measured on a phone: it draws
  * every line at 0.92 with nothing taken against 0.82 once one is. The A.T.
@@ -230,21 +234,6 @@ export function nearbyTrailOpacityExpression(
 }
 
 /**
- * Dot rhythm for a line that is not the chosen system's (#1283).
- *
- * DASH UNITS, so this is 2x the line's own width whatever that width is, and
- * `line-cap: round` turns the zero-length dash into a round dot: dots of the
- * line's diameter at a pitch of two diameters. That is the prototype's
- * `stroke-dasharray: 0 <2.2 x width>` to within the rounding MapLibre's dash
- * atlas does anyway.
- *
- * The casing under a dotted line takes a DIFFERENT dasharray for the same
- * pitch - see map/style.ts's NEARBY_TRAIL_CASING_DASHARRAY - because dash
- * units scale with each layer's own width and the casing is wider.
- */
-export const NEARBY_TRAIL_DASHARRAY: readonly number[] = [0, 2]
-
-/**
  * The two filters the layer split needs, built from CHOSEN_SYSTEM_SOURCES so
  * admitting a source cannot leave one of them behind.
  *
@@ -253,28 +242,49 @@ export const NEARBY_TRAIL_DASHARRAY: readonly number[] = [0, 2]
  * exactly one of the two layers and none in both or neither -
  * nearbyTrails.test.ts holds the pair as complements over the same inputs.
  *
- * A feature with NO source goes to the DOTTED side, and that is the one place
- * this split rounds differently from `nearbyTrailOpacity()` above, where a
- * source-less feature draws at full strength. The two are not in conflict:
- * opacity is the channel a fault must not quietly dim, and it still does not
- * - the dotted layer paints the same `nearbyTrailOpacityExpression()`, so a
- * source-less line draws dotted AND full-strength, which is visible, which is
- * how it gets fixed. What the dotted side must never do is claim a line is the
- * chosen trail, and a line nobody can source has not earned that.
+ * A feature with NO source goes to the UNTAKEN side, and that is the one
+ * place this split rounds differently from `nearbyTrailOpacity()` above,
+ * where a source-less feature draws at full strength. The two are not in
+ * conflict: opacity is the channel a fault must not quietly dim, and it
+ * still does not - the untaken layer paints the same
+ * `nearbyTrailOpacityExpression()`, so a source-less line draws at the
+ * untaken weight AND full-strength, which is visible, which is how it gets
+ * fixed. What the untaken side must never do is claim a line is the chosen
+ * trail, and a line nobody can source has not earned that.
  */
 export function chosenSystemFilter(
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): unknown[] {
-  // An empty list matches nothing, so with nothing taken every line is on
-  // the dotted side - the all-dotted first launch (#1306) falls out of the
-  // same two filters rather than needing a third state.
-  return ['in', ['to-string', ['get', 'source']], ['literal', [...chosen]]]
+  return ['all', chosenSystemMembership(chosen), SHARED_GROUND_EXCLUDED]
 }
 
 export function nearbyTrailFilter(
   chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
 ): unknown[] {
-  return ['!', chosenSystemFilter(chosen)]
+  return ['all', ['!', chosenSystemMembership(chosen)], SHARED_GROUND_EXCLUDED]
+}
+
+/**
+ * The membership test both filters are built on. An empty list matches
+ * nothing, so with nothing taken every line is on the untaken side - the
+ * all-untaken first launch (#1306) falls out of the same two filters rather
+ * than needing a third state.
+ *
+ * WHAT WRAPS IT, AND WHY THE TWO ARE NO LONGER EXACT COMPLEMENTS (#1384).
+ * Both filters also refuse the two halves of a shared stretch - features
+ * carrying `concurrent_with`, which the network tiles hold beside the plain
+ * lines and which map/sharedGround.ts draws as its own two layers. A half
+ * carries a `source` like any line, so without this it would ALSO draw as a
+ * plain centred line under the two-tone, be labelled by trailLabels.ts and
+ * counted by trailsInView.ts as one. Inside the filters rather than beside
+ * them so that every reader of the split - the style, attachChosenTrail's
+ * re-pointing on a trail switch, the network overview - carries the
+ * exclusion without knowing it exists. Over plain features the two remain
+ * complements, which nearbyTrails.test.ts still holds; a pair feature lands
+ * in neither, which it holds too.
+ */
+function chosenSystemMembership(chosen: readonly string[]): unknown[] {
+  return ['in', ['to-string', ['get', 'source']], ['literal', [...chosen]]]
 }
 
 // LABELS DIM WITH THEIR LINES, AND THE EXPRESSION IS SHARED, NOT COPIED

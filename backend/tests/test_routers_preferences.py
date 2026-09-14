@@ -103,6 +103,74 @@ def test_put_preferences_rejects_an_out_of_range_max_background_zoom(client):
     assert response.status_code == 422
 
 
+def _harriman() -> dict:
+    return {
+        "id": "oprhp_park_polygons:1",
+        "name": "Harriman State Park",
+        "kind": "park",
+        "lon": -74.1,
+        "lat": 41.25,
+        "state": "NY",
+        "bbox": [-74.2, 41.2, -74.0, 41.3],
+    }
+
+
+def test_the_default_place_round_trips_so_a_second_device_opens_on_it(client):
+    """Where the hiker hikes syncs with the rest of the blob (#1374, the
+    maintainer's decision of 2026-09-10): a place named by the hiker, never
+    a GPS fix, snapshotted in full. The optional fields the client did not
+    send come back as null, which its normaliser reads as absent."""
+    user_id = str(uuid.uuid4())
+
+    put = client.put(
+        "/preferences/me",
+        json=_valid_preferences(default_place=_harriman()),
+        headers=auth_headers(user_id),
+    )
+    assert put.status_code == 200
+    got = client.get("/preferences/me", headers=auth_headers(user_id))
+    assert got.status_code == 200
+    place = got.json()["default_place"]
+    assert place["name"] == "Harriman State Park"
+    assert place["kind"] == "park"
+    assert place["bbox"] == [-74.2, 41.2, -74.0, 41.3]
+    assert place["within"] is None
+
+
+def test_a_row_without_a_default_place_reads_back_as_none(client):
+    user_id = str(uuid.uuid4())
+
+    client.put("/preferences/me", json=_valid_preferences(), headers=auth_headers(user_id))
+    got = client.get("/preferences/me", headers=auth_headers(user_id))
+
+    assert got.json()["default_place"] is None
+
+
+def test_a_default_place_off_the_globe_or_of_an_unknown_kind_is_refused(client):
+    user_id = str(uuid.uuid4())
+
+    off = client.put(
+        "/preferences/me",
+        json=_valid_preferences(default_place={**_harriman(), "lat": 95}),
+        headers=auth_headers(user_id),
+    )
+    assert off.status_code == 422
+
+    unknown = client.put(
+        "/preferences/me",
+        json=_valid_preferences(default_place={**_harriman(), "kind": "summit"}),
+        headers=auth_headers(user_id),
+    )
+    assert unknown.status_code == 422
+
+    extra = client.put(
+        "/preferences/me",
+        json=_valid_preferences(default_place={**_harriman(), "fix_at": "2026-09-10"}),
+        headers=auth_headers(user_id),
+    )
+    assert extra.status_code == 422
+
+
 def test_put_preferences_does_not_accept_a_show_closures_field(client):
     user_id = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
 

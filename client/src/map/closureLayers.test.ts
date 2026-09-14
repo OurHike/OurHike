@@ -1,11 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { WARNING_ID_PROPERTY, WARNING_LAYER_ID } from './warningLayers'
 import type { Feature, FeatureCollection } from 'geojson'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { buildTrailIndex } from '../lib/trailPosition'
 import type { Closure } from '../lib/closureBanner'
 import { MAX_BAND_MILES } from '../lib/closureSpan'
+import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import {
   attachClosureData,
+  attachClosureTaps,
+  closureIdAt,
+  closureTapBox,
+  CLOSURE_TAP_SLOP_PX,
   buildClosureSource,
   closureBands,
   closureFeatureCollection,
@@ -247,5 +253,87 @@ describe('pushing bands onto a live map', () => {
     attachClosureData(map as never, [])()
 
     expect(map.listenerCount('styledata')).toBe(0)
+  })
+})
+
+// #1373, F12: the tap #245 left waiting. Modelled on the ATC band's, because
+// the tape is the same geometry path with a different sheet behind it.
+describe('tapping the tape', () => {
+  function band(id: string) {
+    return { properties: { [CLOSURE_ID_PROPERTY]: id } }
+  }
+  function tappableMap(features: unknown[]): MockMap {
+    const map = new MockMap({})
+    map.layerIds = [CLOSURE_LAYER_ID, 'trail-lines']
+    map.renderedFeatures.set(CLOSURE_LAYER_ID, features)
+    return map
+  }
+
+  it('tells the shell which closure was touched', () => {
+    const map = tappableMap([band('c1')])
+    const onSelect = vi.fn()
+
+    attachClosureTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelect).toHaveBeenCalledWith('c1')
+  })
+
+  it('yields to a serious-warning pin under the same thumb (#1374 review)', () => {
+    // The two safety marks used to report every hit each, so a warning pin
+    // on closed trail opened two sheets on one touch, and which sat on top
+    // was the order two effects were declared in. Now the tape asks the
+    // pin first, and the order is stated once in attachClosureTaps.
+    const map = tappableMap([band('c1')])
+    map.layerIds.push(WARNING_LAYER_ID)
+    map.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
+    ])
+    const onSelect = vi.fn()
+
+    attachClosureTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 120, y: 240 } })
+
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('queries a thumb-sized box, not a pixel', () => {
+    expect(closureTapBox({ x: 100, y: 50 })).toEqual([
+      [100 - CLOSURE_TAP_SLOP_PX, 50 - CLOSURE_TAP_SLOP_PX],
+      [100 + CLOSURE_TAP_SLOP_PX, 50 + CLOSURE_TAP_SLOP_PX],
+    ])
+  })
+
+  it('is silent before the style holds the layer', () => {
+    const map = new MockMap({})
+    map.layerIds = []
+    const query = vi.spyOn(map, 'queryRenderedFeatures')
+
+    expect(closureIdAt(map as never, { x: 10, y: 10 })).toBeNull()
+    expect(query).not.toHaveBeenCalled()
+  })
+
+  it('only reports hits, so bare map is left to the handlers that own it', () => {
+    const map = tappableMap([])
+    const onSelect = vi.fn()
+
+    attachClosureTaps(map as never, onSelect)
+    map.emit('click', { point: { x: 1, y: 1 } })
+
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(
+      closureIdAt(tappableMap([{ properties: {} }]) as never, { x: 1, y: 1 }),
+    ).toBeNull()
+  })
+
+  it('stops listening when detached', () => {
+    const map = tappableMap([band('c1')])
+    const onSelect = vi.fn()
+
+    const detach = attachClosureTaps(map as never, onSelect)
+    detach()
+    map.emit('click', { point: { x: 1, y: 1 } })
+
+    expect(onSelect).not.toHaveBeenCalled()
   })
 })

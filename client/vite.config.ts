@@ -294,6 +294,14 @@ export default defineConfig({
     // to fall the same way in CI's zone and a developer's.
     env: { TZ: 'UTC' },
     setupFiles: ['./src/test/setup.ts'],
+    // Scoped to src/ now that client/e2e/ exists (features/FLOW_TESTING.md):
+    // vitest's own default include glob (**/*.{test,spec}.*) does not stop
+    // at src/, so without this it collects every e2e/*.spec.ts too and tries
+    // to run @playwright/test's `test`/`expect` through vitest's runner -
+    // "Playwright Test did not expect test.describe() to be called here",
+    // measured the one time this ran unscoped. e2e/ has its own runner
+    // (playwright.config.ts); this one owns src/ only, as it always has.
+    include: ['src/**/*.{test,spec}.{ts,tsx,js,jsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text'], // visibility only, not a merge gate - matches

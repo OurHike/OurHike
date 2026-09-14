@@ -37,7 +37,13 @@ import {
   TOPO_PALETTE_DARK,
   TOPO_PALETTE_FIELD_NIGHT,
   TOPO_PALETTE_RED,
+  CONTOUR_INDEX_OPACITY,
+  CONTOUR_INDEX_WIDTH,
+  CONTOUR_MINOR_OPACITY,
+  CONTOUR_MINOR_WIDTH,
   attachSheetAppearance,
+  contourFadeZooms,
+  contourOpacityRamp,
   liveTopoLayers,
   sheetPalette,
   sheetVariant,
@@ -45,6 +51,7 @@ import {
 import { MAP_STYLE_VALUES } from '../lib/userPreferences'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import {
+  CONTOUR_ELEVATION_KEY,
   CONTOUR_LEVEL_KEY,
   CONTOUR_SOURCE_ID,
   DEM_SOURCE_ID,
@@ -202,15 +209,24 @@ describe('the live topographic background', () => {
         (layer) => layer.id === id,
       ) as { filter?: unknown }
 
+    // Every contour layer floors at sea level (the maintainer's brown rings
+    // over the Hudson, 2026-09-10): the DEM reads at and below zero across
+    // tidal water, 0 is a multiple of every index interval, and a ring at
+    // 0 ft in the index ink is a contour of nothing.
     expect(byId(LIVE_TOPO_LAYER_IDS.contourLabel).filter).toEqual([
-      '>',
-      ['get', CONTOUR_LEVEL_KEY],
-      0,
+      'all',
+      ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+      ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+    ])
+    expect(byId(LIVE_TOPO_LAYER_IDS.contourIndex).filter).toEqual([
+      'all',
+      ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+      ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
     ])
     expect(byId(LIVE_TOPO_LAYER_IDS.contour).filter).toEqual([
-      '==',
-      ['get', CONTOUR_LEVEL_KEY],
-      0,
+      'all',
+      ['==', ['get', CONTOUR_LEVEL_KEY], 0],
+      ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
     ])
   })
 
@@ -420,6 +436,55 @@ describe('relief shading, by zoom', () => {
     // where full-strength shading sits under full-strength contours.
     expect(contourInkAt(HILLSHADE_HANDOVER_START_ZOOM)).toBe(0)
     expect(contourInkAt(HILLSHADE_HANDOVER_END_ZOOM)).toBeGreaterThan(0.5)
+    // Which layer that ink is on matters since 2026-09-10: the INDEX line is
+    // what the hillshade hands the terrain to (CONTOUR_INDEX_OPACITY), and
+    // the minor line is a texture under it (CONTOUR_MINOR_OPACITY) - a
+    // threshold met by the minor line alone would be the old cluttered ink.
+    const inkOf = (layer: string, zoom: number) =>
+      paintAt(layer, 'line-opacity', latest.paint_line['line-opacity'], zoom)
+    expect(inkOf(LIVE_TOPO_LAYER_IDS.contourIndex, HILLSHADE_HANDOVER_END_ZOOM)).toBe(
+      CONTOUR_INDEX_OPACITY,
+    )
+    expect(inkOf(LIVE_TOPO_LAYER_IDS.contour, HILLSHADE_HANDOVER_END_ZOOM)).toBe(
+      CONTOUR_MINOR_OPACITY,
+    )
+    expect(CONTOUR_MINOR_OPACITY).toBeLessThan(CONTOUR_INDEX_OPACITY / 2)
+  })
+
+  it('draws the index line heavier than the minor, on every sheet (index-led ink)', () => {
+    // The design note of 2026-09-10: minors are a texture, the index carries
+    // the terrain. Weight and opacity only - the hues are each sheet's own -
+    // so every variant takes it, and the fade windows are untouched.
+    const appearances = [
+      ...MAP_STYLE_VALUES.flatMap((mapStyle) => [
+        { mapStyle, theme: 'light' as const },
+        { mapStyle, theme: 'dark' as const },
+      ]),
+      { mapStyle: 'night_hike' as const, theme: 'dark' as const, redLight: true },
+    ]
+    for (const appearance of appearances) {
+      const layers = liveTopoLayers({
+        terrain: TERRAIN,
+        units: 'imperial',
+        ...appearance,
+      })
+      const paintOf = (id: string) =>
+        layers.find((layer) => layer.id === id)!.paint as Record<string, unknown>
+      const minor = paintOf(LIVE_TOPO_LAYER_IDS.contour)
+      const index = paintOf(LIVE_TOPO_LAYER_IDS.contourIndex)
+      expect(minor['line-width'], JSON.stringify(appearance)).toBe(CONTOUR_MINOR_WIDTH)
+      expect(index['line-width'], JSON.stringify(appearance)).toBe(CONTOUR_INDEX_WIDTH)
+      expect((minor['line-opacity'] as unknown[]).at(-1)).toBe(CONTOUR_MINOR_OPACITY)
+      expect((index['line-opacity'] as unknown[]).at(-1)).toBe(CONTOUR_INDEX_OPACITY)
+      // The same ramp the live repaint replays, from the one builder.
+      const fade = contourFadeZooms(sheetVariant(appearance))
+      expect(minor['line-opacity']).toEqual(
+        contourOpacityRamp(fade.minor, CONTOUR_MINOR_OPACITY),
+      )
+      expect(index['line-opacity']).toEqual(
+        contourOpacityRamp(fade.index, CONTOUR_INDEX_OPACITY),
+      )
+    }
   })
 })
 
@@ -629,10 +694,10 @@ describe('the offline-only background', () => {
       // whose opening camera has to draw the network from the stored
       // overview, and the tape is the safety half - closed ground stays
       // closed-looking below the seam with no signal at all.
-      // Its dotted half under its solid half (#1283): every line outside
-      // the chosen system is a dot rhythm, on a layer of its own beneath
-      // the one the taken trail draws solid on.
-      'network-overview-line-dotted',
+      // Its untaken half under its taken half (#1283): every line outside
+      // the chosen system is on a layer of its own beneath the one the
+      // taken trail draws on.
+      'network-overview-line-untaken',
       'network-overview-line',
       'network-overview-closure-band',
       // The corridor-view sketch (#869), which survives the subtraction for
@@ -666,10 +731,10 @@ describe('the offline-only background', () => {
       // two lines are coincident the last-drawn one owns the pixels whatever
       // its opacity, and it must not be the nearby one.
       //
-      // Four since #1283: the dotted pair under the solid pair, the same
+      // Four since #1283: the untaken pair under the taken pair, the same
       // split the chosen trail's own source gets below.
-      'nearby-trail-casing-dotted',
-      'nearby-trail-blaze-dotted',
+      'nearby-trail-casing-untaken',
+      'nearby-trail-blaze-untaken',
       'nearby-trail-casing',
       'nearby-trail-blaze',
       // A nearby trail closed long-term gets the same barrier tape the A.T.'s
@@ -677,10 +742,14 @@ describe('the offline-only background', () => {
       // this", whoever's trail it is) - over its own blaze, still under
       // everything about the chosen trail.
       'nearby-long-term-closure-band',
-      'trail-casing-dotted',
-      'trail-blaze-dotted',
+      'trail-casing-untaken',
+      'trail-blaze-untaken',
       'trail-casing',
       'trail-blaze',
+      // Two trails on one treadway as two halves of one line (#1384),
+      // over both stacks: the casing is the mask over the plain lines.
+      'shared-ground-casing',
+      'shared-ground-blaze',
       // Trail names (#930) directly over the lines they name, and — the half
       // that matters — EARLY, so every pin below is placed first and wins the
       // collision. Placement runs top-down (see the pins-last case above), so
@@ -1329,6 +1398,30 @@ describe('attachSheetAppearance', () => {
       )
     }
     expect(m.styles).toEqual([])
+  })
+
+  it('replays the contour ink from the same constants the style was built from', async () => {
+    // Two sites write these ramps - the style build and this repaint - and a
+    // literal at one drifting from the other would revert the sheet to the
+    // old ink on every theme change. Both read CONTOUR_*_OPACITY through
+    // contourOpacityRamp, and this holds the repaint's copy to it.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [
+      LIVE_TOPO_LAYER_IDS.wood,
+      LIVE_TOPO_LAYER_IDS.contour,
+      LIVE_TOPO_LAYER_IDS.contourIndex,
+    ]
+
+    attachSheetAppearance(m as never, { theme: 'dark' })
+
+    const fade = contourFadeZooms(sheetVariant({ theme: 'dark' }))
+    expect(m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contour}/line-opacity`)).toEqual(
+      contourOpacityRamp(fade.minor, CONTOUR_MINOR_OPACITY),
+    )
+    expect(
+      m.paintProperties.get(`${LIVE_TOPO_LAYER_IDS.contourIndex}/line-opacity`),
+    ).toEqual(contourOpacityRamp(fade.index, CONTOUR_INDEX_OPACITY))
   })
 
   it('leaves an offline-background style alone', async () => {

@@ -33,6 +33,8 @@ import { MockMap } from './test/mocks/maplibre-gl'
 import { appHarness, openMapTab } from './test/appHarness'
 import { PREFERENCES_KEY } from './lib/preferences'
 import { HIKER_MODE_KEY } from './lib/hikerMode'
+import { TAKEN_TRAIL_KEY } from './lib/takenTrail'
+import { OPEN_WALK_KEY } from './lib/openWalk'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import {
   CORRIDOR_BACKGROUND_PACKAGE,
@@ -141,10 +143,16 @@ function aPhoneThatHasBeenUsed(): void {
   store.set(POIS_KEY, [])
 }
 
-// The bootstrap gate reads two keys since #1054 - the preferences and the
-// "today I'm…" mode ride one Promise.all - so landing "the preferences"
-// means landing both, or the gate never opens and nothing renders.
-const isPreferences = (key: string) => key === PREFERENCES_KEY || key === HIKER_MODE_KEY
+// The bootstrap gate reads four keys - the preferences (which carry the
+// place the hiker hikes since #1374), the "today I'm…" mode (#1054), the
+// open walk and the trail taken from the map (the review of #1374) ride one
+// Promise.all - so landing "the preferences" means landing all four, or the
+// gate never opens and nothing renders.
+const isPreferences = (key: string) =>
+  key === PREFERENCES_KEY ||
+  key === HIKER_MODE_KEY ||
+  key === OPEN_WALK_KEY ||
+  key === TAKEN_TRAIL_KEY
 
 /**
  * The download store's keys, taken from the package catalogue rather than
@@ -357,7 +365,7 @@ describe('what a cold start costs', () => {
     render(<App />)
     await landEverything()
 
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
     expect(MockMap.instances).toHaveLength(0)
   })
 })
@@ -416,7 +424,7 @@ describe('what the first-run steps cost', () => {
     await land(isArchive)
     await land(isTrailData)
     await landEverything()
-    await screen.findByText('What OurHike is')
+    await screen.findByText('A map that works where there is no signal.')
   }
 
   /** The trail line on a map, from wherever it reached it - the style it was
@@ -431,7 +439,12 @@ describe('what the first-run steps cost', () => {
   /** Through the three steps, declining everything they offer - the cheapest
    *  way out, and the one a hiker in a hurry takes. */
   async function stepThrough(user: ReturnType<typeof userEvent.setup>): Promise<void> {
-    await user.click(screen.getByRole('button', { name: 'Continue' }))
+    await user.click(screen.getByRole('button', { name: 'Get set up' }))
+
+    // Past the mode card with nothing chosen, then the place card with no
+    // place (#1373; the mode card is the review of #1374's).
+    await user.click(screen.getByRole('button', { name: /^skip — day hike/i }))
+    await user.click(screen.getByRole('button', { name: /^skip — i/i }))
     // Declined: this file counts maps and reads, not downloads (#1054).
     await user.click(screen.getByRole('button', { name: 'Decide this later' }))
     await user.click(screen.getByRole('button', { name: /not now/i }))
@@ -640,6 +653,10 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
     // `flowScreen`, which is what would destroy the map - and a test that
     // costs one click is worth keeping against that.
     aPhoneThatHasBeenUsed()
+    // On a long hike: the day-hike home has no report door of its own since
+    // the maintainer's read of its frame (2026-09-10), and the other two
+    // modes keep the pair this test opens the window from.
+    store.set(HIKER_MODE_KEY, 'long')
     const user = userEvent.setup()
     render(<App />)
     await land(isPreferences)

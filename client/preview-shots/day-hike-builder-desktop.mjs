@@ -41,9 +41,9 @@
 import { walkInHarriman } from './day-hike-builder.mjs'
 
 export const caption =
-  'The day-hike builder on a laptop with a walk in it - a left rail, and the map gets the rest (#1194, #1212)'
+  'The day-hike builder on a laptop with a walk in it - one column on the right of the map holding the rail, the figures, the route, the shape, the tools and the foot, and the map gets the rest (#1194, #1212; the column moved right and took the bar in at the review of #1374)'
 export const alt =
-  'Either the day-hike builder in a wide browser window holding a walk - a narrow panel down the left headed "Your route" with Distance, Climb and Walking figures, the route order with a stop row for Fingerboard Shelter beneath them and a two-column grid of map-label toggles at its foot, the map filling the whole right of the window with the route cased dark, and the builder bar with Cancel and its actions along the bottom of the map - or the same rail still waiting for a first tap, where the search found no such shelter or no tap landed on a trail; or, where this build has no junction graph, the "What are you planning?" sheet with the day-hike door withheld and a sentence naming what is missing'
+  'Either the day-hike builder in a wide browser window holding a walk - the map filling the middle of the window with the route cased dark and nothing along its foot, and a narrow column down the right opening with the three-stop rail (Day hike ✓, Route lit, Details), then "Your route" with Distance, Climb and Walking figures, the route order with a stop row for Fingerboard Shelter beneath them, a two-column grid of map-label toggles, and at the column’s foot the builder’s own controls: the prompt with Cancel, the Shape row, Undo and Draw instead, and the "‹ Hike" / "Use this route ›" foot - or the same column still waiting for a first tap, where the search found no such shelter or no tap landed on a trail; or, where this build has no junction graph, step 1 beside the map with its sentence saying the trail network is not on the phone in place of the map door'
 
 // The wide layout, which is the entire subject.
 export const desktop = true
@@ -55,12 +55,12 @@ export const wait = 6000
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Plan' }).click()
   await page.getByRole('button', { name: 'Start on the map' }).click()
-  await page.getByRole('dialog', { name: 'What are you planning?' }).waitFor()
+  await page.getByRole('heading', { name: 'Where do you want to go?' }).waitFor()
 
-  // A BUTTON only while the network is ready; withheld, it is a div with the
-  // same name. Which frame this build can reach is what this locator tests -
-  // see the phone recipe for the two-honest-frames argument.
-  const door = page.getByRole('button', { name: /A day hike/ })
+  // Present only while the network is ready; without it step 1 prints a
+  // sentence and Try again. Which frame this build can reach is what this
+  // locator tests - see the phone recipe for the two-honest-frames argument.
+  const door = page.getByRole('button', { name: 'Pick on the map' })
   await door.waitFor({ timeout: 20000 }).catch(() => {})
   if ((await door.count()) === 0) return
 

@@ -958,6 +958,46 @@ export function contourFadeZooms(variant: SheetVariant): {
 }
 
 /**
+ * How much ink each contour layer carries once its fade is complete, on
+ * every sheet (MAP_STYLE_SPEC.md §2, "index-led contour ink").
+ *
+ * INDEX-LED since 2026-09-10, the maintainer's design note on the UA
+ * preview: "the topo is cluttered / the contours are too dark and compete
+ * with the trail lines". At hiking zooms the sheet was carrying terrain on
+ * four channels at once - minor lines, index lines, their labels and the
+ * hillshade - and that was one too many. So the minor lines drop to a
+ * texture (0.32, from 0.7, and 0.5 px from 0.6) and the index lines carry
+ * the terrain (0.95, from 0.9, and 1.4 px from 1.2). The hues do not move -
+ * this is weight and opacity, so all ten sheets take it - and the fade
+ * windows above are exactly as they were.
+ *
+ * NAMED ONCE AND READ TWICE, because the same ramps are written into the
+ * style by liveTopoLayers() and replayed onto a live map by
+ * attachSheetAppearance() when a hiker changes sheet or theme, and a
+ * literal at one site drifting from the other is exactly the failure the
+ * SHEET_COLOURS table exists to prevent for colours. contourOpacityRamp()
+ * is the one builder both call.
+ *
+ * `@unvalidated` outdoors either way: 0.32 is the design note's number,
+ * chosen on the preview's renders at z12-z14, not measured against sun or
+ * a gloved thumb. What would settle it is the outdoor pass #105, which owes
+ * the whole sheet the same answer.
+ */
+export const CONTOUR_MINOR_OPACITY = 0.32
+export const CONTOUR_INDEX_OPACITY = 0.95
+export const CONTOUR_MINOR_WIDTH = 0.5
+export const CONTOUR_INDEX_WIDTH = 1.4
+
+/** One contour layer's `line-opacity`: zero at the start of its fade window,
+ *  its full-strength ink at the end, linear between. */
+export function contourOpacityRamp(
+  window: [start: number, full: number],
+  full: number,
+): unknown[] {
+  return ['interpolate', ['linear'], ['zoom'], window[0], 0, window[1], full]
+}
+
+/**
  * The type treatment one variant carries - field's sunlight brief against the
  * baseline everything else uses (MAP_STYLE_SPEC.md's "field extras": labels
  * one size up, halos 1.8). One builder for the style build and the live
@@ -1267,28 +1307,35 @@ export function liveTopoLayers({
         'line-opacity': ['case', ['==', ['get', 'intermittent'], 1], 0.6, 1] as never,
       },
     },
+    // ABOVE SEA LEVEL ONLY, all three contour layers (the maintainer,
+    // 2026-09-10, over the Hudson at Dutchess Junction: "weird brown lines
+    // appear, normally in the water - I swear this is negative elevation").
+    // It was. The DEM reads within a few feet of zero across tidal water and
+    // dips below it, so the generator drew closed rings at 0 ft all over the
+    // river - and 0 is a multiple of every index interval, so each ring came
+    // out in the index line's heavy ink with a "0'" label on it. A USGS quad
+    // draws no contour at sea level: the shoreline is the water's own edge,
+    // which the sheet already draws. The floor is strict, so 0 itself goes.
     {
       id: LIVE_TOPO_LAYER_IDS.contour,
       type: 'line',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
-      filter: ['==', ['get', CONTOUR_LEVEL_KEY], 0] as never,
+      filter: [
+        'all',
+        ['==', ['get', CONTOUR_LEVEL_KEY], 0],
+        ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+      ] as never,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contour, palette),
-        'line-width': 0.6,
+        'line-width': CONTOUR_MINOR_WIDTH,
         // Faded out where they would otherwise mat together into a solid
         // hillside, rather than switched off at a hard zoom threshold. The
         // window is the variant's (contourFadeZooms) - ridgeline pulls it a
-        // zoom earlier.
-        'line-opacity': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          fade.minor[0],
-          0,
-          fade.minor[1],
-          0.7,
-        ] as never,
+        // zoom earlier - and the full-strength ink is the texture weight
+        // CONTOUR_MINOR_OPACITY argues for: the index line carries the
+        // terrain since 2026-09-10, this one only the count between.
+        'line-opacity': contourOpacityRamp(fade.minor, CONTOUR_MINOR_OPACITY) as never,
       },
     },
     {
@@ -1296,19 +1343,15 @@ export function liveTopoLayers({
       type: 'line',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
-      filter: ['>', ['get', CONTOUR_LEVEL_KEY], 0] as never,
+      filter: [
+        'all',
+        ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+        ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+      ] as never,
       paint: {
         ...sheetColours(LIVE_TOPO_LAYER_IDS.contourIndex, palette),
-        'line-width': 1.2,
-        'line-opacity': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          fade.index[0],
-          0,
-          fade.index[1],
-          0.9,
-        ] as never,
+        'line-width': CONTOUR_INDEX_WIDTH,
+        'line-opacity': contourOpacityRamp(fade.index, CONTOUR_INDEX_OPACITY) as never,
       },
     },
     // Only index lines are labelled. Labelling every contour is what makes a
@@ -1319,7 +1362,11 @@ export function liveTopoLayers({
       type: 'symbol',
       source: CONTOUR_SOURCE_ID,
       'source-layer': CONTOUR_LAYER,
-      filter: ['>', ['get', CONTOUR_LEVEL_KEY], 0] as never,
+      filter: [
+        'all',
+        ['>', ['get', CONTOUR_LEVEL_KEY], 0],
+        ['>', ['get', CONTOUR_ELEVATION_KEY], 0],
+      ] as never,
       minzoom: 12,
       layout: {
         'symbol-placement': 'line',
@@ -1701,24 +1748,16 @@ export function attachSheetAppearance(
         'hillshade-exaggeration',
         hillshadeExaggerationExpression(variant.hillshadeBase),
       )
-      paint(LIVE_TOPO_LAYER_IDS.contour, 'line-opacity', [
-        'interpolate',
-        ['linear'],
-        ['zoom'],
-        fade.minor[0],
-        0,
-        fade.minor[1],
-        0.7,
-      ])
-      paint(LIVE_TOPO_LAYER_IDS.contourIndex, 'line-opacity', [
-        'interpolate',
-        ['linear'],
-        ['zoom'],
-        fade.index[0],
-        0,
-        fade.index[1],
-        0.9,
-      ])
+      paint(
+        LIVE_TOPO_LAYER_IDS.contour,
+        'line-opacity',
+        contourOpacityRamp(fade.minor, CONTOUR_MINOR_OPACITY),
+      )
+      paint(
+        LIVE_TOPO_LAYER_IDS.contourIndex,
+        'line-opacity',
+        contourOpacityRamp(fade.index, CONTOUR_INDEX_OPACITY),
+      )
 
       layout(LIVE_TOPO_LAYER_IDS.contourLabel, 'text-size', type.contourLabelSize)
       layout(LIVE_TOPO_LAYER_IDS.peak, 'text-size', type.peakSizeExpression)

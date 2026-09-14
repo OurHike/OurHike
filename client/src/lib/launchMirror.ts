@@ -27,6 +27,7 @@
 // safety decision.
 
 import { normaliseHikerMode, type HikerMode } from './hikerMode'
+import { normaliseTakenTrail } from './takenTrail'
 import { THEME_VALUES, type Theme, type UserPreferences } from './userPreferences'
 
 export const LAUNCH_MIRROR_KEY = 'ourhike:launch'
@@ -35,6 +36,9 @@ export interface LaunchMirror {
   onboardingCompleted: boolean
   theme: Theme
   hikerMode: HikerMode
+  /** The trail taken from the map (lib/takenTrail.ts), or null. On the
+   *  first frame for the mode's reason: the plate names it. */
+  takenTrail: string | null
 }
 
 /** `localStorage`, or null where reaching for it throws - a browser set to
@@ -72,6 +76,7 @@ export function readLaunchMirror(): LaunchMirror | null {
         ? (parsed.theme as Theme)
         : 'auto',
       hikerMode: normaliseHikerMode(parsed.hikerMode),
+      takenTrail: normaliseTakenTrail(parsed.takenTrail),
     }
   } catch {
     return null
@@ -83,11 +88,13 @@ export function readLaunchMirror(): LaunchMirror | null {
 export function writeLaunchMirror(
   preferences: Pick<UserPreferences, 'onboarding_completed' | 'theme'>,
   hikerMode: HikerMode,
+  takenTrail: string | null = null,
 ): void {
   const mirror: LaunchMirror = {
     onboardingCompleted: preferences.onboarding_completed,
     theme: preferences.theme,
     hikerMode,
+    takenTrail,
   }
   try {
     storage()?.setItem(LAUNCH_MIRROR_KEY, JSON.stringify(mirror))

@@ -1,0 +1,81 @@
+/* One waypoint in a list (chrome/PoiRow.tsx, #1373). Semantic tokens only. */
+
+.poi-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: 11px 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--fg-1);
+  font: inherit;
+  text-align: left;
+}
+
+.poi-row--opens {
+  cursor: pointer;
+  transition: background-color var(--duration-fast, 120ms) var(--ease-standard, ease);
+}
+
+.poi-row--opens:hover {
+  background: var(--surface-card-alt);
+}
+
+.poi-row__pin {
+  flex: none;
+  width: 30px;
+  height: 30px;
+}
+
+.poi-row__flag {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  color: var(--brand-primary);
+}
+
+/* The plain marker: the selection accent, the same orange the builder's
+   dropped points wear, so "a point on your walk" reads as one thing. */
+.poi-row__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin: 0 11px;
+  border-radius: 50%;
+  background: var(--accent-blaze-orange);
+}
+
+.poi-row__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.poi-row__title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mono means the app measured it: a distance, an age, a mile. */
+.poi-row__meta,
+.poi-row__trailing {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.poi-row__trailing {
+  flex: none;
+  white-space: nowrap;
+}

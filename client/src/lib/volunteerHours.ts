@@ -147,3 +147,52 @@ export function projectFor(
   if (record.work_project_id === null || projects === null) return null
   return projects.find((project) => project.id === record.work_project_id) ?? null
 }
+
+/**
+ * A day still sitting in the outbox, as the logbook shows it.
+ *
+ * WHY THIS EXISTS, AND WHAT IT FIXES. A day logged without an account is
+ * written to the outbox (`enqueueVolunteerHours`) and echoed into the screen
+ * at the same moment, "the same immediately-real contract the field notes
+ * keep". The echo was React state and nothing else, so it lasted exactly as
+ * long as the tab: found 2026-09-11 by a flow test booting a second page onto
+ * the same store — "Your hours" empty, the impact panel gone, and the
+ * outbox still reporting "1 waiting to send".
+ *
+ * That is a broken promise rather than a missing feature. The section's own
+ * copy says a logged day "is claimed in your name until a club confirms it —
+ * and it stays yours either way", and a volunteer who closed the app between
+ * logging and signing in was shown that sentence and then an empty logbook.
+ * The record was never lost; only the screen that shows it to its author
+ * failed to read it back.
+ *
+ * The mapping lives here so the echo at log time and the restore at boot
+ * cannot disagree about what a queued day looks like — the two answers to one
+ * question that App.tsx's own comments keep naming as the failure mode.
+ *
+ * `state: 'claimed'` is the honest value for every queued day, and it is the
+ * same one the echo has always used: nobody has confirmed it, because it has
+ * not reached anybody yet.
+ */
+export function queuedHoursSummary(item: {
+  id: string
+  authoredAt: string
+  volunteerHours: VolunteerHoursDraft
+}): VolunteerHoursSummary {
+  const draft = item.volunteerHours
+  return {
+    id: item.id,
+    club_id: draft.club_id ?? null,
+    worked_on: draft.worked_on,
+    hours: draft.hours,
+    work_project_id: draft.work_project_id ?? null,
+    activity: draft.activity,
+    note: draft.note ?? null,
+    mile: draft.mile ?? null,
+    lat: draft.lat ?? null,
+    lon: draft.lon ?? null,
+    state: 'claimed',
+    confirmed_at: null,
+    recorded_at: item.authoredAt,
+  }
+}

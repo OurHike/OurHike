@@ -57,6 +57,7 @@ const DRAFT: DayHikeDraft = {
   segments: [[tap(), tap(), tap()]],
   refusal: null,
   looped: false,
+  outAndBack: false,
   droppedMiles: 0,
 }
 
@@ -84,6 +85,19 @@ const SHELTER: DayHikeStop = {
 /** A shelter a long way up a spur - the case the panel says out loud. */
 const FAR_SHELTER: DayHikeStop = { ...SHELTER, poiId: 'far', offCourseFeet: 3200 }
 
+describe('the controls at the foot (the review of #1374)', () => {
+  it('renders what the shell hands it after the route, and nothing when the phone hands nothing', () => {
+    panel({ controls: <div>the bar</div> })
+    const bar = screen.getByText('the bar')
+    expect(bar.closest('.day-hike-panel__controls')).not.toBeNull()
+    expect(bar.closest('.day-hike-panel')).not.toBeNull()
+    cleanup()
+
+    panel()
+    expect(document.querySelector('.day-hike-panel__controls')).toBeNull()
+  })
+})
+
 function panel(overrides: Partial<Parameters<typeof DayHikePanel>[0]> = {}) {
   const props = {
     draft: DRAFT,
@@ -95,6 +109,7 @@ function panel(overrides: Partial<Parameters<typeof DayHikePanel>[0]> = {}) {
     onToggleLabel: vi.fn(),
     onRemoveStop: vi.fn(),
     onRemoveTurn: vi.fn(),
+    onBackToStepOne: vi.fn(),
     detailsOpen: true,
     onToggleDetails: vi.fn(),
     ...overrides,
@@ -362,9 +377,29 @@ describe('what the panel is not', () => {
     // one up here would cost a hiker the one-handed use the bar exists for.
     panel()
 
-    for (const label of ['Undo', 'Cancel', 'Done', 'Close the loop', 'Draw instead']) {
+    for (const label of ['Undo', 'Cancel', 'Use this route', 'Draw instead']) {
       expect(screen.queryByRole('button', { name: label })).toBeNull()
     }
+    expect(screen.queryByRole('radiogroup', { name: 'Shape' })).toBeNull()
+  })
+
+  it('carries the rail at step 2, with step 1 as the door back (#1373, R3)', async () => {
+    // The one control the panel holds that is not about reading the walk:
+    // the rail's first stop, which goes back to "Where do you want to go?"
+    // with this draft kept. The bar's "‹ Hike" is the same move.
+    const user = userEvent.setup()
+    const props = panel()
+
+    const rail = screen.getByRole('navigation', { name: 'Planning steps' })
+    expect(rail).toHaveTextContent('Day hike')
+    expect(within(rail).getByText('Route').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+    await user.click(within(rail).getByRole('button', { name: 'Step 1, Day hike' }))
+    expect(props.onBackToStepOne).toHaveBeenCalledTimes(1)
+    // Details is not a door yet: nothing there to go to.
+    expect(within(rail).queryByRole('button', { name: /Details/ })).toBeNull()
   })
 
   it('scores nothing and compares nothing', () => {

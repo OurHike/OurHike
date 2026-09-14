@@ -19,6 +19,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
 import { LineSheet } from './LineSheet'
+import { trailIdForSource } from '../map/trailBadges'
 import { ClubSheet } from './ClubSheet'
 import { HighlightSheet } from './HighlightSheet'
 import { buildLineDetail, type LineDetail } from '../lib/lineDetail'
@@ -81,6 +82,48 @@ export interface TappedLineInput {
    * hook is the layer that knows whether the router could use the tap.
    */
   onStartDayHikeAt?: (at: { lon: number; lat: number }) => void
+  /**
+   * The trail taken today (App.tsx's `chosenTrailId`) and whether a long
+   * hike is what took it, for the sheet's take / let-go (the review of
+   * #1374). Omitted, the sheet offers neither - every existing caller and
+   * test is unaffected.
+   */
+  takenTrailId?: string | null
+  takenByHike?: boolean
+  /** Take a registry trail from the map, or null to let the tapped one go. */
+  onTakeTrail?: (trailId: string | null) => void
+}
+
+/**
+ * The sheet's take / let-go props for one tapped line, or nothing (the
+ * review of #1374). Nothing where the line is not a registry trail or the
+ * shell passed no handler: the sheet then draws neither, on its own rule.
+ */
+function takeProps(
+  trailId: string | null,
+  takenTrailId: string | null,
+  takenByHike: boolean,
+  onTakeTrail: ((trailId: string | null) => void) | undefined,
+  close: () => void,
+): Pick<React.ComponentProps<typeof LineSheet>, 'taken' | 'onTakeTrail' | 'onLetGo'> {
+  if (trailId === null || onTakeTrail === undefined) return {}
+  if (takenTrailId !== trailId) {
+    return {
+      taken: null,
+      onTakeTrail: () => {
+        onTakeTrail(trailId)
+        close()
+      },
+    }
+  }
+  if (takenByHike) return { taken: 'hike' }
+  return {
+    taken: 'tap',
+    onLetGo: () => {
+      onTakeTrail(null)
+      close()
+    },
+  }
 }
 
 export function useTappedLinePanel({
@@ -99,6 +142,9 @@ export function useTappedLinePanel({
   elevation,
   onCloseLegend,
   onStartDayHikeAt,
+  takenTrailId = null,
+  takenByHike = false,
+  onTakeTrail,
 }: TappedLineInput): TappedLinePanel {
   /** The tapped trail line's published facts, or null (#134). The map
    *  reports them (map/lineTaps.ts); what they mean - the spur record, the
@@ -199,6 +245,13 @@ export function useTappedLinePanel({
           <LineSheet
             detail={lineDetail}
             onClose={() => setSelectedLine(null)}
+            {...takeProps(
+              selectedLine === null ? null : trailIdForSource(selectedLine.source),
+              takenTrailId,
+              takenByHike,
+              onTakeTrail,
+              () => setSelectedLine(null),
+            )}
             // The tapped point is already snapped to the line by
             // map/lineTaps.ts, so what goes to the builder is a place on a
             // trail rather than wherever the thumb landed.
@@ -224,6 +277,9 @@ export function useTappedLinePanel({
       lineDetail,
       selectedLine,
       onStartDayHikeAt,
+      takenTrailId,
+      takenByHike,
+      onTakeTrail,
     ],
   )
 

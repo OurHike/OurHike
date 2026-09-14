@@ -683,3 +683,46 @@ describe('DataSettings', () => {
     expect(PROPS.onExport).toHaveBeenCalledWith('geojson')
   })
 })
+
+describe('YouSettings, where you hike (#1373)', () => {
+  it('renders no row until the shell offers a way to change it', () => {
+    render(<YouSettings {...PROPS} />)
+
+    expect(screen.queryByText('Where you hike')).toBeNull()
+  })
+
+  it('reads "Not set" with a Set door, and the kept place with a Change door', async () => {
+    const user = userEvent.setup()
+    const onChangeDefaultPlace = vi.fn()
+    const { rerender } = render(
+      <YouSettings
+        {...PROPS}
+        defaultPlace={null}
+        onChangeDefaultPlace={onChangeDefaultPlace}
+      />,
+    )
+
+    // Scoped to the row: "Not set" is also what an unset trail name reads.
+    expect(screen.getByText('Where you hike').parentElement).toHaveTextContent('Not set')
+    await user.click(screen.getByRole('button', { name: 'Set' }))
+    expect(onChangeDefaultPlace).toHaveBeenCalledTimes(1)
+
+    rerender(
+      <YouSettings
+        {...PROPS}
+        defaultPlace={{
+          id: 'p',
+          name: 'Harriman State Park',
+          kind: 'park',
+          state: 'NY',
+          lon: -74.1,
+          lat: 41.25,
+        }}
+        onChangeDefaultPlace={onChangeDefaultPlace}
+      />,
+    )
+
+    expect(screen.getByText('Harriman State Park, NY')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Change' })).toBeInTheDocument()
+  })
+})

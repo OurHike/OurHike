@@ -1,9 +1,9 @@
+import { SHARED_GROUND_EXCLUDED } from './sharedGround'
 import { describe, it, expect } from 'vitest'
 import { TRAILS } from '../lib/trails'
 import {
   CHOSEN_SYSTEM_SOURCES,
   CHOSEN_TRAIL_OPACITY,
-  NEARBY_TRAIL_DASHARRAY,
   NEARBY_TRAIL_OPACITY,
   chosenSystemFilter,
   isNearbyTrail,
@@ -149,8 +149,9 @@ describe('the two source lists that must agree', () => {
     // in the chosen system - held only while `centerline` was the one
     // through-route there was, and #1307 ended that on purpose: the Long
     // Path draws at primary width and stays out of CHOSEN_SYSTEM_SOURCES,
-    // because width says "through-route or spur" and the dot rhythm - not
-    // width - is what says which through-route is walked. WIREFRAMES.md §3
+    // because width says "through-route or spur" and the split's weight
+    // below the seam and its ghosting - not width - are what say which
+    // through-route is walked. WIREFRAMES.md §3
     // names the cost and accepts it: "with two through-routes drawn, width
     // answers 'through-route or spur' and stops answering 'which trail is
     // this' - still a hue-independent channel, but a coarser one."
@@ -203,9 +204,13 @@ describe('the layer split (#1283): two filters that are exact complements', () =
    * way evaluateOpacityExpression above is: `to-string` renders a missing
    * property as "", `in` is set membership, `!` negates.
    */
-  function passes(filter: unknown[], source: string | null): boolean {
+  function passes(filter: unknown[], source: string | null, shared = false): boolean {
     const [op, ...rest] = filter
-    if (op === '!') return !passes(rest[0] as unknown[], source)
+    if (op === 'all')
+      return rest.every((clause) => passes(clause as unknown[], source, shared))
+    if (op === '!') return !passes(rest[0] as unknown[], source, shared)
+    // `has concurrent_with`: the mark of a shared-ground half (#1384).
+    if (op === 'has') return shared
     expect(op).toBe('in')
     const members = (rest[1] as ['literal', string[]])[1]
     return members.includes(source ?? '')
@@ -220,18 +225,28 @@ describe('the layer split (#1283): two filters that are exact complements', () =
     null,
   ]
 
-  it('puts every source in exactly one of the two layers', () => {
-    // Neither in both (a line drawn solid AND dotted over itself) nor in
-    // neither (a line that vanishes). The split is only honest as a
-    // partition.
+  it('puts the two halves of a shared stretch in neither (#1384)', () => {
+    // A half carries a source like any line and draws as map/sharedGround.ts's
+    // own two layers; in either split layer it would also be a plain centred
+    // line under the two-tone.
     for (const source of cases) {
-      const solid = passes(chosenSystemFilter(), source)
-      const dotted = passes(nearbyTrailFilter(), source)
-      expect(solid).not.toBe(dotted)
+      expect(passes(chosenSystemFilter(), source, true), String(source)).toBe(false)
+      expect(passes(nearbyTrailFilter(), source, true), String(source)).toBe(false)
     }
   })
 
-  it('draws the chosen system solid and everything else dotted', () => {
+  it('puts every source in exactly one of the two layers', () => {
+    // Neither in both (a line drawn twice over itself, at two weights) nor
+    // in neither (a line that vanishes). The split is only honest as a
+    // partition.
+    for (const source of cases) {
+      const taken = passes(chosenSystemFilter(), source)
+      const untaken = passes(nearbyTrailFilter(), source)
+      expect(taken).not.toBe(untaken)
+    }
+  })
+
+  it('draws the chosen system on the taken side and everything else on the untaken one', () => {
     for (const source of CHOSEN_SYSTEM_SOURCES) {
       expect(passes(chosenSystemFilter(), source)).toBe(true)
     }
@@ -239,7 +254,7 @@ describe('the layer split (#1283): two filters that are exact complements', () =
     expect(passes(nearbyTrailFilter(), 'unheard_of')).toBe(true)
   })
 
-  it('sends a source-less feature to the dotted side, and says why', () => {
+  it('sends a source-less feature to the untaken side, and says why', () => {
     // The one place the split rounds the other way from the opacity rule: a
     // line nobody can source has not earned the claim of being the chosen
     // trail. It still paints at full opacity on that layer, so the fault is
@@ -249,22 +264,22 @@ describe('the layer split (#1283): two filters that are exact complements', () =
   })
 
   it('builds both from CHOSEN_SYSTEM_SOURCES rather than a copy', () => {
-    const members = (chosenSystemFilter()[2] as ['literal', string[]])[1]
+    // ['all', <membership>, SHARED_GROUND_EXCLUDED] since #1384 - the
+    // membership clause is the one the chosen system decides.
+    const membership = chosenSystemFilter()[1] as unknown[]
+    const members = (membership[2] as ['literal', string[]])[1]
     expect(members).toEqual([...CHOSEN_SYSTEM_SOURCES])
-    expect(nearbyTrailFilter()).toEqual(['!', chosenSystemFilter()])
-  })
-
-  it('is a dot rhythm in dash units - zero-length dashes two widths apart', () => {
-    // Round caps turn the zero-length dash into a dot of the line's own
-    // diameter. Dash units, so the rhythm scales with each width tier
-    // rather than being right at one of them.
-    expect(NEARBY_TRAIL_DASHARRAY).toEqual([0, 2])
+    expect(nearbyTrailFilter()).toEqual([
+      'all',
+      ['!', membership],
+      SHARED_GROUND_EXCLUDED,
+    ])
   })
 })
 
 describe('nothing taken (#1306)', () => {
   // The handoff's `chosenSystemSources`, "was a constant": null on first
-  // launch is the all-dotted state, and the A.T. is the only trail with a
+  // launch is the all-untaken state, and the A.T. is the only trail with a
   // system to answer for today.
   it('answers the A.T. system for the A.T. and nothing for nothing', () => {
     expect(chosenSystemSources(TRAILS.AT.id)).toEqual(CHOSEN_SYSTEM_SOURCES)
@@ -272,12 +287,17 @@ describe('nothing taken (#1306)', () => {
     expect(chosenSystemSources('PCT')).toEqual([])
   })
 
-  it('puts every line on the dotted side when nothing is taken', () => {
+  it('puts every line on the untaken side when nothing is taken', () => {
     // An empty membership list matches nothing, so the two filters stay
-    // complements and the solid side is simply empty.
-    const solid = chosenSystemFilter([]) as unknown[]
-    expect((solid[2] as ['literal', string[]])[1]).toEqual([])
-    expect(nearbyTrailFilter([])).toEqual(['!', chosenSystemFilter([])])
+    // complements and the taken side is simply empty.
+    const taken = chosenSystemFilter([]) as unknown[]
+    const membership = taken[1] as unknown[]
+    expect((membership[2] as ['literal', string[]])[1]).toEqual([])
+    expect(nearbyTrailFilter([])).toEqual([
+      'all',
+      ['!', membership],
+      SHARED_GROUND_EXCLUDED,
+    ])
   })
 
   it('ghosts nothing when nothing is taken, since there is no system to belong to', () => {

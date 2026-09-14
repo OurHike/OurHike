@@ -112,5 +112,5 @@ export default async function drive(page) {
     .getByRole('button', { name: /Pine Meadow loop/ })
     .first()
     .click()
-  await page.getByText('Leave this with someone').waitFor()
+  await page.getByText('Leave it with someone').waitFor()
 }

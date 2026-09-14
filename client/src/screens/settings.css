@@ -105,6 +105,15 @@
   border-radius: 10px;
   cursor: pointer;
 }
+/* An action that sits in a row beside its value (the "Where you hike" row,
+   #1373): the row already meets the touch target, so the button only has to
+   read as one. */
+.settings__action--row {
+  flex: none;
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 var(--space-3, 12px);
+}
 .settings__exports {
   display: flex;
   gap: var(--space-2, 8px);
@@ -547,6 +556,36 @@
   font-size: 12px;
   line-height: 1.45;
   color: var(--fg-3);
+}
+
+/* The full agreement, closed by default. A disclosure rather than a section:
+   the longest terms here run to 1,901 characters, and open they would push
+   nine other organizations off the screen. See chrome/SourcesSection.tsx for
+   why they are carried at all. */
+.sources__agreement {
+  margin: 6px 0 0;
+}
+
+.sources__agreement-open {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: var(--tracking-eyebrow, 0.1em);
+  text-transform: uppercase;
+  color: var(--fg-3);
+  cursor: pointer;
+}
+
+/* Verbatim and unbroken. `white-space: pre-line` keeps whatever line breaks
+   the steward wrote; the terms are their words and their shape. */
+.sources__terms--full {
+  white-space: pre-line;
+}
+
+/* The provenance of the copy above, which is a different kind of line from
+   the terms and should not read as part of them. */
+.sources__source {
+  overflow-wrap: anywhere;
+  color: var(--fg-4, var(--fg-3));
 }
 
 /* ---------- More's own frame (#1054): five destinations over a storage card.

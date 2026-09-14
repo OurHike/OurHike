@@ -43,6 +43,8 @@ import { atcBandId, type AtcUpdate } from '../lib/atcUpdates'
 import { trailPointAtMile, type TrailIndex } from '../lib/trailPosition'
 import { closureFeatureCollection, type ClosureBand } from './closureLayers'
 import { whenStyleReady } from './styleReady'
+import { closureIdAt } from './closureLayers'
+import { warningIdAt } from './warningLayers'
 
 export const ATC_UPDATE_SOURCE_ID = 'atc-updates'
 
@@ -214,6 +216,10 @@ export function attachAtcUpdateTaps(
   onSelect: (bandId: string) => void,
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
+    // The two safety marks win a touch (closureLayers.ts's order): a
+    // notice band under barrier tape is a tap on the tape.
+    if (warningIdAt(map, event.point) !== null) return
+    if (closureIdAt(map, event.point) !== null) return
     const id = atcBandIdAt(map, event.point)
     if (id !== null) onSelect(id)
   }

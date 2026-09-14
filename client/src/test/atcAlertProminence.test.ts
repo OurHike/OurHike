@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   ATC_NOTICE_CASING_WIDTH,
-  ATC_NOTICE_FILL_RADIUS,
+  ATC_NOTICE_GLYPH_BOX,
   ATC_UPDATE_LAYER_ID,
   ATC_UPDATE_POINT_DRAWN_WIDTH,
   ATC_UPDATE_POINT_LAYER_ID,
@@ -150,10 +150,11 @@ describe('the ATC’s point notice sits just above every pin on the map', () => 
     // hairline round it is the drawn width above. It used to read the other way
     // - MapLibre puts `circle-stroke-width` OUTSIDE the radius, so a dot
     // declared at 40 covered 44 and tied the warning pin it was meant to stay
-    // under. The burst is rasterised rather than stroked, so the edge is inside
-    // the number by construction; this holds that it stayed that way.
-    expect(ATC_NOTICE_FILL_RADIUS + ATC_NOTICE_CASING_WIDTH).toBe(
-      ATC_UPDATE_POINT_DRAWN_WIDTH / 2,
+    // under. The mark is rasterised rather than stroked, so the edge is inside
+    // the number by construction; this holds that it stayed that way through
+    // the burst (#1071) and the hazard triangle (2026-09-10).
+    expect(ATC_NOTICE_GLYPH_BOX + 2 * ATC_NOTICE_CASING_WIDTH).toBe(
+      ATC_UPDATE_POINT_DRAWN_WIDTH,
     )
   })
 

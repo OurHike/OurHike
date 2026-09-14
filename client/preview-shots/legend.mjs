@@ -66,10 +66,18 @@
 // The violet is not in this frame either - a hidden row desaturates its pin,
 // and that is a true thing the caption does not claim. For the colour,
 // `npx vite-node scripts/preview-poi-pins.ts` writes the contact sheet.
+// Re-pointed 2026-09-10 (#1373, F12 and D5): "Trails in view" names five
+// and folds the rest under "N more, by name ›" (R10 - by NAME, because the
+// blaze rows the review would fold them into came off this panel at the
+// maintainer's request above), and the row "Your day hikes near here ›"
+// sits under the trails when the phone has a fix and a saved day hike. The
+// preview's phone has neither, so that row is absent here on purpose;
+// Legend.test.tsx holds it. Whether the fold shows depends on how many
+// named lines the preview's viewport draws.
 export const caption =
   'The legend — a ninth waypoint category, and it arrives switched off (#1197)'
 export const alt =
-  'The legend sheet over the trail screen, scrolled to the foot: a ninth waypoint row labelled Trailhead sits alone in the last grid row, its signpost pin and label greyed and struck through like Resupply, Crossing, Viewpoint and Parking above it, and below the Closure and Serious warning rows the Showing control reads 4 of 9 types'
+  'The legend sheet over the trail screen, scrolled to the foot: a ninth waypoint row labelled Trailhead sits alone in the last grid row, its signpost pin and label greyed and struck through like Resupply, Crossing, Viewpoint and Parking above it, and below the Closure and Serious warning rows the "Read all trail notices" door (directly under the safety rows since 2026-09-10) and then the Showing control reading 4 of 9 types'
 
 export default async function drive(page) {
   // The map first: the app opens on Today since #1054, and the legend's

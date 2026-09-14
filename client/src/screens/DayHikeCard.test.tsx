@@ -12,7 +12,7 @@
 // when it cannot. The tests below pin both halves - the numbers when there
 // are numbers, and silence rather than a placeholder when there are not.
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -293,7 +293,7 @@ describe('the two modes', () => {
 })
 
 describe('the door onto the ground (#1041)', () => {
-  const FOLLOW = { name: 'Follow this hike on the map' }
+  const FOLLOW = { name: 'Walk this' }
 
   it('offers following once the walk is saved and the graph can place it', async () => {
     const user = userEvent.setup()
@@ -318,6 +318,49 @@ describe('the door onto the ground (#1041)', () => {
     renderCard({ mode: 'review', onSave: vi.fn() })
 
     expect(screen.queryByRole('button', FOLLOW)).not.toBeInTheDocument()
+  })
+})
+
+describe('the door into step 2 (#1373, D1)', () => {
+  const EDIT = { name: 'Edit the route' }
+  const SENTENCE =
+    'You are walking this one. Changing the route stops following it — the next-turn card goes away and the walk you have already done is kept.'
+
+  it('opens the builder straight away on a walk nobody is following', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn()
+    renderCard({ onEdit })
+
+    await user.click(screen.getByRole('button', EDIT))
+    expect(onEdit).toHaveBeenCalledOnce()
+    expect(screen.queryByText(SENTENCE)).not.toBeInTheDocument()
+  })
+
+  it('says what editing costs BEFORE it happens on the walk being followed, verbatim', async () => {
+    const user = userEvent.setup()
+    const onEdit = vi.fn()
+    renderCard({ onEdit, following: true })
+
+    await user.click(screen.getByRole('button', EDIT))
+    // Asked, not done: the sentence is the design's, word for word.
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.getByText(SENTENCE)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Keep following' }))
+    expect(onEdit).not.toHaveBeenCalled()
+    expect(screen.queryByText(SENTENCE)).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', EDIT))
+    await user.click(screen.getByRole('button', { name: 'Edit it' }))
+    expect(onEdit).toHaveBeenCalledOnce()
+  })
+
+  it('is absent over the stored cache and on a review, like following', () => {
+    renderCard({ onEdit: vi.fn(), resolved: null })
+    expect(screen.queryByRole('button', EDIT)).not.toBeInTheDocument()
+    cleanup()
+    renderCard({ mode: 'review', onSave: vi.fn(), onEdit: vi.fn() })
+    expect(screen.queryByRole('button', EDIT)).not.toBeInTheDocument()
   })
 })
 
@@ -374,7 +417,7 @@ describe('the #1008 additions', () => {
     const user = userEvent.setup()
     renderCard()
 
-    await user.click(screen.getByRole('button', { name: 'Leave this with someone' }))
+    await user.click(screen.getByRole('button', { name: 'Leave it with someone' }))
     expect(
       screen.getByRole('dialog', { name: 'Leave this with someone' }),
     ).toBeInTheDocument()
@@ -387,7 +430,7 @@ describe('the #1008 additions', () => {
   it('review mode offers no leave door - Save stays the one primary', () => {
     renderCard({ mode: 'review', onSave: vi.fn() })
     expect(
-      screen.queryByRole('button', { name: 'Leave this with someone' }),
+      screen.queryByRole('button', { name: 'Leave it with someone' }),
     ).not.toBeInTheDocument()
   })
 })
@@ -541,5 +584,157 @@ describe('the climb when the live resolution is gone (#1045, 2026-08-27)', () =>
 
     expect(screen.queryByText(/ft/)).not.toBeInTheDocument()
     expect(screen.queryByText(/walking/)).not.toBeInTheDocument()
+  })
+})
+
+describe('step 3 of the spine (#1373, frames 5a and 5c)', () => {
+  const WATER = [
+    {
+      poiId: 'w1',
+      name: 'Stony Brook crossing',
+      lat: 41.25,
+      lon: -74.09,
+      alongMi: 0.8,
+      offCourseFeet: 12,
+    },
+    {
+      poiId: 'w2',
+      name: 'Pine Meadow Lake',
+      lat: 41.25,
+      lon: -74.08,
+      alongMi: 3.4,
+      offCourseFeet: 320,
+    },
+  ]
+  const STOP = {
+    poiId: 'tom-jones',
+    type: 'shelter',
+    name: 'Tom Jones Shelter',
+    lat: 41.25,
+    lon: -74.1,
+    mile: 1.4,
+    offCourseFeet: 220,
+    capacity: 8,
+    waterDistanceFt: 300,
+  }
+
+  it('reviews under the rail at step 3, with step 2 the map behind and step 1 the question before', async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const onBackToStepOne = vi.fn()
+    renderCard({ mode: 'review', onSave: vi.fn(), onClose, onBackToStepOne })
+
+    const rail = screen.getByRole('navigation', { name: 'Planning steps' })
+    expect(rail).toHaveTextContent('Day hike')
+    expect(within(rail).getByText('Details').closest('li')).toHaveAttribute(
+      'aria-current',
+      'step',
+    )
+    await user.click(within(rail).getByRole('button', { name: 'Step 2, Route' }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+    await user.click(within(rail).getByRole('button', { name: 'Step 1, Day hike' }))
+    expect(onBackToStepOne).toHaveBeenCalledTimes(1)
+
+    // The foot: the way back to the route, and Save as the last button (D7).
+    await user.click(screen.getByRole('button', { name: 'Back to Route, step 2' }))
+    expect(onClose).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole('button', { name: 'Save this day hike' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Back to the map' })).toBeNull()
+  })
+
+  it('carries no rail once saved - a record on a shelf is not on the spine', () => {
+    renderCard({ onBackToStepOne: vi.fn() })
+    expect(screen.queryByRole('navigation', { name: 'Planning steps' })).toBeNull()
+  })
+
+  it('lists the water the walk passes at the mile it reaches it, and says how far off the walk it sits only when that is worth saying', () => {
+    renderCard({ waterOnRoute: WATER })
+
+    const section = screen
+      .getByRole('heading', { name: 'Water on route' })
+      .closest('section')
+    expect(section).not.toBeNull()
+    const rows = within(section as HTMLElement).getAllByRole('listitem')
+    expect(rows).toHaveLength(2)
+    expect(rows[0]).toHaveTextContent('Stony Brook crossing')
+    expect(rows[0]).toHaveTextContent('0.8 mi in')
+    expect(rows[0]).not.toHaveTextContent('off the walk')
+    expect(rows[1]).toHaveTextContent('3.4 mi in')
+    expect(rows[1]).toHaveTextContent(/\d+ ft off the walk/)
+  })
+
+  it('prints no water section at all with no water - never "no water on this route"', () => {
+    renderCard({ waterOnRoute: [] })
+    expect(screen.queryByRole('heading', { name: 'Water on route' })).toBeNull()
+    expect(screen.queryByText(/no water/i)).toBeNull()
+  })
+
+  it('lists the stops with the two facts they were chosen on, and the minutes they add', () => {
+    renderCard({ stops: [STOP] })
+
+    const section = screen
+      .getByRole('heading', { name: 'Shelters & campsites' })
+      .closest('section') as HTMLElement
+    expect(section).toHaveTextContent('Tom Jones Shelter')
+    expect(section).toHaveTextContent('1.4 mi in')
+    expect(section).toHaveTextContent('sleeps 8')
+    expect(section).toHaveTextContent('water 300 ft')
+    expect(section).toHaveTextContent(/Stops add about \d+ min/)
+    // Absent figures stay absent - lib/dayHikeStops.ts's rule, on this row.
+    cleanup()
+    renderCard({
+      stops: [{ ...STOP, capacity: undefined, waterDistanceFt: undefined } as never],
+    })
+    expect(screen.queryByText(/sleeps/)).toBeNull()
+    expect(screen.queryByText(/water \d/)).toBeNull()
+  })
+
+  it('offers the name as a field, and keeps it a heading without a way to change it', async () => {
+    const user = userEvent.setup()
+    const onRename = vi.fn()
+    renderCard({ mode: 'review', onSave: vi.fn(), onRename })
+
+    const field = screen.getByLabelText('Name') as HTMLInputElement
+    expect(field.value).toBe(HIKE.name)
+    await user.type(field, '!')
+    // Held in the field while typing and handed over when the hiker is done
+    // (lib/useDraftField.ts): the saved card's rename is a whole-store
+    // read-modify-write, and one per keystroke lost letters.
+    expect(field.value).toBe(`${HIKE.name}!`)
+    expect(onRename).not.toHaveBeenCalled()
+    await user.tab()
+    expect(onRename).toHaveBeenCalledTimes(1)
+    expect(onRename).toHaveBeenLastCalledWith(`${HIKE.name}!`)
+
+    cleanup()
+    renderCard()
+    expect(screen.queryByLabelText('Name')).toBeNull()
+    expect(screen.getByRole('heading', { name: HIKE.name })).toBeInTheDocument()
+  })
+
+  it('after Save, leads with "Walk this" and says where the walk now lives (frame 5c)', () => {
+    renderCard({ onFollow: vi.fn(), justSaved: true, today: '2026-09-12' })
+    expect(screen.getByText('Saved')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Walk this' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Leave it with someone' }),
+    ).toBeInTheDocument()
+    // Frame 5c's line, said for the walk's own date rather than promised.
+    expect(screen.getByRole('status')).toHaveTextContent(/leads Today on/)
+
+    cleanup()
+    renderCard({ justSaved: true, today: HIKE.date ?? undefined })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'This walk is now the top card on Today.',
+    )
+
+    cleanup()
+    renderCard({ hike: { ...HIKE, date: null }, justSaved: true, today: '2026-09-12' })
+    expect(screen.getByRole('status')).toHaveTextContent(/Give it a date/)
+
+    cleanup()
+    renderCard()
+    expect(screen.queryByText('Saved')).toBeNull()
+    expect(screen.queryByRole('status')).toBeNull()
   })
 })

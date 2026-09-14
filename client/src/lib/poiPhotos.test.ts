@@ -4,6 +4,7 @@ import {
   addOwnPhoto,
   chooseOwnPhoto,
   deleteOwnPhoto,
+  listAllOwnPhotos,
   listOwnPhotos,
   ownPhotoUsage,
   POI_PHOTOS_PREFIX,
@@ -171,6 +172,29 @@ describe('deleteOwnPhoto', () => {
     })
     await deleteOwnPhoto('poi-1', only.id)
     expect(stored.has(`${POI_PHOTOS_PREFIX}poi-1`)).toBe(false)
+  })
+})
+
+describe('listAllOwnPhotos (#1373, D5)', () => {
+  it('lists every own photo with its place, newest first, holding no bytes', async () => {
+    withStore({ 'ourhike:outbox': [{ note: 'not a photo' }] })
+    await addOwnPhoto('poi-1', { blob: jpeg(100), taken: '2026-09-01', source: 'camera' })
+    await addOwnPhoto('poi-2', { blob: jpeg(7), taken: '2026-09-04', source: 'library' })
+    await addOwnPhoto('poi-1', { blob: jpeg(50), taken: null, source: 'camera' })
+
+    const all = await listAllOwnPhotos()
+    expect(all.map((photo) => photo.poiId)).toEqual(['poi-1', 'poi-2', 'poi-1'])
+    expect(all[1]).toMatchObject({
+      poiId: 'poi-2',
+      taken: '2026-09-04',
+      source: 'library',
+    })
+    expect(all.every((photo) => !('blob' in photo))).toBe(true)
+  })
+
+  it('is empty for a phone with no photos', async () => {
+    withStore()
+    await expect(listAllOwnPhotos()).resolves.toEqual([])
   })
 })
 

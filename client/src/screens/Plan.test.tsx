@@ -431,11 +431,96 @@ describe('the cascade (#758)', () => {
     expect(screen.getByText(/Finish ≈ 13 May, unchanged/)).toBeInTheDocument()
     expect(screen.getByText(/tomorrow: 12\.9 mi/)).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: /Absorb/ }))
+    // A move shows what it moves before it applies (#1373, frame 7b); the
+    // commit is "Apply this".
+    await user.click(screen.getByRole('button', { name: /Absorb the miles/ }))
+    expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('dialog', { name: 'What this moves' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Apply this' }))
     expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(2)
     const absorbed = PROPS.onReplacePlan.mock.calls[1][0] as HikePlan
     expect(absorbed.days).toHaveLength(2)
     expect(absorbed.days.map((day) => day.date)).toEqual(['2026-05-12', '2026-05-13'])
+  })
+
+  describe('the moves, the diff and the undo (#1373, frames 7a-7b)', () => {
+    /** Call day 1 short at mile 480 - well before Lost Mountain, so the
+     *  stretch left to Atkins is long enough to re-plan into more days -
+     *  and land on the choice sheet. */
+    async function callShort(user: ReturnType<typeof userEvent.setup>) {
+      const view = render(
+        <PlanScreen {...PROPS} plan={milesPlan()} pois={POIS} gpsMile={480} />,
+      )
+      await user.click(screen.getByRole('button', { name: /Damascus → Lost Mountain/ }))
+      await user.click(screen.getByRole('button', { name: /Call it a day/ }))
+      await user.click(screen.getByRole('button', { name: /Where you are/ }))
+      const called = PROPS.onReplacePlan.mock.calls[0][0] as HikePlan
+      view.rerender(<PlanScreen {...PROPS} plan={called} pois={POIS} gpsMile={480} />)
+      return { called, ...view }
+    }
+
+    it('offers each move with its cost, and slowing the target as one of them', async () => {
+      const user = userEvent.setup()
+      await callShort(user)
+
+      const sheet = screen.getByRole('dialog', { name: 'The rest of the plan' })
+      expect(
+        within(sheet).getByRole('button', { name: /Shift the rest out/ }),
+      ).toHaveTextContent(/Same day lengths/)
+      expect(
+        within(sheet).getByRole('button', { name: /Absorb the miles/ }),
+      ).toHaveTextContent(/Finish ≈ 13 May, unchanged/)
+      // One notch slower, in the plan's own unit: 15 → 13 mi a day.
+      expect(
+        within(sheet).getByRole('button', { name: /Slow the target from here/ }),
+      ).toHaveTextContent(/15 mi → 13 mi a day/)
+      expect(
+        within(sheet).getByRole('button', { name: /Leave it alone/ }),
+      ).toBeInTheDocument()
+    })
+
+    it('shows what moves - every later day as a row with its word and its note - before applying', async () => {
+      const user = userEvent.setup()
+      const { called } = await callShort(user)
+
+      await user.click(screen.getByRole('button', { name: /Shift the rest out/ }))
+      const diff = screen.getByRole('dialog', { name: 'What this moves' })
+      const rows = within(diff).getAllByRole('listitem')
+      // The walked day is a record; what follows is what the move makes of
+      // the stretch, in the one row the timeline lists days in (R7).
+      expect(rows[0]).toHaveTextContent('walked')
+      // The day after today is shorter than it was, and a day appeared.
+      expect(rows.length).toBeGreaterThan(called.days.length)
+      expect(rows[1]).toHaveTextContent('moved')
+      expect(rows[1]).toHaveTextContent(/was 23\.3 mi/)
+      expect(diff).toHaveTextContent(/new day/)
+      expect(diff).toHaveTextContent('Applying this is one action and one undo.')
+      expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(1)
+
+      // The way back offers the other moves again; nothing applied.
+      await user.click(screen.getByRole('button', { name: 'Back to the other ways' }))
+      expect(
+        screen.getByRole('dialog', { name: 'The rest of the plan' }),
+      ).toBeInTheDocument()
+      expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(1)
+    })
+
+    it('applies in one action and offers one undo, which puts the plan back', async () => {
+      const user = userEvent.setup()
+      const { called, rerender } = await callShort(user)
+
+      await user.click(screen.getByRole('button', { name: /Shift the rest out/ }))
+      await user.click(screen.getByRole('button', { name: 'Apply this' }))
+      expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(2)
+      const applied = PROPS.onReplacePlan.mock.calls[1][0] as HikePlan
+      rerender(<PlanScreen {...PROPS} plan={applied} pois={POIS} gpsMile={480} />)
+
+      const undo = screen.getByRole('status')
+      expect(undo).toHaveTextContent('Applied.')
+      await user.click(within(undo).getByRole('button', { name: 'Undo' }))
+      expect(PROPS.onReplacePlan).toHaveBeenCalledTimes(3)
+      expect(PROPS.onReplacePlan.mock.calls[2][0]).toBe(called)
+    })
   })
 
   it('skips the choice sheet when the day ended exactly as planned', async () => {
@@ -620,8 +705,12 @@ describe('the door to what’s left (#791)', () => {
     await user.click(screen.getByRole('button', { name: /What’s left/ }))
 
     expect(screen.getByRole('heading', { name: 'What’s left' })).toBeInTheDocument()
-    // Nothing walked on this plan, so the whole hike is one piece.
-    expect(screen.getByText(/389\.2 mi in 1 piece/)).toBeInTheDocument()
+    // Nothing walked on this plan, so the whole hike is one piece - and the
+    // head is two figures, walked and to go (#1373, frame 8b).
+    expect(screen.getByText('To go').closest('.whats-left__figure')).toHaveTextContent(
+      /389\.2 mi/,
+    )
+    expect(screen.getByText('in 1 piece')).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Back to the hike' }))
     expect(

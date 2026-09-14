@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { LineSheet } from './LineSheet'
 import type { LineDetail } from '../lib/lineDetail'
 
@@ -20,6 +21,7 @@ const FULL: LineDetail = {
   closureLine: null,
   switchNote: null,
   trailMark: null,
+  sharedLine: null,
 }
 
 /** A nearby trail: somebody else's network, with the three lines an A.T. spur
@@ -36,6 +38,7 @@ const NEARBY: LineDetail = {
   closureLine: null,
   switchNote: 'Not the trail you chose. Switching happens in the picker.',
   trailMark: null,
+  sharedLine: null,
 }
 
 afterEach(cleanup)
@@ -68,6 +71,7 @@ describe('the line-detail sheet', () => {
           closureLine: null,
           switchNote: null,
           trailMark: null,
+          sharedLine: null,
         }}
         onClose={vi.fn()}
       />,
@@ -180,6 +184,52 @@ describe('adding a point to a day hike (#979)', () => {
 })
 
 describe('the trail mark', () => {
+  // Taking the trail (the maintainer's review of #1374): the plate is named
+  // for what a tap took, and this is the tap.
+  describe('taking the trail', () => {
+    it('offers nothing where the shell passed no take - a side trail is not a thing the plate names', () => {
+      render(<LineSheet detail={FULL} onClose={vi.fn()} />)
+      expect(screen.queryByRole('button', { name: /take this trail/i })).toBeNull()
+      expect(screen.queryByText(/your trail/i)).toBeNull()
+    })
+
+    it('offers to take a registry trail that is not taken', async () => {
+      const user = userEvent.setup()
+      const onTakeTrail = vi.fn()
+      render(
+        <LineSheet
+          detail={FULL}
+          onClose={vi.fn()}
+          taken={null}
+          onTakeTrail={onTakeTrail}
+        />,
+      )
+
+      await user.click(screen.getByRole('button', { name: 'Take this trail' }))
+      expect(onTakeTrail).toHaveBeenCalledTimes(1)
+    })
+
+    it('says a tapped trail is yours and lets it go, and never offers to take it twice', async () => {
+      const user = userEvent.setup()
+      const onLetGo = vi.fn()
+      render(<LineSheet detail={FULL} onClose={vi.fn()} taken="tap" onLetGo={onLetGo} />)
+
+      expect(screen.getByText(/your trail/i)).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /take this trail/i })).toBeNull()
+      await user.click(screen.getByRole('button', { name: 'Let this trail go' }))
+      expect(onLetGo).toHaveBeenCalledTimes(1)
+    })
+
+    it("says a hike's trail is the hike's, with no button either way", () => {
+      render(<LineSheet detail={FULL} onClose={vi.fn()} taken="hike" />)
+
+      expect(screen.getByText(/your hike is on this trail/i)).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', { name: /take this trail|let this trail go/i }),
+      ).toBeNull()
+    })
+  })
+
   it('draws the mark beside the name where the detail carries one, decoratively', () => {
     const { container } = render(
       <LineSheet

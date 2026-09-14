@@ -421,6 +421,20 @@ def build_output(registry: dict | None = None) -> dict:
                 "trust": _unanimous([e.get("trust") for e in entries]),
                 "licence": licence,
                 "attribution": attribution,
+                # NJDEP's condition 2 - "may not be reproduced or redistributed
+                # without all the metadata provided" - which is why the terms
+                # travel with the lines rather than being summarised into the
+                # one-line `licence` above. Published for EVERY steward whose
+                # block records them, not only NJDEP's: a block that took the
+                # trouble to quote its terms whole has already decided they are
+                # worth a hiker reading, and OPRHP's carries them too.
+                #
+                # Null where a block records none, which the card renders as
+                # nothing rather than as an empty section - the same rule the
+                # rest of this record follows. See njdep_licence.basis in
+                # sources.json for what these two fields do and do not satisfy.
+                "terms": block.get("terms_verbatim"),
+                "terms_source": block.get("terms_source"),
                 # What this steward publishes, in the registry's own words, so
                 # a card can say "Centerline, shelters, closures" without this
                 # file inventing a summary of somebody else's data.

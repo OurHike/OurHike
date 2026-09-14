@@ -118,7 +118,7 @@ function Notice({
   return (
     <li className="atc-notices__item">
       {/* The organization's own category, verbatim, for the reason
-          AtcUpdateSheet.tsx gives: mapping it onto ClosureReason would render
+          OrgNoticeSheet.tsx gives: mapping it onto ClosureReason would render
           a Detour as "Closed", which is a claim they did not make.
 
           NULL IS A REAL VALUE HERE and it is NYNJTC's on every row - they file

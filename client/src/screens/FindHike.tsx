@@ -93,6 +93,9 @@ export interface FindHikeProps {
    *  nowhere to send the tap gets cards that read rather than press -
    *  SuggestedHikeCard's rule, and the shell has passed it since #1290. */
   onOpenHike?: (id: string) => void
+  /** Facets applied before the screen opens - Today's "Have less time?"
+   *  chips (#1373, F2) push this screen with one already on. */
+  initialFacets?: Partial<HikeFacets>
 }
 
 type View = 'find' | 'results'
@@ -113,9 +116,20 @@ export function FindHike({
   pace,
   onBack,
   onOpenHike,
+  initialFacets,
 }: FindHikeProps) {
-  const [facets, setFacets] = useState<HikeFacets>(NO_FACETS)
-  const [view, setView] = useState<View>('find')
+  const [facets, setFacets] = useState<HikeFacets>(() => ({
+    ...NO_FACETS,
+    ...initialFacets,
+  }))
+  // A chip on Today (#1373, F2) lands on the results it asked for, with the
+  // filter applied and removable, rather than on the field it did not type
+  // into.
+  const [view, setView] = useState<View>(() =>
+    initialFacets !== undefined && Object.keys(initialFacets).length > 0
+      ? 'results'
+      : 'find',
+  )
   const [open, setOpen] = useState<OpenSheet>(null)
   // The sheet's pending facets - what the counts are taken over while the
   // hiker is still deciding. Committed by "Show", discarded by closing.

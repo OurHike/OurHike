@@ -1,4 +1,14 @@
-// The sheet for an ATC trail update, and the reason it is not ClosureSheet.
+// The sheet for a published notice - an organization's trail update, tapped
+// on the map - and the reason it is not ClosureSheet.
+//
+// NAMED FOR WHAT IT RENDERS since #1373 (F12): it was `AtcUpdateSheet`, and
+// the ATC is one publisher of several (features/ORG_NOTICES.md). The name on
+// the claim is read from the registry, so a second publisher's tapped notice
+// reads the same way the ATC's does; the data underneath is still ATC-shaped
+// - `AtcUpdate`, `ATC_SOURCE_KEY`, the two mile columns - because only the
+// ATC's rows carry a mile, and renaming a file does not place a notice
+// (ORG_NOTICES.md §3). The CSS class names keep their old spelling; a
+// stylesheet is not a claim.
 //
 // features/ATC_TRAIL_UPDATES.md §4 is the requirement, and #461 is the issue.
 // The rule it enforces is one sentence: **OurHike did not verify this; the
@@ -35,7 +45,7 @@ import type { AtcUpdate } from '../lib/atcUpdates'
 import { ATC_SOURCE_KEY } from '../lib/notices'
 import { orgLabelFrom, possessive, type Stewards } from '../lib/stewards'
 
-export interface AtcUpdateSheetProps {
+export interface OrgNoticeSheetProps {
   update: AtcUpdate
   /** When a person last checked the reviewed file against ATC's page, or null
    *  if the artifact does not say. */
@@ -58,12 +68,12 @@ export interface AtcUpdateSheetProps {
   onClose: () => void
 }
 
-export function AtcUpdateSheet({
+export function OrgNoticeSheet({
   update,
   reviewedAt,
   stewards,
   onClose,
-}: AtcUpdateSheetProps) {
+}: OrgNoticeSheetProps) {
   const updatedAt = atcUpdatedAt(update)
   const range = mileRange(update)
   const org = orgLabelFrom(stewards)(ATC_SOURCE_KEY)

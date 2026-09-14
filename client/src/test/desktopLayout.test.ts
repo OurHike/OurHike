@@ -102,10 +102,11 @@ describe('desktop layout contract', () => {
     expect(block).not.toMatch(/position:\s*(static|relative)/)
   })
 
-  // The brand mark differs by layout rather than existing in only one, so both
+  // The brand mark is in the markup for both layouts and drawn in one, so both
   // halves are asserted together rather than one per stylesheet. A phone gets
-  // the icon at the left end of the bar; a desktop gets icon over wordmark at
-  // the foot of the sidebar.
+  // none of it since 2026-09-10 - the mode chip has its bar's left end (the
+  // room audit for #1374); a desktop gets icon over wordmark at the foot of
+  // the sidebar.
   const chromeCss = readFileSync(resolve(process.cwd(), 'src/chrome/chrome.css'), 'utf8')
   const bareChrome = chromeCss.replace(/\/\*[\s\S]*?\*\//g, '')
 
@@ -124,12 +125,14 @@ describe('desktop layout contract', () => {
     expect(css).toMatch(/\.tab-bar__brand-wordmark\s*\{[^}]*display:\s*block/)
   })
 
-  it('pulls the mark ahead of the tabs on a phone and back after them on a desktop', () => {
-    // The mark is last in the DOM because on a desktop it is the foot of a
-    // column. Only the phone needs it first, and the desktop has to put that
-    // back - otherwise the sidebar grows a logo above its own navigation.
-    expect(chromeRule('.tab-bar__brand')).toMatch(/order:\s*-1/)
-    expect(declarationsOf('.map-screen > .tab-bar .tab-bar__brand')).toMatch(/order:\s*0/)
+  it('keeps the whole mark off the phone, whose bar corner belongs to the mode chip', () => {
+    // The same shape as the wordmark test above, for the same structural
+    // reason: hidden by the component's stylesheet, turned back on only from
+    // inside the media query, as the foot of the sidebar.
+    expect(chromeRule('.tab-bar__brand')).toMatch(/display:\s*none/)
+    expect(declarationsOf('.map-screen > .tab-bar .tab-bar__brand')).toMatch(
+      /display:\s*flex/,
+    )
   })
 
   it('sizes the mark for the layout it is in, not once for both', () => {
@@ -268,6 +271,32 @@ describe('desktop layout contract', () => {
     expect(declarationsOf('.hike-window')).toMatch(/justify-content:\s*center/)
     expect(frame).toMatch(/max-height/)
     expect(frame).toMatch(/border-radius/)
+  })
+
+  it('keeps step 3 positioned in the rail, for the close button it anchors', () => {
+    // The shell hands the review card to the builder-panel slot above the
+    // breakpoint (#1373, frame 16b), where it sheds the sheet frame plan.css
+    // gives `.day-hike-card`. It must stay a positioned box while it does:
+    // `.route-stops__close` is absolute against the card, and a static card
+    // would hand the button to the map body's corner - the same trap
+    // .legend--persistent's test above pins, on the other rail.
+    const block = declarationsOf('.map-screen__body > .day-hike-card')
+
+    expect(block).toMatch(/position:\s*relative/)
+    expect(block).not.toMatch(/position:\s*static/)
+    // The sheet's ceiling is a fraction of the canvas; a rail has the body's
+    // height and scrolls inside it.
+    expect(block).toMatch(/max-height:\s*none/)
+
+    // The walked record's review lands in the same slot (App hands either
+    // component to builderPanel above the breakpoint) and sheds the same
+    // sheet frame; the first version styled only the day-hike card, and a
+    // walk recorded as already done sat in the rail as an 85%-tall sheet
+    // with rounded corners and an upward shadow.
+    const walked = declarationsOf('.map-screen__body > .walked-hike')
+    expect(walked).toMatch(/position:\s*relative/)
+    expect(walked).toMatch(/max-height:\s*none/)
+    expect(walked).toMatch(/box-shadow:\s*none/)
   })
 
   it('restates the focus ring on the chrome, where the global ring is invisible', () => {

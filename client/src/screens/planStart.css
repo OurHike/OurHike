@@ -1,0 +1,183 @@
+/* Step 1 of the planning spine (screens/PlanStart.tsx, #1373). The field
+   and the rows are the finder's measurements (screens/findHike.css) so a
+   hiker who has typed into one has typed into the other. Semantic tokens
+   only. */
+
+.plan-start {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: 12px 16px 20px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+.plan-start__title {
+  margin: 8px 0 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.plan-start__lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.plan-start__field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 15px;
+  color: var(--fg-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.plan-start__field-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--fg-3);
+}
+
+.plan-start__field-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.plan-start__doors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plan-start__door {
+  flex: 1 1 auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+.plan-start__published {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.plan-start__or {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.plan-start__browse {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-start__all {
+  min-height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--fg-1);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.plan-start__chip {
+  min-height: 36px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+/* The shelf rail, the Today shelf's own shape. */
+.plan-start__rail {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  margin: 0 -16px;
+  padding: 2px 16px 6px;
+}
+
+.plan-start__rail > * {
+  flex: 0 0 172px;
+  scroll-snap-align: start;
+}
+
+.plan-start__walked {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--fg-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.plan-start__walked-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.plan-start__walked-note {
+  font-size: 13px;
+  color: var(--fg-3);
+}
+
+.plan-start__foot {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+.plan-start__cancel {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-2);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}

@@ -39,7 +39,7 @@ export const caption =
   'Record a GPS trace, before anything is running — the battery cost, what a locked phone does to it, the on-device promise, and the screen-off switch with its warning that the two watches measure differently, all said before the button (#1180, #1182)'
 
 export const alt =
-  'The Safety & privacy settings page, scrolled down to the "Record a GPS trace" section below its location and closures rows: a Start recording button, a note saying it writes down where your phone thinks you are several times a minute and keeps the screen from going dark so it can, and that it will use a lot more battery than usual because the screen is most of that, a note saying that locking the phone yourself pauses recording until you unlock it and nothing already recorded is lost, a note saying the recording stays on this phone and is never uploaded or attached to a problem report, and an unchecked "Keep recording with the screen off" switch with a note saying it uses far less battery, that the phone shows a notice the whole time it runs, and that the readings it takes are measured slightly differently from the browser\u2019s so the saved file records which is which'
+  'The "Where this map comes from" page, scrolled to the "Record a GPS trace" section at its foot under a note calling it a field-test tool for testers rather than a setting for hikers: a Start recording button, a note saying it writes down where your phone thinks you are several times a minute and keeps the screen from going dark so it can, and that it will use a lot more battery than usual because the screen is most of that, a note saying that locking the phone yourself pauses recording until you unlock it and nothing already recorded is lost, a note saying the recording stays on this phone and is never uploaded or attached to a problem report, and an unchecked "Keep recording with the screen off" switch with a note saying it uses far less battery, that the phone shows a notice the whole time it runs, and that the readings it takes are measured slightly differently from the browser\u2019s so the saved file records which is which'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'More' }).click()
@@ -52,6 +52,12 @@ export default async function drive(page) {
   const useMyLocation = page.getByRole('checkbox', { name: 'Use my location' })
   if (!(await useMyLocation.isChecked())) await useMyLocation.check()
 
+  // Re-pointed 2026-09-10 (#1373, D3): the recorder is a field-test tool
+  // and lives at the foot of "Where this map comes from" now, under the
+  // build it tests - the location switch that gates it stays on Safety &
+  // privacy, which is why the drive visits that page first.
+  await page.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('button', { name: /Where this map comes from/ }).click()
   await page.getByRole('heading', { name: 'Record a GPS trace' }).waitFor()
 
   // Waited on rather than assumed: if the switch stops rendering, this recipe

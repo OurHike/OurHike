@@ -585,8 +585,10 @@ export function poiColor(type: string): string {
   return type in POI_COLORS ? POI_COLORS[type as PoiType] : POI_FALLBACK_COLOR
 }
 
-/** Even-odd crossing count, which is what gives the tent its doorway. */
-function insideGlyph(glyph: Glyph, x: number, y: number): boolean {
+/** Even-odd crossing count, which is what gives the tent its doorway.
+ *  Exported for map/atcNoticeMark.ts, which draws the hazard triangle bare
+ *  (no disc) and needs the same fill rule the pins use for it. */
+export function insideGlyph(glyph: Glyph, x: number, y: number): boolean {
   let inside = false
 
   for (const ring of glyph) {

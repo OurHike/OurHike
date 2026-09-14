@@ -196,6 +196,7 @@ server. Options:
 | `--entry` | keep first run on screen — the default skips past it, because otherwise every screenshot is of the same three entry cards |
 | `--url=…` | photograph something already running: your own dev server, or a deployed preview |
 | `--desktop` | 1280×800 and not a phone, for `site/` |
+| `--small` | 375×667, the smallest phone this app is designed for; a recipe asks for it with `export const small = true` (the room audit for #1374) |
 | `--wait=6000` | longer settle, for a screen that animates in |
 | `--full` | the whole scrollable page rather than the viewport |
 

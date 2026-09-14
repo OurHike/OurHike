@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { syncOutbox, useOutboxSync } from './outboxSync'
 import { flushOutbox, hasWorkThatNeedsNoAccount, type FlushResult } from './outbox'
 import { accessToken, sendOutboxItem, permanentFailureReason } from './api'
+import { recordSentReport } from './sentReports'
 
 // #231's other half: the outbox had queued correctly since it was written and
 // nothing had ever emptied it.
@@ -24,7 +25,12 @@ vi.mock('./api', () => ({
   API_CONFIGURED: true,
 }))
 
+vi.mock('./sentReports', () => ({
+  recordSentReport: vi.fn(async () => undefined),
+}))
+
 const mockedFlush = vi.mocked(flushOutbox)
+const mockedRecord = vi.mocked(recordSentReport)
 const mockedToken = vi.mocked(accessToken)
 const mockedNeedsNoAccount = vi.mocked(hasWorkThatNeedsNoAccount)
 
@@ -48,7 +54,33 @@ describe('syncOutbox', () => {
     // never accept sitting in the queue saying "waiting to send" forever.
     await syncOutbox()
 
-    expect(mockedFlush).toHaveBeenCalledWith(sendOutboxItem, permanentFailureReason)
+    expect(mockedFlush).toHaveBeenCalledWith(expect.any(Function), permanentFailureReason)
+  })
+
+  it('hands over a sender that sends, then remembers what went (#1373, frame 9d)', async () => {
+    // The ledger is the phone's memory, not the send's receipt: it is written
+    // AFTER the send, and a ledger that fails must never hand the item back
+    // to the queue - the report is filed.
+    await syncOutbox()
+    const send = mockedFlush.mock.calls[0][0]
+    const item = {
+      id: 'r1',
+      authoredAt: '2026-09-08T10:00:00.000Z',
+      payload: { type: 'blowdown' as const, reporter_type: 'thru' as const },
+    }
+
+    await send(item)
+    expect(sendOutboxItem).toHaveBeenCalledWith(item)
+    expect(mockedRecord).toHaveBeenCalledWith(item)
+
+    mockedRecord.mockRejectedValueOnce(new Error('no storage'))
+    await expect(send(item)).resolves.toBeUndefined()
+
+    // And a send that fails never reaches the ledger.
+    vi.mocked(sendOutboxItem).mockRejectedValueOnce(new Error('offline after all'))
+    mockedRecord.mockClear()
+    await expect(send(item)).rejects.toThrow('offline after all')
+    expect(mockedRecord).not.toHaveBeenCalled()
   })
 
   it('does not try when signed out - the queue waits for an account', async () => {
@@ -68,7 +100,7 @@ describe('syncOutbox', () => {
 
     await syncOutbox()
 
-    expect(mockedFlush).toHaveBeenCalledWith(sendOutboxItem, permanentFailureReason)
+    expect(mockedFlush).toHaveBeenCalledWith(expect.any(Function), permanentFailureReason)
   })
 
   it('reports a flush that ran, so a caller can record a real sync time', async () => {

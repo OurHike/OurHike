@@ -1098,6 +1098,37 @@
   cursor: pointer;
 }
 
+/* Two figures and nothing else (#1373, frame 8b): walked and to go, at the
+   size the hike room's own line prints them. No bar here - the room draws
+   one, and this screen's job is the pieces under the figures. */
+.whats-left__figures {
+  display: flex;
+  gap: var(--space-4, 16px);
+  margin: 0;
+}
+
+.whats-left__figure {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.whats-left__figure-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.whats-left__figure-value {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
 .whats-left__total {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -2485,6 +2516,12 @@
   flex-direction: column;
   gap: 0.2rem;
   width: 100%;
+  /* Border-box, said out loud: the pressable doors are <button>s, which
+     the browser sizes border-box on its own, and the refused door is a
+     <div>, which it does not - so at 100% plus its padding the refusal
+     sentence ran off the right edge of the desktop column in the preview
+     at a7eda732 while the door under it fit. */
+  box-sizing: border-box;
   padding: 0.85rem 0.95rem;
   text-align: left;
   background: var(--bg-surface);
@@ -2548,7 +2585,17 @@
   right: 0;
   bottom: 0;
   z-index: 3;
-  max-height: 60%;
+  /* NO HEIGHT AND NO CAP HERE. chrome/SheetGrip.tsx writes this sheet's height
+     inline from the grip, between a peek it measures off the head and foot and
+     a ceiling of SHEET_FULL_FRACTION of the canvas. A `max-height` in this rule
+     would silently win over a hiker who pulled the sheet higher, which is the
+     one thing the grip exists to let them do.
+
+     It was 60% of the canvas until 2026-09-12 - which is how the bar came to
+     cover 321 px of a 480 px map - and then 58% of the 75% floor's budget,
+     which is how the builder's Shape control came to sit behind a 76 px
+     window. Both were this file deciding; neither was the hiker. */
+  box-sizing: border-box;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2727,6 +2774,7 @@
   z-index: 3;
   max-height: 85%;
   overflow-y: auto;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
@@ -3084,6 +3132,144 @@
    phone, unlike src/desktop.css - this IS the phone layout, and the rail is
    the variant. --------------------------------------------------------- */
 
+/* WHO DECIDES HOW MUCH MAP THERE IS WHILE PLANNING: the hand, not this file.
+
+   The maintainer asked on 2026-09-12 for a hard floor - "make sure that the
+   map gets at least 75% of the screen height, always" - and this block was
+   that floor, expressed as a budget. It was built, measured, and the
+   measurement condemned it: at 390x844 the budget left the step-3 review
+   38 px to render 731 px of route detail in, and at 375x667 it left 93 px for
+   96 px of furniture, so the step rail came to rest UNDERNEATH the pinned
+   foot. The floor was met at every moment and the screen under it was
+   unusable.
+
+   The maintainer's read on seeing that, 2026-09-14, and the rule now: "I
+   don't need a hard 75%. I need the ability to pull up or push down the
+   planning options." So there is no floor here any more. The sheet carries a
+   grip (chrome/SheetGrip.tsx) and the hiker sets the split; this file's job
+   shrinks to giving the grip somewhere to live and keeping the sheet inside
+   its canvas.
+
+   WHAT THE MAP GETS AT REST is SHEET_REST_FRACTION in that file - about two
+   thirds of the canvas, against the 19% measured in the builder before any
+   of this (2026-09-12). The height itself is written inline by the drag, so
+   no rule here may set `height` on these sheets. */
+
+/* THE SCROLLING MIDDLE OF A SHEET WITH A GRIP ON IT.
+
+   `display: contents` by default, so this wrapper does not exist as far as
+   layout is concerned: a docked card, the desktop rail and the saved card are
+   laid out exactly as they were before it was introduced. It becomes a real
+   scroller only inside a sheet the grip has sized, where the grip and the foot
+   have to hold still while the reading moves under them.
+
+   `min-height: 0` is load-bearing. A flex item's default `min-height: auto`
+   refuses to shrink below its content, so without it the body wins the
+   argument with the sheet's height and pushes the foot off the bottom - the
+   sheet ignores the grip entirely. */
+.day-hike-bar__body,
+.day-hike-card__body,
+.day-hike-panel__body {
+  display: contents;
+}
+
+.day-hike-bar[data-snap] > .day-hike-bar__body,
+.day-hike-panel[data-snap] > .day-hike-panel__body,
+.map-screen__canvas > .day-hike-card[data-snap] > .day-hike-card__body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Inherited from the sheet when this was `display: contents`; restated here
+     because a real box does not inherit its parent's gap. */
+  gap: inherit;
+}
+
+/* The sheet itself stops scrolling once it has a body that does: two nested
+   scrollers on one surface is a sheet that sometimes moves and sometimes
+   moves its contents, under the same thumb. */
+.day-hike-bar[data-snap],
+.day-hike-panel[data-snap],
+.map-screen__canvas > .day-hike-card[data-snap] {
+  overflow: hidden;
+}
+
+/* The panel's own 35% cap stands down once the grip is sizing it: the hook
+   enforces SHEET_FULL_FRACTION of the column instead, and a cap left in place
+   here would refuse a height the hiker had just dragged to. */
+.day-hike-panel[data-snap] {
+  max-height: none;
+}
+
+/* Gripped at the BOTTOM, so the handle's breathing room is on the other side
+   of it from a sheet's. */
+.day-hike-panel > .sheet-grip {
+  margin: 0.1rem 0 -0.35rem;
+}
+
+.sheet-grip {
+  /* The sheet's top edge, and the whole of its hit area: a 28px band across
+     the full width, which is the one target a thumb can find without looking
+     while the other hand is holding a trekking pole. */
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 28px;
+  margin: -0.35rem 0 0.1rem;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: grab;
+  /* Or the browser treats the drag as a scroll of whatever is under the thumb
+     and the sheet never moves. */
+  touch-action: none;
+}
+
+.sheet-grip:active {
+  cursor: grabbing;
+}
+
+.sheet-grip__bar {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border-2);
+}
+
+.sheet-grip:hover .sheet-grip__bar,
+.sheet-grip:focus-visible .sheet-grip__bar {
+  background: var(--fg-3);
+}
+
+/* The snap itself animates; the drag does not, because during a drag the
+   height is being written every frame and a transition would make the sheet
+   trail the thumb. */
+.day-hike-bar[data-snap],
+.day-hike-panel[data-snap],
+.map-screen__canvas > .day-hike-card[data-snap] {
+  transition: height 160ms ease-out;
+}
+
+/* While the thumb is down the height is being written every frame, and a
+   transition would ease toward each frame rather than land on it - the sheet
+   trails the thumb and the release snaps back to where the gesture began. */
+.day-hike-bar[data-dragging],
+.day-hike-panel[data-dragging],
+.map-screen__canvas > .day-hike-card[data-dragging] {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-hike-bar[data-snap],
+  .day-hike-panel[data-snap],
+  .map-screen__canvas > .day-hike-card[data-snap] {
+    transition: none;
+  }
+}
+
 .day-hike-panel {
   flex: 0 0 auto;
   display: flex;
@@ -3092,17 +3278,22 @@
   padding: 0.6rem 0.9rem 0.7rem;
   background: var(--bg-surface);
   border-bottom: 1px solid var(--border-1);
-  /* Capped so a long route list can never push the map off the screen: the
-     complaint this whole change answers is that the map was too small, and a
-     panel that grows without limit would reintroduce it through the top of
-     the screen instead of the bottom.
+  /* Capped so a long route list can never push the map off the screen: this
+     panel is IN THE FLOW above the map, so what it takes the map does not
+     get, and unlike the bar below it there is no grip on it - the hiker
+     folds it with its own Details button instead.
 
-     35% rather than the 45% this shipped at first, measured off this pull
-     request's own preview at 390x844: with the details open the panel was
-     taking 39% of the screen and the map was left a band in the middle,
-     narrower than the bottom sheet had ever made it. The cap is what the
-     panel scrolls inside; nothing in it is lost. */
+     35%, picked by eye against a preview and never measured. It was briefly
+     42% of the 75% floor's budget (2026-09-12) and went back to a number of
+     its own when the floor did (2026-09-14).
+
+     @unvalidated What would settle it is the shortest cap at which the
+     stats row and the first two route rows are both still in view on a
+     375x667 screen, which nobody has measured. */
   max-height: 35%;
+  /* The cap is the border box, not the content: measured 2026-09-12, a 58 px
+     content-box cap drew an 80 px panel. */
+  box-sizing: border-box;
   overflow-y: auto;
 }
 
@@ -4083,4 +4274,301 @@
    keeps that subtree's scroll position and its focus history intact. */
 .hike-window--stood-aside {
   visibility: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Step 2 on the day-hike builder (#1373, frame 4a).
+
+   THE SHAPE, one control where "Close the loop" stood alone: Point to point,
+   Out and back, Loop. A radio row in the bar's own chip idiom, so the chosen
+   shape reads the way draw mode's pressed toggle already does. Absent while
+   there is nothing to shape (lib/dayHikeDraft.ts's shapesOffered).
+
+   THE FOOT, the spine's two doors: "‹ Hike" back to step 1 with the draft
+   kept, and "Use this route ›" on. The way on wears the bar's primary; the
+   way back is quiet, because it costs nothing. ------------------------------ */
+
+.day-hike-bar__shape {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.day-hike-bar__shape-option {
+  flex: 1;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0.4rem 0.4rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-pill, 999px);
+  color: var(--fg-1);
+  cursor: pointer;
+}
+
+.day-hike-bar__shape-option[aria-checked='true'] {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+  font-weight: 600;
+}
+
+.day-hike-bar__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+  /* NOT STICKY, and that is the fix. It was `position: sticky; bottom: 0`
+     from 2026-09-12 until 2026-09-14, which kept the way on in view by
+     floating it over whatever was behind it - and in a short sheet what is
+     behind it is the whole sheet. Measured at 375x667: the step rail came to
+     rest UNDERNEATH this foot with no scroll position that separated them.
+     The foot is now simply outside the scroller (`__body`), so it holds its
+     place without covering anything. */
+}
+
+.day-hike-bar__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+.day-hike-bar__foot .day-hike-bar__action--done {
+  flex: 0 1 auto;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0.6rem 1.1rem;
+  border-radius: var(--radius-pill, 999px);
+  font-weight: 600;
+}
+
+/* The rail inside the panel: compact, since the panel is capped at 35% of a
+   phone and every row it holds is a row of map it does not. The rail's own
+   stylesheet sets the stops; this only tightens the frame around them. */
+.day-hike-panel .step-rail {
+  padding: 0 0 0.45rem;
+  border-bottom: 1px solid var(--border-1);
+  background: none;
+}
+
+/* D1's ask on the saved card (screens/DayHikeCard.tsx): the sentence over
+   its two answers, in the frame delete's confirm already uses. */
+.day-hike-card__confirm--stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.day-hike-card__confirm-sentence {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--fg-1);
+}
+
+/* ---------------------------------------------------------------------------
+   Step 3 on the day-hike card (#1373, frames 5a and 5c). The rail inside
+   the sheet, the name as a field, the waypoint rows, the foot with the way
+   back and Save as the last button, and the "Saved" eyebrow. ----------- */
+
+.day-hike-card .step-rail {
+  padding: 0 2.5rem 0.45rem 0;
+  background: none;
+}
+
+.day-hike-card__eyebrow {
+  margin: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.day-hike-card__name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.day-hike-card__name input {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.6rem;
+  font: inherit;
+  font-family: var(--font-display, inherit);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+}
+
+.day-hike-card__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* STEP 3 OVER THE MAP SPENDS THE SAME BUDGET AS STEP 2, and until 2026-09-12
+   it did not: `max-height: 85%` left the map 83 px of 844 - 9.8% - which is
+   the state the maintainer could not tap on. Scoped to the canvas, because
+   the same card docked in Plan's own list is a different surface with a whole
+   screen to itself and no map underneath to protect. */
+/* Step 3's review is a sheet over the map it describes, so it is the one card
+   with a grip on it - and like the bar, its height is the grip's to write and
+   not this file's. See chrome/SheetGrip.tsx and the block above the panel.
+
+   `.day-hike-card` above caps itself at 85% of the canvas and that cap stays,
+   because it also governs the SAVED card over the map, which has no grip to
+   rescue it. SHEET_FULL_FRACTION is 0.85 to match: if the two disagreed, the
+   grip would hand back a height the cascade then refused, and the sheet would
+   stop where the hiker had not put it. */
+
+.day-hike-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.day-hike-card__foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.day-hike-card__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+/* Step 3 for a long hike (#1373, frame 5b) on the target sheet: the rail,
+   the route's own head, the days before they are kept, and the foot. */
+.plan-target .step-rail {
+  padding: 0 0 0.45rem;
+  background: none;
+}
+
+.plan-target__route {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.plan-target__route-title {
+  margin: 0;
+  font-family: var(--font-display, inherit);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--fg-1);
+}
+
+.plan-target__route-figures {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg-2);
+}
+
+.plan-target__day-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-target__all-days {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+
+.plan-target__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.plan-target__foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.plan-target__back {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.25rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--fg-2);
+  cursor: pointer;
+}
+
+/* The cascade's diff before it applies, and the one undo after (#1373,
+   frames 7a-7b). The rows are DayRow's; this frames them in the actions
+   sheet and gives the foot its two doors. */
+.plan__diff {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.plan__diff-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.plan__diff-foot .plan__primary {
+  flex: 0 1 auto;
+}
+
+.plan__undo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--fg-1);
+  background: var(--bg-sunken);
+  border: 1px solid var(--border-1);
+  border-radius: 10px;
+}
+
+.plan__undo-button {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 0.6rem;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--link);
+  cursor: pointer;
 }

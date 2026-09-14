@@ -1158,7 +1158,7 @@ jobs:
       # outright, so this pairing failing again is loud rather than silent,
       # and .github/tests/test_artifact_handoff_paths.py holds the two ends
       # together so a later edit to either path list cannot drift them apart.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: vector-data-build-output
           path: pipeline/data/

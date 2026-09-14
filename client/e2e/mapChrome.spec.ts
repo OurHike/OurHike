@@ -503,7 +503,16 @@ test.describe('the day hike that starts where you are', () => {
     // Waits on something that proves the fix landed before claiming the door
     // is absent — otherwise this passes while the app is still looking for GPS
     // and would pass with the feature deleted.
-    await expect(page.getByText(/Located/)).toBeVisible()
+    //
+    // "No trail data" rather than /Located/ since #1416. This suite downloads
+    // nothing, so `trailReady` is false here, and positionLine now asks that
+    // before it asks whether a trail is taken: a phone with no trail data has
+    // no line on the map to tap, so "tap a trail to take it" was an
+    // instruction with nothing to carry it out on. This string proves the same
+    // thing the old one did and proves it as strictly — every state above
+    // `located` in that ladder returns "Looking for GPS…", "No GPS signal" or
+    // "Location is off", so nothing reaches this sentence without a fix.
+    await expect(page.getByText(/No trail data/)).toBeVisible()
     await expect(
       page.getByRole('button', { name: 'A day hike starts here' }),
     ).toHaveCount(0)

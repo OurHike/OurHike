@@ -940,6 +940,25 @@ export function attachChosenTrail(
         map.setPaintProperty(TRAIL_BADGE_LAYER_ID, 'icon-opacity', opacity)
         map.setPaintProperty(TRAIL_BADGE_LAYER_ID, 'text-opacity', opacity)
       }
+      // The shared-ground halves ghost with the system like every other line
+      // (buildSharedGroundLayers paints them with the same
+      // nearbyTrailOpacityExpression), so they have to be re-pointed here too
+      // - left out, a stretch kept whichever ghosting was true when the style
+      // was BUILT. Built with nothing taken and then taking the A.T. left the
+      // Ramapo-Dunderberg's half at full strength beside a ghosted network;
+      // built with the A.T. taken and then clearing it left both halves at
+      // 0.45 while everything else went full.
+      //
+      // ITS OWN BLOCK RATHER THAN A ROW IN CHOSEN_TRAIL_SPLIT_LAYERS, because
+      // that loop also writes `setFilter(id, solid | dotted)`, which would
+      // replace SHARED_GROUND_FILTER with the chosen-system filter and put
+      // every pair feature back into the plain layers' hands - the defect the
+      // filters' own exclusion exists to prevent, reintroduced by the repaint
+      // meant to keep them current. The casing is deliberately not here: it is
+      // opaque by design, being the mask over the two lines beneath.
+      if (map.getLayer(SHARED_GROUND_BLAZE_LAYER_ID) !== undefined) {
+        map.setPaintProperty(SHARED_GROUND_BLAZE_LAYER_ID, 'line-opacity', opacity)
+      }
     },
     'Taken trail',
   )

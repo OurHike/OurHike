@@ -168,8 +168,6 @@ export function positionLine({
   // centerline at all.
   if (follow !== null) return followPosition(follow, units)
 
-  if (!trailTaken) return 'Located · tap a trail to take it'
-
   // A fix, and nowhere to put it. Two different reasons, and they are not
   // interchangeable: one is the app missing data, the other is a claim about
   // where the hiker is standing.
@@ -178,7 +176,19 @@ export function positionLine({
   // neither "No trail data" nor "Off the trail" would be a true sentence.
   if (unmeasuredTrail !== null) return `No miles on the ${unmeasuredTrail}`
 
+  // BEFORE "tap a trail to take it", and that order is the whole of this
+  // pair. With nothing downloaded there is no trail on the map to tap: the
+  // trails source still holds its empty placeholder, and the corridor sketch
+  // is deliberately outside TAPPABLE_BLAZE_LAYER_IDS (map/style.ts), so
+  // offline there is no tappable line anywhere on the screen. Asked the other
+  // way round, a fresh install with nothing downloaded read "Located · tap a
+  // trail to take it" - an instruction with nothing to carry it out on -
+  // where "No trail data" points at the download that actually unblocks it.
+  // Both the map plate and Today print this one line, so both sent the hiker
+  // after the same impossible gesture.
   if (!trailReady) return 'No trail data'
+
+  if (!trailTaken) return 'Located · tap a trail to take it'
   if (mile === undefined) return 'Off the trail'
 
   return `mi ${formatMile(mile)}${direction === undefined ? '' : ` · ${direction}`}`

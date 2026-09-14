@@ -14,6 +14,7 @@ import {
 import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import {
+  attachChosenTrail,
   buildMapStyle,
   TOPO_SOURCE_ID,
   TRAILS_SOURCE_ID,
@@ -115,6 +116,8 @@ import {
 import { LABEL_TIER } from './labelLadder'
 import { NETWORK_TILES_LAYER, NETWORK_TILES_URL } from './networkTiles'
 import { NEARBY_TRAILS_TILES_MAX_ZOOM, NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
+import { MockMap } from '../test/mocks/maplibre-gl'
+import { TRAILS } from '../lib/trails'
 
 // See WIREFRAMES.md "Trail line rendering — blazes". Three rules there are
 // load-bearing rather than decorative:
@@ -2084,6 +2087,67 @@ describe('nothing taken (#1306)', () => {
       .map((candidate) => candidate.id)
       .sort()
     expect([...CHOSEN_TRAIL_SPLIT_LAYERS].map(([id]) => id).sort()).toEqual(readers)
+  })
+
+  it('ghosts the shared-ground halves with the system, which attachChosenTrail has to re-point (#1384)', () => {
+    // The halves read the chosen system through their PAINT, never their
+    // filter - theirs is SHARED_GROUND_FILTER - so the ledger test above
+    // cannot see them, and that is exactly how they came to be left out of
+    // attachChosenTrail: built with nothing taken and then taking the A.T.
+    // left a shared stretch's untaken half at full strength beside a network
+    // that had just ghosted, and the reverse left both halves at 0.45 while
+    // everything else went full.
+    //
+    // Held against the network's own blaze rather than against a spelled-out
+    // expression, because the claim is "the same ghosting as every other
+    // line" - a hardcoded opacity would satisfy a literal and fail this.
+    for (const built of [taken, untaken]) {
+      expect(
+        layerIn(built, SHARED_GROUND_BLAZE_LAYER_ID)?.paint?.['line-opacity'],
+      ).toEqual(layerIn(built, NEARBY_BLAZE_LAYER_ID)?.paint?.['line-opacity'])
+    }
+
+    // NOT in CHOSEN_TRAIL_SPLIT_LAYERS, and this is the half that has to stay
+    // true: that loop also writes setFilter, which would replace
+    // SHARED_GROUND_FILTER with the chosen-system filter and hand every pair
+    // feature back to the plain layers - the duplicate centred line the
+    // exclusion exists to prevent. attachChosenTrail carries its own block.
+    expect([...CHOSEN_TRAIL_SPLIT_LAYERS].map(([id]) => id)).not.toContain(
+      SHARED_GROUND_BLAZE_LAYER_ID,
+    )
+
+    // The casing does not ghost with anything: it is the opaque mask over the
+    // two lines still drawing beneath the stretch.
+    for (const built of [taken, untaken]) {
+      expect(layerIn(built, SHARED_GROUND_CASING_LAYER_ID)?.paint?.['line-opacity']).toBe(
+        1,
+      )
+    }
+  })
+
+  it('re-points the shared-ground halves when the taken trail changes (#1384)', () => {
+    // The test above holds what buildMapStyle SPELLS; this holds what
+    // attachChosenTrail WRITES, and only the second one fails against the
+    // defect - the halves were painted correctly at build time and then never
+    // updated again, so a style built before the hiker took anything kept
+    // first launch's ghosting for the life of the map.
+    const map = new MockMap({ style: buildMapStyle(STYLE_OPTIONS) })
+    attachChosenTrail(map as never, TRAILS.AT.id)
+
+    const written = map.paintProperties.get(
+      `${SHARED_GROUND_BLAZE_LAYER_ID}/line-opacity`,
+    )
+    expect(written).toEqual(
+      map.paintProperties.get(`${NEARBY_BLAZE_LAYER_ID}/line-opacity`),
+    )
+    expect(written).not.toBeUndefined()
+
+    // And the filter is left alone, which is the other half of why this layer
+    // gets its own block instead of a row in CHOSEN_TRAIL_SPLIT_LAYERS: that
+    // loop would have written the chosen-system filter over
+    // SHARED_GROUND_FILTER and put the pairs back in the plain layers' hands.
+    expect(map.filters.get(SHARED_GROUND_BLAZE_LAYER_ID)).toBeUndefined()
+    expect(map.filters.get(SHARED_GROUND_CASING_LAYER_ID)).toBeUndefined()
   })
 
   it("opens the network's lines at the prototype's weight, not a sub-pixel haze", () => {

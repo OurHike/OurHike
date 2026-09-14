@@ -118,6 +118,28 @@ describe('positionLine', () => {
       )
     })
 
+    it('names the missing download before asking for a tap nothing can receive', () => {
+      // Nothing taken AND nothing downloaded - a fresh install with a fix.
+      // "tap a trail to take it" is an instruction with nothing on screen to
+      // carry it out on: the trails source holds its empty placeholder, and
+      // the corridor sketch is deliberately outside TAPPABLE_BLAZE_LAYER_IDS,
+      // so offline there is no tappable line at all. The download is what
+      // unblocks both, so the download is what gets named.
+      //
+      // The combination no case covered until the v1.3.0 release review, and
+      // the reason the two were the wrong way round: every test here that
+      // clears `trailTaken` left `trailReady` true, so the branch below it
+      // was never reached with both false.
+      expect(
+        positionLine({
+          ...WALKING,
+          trailReady: false,
+          mile: undefined,
+          trailTaken: false,
+        }),
+      ).toBe('No trail data')
+    })
+
     it('defaults to taken, so every caller that never asks is unaffected', () => {
       expect(positionLine(WALKING)).toBe('mi 1,407.2 · NOBO')
     })

@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react'
 
 /**
  * A planning sheet the hiker can pull up and push down, and the grip that
@@ -155,20 +162,6 @@ function nearestSnap(height: number, heights: SheetHeights): SheetSnap {
   return best
 }
 
-export interface SheetDrag {
-  /** Put this on the sheet's own root element. A callback ref, not a ref
-   *  object - the hook keeps the element privately and hands back the height,
-   *  so nothing here is read during a render. */
-  attachSheet: (node: HTMLDivElement | null) => void
-  /** Where the sheet is resting, for the grip's label and for tests. */
-  snap: SheetSnap
-  /** Spread onto the grip button. */
-  gripProps: {
-    onPointerDown: (event: React.PointerEvent<HTMLElement>) => void
-    onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => void
-  }
-}
-
 /**
  * Own a sheet's height, and hand back the two things that drive it: a ref for
  * the sheet and the handlers for its grip.
@@ -190,13 +183,12 @@ export interface SheetDragOptions {
   edge?: 'top' | 'bottom'
 }
 
-export function useSheetDrag(
-  enabled: boolean,
+function useSheetDrag(
+  elementRef: RefObject<HTMLElement | null>,
   options: SheetDragOptions = {},
-): SheetDrag {
+) {
   const edge = options.edge ?? 'top'
   const [snap, setSnap] = useState<SheetSnap>('rest')
-  const elementRef = useRef<HTMLDivElement | null>(null)
   const heightsRef = useRef<SheetHeights>(EMPTY_HEIGHTS)
   const snapRef = useRef<SheetSnap>(snap)
   const dragRef = useRef<{
@@ -222,11 +214,6 @@ export function useSheetDrag(
   useLayoutEffect(() => {
     const element = elementRef.current
     if (element === null) return
-    if (!enabled) {
-      element.style.removeProperty('height')
-      element.removeAttribute('data-snap')
-      return
-    }
     // `data-snap` FIRST, because it is what turns `__body` from
     // `display: contents` into a real scroller (screens/plan.css). Measuring
     // before it is set reads a body with no box at all, and every sheet comes
@@ -251,12 +238,36 @@ export function useSheetDrag(
     snapRef.current = snap
   }, [snap])
 
+  // ONE EXTRA RENDER ON MOUNT, and it is load-bearing. This grip is a CHILD of
+  // the sheet it measures, and React attaches a ref during the same bottom-up
+  // walk that runs layout effects - so on the first commit the child's layout
+  // effect runs BEFORE the parent div's ref is attached, and finds `null`
+  // where the sheet should be. A passive effect runs after that whole walk, by
+  // which time the ref is there; bumping the tick sends the layout effect
+  // round once more with something to measure. Without it the sheet mounts
+  // with no `data-snap` and no height at all, which is how the first version
+  // of this shipped and how the unit test caught it.
   useEffect(() => {
-    if (!enabled) return
+    setResizeTick((tick) => tick + 1)
+  }, [])
+
+  useEffect(() => {
     const onResize = () => setResizeTick((tick) => tick + 1)
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
-  }, [enabled])
+  }, [])
+
+  // Hand the sheet back as it was found. A hiker who rotates a phone across
+  // the desktop breakpoint unmounts this grip, and a sheet left carrying an
+  // inline height and a `data-snap` would keep a phone's geometry inside a
+  // laptop's rail.
+  useEffect(() => {
+    const element = elementRef.current
+    return () => {
+      element?.style.removeProperty('height')
+      element?.removeAttribute('data-snap')
+    }
+  }, [elementRef])
   void resizeTick
 
   const settle = useCallback(
@@ -275,7 +286,6 @@ export function useSheetDrag(
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
-      if (!enabled) return
       const element = elementRef.current
       if (element === null) return
       // Only the primary button, and never a gesture the browser is already
@@ -342,12 +352,11 @@ export function useSheetDrag(
       target.addEventListener('pointerup', onUp)
       target.addEventListener('pointercancel', onUp)
     },
-    [apply, edge, enabled, settle],
+    [apply, edge, elementRef, settle],
   )
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
-      if (!enabled) return
       const index = SHEET_SNAPS.indexOf(snapRef.current)
       let next: SheetSnap | null = null
       if (event.key === 'ArrowUp')
@@ -359,14 +368,10 @@ export function useSheetDrag(
       event.preventDefault()
       settle(next)
     },
-    [enabled, settle],
+    [settle],
   )
 
-  const attachSheet = useCallback((node: HTMLDivElement | null) => {
-    elementRef.current = node
-  }, [])
-
-  return { attachSheet, snap, gripProps: { onPointerDown, onKeyDown } }
+  return { snap, onPointerDown, onKeyDown }
 }
 
 const SNAP_LABEL: Record<SheetSnap, string> = {
@@ -384,21 +389,27 @@ const SNAP_LABEL: Record<SheetSnap, string> = {
  * reaches every height the drag reaches. Arrow keys step a snap, Home and End
  * take the ends, and a plain press cycles.
  */
-export function SheetGrip({
-  drag,
+export default function SheetGrip({
+  sheet,
   label,
+  edge,
 }: {
-  drag: SheetDrag
-  /** What the sheet is, for the button's name: "the builder", "the review". */
+  /** The sheet this grip sizes. A ref rather than a DOM id, so nothing here
+   *  has to agree with anything about the document. */
+  sheet: RefObject<HTMLElement | null>
+  /** What the sheet is, for the button's name: "The builder", "The review". */
   label: string
+  edge?: 'top' | 'bottom'
 }) {
+  const drag = useSheetDrag(sheet, { edge })
   return (
     <button
       type="button"
       className="sheet-grip"
       data-sheet-grip
       aria-label={`${label} is ${SNAP_LABEL[drag.snap]}. Drag to resize it, or press to change its height.`}
-      {...drag.gripProps}
+      onPointerDown={drag.onPointerDown}
+      onKeyDown={drag.onKeyDown}
     >
       <span className="sheet-grip__bar" aria-hidden="true" />
     </button>

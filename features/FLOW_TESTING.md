@@ -315,6 +315,15 @@ The rules, which are PATHWAY.md's **R2 · The map never leaves** finally given a
 
   against 159 px (19%) before any of it.
 
+  **The grip is fetched on demand, not shipped eagerly** — it put the eager bundle
+  181 bytes over [LAUNCH_BUDGET.md](LAUNCH_BUDGET.md) §3's 256,000-byte ceiling on CI,
+  which was the ceiling doing its job rather than a number to shave: a handle inside the
+  day-hike builder is not first-frame code. `chrome/SheetGripLoader.tsx` imports it when a
+  planning sheet opens (254,776 bytes eager after, 1,224 under). The spec therefore waits
+  on the sheet's own `data-snap` before measuring — that attribute is what the grip writes
+  once it has hold, so waiting on it proves the fetch landed instead of hoping a clock was
+  long enough.
+
   Two smaller things are left standing, both measured and neither a defect: at 375×667
   step 2 `peek` and `rest` coincide, because the bar's own furniture is already taller than
   `SHEET_REST_FRACTION` of that canvas — the honest behaviour is that the sheet stops

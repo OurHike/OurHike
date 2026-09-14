@@ -120,6 +120,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F3 step 1 · Hike',
     flow: { status: 'covered', spec: 'e2e/planSpine.spec.ts' },
   },
+  'chrome/SheetGripLoader.tsx': {
+    step: 'F4 step 2 · Route',
+    // The loader is what the sheets render; the grip itself arrives behind an
+    // import() (features/LAUNCH_BUDGET.md §3), and the spec waits on the
+    // sheet's own `data-snap` to prove the fetch landed rather than on a clock.
+    flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
+  },
   'chrome/SheetGrip.tsx': {
     step: 'F4 step 2 · Route',
     // Driven at both phone sizes, at all three snaps, at step 2 and step 3,

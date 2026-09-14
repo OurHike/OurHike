@@ -1,13 +1,9 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useRef } from 'react'
 
-import {
-  SheetGrip,
-  useSheetDrag,
-  SHEET_FULL_FRACTION,
-  SHEET_REST_FRACTION,
-} from './SheetGrip'
+import SheetGrip, { SHEET_FULL_FRACTION, SHEET_REST_FRACTION } from './SheetGrip'
 
 afterEach(cleanup)
 
@@ -27,10 +23,15 @@ afterEach(cleanup)
  * can.
  */
 function Sheet({ enabled = true }: { enabled?: boolean }) {
-  const drag = useSheetDrag(enabled)
+  // The real sheets reach the grip through chrome/SheetGripLoader.tsx, which
+  // fetches this module on demand rather than before the first frame
+  // (features/LAUNCH_BUDGET.md §3). The loader adds nothing to the behaviour
+  // asserted here, so this renders the component directly and keeps the test
+  // free of a fetch it would only have to wait on.
+  const sheet = useRef<HTMLDivElement | null>(null)
   return (
-    <div className="day-hike-bar" ref={drag.attachSheet}>
-      {enabled && <SheetGrip drag={drag} label="The builder" />}
+    <div className="day-hike-bar" ref={sheet}>
+      {enabled && <SheetGrip sheet={sheet} label="The builder" />}
       <div className="day-hike-bar__body" data-sheet-body>
         <p>Tap a trail to walk it.</p>
       </div>

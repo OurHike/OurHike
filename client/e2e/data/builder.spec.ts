@@ -479,6 +479,22 @@ async function sheetShape(page: Page): Promise<SheetShape> {
 const bottomGrip = (page: Page) =>
   page.locator('.day-hike-bar [data-sheet-grip], .day-hike-card [data-sheet-grip]')
 
+/**
+ * Wait for the grip to have taken hold of its sheet.
+ *
+ * The module is fetched on demand rather than shipped in the eager bundle
+ * (chrome/SheetGripLoader.tsx, features/LAUNCH_BUDGET.md §3), so for a frame
+ * or two after a planning sheet opens it has no grip and no `data-snap` - it
+ * renders exactly as it did before the grip existed. Waiting on the attribute
+ * is waiting on something observable that proves the fetch landed, rather than
+ * on a clock that hopes it did.
+ */
+const gripHasHold = async (page: Page) => {
+  await expect(
+    page.locator('.day-hike-bar[data-snap], .day-hike-card[data-snap]'),
+  ).toHaveCount(1)
+}
+
 const pressTheGrip = async (page: Page) => {
   await bottomGrip(page).click()
   // The snap animates over 160ms (screens/plan.css); wait on the ATTRIBUTE
@@ -498,6 +514,7 @@ for (const phone of [
       page,
     }) => {
       await editTheSavedRoute(page)
+      await gripHasHold(page)
 
       const seen: SheetShape[] = []
       for (const expected of SNAP_ORDER) {
@@ -552,6 +569,7 @@ for (const phone of [
       await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible({
         timeout: GRAPH_READY_MS,
       })
+      await gripHasHold(page)
 
       for (const expected of SNAP_ORDER) {
         const shape = await sheetShape(page)
@@ -571,6 +589,7 @@ for (const phone of [
       page,
     }) => {
       await editTheSavedRoute(page)
+      await expect(page.locator('.day-hike-panel[data-snap]')).toHaveCount(1)
 
       // The panel is the other half of "the planning options". It is in the
       // FLOW above the map rather than over it, so what it takes the map does
@@ -622,6 +641,7 @@ for (const phone of [
       page,
     }) => {
       await editTheSavedRoute(page)
+      await gripHasHold(page)
       const before = await sheetShape(page)
 
       const grip = bottomGrip(page)

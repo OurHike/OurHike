@@ -31,9 +31,9 @@
 // road is there and does not route on it - not wonder why the loop will not
 // close.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
-import { SheetGrip, useSheetDrag } from './SheetGrip'
+import { SheetGripLoader } from './SheetGripLoader'
 import { useDesktop } from '../lib/useDesktop'
 
 import {
@@ -145,7 +145,7 @@ export function DayHikePickBar({
   // right-hand rail on a desktop (src/desktop.css), where it is not covering
   // anything and there is nothing to get out of the way of.
   const canResize = !useDesktop()
-  const drag = useSheetDrag(canResize)
+  const sheet = useRef<HTMLDivElement | null>(null)
   const routed = status.kind === 'routed' ? status : null
   const time = walkingTime(walking)
   const stretches = routed?.stretches.length ?? 0
@@ -172,9 +172,9 @@ export function DayHikePickBar({
         className="day-hike-bar"
         role="region"
         aria-label="One stretch is yours to cross"
-        ref={drag.attachSheet}
+        ref={sheet}
       >
-        {canResize && <SheetGrip drag={drag} label="The builder" />}
+        {canResize && <SheetGripLoader sheet={sheet} label="The builder" />}
         <div className="day-hike-bar__body" data-sheet-body>
           <div className="day-hike-bar__head">
             <p className="day-hike-bar__prompt">One stretch is yours to cross</p>
@@ -216,13 +216,8 @@ export function DayHikePickBar({
   }
 
   return (
-    <div
-      className="day-hike-bar"
-      role="region"
-      aria-label="Build a day hike"
-      ref={drag.attachSheet}
-    >
-      {canResize && <SheetGrip drag={drag} label="The builder" />}
+    <div className="day-hike-bar" role="region" aria-label="Build a day hike" ref={sheet}>
+      {canResize && <SheetGripLoader sheet={sheet} label="The builder" />}
       {/* Everything between the grip and the foot scrolls; the grip and the
           foot do not. So the way on is always where the thumb left it, and
           nothing is ever hidden BEHIND it - the failure the pinned-sticky

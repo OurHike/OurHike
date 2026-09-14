@@ -56,7 +56,7 @@
 // save time, and a card that prints it over today's different graph without
 // comment is a display outrunning its source.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useDraftField } from '../lib/useDraftField'
 
 import type { BailOut, ResolvedDayHike } from '../lib/dayHikeCard'
@@ -82,7 +82,7 @@ import {
 } from '../lib/units'
 import { PoiRow } from '../chrome/PoiRow'
 import { StepRail } from '../chrome/StepRail'
-import { SheetGrip, useSheetDrag } from '../chrome/SheetGrip'
+import { SheetGripLoader } from '../chrome/SheetGripLoader'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
 import './plan.css'
 
@@ -211,7 +211,7 @@ export function DayHikeCard({
 }: DayHikeCardProps) {
   // Before the early return below, because a hook that is skipped on one
   // render and called on the next is a hook order React cannot follow.
-  const drag = useSheetDrag(resizable)
+  const sheet = useRef<HTMLDivElement | null>(null)
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
   // Delete and its neighbour look alike, and one of them has no way back.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -312,9 +312,9 @@ export function DayHikeCard({
       className="day-hike-card"
       role={docked ? 'region' : 'dialog'}
       aria-label={hike.name}
-      ref={drag.attachSheet}
+      ref={sheet}
     >
-      {resizable && <SheetGrip drag={drag} label="The review" />}
+      {resizable && <SheetGripLoader sheet={sheet} label="The review" />}
       <button type="button" className="route-stops__close" onClick={onClose}>
         <span className="visually-hidden">Close the day hike</span>
         <span aria-hidden="true">×</span>

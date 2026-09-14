@@ -67,7 +67,7 @@
 // is a claim about the bucket, and it wants checking against the bucket
 // rather than against a comment.
 
-import { useId, type ReactNode } from 'react'
+import { useId, useRef, type ReactNode } from 'react'
 
 import { blazePaintColor } from '../lib/blaze'
 import type { DraftStatus, DayHikeDraft } from '../lib/dayHikeDraft'
@@ -94,7 +94,7 @@ import {
 import type { UnitSystem } from '../lib/units'
 import { HIKER_MODE_LABELS } from '../lib/hikerMode'
 import { StepRail } from './StepRail'
-import { SheetGrip, useSheetDrag } from './SheetGrip'
+import { SheetGripLoader } from './SheetGripLoader'
 import { useDesktop } from '../lib/useDesktop'
 import '../screens/plan.css'
 
@@ -197,7 +197,7 @@ export function DayHikePanel({
   // Phone only: on a desktop this is a 348px rail beside the map
   // (src/desktop.css), taking nothing the map wanted.
   const canResize = !useDesktop()
-  const drag = useSheetDrag(canResize, { edge: 'bottom' })
+  const sheet = useRef<HTMLElement | null>(null)
   const bodyId = useId()
   const routed = status.kind === 'routed' ? status : null
   const rows = routed === null ? [] : routeRows(routed.legs, stops, routed.gaps)
@@ -205,7 +205,7 @@ export function DayHikePanel({
   const stopping = stoppingMinutes(stops)
 
   return (
-    <section className="day-hike-panel" aria-label="Your route" ref={drag.attachSheet}>
+    <section className="day-hike-panel" aria-label="Your route" ref={sheet}>
       {/* Step 2 of three (#1373). The kind on the first stop is the mode's
           answer - a day hike is what this builder builds - and never asked
           again (D6). */}
@@ -405,7 +405,7 @@ export function DayHikePanel({
           the map and takes nothing the map wanted: a control that cannot
           change anything is noise, which is the same argument src/desktop.css
           already makes for hiding the Details toggle up there. */}
-      {canResize && <SheetGrip drag={drag} label="Your route" />}
+      {canResize && <SheetGripLoader sheet={sheet} label="Your route" edge="bottom" />}
     </section>
   )
 }

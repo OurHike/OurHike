@@ -82,6 +82,7 @@ import {
 } from '../lib/units'
 import { PoiRow } from '../chrome/PoiRow'
 import { StepRail } from '../chrome/StepRail'
+import { SheetGrip, useSheetDrag } from '../chrome/SheetGrip'
 import { LeaveWithSomeone } from './LeaveWithSomeone'
 import './plan.css'
 
@@ -118,6 +119,16 @@ export interface DayHikeCardProps {
    *  (desktop.css's rail, #1373 frame 16b): then it is a region, not a
    *  dialog - the rule lib/useDesktop.ts states for the persistent legend. */
   docked?: boolean
+  /**
+   * Whether the hiker can pull this card up and push it down.
+   *
+   * True only for step 3's review on a phone, where the card is a sheet over
+   * the very map it describes and the two are competing for the screen
+   * (chrome/SheetGrip.tsx). A saved card opened from a shelf is not on the
+   * spine and is not covering a map anybody is working on, and the desktop
+   * shows the review in the rail beside the map rather than over it.
+   */
+  resizable?: boolean
   onSave?: () => void
   onClose: () => void
   onDelete?: () => void
@@ -195,8 +206,12 @@ export function DayHikeCard({
   justSaved = false,
   leadsToday = true,
   docked = false,
+  resizable = false,
   today,
 }: DayHikeCardProps) {
+  // Before the early return below, because a hook that is skipped on one
+  // render and called on the next is a hook order React cannot follow.
+  const drag = useSheetDrag(resizable)
   // Two taps to destroy a walk somebody built, for More.tsx's discard reason:
   // Delete and its neighbour look alike, and one of them has no way back.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -297,7 +312,9 @@ export function DayHikeCard({
       className="day-hike-card"
       role={docked ? 'region' : 'dialog'}
       aria-label={hike.name}
+      ref={drag.attachSheet}
     >
+      {resizable && <SheetGrip drag={drag} label="The review" />}
       <button type="button" className="route-stops__close" onClick={onClose}>
         <span className="visually-hidden">Close the day hike</span>
         <span aria-hidden="true">×</span>
@@ -319,221 +336,226 @@ export function DayHikeCard({
         />
       )}
 
-      {justSaved && <p className="day-hike-card__eyebrow">Saved</p>}
+      {/* The scrolling middle. `display: contents` by default (screens/plan.css)
+          so a docked card and the desktop rail are laid out exactly as before;
+          it becomes a real scroller only for the sheet with a grip on it, where
+          the grip and the foot have to stay put while this moves. */}
+      <div className="day-hike-card__body" data-sheet-body>
+        {justSaved && <p className="day-hike-card__eyebrow">Saved</p>}
 
-      <div className="day-hike-card__head">
-        {onRename === undefined ? (
-          <h2 className="day-hike-card__title">{hike.name}</h2>
-        ) : (
-          // The name as a field (frame 5a), so a walk named off its longest
-          // leg - "Pine Meadow Trail" - can be called what the hiker calls
-          // it. The heading role stays on the text for the dialog's name.
-          <label className="day-hike-card__name">
-            <span className="day-hike-card__heading">Name</span>
+        <div className="day-hike-card__head">
+          {onRename === undefined ? (
+            <h2 className="day-hike-card__title">{hike.name}</h2>
+          ) : (
+            // The name as a field (frame 5a), so a walk named off its longest
+            // leg - "Pine Meadow Trail" - can be called what the hiker calls
+            // it. The heading role stays on the text for the dialog's name.
+            <label className="day-hike-card__name">
+              <span className="day-hike-card__heading">Name</span>
+              <input
+                type="text"
+                value={name.draft}
+                maxLength={80}
+                onChange={(event) => name.setDraft(event.target.value)}
+                onBlur={name.flush}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') name.flush()
+                }}
+              />
+            </label>
+          )}
+          <span className="day-hike-card__when">
+            {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
+            {hike.looped && <span className="day-hike-card__badge">LOOP</span>}
+          </span>
+        </div>
+
+        <p className="day-hike-card__figures">
+          {formatDistance(miles, units)} · {legs.length}{' '}
+          {legs.length === 1 ? 'leg' : 'legs'}
+          {climb !== null && (
+            <>
+              {' · '}
+              <span className="day-hike-card__climb">
+                +{formatElevation(climb.gainFt, units)} / −
+                {formatElevation(climb.lossFt, units)}
+              </span>
+            </>
+          )}
+          {estimate !== null && ` · ${estimate.text} walking`}
+        </p>
+
+        {/* What that time was adjusted from, when it was adjusted at all -
+          absent at the standard pace, which is most hikers (#851). */}
+        {estimate?.relativeLine != null && (
+          <p className="day-hike-card__baseline">{estimate.relativeLine}</p>
+        )}
+
+        {estimate !== null && (
+          // TWO DIFFERENT WARNINGS, and neither substitutes for the other.
+          //
+          // The first is what the number MEASURES: this is moving time, whatever
+          // pace it was priced at, and a hiker reading "≈3h 10m" as when they are
+          // back at the car is out by however long they sat at the view. The
+          // storyboard (frame D5) names this sentence as one of the two reasons
+          // that screen exists - "the sentence that stops ≈3h10m being read as a
+          // promise" - and #1008 shipped the figure without it. The trips side
+          // had carried its own all along (PlanTargetSheet: "Naismith counts
+          // walking - not lunch, not water, not the forty minutes you'll spend
+          // at the shelter"), which left the asymmetry the wrong way round: the
+          // day-hiker is the persona planning somewhere new, least likely to
+          // know what moving time excludes. #1042.
+          //
+          // #1040 made this MORE necessary rather than less: the figure is now
+          // priced at the hiker's OWN pace, so somebody who told the app they
+          // walk at 2 mph gets a number that looks personal and still counts no
+          // stops at all. A tailored estimate invites more trust, not less.
+          //
+          // The second is how PRECISE it is - the maintainer's decision,
+          // 2026-08-25, in the hiker's own words, and kept here verbatim.
+          // Cumulative gain from a 10 m elevation model is not exact; published
+          // guidebook figures for one walk routinely differ, and on rolling
+          // ground like this the pipeline's own check reads +18.8% against a
+          // maintaining club (pipeline/reference/published_gain.json).
+          //
+          // A hiker can believe the second and still be an hour late because of
+          // the first. ONE note rather than two stacked ones, because two
+          // `role="note"` paragraphs in a row read as boilerplate and get
+          // skipped - which is how the sentence that matters gets lost. The
+          // baseline line above is a different thing again: what the estimate
+          // was adjusted FROM, not what it leaves out.
+          //
+          // Guarded on the ESTIMATE, not the climb: the two are the same
+          // condition today (`estimate` is null exactly when `climb` is), but
+          // the time is what makes this note necessary.
+          <p className="day-hike-card__note" role="note">
+            Moving time — it knows nothing about lunch, a swim, or half an hour at the
+            view. Climb and time are estimates from the best elevation data available —
+            expect other sources to differ.
+          </p>
+        )}
+
+        {onSetDate !== undefined && (
+          // The one field on this card, because two other surfaces read it:
+          // the list splits and sorts by it, and the trailhead door says
+          // "planned for today" from it. Clearing the input clears the date -
+          // an undated day hike is a first-class state, not an error.
+          <label className="day-hike-card__date">
+            <span className="day-hike-card__heading">When</span>
             <input
-              type="text"
-              value={name.draft}
-              maxLength={80}
-              onChange={(event) => name.setDraft(event.target.value)}
-              onBlur={name.flush}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') name.flush()
-              }}
+              type="date"
+              value={hike.date ?? ''}
+              onChange={(event) =>
+                onSetDate(event.target.value === '' ? null : event.target.value)
+              }
             />
           </label>
         )}
-        <span className="day-hike-card__when">
-          {hike.date !== null ? dayLongDateLabel(hike.date) : 'no date yet'}
-          {hike.looped && <span className="day-hike-card__badge">LOOP</span>}
-        </span>
-      </div>
 
-      <p className="day-hike-card__figures">
-        {formatDistance(miles, units)} · {legs.length}{' '}
-        {legs.length === 1 ? 'leg' : 'legs'}
-        {climb !== null && (
-          <>
-            {' · '}
-            <span className="day-hike-card__climb">
-              +{formatElevation(climb.gainFt, units)} / −
-              {formatElevation(climb.lossFt, units)}
-            </span>
-          </>
+        {resolved === null && (
+          // Which of the two honest reasons applies changes what a hiker can do
+          // about it: get the trail network onto this phone, or accept the walk
+          // has drifted off the published network.
+          //
+          // NOT "yet" (#1049). That word promised an arrival on the same
+          // evidence chrome/PlanKindSheet.tsx was promising a data sync, and on
+          // production there is no graph to arrive at all (#1048). This card
+          // does not need to say WHICH absence - it is about which figures you
+          // are reading - so it says the fact and stops.
+          <p className="day-hike-card__note" role="note">
+            {networkAvailable
+              ? 'This phone’s current trail map can’t place this walk, so these are the figures from the day it was saved — and ways off can’t be worked out.'
+              : 'This phone has no trail network, so these are the figures from the day this hike was saved — and ways off can’t be worked out.'}
+          </p>
         )}
-        {estimate !== null && ` · ${estimate.text} walking`}
-      </p>
 
-      {/* What that time was adjusted from, when it was adjusted at all -
-          absent at the standard pace, which is most hikers (#851). */}
-      {estimate?.relativeLine != null && (
-        <p className="day-hike-card__baseline">{estimate.relativeLine}</p>
-      )}
-
-      {estimate !== null && (
-        // TWO DIFFERENT WARNINGS, and neither substitutes for the other.
-        //
-        // The first is what the number MEASURES: this is moving time, whatever
-        // pace it was priced at, and a hiker reading "≈3h 10m" as when they are
-        // back at the car is out by however long they sat at the view. The
-        // storyboard (frame D5) names this sentence as one of the two reasons
-        // that screen exists - "the sentence that stops ≈3h10m being read as a
-        // promise" - and #1008 shipped the figure without it. The trips side
-        // had carried its own all along (PlanTargetSheet: "Naismith counts
-        // walking - not lunch, not water, not the forty minutes you'll spend
-        // at the shelter"), which left the asymmetry the wrong way round: the
-        // day-hiker is the persona planning somewhere new, least likely to
-        // know what moving time excludes. #1042.
-        //
-        // #1040 made this MORE necessary rather than less: the figure is now
-        // priced at the hiker's OWN pace, so somebody who told the app they
-        // walk at 2 mph gets a number that looks personal and still counts no
-        // stops at all. A tailored estimate invites more trust, not less.
-        //
-        // The second is how PRECISE it is - the maintainer's decision,
-        // 2026-08-25, in the hiker's own words, and kept here verbatim.
-        // Cumulative gain from a 10 m elevation model is not exact; published
-        // guidebook figures for one walk routinely differ, and on rolling
-        // ground like this the pipeline's own check reads +18.8% against a
-        // maintaining club (pipeline/reference/published_gain.json).
-        //
-        // A hiker can believe the second and still be an hour late because of
-        // the first. ONE note rather than two stacked ones, because two
-        // `role="note"` paragraphs in a row read as boilerplate and get
-        // skipped - which is how the sentence that matters gets lost. The
-        // baseline line above is a different thing again: what the estimate
-        // was adjusted FROM, not what it leaves out.
-        //
-        // Guarded on the ESTIMATE, not the climb: the two are the same
-        // condition today (`estimate` is null exactly when `climb` is), but
-        // the time is what makes this note necessary.
-        <p className="day-hike-card__note" role="note">
-          Moving time — it knows nothing about lunch, a swim, or half an hour at the view.
-          Climb and time are estimates from the best elevation data available — expect
-          other sources to differ.
-        </p>
-      )}
-
-      {onSetDate !== undefined && (
-        // The one field on this card, because two other surfaces read it:
-        // the list splits and sorts by it, and the trailhead door says
-        // "planned for today" from it. Clearing the input clears the date -
-        // an undated day hike is a first-class state, not an error.
-        <label className="day-hike-card__date">
-          <span className="day-hike-card__heading">When</span>
-          <input
-            type="date"
-            value={hike.date ?? ''}
-            onChange={(event) =>
-              onSetDate(event.target.value === '' ? null : event.target.value)
-            }
-          />
-        </label>
-      )}
-
-      {resolved === null && (
-        // Which of the two honest reasons applies changes what a hiker can do
-        // about it: get the trail network onto this phone, or accept the walk
-        // has drifted off the published network.
-        //
-        // NOT "yet" (#1049). That word promised an arrival on the same
-        // evidence chrome/PlanKindSheet.tsx was promising a data sync, and on
-        // production there is no graph to arrive at all (#1048). This card
-        // does not need to say WHICH absence - it is about which figures you
-        // are reading - so it says the fact and stops.
-        <p className="day-hike-card__note" role="note">
-          {networkAvailable
-            ? 'This phone’s current trail map can’t place this walk, so these are the figures from the day it was saved — and ways off can’t be worked out.'
-            : 'This phone has no trail network, so these are the figures from the day this hike was saved — and ways off can’t be worked out.'}
-        </p>
-      )}
-
-      {/* WATER ON ROUTE (frame 5a): the published water points the walk
+        {/* WATER ON ROUTE (frame 5a): the published water points the walk
           passes, at the mile it reaches them. Absent rather than "none"
           when there are none - lib/dayHikeWater.ts's header is the reason,
           and it is the safety reason. Each row is the map's own pin at row
           scale (chrome/PoiRow.tsx), so the shape a hiker learns here is the
           one they look for on the ground. */}
-      {waterOnRoute.length > 0 && (
-        <section className="day-hike-card__section">
-          <h3 className="day-hike-card__heading">Water on route</h3>
-          <ul className="day-hike-card__rows">
-            {waterOnRoute.map((water) => (
-              <li key={`${water.poiId}:${water.alongMi}`}>
-                <PoiRow
-                  kind="water"
-                  title={water.name}
-                  meta={[
-                    `${formatDistance(water.alongMi, units)} in`,
-                    water.offCourseFeet >= WATER_SAID_OFF_FEET
-                      ? `${formatShortDistance(water.offCourseFeet, units)} off the walk`
-                      : null,
-                  ]
-                    .filter((part) => part !== null)
-                    .join(' · ')}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* The stops the hiker chose, with the two facts they chose them on -
-          the builder's row (chrome/DayHikePanel.tsx) said again where the
-          walk is read whole. Each figure only where it was published:
-          absent capacity is not zero, absent water is not "no water". */}
-      {stops.length > 0 && (
-        <section className="day-hike-card__section">
-          <h3 className="day-hike-card__heading">Shelters &amp; campsites</h3>
-          <ul className="day-hike-card__rows">
-            {stops.map((stop) => {
-              // A stop's `mile` is the walk's own axis - trail miles from
-              // the first tap (lib/dayHikeStops.ts), a distance and not the
-              // pipeline's marker - so it converts like any distance, and
-              // is named as one here for test/unitDisplay.test.ts's guard.
-              const alongMi = stop.mile
-              return (
-                <li key={stop.poiId}>
+        {waterOnRoute.length > 0 && (
+          <section className="day-hike-card__section">
+            <h3 className="day-hike-card__heading">Water on route</h3>
+            <ul className="day-hike-card__rows">
+              {waterOnRoute.map((water) => (
+                <li key={`${water.poiId}:${water.alongMi}`}>
                   <PoiRow
-                    kind={stop.type}
-                    title={stop.name}
+                    kind="water"
+                    title={water.name}
                     meta={[
-                      `${formatDistance(alongMi, units)} in`,
-                      stop.capacity !== undefined ? `sleeps ${stop.capacity}` : null,
-                      stop.waterDistanceFt !== undefined
-                        ? `water ${formatShortDistance(
-                            Math.max(MIN_STATED_FEET, stop.waterDistanceFt),
-                            units,
-                          )}`
-                        : null,
-                      stop.offCourseFeet > STOP_FAR_OFF_COURSE_FEET
-                        ? `${formatShortDistance(stop.offCourseFeet, units)} off the walk`
+                      `${formatDistance(water.alongMi, units)} in`,
+                      water.offCourseFeet >= WATER_SAID_OFF_FEET
+                        ? `${formatShortDistance(water.offCourseFeet, units)} off the walk`
                         : null,
                     ]
                       .filter((part) => part !== null)
                       .join(' · ')}
                   />
                 </li>
-              )
-            })}
-          </ul>
-          {stopMinutes !== null && (
-            <p className="day-hike-card__note">
-              Stops add about {stopMinutes} min, on top of the walking.
-            </p>
-          )}
-        </section>
-      )}
+              ))}
+            </ul>
+          </section>
+        )}
 
-      {legs.length > 0 && (
-        <section className="day-hike-card__section">
-          <h3 className="day-hike-card__heading">Legs</h3>
-          {/* Per-leg miles print again since #1002: legs are priced at the
+        {/* The stops the hiker chose, with the two facts they chose them on -
+          the builder's row (chrome/DayHikePanel.tsx) said again where the
+          walk is read whole. Each figure only where it was published:
+          absent capacity is not zero, absent water is not "no water". */}
+        {stops.length > 0 && (
+          <section className="day-hike-card__section">
+            <h3 className="day-hike-card__heading">Shelters &amp; campsites</h3>
+            <ul className="day-hike-card__rows">
+              {stops.map((stop) => {
+                // A stop's `mile` is the walk's own axis - trail miles from
+                // the first tap (lib/dayHikeStops.ts), a distance and not the
+                // pipeline's marker - so it converts like any distance, and
+                // is named as one here for test/unitDisplay.test.ts's guard.
+                const alongMi = stop.mile
+                return (
+                  <li key={stop.poiId}>
+                    <PoiRow
+                      kind={stop.type}
+                      title={stop.name}
+                      meta={[
+                        `${formatDistance(alongMi, units)} in`,
+                        stop.capacity !== undefined ? `sleeps ${stop.capacity}` : null,
+                        stop.waterDistanceFt !== undefined
+                          ? `water ${formatShortDistance(
+                              Math.max(MIN_STATED_FEET, stop.waterDistanceFt),
+                              units,
+                            )}`
+                          : null,
+                        stop.offCourseFeet > STOP_FAR_OFF_COURSE_FEET
+                          ? `${formatShortDistance(stop.offCourseFeet, units)} off the walk`
+                          : null,
+                      ]
+                        .filter((part) => part !== null)
+                        .join(' · ')}
+                    />
+                  </li>
+                )
+              })}
+            </ul>
+            {stopMinutes !== null && (
+              <p className="day-hike-card__note">
+                Stops add about {stopMinutes} min, on top of the walking.
+              </p>
+            )}
+          </section>
+        )}
+
+        {legs.length > 0 && (
+          <section className="day-hike-card__section">
+            <h3 className="day-hike-card__heading">Legs</h3>
+            {/* Per-leg miles print again since #1002: legs are priced at the
               metres actually walked - ends scaled to the taps, re-walked
               ground counted per pass - so a leg and the total above finally
               agree about the same ground. */}
-          {legs.map((leg, at) => (
-            <div className="day-hike-card__row" key={`${leg.name ?? 'leg'}-${at}`}>
-              {/* The blaze, as the paint and nothing else - the legend's own
+            {legs.map((leg, at) => (
+              <div className="day-hike-card__row" key={`${leg.name ?? 'leg'}-${at}`}>
+                {/* The blaze, as the paint and nothing else - the legend's own
                   swatch, back with a caller (#1112). Through
                   `blazePaintColor` rather than a second table, so a leg's
                   swatch and the line the map draws for that leg are the same
@@ -552,57 +574,57 @@ export function DayHikeCard({
                   rather than inventing a fourth meaning. `blazeLabel` is
                   what tells the three neutrals apart in words: "Blaze not
                   recorded", "Unblazed", "Other blaze". */}
-              <span
-                className="day-hike-card__blaze"
-                style={{
-                  backgroundColor:
-                    leg.blaze_color === null
-                      ? NEUTRAL_BLAZE_COLOR
-                      : blazePaintColor(leg.blaze_color),
-                }}
-              >
-                <span className="visually-hidden">{blazeLabel(leg.blaze_color)}</span>
-              </span>
-              <span className="day-hike-card__row-name">
-                {leg.name ?? 'Unnamed trail'}
-              </span>
-              <span className="day-hike-card__row-figures">
-                {formatDistance(leg.miles, units)}
-              </span>
-            </div>
-          ))}
-        </section>
-      )}
-
-      {resolved !== null && (
-        <section className="day-hike-card__section">
-          <h3 className="day-hike-card__heading">If you need to get off</h3>
-          {bailOuts.length === 0 ? (
-            // The decided answer (#980): said, never omitted. The most
-            // safety-relevant sentence here, and the block exists to hold it.
-            <p className="day-hike-card__note">
-              No marked trail leaves this {ground}. The way off is the way you came.
-            </p>
-          ) : (
-            bailOuts.map((bailOut, at) => (
-              <div className="day-hike-card__row" key={`${bailOut.miles}-${at}`}>
-                {/* formatDistance, not mileMarker: this is a walked length
-                    (it converts for a metric hiker), not a name on the one
-                    trail with a mile axis - planDisplay.ts draws the line. */}
-                <span className="day-hike-card__row-mile">
-                  at {formatDistance(bailOut.miles, units)}
+                <span
+                  className="day-hike-card__blaze"
+                  style={{
+                    backgroundColor:
+                      leg.blaze_color === null
+                        ? NEUTRAL_BLAZE_COLOR
+                        : blazePaintColor(leg.blaze_color),
+                  }}
+                >
+                  <span className="visually-hidden">{blazeLabel(leg.blaze_color)}</span>
                 </span>
                 <span className="day-hike-card__row-name">
-                  {bailOut.name ?? 'Unnamed trail'}
-                  {bailOut.blaze_color !== null && ` (${bailOut.blaze_color})`}
+                  {leg.name ?? 'Unnamed trail'}
+                </span>
+                <span className="day-hike-card__row-figures">
+                  {formatDistance(leg.miles, units)}
                 </span>
               </div>
-            ))
-          )}
-        </section>
-      )}
+            ))}
+          </section>
+        )}
 
-      {/* A stretch with no trail under it is part of the walk (#935's
+        {resolved !== null && (
+          <section className="day-hike-card__section">
+            <h3 className="day-hike-card__heading">If you need to get off</h3>
+            {bailOuts.length === 0 ? (
+              // The decided answer (#980): said, never omitted. The most
+              // safety-relevant sentence here, and the block exists to hold it.
+              <p className="day-hike-card__note">
+                No marked trail leaves this {ground}. The way off is the way you came.
+              </p>
+            ) : (
+              bailOuts.map((bailOut, at) => (
+                <div className="day-hike-card__row" key={`${bailOut.miles}-${at}`}>
+                  {/* formatDistance, not mileMarker: this is a walked length
+                    (it converts for a metric hiker), not a name on the one
+                    trail with a mile axis - planDisplay.ts draws the line. */}
+                  <span className="day-hike-card__row-mile">
+                    at {formatDistance(bailOut.miles, units)}
+                  </span>
+                  <span className="day-hike-card__row-name">
+                    {bailOut.name ?? 'Unnamed trail'}
+                    {bailOut.blaze_color !== null && ` (${bailOut.blaze_color})`}
+                  </span>
+                </div>
+              ))
+            )}
+          </section>
+        )}
+
+        {/* A stretch with no trail under it is part of the walk (#935's
           deliberate-gap answer) and prints as one - straight-line, because
           the ground actually walked across a gap is the hiker's own guess,
           which is what a gap IS. The builder writes single-segment hikes
@@ -616,32 +638,33 @@ export function DayHikeCard({
           something that is not there. How many stretches the walk is in IS
           on the card, in this sentence, which is what makes the total
           placeable. */}
-      {gaps.length > 0 && (
-        <p className="day-hike-card__gap" role="note">
-          {formatDistance(
-            gaps.reduce((total, gap) => total + gap.miles, 0),
-            units,
-          )}{' '}
-          with no trail under it, straight across
-          {hike.segments.length > 2
-            ? `, between the ${hike.segments.length} stretches of this walk`
-            : ', between the two stretches of this walk'}
-          . We won&rsquo;t route you across it — that stretch is yours.
-        </p>
-      )}
+        {gaps.length > 0 && (
+          <p className="day-hike-card__gap" role="note">
+            {formatDistance(
+              gaps.reduce((total, gap) => total + gap.miles, 0),
+              units,
+            )}{' '}
+            with no trail under it, straight across
+            {hike.segments.length > 2
+              ? `, between the ${hike.segments.length} stretches of this walk`
+              : ', between the two stretches of this walk'}
+            . We won&rsquo;t route you across it — that stretch is yours.
+          </p>
+        )}
 
-      {orgCount > 0 && (
-        <p className="day-hike-card__orgs">
-          {COUNT_WORDS[orgCount] ?? String(orgCount)}{' '}
-          {orgCount === 1 ? 'organization keeps' : 'organizations keep'} this {ground}{' '}
-          walkable.
-        </p>
-      )}
+        {orgCount > 0 && (
+          <p className="day-hike-card__orgs">
+            {COUNT_WORDS[orgCount] ?? String(orgCount)}{' '}
+            {orgCount === 1 ? 'organization keeps' : 'organizations keep'} this {ground}{' '}
+            walkable.
+          </p>
+        )}
+      </div>
 
       {mode === 'review' ? (
         // SAVE IS THE LAST BUTTON, NOT A STEP (D7): the foot of step 3 is
         // the way back to the route and the commit, nothing between.
-        <div className="day-hike-card__foot">
+        <div className="day-hike-card__foot" data-sheet-foot>
           <button
             type="button"
             className="day-hike-card__back"

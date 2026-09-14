@@ -356,98 +356,296 @@ test.describe('the map, with waypoints published', () => {
 })
 
 /**
- * The floor the maintainer asked for on 2026-09-12: "make sure that the map
- * gets at least 75% of the screen height, always."
+ * THE GRIP: the hiker decides how much map there is, and nothing here decides
+ * it for them.
  *
- * WHAT IS MEASURED IS WHAT A THUMB CAN REACH, not the map element's height,
- * and that distinction is the whole bug. Before this, at 390x844 with a route
- * in the builder, the map's BOX was 480 px - 57% of the screen, which would
- * have passed a naive assertion - while the bar sat over its bottom 321 px and
- * left 159 px, 19%, that a tap could land on. The complaint was not that the
- * map looked small. It was that it could not be used.
+ * The history is worth one paragraph, because it is why these assertions are
+ * shaped the way they are. A hard 75% map floor was asked for on 2026-09-12
+ * and built. It measured beautifully against a naive assertion and was
+ * unusable: at 390x844 the sheets' budget left the step-3 review 38 px to
+ * render 731 px of route detail in, and at 375x667 it left 93 px for 96 px of
+ * furniture, so the step rail came to rest UNDERNEATH the pinned foot. The
+ * floor test passed the whole time, because it asserted that the Save button
+ * was visible - and Save was the thing doing the covering.
  *
- * MEASURED 2026-09-12 against release 2026-09-10, the identical drive:
+ * So the floor is gone (the maintainer, 2026-09-14: "I don't need a hard 75%.
+ * I need the ability to pull up or push down the planning options") and these
+ * tests assert the two things the floor could not:
  *
- *              390x844              375x667
- *   before     159 px  (19%)        not measured
- *   after      635 px  (75.2%)      502 px  (75.3%)
+ *  - the sheet MOVES, to three heights that are genuinely different, and
+ *  - at every one of them NOTHING IS BEHIND THE FOOT.
  *
- * and step 3, where the review card covered all but 83 px (9.8%), now leaves
- * the same 635 px.
+ * The second is the assertion whose absence let the floor ship. Playwright's
+ * own visibility check cannot see occlusion: an element covered by an opaque
+ * sibling has a box, is not `display: none`, and passes `toBeVisible`. It has
+ * to be measured against the foot's own rectangle, which is what
+ * `occludedByFoot` does.
  *
- * Both phone sizes, because the budget in screens/plan.css is a share of the
- * viewport and a share that holds at one height can fail at another - the
- * shorter phone is where the fixed 74 px below the map costs proportionally
- * most.
+ * MEASURED 2026-09-14 against release 2026-09-10, one drive, sheet heights in
+ * px and the free map as a share of the whole screen:
+ *
+ *                       peek          rest          full
+ *   390x844 step 2   156 (41%)     171 (39%)     377 (15%)
+ *   390x844 step 3   185 (70%)     262 (60%)     656 (14%)
+ *   375x667 step 2   156 (35%)     156 (35%)     329 ( 9%)
+ *   375x667 step 3   185 (62%)     202 (59%)     506 (13%)
+ *
+ * against 159 px (19%) at step 2 and 83 px (9.8%) at step 3 before any of
+ * this. At 375x667 step 2 peek and rest come out the same, because the bar's
+ * own furniture is already taller than SHEET_REST_FRACTION of that canvas -
+ * a smaller phone has less to give, and the honest thing is that the sheet
+ * stops shrinking rather than that it clips.
  */
-const MAP_FLOOR = 0.75
+const SNAP_ORDER = ['rest', 'full', 'peek'] as const
 
-async function freeMapFraction(page: Page): Promise<number> {
-  const height = page.viewportSize()?.height ?? 0
-  if (height === 0)
-    throw new Error('no viewport, so there is no floor to measure against')
-  return page.evaluate((viewport) => {
-    const box = (selector: string) => {
-      const node = document.querySelector(selector)
-      if (node === null) return null
-      const rect = node.getBoundingClientRect()
-      return { top: rect.top, bottom: rect.bottom }
+interface SheetShape {
+  snap: string | null
+  height: number
+  /** Class names of any sheet child the foot is drawn over. */
+  occludedByFoot: string[]
+  /** Pixels of map between the map's top edge and the sheet's. */
+  freeMap: number
+  /** Whether a tap in the middle of that free strip would land on the map. */
+  mapTakesTheTap: boolean
+}
+
+async function sheetShape(page: Page): Promise<SheetShape> {
+  return page.evaluate(() => {
+    const selector =
+      document.querySelector('.day-hike-card') !== null
+        ? '.day-hike-card'
+        : '.day-hike-bar'
+    const sheet = document.querySelector<HTMLElement>(selector)
+    if (sheet === null) throw new Error('no planning sheet on the screen')
+    const box = sheet.getBoundingClientRect()
+
+    const foot = sheet.querySelector<HTMLElement>('[data-sheet-foot]')
+    const occludedByFoot: string[] = []
+    if (foot !== null) {
+      const footBox = foot.getBoundingClientRect()
+      for (const child of Array.from(sheet.children)) {
+        if (child === foot) continue
+        const childBox = child.getBoundingClientRect()
+        if (childBox.height === 0) continue
+        if (childBox.bottom > footBox.top && childBox.top < footBox.bottom)
+          occludedByFoot.push(String(child.className))
+      }
     }
-    const map = box('[aria-label="Trail map"]') ?? box('[aria-label="Map"]')
-    if (map === null) return 0
-    // Everything the planning spine draws OVER the map. The panel is not here
-    // because it sits above the map in flow and has already taken its room
-    // out of the map's own box.
-    const covers = [box('.day-hike-bar'), box('.day-hike-card')].filter(
-      (each): each is { top: number; bottom: number } => each !== null,
-    )
-    const firstCover =
-      covers.length > 0 ? Math.min(...covers.map((c) => c.top)) : map.bottom
-    return Math.max(0, Math.min(map.bottom, firstCover) - map.top) / viewport
-  }, height)
+
+    const map = document.querySelector<HTMLElement>('[aria-label="Trail map"]')
+    const mapBox = map?.getBoundingClientRect()
+    const freeMap =
+      mapBox === undefined
+        ? 0
+        : Math.max(0, Math.min(mapBox.bottom, box.top) - mapBox.top)
+    // The question the maintainer actually asked - "is it possible to be using
+    // the plan and choosing the location on the map?" - is whether a tap in
+    // the strip above the sheet reaches the map, and the only honest way to
+    // ask that is to ask the document what is on top there.
+    let mapTakesTheTap = false
+    if (mapBox !== undefined && freeMap > 32) {
+      // Just above the sheet's top edge, not halfway up the free strip. The
+      // map carries its own chrome along its TOP - the identity plate at the
+      // left, the legend and search buttons at the right - so a sample taken
+      // in the middle of the strip lands on a button on a short phone and on
+      // bare map on a tall one, which would make this assertion a function of
+      // the viewport rather than of the sheet. The ground the grip just gave
+      // back is the ground immediately above the sheet, and that is what is
+      // worth asking about.
+      const hit = document.elementFromPoint(
+        Math.round(mapBox.left + mapBox.width / 2),
+        Math.round(mapBox.top + freeMap - 24),
+      )
+      mapTakesTheTap = hit !== null && (map?.contains(hit) ?? false)
+    }
+
+    return {
+      snap: sheet.getAttribute('data-snap'),
+      height: Math.round(box.height),
+      occludedByFoot,
+      freeMap: Math.round(freeMap),
+      mapTakesTheTap,
+    }
+  })
+}
+
+/**
+ * The grip on the sheet at the FOOT of the canvas - the builder's bar, or the
+ * review's card. Scoped rather than `.first()`, because since 2026-09-14 there
+ * are two grips on step 2: this one and the panel's, and the panel's comes
+ * first in the DOM. `.first()` silently drove the wrong surface, and the test
+ * failed on the sheet it was not touching.
+ */
+const bottomGrip = (page: Page) =>
+  page.locator('.day-hike-bar [data-sheet-grip], .day-hike-card [data-sheet-grip]')
+
+const pressTheGrip = async (page: Page) => {
+  await bottomGrip(page).click()
+  // The snap animates over 160ms (screens/plan.css); wait on the ATTRIBUTE
+  // rather than the clock, so this proves the settle happened rather than
+  // hoping it did.
+  await page.waitForTimeout(260)
 }
 
 for (const phone of [
   { name: '390x844', width: 390, height: 844 },
   { name: '375x667', width: 375, height: 667 },
 ]) {
-  test.describe(`the map's floor while planning, ${phone.name}`, () => {
+  test.describe(`the planning sheet's grip, ${phone.name}`, () => {
     test.use({ viewport: { width: phone.width, height: phone.height } })
 
-    test('states: the map keeps three quarters of the screen at step 2 and at step 3', async ({
+    test('states: the grip moves the builder between three heights, and the map is live above it at every one', async ({
       page,
     }) => {
       await editTheSavedRoute(page)
 
-      const atRoute = await freeMapFraction(page)
+      const seen: SheetShape[] = []
+      for (const expected of SNAP_ORDER) {
+        const shape = await sheetShape(page)
+        expect(shape.snap, 'the sheet says which height it is at').toBe(expected)
+        expect(
+          shape.occludedByFoot,
+          `at ${expected} the foot is drawn over ${shape.occludedByFoot.join(', ')}`,
+        ).toEqual([])
+        // The maintainer's question, asserted: at the two working heights a
+        // tap above the sheet lands on the map, so the plan and the picking
+        // are the same screen. Not asserted at `full`, and deliberately: a
+        // sheet the hiker has pulled all the way up is one they have chosen
+        // to read rather than tap through, and on a short phone the strip
+        // left over is thinner than the map's own chrome.
+        if (expected !== 'full')
+          expect(
+            shape.mapTakesTheTap,
+            `at ${expected} a tap in the ${shape.freeMap} px above the sheet did not reach the map`,
+          ).toBe(true)
+        expect(
+          shape.freeMap,
+          `at ${expected} the sheet left no map on the screen at all`,
+        ).toBeGreaterThan(0)
+        seen.push(shape)
+        await pressTheGrip(page)
+      }
+
+      // Pulled all the way up is taller than resting, and resting is never
+      // shorter than pushed down. Not `>` on both: on a short phone the bar's
+      // own furniture is already taller than the resting share, so rest and
+      // peek legitimately coincide.
+      const [rest, full, peek] = seen
+      expect(full.height, 'full is taller than rest').toBeGreaterThan(rest.height)
+      expect(rest.height, 'rest is no shorter than peek').toBeGreaterThanOrEqual(
+        peek.height,
+      )
       expect(
-        atRoute,
-        `step 2 left the map ${(atRoute * 100).toFixed(1)}% of the screen`,
-      ).toBeGreaterThanOrEqual(MAP_FLOOR)
+        peek.freeMap,
+        'pushing the sheet down gives the map back at least as much as resting did',
+      ).toBeGreaterThanOrEqual(rest.freeMap)
+    })
 
-      // AND THE BAR IS STILL USABLE, which is the other half of the bargain:
-      // the floor is bought by capping the bar, so the way on has to survive
-      // the capping. It is pinned rather than scrolled (screens/plan.css).
-      await expect(page.getByRole('button', { name: /Use this route/ })).toBeVisible()
-
+    test('states: the review at step 3 has the same grip, and nothing hides behind Save at any height', async ({
+      page,
+    }) => {
+      await editTheSavedRoute(page)
       await page
         .getByRole('button', { name: /Use this route/ })
         .first()
         .click()
-      // The same door and the same budget the rest of this file waits on:
-      // step 3 is behind the graph resolving the route, not behind a render.
       await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible({
         timeout: GRAPH_READY_MS,
       })
 
-      const atDetails = await freeMapFraction(page)
-      expect(
-        atDetails,
-        `step 3 left the map ${(atDetails * 100).toFixed(1)}% of the screen`,
-      ).toBeGreaterThanOrEqual(MAP_FLOOR)
+      for (const expected of SNAP_ORDER) {
+        const shape = await sheetShape(page)
+        expect(shape.snap).toBe(expected)
+        expect(
+          shape.occludedByFoot,
+          `at ${expected} Save is drawn over ${shape.occludedByFoot.join(', ')}`,
+        ).toEqual([])
+        // The way on survives every height, which is the other half of the
+        // bargain the grip strikes.
+        await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible()
+        await pressTheGrip(page)
+      }
+    })
 
-      // The review's own way on, for the same reason.
-      await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible()
+    test('states: the panel above the map has a grip too, so the map can be given room from both ends', async ({
+      page,
+    }) => {
+      await editTheSavedRoute(page)
+
+      // The panel is the other half of "the planning options". It is in the
+      // FLOW above the map rather than over it, so what it takes the map does
+      // not get - measured 2026-09-14 at 270 px on a 390x844 screen with its
+      // own Details toggle already closed, which is a third of the screen
+      // spent before the map gets a pixel.
+      const geometry = async () =>
+        page.evaluate(() => {
+          const panel = document.querySelector<HTMLElement>('.day-hike-panel')
+          const map = document.querySelector<HTMLElement>('[aria-label="Trail map"]')
+          const bar = document.querySelector<HTMLElement>('.day-hike-bar')
+          const barTop = bar?.getBoundingClientRect().top ?? window.innerHeight
+          const mapBox = map?.getBoundingClientRect()
+          return {
+            snap: panel?.getAttribute('data-snap') ?? null,
+            panel: Math.round(panel?.getBoundingClientRect().height ?? 0),
+            freeMap:
+              mapBox === undefined
+                ? 0
+                : Math.round(Math.max(0, Math.min(mapBox.bottom, barTop) - mapBox.top)),
+          }
+        })
+
+      const atRest = await geometry()
+      expect(atRest.snap, 'the panel says which height it is at').toBe('rest')
+
+      // Its grip is the LAST of the two on this screen, because it is the
+      // panel's lower edge - the one it shares with the map.
+      const panelGrip = page.locator('.day-hike-panel [data-sheet-grip]')
+      await expect(panelGrip).toHaveCount(1)
+      await panelGrip.click()
+      await expect(page.locator('.day-hike-panel[data-snap="full"]')).toHaveCount(1)
+      await panelGrip.click()
+      await expect(page.locator('.day-hike-panel[data-snap="peek"]')).toHaveCount(1)
+
+      const pushedDown = await geometry()
+      expect(
+        pushedDown.panel,
+        'pushing the panel down made it shorter than it rests at',
+      ).toBeLessThan(atRest.panel)
+      expect(
+        pushedDown.freeMap,
+        'and the map got the difference: ' +
+          `${atRest.freeMap} px at rest, ${pushedDown.freeMap} px with the panel down`,
+      ).toBeGreaterThan(atRest.freeMap)
+    })
+
+    test('states: dragging the grip resizes the sheet and it settles on a snap', async ({
+      page,
+    }) => {
+      await editTheSavedRoute(page)
+      const before = await sheetShape(page)
+
+      const grip = bottomGrip(page)
+      const box = await grip.boundingBox()
+      if (box === null) throw new Error('the grip has no box to drag')
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+      await page.mouse.down()
+      // Up the screen is a taller sheet. Two moves rather than one, because a
+      // single jump can be delivered as one event that the slop check reads
+      // as a press.
+      await page.mouse.move(box.x + box.width / 2, box.y - 60, { steps: 6 })
+      await page.mouse.move(box.x + box.width / 2, box.y - 120, { steps: 6 })
+      await page.mouse.up()
+      await page.waitForTimeout(260)
+
+      const after = await sheetShape(page)
+      expect(after.height, 'the drag made the sheet taller').toBeGreaterThan(
+        before.height,
+      )
+      expect(
+        ['peek', 'rest', 'full'],
+        'the sheet settled on a named height rather than wherever the mouse stopped',
+      ).toContain(after.snap)
+      expect(after.occludedByFoot).toEqual([])
     })
   })
 }

@@ -282,4 +282,24 @@ export default async function drive(page) {
   } else {
     await page.getByText('Route order · tap the map to add').waitFor()
   }
+
+  // AND THEN THE BAR IS PUSHED DOWN, which is the frame worth having since
+  // 2026-09-14. The bar carries a grip (client/src/chrome/SheetGrip.tsx) and
+  // the hiker sets how much map there is; a still of the default tells a
+  // reviewer nothing about that, because a sheet that can move and a sheet
+  // that cannot look identical standing still. Pushed all the way down, three
+  // things are in one frame: the grip itself, the map at its largest with a
+  // route on it, and the way on still under the thumb.
+  //
+  // Two presses, because the cycle is rest -> full -> peek. Waited on by the
+  // sheet's own read-out rather than by a clock: `data-snap` is what the hook
+  // writes when a gesture settles, so waiting for it proves the settle
+  // happened rather than hoping 300ms was enough.
+  const grip = page.locator('[data-sheet-grip]').first()
+  if ((await grip.count()) > 0) {
+    await grip.click()
+    await page.locator('.day-hike-bar[data-snap="full"]').waitFor({ timeout: 5000 })
+    await grip.click()
+    await page.locator('.day-hike-bar[data-snap="peek"]').waitFor({ timeout: 5000 })
+  }
 }

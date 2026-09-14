@@ -26,6 +26,7 @@ import {
   trailMarkImageId,
   WHITE_CHIP_GROUND,
 } from './trailBadges'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { PRIMARY_TRAIL_SOURCES } from './style'
 import { THROUGH_ROUTE_SOURCES } from './trailLabels'
 import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from '../lib/blaze'
@@ -281,5 +282,21 @@ describe('registryNameForSource', () => {
       expect(trailMarkImageId(source)).not.toBeNull()
       expect(registryNameForSource(source)).not.toBeNull()
     }
+  })
+
+  it('stands down at the waypoint seam, so a pill never competes with a pin', () => {
+    // The maintainer, 2026-09-14: "when a user zooms in close enough to see a
+    // POI, the trail pills (AT & LP) should hide." The ceiling is the seam
+    // constant itself and not a literal, so the two cannot drift apart and
+    // leave pills on a map that has just filled with pins.
+    const layer = buildTrailBadgeLayer({ theme: 'light' })
+
+    expect(layer.maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    // maplibre reads `maxzoom` as exclusive: the badge is gone on the FIRST
+    // frame a waypoint can draw, rather than sharing that frame with it.
+    expect(layer.maxzoom).not.toBeGreaterThan(POI_PIN_MIN_ZOOM)
+    // And it still has no floor of its own - the line layers' floors are the
+    // badge's (the review of #1374), which this must not quietly reintroduce.
+    expect(layer.minzoom).toBeUndefined()
   })
 })

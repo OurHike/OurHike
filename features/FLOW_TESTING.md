@@ -101,7 +101,7 @@ are pure chrome: the legend as a `region` rather than a `dialog`, the rail's two
 inline with nothing behind a disclosure, the download's laptop sentence, the plan bench at
 the day zoom, the sidebar hike switch, the map's room measured at this width, and the worked
 example above — tapping Today with a live route draft raises no bail sheet and the draft
-survives. **`e2e/data/desktopMap.spec.ts`** holds what needs a laptop *and* a
+survives. **`e2e/data/desktopMap.spec.ts`** holds what needs a laptop _and_ a
 release: `chrome/ElevationChart.tsx` and `chrome/RouteHover.tsx`, neither of which a phone
 renders at all, plus the planning column's own room — the R2 measurement in the Layout axis
 below, which needed a routed draft before it could be taken.
@@ -113,27 +113,27 @@ which leaves **28 behavioural forks** in five components. Every one of them now 
 assertion, and the table below is the audit — if a fork is added, it goes in this table with
 its test or with the reason it has none.
 
-| fork | what differs | asserted by |
-| --- | --- | --- |
-| `App` map mount, `tabOverMap`, Today overlay, journal column | the map is mounted at every tab; Today is beside it, not instead | Today beside the map; the reach floors |
-| `App` `planStepBeside` | step 1–3 stand in the column | step 1 in the column; the R2 reach table |
-| `App` `showMap` | "see it on the map" keeps the tab | **new** — hermetic (the day card) and data (a journal row) |
-| `App` `mapShownUnder` | Today with a live draft raises no bail sheet | the worked example |
-| `App` `useRouteHover` gate | the plate exists only here | the hover tests |
-| `App` `docked` review, review/bar slots | the review is the column, not a sheet over the map | the review region; the step-3 reach floor (a fall-through drops it to the phone's 0%) |
-| `App` `hikeWindowHidesMap` | a window beside the map, not instead of it | **new** — `app__map-held` absent |
-| `App` `sidebarModeSwitch` / `modeSwitch` | the mode is a radiogroup in the shell | the radiogroup test |
-| `App` `modeReadout` | and is NOT also a door in the map header | **new** |
-| `App` sidebar hike switch | the tab row has no room for it | the switch test |
-| `App` `figures` | the bar withholds what the column prints | the one-home test |
-| `MapScreen` `railed` | the legend is a region, and stands down for a step column | the legend test; step 1 |
-| `MapScreen` chart effects | the box shrinks AND the canvas follows it | **new** — canvas matches its box |
-| `MapScreen` `folded` | a pan does not cost the strip | the pan test |
-| `MapScreen` `inView` | a face of the rail, not a pull-up | the In view test |
-| `MapScreen` attribution | credits inline, nothing behind a disclosure | the credits test |
-| `MapScreen` `next-up-band` | the chart replaces the band | **new** |
-| `Plan` `onBench` | the days get a bench | the bench test |
-| `Downloads` | the laptop sentence | the download test |
+| fork                                                         | what differs                                                     | asserted by                                                                           |
+| ------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `App` map mount, `tabOverMap`, Today overlay, journal column | the map is mounted at every tab; Today is beside it, not instead | Today beside the map; the reach floors                                                |
+| `App` `planStepBeside`                                       | step 1–3 stand in the column                                     | step 1 in the column; the R2 reach table                                              |
+| `App` `showMap`                                              | "see it on the map" keeps the tab                                | **new** — hermetic (the day card) and data (a journal row)                            |
+| `App` `mapShownUnder`                                        | Today with a live draft raises no bail sheet                     | the worked example                                                                    |
+| `App` `useRouteHover` gate                                   | the plate exists only here                                       | the hover tests                                                                       |
+| `App` `docked` review, review/bar slots                      | the review is the column, not a sheet over the map               | the review region; the step-3 reach floor (a fall-through drops it to the phone's 0%) |
+| `App` `hikeWindowHidesMap`                                   | a window beside the map, not instead of it                       | **new** — `app__map-held` absent                                                      |
+| `App` `sidebarModeSwitch` / `modeSwitch`                     | the mode is a radiogroup in the shell                            | the radiogroup test                                                                   |
+| `App` `modeReadout`                                          | and is NOT also a door in the map header                         | **new**                                                                               |
+| `App` sidebar hike switch                                    | the tab row has no room for it                                   | the switch test                                                                       |
+| `App` `figures`                                              | the bar withholds what the column prints                         | the one-home test                                                                     |
+| `MapScreen` `railed`                                         | the legend is a region, and stands down for a step column        | the legend test; step 1                                                               |
+| `MapScreen` chart effects                                    | the box shrinks AND the canvas follows it                        | **new** — canvas matches its box                                                      |
+| `MapScreen` `folded`                                         | a pan does not cost the strip                                    | the pan test                                                                          |
+| `MapScreen` `inView`                                         | a face of the rail, not a pull-up                                | the In view test                                                                      |
+| `MapScreen` attribution                                      | credits inline, nothing behind a disclosure                      | the credits test                                                                      |
+| `MapScreen` `next-up-band`                                   | the chart replaces the band                                      | **new**                                                                               |
+| `Plan` `onBench`                                             | the days get a bench                                             | the bench test                                                                        |
+| `Downloads`                                                  | the laptop sentence                                              | the download test                                                                     |
 
 **Each "new" row is a fork whose failure is invisible** — nothing throws, nothing misaligns,
 and a screenshot of the wrong branch looks right. The canvas one is the worst behaved: without
@@ -150,7 +150,7 @@ both widths. The test asserts the hold class and the reach instead, and says so.
 
 `App.desktopSpine.test.tsx` and `desktopLayout.test.ts` still hold the desktop layout at the
 rendered layer, which is the cheaper place for the arithmetic. The division is the one this
-document draws everywhere: those two prove the numbers, these two prove *findable*.
+document draws everywhere: those two prove the numbers, these two prove _findable_.
 
 ### Engine — Chromium and WebKit, which is the iOS-versus-Android question
 
@@ -235,31 +235,32 @@ The rules, which are PATHWAY.md's **R2 · The map never leaves** finally given a
   a desktop always (`mapShownUnder` is `tab === 'map' || (isDesktop && tab === 'today')`).
   Both need the floor, and the following one needs it most — that is the screen a hiker
   reads while moving. **The desktop half is asserted now** (`e2e/desktopSpine.spec.ts`),
-  and against the *uncovered* floor rather than a sheet floor, because above the breakpoint
+  and against the _uncovered_ floor rather than a sheet floor, because above the breakpoint
   Today beside the map is not a covering at all. Measured 2026-09-11 at 1280×800:
 
-  | state                | the map's box            | how much of it a pointer could land on |
-  | -------------------- | ------------------------ | -------------------------------------- |
-  | map tab              | 0.979 of viewport height | **95%**                                |
-  | Today tab            | 0.964                    | **89%**                                |
-  | Plan home            | no map region at all     | —                                      |
+  | state     | the map's box            | how much of it a pointer could land on |
+  | --------- | ------------------------ | -------------------------------------- |
+  | map tab   | 0.979 of viewport height | **95%**                                |
+  | Today tab | 0.964                    | **89%**                                |
+  | Plan home | no map region at all     | —                                      |
 
-  A laptop reaches *more* of its map than a phone reaches of its (88%), which is the
+  A laptop reaches _more_ of its map than a phone reaches of its (88%), which is the
   opposite of the intuition and worth writing down: the rail is a column beside the canvas
   rather than a sheet over it. The following case is still unasserted — it needs a resolved
   route the suite cannot produce (#1387 — measured 2026-09-11, the saved card offers neither
   "Walk this" nor "Edit the route" without one) — and `mapRoom.spec.ts` carries it written
   out as a `test.skip`.
+
 - **R2 on the planning spine, which nobody had measured until now.** The builders are where
   the rule is hardest to keep and easiest to lose, because the column they open is the widest
   thing in the app — and the only evidence either way used to be a stylesheet read as a
   string. Measured 2026-09-11 against release 2026-09-10, the identical drive in both
   projects (`e2e/data/desktopMap.spec.ts`):
 
-  | step                         | phone, 390×844 | laptop, 1280×800 |
-  | ---------------------------- | -------------- | ---------------- |
-  | step 2 · Route, builder open | **8%** → 75%   | **93%**          |
-  | step 3 · Details, review     | **0%** → 75%   | **100%**         |
+  | step                         | phone, 390×844          | laptop, 1280×800 |
+  | ---------------------------- | ----------------------- | ---------------- |
+  | step 2 · Route, builder open | **8%** → 39–41% at rest | **93%**          |
+  | step 3 · Details, review     | **0%** → 60–70% at rest | **100%**         |
 
   The laptop's column costs the map essentially nothing, and the floors are that half with
   headroom — what would go red if a column started overlapping the canvas at a width where
@@ -268,17 +269,60 @@ The rules, which are PATHWAY.md's **R2 · The map never leaves** finally given a
   **The phone's two numbers were read as R2 working and were not.** "Stacked" was taken to
   license the builder covering all but a sliver and the review covering the map outright, so
   8% and 0% went into this table as a description rather than as a defect. The maintainer
-  found it the way a hiker would, on 2026-09-12: *"I can't select things on the map."* A
+  found it the way a hiker would, on 2026-09-12: _"I can't select things on the map."_ A
   panel and a bar that between them left 159 px of a 844 px screen is not a map stacked
   under a sheet; it is a map that cannot be used, and the measurement was sitting right here
   saying so.
 
-  `screens/plan.css` now spends a budget against a floor — 75svh for the map, everything
-  else divided out of what is left — and `e2e/data/builder.spec.ts` asserts the floor at
-  both phone sizes and both steps, measuring what a thumb can REACH rather than the map
-  element's height. That distinction is the whole lesson: before the fix the map's box was
-  480 px, 57% of the screen, and a naive assertion on the element would have passed while a
-  tap still had 159 px to land in.
+  The first fix was a hard floor — 75svh for the map, everything else divided out of what
+  was left — and **it was wrong, in a way worth keeping written down.** It met its own
+  assertion at every moment and made both sheets unusable: at 390×844 the budget left the
+  step-3 review 38 px to render 731 px of route detail in, and at 375×667 it left 93 px for
+  96 px of furniture, so the step rail came to rest _underneath_ the pinned foot. The floor
+  test passed throughout, because it asserted that Save was visible — and Save was the thing
+  doing the covering. **Playwright's visibility check cannot see occlusion:** an element
+  covered by an opaque sibling has a box, is not `display: none`, and passes `toBeVisible`.
+
+  So the height is now the hiker's (the maintainer, 2026-09-14: _"I don't need a hard 75%.
+  I need the ability to pull up or push down the planning options"_). `chrome/SheetGrip.tsx`
+  puts a grip on the sheet's top edge with three snaps — measured, not picked: `peek` is the
+  sheet with its scrolling body closed to nothing, so adding a row can never break it.
+  Measured 2026-09-14, sheet height and the free map as a share of the whole screen:
+
+  |                | peek      | rest      | full      |
+  | -------------- | --------- | --------- | --------- |
+  | 390×844 step 2 | 156 (41%) | 171 (39%) | 377 (15%) |
+  | 390×844 step 3 | 185 (70%) | 262 (60%) | 656 (14%) |
+  | 375×667 step 2 | 156 (35%) | 156 (35%) | 329 (9%)  |
+  | 375×667 step 3 | 185 (62%) | 202 (59%) | 506 (13%) |
+
+  against 159 px (19%) and 83 px (9.8%) before any of it. `e2e/data/builder.spec.ts` now
+  asserts the two things the floor could not: that the sheet moves between three genuinely
+  different heights, and that **no child of a sheet is behind its foot at any of them** —
+  measured against the foot's own rectangle, since `toBeVisible` will not say. It also
+  answers the maintainer's other question directly, with `elementFromPoint` in the strip the
+  grip just gave back: the plan and the picking really are one screen.
+
+  **The panel above the map got the same grip**, gripped at its lower edge because that is
+  the edge it shares with the map. It is in the FLOW rather than over the map, so what it
+  takes the map does not get — measured 2026-09-14 at 270 px on a 390×844 screen with its
+  own Details toggle already closed. With both grips pushed down the map reaches:
+
+  |                | at rest        | both grips down    |
+  | -------------- | -------------- | ------------------ |
+  | 390×844 step 2 | 337 px (39.9%) | **499 px (59.1%)** |
+  | 375×667 step 2 | 237 px (35.5%) | **322 px (48.3%)** |
+
+  against 159 px (19%) before any of it.
+
+  Two smaller things are left standing, both measured and neither a defect: at 375×667
+  step 2 `peek` and `rest` coincide, because the bar's own furniture is already taller than
+  `SHEET_REST_FRACTION` of that canvas — the honest behaviour is that the sheet stops
+  shrinking rather than that it clips. And pushing the panel down grows the bar at `rest`
+  from 173 px to 223 px, because `rest` is a share of a canvas that just got taller; the
+  map still gains (337 → 432 px), and `peek` and `full` are content-derived and do not
+  move.
+
 - Every floor above is `@unvalidated` as a hiker-facing number. They are measurements of
   today's layout, not findings about how much map somebody needs to navigate by — which
   nothing here has established, and which field testing would settle.
@@ -380,6 +424,7 @@ every move goes through.
   future failure says whether the line was undrawn or merely out of frame. That read is on
   the failure path only: asserting the camera up front would add a second way to go red, and
   the plate is the observable the test is about.
+
 - **Assert the mechanism or the number, and say which** — TESTING.md's rule holds here too. A
   flow test that pins a rendered figure is pinning a fixture; what it is usually there to
   prove is that the screen was reachable and said which figures it was showing.
@@ -626,13 +671,12 @@ headed, and there is no display in CI or in an agent sandbox.
   different reasons rather than one. `e2e/data/mapSheets.spec.ts` (2026-09-11) took the
   waypoint card, the trail line's sheet, the long-press plate and the notices list, all of
   which needed a release under the map. What it could not take:
-
   - `chrome/ClosureSheet.tsx`, `chrome/SeriousWarningSheet.tsx` and
     `chrome/alertSheetsPanel.tsx` open on a tap on an ALERT PIN — **and this entry used to
     say the sweep would be "looking for a needle", which was the wrong diagnosis.** There is
     no needle. Measured 2026-09-11 against the UA environment the suite reads:
     `conditions/closures.json` carries **0 closures** and `conditions/reports.json` **0
-    reports**, and a serious warning *is* an escalated report. So the panel has nothing to
+    reports**, and a serious warning _is_ an escalated report. So the panel has nothing to
     place, the marks never draw, and a camera derived from a published notice's own mile —
     the fix the old entry proposed — would find nothing when it got there. **#1400 — Two
     safety sheets have no published data to open them, so the map's alert taps go
@@ -668,10 +712,10 @@ headed, and there is no display in CI or in an agent sandbox.
     feature's description and never checked against the manifest.
   - `chrome/ElevationChart.tsx` is behind `isDesktop` in `chrome/MapScreen.tsx`, so it was
     the desktop gap rather than a data one — and is now **covered by both halves at once**:
-    `e2e/data/desktopMap.spec.ts` is the spec that needs a laptop *and* a release. It pins
+    `e2e/data/desktopMap.spec.ts` is the spec that needs a laptop _and_ a release. It pins
     the resting state (no trail taken, no chart — "a picture of a trail nobody had chosen"),
     the chart drawn once a hike is seeded, the keyboard promise in its accessible name
-    ("Arrow keys move the cursor", "Escape clears"), and the pointer read-out as a *pair*,
+    ("Arrow keys move the cursor", "Escape clears"), and the pointer read-out as a _pair_,
     because a height with no mile cannot be checked against the map and a mile with no
     height is not why anybody hovered.
 

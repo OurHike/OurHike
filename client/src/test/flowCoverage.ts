@@ -120,6 +120,14 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F3 step 1 · Hike',
     flow: { status: 'covered', spec: 'e2e/planSpine.spec.ts' },
   },
+  'chrome/SheetGrip.tsx': {
+    step: 'F4 step 2 · Route',
+    // Driven at both phone sizes, at all three snaps, at step 2 and step 3,
+    // and by a real mouse drag - and the assertion that matters is the one
+    // the 75% floor did without: that no child of the sheet is behind its
+    // foot at any height.
+    flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
+  },
   'chrome/BailSheet.tsx': {
     step: 'F3 step 1 · Hike',
     flow: { status: 'covered', spec: 'e2e/bailSheet.spec.ts' },

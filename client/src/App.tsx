@@ -5882,6 +5882,11 @@ function App() {
         justSaved={justSavedId === cardDayHike.id}
         leadsToday={hikerMode === 'day'}
         docked={isDesktop && dayHikeReview !== null}
+        // Step 3's review on a phone is the one card that sits over the map it
+        // is describing, so it is the one card with a grip on it
+        // (chrome/SheetGrip.tsx). A saved card is not on the spine, and the
+        // desktop puts the review in the rail beside the map, not over it.
+        resizable={!isDesktop && dayHikeReview !== null}
         today={localDay(now)}
       />
     ) : null

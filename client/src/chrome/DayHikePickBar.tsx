@@ -33,6 +33,9 @@
 
 import { useState } from 'react'
 
+import { SheetGrip, useSheetDrag } from './SheetGrip'
+import { useDesktop } from '../lib/useDesktop'
+
 import {
   draftPoints,
   type DayHikeDraft,
@@ -138,6 +141,11 @@ export function DayHikePickBar({
   onToggleDraw,
   figures = true,
 }: DayHikePickBarProps) {
+  // The bar is a sheet over the map's floor on a phone and a block inside the
+  // right-hand rail on a desktop (src/desktop.css), where it is not covering
+  // anything and there is nothing to get out of the way of.
+  const canResize = !useDesktop()
+  const drag = useSheetDrag(canResize)
   const routed = status.kind === 'routed' ? status : null
   const time = walkingTime(walking)
   const stretches = routed?.stretches.length ?? 0
@@ -164,23 +172,27 @@ export function DayHikePickBar({
         className="day-hike-bar"
         role="region"
         aria-label="One stretch is yours to cross"
+        ref={drag.attachSheet}
       >
-        <div className="day-hike-bar__head">
-          <p className="day-hike-bar__prompt">One stretch is yours to cross</p>
+        {canResize && <SheetGrip drag={drag} label="The builder" />}
+        <div className="day-hike-bar__body" data-sheet-body>
+          <div className="day-hike-bar__head">
+            <p className="day-hike-bar__prompt">One stretch is yours to cross</p>
+          </div>
+          <p className="day-hike-bar__gap day-hike-bar__gap--warn">
+            {stretches > 2
+              ? `Between the ${stretches} stretches of this walk there are `
+              : 'Between the two stretches of this walk there are '}
+            <strong>{formatDistance(crossing, units, 'fine')}</strong> with no maintained
+            trail under them. OurHike has not checked that ground and cannot say it is
+            walkable.
+          </p>
+          <p className="day-hike-bar__note">
+            The rest — {formatDistance(routed.miles, units)} on marked trails — is
+            unaffected.
+          </p>
         </div>
-        <p className="day-hike-bar__gap day-hike-bar__gap--warn">
-          {stretches > 2
-            ? `Between the ${stretches} stretches of this walk there are `
-            : 'Between the two stretches of this walk there are '}
-          <strong>{formatDistance(crossing, units, 'fine')}</strong> with no maintained
-          trail under them. OurHike has not checked that ground and cannot say it is
-          walkable.
-        </p>
-        <p className="day-hike-bar__note">
-          The rest — {formatDistance(routed.miles, units)} on marked trails — is
-          unaffected.
-        </p>
-        <div className="day-hike-bar__actions">
+        <div className="day-hike-bar__actions" data-sheet-foot>
           <button
             type="button"
             className="day-hike-bar__action"
@@ -204,144 +216,160 @@ export function DayHikePickBar({
   }
 
   return (
-    <div className="day-hike-bar" role="region" aria-label="Build a day hike">
-      <div className="day-hike-bar__head">
-        <p className="day-hike-bar__prompt">
-          {drawing
-            ? "Drag to draw. We'll put it on the trails and tell you what moved."
-            : 'Tap a trail to walk it. Tap again further along to turn.'}
-        </p>
-        <button type="button" className="day-hike-bar__cancel" onClick={onCancel}>
-          Cancel
-        </button>
-      </div>
+    <div
+      className="day-hike-bar"
+      role="region"
+      aria-label="Build a day hike"
+      ref={drag.attachSheet}
+    >
+      {canResize && <SheetGrip drag={drag} label="The builder" />}
+      {/* Everything between the grip and the foot scrolls; the grip and the
+          foot do not. So the way on is always where the thumb left it, and
+          nothing is ever hidden BEHIND it - the failure the pinned-sticky
+          version of this shipped on 2026-09-12. */}
+      <div className="day-hike-bar__body" data-sheet-body>
+        <div className="day-hike-bar__head">
+          <p className="day-hike-bar__prompt">
+            {drawing
+              ? "Drag to draw. We'll put it on the trails and tell you what moved."
+              : 'Tap a trail to walk it. Tap again further along to turn.'}
+          </p>
+          <button type="button" className="day-hike-bar__cancel" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
 
-      {draft.refusal !== null && (
-        <p className="day-hike-bar__refusal" role="alert">
-          {draft.refusal}
-        </p>
-      )}
+        {draft.refusal !== null && (
+          <p className="day-hike-bar__refusal" role="alert">
+            {draft.refusal}
+          </p>
+        )}
 
-      {status.kind === 'unroutable' && (
-        <p className="day-hike-bar__refusal" role="alert">
-          There&rsquo;s no marked route between those points on this map. They may be in
-          different places, or the trail between them isn&rsquo;t one we hold.
-        </p>
-      )}
+        {status.kind === 'unroutable' && (
+          <p className="day-hike-bar__refusal" role="alert">
+            There&rsquo;s no marked route between those points on this map. They may be in
+            different places, or the trail between them isn&rsquo;t one we hold.
+          </p>
+        )}
 
-      {routed !== null && (
-        <>
-          {figures && (
-            <p className="day-hike-bar__total">
-              {routed.legs.length} {routed.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
-              {formatDistance(routed.miles, units)}
-              {time !== null && <> · {time}</>}
-            </p>
-          )}
+        {routed !== null && (
+          <>
+            {figures && (
+              <p className="day-hike-bar__total">
+                {routed.legs.length} {routed.legs.length === 1 ? 'leg' : 'legs'} ·{' '}
+                {formatDistance(routed.miles, units)}
+                {time !== null && <> · {time}</>}
+              </p>
+            )}
 
-          {/* THE GAP IS PRINTED APART FROM THE MILES, NEVER ADDED TO THEM.
+            {/* THE GAP IS PRINTED APART FROM THE MILES, NEVER ADDED TO THEM.
               One is ground an organization maintains and measures; the other
               is ground the app declined to route and nobody has walked for
               us. A single total would launder the second into the first, and
               the ≈time above is priced on trail miles alone for the same
               reason - the app has no idea what that ground is. */}
-          {draft.droppedMiles > 0 && (
-            <p className="day-hike-bar__gap">
-              {formatDistance(draft.droppedMiles, units, 'fine')} of what you drew had no
-              trail under it. We dropped it rather than guess a way across.
-            </p>
-          )}
+            {draft.droppedMiles > 0 && (
+              <p className="day-hike-bar__gap">
+                {formatDistance(draft.droppedMiles, units, 'fine')} of what you drew had
+                no trail under it. We dropped it rather than guess a way across.
+              </p>
+            )}
 
-          {routed.gapMiles > 0 && (
-            <p className="day-hike-bar__gap">
-              Plus {formatDistance(routed.gapMiles, units, 'fine')} with no trail under
-              it, across {stretches > 2 ? `${stretches - 1} gaps` : 'the gap'} between
-              your {stretches} stretches. You cross that on your own — we haven&rsquo;t
-              checked it.
-            </p>
-          )}
-          {/* Whose pace that time is, when it is not the standard one (#851).
+            {routed.gapMiles > 0 && (
+              <p className="day-hike-bar__gap">
+                Plus {formatDistance(routed.gapMiles, units, 'fine')} with no trail under
+                it, across {stretches > 2 ? `${stretches - 1} gaps` : 'the gap'} between
+                your {stretches} stretches. You cross that on your own — we haven&rsquo;t
+                checked it.
+              </p>
+            )}
+            {/* Whose pace that time is, when it is not the standard one (#851).
               Absent for a hiker who never moved a control, which is most of
               them - the line has to keep its weight for the ones who did. */}
-          {figures && time !== null && walking?.relativeLine != null && (
-            <p className="day-hike-bar__baseline">{walking.relativeLine}</p>
-          )}
-          <ul className="day-hike-bar__orgs">
-            {routed.legsBySource.map((tally) => (
-              <li key={tally.source ?? 'unattributed'} className="day-hike-bar__org">
-                {orgLabel(tally.source)} · {tally.legs}{' '}
-                {tally.legs === 1 ? 'leg' : 'legs'}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+            {figures && time !== null && walking?.relativeLine != null && (
+              <p className="day-hike-bar__baseline">{walking.relativeLine}</p>
+            )}
+            <ul className="day-hike-bar__orgs">
+              {routed.legsBySource.map((tally) => (
+                <li key={tally.source ?? 'unattributed'} className="day-hike-bar__org">
+                  {orgLabel(tally.source)} · {tally.legs}{' '}
+                  {tally.legs === 1 ? 'leg' : 'legs'}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
-      {status.kind === 'started' && (
-        <p className="day-hike-bar__total">Tap again further along to turn.</p>
-      )}
+        {status.kind === 'started' && (
+          <p className="day-hike-bar__total">Tap again further along to turn.</p>
+        )}
 
-      {/* THE SHAPE, as one control (#1373, frame 4a): Point to point, Out
+        {/* THE SHAPE, as one control (#1373, frame 4a): Point to point, Out
           and back, Loop. "Close the loop" used to stand alone here, and
           out-and-back - the shape most day hikes on a linear trail actually
           take - had no control at all: a hiker tapped the far end and then
           tapped their way home, or did not. Absent while there is nothing to
           shape and across a gap (lib/dayHikeDraft.ts's shapesOffered), for
           the same reason Close the loop was. */}
-      {shapes.length > 0 && (
-        <div className="day-hike-bar__shape" role="radiogroup" aria-label="Shape">
-          {shapes.map((offered) => (
-            <button
-              key={offered}
-              type="button"
-              role="radio"
-              aria-checked={offered === shape}
-              className="day-hike-bar__shape-option"
-              onClick={() => onShape(offered)}
-            >
-              {SHAPE_LABELS[offered]}
-            </button>
-          ))}
-        </div>
-      )}
+        {shapes.length > 0 && (
+          <div className="day-hike-bar__shape" role="radiogroup" aria-label="Shape">
+            {shapes.map((offered) => (
+              <button
+                key={offered}
+                type="button"
+                role="radio"
+                aria-checked={offered === shape}
+                className="day-hike-bar__shape-option"
+                onClick={() => onShape(offered)}
+              >
+                {SHAPE_LABELS[offered]}
+              </button>
+            ))}
+          </div>
+        )}
 
-      {/* No disabled buttons on this bar - the same rule LineSheet.tsx states
+        {/* No disabled buttons on this bar - the same rule LineSheet.tsx states
           and the A.T. builder now carries: a control that looks pressable and
           is not teaches a hiker the app is broken. A control that does not
           apply yet is absent, like Close the loop always was. */}
-      <div className="day-hike-bar__actions">
-        {(draftPoints(draft).length > 0 || draft.refusal !== null) && (
-          <button type="button" className="day-hike-bar__action" onClick={onUndo}>
-            Undo
-          </button>
-        )}
-        {/* #935's other half, in one control. The wording is what the hiker
+        <div className="day-hike-bar__actions">
+          {(draftPoints(draft).length > 0 || draft.refusal !== null) && (
+            <button type="button" className="day-hike-bar__action" onClick={onUndo}>
+              Undo
+            </button>
+          )}
+          {/* #935's other half, in one control. The wording is what the hiker
             is actually telling the app - not "add a segment", which is the
             model's word for it, but that the walk carries on somewhere the
             app will not claim to know. */}
-        {canStartNew && !drawing && (
-          <button type="button" className="day-hike-bar__action" onClick={onStartStretch}>
-            Start a new stretch
-          </button>
-        )}
-        {/* Frame `1k`'s door. Both ways of building are on the map, so the
+          {canStartNew && !drawing && (
+            <button
+              type="button"
+              className="day-hike-bar__action"
+              onClick={onStartStretch}
+            >
+              Start a new stretch
+            </button>
+          )}
+          {/* Frame `1k`'s door. Both ways of building are on the map, so the
             switch between them is too. */}
-        <button
-          type="button"
-          className="day-hike-bar__action"
-          aria-pressed={drawing}
-          onClick={onToggleDraw}
-        >
-          {drawing ? 'Tap instead' : 'Draw instead'}
-        </button>
-      </div>
+          <button
+            type="button"
+            className="day-hike-bar__action"
+            aria-pressed={drawing}
+            onClick={onToggleDraw}
+          >
+            {drawing ? 'Tap instead' : 'Draw instead'}
+          </button>
+        </div>
 
-      {/* THE SPINE'S FOOT (#1373, rule R3): back to step 1 with the draft
+        {/* THE SPINE'S FOOT (#1373, rule R3): back to step 1 with the draft
           kept, and on to step 3 once there is a route. "Done" and "Keep the
           snapped route" both meant this; one label now, the design's, and
           the prompt above already says a drawn line was put on the trails.
           The way on is absent, not disabled, until a route exists. */}
-      <div className="day-hike-bar__foot">
+      </div>
+      <div className="day-hike-bar__foot" data-sheet-foot>
         <button
           type="button"
           className="day-hike-bar__back"

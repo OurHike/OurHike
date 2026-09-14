@@ -65,6 +65,22 @@ export async function reviewInHarriman(page) {
   if ((await on.count()) === 0) return
   await on.click()
   await page.getByRole('button', { name: 'Save this day hike' }).waitFor()
+
+  // PULLED UP, since 2026-09-14. The review is a sheet over the very route it
+  // describes, and it carries the same grip the builder does
+  // (client/src/chrome/SheetGrip.tsx) - so the frame worth photographing is
+  // the one a still cannot otherwise show: the card raised to read, with Save
+  // held at its foot rather than floated over the reading.
+  //
+  // This is the state the 75% floor could not produce at all. Under that
+  // floor the card had 38 px of body at 390x844 and the step rail sat
+  // underneath Save at 375x667; the shot is the evidence that neither is true
+  // any more.
+  const grip = page.locator('[data-sheet-grip]').first()
+  if ((await grip.count()) > 0) {
+    await grip.click()
+    await page.locator('.day-hike-card[data-snap="full"]').waitFor({ timeout: 5000 })
+  }
 }
 
 export default async function drive(page) {

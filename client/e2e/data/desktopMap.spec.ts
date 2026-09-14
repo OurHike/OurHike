@@ -293,6 +293,32 @@ test.describe('the planning column beside the map', { tag: '@desktop' }, () => {
     await expectMapReach(page, STEP_THREE_FLOOR, 'step 3 beside the map on a laptop')
   })
 
+  test('states: no grip on a laptop, where the planning column takes nothing the map wanted', async ({
+    page,
+  }) => {
+    await editTheSavedRoute(page)
+
+    // The phone's side of this fork is asserted in e2e/data/builder.spec.ts,
+    // where both the panel and the bar carry a grip and a hiker sets the
+    // split themselves. Here the column stands BESIDE the map rather than
+    // over it (src/desktop.css), so there is nothing to get out of the way of
+    // and a control that cannot change anything is noise - the same argument
+    // src/desktop.css already makes for hiding the panel's Details toggle.
+    await expect(page.locator('[data-sheet-grip]')).toHaveCount(0)
+    await expect(page.locator('[data-snap]')).toHaveCount(0)
+
+    await page
+      .getByRole('button', { name: /Use this route/ })
+      .first()
+      .click()
+    await expect(page.getByRole('button', { name: /^Save/ })).toBeVisible({
+      timeout: NETWORK_BOUND_MS,
+    })
+    // And step 3's review, which the phone shows as a sheet over the map and
+    // this shows in the rail.
+    await expect(page.locator('[data-sheet-grip]')).toHaveCount(0)
+  })
+
   test('states: the review announces itself as the walk, which the phone has no room to do', async ({
     page,
   }) => {

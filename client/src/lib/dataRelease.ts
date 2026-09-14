@@ -29,19 +29,40 @@
  * this folder's manifest resolves against their OWN base before deploying, so
  * a wrong pin costs a red deploy rather than a hiker's map.
  *
- * 2026-09-10 EXISTS IN UA ONLY as of the bump (2026-09-10, #1374): it is the
- * release `publish-vector-data.yml` wrote to `environments/ua/` after #1372
- * merged - the first carrying `places.json` and `trail_graph_cells.json` -
- * and the pin moved so the pull request's preview, dispatched with
- * `data_environment: ua`, reads it (the maintainer's call, 2026-09-10).
- * Production has no folder of that name until its own publish mints one,
- * so `pages.yml`'s guard above holds this build off production exactly as
- * designed; the release train's production leg is what lifts it, and the
- * id it mints must match this line or this line moves again.
+ * 2026-09-14 IS IN PRODUCTION, and this line moving is the sentence the last
+ * one promised. The pin was `2026-09-10` from #1374 until the v1.3.0 release
+ * train ran its production leg, and that entry said what would happen: the
+ * release `publish-vector-data.yml` minted "must match this line or this line
+ * moves again". It did not match, because nothing chooses a release id -
+ * `lib/releases.next_release_id` returns `date.today()`, and
+ * `publish-vector-data.yml` takes no id input, so a production publish on the
+ * 14th could only ever write `releases/2026-09-14/`. The id is an outcome of
+ * when the build ran, never a thing a branch can ask for.
+ *
+ * WHY PINNING IT IS SAFE, measured 2026-09-14 rather than assumed, because the
+ * client was validated against UA's `2026-09-10` and this is a different
+ * folder: production's `2026-09-14` holds **1,958 artifacts against UA
+ * 2026-09-10's 1,943, and the set difference in the direction that matters is
+ * empty** - there is no artifact UA carried that production does not. The 15
+ * extra are production's own (`background*.pmtiles` and six southern
+ * `n38`/`n39` cells). Both files #1372 added resolve: `places.json` and
+ * `trail_graph_cells.json` are 200 at
+ * `https://data.ourhike.org/releases/2026-09-14/`.
+ *
+ * WHAT WOULD HAVE CAUGHT THE MISMATCH EARLIER, and does not exist:
+ * `pipeline/tests/test_release_pin_contract.py` asserts this id is *shaped*
+ * like one a publish could write, never that either environment actually
+ * carries it. Only `pages.yml`'s pre-deploy guard does that, which is late -
+ * it is a red deploy rather than a red test. @unvalidated whether a test
+ * could check it honestly at all: a suite that reads the live bucket would
+ * fail on a network blip and would couple `pytest` to R2's availability,
+ * which is why the guard sits where it does. What would settle it: deciding
+ * whether the release train should assert the pin resolves before it tags,
+ * which is cheaper than either and is nobody's file yet.
  *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-09-10'
+export const DATA_RELEASE = '2026-09-14'
 
 /**
  * Keys that stay at the bucket root rather than moving into the release

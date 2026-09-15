@@ -20,14 +20,20 @@ from lib.source_registry import (
     POI_SOURCE_KEYS,
     PUBLISHED_HIKES,
     PUBLISHED_NOTICES,
+    SOCRATA_GEOJSON_LAYER,
     UNREGISTERED_POI_SOURCES,
     arcgis_sources,
     external_arcgis_sources,
+    external_sources,
     find_source,
     is_arcgis_feature_layer,
+    is_external_arcgis_layer,
+    is_external_source,
+    is_socrata_layer,
     load_registry,
     poi_source_entry,
     poi_source_steward,
+    socrata_sources,
     source_kind,
 )
 
@@ -74,6 +80,49 @@ def test_an_external_layer_is_kept_out_of_the_atc_loop_and_found_by_its_own():
     assert not is_arcgis_feature_layer({"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER})
     assert [entry["key"] for entry in arcgis_sources(registry)] == ["centerline"]
     assert [entry["key"] for entry in external_arcgis_sources(registry)] == ["oprhp_trails"]
+
+
+def test_a_socrata_layer_is_external_without_being_arcgis():
+    """The property #1432 rides on, and the one an ArcGIS-shaped question gets
+    wrong. New York City's layers are somebody else's trail lines outside the
+    A.T. build - external in every sense export_trails.py and load_raw.py care
+    about - while being no kind of ArcGIS layer at all. Both halves are
+    asserted because getting either wrong is a silent bug rather than a loud
+    one: reading them as A.T. sources clips them into the corridor artifact,
+    and reading them as not-external drops them out of the exports that should
+    carry them."""
+    registry = {
+        "sources": [
+            {"key": "centerline"},
+            {"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER},
+            {"key": "nyc_parks_trails", "kind": SOCRATA_GEOJSON_LAYER},
+        ]
+    }
+    nyc = {"key": "nyc_parks_trails", "kind": SOCRATA_GEOJSON_LAYER}
+
+    assert not is_arcgis_feature_layer(nyc)
+    assert not is_external_arcgis_layer(nyc)
+    assert is_socrata_layer(nyc)
+    assert is_external_source(nyc)
+
+    assert [entry["key"] for entry in arcgis_sources(registry)] == ["centerline"]
+    assert [entry["key"] for entry in external_arcgis_sources(registry)] == ["oprhp_trails"]
+    assert [entry["key"] for entry in socrata_sources(registry)] == ["nyc_parks_trails"]
+    # In registry order, and both transports, because this is the list every
+    # caller that means "somebody else's layer" should be asking.
+    assert [entry["key"] for entry in external_sources(registry)] == [
+        "oprhp_trails",
+        "nyc_parks_trails",
+    ]
+
+
+def test_an_arcgis_external_layer_is_still_external():
+    """The regression guard on the widening: adding a second external kind
+    must not have narrowed what the first one answers."""
+    oprhp = {"key": "oprhp_trails", "kind": EXTERNAL_ARCGIS_LAYER}
+
+    assert is_external_source(oprhp)
+    assert not is_socrata_layer(oprhp)
 
 
 def test_find_source_answers_none_rather_than_raising():
@@ -344,3 +393,55 @@ def test_the_real_registry_registers_nynjtc_favorite_hikes_as_published_hikes_an
     assert entry["licence_basis"] == "maintainer_authorisation"
     assert "freshness" not in entry
     assert registry["nynjtc_hikes_licence"]["attribution_required"] is True
+
+
+def test_the_real_registry_registers_new_york_citys_two_walking_path_layers():
+    """#1432's registration, checked as data: the city's own trails, on their
+    own kind, shipping on terms the City states by statute rather than on an
+    authorisation. Both carry the blaze marker `network_line_sources()` keys
+    off, because an entry that does not is fetched and then silently exported
+    by nothing at all."""
+    registry = load_registry(REAL_REGISTRY)
+
+    for key in ("nyc_parks_trails", "nyc_dot_greenways"):
+        entry = find_source(registry, key)
+        assert entry is not None, f"sources.json no longer registers {key} (#1432)"
+        assert entry["kind"] == SOCRATA_GEOJSON_LAYER
+        assert entry["domain"] == "data.cityofnewyork.us"
+        assert entry["dataset_id"], "a Socrata entry without a dataset id cannot be fetched"
+        # The marker export_nearby_trails.py selects trail-line sources on.
+        assert "blaze_field" in entry or "blaze_default" in entry
+        assert entry["reaches_hikers"] is True
+        # Statutory, not a maintainer authorisation - the distinction
+        # nyc_licence exists to record. See licence_basis_comment.
+        assert entry["licence_basis"] == "stated_by_org"
+
+    # One block, two agencies: the licence is not theirs to set, so it is
+    # recorded once. NYC DOT's entry cannot be matched to it by `author`
+    # against `steward` the way export_sources.py matches every other one,
+    # which is why that entry names the block in its own licence prose.
+    assert registry["nyc_licence"]["author"] == find_source(registry, "nyc_parks_trails")["steward"]
+    assert "nyc_licence" in find_source(registry, "nyc_dot_greenways")["licence"]
+
+
+def test_the_greenway_layer_never_ships_an_on_street_bike_lane():
+    """THE SAFETY PROPERTY, pinned rather than left to a reviewer's eye.
+
+    nyc_dot_greenways reads NYC DOT's entire 29,695-row bicycle network, of
+    which the great majority is painted lanes in traffic. Three clauses cut it
+    to the 3,039 rows that are current, greenway-designated and OFF-STREET,
+    and the last of those is the one a hiker's safety turns on: a walker who
+    follows a drawn line onto Queens Boulevard has been put in front of
+    something dangerous by this app, which is one of CLAUDE.md's four ways.
+
+    Asserted on the registry rather than on fetched data on purpose. The
+    filter's whole value is that it runs AT THE PORTAL, so the excluded rows
+    never arrive - there is no local artifact in which their absence could be
+    checked, and the registry string is the only place the guarantee lives.
+    """
+    entry = find_source(load_registry(REAL_REGISTRY), "nyc_dot_greenways")
+    where = entry["where"]
+
+    assert "onoffst='OFF'" in where, "the off-street clause is what keeps walkers out of traffic"
+    assert "grnwy='Greenway'" in where
+    assert "status='Current'" in where, "retired facilities are trail drawn where there is none"

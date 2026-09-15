@@ -104,6 +104,61 @@ export const MOHONK_CREDIT = 'Mohonk Preserve'
  */
 export const DEC_CREDIT = 'New York State Department of Environmental Conservation'
 
+/**
+ * New York City Parks' attribution (#1432).
+ *
+ * A CONDITION, and the only one on this list whose force comes from a statute
+ * rather than from a rights-holder's terms. NYC Local Law 11 of 2012 makes the
+ * city's published data available without licence or usage restriction, and
+ * the City's own standards reserve the right to require a republisher to
+ * "explicitly identify the source, version, and modifications made to a public
+ * data set". This line is the source half of that. The version and
+ * modifications halves are not built - pipeline/sources.json's `nyc_licence`
+ * says so in as many words, and says why the layers ship anyway.
+ *
+ * SPELLED IN FULL, like OPRHP_CREDIT and DEC_CREDIT above. "NYC Parks" is what
+ * the agency calls itself and would fit the corner better, and this project's
+ * standing reading is that an abbreviation does not name an organization to
+ * somebody who does not already know it.
+ */
+export const NYC_PARKS_CREDIT = 'New York City Department of Parks and Recreation'
+
+/**
+ * New York City DOT's attribution (#1432).
+ *
+ * Same statute, same condition, a different agency - the greenways along the
+ * waterfronts are DOT's record rather than Parks'. Both are named because both
+ * are drawn: a hiker on the Manhattan waterfront esplanade is on DOT's line
+ * and one in Van Cortlandt Park is on Parks', and the corner cannot tell which
+ * of the two the map is showing at any moment.
+ */
+export const NYC_DOT_CREDIT = 'New York City Department of Transportation'
+
+/**
+ * Every steward whose lines are in the shared nearby-trails artifact, as the
+ * one string map/style.ts declares on both sources that draw it (#1432).
+ *
+ * ONE HOME, because there were two copies and adding New York City would have
+ * made it a third. style.ts sets this on NEARBY_TRAILS_SOURCE_ID and again on
+ * NETWORK_OVERVIEW_SOURCE_ID - the tiles and the corridor-view sketch of the
+ * same network - and its own comment already said the match between them "is a
+ * licence condition rather than tidiness". A condition maintained by two
+ * hand-written strings agreeing is a condition one careless edit away from
+ * being false, which is the failure this module's header is about.
+ *
+ * The ORDER is mapCredits()' order, and the membership is the same list for
+ * the same reason: the artifact is all-or-nothing, so any steward in it is
+ * every steward in it.
+ */
+export const NEARBY_TRAILS_ATTRIBUTION = [
+  OPRHP_CREDIT,
+  NYNJTC_CREDIT,
+  MOHONK_CREDIT,
+  DEC_CREDIT,
+  NYC_PARKS_CREDIT,
+  NYC_DOT_CREDIT,
+].join(' · ')
+
 /** OpenFreeMap's own terms for hosting the vector sheet - see liveTopo.ts. */
 export const OPENFREEMAP_CREDIT = 'OpenFreeMap © OpenMapTiles'
 
@@ -159,12 +214,13 @@ export function mapCredits({
 
   if (hasRasterArchive) credits.push(USGS_TOPO_CREDIT)
 
-  // Before the background credits, not after: these four name whose TRAILS
-  // are drawn, and the trails are the subject of the map. OPRHP's is a licence
-  // condition besides, so it should not be the clause that falls off the end
-  // of a small strip - see chrome/MapAttribution.tsx for what collapsing does.
+  // Before the background credits, not after: these six name whose TRAILS
+  // are drawn, and the trails are the subject of the map. OPRHP's and the two
+  // New York City ones are licence conditions besides, so they should not be
+  // the clauses that fall off the end of a small strip - see
+  // chrome/MapAttribution.tsx for what collapsing does.
   //
-  // ALL FOUR TOGETHER, because the artifact is all-or-nothing: one file holds
+  // ALL SIX TOGETHER, because the artifact is all-or-nothing: one file holds
   // every steward's lines, and publish.py refuses to upload it unless every
   // source in it may ship (pipeline/publish.py's `reaches_hikers` gate).
   //
@@ -181,7 +237,14 @@ export function mapCredits({
   // stewards artifact, which lib/stewards.ts already fetches and which lists
   // exactly the sources THIS release ships.
   if (hasNearbyTrails)
-    credits.push(OPRHP_CREDIT, NYNJTC_CREDIT, MOHONK_CREDIT, DEC_CREDIT)
+    credits.push(
+      OPRHP_CREDIT,
+      NYNJTC_CREDIT,
+      MOHONK_CREDIT,
+      DEC_CREDIT,
+      NYC_PARKS_CREDIT,
+      NYC_DOT_CREDIT,
+    )
 
   if (background === 'hiking_topo_live') {
     credits.push(OPENFREEMAP_CREDIT, ELEVATION_ATTRIBUTION)

@@ -8,7 +8,9 @@ this borrows), [README.md](README.md) (the pipeline that would consume these) an
 scope call: Hudson Highlands core, plus the Catskills, plus everything NYNJTC maintains.
 
 Written 2026-08-18 from live probes; **every count and every ArcGIS date below was read from
-the layer itself that day**, not from a page's claim about itself. Where a service exposes no
+the layer itself that day**, not from a page's claim about itself. §12 was added 2026-09-15
+under [#1432](https://github.com/OurHike/OurHike/issues/1432) and probed the same way — it
+covers the one place this survey had no row for at all, which is New York City itself. Where a service exposes no
 `editingInfo`, the substitute marker is named. The maintainer has offered links for sources
 they know personally (their comment on #770) — the county rows in particular are expected to
 grow when those arrive, and this snapshot says which rows are probed and which are not.
@@ -36,6 +38,9 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | Other NY counties (Rockland, Putnam, Orange, Dutchess…) | ? | ? | ? | unprobed | — | awaiting maintainer links — §6 |
 | data.ny.gov copies (DEC 2013, OPRHP 2014) | stale | | | ✓ | a decade ago | precedent, not a source — §9 |
 | OpenStreetMap | ✓ | ✓ | | ✓ | continuous | gap-filler question, measured in #771 — §7 |
+| **NYC Parks Trails** (five boroughs) | ✓ 7,059 | | | ✓ Socrata | **2026-09-03** | **registered, ships** (#1432, statutory terms — no ask needed); §12 |
+| **NYC DOT greenways** (off-street) | ✓ 3,039 of 29,695 | | | ✓ Socrata | **2026-07-24** | **registered, ships** filtered (#1432); §12 |
+| NYC DCP's ArcGIS bike mirror | stale | | | ✓ | **2017-03-08** | not a source — nine years stale, no greenway column; §12 |
 
 PIPC appears in no row of its own: its NY parks (Harriman, Bear Mountain, Sterling Forest)
 are inside OPRHP's layer (verified — Harriman segments carry `Unit: Palisades`), and its NJ
@@ -351,6 +356,7 @@ No blanks, per the issue. "Unstated" is an answer; an empty cell is not.
 | ATC / NPS | See `atc_licence` in sources.json | In hand |
 | OpenStreetMap | ODbL 1.0 | In hand (basemap + water precedent) |
 | Mohonk Preserve (trails layer) | Unstated — no-warranty disclaimer only, no reuse grant, read whole 2026-08-25 | **Ships on maintainer authorisation, 2026-08-25** (#992) — the same footing NYNJTC's extracts ship on, not a stated grant |
+| **New York City (Parks + DOT)** | **Stated, and by STATUTE** — NYC Local Law 11 of 2012, Admin Code §23-502(d): published data sets are available "without registration requirement, license requirement, or usage restrictions". Read 2026-09-15 from the City's own Open Data Technical Standards Manual, which quotes the law. Neither dataset page carries a licence field — and here that silence means the statute applies, the opposite of what it means on DEC's or Mohonk's services | **Ships, 2026-09-15** (#1432, `nyc_licence`). The only row here needing no ask: a statutory grant to everyone, not a permission to this project. One rider is open — the City "may require" a republisher to identify the source, **version and modifications**, and only the first is built | 
 
 ## 10. What to do with all this, ranked
 
@@ -451,3 +457,179 @@ status nor a foot-use field), blaze resolution 297 mapped / 7 absent (the null-B
 rows) / zero unmapped against `reference/blaze_mapping.json`'s new `mohonk_trails`
 table, and `client/src/map/credits.ts`'s `MOHONK_CREDIT` joins `OPRHP_CREDIT`/
 `NYNJTC_CREDIT` on the shared `nearby_trails` map source.
+
+## 12. New York City itself — the hole in the middle of this survey
+
+Everything above is ground you reach by leaving the city. The five boroughs had **no row
+in this document at all**, which is a strange gap in a survey named for New York City, and
+the repository already carried the evidence of it: `reference/nynjtc_hike_routes.json`
+holds a NYNJTC day hike that could not be routed, with the reason recorded as *"Van
+Cortlandt Park, NYC Parks: only one Old Croton Aqueduct edge within 2.5 km; no source
+registered for NYC Parks (pipeline/NYC_SOURCE_SURVEY.md)"*. Three sibling holds name
+Rockland and Westchester county parks for the same reason (§6). This section closes the
+NYC one.
+
+Added 2026-09-15 under [#1432](https://github.com/OurHike/OurHike/issues/1432), from the
+maintainer's own ask — they live in the city and can field-test there most easily, which
+makes NYC the cheapest ground this project has for turning `needs-field-testing` into
+somebody actually walking outside. **Every figure below was read live from the portal that
+day.**
+
+### 12a. The city publishes on Socrata, and its ArcGIS mirrors are dead
+
+This is the finding that shaped the registration, and it is §9's "data.ny.gov copies —
+precedent, not a source" meeting a second city.
+
+New York City's open-data programme runs on **Socrata** (`data.cityofnewyork.us`), not
+ArcGIS Hub — the opposite of New York State, whose agencies gave this project every source
+in §§2–5. Every entry in `sources.json` before this one was an ArcGIS layer.
+
+The obvious shortcut is to find an ArcGIS copy and register that instead, and one exists:
+NYC DCP mirrors DOT's bike network at
+`services5.arcgis.com/GfwWNkhOj9bNBqoJ/…/Bike_Routes/FeatureServer/0`. Probed live:
+
+| | portal (`mzxg-pwib`) | DCP's ArcGIS mirror |
+|---|---:|---:|
+| rows | **29,695** | 13,953 |
+| last edited | **2026-07-24** | **2017-03-08** |
+| `grnwy` / `gwsystem` / `status` | present | **absent** |
+
+Nine years stale, less than half the rows, and — decisively — **no greenway column at
+all**, so the mirror cannot express the one filter that separates a walking path from a
+bike lane in traffic. NYC Parks has no ArcGIS org publishing trails either (AGOL searched
+2026-09-15; owner-scoped search returns zero items).
+
+So the portal is the publication of record, and registering NYC meant a **new source kind
+and a fetcher** — `socrata_geojson_layer` and `lib/socrata.py` — rather than a new URL.
+That is a real cost and it bought a real thing: the two layers below, and any future city
+that publishes this way.
+
+### 12b. NYC Parks Trails — 7,059 segments, 73 parks
+
+Dataset `vjbm-hsyr`, attributed to the Department of Parks and Recreation, refreshed
+**2026-09-03** on a declared monthly automation.
+
+The twelve largest parks, by segment count: **Pelham Bay 766, Van Cortlandt 663, Alley Pond
+516, Prospect 376, Central Park 312, Forest Park 268, Inwood Hill 252, Wolfe's Pond 251,
+Cunningham 242, Marine Park 218, Clove Lakes 213, LaTourette 168.** Van Cortlandt's 663 are
+the direct answer to the held hike above.
+
+**Its own description understates it,** which is this survey's rule 3 in miniature — the
+reason every count here was read from the data rather than from the page. The description
+says *"paths or trails in designated Forever Wild areas"*; Central Park and Prospect Park
+are neither Forever Wild nor absent, and are the fourth and fifth largest parks in it.
+
+Three things the registration carries that a reader should know before trusting a line:
+
+- **There is no blaze field, and the colour is in the name.** `trail_name` reads `Blue
+  Trail` 549 times, `Orange Trail` 326, `White Trail` 251, `Red Trail` 215, `Yellow Trail`
+  153. The only marker column, `trailmarkersinstalled`, is a plain Yes/No (4,017/3,042) —
+  *whether* a marker exists, never which. Registered as the neutral, the same as
+  `nynjtc_highlands_trail`: a colour parsed out of a name is **our** claim, not NYC Parks',
+  and a hiker matching a painted blaze against a drawn one cannot tell those apart. The
+  honest version, if wanted, is a reviewed `blaze_mapping.json` table, not a regex in an
+  exporter.
+- **Half of it has no name.** `Unnamed Official Trail` 3,448, `Name TBD` 239, `TBD` 88 —
+  3,775 rows, **53%**, carrying a placeholder. `park_name` is populated on every row and is
+  the usable label.
+- **The dataset's freshness and the survey's freshness are different numbers, and the
+  second is the one on the ground.** `date_collected` runs 2013-10-17 to 2026-08-18:
+
+  | 2013 | 2014 | 2015 | 2016–2020 | 2021 | 2022–2024 | 2025 | 2026 |
+  |---:|---:|---:|---:|---:|---:|---:|---:|
+  | 1,594 | 2,198 | 990 | 312 | 773 | 489 | 644 | 55 |
+
+  **4,782 of 7,059 segments — 68% — were last surveyed in 2013–2015**, and every sampled
+  Central Park row is from 2014. A monthly refresh of a file whose rows are twelve years
+  old is a fact about the file, not about the trail. CLAUDE.md's *never let a display
+  outrun its source* is the rule that bears on it, and nothing in this build currently
+  shows a hiker that distinction.
+
+### 12c. NYC DOT greenways — 3,039 of 29,695, and the filter is the point
+
+Dataset `mzxg-pwib`, refreshed **2026-07-24**. It is DOT's entire bicycle network, and the
+overwhelming majority of it is painted lanes in traffic. Three clauses cut it down:
+
+| clause | drops | what that is |
+|---|---:|---|
+| `status='Current'` | 5,234 | retired facilities the dataset keeps as history — trail drawn where there is none |
+| `grnwy='Greenway'` | 23,358 | ordinary bike lanes with no greenway designation |
+| `onoffst='OFF'` | 2,322 | **current greenway-designated segments that run *on street*** |
+
+**3,039 survive.** The last clause is the one a hiker's safety turns on and the reason the
+greenway flag alone is not enough: those 2,322 are the on-street connectors that link one
+off-street greenway to the next — signed as part of the route, and carrying a walker into
+traffic. Some are certainly pleasant to walk; dropping them is the acceptable false
+negative, and *miss rather than cry wolf* is the standing rule.
+
+What ships, by named system: Manhattan Waterfront 1,167, Jamaica Bay 799, Brooklyn
+Waterfront 690, Central Queens 614, Staten Island Waterfront 340, Historic Brooklyn 304,
+Queens Waterfront 302, Bronx River 243, Bronx Waterfront 233, Mosholu-Pelham 194,
+Hutchinson River 144, Eastern Queens 126 *(counts over the 5,361 current greenway rows,
+before the off-street clause, so they do not sum to 3,039)*.
+
+**Why a bicycle dataset is registered at all**, against the maintainer's decision of
+2026-08-18 — *"Only keep hiking trails for now… It's OurHike, not OurBike"* — is worth
+stating rather than hoping past. That decision was taken over per-use flag columns, where a
+row flagged BIKE and not FOOT is a mountain-bike trail: a different use of a different
+tread. This is not that. An off-street greenway is a **shared-use path** that people walk
+and run on in far greater numbers than they cycle, and DOT catalogues it inside a bicycle
+dataset because DOT's mandate for building it was a cycling one. The subject is the path.
+
+**Where the inference is, and it is real:** this layer has *no* foot-use column. Nothing in
+it says a person may walk a given segment, and `onoffst='OFF'` is being read as "car-free,
+therefore walkable". That is ours, not DOT's, and is tagged `@unvalidated` in
+`sources.json`. What would settle it: the NYC Parks layer covers the same ground for the
+2,095 greenway segments whose jurisdiction is DPR and would corroborate directly — a
+spatial join nobody has run — or a maintainer who lives in the city walking one and saying.
+
+### 12d. Licensing — the first statutory grant in this registry
+
+Every other non-ATC source in this project is unstated (DEC, NYNJTC, Mohonk), conditioned
+(NJDEP) or restricted (OPRHP's non-commercial clause, still an open ask). New York City is
+none of those.
+
+**NYC Local Law 11 of 2012**, codified at Administrative Code **§23-502(d)**, requires that
+a published data set be available *"without registration requirement, license requirement,
+or usage restrictions"*. That is a grant made **by statute to everyone**, not a permission
+granted to this project — so it needs no ask, cannot be withdrawn by an agency editing a
+portal field, and does not need re-confirming in its own name by a club that inherits this
+project.
+
+Read 2026-09-15 from the City's own **Open Data Technical Standards Manual**, which quotes
+the law. Neither dataset page carries a licence field of its own — and *here* that silence
+means the statute applies, which is the exact opposite of what the same silence means on
+DEC's or Mohonk's services.
+
+Two riders travel with it:
+
+- **Attribution.** The City may require a republisher to *"explicitly identify the source,
+  version, and modifications made to a public data set"*. **Source is satisfied** —
+  `credits.ts` puts both agencies in the map corner. **Version and modifications are not**:
+  this app has no surface where a hiker reads which vintage of a layer they are looking at,
+  and the greenway layer ships modified in a way the map cannot show (3,039 of 29,695).
+  `njdep_licence` records the same shape of gap and holds New Jersey back over it; **this
+  one ships instead, and the difference is in the texts, not a change of posture** —
+  NJDEP's agreement says data *"may not be reproduced or redistributed without all the
+  metadata provided"*, a precondition on the act, where the City's says OTI *"may require"*
+  identification, a reserved power nobody has exercised. `@unvalidated`: nobody has asked
+  OTI. If the answer is yes, the fix is the stewards artifact.
+- **No warranty.** *"The City does not warranty the completeness, accuracy, content, or
+  fitness for any particular purpose or use of any public data set."* Boilerplate
+  everywhere except on the paths CLAUDE.md's four ways name — and relevant on one of them
+  here, given 12b's 2013 survey dates.
+
+### 12e. What is still open
+
+- **(a) The two city layers overlap, and nobody has measured it.** 2,095 current greenway
+  segments carry `gwyjuris: DPR` — NYC Parks' own ground, which the trails layer also
+  covers. The same tread is plausibly drawn twice from two city agencies. This is §8's
+  overlap table gaining a row it has no measurement for.
+- **(b) The version-and-modifications rider**, above. An ask to OTI settles it.
+- **(c) Walkability on the greenways is inferred**, not declared — 12c.
+- **(d) The blaze colours in `trail_name` are unparsed** and 1,494 segments carry one. A
+  reviewed mapping table is the honest route if they are ever wanted.
+- **(e) Nothing here is field-checked.** This is the section of the survey whose ground the
+  maintainer can actually stand on, which is the whole reason it exists — Van Cortlandt and
+  Pelham Bay are a subway ride, and a single afternoon would settle (c), (d) and the 2013
+  survey dates in 12b better than any amount of further probing.

@@ -233,7 +233,7 @@ from lib.concurrency import AT_CENTERLINE_SOURCE, find_shared_ground
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
-from lib.source_registry import external_arcgis_sources, load_registry
+from lib.source_registry import external_sources, load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw" / "external"
@@ -396,13 +396,21 @@ def network_line_sources(registry: dict) -> list[dict]:
     """The external-organization entries that carry trail LINES.
 
     The same blaze-metadata marker export_trails.py's load_line_sources() uses,
-    intersected with the external kind rather than subtracted from it - so one
-    marker means "this is a trail-line source" across both exports, and `kind`
-    alone decides which of the two picks it up. An external layer that is not
-    lines (OPRHP's facilities points, its park polygons) carries no blaze keys
-    and is skipped here without needing to be named.
+    intersected with the external kinds rather than subtracted from them - so
+    one marker means "this is a trail-line source" across both exports, and
+    `kind` alone decides which of the two picks it up. An external layer that
+    is not lines (OPRHP's facilities points, its park polygons) carries no
+    blaze keys and is skipped here without needing to be named.
+
+    ASKS `external_sources()` RATHER THAN THE ARCGIS HALF (#1432), because
+    New York City's two walking-path layers are trail lines that arrive from
+    a Socrata portal instead of a FeatureServer. They are the same kind of
+    thing to every line below this one - a steward's segments, with a name
+    and a blaze marker - and the transport they came in on is settled by the
+    time this function is called. Reading only the ArcGIS half here is what
+    would have made registering NYC a no-op at the export.
     """
-    return [s for s in external_arcgis_sources(registry) if "blaze_field" in s or "blaze_default" in s]
+    return [s for s in external_sources(registry) if "blaze_field" in s or "blaze_default" in s]
 
 
 def shipped_line_source_keys(registry: dict) -> set[str]:
@@ -673,8 +681,14 @@ def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> 
 
 def closure_area_sources(registry: dict) -> list[dict]:
     """The registered layers that publish CLOSED AREAS rather than trail lines
-    (#964). NYS Parks' temporary closures is the first and only one today."""
-    return [s for s in external_arcgis_sources(registry) if s.get("closure_areas")]
+    (#964). NYS Parks' temporary closures is the first and only one today.
+
+    Selected on the `closure_areas` marker and asked of `external_sources()`,
+    so a steward who publishes closures somewhere other than ArcGIS is picked
+    up by declaring the marker rather than by editing this line (#1432).
+    Neither New York City layer declares it - the city publishes no closure
+    state at all, which is a gap and not a silence this reads as "open"."""
+    return [s for s in external_sources(registry) if s.get("closure_areas")]
 
 
 def load_closure_areas(sources: list[dict]) -> list[dict]:

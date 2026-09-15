@@ -65,7 +65,7 @@ from pathlib import Path
 
 import duckdb
 
-from lib.source_registry import arcgis_sources, external_arcgis_sources, load_registry
+from lib.source_registry import arcgis_sources, external_sources, load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -111,11 +111,23 @@ EXTRA_LAYERS = [("opentrail", "at", "opentrail_at.geojson")]
 #: what its own service paths spell, and `nh` would name the state where the
 #: point is to name the clearinghouse. The other new provider, `USFS`, needs
 #: no row: one word, so it slugs to `usfs` on its own.
+#:
+#: `NYC Parks` and `NYC DOT` are #1432's registration, and are the case this
+#: constant exists for rather than a formality: BOTH begin with `NYC`, so the
+#: first-word fallback that once named two New York State agencies `nys`
+#: would now name two New York City agencies `nyc` - the same collision, one
+#: level of government down, and this time between two providers whose layers
+#: plausibly cover the same park. `nyc_parks` and `nyc_dot` keep the city in
+#: the name because in this project's table space `parks` and `dot` alone
+#: would say neither which city nor, for `parks`, which of several agencies
+#: that word already describes.
 PROVIDER_SLUGS = {
     "NYS OPRHP": "oprhp",
     "NYS DEC": "dec",
     "Mohonk Preserve": "mohonk",
     "NH GRANIT": "granit",
+    "NYC Parks": "nyc_parks",
+    "NYC DOT": "nyc_dot",
 }
 
 
@@ -141,16 +153,22 @@ def _provider_slug(provider: str) -> str:
 def registered_layers() -> list[tuple[str, str, str]]:
     """(provider_slug, key, path_relative_to_raw_dir) for every loadable source.
 
-    Both ArcGIS kinds, asked of lib/source_registry.py rather than by
-    reading `kind` here - the same split fetch_all.py and
-    fetch_external_layers.py use, so a fourth kind arriving cannot mean
+    The A.T. kind plus every external one - asked of lib/source_registry.py
+    rather than by reading `kind` here, the same split fetch_all.py and
+    fetch_external_layers.py use, so a further kind arriving cannot mean
     three different things in three files. Everything else in sources.json
-    is another shape entirely and has no per-feature GeoJSON to load."""
+    is another shape entirely and has no per-feature GeoJSON to load.
+
+    `external_sources()` rather than its ArcGIS half (#1432): NYC's Socrata
+    layers are written to the same data/raw/external/<key>.geojson path by
+    the same fetcher, so they are loadable on exactly the same terms and
+    leaving them out would have been a hole in the warehouse rather than a
+    boundary in it."""
     registry = load_registry(SOURCES_PATH)
     layers = [(_provider_slug(entry["provider"]), entry["key"], f"{entry['key']}.geojson") for entry in arcgis_sources(registry)]
     layers += [
         (_provider_slug(entry["provider"]), entry["key"], f"{EXTERNAL_SUBDIR}/{entry['key']}.geojson")
-        for entry in external_arcgis_sources(registry)
+        for entry in external_sources(registry)
     ]
     return layers + EXTRA_LAYERS
 

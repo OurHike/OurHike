@@ -381,7 +381,7 @@ added it — re-runnable from `client/`:
 | React Compiler                            | **not installed**                                       | no `babel-plugin-react-compiler`; `vite.config.ts` calls bare `react()`      |
 | `App.tsx`                                 | **10,627 lines** (5,583 code, 4,635 comment, 409 blank) | `wc -l src/App.tsx`                                                          |
 | `useState` in the root                    | **33**                                                  | `grep -c 'useState(' src/App.tsx`                                            |
-| `useCallback` / `useMemo` in the root     | **161 / 93**                                            | same                                                                         |
+| `useCallback` / `useMemo` in the root     | **161 / 98**                                            | `node scripts/memo-census.mjs` — `grep -c 'useMemo('` is 5 short, see below  |
 | `MapScreenProps` fields                   | **170**                                                 | `sed -n '/^export interface MapScreenProps/,/^}/p' src/chrome/MapScreen.tsx` |
 | the `<MapScreen>` call site               | **539 lines**, 111 named props, 9 spread bundles        | `src/App.tsx:9715`                                                           |
 | `lib/` modules, and how many import React | **209 / 33**                                            | `ls src/lib/*.ts* \| grep -v test \| wc -l`                                  |
@@ -451,12 +451,53 @@ this re-runs on every render"), `lib/navigator.ts:334`, `map/MapView.tsx:498`.
 `useCallback` by default and a reader cannot tell the ones holding an effect
 steady from the ones wrapping a function nothing depends on.
 
-**What would settle it:** counting, not deciding. Each `useCallback`/`useMemo`
-in `App.tsx` either appears in some dependency array or it does not, and that
-is a mechanical question a script can answer. Nobody has run it.
-[#1423 — _Nothing measures what opening a sheet re-renders_](https://github.com/OurHike/OurHike/issues/1423)
-is the adjacent measurement and is in flight; this one is smaller and
-independent of it.
+**Measured 2026-09-15 at `e266f9e6` (#1454), and the count is worse than the
+paragraph above guessed.** `scripts/memo-census.mjs` parses `App.tsx` and
+follows each memoised value to everything that could depend on it — run
+`node scripts/memo-census.mjs`:
+
+| in `App.tsx`  | total | in an array here | via a prop a child keys on | handed to a custom hook | **nothing depends on it** |
+| ------------- | ----: | ---------------: | -------------------------: | ----------------------: | ------------------------: |
+| `useCallback` |   167 |               41 |                         17 |                       7 |           **102** (61.1%) |
+| `useMemo`     |    99 |               42 |                         22 |                       2 |            **33** (33.3%) |
+
+**Three of those four columns exist because the naive count was wrong**, and
+the wrongness all ran one way — toward calling things cargo:
+
+- **A child's effect is a dependency.** `MapView` keys eight of its 48 effects
+  on callbacks the shell passes it and says so at the prop — "stable across
+  renders (useCallback), like `onSelectPoi`" (`map/MapView.tsx:302`). Counting
+  only `App.tsx`'s own arrays called 126 callbacks cargo; 17 of those are held
+  stable for a child.
+- **So is a custom hook's argument.** `useOutboxSync(…, handleSynced)` puts
+  `handleSynced` in no array and on no prop, and `lib/outboxSync.ts:115` says
+  it "must be referentially stable, or this re-runs on every render." Seven
+  more. The script assumes any `use*` call may key on its arguments rather
+  than opening each one, which overcounts in the safe direction: erring this
+  way cannot manufacture a deletion.
+- **`grep -c 'useMemo('` misses five**, because `useMemo<Footprint[] | null>(…)`
+  has no `useMemo(` in its text. The figure in the table above — 93 at this
+  section's own base — was five short for that reason, and the re-measure
+  command in it has been corrected.
+
+**What the number is, stated no stronger than it is.** 102 `useCallback`s —
+**61%** — are depended on by nothing this script can find: not an array here,
+not a child's effect, not a hook. With zero `React.memo` and no React
+Compiler, a stable identity nothing consumes buys nothing, so that is the
+candidate set for removal. It is **not** a delete list: 67 of the 102 are
+passed as props that no component currently keys on, and a child adding one
+effect turns any of them load-bearing. Each removal is its own judgement.
+
+The `useMemo` row does not carry the same reading and must not be added to it.
+`useMemo` also buys not recomputing something expensive, which has nothing to
+do with identity — so its 33 are "not load-bearing **for identity**" and
+whether each earns its keep is a per-site question no script answers.
+
+**Still `@unvalidated`: whether removing any of the 102 is safe.** The count
+finds candidates and nothing more. `src/test/memoCensus.test.ts` holds the
+script to its classifications, including one blind spot it asserts rather than
+hides — a hook imported under an alias is invisible to the census, and nothing
+in `src/` does that today.
 
 ### What is good here and is also undocumented
 

@@ -117,6 +117,7 @@ Pure module - no network, no files. Takes a loaded graph and one parsed hike.
 
 from __future__ import annotations
 
+import difflib
 import re
 from dataclasses import dataclass, field
 
@@ -164,6 +165,17 @@ ANCHOR_STEPS = 3
 #: Whether the start is chosen by the description's opening steps at all.
 #: Measured on the ground-truth set - see this module's docstring.
 ANCHOR_START_ON_ITINERARY = False
+
+#: Whether a name may match a line spelled differently at all. MEASURED AND
+#: SWITCHED OFF: over the ground-truth set it changed nothing whatsoever -
+#: 59 routes formed, median F1 0.69, 25 strong at 92%, identical to the digit
+#: with it on and off. The guard that makes `fuzzy_match` safe enough to
+#: consider is also what makes it too conservative to matter, and an
+#: unmeasurable change on a path that decides where a hiker walks is not worth
+#: its risk surface. The code stays because the DISCRIMINATING_WORDS list is
+#: the useful part of what was learnt, and because the measurement should be
+#: redone if the layers ever gain the 17% of trails they do not draw.
+USE_FUZZY_NAMES = False
 
 #: The ceiling on how far from the start a named trail may be matched, and the
 #: floor under it. The radius itself is DERIVED PER HIKE from the length the
@@ -552,6 +564,80 @@ def retrace_ratio(route: router.Route) -> float:
     return repeated / total
 
 
+#: Words that CHANGE WHICH TRAIL IS MEANT, so two names that disagree on any
+#: of them are different trails however similar they look. This list is the
+#: whole reason `fuzzy_match` is safe enough to exist. Measured over the
+#: corpus, the near-misses it refuses include "Phoenicia-West Branch Trail"
+#: against the drawn "Phoenicia East Branch Trail" (0.95 similar, opposite
+#: ends of the same mountain), "White Oak Trail" against "White Rock" (0.84),
+#: and "Blackhead Mountain Trail" against "Blackhead Mountain Spur Trail"
+#: (0.88, a spur is not the trail it leaves). Putting a hiker on the east
+#: branch when the description says west is precisely the confidently wrong
+#: answer FEATURES.md forbids, and it is a one-token difference away from a
+#: correct match every time.
+DISCRIMINATING_WORDS = frozenset(
+    {
+        "north",
+        "south",
+        "east",
+        "west",
+        "northern",
+        "southern",
+        "eastern",
+        "western",
+        "upper",
+        "lower",
+        "inner",
+        "outer",
+        "old",
+        "new",
+        "little",
+        "big",
+        "great",
+        "spur",
+        "side",
+        "bypass",
+        "connector",
+        "extension",
+        "link",
+        "alternate",
+    }
+)
+
+#: How alike two names must read before the guard above is even consulted.
+#: @unvalidated - 0.88 sits above the band where the corpus's genuine variants
+#: live ("Mill Brook Ridge" against the drawn "Millbrook Ridge", 0.97;
+#: "Tuxedo-Mt. Ivy" against "Tuxedo-Mtn Ivy", 0.96) and below the band where
+#: its false friends do. What would settle it: a person reading the matches it
+#: makes over a whole park and saying which are wrong.
+FUZZY_MIN_RATIO = 0.88
+
+
+def fuzzy_match(name: str, candidate: str) -> bool:
+    """Whether two spellings are the same trail.
+
+    TWO GATES, AND THE SECOND IS THE ONE THAT MATTERS. The names must read
+    alike, AND they must not disagree about any word that picks out which
+    trail is meant - a direction, an end, a spur. Similarity alone is not
+    enough on this ground: the export and the layers differ by spacing and
+    abbreviation ("Millbrook" for "Mill Brook", "Mtn" for "Mt."), and those
+    variants score no higher than "East" against "West" does.
+
+    A name carrying a discriminating word the other lacks is refused too, not
+    only one that carries a different value: "Blackhead Mountain Trail" and
+    "Blackhead Mountain Spur Trail" are different trails, and the spur is the
+    one a description would have named if it meant it.
+    """
+    left, right = normalise_name(name), normalise_name(candidate)
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if difflib.SequenceMatcher(None, left, right).ratio() < FUZZY_MIN_RATIO:
+        return False
+    return (set(left.split()) & DISCRIMINATING_WORDS) == (set(right.split()) & DISCRIMINATING_WORDS)
+
+
 def _edge_matches(graph: router.Graph, edge_index: int, step: Step) -> bool:
     """Whether this line is one the step could be pointing at.
 
@@ -564,7 +650,10 @@ def _edge_matches(graph: router.Graph, edge_index: int, step: Step) -> bool:
     """
     edge = graph.edges[edge_index]
     if step.name:
-        return normalise_name(edge.get("name")) == normalise_name(step.name)
+        drawn = edge.get("name")
+        if not drawn:
+            return False
+        return normalise_name(drawn) == normalise_name(step.name) or (USE_FUZZY_NAMES and fuzzy_match(step.name, drawn))
     return bool(step.blaze) and edge.get("blaze_color") == step.blaze
 
 
@@ -775,6 +864,7 @@ def _search_waypoints(
     kept_steps: list[Step],
     closed: bool,
     stated_miles: float | None,
+    radius_m: float = NAME_SEARCH_M,
 ) -> tuple[router.Route | None, list[router.GraphPoint], list[Step]]:
     """The best walk through SOME ordered subset of the proposed waypoints.
 
@@ -821,6 +911,38 @@ def _search_waypoints(
         score = _route_score(route, stated_miles, len(points) - 1, closed, covered)
         if best is None or score > best[0]:
             best = (score, route, points, steps)
+
+        # THE LOOP REPAIR, tried on every candidate the beam reaches rather
+        # than once at the end.
+        #
+        # A closed walk whose waypoints all sit on the near side has only one
+        # way home - the way it came - so it comes out as an exact
+        # out-and-back on a page that says Circuit, and its length lands at
+        # roughly twice the distance to its furthest waypoint instead of round
+        # the loop. Measured over the export, 44 of the 61 walks rejected for
+        # being more than 40% short of their stated length retrace exactly
+        # 50% of themselves, and 49 of those 61 carry one or two waypoints:
+        # this is the single biggest remaining defect, and it is a missing
+        # waypoint rather than a bad one.
+        #
+        # So where a candidate has closed as an out-and-back, try it again
+        # with the far extremity of the last trail it was on appended - the
+        # second junction a two-trail loop turns on. Kept only if it SCORES
+        # better, so a hike this makes worse keeps the walk it already had.
+        if not (closed and steps and retrace_ratio(route) > RETRACE_GOOD):
+            continue
+        far = _far_point_on(graph, steps[-1], points[-1], radius_m)
+        if far is None or router.metres_between(points[-1].at, far.at) < MIN_WAYPOINT_SEPARATION_M:
+            continue
+        repaired_points = [*points, far]
+        repaired = router.close_the_loop(graph, repaired_points)
+        if repaired is None:
+            continue
+        repaired_score = _route_score(
+            repaired, stated_miles, len(repaired_points) - 1, closed, _covered_share(graph, repaired, kept_steps)
+        )
+        if repaired_score > best[0]:
+            best = (repaired_score, repaired, repaired_points, steps)
     if best is None:
         return None, [], []
     return best[1], best[2], best[3]
@@ -960,7 +1082,7 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
     # the parser finds 6 steps - so the question is which of them the walk
     # actually turns onto, and the publisher's own mileage is the evidence that
     # answers it. `_search_waypoints` keeps the ordered subset that best fits.
-    route, points, walked_steps = _search_waypoints(graph, start, waypoints, used, result.closed, result.stated_miles)
+    route, points, walked_steps = _search_waypoints(graph, start, waypoints, used, result.closed, result.stated_miles, radius_m)
     if route is None:
         result.problems.append("this build's lines hold no path from the start through any trail the description names")
         return result

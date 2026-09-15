@@ -60,7 +60,7 @@ changing anything here.
   would let them reach a hiker is a `track` field on SuggestedHike, so a
   surveyed line ships as a line and nothing is re-derived - and that cannot be
   added here without also splitting this artifact, because it is already
-  1.44 MB for 171 records (most of it the export's prose) against the
+  1.68 MB for 201 records (most of it the export's prose) against the
   client's 2 MB cache ceiling (conditionsCache.ts, itself @unvalidated), and
   113 tracks would go straight through it. Both are #1428.
 

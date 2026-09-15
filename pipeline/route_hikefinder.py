@@ -26,20 +26,18 @@ TWO ROADS, AND THE WHOLE POINT IS THAT THEY STAY APART.
   line for.
 
 WHAT THIS RUN MEASURED, 2026-09-15, against the 2026-09-14 production graph
-(631,915 edges): of 272 formable hikes, 37 graded `strong`, 87 `fair` and 148
+(631,915 edges): of 272 formable hikes, 43 graded `strong`, 111 `fair` and 118
 `rejected`. The grade is CALIBRATED rather than chosen - see
 `lib/hike_route_builder.py`'s `_grade`, which was fitted against the 113 hikes
 that publish both a description and the track somebody walked, and selects
-routes that match the surveyed line 90% of the time.
+routes matching the surveyed line 92% of the time.
 
-The rejections are honest rather than tunable, and their shape has changed as
-the search improved. On this run: 77 walks cannot be fitted to the length the
-publisher states within 40%; 31 trailheads sit more than 500 m from any line in
-the layers registered here, which is New Jersey's state and county parks mostly
-(#1293); 17 find no path on this build's lines and 17 name no trail within
-reach of the start; 5 walk too few of the trails they name. The
-loop-that-doubled-back, which was 63 of the rejections before the search
-landed, is now 1.
+The rejections are honest rather than tunable: 44 walks cannot be fitted to the
+length the publisher states within 40%; 31 trailheads sit more than 500 m from
+any line in the layers registered here, which is New Jersey's state and county
+parks mostly (#1293); 17 find no path on this build's lines and 17 name no
+trail within reach of the start; 6 walk too few of the trails they name; 3
+close as an out-and-back.
 
 THE ONE NUMBER WORTH CARRYING FORWARD is that accuracy tracks how much the
 description says, not how hard the search tries. Median absolute disagreement

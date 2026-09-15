@@ -311,12 +311,40 @@ export function noticeOrgLabel(stewards: Stewards): (notice: TrailNotice) => str
  * and the banner's count spans organizations - so the same three days is what
  * makes the number mean one thing.
  *
- * @unvalidated The three days is ATC's cadence reasoned about, not a
- * measurement of what hikers do. NYNJTC's own posting rhythm has never been
- * measured against it - their 18 alerts span 2024-01-11 to 2026-06-16, which
- * is far slower, so the window is if anything generous for them. What would
- * settle it: how often a hiker opens the app, which #93's field testing is the
- * only thing that can answer.
+ * MEASURED, AND KEPT AT THREE DAYS ANYWAY (#1442). This carried `@unvalidated`
+ * until 2026-09-15 with the note that "the three days is ATC's cadence
+ * reasoned about, not a measurement", and that what would settle it was "how
+ * often a hiker opens the app". That named the wrong question. How often a
+ * hiker opens the app decides the DISMISSAL rule; what decides this window is
+ * how often the organizations post, and that was answerable from bytes already
+ * in the bucket rather than from field testing.
+ *
+ * Measured 2026-09-15 against the published `conditions/` artifacts, which are
+ * root-scoped and live rather than pinned to a release:
+ *
+ *   ATC     38 notices, 2021-04-08..2026-09-11, median gap between consecutive
+ *           edits 167.4 h, 26 of 37 gaps longer than this window
+ *   NYNJTC  18 notices, 2025-06-24..2026-06-16, median gap 236.0 h
+ *
+ * So the median gap between ATC's edits is seven days against a three-day
+ * window, and the banner is lit on 40.7% of days over the 90 before that date
+ * (26.0% over the year). **The banner being dark most of the time is intended,
+ * not a defect** - a notice nobody would call fresh is what the paragraph above
+ * declines to light it for, and the notices stay readable in the legend's list
+ * whether or not it is lit. What the measurement changes is that a reader can
+ * now tell the quiet is the design.
+ *
+ * Three alternatives were considered on #1442 and declined: widening this to
+ * the measured cadence (a week-old notice called "new" is precisely what the
+ * paragraph above rejects), making it relative rather than a clock ("since you
+ * last looked", which the per-organization watermark half-implements and which
+ * cannot go dark from upstream silence - the strongest of the three, and a
+ * larger change than the evidence demands), and per-organization windows (the
+ * paragraph above already rejects those, and the two medians do not overturn
+ * its reason).
+ *
+ * What this window is still not derived from is any hiker's behaviour. It is
+ * a publisher-cadence number now, which is the question it actually answers.
  */
 export const NEW_NOTICE_WINDOW_MS = 72 * 60 * 60 * 1000
 

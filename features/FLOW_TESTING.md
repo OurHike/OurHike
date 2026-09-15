@@ -194,6 +194,20 @@ section already draws this line and this layer inherits it exactly:
   the way a layout fork is: a `@webkit` tag can only carry the differences somebody
   already found, and those are exactly the ones that need no test.
 
+  **The hermetic half only, and that IS a finding.** Run against `client/e2e/data/`,
+  WebKit reaches 150 seconds still reporting *"No trail line"* on a camera where Chromium
+  has the line, the waypoints and a drawn closure tape within 30 — so every spec that taps
+  something on the trail fails there, while one tapping a mark placed at its own coordinate
+  passes. Measured 2026-09-15 in the agent sandbox, with a screenshot either side, and it
+  is not slowness: the 150-second frame is identical to the 30-second one. Nobody has
+  established whether that is WebKit or this sandbox's `scripts/data-proxy.mjs` under
+  WebKit, and it cannot be told apart from here — CI reaches the bucket directly and has
+  never run WebKit against it. `@unvalidated`, and
+  **[#1467 — WebKit draws no trail line where Chromium draws one, and nobody knows yet whether that is the engine or the sandbox](https://github.com/OurHike/OurHike/issues/1467)** is where it is written down.
+  Until it is understood the data half stays on Chromium, because this section's own rule
+  is that a project is turned on by somebody who has FIXED what the engine turned up, not
+  by somebody who found something they could not explain.
+
 ### Data freshness — live, cached, and absent
 
 The same screen prints different numbers with different provenance, and CLAUDE.md's "never

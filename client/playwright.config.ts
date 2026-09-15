@@ -234,18 +234,34 @@ export default defineConfig({
      * inherited - a WebKit told to exec a Chromium binary fails at launch
      * with an error that names neither.
      */
-    {
-      name: 'phone-webkit',
-      grepInvert: /@desktop/,
-      use: {
-        browserName: 'webkit',
-        launchOptions: {},
-        viewport: { width: PHONE.width, height: PHONE.height },
-        isMobile: PHONE.isMobile,
-        hasTouch: PHONE.hasTouch,
-        deviceScaleFactor: PHONE.deviceScaleFactor,
-      },
-    },
+    // THE HERMETIC HALF ONLY, and this is a finding rather than a preference.
+    // Run against `e2e/data/` in this sandbox, WebKit reaches 150 seconds still
+    // reporting "No trail line" on a camera where Chromium has the line, the
+    // waypoints and the closure tape within 30 - so every spec that taps
+    // something drawn on the trail fails, while one that taps a mark placed at
+    // its own coordinate passes. Measured 2026-09-15, with screenshots either
+    // side. Nobody has established whether that is WebKit, or this sandbox's
+    // data proxy under WebKit, and #1392 is explicit that a project is turned
+    // on by somebody who has fixed what the engine turned up - not by somebody
+    // who found something they could not explain. So the data half stays on
+    // Chromium until that is understood, and the gap is filed as #1467 rather
+    // than silently shipped.
+    ...(DATA_MODE
+      ? []
+      : [
+          {
+            name: 'phone-webkit',
+            grepInvert: /@desktop/,
+            use: {
+              browserName: 'webkit' as const,
+              launchOptions: {},
+              viewport: { width: PHONE.width, height: PHONE.height },
+              isMobile: PHONE.isMobile,
+              hasTouch: PHONE.hasTouch,
+              deviceScaleFactor: PHONE.deviceScaleFactor,
+            },
+          },
+        ]),
   ],
   // None where the caller brought their own (the sandbox's proxy above);
   // otherwise the same build-and-serve as the hermetic half, carrying

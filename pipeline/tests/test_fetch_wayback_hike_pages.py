@@ -24,8 +24,30 @@ import pytest
 import requests
 
 import fetch_wayback_hike_pages as pages
+from lib import wayback_rate
 
 CDX = pages.CDX_API
+
+
+@pytest.fixture(autouse=True)
+def _unthrottled(monkeypatch):
+    """Give every test its own limiter on a clock that never really waits.
+
+    The shared `lib.wayback_rate.ARCHIVE` is real: ten requests a minute, on
+    the real clock with a real sleep. Correct in production and intolerable in
+    a suite - a file issuing eleven mocked requests would block for up to a
+    real minute, and CI would look hung rather than slow. That happened here
+    before this fixture existed.
+
+    Autouse rather than opt-in because forgetting it does not FAIL a test, it
+    STALLS one, and a stalled test is the kind of slowness that gets a whole
+    suite called flaky instead of fixed.
+    """
+    monkeypatch.setattr(
+        pages,
+        "ARCHIVE",
+        wayback_rate.RateLimit(max_requests=10_000, clock=lambda: 0.0, sleep=lambda _s: None),
+    )
 
 
 def _session():
@@ -173,11 +195,24 @@ def test_a_page_carrying_no_photo_is_still_recovered():
 # --- backing off is the feature ------------------------------------------------
 
 
-def test_the_throttle_is_slower_than_its_siblings():
-    """fetch_wayback_hike_photos.py runs at 1.0s and that is what earned the
-    refusals. This job is longer and follows them, so it has to be gentler -
-    pinned so a later "optimisation" has to argue with the incident."""
-    assert pages.THROTTLE_SECONDS >= 5.0
+def test_every_request_passes_the_shared_ceiling(monkeypatch, requests_mock):
+    """Pacing is not a sleep in this module - `lib/wayback_rate.ARCHIVE` is a
+    hard rolling-window cap, and `get()` takes from it INSIDE the retry loop so
+    a retry is counted too.
+
+    Asserted as behaviour rather than object identity: one failed attempt plus
+    one success must consume two slots. Pinned so a later edit cannot quietly
+    return to a sleep, which is what let one request a second become an egress
+    IP refused outright on 2026-09-15."""
+    _no_sleep(monkeypatch)
+    taken = []
+    monkeypatch.setattr(pages.ARCHIVE, "take", lambda: taken.append(1) or 0.0)
+    requests_mock.get("https://example.test/x", [{"status_code": 503}, {"text": "ok"}])
+
+    pages.get(_session(), "https://example.test/x")
+
+    assert len(taken) == 2
+    assert wayback_rate.MAX_REQUESTS_PER_MINUTE <= 10
     assert max(pages.RETRY_BACKOFF_SECONDS) >= 300
 
 

@@ -25,8 +25,30 @@ import pytest
 import requests
 
 import fetch_wayback_hike_photos as fetch
+from lib import wayback_rate
 
 CDX = fetch.CDX_API
+
+
+@pytest.fixture(autouse=True)
+def _unthrottled(monkeypatch):
+    """Give every test its own limiter on a clock that never really waits.
+
+    The shared `lib.wayback_rate.ARCHIVE` is real: ten requests a minute, on
+    the real clock with a real sleep. Correct in production and intolerable in
+    a suite - a file issuing eleven mocked requests would block for up to a
+    real minute, and CI would look hung rather than slow. That happened here
+    before this fixture existed.
+
+    Autouse rather than opt-in because forgetting it does not FAIL a test, it
+    STALLS one, and a stalled test is the kind of slowness that gets a whole
+    suite called flaky instead of fixed.
+    """
+    monkeypatch.setattr(
+        fetch,
+        "ARCHIVE",
+        wayback_rate.RateLimit(max_requests=10_000, clock=lambda: 0.0, sleep=lambda _s: None),
+    )
 
 
 def _session():
@@ -71,14 +93,20 @@ def test_the_most_recent_capture_of_each_url_wins(monkeypatch, requests_mock):
 
 
 def test_collapse_urlkey_is_not_asked_for(monkeypatch, requests_mock):
-    """The grouping is done here on purpose, so that a later edit cannot
-    reintroduce the first-capture bug by tidying the query string."""
+    """`collapse=digest` is fine and is asked for - it drops repeat captures of
+    identical bytes. `collapse=urlkey` is the dangerous one: it collapses by
+    URL and hands back each URL's FIRST capture, which is the bug this
+    module's docstring opens with. So the guard is on the VALUE, not on the
+    parameter's presence.
+
+    This test caught its own obsolescence when digest collapsing was added,
+    which is the behaviour wanted from it."""
     _no_sleep(monkeypatch)
     requests_mock.get(CDX, json=_cdx())
 
     fetch.latest_captures(_session())
 
-    assert "collapse" not in requests_mock.request_history[0].qs
+    assert requests_mock.request_history[0].qs.get("collapse") != ["urlkey"]
 
 
 def test_distinct_urls_are_all_kept(monkeypatch, requests_mock):
@@ -346,3 +374,41 @@ def test_the_camera_serial_survives_neither_spelling():
         fetch.subject_from("Beaver Lodge in swamp on Terrace Pond South Trail  250 x 188 MG_8444.jpg")
         == "Beaver Lodge in swamp on Terrace Pond South Trail"
     )
+
+
+# --- what the block on 2026-09-15 bought ---------------------------------------
+
+
+def test_every_request_passes_the_shared_ceiling(monkeypatch, requests_mock):
+    """THIS fetcher is the one that caused the block: one request a second over
+    403 images - about 60 a minute - earning 429s, then 503s, then an outright
+    refusal of the egress IP (curl returning 000, no HTTP status at all).
+    Confirmed host-specific at the time, since iNaturalist answered 200 in the
+    same minute.
+
+    It no longer paces itself with a sleep. What is asserted is the BEHAVIOUR
+    rather than which object it holds: a retry is a request, so a call that
+    fails once and succeeds on the second attempt must take TWO slots. A
+    sleep-based throttle counted one, which is how a polite-looking backoff
+    ladder exceeds its own ceiling."""
+    _no_sleep(monkeypatch)
+    taken = []
+    monkeypatch.setattr(fetch.ARCHIVE, "take", lambda: taken.append(1) or 0.0)
+    requests_mock.get(CDX, [{"status_code": 503}, {"json": _cdx()}])
+
+    fetch.latest_captures(_session())
+
+    assert len(taken) == 2
+    assert wayback_rate.MAX_REQUESTS_PER_MINUTE <= 10
+
+
+def test_identical_captures_collapse_to_one_row(monkeypatch, requests_mock):
+    """`collapse=digest` asks the archive not to send the same bytes twice.
+    Distinct from `collapse=urlkey`, which collapses by URL and returns the
+    FIRST capture - the bug this module's docstring opens with."""
+    _no_sleep(monkeypatch)
+    requests_mock.get(CDX, json=_cdx())
+
+    fetch.latest_captures(_session())
+
+    assert requests_mock.request_history[0].qs["collapse"] == ["digest"]

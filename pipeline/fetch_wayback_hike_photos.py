@@ -76,6 +76,7 @@ import requests
 
 from lib.photo_store import local_photo_path, photo_digest
 from lib.user_agent import CONTACTABLE_USER_AGENT as USER_AGENT
+from lib.wayback_rate import ARCHIVE
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -95,9 +96,10 @@ ARCHIVE_PREFIX = "nynjtc.org/sites/default/files/u26"
 #: `looks_like_jpeg()` below exists to catch either way.
 RAW_CAPTURE_SUFFIX = "id_"
 
-#: One request at a time with a pause between. The archive is a donation-
-#: funded public good and this is a few hundred reads against it.
-THROTTLE_SECONDS = 1.0
+#: The pacing is NOT a sleep here - `lib/wayback_rate.ARCHIVE` enforces a hard
+#: rolling-window ceiling that a retry cannot slip past. See that module for
+#: what running this at one request a second on 2026-09-15 cost: 429s, then
+#: 503s, then the egress IP refused outright.
 RETRY_BACKOFF_SECONDS = (5, 20)
 RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
 TIMEOUT = 90
@@ -180,6 +182,10 @@ def _get(made: requests.Session, url: str, params: dict | None = None) -> reques
     returning empty: this run's whole output is a count of what survived, so a
     failure counted as "not archived" would be a loss reported as a fact."""
     for attempt, delay in enumerate((*RETRY_BACKOFF_SECONDS, None)):
+        # Inside the loop, so a RETRY is counted too. A ladder that backed off
+        # politely and then fired an uncounted request is how a sleep-based
+        # throttle exceeds its own ceiling.
+        ARCHIVE.take()
         try:
             response = made.get(url, params=params or {}, timeout=TIMEOUT)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as error:
@@ -193,7 +199,6 @@ def _get(made: requests.Session, url: str, params: dict | None = None) -> reques
             time.sleep(delay)
             continue
         response.raise_for_status()
-        time.sleep(THROTTLE_SECONDS)
         return response
     raise AssertionError("unreachable")
 
@@ -213,6 +218,11 @@ def latest_captures(made: requests.Session, prefix: str = ARCHIVE_PREFIX) -> lis
             "output": "json",
             "filter": ["statuscode:200", "mimetype:image/jpeg"],
             "fl": "original,timestamp,length",
+            # Identical bytes captured twice are one row, not two. Cheaper for
+            # the archive and for us, and safe here in a way `collapse=urlkey`
+            # is not: that one collapses by URL and hands back the FIRST
+            # capture, which is the bug this file's docstring opens with.
+            "collapse": "digest",
         },
     )
     rows = response.json()

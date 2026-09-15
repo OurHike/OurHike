@@ -20,14 +20,15 @@ first pass at this work never found - it went hunting for `/hikes/hike-<slug>`
 and concluded the join was missing. It was not missing; it was at a path
 nobody had looked at.
 
-BE SLOW. THE ARCHIVE ALREADY REFUSED US ONCE, and this is the reason
-`THROTTLE_SECONDS` is what it is rather than the 1.0 its sibling uses. On
-2026-09-15 a few hundred reads at one per second earned 429s, then 503s, then
-connection resets that lasted past half an hour - so the listing could not be
-re-read at all for a while. web.archive.org is donation-funded and owes this
-project nothing. A recovery that takes an hour and finishes beats one that
-takes ten minutes and gets the client blocked, and this is a ONE-TIME job, so
-the slow version costs an afternoon exactly once.
+BE SLOW. THE ARCHIVE ALREADY REFUSED US ONCE. On 2026-09-15 a few hundred
+reads at one per second - 60 a minute against a documented ceiling of about
+15 - earned 429s, then 503s, then an outright refusal of the egress IP that
+outlasted half an hour, so the listing could not be re-read at all. Both
+fetchers now take from one process-wide limiter capped at ten a minute. web.archive.org
+is donation-funded and owes this project nothing. A recovery that takes an
+hour and finishes beats one that takes ten minutes and gets the client
+banned, and this is a ONE-TIME job, so the slow version costs an afternoon
+exactly once.
 
 RESUMABLE, for the same reason its sibling is: a long job over a rate-limited
 host WILL be interrupted, and a run that loses everything on the last request
@@ -49,6 +50,7 @@ from pathlib import Path
 import requests
 
 from lib.user_agent import CONTACTABLE_USER_AGENT as USER_AGENT
+from lib.wayback_rate import ARCHIVE, MAX_REQUESTS_PER_MINUTE
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -61,15 +63,11 @@ WAYBACK = "https://web.archive.org/web"
 #: path the first pass at this missed.
 INDEX_URL = "nynjtc.org/view/hike"
 
-#: Seconds between requests. FIVE, not one.
-#:
-#: MEASURED THE HARD WAY, 2026-09-15: a few hundred reads at 1.0s earned 429
-#: (with Retry-After in the 30-50s range), then 503, then connection resets
-#: that outlasted a thirty-minute pause. At that point the CDX listing itself
-#: could not be fetched, so the job could not even find out what it still
-#: needed. This number is not politeness, it is the difference between a run
-#: that finishes and a client that gets refused.
-THROTTLE_SECONDS = 5.0
+#: The pacing is NOT a sleep here - `lib/wayback_rate.ARCHIVE` enforces a hard
+#: rolling-window ceiling that a retry cannot slip past, which a sleep between
+#: calls cannot: recovering ONE page is two requests (a CDX lookup and a
+#: fetch), so a five-second pause after each yielded twelve a minute from a
+#: loop that read as if it ran at six.
 
 #: Backoff when it does push back, in seconds. Long, and long on purpose: the
 #: archive's own Retry-After ran to 47s during that incident, and a retry that
@@ -146,6 +144,8 @@ def get(made: requests.Session, url: str, params: dict | None = None) -> request
     caller records it as missing and moves on.
     """
     for attempt, delay in enumerate((*RETRY_BACKOFF_SECONDS, None)):
+        # Inside the loop, so a RETRY is counted too - see lib/wayback_rate.py.
+        ARCHIVE.take()
         try:
             response = made.get(url, params=params or {}, timeout=TIMEOUT)
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as error:
@@ -168,14 +168,24 @@ def get(made: requests.Session, url: str, params: dict | None = None) -> request
             continue
         if response.status_code >= 400:
             return None
-        time.sleep(THROTTLE_SECONDS)
         return response
     return None
 
 
 def latest_capture(made: requests.Session, url: str) -> tuple[str, str] | None:
     """The (original_url, timestamp) of `url`'s most recent archived copy."""
-    response = get(made, CDX_API, {"url": url, "output": "json", "filter": "statuscode:200", "fl": "original,timestamp"})
+    response = get(
+        made,
+        CDX_API,
+        {
+            "url": url,
+            "output": "json",
+            "filter": "statuscode:200",
+            "fl": "original,timestamp",
+            # Duplicate captures of unchanged content collapse to one row.
+            "collapse": "digest",
+        },
+    )
     if response is None:
         return None
     try:
@@ -312,7 +322,7 @@ def main(limit: int | None, index_only: bool) -> int:
     capture = latest_capture(made, INDEX_URL)
     if capture is None:
         print("The archive would not serve the index. It was refusing this client earlier today;")
-        print("wait longer rather than retrying in a loop - see THROTTLE_SECONDS.")
+        print("wait longer rather than retrying in a loop - see lib/wayback_rate.py.")
         return 1
     index_url, index_ts = capture
     print(f"  {index_ts} {index_url}")
@@ -336,7 +346,7 @@ def main(limit: int | None, index_only: bool) -> int:
         print(f"  {len(pages)} already recovered; {len(todo)} to go")
     todo = todo[:limit] if limit else todo
 
-    print(f"\nFetching {len(todo)} write-ups at {THROTTLE_SECONDS:.0f}s apart - this is slow on purpose.")
+    print(f"\nFetching {len(todo)} write-ups, capped at {MAX_REQUESTS_PER_MINUTE}/min - slow on purpose.")
     missed = 0
     for index, link in enumerate(todo, 1):
         found = latest_capture(made, link.replace("https://", "").replace("http://", ""))

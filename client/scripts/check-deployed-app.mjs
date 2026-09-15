@@ -165,7 +165,31 @@ try {
   // "Skip"/"Not now" ahead of "Continue" because a headless browser has no
   // location to grant and the map is what is being checked, not the
   // permission prompt.
+  //
+  // MATCHED ON THE FIRST WORD, NOT THE WHOLE NAME. These were exact matches
+  // until #1342, and on 2026-09-15 that opened **#1342 - Deployed app does not
+  // draw a trail**, which is the loudest title this repository has about
+  // production, while the app was drawing it fine. The control had been
+  // renamed `Skip` -> `Skip - take me to the map` by **PR #1374 - One pathway
+  // from first run to a walk finished: the front-end rebuild from the
+  // ClaudeDesign flow review** (merged 2026-09-14 17:55, after this check's
+  // last green run at 15:56), and no exact name can match that. Measured on
+  // that same red report: every other row was green, `fetched-data` counted 40
+  // successful responses, and both negative rows - the ones that would have
+  // fired had the app actually been broken - passed.
+  //
+  // So the word anchors and `\b` bounds: `Skip - take me to the map` matches,
+  // a future `Skip for now` matches, `Skipper` does not. Naming a control by
+  // the word it leads with is the same trade the paragraph above makes by
+  // waiting on any of three rather than one - what the control *means* is this
+  // check's to assert, and how the app words it is the app's to change.
   const ONBOARDING_CONTROLS = ['Skip', 'Not now', 'Continue']
+  // One home for that rule: the gate below and the loop further down both
+  // build from `startsWith`, so they cannot drift into disagreeing about what
+  // counts as a control. They did while this was being written - the gate had
+  // a literal space where the loop had `\s+`, and `Not  now` matched only one
+  // of them.
+  const startsWith = (word) => new RegExp(`^${word.replace(/ /g, String.raw`\s+`)}\\b`)
   // Wait for ANY of them to exist before asking which, because
   // `locator.isVisible()` is an immediate check rather than an auto-waiting
   // one - its `timeout` bounds resolving the locator, it does not wait for
@@ -173,7 +197,11 @@ try {
   // reporting "no onboarding control appeared" on a page that was simply
   // still rendering. A health check that cries wolf one morning in four is
   // the thing #431 spends its length warning against.
-  const anyControl = page.getByRole('button', { name: /^(Skip|Not now|Continue)$/ })
+  const anyControl = page.getByRole('button', {
+    name: new RegExp(
+      ONBOARDING_CONTROLS.map((word) => startsWith(word).source).join('|'),
+    ),
+  })
 
   let steps = 0
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -184,7 +212,9 @@ try {
 
     let clicked = false
     for (const name of ONBOARDING_CONTROLS) {
-      const control = page.getByRole('button', { name, exact: true })
+      // `.first()`, which an exact match did not need: a prefix can select
+      // more than one control on a card that offers two ways past it.
+      const control = page.getByRole('button', { name: startsWith(name) }).first()
       if (await control.isVisible().catch(() => false)) {
         await control.click()
         steps += 1

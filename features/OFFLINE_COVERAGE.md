@@ -24,11 +24,35 @@ here covered" once, for the status strip, the legend's picker and the dashed sea
 draws (`map/coverageLayers.ts`); and the download window's stretch card
 (`screens/StretchCard.tsx`) prices what is missing and takes it in one tap.
 
-**What is still not built, stated so nobody rediscovers it.** The DEM has no cells yet —
-only `at_basemap` is cut, so a stretch is the basemap alone and the terrain stays the whole
-archive. The cells are cut from the Fine (z14) package only, so the "one global level with
-a per-piece override" decision below has no pipeline behind it: the client reads whatever
-level the index publishes and promises none. And named pieces wait on open question 2.
+**What is still not built, stated so nobody rediscovers it.** The cells are cut from the
+Fine (z14) package only, so the "one global level with a per-piece override" decision below
+has no pipeline behind it: the client reads whatever level the index publishes and promises
+none. And named pieces wait on open question 2.
+
+**This paragraph used to open "the DEM has no cells yet", and that was wrong for
+thirteen days.** `build-dem.yml` has cut them on every canonical build since
+[#1175](https://github.com/OurHike/OurHike/issues/1175) and `publish.py`'s `CELL_FAMILIES`
+has published them; what was missing was on the phone, where no client code named the key.
+So a stretch download really was the basemap alone — and the sentence blaming the pipeline
+for it would have sent the next session to build something that already existed, which is
+the failure this whole "stated so nobody rediscovers it" paragraph is for.
+[#1475 — A stretch download carries no terrain at all: the DEM cells are built and
+published, and no client code declares them](https://github.com/OurHike/OurHike/issues/1475)
+declares the fourth family (`lib/coverageCells.ts`'s `DEM_CELLS`), prices it into the
+stretch card with the other two, and teaches `map/demTiles.ts` to ask a held cell — and its
+shared context, and a held cell's coarser ancestor — before the whole package and long
+before AWS. The one thing that family needs and the others do not is a message: the DEM's
+tile reads run inside the app's own worker, so `map/contours.ts` posts the held set across
+(`map/demRpc.ts`'s `setCells`) rather than setting a module variable.
+
+**What a hiker was getting meanwhile is worth writing down rather than leaving as a fixed
+bug.** They took a stretch, were told they held that ground, and got a styled sheet with
+no hillshade and no contour lines on it — silently. Contours are how somebody works out
+which drainage they are in, which is [CLAUDE.md](../CLAUDE.md)'s first of four ways this
+app can hurt somebody, and nothing in the app said the terrain was absent. The lesson is
+narrower than "test it": a cut that publishes and a client that never names the key
+produce a release where every gate passes. `verify_release.py` check 20 walked the family
+and found it correct, because it was.
 Since 2026-09-07 the other organizations' trail lines above the seam are vector tiles
 (`nearby_trails.pmtiles`, [#1257 — Deliver the network lines and the junction graph in pieces a phone can read by range, so no growth in the data can freeze or crash it](https://github.com/OurHike/OurHike/issues/1257) — the 228.8 MB GeoJSON they replaced crashed
 every phone that fetched it whole, [#1254 — A launch artifact the phone cannot hold is fetched, parsed and drawn anyway, and today's data made that a frozen first page and a crashed map](https://github.com/OurHike/OurHike/issues/1254)),

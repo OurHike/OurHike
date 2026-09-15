@@ -23,6 +23,13 @@
 // worker round trip), the worker aborts the underlying controller so the
 // work actually stops, and a late reply to an aborted id falls into the
 // void by design.
+//
+// It also carries ONE notification, which is the only traffic here that is not
+// a request: the shell's held DEM cells (#1475). demTiles.ts runs worker-side
+// and cannot see the shell's hooks, so what map/networkTiles.ts reads off a
+// module variable on the main thread has to be posted across instead.
+
+import type { CellIndex } from '../lib/coverageCells'
 
 /** Contour options travel opaquely: DemSource computes them on the main
  *  thread and LocalDemManager consumes them in the worker; this protocol
@@ -42,6 +49,25 @@ export type DemRequest =
       options: ContourOptions
     }
   | { id: number; kind: 'abort' }
+  /**
+   * The shell's held DEM cells, on their way to the worker's own
+   * map/demTiles.ts (#1475) - a NOTIFICATION, so it carries no `id` and gets
+   * no reply. Nothing waits on it: a cell landing mid-session changes which
+   * archive answers the NEXT tile, and a tile already in flight is answered
+   * from whatever was true when it started, which is the same
+   * read-on-every-tile contract map/networkTiles.ts keeps on the main thread.
+   *
+   * `held` is an array rather than the Set demTiles.ts wants, because this
+   * crosses a structured clone and an array is the shape with no question
+   * about it; the worker side rebuilds the Set.
+   */
+  | { kind: 'setCells'; index: CellIndex | null; held: readonly string[] }
+
+/** The requests that carry an `id` and expect a reply - everything but
+ *  `setCells`, which is a notification. Derived from the union rather than
+ *  listed, so a fourth request added above is a call here for free and a
+ *  second notification cannot accidentally become one. */
+export type DemCall = Extract<DemRequest, { id: number }>
 
 export type DemResponse =
   | {
@@ -100,6 +126,17 @@ export interface DemManagerLike {
 export function createDemRequestHandler(
   manager: DemManagerLike,
   post: (message: DemResponse) => void,
+  /**
+   * Where a `setCells` notification lands - demTiles.ts's `setDemCells` in
+   * the worker entry, a recording stub in a test.
+   *
+   * INJECTED RATHER THAN IMPORTED, like `post` and for its reason: this
+   * module is the protocol and stays free of what either end does with it,
+   * and the alternative - branching in demWorker.ts - would put the only
+   * untested code in the stack on the path that decides whether a hiker's
+   * downloaded terrain is read at all.
+   */
+  applyCells: (index: CellIndex | null, held: ReadonlySet<string>) => void,
 ): (request: DemRequest) => void {
   const inflight = new Map<number, AbortController>()
 
@@ -123,6 +160,13 @@ export function createDemRequestHandler(
   }
 
   return (request: DemRequest) => {
+    // Before the abort check and before anything touches `id`, because this
+    // is the one message that has neither.
+    if (request.kind === 'setCells') {
+      applyCells(request.index, new Set(request.held))
+      return
+    }
+
     if (request.kind === 'abort') {
       inflight.get(request.id)?.abort()
       inflight.delete(request.id)
@@ -217,8 +261,8 @@ export class WorkerDemManager implements DemManagerLike {
     })
   }
 
-  private request<K extends DemRequest['kind']>(
-    message: DemRequest & { kind: K },
+  private request<K extends DemCall['kind']>(
+    message: DemCall & { kind: K },
     abortController: AbortController,
   ): Promise<DemResponse & { ok: true; kind: K }> {
     return new Promise((resolve, reject) => {
@@ -238,6 +282,17 @@ export class WorkerDemManager implements DemManagerLike {
       abortController.signal.addEventListener('abort', onAbort)
       this.worker.postMessage(message)
     })
+  }
+
+  /**
+   * Tell the worker which DEM cells this phone holds (#1475).
+   *
+   * Not a `request`: there is no reply to wait for and nothing to abort, so
+   * it never enters `pending`. Called again whenever the shell's answer
+   * changes - a cell finishing, a stretch being removed, an index arriving.
+   */
+  setCells(index: CellIndex | null, held: ReadonlySet<string>): void {
+    this.worker.postMessage({ kind: 'setCells', index, held: [...held] })
   }
 
   fetchTile(z: number, x: number, y: number, abortController: AbortController) {

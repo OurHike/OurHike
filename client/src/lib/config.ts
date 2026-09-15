@@ -100,6 +100,35 @@ export function archiveKey(level: DetailLevel): string {
 export const BASEMAP_CELLS_KEY = 'at_basemap_cells.json'
 
 /**
+ * The terrain under that sheet, cut into the same 1° cells (#1175,
+ * pipeline/cut_cells.py's `dem` family) and declared here since #1475.
+ *
+ * WHY THIS ARRIVED LATE, WHICH IS WORTH KNOWING BECAUSE NOTHING WAS BROKEN
+ * UPSTREAM. `build-dem.yml` has cut these cells on every canonical build
+ * since #1175 and `publish.py`'s `CELL_FAMILIES` has published them, while no
+ * client code named the key - so a hiker who took a stretch got the styled
+ * sheet with no hillshade and no contour lines on it, and was told nothing.
+ * Contours are how somebody works out which drainage they are in, so the
+ * silence was on a safety path (CLAUDE.md's four ways this app can hurt
+ * somebody), which is why this is a declaration rather than a feature.
+ *
+ * It HAS a context archive where NEARBY_TRAILS_CELLS_KEY's has none, and the
+ * difference is not a detail: `export_dem.py` walks its region at every zoom,
+ * so panned out past a held cell there is a shared z0-9 archive to answer
+ * from. features/OFFLINE_COVERAGE.md §6 is the measurement - 5.71 MB shared
+ * against 354.3 MB carried per cell - and it is fetched with the first piece
+ * rather than offered, because it is what makes a piece legible.
+ *
+ * A 404 reads exactly as BASEMAP_CELLS_KEY's does: no pieces on offer, the
+ * whole sheet still one tap. A release built before the cut, or a bucket a
+ * DEM build has not reached.
+ *
+ * @release optional - published by publish.py's CELL_FAMILIES loop, the same
+ * partial-checkout posture the basemap's cells carry.
+ */
+export const DEM_CELLS_KEY = 'dem_cells.json'
+
+/**
  * @release required - publish.py:527 writes it from trails_manifest.json with
  * nothing in front of it, and it is the one key the client fetches through
  * `fetchArtifact` ("an artifact this release must have", lib/trailData.ts:724).

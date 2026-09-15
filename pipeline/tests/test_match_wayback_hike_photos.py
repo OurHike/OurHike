@@ -274,3 +274,306 @@ def test_the_trials_correct_pairings_clear_the_floor():
     ]
     for photo, hike in good:
         assert match.score_pair(photo, hike).score >= match.DEFAULT_MIN_SCORE
+
+
+# --- the page join: a fact, not a score ----------------------------------------
+#
+# These are the tests for the reorder of 2026-09-15. The maintainer asked
+# whether this was matching on name and said to try location and distance
+# first; it was, and the answer turned out to be that the strongest signal is
+# not a signal - NYNJTC published which photograph belonged to which hike, and
+# the archive kept it. What follows pins that the join is READ, that distance
+# only ever narrows, and that the one row which can never ship is ranked last.
+
+
+def _page(name, photos, lat=41.0, lon=-74.0, park="", region="", description="", url=None):
+    return match.Page(
+        url=url or f"https://www.nynjtc.org/hike/{name.lower().replace(' ', '-')}",
+        timestamp="20240103091500",
+        name=name,
+        park=park,
+        region=region,
+        lat=lat,
+        lon=lon,
+        description=description,
+        photos=photos,
+    )
+
+
+def test_a_photograph_on_a_write_up_is_joined_rather_than_scored():
+    """THE test for the reorder. The photograph's subject shares not one word
+    with the hike, so every text route scores it zero - and it is still
+    matched, because NYNJTC printed it on that hike's page."""
+    photo = _photo("DSC00417", digest="d1")
+    hike = _hike("Terrace Pond South Loop", description="A quiet loop.")
+    page = _page("Terrace Pond South Loop", ["DSC00417.jpg"])
+
+    ranked = match.best_pairings([photo], [hike], [page])
+    top = ranked["d1"][0]
+
+    assert top.basis == match.BASIS_PAGE_NAME
+    assert top.hike.hike_id == "1"
+    assert top.score == 0.0  # the words really do say nothing
+    assert top.placed_by_page
+
+
+def test_the_page_join_survives_a_drupal_derivative_token():
+    """The same file is cited as `name.jpg` on one capture and
+    `name.jpg?itok=...` on another. Two spellings failing to join would look
+    exactly like a photograph NYNJTC never published."""
+    photo = _photo("Beaver Lodge", digest="d1")
+    photo = match.Photo(**{**photo.__dict__, "filename": "Beaver Lodge.jpg?itok=9Kd2"})
+    page = _page("Terrace Pond South Loop", ["Beaver Lodge.jpg"])
+
+    ranked = match.best_pairings([photo], [_hike("Terrace Pond South Loop")], [page])
+
+    assert ranked["d1"][0].basis == match.BASIS_PAGE_NAME
+
+
+def test_the_page_join_ignores_the_filenames_case():
+    photo = _photo("x", digest="d1")
+    photo = match.Photo(**{**photo.__dict__, "filename": "Sunfish_Pond.JPG"})
+    page = _page("Sunfish Pond Loop", ["sunfish_pond.jpg"])
+
+    ranked = match.best_pairings([photo], [_hike("Sunfish Pond Loop")], [page])
+
+    assert ranked["d1"][0].basis == match.BASIS_PAGE_NAME
+
+
+@pytest.mark.parametrize(
+    ("archived", "exported"),
+    [
+        ("Mt. Minsi Loop", "Mount Minsi Loop"),
+        ("Bear Mountain  Loop", "Bear Mountain Loop"),
+        ("Anthony's Nose", "Anthonys Nose"),
+        ("HARRIMAN: Pine Meadow", "Harriman - Pine Meadow"),
+    ],
+)
+def test_two_spellings_of_one_title_are_the_same_walk(archived, exported):
+    assert match.normalise_title(archived) == match.normalise_title(exported)
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [
+        ("Terrace Pond North Loop", "Terrace Pond North Trail"),
+        ("Terrace Pond North Loop", "Terrace Pond South Loop"),
+        ("Mount Minsi Loop", "Mount Tammany Loop"),
+    ],
+)
+def test_titles_that_name_different_walks_are_kept_apart(one, other):
+    """`normalise_title` forgives punctuation and a handful of abbreviations
+    and NOTHING ELSE. Dropping "loop" and "trail" as noise would collapse two
+    real, different walks into one confident wrong join."""
+    assert match.normalise_title(one) != match.normalise_title(other)
+
+
+def test_a_title_that_does_not_match_falls_to_the_nearby_route():
+    """The archive's title and the export's are not always the same string.
+    A shared distinctive word plus proximity is the weaker second route."""
+    hike = _hike("Mount Minsi Loop")  # at 41.0, -74.0
+    page = _page("Mt. Minsi via the Appalachian Trail", ["v.jpg"], lat=41.001, lon=-74.001)
+
+    resolved = match.resolve_page(page, [hike])
+
+    assert resolved is not None
+    chosen, basis, metres = resolved
+    assert chosen.hike_id == "1"
+    assert basis == match.BASIS_PAGE_NEAR
+    assert metres < 200
+
+
+def test_distance_alone_never_places_a_write_up():
+    """THE refusal this route needs, and the same shape as the park-alone
+    refusal above. Two unrelated walks routinely start from one car park, so
+    "nearest" is not an answer to "which"."""
+    hike = _hike("Sterling Ridge Trail")
+    page = _page("Wawayanda Swamp Walk", ["v.jpg"], lat=41.0, lon=-74.0)  # 0 m apart
+
+    assert match.resolve_page(page, [hike]) is None
+
+
+def test_a_write_up_beyond_the_bound_is_not_a_candidate():
+    hike = _hike("Minsi Loop")  # 41.0, -74.0
+    far = _page("Minsi Walk", ["v.jpg"], lat=42.0, lon=-74.0)  # ~111 km
+
+    assert match.resolve_page(far, [hike]) is None
+
+
+def test_the_join_bound_is_generous_because_a_tight_one_loses_rows():
+    """Pinned as the argument rather than as a number. Nobody has yet seen
+    whether these coordinates point at a trailhead or at a park, and the
+    expensive failure is dropping a correct row - which looks identical to a
+    photograph nobody could place. It is affordable only because
+    `resolve_page` also requires title agreement."""
+    assert match.MAX_JOIN_METRES >= 2_000.0
+
+
+def test_a_write_up_the_export_does_not_have_is_shown_but_cannot_ship():
+    photo = _photo("DSC00417", digest="d1")
+    page = _page("Some Walk NYNJTC Dropped", ["DSC00417.jpg"])
+
+    ranked = match.best_pairings([photo], [_hike("Something Else Entirely")], [page])
+    top = ranked["d1"][0]
+
+    assert top.basis == match.BASIS_PAGE_ONLY
+    assert top.hike.hike_id == ""  # nothing to attach a photograph to
+    assert not top.placed_by_page
+    assert "place it by hand" in match._reasons(top)
+
+
+def test_a_page_only_row_never_leads_the_sheet():
+    """Ranked LAST, under even the weakest text match. The first draft had it
+    third, above every text row, on the reasoning that it was the more certain
+    answer - which it is, and it is certain about a write-up rather than about
+    a photograph anyone can ship. Ranking certainty above usefulness buries
+    every correct text match under work that cannot end in a photograph."""
+    unplaceable = match.Pairing(_photo("x"), _hike("Gone"), 0.0, basis=match.BASIS_PAGE_ONLY)
+    weak_text = match.Pairing(_photo("y"), _hike("Real"), 0.01, basis=match.BASIS_SUBJECT)
+
+    assert weak_text.rank < unplaceable.rank
+    assert not match.above_the_fold(unplaceable, minimum=2.5)
+
+
+def test_a_placed_page_row_leads_even_when_the_words_share_nothing():
+    placed = match.Pairing(_photo("DSC00417"), _hike("Real"), 0.0, basis=match.BASIS_PAGE_NAME)
+
+    assert match.above_the_fold(placed, minimum=2.5)
+
+
+def test_the_page_and_the_words_disagreeing_is_surfaced_not_resolved():
+    """Either the text matcher is wrong in a way worth seeing, or a write-up
+    reused a photograph from another walk. Both are a person's call."""
+    photo = _photo("Terrace Pond ice at Wawayanda", digest="d1")
+    published_on = _hike("Bearfort Ridge Walk", hike_id="1")
+    the_words_prefer = _hike("Terrace Pond North Loop", hike_id="2", description="Ice on Terrace Pond in Wawayanda.")
+    page = _page("Bearfort Ridge Walk", ["Terrace Pond ice at Wawayanda.jpg"])
+
+    ranked = match.best_pairings([photo], [published_on, the_words_prefer], [page])
+
+    assert ranked["d1"][0].hike.hike_id == "1"
+    assert match.disagrees(ranked["d1"], minimum=2.5)
+
+
+def test_the_rows_where_they_disagree_come_first(tmp_path):
+    photo = _photo("Terrace Pond ice at Wawayanda", digest="d1")
+    quiet = _photo("DSC00417", digest="d2")
+    published_on = _hike("Bearfort Ridge Walk", hike_id="1")
+    elsewhere = _hike("Terrace Pond North Loop", hike_id="2", description="Ice on Terrace Pond in Wawayanda.")
+    pages = [
+        _page("Bearfort Ridge Walk", ["Terrace Pond ice at Wawayanda.jpg"]),
+        _page("Terrace Pond North Loop", ["DSC00417.jpg"], url="https://www.nynjtc.org/hike/tp"),
+    ]
+
+    ranked = match.best_pairings([photo, quiet], [published_on, elsewhere], pages)
+    sheet = tmp_path / "sheet.html"
+    match.write_sheet(ranked, [photo, quiet], 2.5, sheet)
+    document = sheet.read_text(encoding="utf-8")
+
+    assert document.index("Terrace Pond ice at Wawayanda") < document.index("DSC00417")
+    assert "the page and the words point at different hikes" in document
+
+
+def test_a_photograph_cited_by_two_write_ups_keeps_the_first():
+    """Not silent, and not settled by a sort order: `main()` counts these, and
+    a reviewer decides which walk a reused photograph belongs to."""
+    shared = ["same.jpg"]
+    first = _page("First Walk", shared, url="https://www.nynjtc.org/hike/a")
+    second = _page("Second Walk", shared, url="https://www.nynjtc.org/hike/b")
+
+    assert match.pages_by_photo([first, second])["same.jpg"].name == "First Walk"
+
+
+def test_the_matcher_still_means_what_it_meant_with_no_write_ups():
+    """The write-up recovery is a separate, slow leg. A photographs-only run
+    must still produce the old sheet rather than an empty one."""
+    photo = _photo("Terrace Pond in winter", digest="d1")
+    hike = _hike("Terrace Pond North Loop", description="Ice on Terrace Pond.")
+
+    ranked = match.best_pairings([photo], [hike])
+
+    assert ranked["d1"][0].basis == match.BASIS_SUBJECT
+    assert ranked["d1"][0].score > 0
+
+
+@pytest.mark.parametrize("content", ["", "{", '{"pages": "not a list"}', '{"no": "pages"}'])
+def test_a_broken_page_cache_is_empty_rather_than_an_exception(tmp_path, content):
+    """An unreadable cache must degrade to the text route, not stop the run."""
+    broken = tmp_path / "wayback_hike_pages.json"
+    broken.write_text(content, encoding="utf-8")
+
+    assert match.load_pages(broken) == []
+
+
+def test_load_pages_reads_exactly_what_the_fetcher_writes(tmp_path):
+    """THE CONTRACT TEST between the two modules. The fetcher's record shape
+    and the matcher's reader are written in different files and nothing but
+    this makes them agree - a renamed field would otherwise show up as a join
+    that quietly found nothing, which is indistinguishable in a count from a
+    site that never published the pairing."""
+    import fetch_wayback_hike_pages as fetcher
+
+    written = fetcher.HikePage(
+        url="https://www.nynjtc.org/hike/terrace-pond-south",
+        timestamp="20240103091500",
+        name="Terrace Pond South Loop",
+        park="Wawayanda State Park",
+        region="NJ Highlands",
+        lat=41.15,
+        lon=-74.37,
+        description="A loop past a beaver lodge.",
+        photos=["Beaver_Lodge.jpg"],
+    )
+    cache = tmp_path / "wayback_hike_pages.json"
+    fetcher.write_cache([written], ["https://www.nynjtc.org/hike/terrace-pond-south"], cache)
+
+    read = match.load_pages(cache)
+
+    assert len(read) == 1
+    assert read[0].name == written.name
+    assert read[0].photos == written.photos
+    assert read[0].where == (written.lat, written.lon)
+
+
+def test_metres_apart_is_none_when_either_side_has_no_coordinate():
+    """Reported as unknown, never as zero. A missing coordinate that read as
+    "0 m away" would make the nearby route confidently wrong."""
+    nowhere = _page("A Walk", ["v.jpg"], lat=None, lon=None)
+    somewhere = _page("A Walk", ["v.jpg"])
+    placed = _hike("A Walk")
+    unplaced = match.Hike("2", "A Walk", "", "", "", None, None)
+
+    assert match.metres_apart(nowhere, placed) is None
+    assert match.metres_apart(somewhere, unplaced) is None
+
+
+def test_a_page_with_no_coordinate_still_joins_on_its_title():
+    """Route 2 does not need route 3. Plenty of these captures carry no
+    coordinate at all, and a title both sides agree on is enough."""
+    page = _page("Sunfish Pond Loop", ["v.jpg"], lat=None, lon=None)
+
+    resolved = match.resolve_page(page, [_hike("Sunfish Pond Loop")])
+
+    assert resolved is not None
+    assert resolved[1] == match.BASIS_PAGE_NAME
+    assert resolved[2] is None
+
+
+def test_the_proposed_json_records_which_route_reached_each_row(tmp_path, monkeypatch):
+    """A row read out of this file must not be able to lose the difference
+    between a page join and a string comparison."""
+    monkeypatch.setattr(match, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(match, "PROPOSED_PATH", tmp_path / "matches.json")
+    monkeypatch.setattr(match, "SHEET_PATH", tmp_path / "sheet.html")
+    monkeypatch.setattr(match, "load_photos", lambda: [_photo("DSC00417", digest="d1")])
+    monkeypatch.setattr(match, "load_hikes", lambda: [_hike("Terrace Pond South Loop")])
+    monkeypatch.setattr(match, "load_pages", lambda: [_page("Terrace Pond South Loop", ["DSC00417.jpg"])])
+
+    assert match.main(2.5) == 0
+
+    proposed = json.loads((tmp_path / "matches.json").read_text(encoding="utf-8"))
+    row = proposed["matches"][0]
+    assert row["basis"] == match.BASIS_PAGE_NAME
+    assert row["page_title"] == "Terrace Pond South Loop"
+    assert row["page_url"].endswith("/terrace-pond-south-loop")
+    assert proposed["write_ups"] == 1

@@ -261,7 +261,11 @@ test.describe('the form for the kinds you have to write', () => {
     await seedPreferences(page)
     await seedHikerMode(page, 'long')
     await page.goto('/')
-    await page.getByRole('button', { name: 'Say thanks' }).click()
+    // A PREFIX since #1438: Today's doors are rows now, and a row's
+    // accessible name carries the line under its title ("Say thanks to
+    // whoever keeps it up…") the way More's rows do. The heading inside the
+    // form is still the exact words, which is what the next line checks.
+    await page.getByRole('button', { name: /^Say thanks/ }).click()
     await expect(page.getByRole('heading', { name: 'Say thanks' })).toBeVisible()
   }
 

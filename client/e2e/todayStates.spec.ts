@@ -153,19 +153,31 @@ test.describe('Today, the rest of its states', () => {
     )
     await expect(page.getByRole('heading')).toHaveCount(0)
 
-    // What leads instead - and in its own voice. "Your day on the trail crew"
-    // rather than "The trail crew" is the mode reading itself inside the
-    // card, so this is the ternary at line 566 as well as the order array.
-    const crew = crewCard(page, 'Your day on the trail crew')
+    // WHAT LEADS INSTEAD IS THE CREWS SCREEN, NOT A CARD (#1440, D22). This
+    // used to be "Your day on the trail crew" - a card whose whole job was to
+    // name the first workday and send the hiker to More. In volunteer mode
+    // Today IS the crews screen now, so the card is gone in this mode and
+    // what occupies its slot is the section: the switch, the window filter,
+    // and whichever view is chosen.
+    const crew = page.getByRole('group', { name: 'How to see the crews' })
     await expect(crew).toBeVisible()
+    await expect(crewCard(page, 'Your day on the trail crew')).toHaveCount(0)
     await expect(crewCard(page, 'The trail crew')).toHaveCount(0)
+
+    // And it says the honest thing about having nothing to show, which in
+    // this environment is the only thing it CAN say: #1402 means no workday
+    // artifact is published, so "could not check" is the state under test and
+    // the one that must never read as "no club has asked".
+    await expect(page.getByText(/needs signal to load/)).toBeVisible()
 
     // Leading, as a fact about the document. The volunteer order array is
     // ['setup', 'download', 'alerts', 'volunteer', …]: the download notice
-    // sits above the card by that array and the card leads everything below
-    // it, so both halves are asserted rather than the convenient one.
+    // sits above the section by that array and the section leads everything
+    // below it, so both halves are asserted rather than the convenient one.
     const download = page.getByRole('button', { name: 'Download', exact: true })
-    const report = page.getByRole('button', { name: 'Report a problem' })
+    // A prefix since #1438: the door is a row, and its accessible name
+    // carries the line under the title.
+    const report = page.getByRole('button', { name: /^Report a problem/ })
     expect(await drawnFirst(page, download, crew)).toBe(true)
     expect(await drawnFirst(page, crew, report)).toBe(true)
 

@@ -140,15 +140,19 @@
 // rows the hiker can actually see.
 //
 // The frame is evidence for the rows and NOT for the defect, and that is
-// measured rather than hedged: run against client/scripts/data-proxy.mjs on
-// 2026-09-15, once from a build carrying the old predicate and once from the
-// new, this drive produced byte-identical frames - 147,896 bytes, the same
-// three rows (Fingerboard Shelter, the A.T., Ramapo-Dunderberg). The walk a
-// ring of taps happens to build in Harriman crosses no seam between two of
-// one publisher's lines, and no camera can promise it will. What pins the
-// behaviour is lib/trailGraph.test.ts and lib/dayHikeRows.test.ts, both red
-// on the old predicate. What this shot answers is the question a unit test
-// cannot: that the list still reads as a walk.
+// measured rather than hedged - three times, on three different rules.
+// Locally against client/scripts/data-proxy.mjs (2026-09-15), built once with
+// main's predicate and once with #1433's: byte-identical, 147,896 bytes, the
+// same three rows (Fingerboard Shelter, the A.T., Ramapo-Dunderberg). Then in
+// CI, where the rule widened again to the name and the blaze alone: the
+// preview's own frames for ec04fc54 and f0fd7f12 are byte-identical too, both
+// 384,316 bytes, sha256 03d2cb92. The walk a ring of taps happens to build in
+// Harriman crosses no seam between two of one publisher's lines, and no
+// camera can promise it will. What pins the behaviour is
+// lib/trailGraph.test.ts and lib/dayHikeRows.test.ts, red on the old
+// predicate, and lib/dayHikeTurns.test.ts, red if the turn list follows the
+// row rule. What this shot answers is the question a unit test cannot: that
+// the list still reads as a walk.
 export const caption =
   'Step 2 — the day-hike builder with a walk in it: the rail, the route order, a stop row, the shape control and the foot (#1194, #1212, #1373 frame 4a)'
 export const alt =

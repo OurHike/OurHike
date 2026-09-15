@@ -20,27 +20,20 @@
 // identified nothing.
 
 import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
-import { POI_PIN_SIZE } from './poiIcons'
 import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_ID_PROPERTY } from './poiLayers'
 import { warningIdAt } from './warningLayers'
 import { closureIdAt } from './closureLayers'
+import { POI_TAP_SLOP_PX, poiPinAt, poiTapBox } from './poiPinProbe'
+
+// The pin rank's slop and box live in map/poiPinProbe.ts, a leaf
+// closureLayers.ts can import without a cycle (#1419), and are re-exported
+// here so every existing caller and poiTaps.test.ts keep their import. The
+// dot rank's stay below: nothing outside this module asks about a dot.
+export { POI_TAP_SLOP_PX, poiTapBox }
 
 /** `--min-touch-target` (chrome/chrome.css), which every other control on the
  *  map screen already meets. */
 const MIN_TOUCH_TARGET_PX = 44
-
-/**
- * How far off a pin a touch may land and still open it, in CSS pixels.
- *
- * Derived rather than chosen: it is exactly what a pin drawn at full size
- * needs to reach the minimum touch target above. Written down as a number it
- * would be a second thing to remember the day POI_PIN_SIZE moves, which is the
- * mistake lib/seriousWarnings.ts already made once with the same constant.
- *
- * Zero-floored because a pin bigger than a touch target needs no help, and a
- * negative slop would query an inside-out box.
- */
-export const POI_TAP_SLOP_PX = Math.max(0, (MIN_TOUCH_TARGET_PX - POI_PIN_SIZE) / 2)
 
 /**
  * The same, for a dot (#597), and it is much larger.
@@ -63,21 +56,13 @@ export const POI_DOT_TAP_SLOP_PX = Math.max(
   (MIN_TOUCH_TARGET_PX - POI_DOT_MAX_RADIUS_PX * 2) / 2,
 )
 
-function tapBox(point: { x: number; y: number }, slop: number): [PointLike, PointLike] {
-  return [
-    [point.x - slop, point.y - slop],
-    [point.x + slop, point.y + slop],
-  ]
-}
-
-/** The touch, as the box that is actually queried. */
-export function poiTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
-  return tapBox(point, POI_TAP_SLOP_PX)
-}
-
-/** The same for the dot rank, whose targets are far smaller. */
+/** The dot rank's box, whose targets are far smaller. The pin rank's is
+ *  poiPinProbe.ts's, re-exported above. */
 export function poiDotTapBox(point: { x: number; y: number }): [PointLike, PointLike] {
-  return tapBox(point, POI_DOT_TAP_SLOP_PX)
+  return [
+    [point.x - POI_DOT_TAP_SLOP_PX, point.y - POI_DOT_TAP_SLOP_PX],
+    [point.x + POI_DOT_TAP_SLOP_PX, point.y + POI_DOT_TAP_SLOP_PX],
+  ]
 }
 
 function idOf(feature: { properties?: Record<string, unknown> | null }): string | null {
@@ -124,25 +109,47 @@ export function poiIdAt(
   // biggest pin on the map, drawn over the waypoints, and a person escalated
   // it by hand - a tap on it is a tap on it, not on the shelter it stands
   // beside. Asked first so the warning sheet and the waypoint card cannot
-  // both open on one touch. The closure tape next, for the same reason
-  // (closureLayers.ts states the whole order): a shelter pin on closed
-  // trail is a tap on the closure, and the card is a second tap away.
+  // both open on one touch.
   if (yieldToMarks && warningIdAt(map, point) !== null) return null
-  if (yieldToMarks && closureIdAt(map, point) !== null) return null
 
-  // Before the style has parsed, querying a layer it does not hold fires an
-  // error event rather than throwing - a touch on a map with no pins on it yet
-  // should be silent, not a warning in the console.
-  if (map.getLayer(POI_LAYER_ID) === undefined) return null
-
-  // Rule 1. The collision engine (`icon-allow-overlap: false`) means two pins
-  // this close are adjacent rather than stacked, so among pins this is rarely
+  // Rule 1, AND IT NOW BEATS THE CLOSURE TAPE (#1419, the maintainer's call
+  // of 2026-09-14). This used to yield the whole touch to the tape before
+  // the pin layer was so much as queried, under a comment promising "the
+  // card is a second tap away" - a second tap that never arrived, because
+  // the second tap asks the identical question and gets the identical
+  // answer. With CLOSURE_TAP_SLOP_PX at half a touch target, that box
+  // reaches roughly 158 m either side of the line at z14, so every shelter
+  // and spring on a closed or warned stretch was unreachable by map tap for
+  // as long as the tape was under the thumb - which is where a hiker most
+  // needs to know where the next water is.
+  //
+  // Pin against tape is not a coin toss: lineTaps.ts already encodes the
+  // principle as its rule 2, "the narrow, specific line over the wide,
+  // ambient one". The pin's box is ~3 px and aimed at; the tape's is
+  // ambient. So the pin wins, and attachClosureTaps yields to it
+  // symmetrically - flipping only this side would open the closure sheet
+  // AND the card on one touch, which is the defect closureLayers.ts's own
+  // "ONE TOUCH, ONE INTERPRETER" note records as the first version's.
+  //
+  // The collision engine (`icon-allow-overlap: false`) means two pins this
+  // close are adjacent rather than stacked, so among pins this is rarely
   // even a choice - which is why the pin box keeps taking the first.
-  const [pin] = map.queryRenderedFeatures(poiTapBox(point), {
-    layers: [POI_LAYER_ID],
-  })
+  const pin = poiPinAt(map, point)
   if (pin !== undefined) return idOf(pin)
 
+  // THE DOT RANK STILL YIELDS, and that is a limit rather than an oversight
+  // (#1419's own closing note). POI_DOT_TAP_SLOP_PX is ~20 px against the
+  // tape's 22 - the same order, both ambient - so the narrow-beats-wide
+  // argument above does not reach it, and a spring at a zoom where it draws
+  // as a dot stays unreachable by tap on closed trail. Whether that matters
+  // enough to solve is a question about which zooms hikers actually tap
+  // water at, and nobody has looked. Other doors still reach the waypoint:
+  // search, "In view", Today's rows.
+  if (yieldToMarks && closureIdAt(map, point) !== null) return null
+
+  // Guarded for the same reason the probe is: before the style has parsed,
+  // querying a layer it does not hold fires an error event rather than
+  // throwing, and a touch on a map with no dots on it yet should be silent.
   if (map.getLayer(POI_DOT_LAYER_ID) === undefined) return null
 
   // Rule 2. Nearest to the touch, by the dot's own coordinates projected back

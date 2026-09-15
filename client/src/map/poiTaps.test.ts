@@ -133,14 +133,53 @@ describe('tapping a pin', () => {
     ).toBe('atc_shelters:abc')
   })
 
-  it('yields to the closure tape too, so one touch has one interpreter (#1374 review)', () => {
-    // closureLayers.ts states the order: warning, tape, pin, band, line.
-    // A shelter pin on closed trail is a tap on the closure; the card is a
-    // second tap away, and the two never open together.
+  it('opens a waypoint PIN standing on closed trail, rather than yielding the touch (#1419)', () => {
+    // THE ORDER CHANGED, and this test is where it was pinned the old way.
+    // closureLayers.ts now states: warning pin, waypoint PIN, tape, band,
+    // line. Before #1419 poiIdAt gave the whole touch to the tape under a
+    // comment promising "the card is a second tap away" - a second tap that
+    // never arrived, because it asks the identical question and gets the
+    // identical answer. CLOSURE_TAP_SLOP_PX is half a touch target, so at
+    // z14 that box reaches roughly 158 m either side of the line: every
+    // shelter and spring on a closed or warned stretch was unreachable by
+    // map tap, which is where a hiker most needs to know where water is.
     const map = buildMap()
     map.layerIds.push(CLOSURE_LAYER_ID)
     map.renderedFeatures.set(CLOSURE_LAYER_ID, [
       { properties: { [CLOSURE_ID_PROPERTY]: 'c1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBe(
+      'atc_shelters:abc',
+    )
+  })
+
+  it('still yields a DOT to the closure tape, which is a limit and not an oversight', () => {
+    // #1419's own closing note. POI_DOT_TAP_SLOP_PX is ~20 px against the
+    // tape's 22 - the same order, both ambient - so the "narrow beats wide"
+    // argument that moved the pin does not reach the dot. A spring at a zoom
+    // where it draws as a dot stays unreachable by tap on closed trail, and
+    // this pins that rather than letting it drift either way unnoticed.
+    const map = buildMap()
+    map.layerIds.push(CLOSURE_LAYER_ID)
+    map.layerIds.push(POI_DOT_LAYER_ID)
+    map.renderedFeatures.set(CLOSURE_LAYER_ID, [
+      { properties: { [CLOSURE_ID_PROPERTY]: 'c1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [dot('atc_springs:xyz', 10, 10)])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('still yields to the warning pin, which did not move', () => {
+    // The one mark that keeps the whole touch: it is the biggest pin on the
+    // map, drawn over the waypoints, and a person escalated it by hand.
+    const map = buildMap()
+    map.layerIds.push(WARNING_LAYER_ID)
+    map.renderedFeatures.set(WARNING_LAYER_ID, [
+      { properties: { [WARNING_ID_PROPERTY]: 'r1' } },
     ])
     map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
 

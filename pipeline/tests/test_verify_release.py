@@ -796,6 +796,34 @@ class TestAnArtifactAPhoneCannotHold:
         summary = [r for r in reports if r["key"] == "whole-fetched artifacts"][0]
         assert "2 within" in summary["detail"]
 
+    def test_a_hike_detail_is_weighed_without_being_declared(self):
+        """#1473 named these per hike rather than declaring one key each, so
+        without a pattern all 201 would SKIP with "the current client fetches
+        no such key" - which is the opposite of true: lib/useHikeDetail.ts
+        fetches one whole every time somebody opens a walk, and --strict
+        counts a skip as a failure.
+
+        Weighed rather than waved through, because the budget is not the only
+        ceiling: a detail is kept in the conditions cache, whose
+        MAX_CACHED_BYTES DELETES an oversize artifact rather than trimming it.
+        """
+        reports = check_launch_budget(
+            self._manifest(
+                **{
+                    "suggested_hikes_detail_50.json": 7_412,
+                    "suggested_hikes_detail_1234.json": self.BUDGET + 1,
+                    "suggested_hikes.json": 176_269,
+                }
+            ),
+            budget=self.BUDGET,
+            client_keys=frozenset({"suggested_hikes.json"}),
+        )
+
+        assert not [r for r in reports if r["state"] == SKIPPED], "a detail every phone fetches is not a skip"
+        assert [r["key"] for r in reports if r["state"] == FAILED] == ["suggested_hikes_detail_1234.json"]
+        summary = [r for r in reports if r["key"] == "whole-fetched artifacts"][0]
+        assert "2 within" in summary["detail"]
+
     def test_the_archives_are_read_by_range_and_not_weighed(self):
         reports = check_launch_budget(
             self._manifest(**{"dem.pmtiles": 275_601_483, "trails.fgb": 4_355_744}),

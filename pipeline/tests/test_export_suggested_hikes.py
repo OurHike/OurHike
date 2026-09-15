@@ -421,6 +421,61 @@ def test_a_stale_detail_from_an_earlier_run_is_not_left_behind(sandbox):
     assert sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json")) == ["7.json"]
 
 
+def test_an_id_this_scheme_cannot_name_costs_the_run_and_not_the_last_good_one(sandbox):
+    """A bad id raises BEFORE anything is deleted, and takes the manifest with
+    it rather than leaving one that names files this run just removed.
+
+    Two ways to get this wrong and one of them is worse than the failure it
+    is reporting: a manifest naming deleted paths is read by publish.py on
+    the NEXT run and aborts the whole vector-data upload, where a missing
+    manifest is read as "this run published no prose" and costs the release
+    its prose alone.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    kept = sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json"))
+    assert kept == ["7.json"]
+
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        exporter.write_details([{"id": "nynjtc_favorite_hikes:hike-vista-loop-trail"}])
+    # And the other half of the same gate: a bare number is an id the client
+    # answers null for, so writing its detail would publish prose nothing can
+    # ask for.
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        exporter.write_details([{"id": "50"}])
+
+    assert sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json")) == kept, (
+        "the check runs before the delete, so a bad id leaves the last good run intact"
+    )
+    assert exporter.DETAIL_MANIFEST_PATH.exists(), "nothing was deleted, so the manifest still describes what is there"
+
+
+def test_a_manifest_never_outlives_the_files_it_names(sandbox):
+    """The manifest goes first, so a crash between the delete and the rewrite
+    leaves publish.py with no manifest rather than one pointing at nothing."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    named = json.loads(exporter.DETAIL_MANIFEST_PATH.read_text())["artifacts"]
+    assert all(pathlib.Path(entry["path"]).exists() for entry in named.values())
+
+    # Every id checks out, so this run reaches the delete - and dies there,
+    # the way a killed CI job would.
+    def die(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    original = exporter.sha256_file
+    exporter.sha256_file = die
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            exporter.write_details([{"id": f"{SOURCE_KEY}:7"}])
+    finally:
+        exporter.sha256_file = original
+
+    assert not exporter.DETAIL_MANIFEST_PATH.exists(), (
+        "publish.py reads a missing manifest as 'no prose this run'; one naming deleted paths aborts the publish"
+    )
+
+
 def test_the_provenance_fields_are_spelled_the_way_the_client_reads_them(sandbox):
     """The point of #1427 reaching a phone at all. These three were added to
     `validDetail` in the same pull request; if either side is renamed, an

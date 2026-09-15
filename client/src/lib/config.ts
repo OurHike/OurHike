@@ -569,8 +569,10 @@ export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
  * phone is holding rather than trimming it - so the publish that crossed it
  * would have emptied the shelf offline on every phone, with no warning and
  * no partial list. Measured over the 201 records published on 2026-09-15,
- * `description` was 70% of the bytes and `directions` another 7.6%: prose the
- * shelf and the finder never read.
+ * `description` was 58.1% of the bytes and `directions` another 6.6%: prose
+ * the shelf and the finder never read. The shelf is 176,303 B now - 877.1 B
+ * a record against 8,477, so ~2,391 hikes fit under the ceiling where 247
+ * did.
  *
  * ONE OBJECT PER HIKE, not a shard, because a hiker opens one walk. The SHELF
  * is what gets cut into 1-degree coverage cells, being the artifact that

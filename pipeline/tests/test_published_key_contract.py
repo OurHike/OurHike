@@ -49,6 +49,7 @@ from pathlib import Path
 
 import pytest
 
+import export_suggested_hikes
 import publish
 from lib.poi_schema import POI_TYPES
 from lib.r2_keys import validate_key
@@ -229,6 +230,15 @@ def client_keys() -> dict[str, str]:
     # go unnoticed here until somebody opened a day hike.
     keys.update(client_graph_cell_keys())
 
+    # One hike's prose (#1473), named per hike by `suggestedHikeDetailKey`.
+    # THE QUIETEST 404 IN THIS FILE, quieter even than the graph cells: a
+    # missing detail is indistinguishable from a publisher who said nothing
+    # more, which is a state the screen was deliberately built around. So a
+    # spelling drift between the exporter's DETAIL_KEY and config.ts's builder
+    # would 404 every hike's prose forever, on every phone, and NOTHING would
+    # look wrong - not a console error, not an empty list, not a suite.
+    keys.update(client_suggested_hike_detail_keys())
+
     for poi_type in client_poi_types():
         keys[poi_format.format(type=poi_type)] = f"config.ts poiKey('{poi_type}')"
 
@@ -273,6 +283,30 @@ def client_graph_cell_keys(cell: str = "n41w075") -> dict[str, str]:
     return keys
 
 
+#: The hike whose detail both halves of the suggested-hikes contract name.
+#: Arbitrary and shared, the way `n41w075` is for the graph cells: the
+#: question is the SPELLING either side builds, not which hike it is.
+SAMPLE_HIKE_NUMBER = "50"
+
+
+def client_suggested_hike_detail_keys(number: str = SAMPLE_HIKE_NUMBER) -> dict[str, str]:
+    """The key `suggestedHikeDetailKey` builds for one hike, read from its
+    template literal rather than restated - a third copy of the spelling is
+    the thing this file guards against. The other end is the `published`
+    fixture below, which writes export_suggested_hikes.DETAIL_KEY's own
+    answer for the same hike."""
+    source = _read(CONFIG)
+    match = re.search(
+        r"export const suggestedHikeDetailKey = \([^)]*\)[^`]*`([^`]+)`",
+        source,
+        re.DOTALL,
+    )
+    assert match, "config.ts no longer defines suggestedHikeDetailKey where this test can read it"
+    key = match.group(1).replace("${id}", number)
+    assert "${" not in key, f"suggestedHikeDetailKey's template has a placeholder this test does not fill: {match.group(1)}"
+    return {key: f"config.ts suggestedHikeDetailKey('{number}')"}
+
+
 @pytest.fixture
 def published(tmp_path, monkeypatch) -> set[str]:
     """The keys a fully-populated pipeline run would upload.
@@ -309,6 +343,13 @@ def published(tmp_path, monkeypatch) -> set[str]:
     # The suggested hikes (#1290): one manifest, one root artifact, the
     # shape highlights_manifest.json takes.
     (tmp_path / "suggested_hikes_manifest.json").write_text(json.dumps(manifest_entry("suggested_hikes.json")))
+    # ...and one hike's prose beside it (#1473), named by the exporter's own
+    # DETAIL_KEY rather than by a spelling typed here, so this end of the
+    # contract cannot drift from the exporter either.
+    detail_name = export_suggested_hikes.DETAIL_KEY.format(id=SAMPLE_HIKE_NUMBER)
+    (tmp_path / "suggested_hikes_detail_manifest.json").write_text(
+        json.dumps({"artifacts": {detail_name: manifest_entry(detail_name)}, "generated_at": "2026-09-15T00:00:00Z"})
+    )
     (tmp_path / "spurs_manifest.json").write_text(json.dumps(manifest_entry("spurs.json")))
     # The tombstones (#673). This fixture is "one of every artifact" and was
     # missing this one, so the key looked unpublished the moment the client

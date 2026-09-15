@@ -122,16 +122,19 @@ DETAIL_KEY = "suggested_hikes_detail_{id}.json"
 #: The shelf was 1.70 MB of 2 MB and the ceiling is a CLIFF, not a slope:
 #: conditionsCache.ts deletes the copy it holds rather than trimming it, so
 #: the run the artifact crosses 2 MB is the run every phone loses the shelf
-#: offline. Measured over the 201 published records, `description` alone was
-#: 70% of the bytes and `directions` another 7.6% - prose the shelf and the
-#: finder never read.
+#: offline. Measured 2026-09-15 by rebuilding the artifact without each
+#: field, over the 201 published records and in the shape that shipped:
+#: `description` was 989,145 B of the 1,703,940 (58.1%) and `directions`
+#: another 111,945 (6.6%) - prose the shelf and the finder never read.
 #:
-#: MEASURED, same 201 records:
-#:     what the client reads today          0.122 MB   7.1%
-#:     + the three provenance fields        0.143 MB   +106 B/record
-#:     + the finder fields and the tags     0.191 MB   +240 B/record
-#: 951 B a record leaves room for ~2,205 hikes under the ceiling, against 236
-#: on the old shape.
+#: MEASURED, same 201 records, each rung the artifact rebuilt with that
+#: much of this list and dumped the way it ships (compact):
+#:     what the client reads today          111,380 B   554.1 B/record
+#:     + the three provenance fields        131,447 B   +99.8 B/record
+#:     + the finder fields and the tags     176,303 B  +223.2 B/record
+#: The last rung IS the published shelf, byte for byte. 877.1 B a record
+#: leaves room for ~2,391 hikes under the ceiling, against 247 on the old
+#: shape - and the export is 385 hikes today.
 #:
 #: THREE CHOICES IN THIS LIST ARE NOT OBVIOUS:
 #:
@@ -400,25 +403,53 @@ def write_details(details: list[dict]) -> dict[str, dict]:
     vector-data publish on one bad name, so a source whose ids are not numbers
     would take the trails down with it - and it would do so a run later, in a
     workflow log, rather than here beside the reason.
+
+    THE ORDER OF THE THREE STEPS IS THE CARE HERE, because the manifest and
+    the files it names are two objects a crash can separate:
+
+    1. Every id is checked BEFORE anything is deleted, so a bad one raises
+       with the directory and the manifest still describing the last good
+       run rather than half-emptied against a manifest that no longer
+       matches it.
+    2. The old manifest goes BEFORE the old files, so the window where one
+       is stale against the other never opens. publish.py reads a missing
+       manifest as "this run published no prose" and uploads the shelf alone
+       - every hike reading as a publisher who said nothing more, a state
+       the screen was built for. A manifest naming deleted paths is not a
+       state anything was built for: it aborts the publish.
+    3. Only then the files, and main() rewrites the manifest last.
+
+    So a run killed partway costs this release its prose and nothing else.
     """
+    numbered = []
+    for detail in details:
+        # The record id is "<source>:<n>"; the key is the number alone, which
+        # is what the client has on the shelf record and can build a URL from
+        # without knowing this pipeline's naming.
+        #
+        # CHARACTER FOR CHARACTER lib/suggestedHikesData.ts's `detailKeyFor`,
+        # because the two build the same string from opposite ends of the
+        # wire and a gate that is merely similar publishes objects nobody
+        # asks for. Both take everything after the LAST colon, both require
+        # that a colon was there, and both require digits: `50` alone is a
+        # record the client will not fetch, and `hike-vista-loop-trail` - the
+        # retired scraper's shape - builds a name NAME_PATTERN rejects.
+        source, colon, number = detail["id"].rpartition(":")
+        if not colon or not source or not number.isdigit():
+            raise ValueError(
+                f"{detail['id']!r} is not '<source>:<number>', so lib/suggestedHikesData.ts's detailKeyFor "
+                f"would answer null for it and no phone would ever fetch the detail this would write"
+            )
+        numbered.append((number, detail))
+
+    DETAIL_MANIFEST_PATH.unlink(missing_ok=True)
     if DETAIL_DIR.exists():
         for stale in DETAIL_DIR.glob("*.json"):
             stale.unlink()
     DETAIL_DIR.mkdir(parents=True, exist_ok=True)
 
     artifacts: dict[str, dict] = {}
-    for detail in details:
-        # The record id is "<source>:<n>"; the key is the number alone, which
-        # is what the client has on the shelf record and can build a URL from
-        # without knowing this pipeline's naming. Digits only, the same gate
-        # lib/suggestedHikesData.ts's `detailKeyFor` keeps: a hyphenated id -
-        # the retired scraper's shape - builds a name NAME_PATTERN rejects.
-        number = detail["id"].split(":", 1)[-1]
-        if not number.isdigit():
-            raise ValueError(
-                f"{detail['id']!r} has no numeric id after the colon, so its detail cannot be named "
-                f"{DETAIL_KEY.format(id=number)!r} - see lib/r2_keys.py's NAME_PATTERN"
-            )
+    for number, detail in numbered:
         path = DETAIL_DIR / f"{number}.json"
         path.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         artifacts[DETAIL_KEY.format(id=number)] = {
@@ -529,9 +560,11 @@ def main() -> dict | None:
         return None
 
     # #1473: the shelf keeps SHELF_FIELDS, every hike's prose becomes its own
-    # object. Written before the shelf is, so a run that dies partway leaves
-    # the OLD shelf beside whatever details it managed - a stale-but-whole
-    # pair, rather than a new shelf pointing at prose that is not there yet.
+    # object. Written before the shelf is, so a run that dies between the two
+    # leaves the OLD shelf beside NO detail manifest - see write_details for
+    # why that is the safe pairing. The reverse order would publish a new
+    # shelf whose every hike points at prose that is not there yet, which on
+    # a phone reads as 201 publishers who said nothing more.
     full = document["hikes"]
     details = []
     document = {**document, "hikes": []}

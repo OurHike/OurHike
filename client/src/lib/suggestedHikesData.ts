@@ -338,19 +338,41 @@ export async function fetchHikeDetail(
     const document: unknown = await response.json()
     if (typeof document !== 'object' || document === null) return null
     if (!saysItIs(document as Record<string, unknown>, id)) return null
-    const detail = validDetail(document)
-    if (detail === undefined) return null
+    // KEPT BEFORE IT IS JUDGED, the way fetchSuggestedHikes keeps the shelf:
+    // whether `validDetail` found a field worth printing is a question about
+    // what to SHOW, not about whether the bytes arrived. A detail carrying
+    // only its own id - a publisher who said nothing beyond the shelf - reads
+    // as undefined here, and returning before this line would refetch it on
+    // every single open, forever, for exactly the hikes with the least to
+    // say. `saysItIs` is the one gate that stays in front: prose belonging to
+    // another walk is not this walk's to keep.
     await rememberPublished(
       suggestedHikeDetailKey(number),
       document as Record<string, unknown>,
     )
+    const detail = validDetail(document)
+    if (detail === undefined) return null
     return detail
   } catch {
     return null
   }
 }
 
-/** The last detail for this hike that reached the phone, validated again. */
+/**
+ * The last detail for this hike that reached the phone, validated again.
+ *
+ * ONE ENTRY PER HIKE SOMEBODY OPENED, and nothing prunes them - which is a
+ * decision rather than an omission, given this whole split exists over a byte
+ * ceiling. conditionsCache.ts's MAX_CACHED_BYTES is PER ARTIFACT, not per
+ * store, so it bounds one detail and not the family: the largest of the 201
+ * published on 2026-09-15 is 10,086 B, 0.48% of it. What bounds the family is
+ * how many walks a hiker opened - all 385 would be about 2.3 MB, beside the
+ * 1.18 GB a downloaded map occupies - and the thing bought with it is that an
+ * already-read walk reads again with no signal.
+ *
+ * A hike dropped from a later export leaves its detail here forever. 6 kB of
+ * prose nothing can reach, because the shelf record that names it is gone.
+ */
 export async function recallHikeDetail(id: string): Promise<SuggestedHikeDetail | null> {
   const number = detailKeyFor(id)
   if (number === null) return null

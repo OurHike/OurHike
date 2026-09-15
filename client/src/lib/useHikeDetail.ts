@@ -5,7 +5,7 @@
 // a ceiling that DELETES the copy a phone holds rather than trimming it, so
 // the publish that crossed it would have emptied the shelf offline on every
 // phone at once. Measured over the 201 records published on 2026-09-15,
-// `description` alone was 70% of those bytes. The shelf now carries what the
+// `description` alone was 58.1% of those bytes. The shelf now carries what the
 // shelf and the finder read; this fetches the rest, for the one hike a hiker
 // actually opened.
 //

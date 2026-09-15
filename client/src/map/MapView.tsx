@@ -396,6 +396,16 @@ export interface MapViewProps {
    *  caller that has not thought about it does not open a GPS watch. */
   locationEnabled?: boolean
   /**
+   * Opens the report window from the map's own chrome (#1438, D15). Undefined
+   * leaves the control off - see mapChrome.ts for why a door with nowhere to
+   * go is not drawn at all.
+   *
+   * Must be stable across renders (useCallback): the chrome effect below
+   * re-attaches every control when this changes, and a handler minted per
+   * render would tear three controls down and rebuild them on each one.
+   */
+  onReport?: (() => void) | undefined
+  /**
    * Which theme the canvas is drawn in - see map/style.ts's mapBackdrop.
    *
    * Resolved by the shell (lib/useTheme.ts) rather than read here, for the
@@ -547,6 +557,7 @@ export function MapView({
   showZoomButtons = false,
   units = 'imperial',
   locationEnabled = false,
+  onReport,
   theme = 'light',
   themeChoice = 'auto',
   mapStyle = 'field',
@@ -804,8 +815,13 @@ export function MapView({
     // to stay synchronous to keep returning its detach.
     const engine = loadedMapEngine()
     if (map === null || engine === null) return
-    return engine.attachMapChrome(map, { showZoomButtons, units, locationEnabled })
-  }, [map, showZoomButtons, units, locationEnabled])
+    return engine.attachMapChrome(map, {
+      showZoomButtons,
+      units,
+      locationEnabled,
+      onReport,
+    })
+  }, [map, showZoomButtons, units, locationEnabled, onReport])
 
   // The appearance's half of the same promise, and the widest one: it
   // repaints the backdrop, the archive's dimming, the trail's ink and every

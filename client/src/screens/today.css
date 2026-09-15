@@ -488,21 +488,80 @@
   text-align: center;
 }
 
-/* The crew row (#1133): report a problem, and say thanks, at equal width.
+/* THE DOORS AT THE FOOT OF THE COLUMN (#1438, frame 9b; #1133).
 
-   `flex: 1` is applied to the Button component through its `style` prop,
-   which lands because Button.jsx spreads `style` LAST over its own variant
-   and size rules. The design handoff warned it did not work in the
-   prototype's copy of that component and asked for wrapper elements instead
-   - checked against this one rather than taken on trust, and it does, so the
-   row is two buttons rather than two buttons inside two divs.
+   ONE ROW SHAPE FOR BOTH, which is how equal weight survives the eyebrow and
+   the sub-line. features/SAYING_THANKS.md commits these two to "the same
+   width and the same weight" - an outline beside a fill would say which is
+   the afterthought - so neither gets a treatment the other does not, and the
+   only difference between them is their words.
 
-   `align-items: stretch` so the two match height as well as width when one
-   label wraps and the other does not. */
-.today__crew {
+   A ROW RATHER THAN A PAIR OF PILLS. The line under each title is the point:
+   six of the eight report tiles behind this door had no line until #1373, and
+   the same argument applies one level up - "Report a problem" alone leaves a
+   hiker to guess whether a dry spring counts. Full width because the sentence
+   needs it, stacked because two of them side by side would wrap to three
+   lines each on a 340px frame.
+
+   SCROLLS WITH THE PAPER. Not fixed, not floating: the column's last content
+   before the outbox line, so it can never sit over the next-waypoint row a
+   walking hiker is reading. */
+.today__door-eyebrow {
+  margin: var(--space-4, 16px) 0 var(--space-2, 8px);
+  font-size: 11px;
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  color: var(--fg-3);
+}
+
+.today__doors {
   display: flex;
+  flex-direction: column;
   gap: var(--space-2, 8px);
-  align-items: stretch;
+}
+
+.today__door {
+  display: flex;
+  gap: var(--space-3, 12px);
+  align-items: center;
+  width: 100%;
+  min-height: var(--min-touch-target, 44px);
+  padding: var(--space-3, 12px);
+  font: inherit;
+  text-align: left;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-card, 10px);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+}
+
+.today__door:hover {
+  background: var(--bg-canvas);
+}
+
+.today__door-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.today__door-title {
+  font-weight: 600;
+}
+
+.today__door-sub {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--fg-2);
+}
+
+.today__door-chevron {
+  flex: none;
+  color: var(--fg-3);
 }
 
 /* What is still in the outbox, and the way to it.

@@ -342,62 +342,6 @@ describe('the rest of the column', () => {
     expect(hikesAt).toBeLessThan(journalAt)
   })
 
-  it('offers both halves of the crew relationship, at equal weight', async () => {
-    // THIS USED TO BE ONE BUTTON (#1133), reading "Note something for the
-    // crew", and saying thanks was the seventh row inside the problem picker
-    // under a list of hazards. Reporting a problem and thanking a maintainer
-    // are two sides of the same relationship - the volunteer card is directly
-    // above this row - and burying one under the other was costing it.
-    const onStartReport = vi.fn()
-    const onSayThanks = vi.fn()
-    const user = userEvent.setup()
-    render(<Today {...props({ onStartReport, onSayThanks })} />)
-
-    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
-    expect(onStartReport).toHaveBeenCalled()
-
-    await user.click(screen.getByRole('button', { name: 'Say thanks' }))
-    expect(onSayThanks).toHaveBeenCalled()
-  })
-
-  it('keeps the crew card and its two doors off the day-hike home', () => {
-    // The maintainer's read of the day-hike frame (2026-09-10): the card and
-    // the pair under it were two more sections to get mixed up in, on a page
-    // about today's walk. A day hiker reports from the map's press plate or
-    // from More; the other two modes keep both, and the outbox line stays
-    // everywhere because what is waiting to send is true whatever the day is
-    // for.
-    const { rerender } = render(
-      <Today {...props({ mode: 'day', queuedReportCount: 2 })} />,
-    )
-
-    expect(screen.queryByRole('button', { name: 'Report a problem' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Say thanks' })).toBeNull()
-    expect(screen.queryByText('The trail crew')).toBeNull()
-    expect(screen.getByTestId('today-outbox')).toHaveTextContent('2 waiting to send')
-
-    rerender(<Today {...props({ mode: 'long', queuedReportCount: 2 })} />)
-    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
-    expect(screen.getByText('The trail crew')).toBeInTheDocument()
-  })
-
-  it('gives the two buttons the same width to share', () => {
-    // The design handoff's own implementation note asked for this to be
-    // CHECKED rather than assumed: `flex: 1` did nothing in its prototype,
-    // because the Button copy there swallowed the style prop, and the two came
-    // out 176px against 129px. This app's Button spreads `style` last, so it
-    // lands - and this is the assertion that says so, because jsdom does no
-    // layout and a rendered-width check is not available here.
-    //
-    // Equal weight is the design intent; equal WIDTH is how a row of two
-    // solid fills actually delivers it.
-    render(<Today {...props()} />)
-
-    for (const name of ['Report a problem', 'Say thanks']) {
-      expect(screen.getByRole('button', { name })).toHaveStyle({ flex: '1' })
-    }
-  })
-
   it('says what is waiting, and gives it somewhere to go', () => {
     // The line existed before and was a paragraph: it said something a hiker
     // might want to act on, with nowhere to act. It now opens the volunteer
@@ -1115,5 +1059,111 @@ describe('a walk left open (#1373, frame 6d)', () => {
     cleanup()
     render(<Today {...props({ mode: 'day' })} />)
     expect(screen.queryByRole('region', { name: 'A walk is still open' })).toBeNull()
+  })
+})
+
+// --- The named door for reporting (#1438, frame 9b, D15) -------------------
+
+describe("Today's report door", () => {
+  // D15: reporting was a seventh encounter-only surface - a long press nobody
+  // is told about, or two taps into More -> Contribute. Today gets a named
+  // door because Today is the screen a hiker already has open when something
+  // is wrong in front of them, and the one screen in the app that is about
+  // right now.
+
+  function door(name: string): HTMLElement {
+    return screen.getByRole('button', { name: new RegExp(`^${name}`) })
+  }
+
+  it('is present in every mode, which is what makes it a door', async () => {
+    // The pair #1133 added was deliberately off the day-hike home (maintainer,
+    // 2026-09-10) - and that left a day hiker with the gesture and the errand
+    // and nothing named, which is the defect D15 is about. The maintainer's
+    // call was about the screen accumulating CREW sections; it is kept for the
+    // thanks half below, which is the half it was protecting.
+    for (const mode of ['day', 'long', 'volunteer'] as const) {
+      const onStartReport = vi.fn()
+      const user = userEvent.setup()
+      render(<Today {...props({ mode, onStartReport })} />)
+
+      await user.click(door('Report a problem'))
+      expect(onStartReport, `the report door under ${mode} mode`).toHaveBeenCalled()
+      cleanup()
+    }
+  })
+
+  it('says what a report is for, and that it works with no signal', () => {
+    // Verbatim from frame 9b. The second sentence is the one worth keeping:
+    // the commonest reason not to file from a ridge is believing it will fail.
+    render(<Today {...props()} />)
+
+    expect(door('Report a problem')).toHaveTextContent(
+      'A dry spring, a blowdown, a trail that is shut. Works with no signal.',
+    )
+    expect(screen.getByText('found something out here?')).toBeInTheDocument()
+  })
+
+  it('sits under the day rather than over it', () => {
+    // "Somebody on this screen is usually reading what is next, not filing,
+    // and a report row above the walk would be the app asking for work before
+    // it gives any." Asserted as DOM order against the journal, because jsdom
+    // does no layout and this is the fact the layout would express.
+    const { container } = render(<Today {...props()} />)
+
+    const journal = container.querySelector('.today__rule')
+    const reportDoor = door('Report a problem')
+    expect(journal).not.toBeNull()
+    expect(
+      journal!.compareDocumentPosition(reportDoor) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('scrolls with the column instead of floating over it', () => {
+    // "Never a floating button: it would cover the next-waypoint row it sits
+    // on, which is the row a walking hiker is reading." The door being inside
+    // the scrolling paper - rather than a sibling of it - is what says so.
+    const { container } = render(<Today {...props()} />)
+
+    expect(container.querySelector('.today__paper')).toContainElement(
+      door('Report a problem'),
+    )
+  })
+
+  it('keeps saying thanks at the same width and the same weight', () => {
+    // features/SAYING_THANKS.md: "beside 'Report a problem' at the same width
+    // and the same weight. The pair is the point ... an outline button beside
+    // a filled one would say, in the only language a button has, which of the
+    // two is the afterthought." Giving report a sub-line and an eyebrow is
+    // exactly the kind of change that could have broken that silently, so the
+    // two are the same component and this is what says so.
+    const { container } = render(<Today {...props({ mode: 'long' })} />)
+
+    const doors = Array.from(container.querySelectorAll('.today__door'))
+    expect(doors.map((d) => d.querySelector('.today__door-title')?.textContent)).toEqual([
+      'Report a problem',
+      'Say thanks',
+    ])
+  })
+
+  it('opens the thanks form from its own door', async () => {
+    const onSayThanks = vi.fn()
+    const user = userEvent.setup()
+    render(<Today {...props({ mode: 'long', onSayThanks })} />)
+
+    await user.click(door('Say thanks'))
+
+    expect(onSayThanks).toHaveBeenCalled()
+  })
+
+  it('keeps the thanks door off the day-hike home, and not the report door', () => {
+    // The 2026-09-10 call, narrowed to what it was actually protecting: a day
+    // hiker's home not accumulating crew sections. Thanking a crew is that;
+    // reporting a blowdown you are standing in front of is not.
+    render(<Today {...props({ mode: 'day', queuedReportCount: 2 })} />)
+
+    expect(screen.queryByRole('button', { name: /^Say thanks/ })).toBeNull()
+    expect(screen.queryByText('The trail crew')).toBeNull()
+    expect(door('Report a problem')).toBeInTheDocument()
+    expect(screen.getByTestId('today-outbox')).toHaveTextContent('2 waiting to send')
   })
 })

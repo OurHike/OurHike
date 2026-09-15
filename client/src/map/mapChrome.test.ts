@@ -7,7 +7,7 @@ import {
   resetMapLibreMock,
 } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { attachMapChrome } from './mapChrome'
+import { attachMapChrome, ReportControl } from './mapChrome'
 import { POI_PIN_MIN_ZOOM } from './poiLayers'
 
 // WIREFRAMES.md, map screen §5 and Interactions: compass is a
@@ -250,5 +250,113 @@ describe('the locate control, against the location preference (#312)', () => {
     })
 
     expect(() => detach()).not.toThrow()
+  })
+})
+
+describe('the report control, in the shared chrome (#1438, D15)', () => {
+  // D15: "Report a problem" gets a named door on exactly two screens - Today
+  // and the Map. The map's is a `report` control on the SHARED chrome, never a
+  // button drawn on one screen, because a control that is part of the chrome
+  // cannot become a control one map has and another does not. The long press
+  // keeps working and keeps raising PressPlate; what it stops being is the
+  // only way in.
+
+  function attach(onReport: (() => void) | undefined, locationEnabled = true) {
+    const m = map()
+    const detach = attachMapChrome(m, {
+      showZoomButtons: false,
+      units: 'imperial',
+      locationEnabled,
+      onReport,
+    })
+    return { m, detach }
+  }
+
+  function reportControl(m: MockMap): ReportControl {
+    const found = m.controls.find((c) => c.control instanceof ReportControl)
+    if (found === undefined) throw new Error('no report control attached')
+    return found.control as ReportControl
+  }
+
+  it('sits in the bottom-right stack with the controls a walking hiker reaches for', () => {
+    const { m } = attach(vi.fn())
+
+    expect(controlsOf(m, ReportControl)[0].position).toBe('bottom-right')
+  })
+
+  it('is absent when the shell has nowhere to send a report', () => {
+    // A door with nothing behind it is the control D10 forbids - one that
+    // looks pressable and is not. Absent is the honest shape.
+    const { m } = attach(undefined)
+
+    expect(controlsOf(m, ReportControl)).toHaveLength(0)
+  })
+
+  it('goes on BELOW locate, so the mid-walk controls stay nearest the thumb', () => {
+    // Order of addition is order down the stack in MapLibre, and the stack
+    // grows away from the thumb. Locate is what somebody uses while walking;
+    // filing a report is a thing you stop to do.
+    const { m } = attach(vi.fn())
+    const order = m.controls
+      .filter((c) => c.position === 'bottom-right')
+      .map((c) => c.control.constructor.name)
+
+    expect(order.indexOf('ReportControl')).toBe(order.length - 1)
+    expect(order.indexOf('ReportControl')).toBeGreaterThan(
+      order.indexOf('GeolocateControl'),
+    )
+  })
+
+  it('stays last in the stack when location is off and there is no locate', () => {
+    const { m } = attach(vi.fn(), false)
+    const order = m.controls
+      .filter((c) => c.position === 'bottom-right')
+      .map((c) => c.control.constructor.name)
+
+    expect(order).toEqual(['NavigationControl', 'ReportControl'])
+  })
+
+  it('wears the same chip as compass and locate rather than drawing its own', () => {
+    // THE ACCEPTANCE SENTENCE, asserted structurally because jsdom does no
+    // layout: it is "visually indistinguishable in size/radius/shadow from
+    // compass and locate". Those three properties come from maplibre-gl.css's
+    // `.maplibregl-ctrl-group` plus chrome.css's `--map-control-size` override,
+    // so the way to be indistinguishable is to be the same construction - a
+    // ctrl-group holding one button - and not a hand-set width and radius that
+    // agree with the neighbours until one of them changes.
+    const { m } = attach(vi.fn())
+    const container = reportControl(m).container
+
+    expect(container?.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['maplibregl-ctrl', 'maplibregl-ctrl-group']),
+    )
+    expect(container?.querySelectorAll('button')).toHaveLength(1)
+  })
+
+  it('says what it is, for a thumb and for a screen reader', () => {
+    const { m } = attach(vi.fn())
+    const button = reportControl(m).container?.querySelector('button')
+
+    expect(button?.getAttribute('aria-label')).toBe('Report a problem')
+    expect(button?.getAttribute('title')).toBe('Report a problem')
+    expect(button?.getAttribute('type')).toBe('button')
+  })
+
+  it('opens the report window when pressed', () => {
+    const onReport = vi.fn()
+    const { m } = attach(onReport)
+
+    reportControl(m).container?.querySelector('button')?.click()
+
+    expect(onReport).toHaveBeenCalledTimes(1)
+  })
+
+  it('comes off with the rest, so a remount cannot stack two', () => {
+    const { m, detach } = attach(vi.fn())
+    expect(controlsOf(m, ReportControl)).toHaveLength(1)
+
+    detach()
+
+    expect(m.controls).toHaveLength(0)
   })
 })

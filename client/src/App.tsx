@@ -7199,6 +7199,22 @@ function App() {
   )
 
   /**
+   * Open the six-tile report window (#1438, D15).
+   *
+   * `useCallback` rather than the inline arrow the other two doors use, and
+   * the reason is the map: map/MapView.tsx re-attaches the whole chrome when
+   * this identity changes, so a handler minted per render would tear down and
+   * rebuild compass, locate, report and the scale bar on every one.
+   *
+   * The window is where BOTH doors land, deliberately. The type is what the
+   * app asks first, and the location rides along - the fix for Today's row and
+   * for this one, the pressed point for the long press, a place's id when the
+   * report started from a card. A door that asked "where?" before "what?"
+   * would be a new step in front of a flow that already has the answer.
+   */
+  const handleStartReport = useCallback(() => setReporting({ step: 'window' }), [])
+
+  /**
    * Ask who is reporting, at most once a session and never twice over.
    *
    * Called from both paths that reach the step: straight after a report when
@@ -8968,7 +8984,7 @@ function App() {
       onOpenVolunteer={() => setMorePage('volunteer')}
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
-      onStartReport={() => setReporting({ step: 'window' })}
+      onStartReport={handleStartReport}
       // A thanks goes straight to its form rather than through the window: it
       // is not a problem, and the window is a list of problems
       // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
@@ -9332,7 +9348,7 @@ function App() {
                   onStepAwayFromHike={() => setStepAwayOpen(true)}
                   onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
                   onEditHike={() => setPickingHike(true)}
-                  onStartReport={() => setReporting({ step: 'window' })}
+                  onStartReport={handleStartReport}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   // The registry gets the gate moderation has (#1373, D4):
@@ -9873,6 +9889,10 @@ function App() {
               // attaching it regardless was a second high-accuracy watch and a
               // permission prompt behind this preference's back.
               locationEnabled={locationAllowed}
+              // THE MAP'S NAMED DOOR (#1438, frame 9c). Handed to the shared
+              // chrome rather than drawn on this screen, so it is the same
+              // control in the same place on every surface that mounts a map.
+              onReport={handleStartReport}
               closureAhead={closureAhead}
               advisoryAhead={advisoryAhead}
               warningsAhead={warningsAhead}

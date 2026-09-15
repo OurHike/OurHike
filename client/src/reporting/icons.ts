@@ -45,6 +45,10 @@ export type ReportIconName =
   | 'shield-alert'
   | 'heart-handshake'
   | 'camera'
+  // Not a category: the map chrome's report door (#1438, frame 9c). It lives
+  // in this table rather than beside the control because path data has one
+  // home here, and the Lucide notice above already covers it.
+  | 'flag'
 
 /** The inside of each 24x24 `viewBox`, verbatim from Lucide. */
 export const REPORT_ICONS: Record<ReportIconName, string> = {
@@ -66,6 +70,7 @@ export const REPORT_ICONS: Record<ReportIconName, string> = {
     '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path> <path d="M12 8v4"></path> <path d="M12 16h.01"></path>',
   'heart-handshake':
     '<path d="M19.414 14.414C21 12.828 22 11.5 22 9.5a5.5 5.5 0 0 0-9.591-3.676.6.6 0 0 1-.818.001A5.5 5.5 0 0 0 2 9.5c0 2.3 1.5 4 3 5.5l5.535 5.362a2 2 0 0 0 2.879.052 2.12 2.12 0 0 0-.004-3 2.124 2.124 0 1 0 3-3 2.124 2.124 0 0 0 3.004 0 2 2 0 0 0 0-2.828l-1.881-1.882a2.41 2.41 0 0 0-3.409 0l-1.71 1.71a2 2 0 0 1-2.828 0 2 2 0 0 1 0-2.828l2.823-2.762"></path>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path> <path d="M4 22v-7"></path>',
   camera:
     '<path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"></path> <circle cx="12" cy="13" r="3"></circle>',
 }

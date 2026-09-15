@@ -653,9 +653,9 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
     // `flowScreen`, which is what would destroy the map - and a test that
     // costs one click is worth keeping against that.
     aPhoneThatHasBeenUsed()
-    // On a long hike: the day-hike home has no report door of its own since
-    // the maintainer's read of its frame (2026-09-10), and the other two
-    // modes keep the pair this test opens the window from.
+    // On a long hike, which is now incidental rather than required: since
+    // #1438 the report door is on Today in every mode. Left as it was so this
+    // test keeps driving the same screen it always has.
     store.set(HIKER_MODE_KEY, 'long')
     const user = userEvent.setup()
     render(<App />)
@@ -667,7 +667,10 @@ describe('what the tab bar costs after the cold start (#1081)', () => {
     const built = MockMap.live[0]
 
     await user.click(screen.getByRole('tab', { name: 'Today' }))
-    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    // A prefix rather than the whole name: the door is a row since #1438, and
+    // its accessible name carries the line under the title the way More's
+    // rows do.
+    await user.click(screen.getByRole('button', { name: /^Report a problem/ }))
     // The window is over the screen rather than instead of it, and the map
     // survives underneath both.
     await screen.findByRole('dialog', { name: 'What did you find?' })

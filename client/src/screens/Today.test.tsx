@@ -1334,6 +1334,24 @@ describe('Today in volunteer mode is the crews screen', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Map' })).toBeNull()
   })
+
+  it('keeps a door to the hiker\u2019s own half, which the card used to be', () => {
+    // D22 splits the two - Today answers "what is happening", the volunteer
+    // page answers "what have I done, and what can I hand back" - and the
+    // card this section replaced was the door to the second. Dropping both
+    // would have left a volunteer's own work reachable only from the More
+    // tab, and "summonable" is the review's own word for anything holding it.
+    const onOpenVolunteer = vi.fn()
+    render(
+      <Today
+        {...crewProps({ mode: 'volunteer', opportunities: [crew()], onOpenVolunteer })}
+      />,
+    )
+
+    screen.getByRole('button', { name: /^Your hours, and the places/ }).click()
+
+    expect(onOpenVolunteer).toHaveBeenCalled()
+  })
 })
 
 describe('crews while you are walking', () => {

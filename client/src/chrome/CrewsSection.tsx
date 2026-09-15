@@ -71,6 +71,19 @@ export interface CrewsSectionProps {
   todayWalk: WalkSpan | null
   /** Open the Map tab with the workday layer on. Absent draws no door. */
   onSeeCrewsOnMap?: (() => void) | undefined
+  /**
+   * Open the hiker's own half - the conditions toggle, the places they
+   * passed, their hours, the private record (D22).
+   *
+   * THE DOOR THE CARD USED TO BE. In volunteer mode this section replaces a
+   * card whose tap went to that page, and dropping the card without
+   * replacing the door would have left a volunteer's own work reachable only
+   * by the More tab. More's row is guaranteed in every mode (D23), so it was
+   * never lost - but "summonable" is the review's own word for anything
+   * holding a hiker's own work (D5), and one tab away from the screen they
+   * live on is not the same as on it.
+   */
+  onOpenVolunteer: () => void
 }
 
 export function CrewsSection({
@@ -81,6 +94,7 @@ export function CrewsSection({
   gpsMile,
   todayWalk,
   onSeeCrewsOnMap,
+  onOpenVolunteer,
 }: CrewsSectionProps) {
   /**
    * THIS SECTION'S OWN STATE.
@@ -427,6 +441,13 @@ export function CrewsSection({
             See the crews on the map ›
           </button>
         )}
+        {/* The other half of the split, and the way to it. This screen
+            answers "what is happening"; that page answers "what have I done,
+            and what can I hand back" - the conditions toggle, the places you
+            passed, your hours, the private record. */}
+        <button type="button" className="today__crew-map" onClick={onOpenVolunteer}>
+          Your hours, and the places you passed ›
+        </button>
       </section>
     )
   })()

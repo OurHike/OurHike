@@ -610,6 +610,7 @@ export function Today({
       gpsMile={gpsMile}
       todayWalk={todayWalk}
       onSeeCrewsOnMap={onSeeCrewsOnMap}
+      onOpenVolunteer={onOpenVolunteer}
     />
   )
 

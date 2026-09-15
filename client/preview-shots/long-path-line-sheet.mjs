@@ -25,11 +25,21 @@
 //
 // WHAT THE THIRD HONEST FRAME IS, AND WHY IT IS NOT A BROKEN SHOT. The climb
 // half only reaches the bucket on a publish run with include_elevation
-// ticked, which defaults to off - so a preview built against a bucket whose
-// last elevation run predates the current graph shows the sheet with its
-// length and park and NO climb row at all. That is this change's own
-// "no figures on this phone" state rendered correctly, and it is the state
-// most previews will photograph until an elevation publish lands.
+// ticked, which defaults to off. MEASURED rather than predicted, against
+// the release the preview pins (2026-09-14, read from the manifest
+// 2026-09-15): 505 `trail_graph_cell_*`, 505 `trail_graph_geometry_cell_*`,
+// and ZERO `trail_graph_elevation_cell_*` - cut_trail_graph.py refusing to
+// cut a companion written for an earlier graph. So the sheet draws with no
+// climb row at all, which is this change's own "no figures on this phone"
+// state rendered correctly, and it is what every preview photographs until
+// an elevation publish lands.
+//
+// AND NO LENGTH OR PARK EITHER, on this particular line - the frame of
+// 2026-09-15 shows neither, so the tapped Long Path feature publishes no
+// `Miles` and no unit name. That is the sheet's omit-rather-than-placeholder
+// rule working (lib/lineDetail.ts's extentLine collapses to null when both
+// halves are absent), and this comment says so because an earlier version of
+// the caption promised a length that is not there.
 //
 // A TAP AT THE CAMERA'S OWN CENTRE, because a drive cannot aim a canvas
 // click at a line unless it knows what is under the pixel - and it does,
@@ -61,9 +71,9 @@
 // pipelines section exists to track.
 
 export const caption =
-  'The Long Path’s line sheet, which since #1476 says how much the trail CLIMBS under how far it goes — “+x ft / −y ft” and the sentence saying it is an estimate — wherever this preview’s bucket carries the graph cell’s climb half; no climb row at all where it does not, which is that change’s own honest absence; and the bare map over the Palisades until nearby_trails.pmtiles is there at all'
+  'The Long Path’s line sheet. Since #1476 it says how much the trail CLIMBS — “+x ft / −y ft” and a line saying that is an estimate — but ONLY where the bucket carries the graph cell’s climb half, and release 2026-09-14 carries 505 graph cells, 505 geometry cells and zero elevation ones (read 2026-09-15). So the frame to expect today is the sheet WITHOUT a climb row, which is that change’s own honest absence rendered correctly; the row appears on the first preview built after an include_elevation publish'
 export const alt =
-  'Either the tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, the Long Path’s round logo beside the words “Long Path” again, its length and park, then a climb figure written as plus-feet over minus-feet with a note under it saying climb is an estimate, and a line saying the data is from the New York-New Jersey Trail Conference; or the same sheet with no climb row where this build’s bucket has no per-edge climb; or, where this build has no network archive at all, the map over the Palisades crest with no trail line to tap.'
+  'The tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, the Long Path’s round logo beside the words “Long Path” again, and a line saying the data is from the New York-New Jersey Trail Conference. Where this build’s bucket carries per-edge climb, a climb figure written as plus-feet over minus-feet sits above that with a note under it saying climb is an estimate; where it does not, there is no such row. Where the build has no network archive at all, there is no sheet: just the map over the Palisades crest with no trail line to tap.'
 
 /** Vector tiles from the bucket plus contours over a cliff take longer than
  *  chrome; the sheet is waited on by the drive, this is the settle after. */

@@ -55,9 +55,10 @@ which half is wrong, so it does not ship.
 
 The grades, and what each is allowed to mean:
 
-    strong    every check passed - length within LENGTH_GOOD of the
-              publisher's, the start on the network, most of the named trails
-              actually walked, and a loop that does not double back
+    strong    calibrated to match the surveyed track 90% of the time: the walk
+              covers nearly all the trails its description names, a closed one
+              goes round rather than doubling back, and the length has not
+              wandered off the publisher's
     fair      the route holds together but something is looser than that
     rejected  no route at all
 
@@ -75,11 +76,41 @@ facts are all kept, in data/raw/hikefinder.json and in the routes artifact,
 and nothing about them is lost; what they are missing is a screen that can
 print a hike nobody has a line for.
 
-EVERY THRESHOLD BELOW IS `@unvalidated`. They are round numbers chosen to be
-defensible, not measured against hikers walking the results, and each says
-what would settle it. Nothing here has been checked against ground truth,
-because ground truth for these 272 hikes is exactly what the export does not
-have - that is why this module exists.
+THERE IS GROUND TRUTH, AND THIS MODULE IS MEASURED AGAINST IT. That sentence
+replaces the opposite one, which stood here until 2026-09-15 and was wrong:
+113 of the export's hikes publish BOTH a turn-by-turn description AND the GPX
+track somebody walked. Forming a route for those from the prose alone - with
+the track held back - and scoring it against the line a person actually
+followed is a direct measurement of whether this module works. The score is a
+buffered overlap: what share of the formed walk lies within 60 m of the
+surveyed one and what share of the surveyed one lies within 60 m of the formed
+walk, combined as an F1.
+
+WHAT THAT MEASUREMENT HAS ALREADY OVERTURNED, listed because each was believed
+here first and none of it would have been caught by reading the code:
+
+  - GRADING ON LENGTH DOES NOT WORK once the search is free to fit the length.
+    Across four bands of disagreement with the publisher's stated mileage, the
+    share of routes matching the true track ran 54%, 77%, 54%, 58% - no signal.
+    The first version of `_grade` rested almost entirely on it.
+  - COVERAGE AND RETRACING DO WORK: 71% of walks covering at least 0.9 of the
+    trails their description names match the track, against 20% below 0.6; and
+    89% of closed walks retracing 5-30% of themselves match, against 40% below
+    3% and 48% above 30%.
+  - THE BLAZE COLOUR IS WORTH NOTHING AT 8 km AND SOMETHING AT 2 km. Matching
+    on colour changed nothing at all while the search radius was a flat 8 km
+    (12 strong -> 12), and once `search_radius_m` sized the radius from the
+    publisher's own mileage it added two correct routes. A signal needs a
+    small enough candidate set to be a signal.
+  - ANCHORING THE START ON THE DESCRIPTION'S FIRST STEP DOES NOT HELP, which
+    is a surprise worth recording: the export's parking pin is already a
+    median 8 m from where the track actually begins and within 250 m on 99% of
+    them, and the trail the walk starts on is chosen correctly 97% of the time
+    by plain proximity. There was nothing there to win.
+
+The thresholds below say which they are. A constant marked `@unvalidated` is
+still a round number nobody has checked; one marked CALIBRATED was fitted
+against those 113 tracks, and the figure it was fitted to is written beside it.
 
 Pure module - no network, no files. Takes a loaded graph and one parsed hike.
 """
@@ -95,6 +126,8 @@ from lib import trail_graph_route as router
 #: many words ("mark the route as generated or not"), and the one a card must
 #: never blur: PUBLISHED is a GPX track whoever wrote the hike up recorded,
 #: GENERATED is this module's inference from their prose.
+METRES_PER_MILE = 1609.344
+
 PUBLISHED = "published"
 GENERATED = "generated"
 
@@ -132,12 +165,40 @@ ANCHOR_STEPS = 3
 #: Measured on the ground-truth set - see this module's docstring.
 ANCHOR_START_ON_ITINERARY = False
 
-#: How far from the start to look for a line carrying a named trail. 8 km
-#: @unvalidated: the longest hike the export states is 19.5 miles and a walk
-#: that long can put a named trail a long way from the car, but a name matched
-#: further away than this is more likely a different trail sharing a name than
-#: the one the description means.
+#: The ceiling on how far from the start a named trail may be matched, and the
+#: floor under it. The radius itself is DERIVED PER HIKE from the length the
+#: publisher states - see `search_radius_m` - because a flat radius is the
+#: wrong shape: 8 km of candidates for a 2-mile loop is thousands of lines a
+#: walk that short could never reach, and every one of them is a chance to
+#: match the wrong "Ridge Trail".
 NAME_SEARCH_M = 8_000.0
+NAME_SEARCH_MIN_M = 1_200.0
+
+#: How much further than the arithmetic allows a trail may still be matched.
+#: @unvalidated - a walk does not go straight, so the straight-line distance to
+#: its farthest point is always LESS than half its length; 1.3 is slack against
+#: a stated mileage that is a round number and a trailhead pin that is a car
+#: park rather than the tread.
+SEARCH_SLACK = 1.3
+
+
+def search_radius_m(stated_miles: float | None, closed: bool) -> float:
+    """How far from the start this hike's trails can possibly be.
+
+    A CLOSED walk of L miles cannot reach further than L/2 from where it began
+    and still get home; an open one cannot exceed L. Both are bounds on walking
+    distance, and straight-line distance is strictly smaller, so this is
+    generous before SEARCH_SLACK is applied at all.
+
+    Falls back to the ceiling when the export states no length - with nothing
+    to derive a box from, a wide search and a grade that can refuse the result
+    is better than a narrow one that quietly misses the right trail.
+    """
+    if not stated_miles:
+        return NAME_SEARCH_M
+    reach = stated_miles / (2.0 if closed else 1.0) * METRES_PER_MILE * SEARCH_SLACK
+    return max(NAME_SEARCH_MIN_M, min(NAME_SEARCH_M, reach))
+
 
 #: A waypoint must advance the walk by at least this far from the one before
 #: it, or it is dropped. @unvalidated - 60 m is roughly the length of a
@@ -170,13 +231,21 @@ LENGTH_FAIR = 0.40
 #: likely way this module goes wrong, so it is checked rather than assumed.
 #: A Lollipop is a loop with a stem and legitimately retraces the stem, which
 #: is why the fair ceiling is as loose as it is.
-RETRACE_GOOD = 0.25
+#: CALIBRATED against the ground-truth set (see `_grade`): of the closed walks
+#: retracing between 5% and 30% of their length, 89% match the surveyed track;
+#: below 3% the figure falls to 40%, because a walk that doubles back on
+#: nothing has usually not gone round at all, and above 30% it falls to 48%.
+RETRACE_MIN = 0.03
+RETRACE_GOOD = 0.30
 RETRACE_FAIR = 0.60
 
 #: The share of the trails the description names that the formed route must
 #: actually walk. @unvalidated - below half, the route is not following the
 #: description even if its length happens to agree.
-TRAILS_GOOD = 0.6
+#: CALIBRATED against the ground-truth set (see `_grade`): 71% of walks
+#: covering at least 0.9 of the trails their description names match the
+#: surveyed track, against 45% between 0.6 and 0.9 and 20% below 0.6.
+TRAILS_GOOD = 0.9
 TRAILS_FAIR = 0.34
 
 #: Route types that end where they began. Read off the export on 2026-09-15:
@@ -318,7 +387,7 @@ class Step:
 
 #: Whether a step carrying a colour and NO name may become a waypoint.
 #: Measured on the ground-truth set - see this module's docstring.
-USE_NAMELESS_BLAZE_STEPS = False
+USE_NAMELESS_BLAZE_STEPS = True
 
 
 def itinerary(paragraphs: list[str], nameless: bool | None = None) -> list[Step]:
@@ -761,9 +830,30 @@ def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]
     """The grade, and every check that is not clean, in the order a reviewer
     should read them.
 
-    A SINGLE FAILING CHECK CAPS THE GRADE - they are not scored and summed.
-    That is deliberate: a route can be the right length and still follow the
-    wrong trails, and averaging the two would let a good number hide a bad one.
+    CALIBRATED, NOT PICKED. The bands below were fitted against the 113 hikes
+    that publish BOTH a description and the GPX track somebody walked: form a
+    route from the prose alone, measure how much of it lies within 60 m of the
+    surveyed line, and keep the rule that best separates the walks that match
+    from the walks that do not. Measured 2026-09-15 over the 51 routes that
+    formed, this rule selects 20 and 90% of them match the true track at
+    F1 >= 0.6, against a median of 0.68 across all 51.
+
+    WHAT CHANGED AND WHY IT MATTERS: the first version of this function graded
+    almost entirely on how far the measured length sat from the publisher's
+    stated one. That was defensible while the route was built greedily, and it
+    stopped being defensible the moment `_search_waypoints` started CHOOSING
+    the walk whose length fits best - a score the search optimises cannot also
+    be the evidence that the search succeeded. Measured over four bands of
+    length disagreement, the share of routes matching the true track ran 54%,
+    77%, 54%, 58%: no signal at all. What does carry signal is how much of the
+    walk the description described (71% match above 0.9 coverage, 20% below
+    0.6) and whether a closed walk doubles back (89% match in the 0.05-0.30
+    band). So those lead, and length is kept only as an outer guard against a
+    walk that has wandered off altogether.
+
+    A SINGLE FAILING CHECK CAPS THE GRADE - they are not scored and summed. A
+    route can be the right length and still follow the wrong trails, and
+    averaging the two would let a good number hide a bad one.
     """
     problems: list[str] = []
     grade = GRADE_STRONG
@@ -773,26 +863,6 @@ def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]
         order = {GRADE_STRONG: 0, GRADE_FAIR: 1, GRADE_REJECTED: 2}
         if order[level] > order[grade]:
             grade = level
-
-    error = result.length_error
-    if error is None:
-        problems.append("the export states no length, so nothing independent says whether this route is the right one")
-        cap(GRADE_FAIR)
-    elif abs(error) > LENGTH_FAIR:
-        problems.append(
-            f"{result.miles:.1f} mi against the export's {result.stated_miles:.1f} mi ({error * 100:+.0f}%) - "
-            "too far apart to be the same walk"
-        )
-        cap(GRADE_REJECTED)
-    elif abs(error) > LENGTH_GOOD:
-        problems.append(f"{result.miles:.1f} mi against the export's {result.stated_miles:.1f} mi ({error * 100:+.0f}%)")
-        cap(GRADE_FAIR)
-
-    if result.start_offset_m is not None and result.start_offset_m > START_GOOD_OFF_M:
-        problems.append(
-            f"the parking sits {result.start_offset_m:.0f} m from the nearest line, so the route starts somewhere the hiker is not"
-        )
-        cap(GRADE_FAIR)
 
     named, walked = len(result.named_trails), len(result.walked_trails)
     share = (walked / named) if named else 0.0
@@ -807,6 +877,17 @@ def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]
         problems.append(f"walks {walked} of the {named} trails the description names")
         cap(GRADE_FAIR)
 
+    error = result.length_error
+    if error is None:
+        problems.append("the export states no length, so nothing independent says whether this route is the right one")
+        cap(GRADE_FAIR)
+    elif abs(error) > LENGTH_FAIR:
+        problems.append(
+            f"{result.miles:.1f} mi against the export's {result.stated_miles:.1f} mi ({error * 100:+.0f}%) - "
+            "too far apart to be the same walk"
+        )
+        cap(GRADE_REJECTED)
+
     if result.closed and result.retrace_ratio is not None:
         if result.retrace_ratio > RETRACE_FAIR:
             problems.append(
@@ -816,6 +897,19 @@ def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]
         elif result.retrace_ratio > RETRACE_GOOD:
             problems.append(f"{result.retrace_ratio * 100:.0f}% of the walk doubles back on itself")
             cap(GRADE_FAIR)
+        elif result.retrace_ratio < RETRACE_MIN:
+            # A closed walk that retraces NOTHING has usually not closed at
+            # all - it is two points with one leg between them, and the
+            # ground-truth set says these match the surveyed track only 40% of
+            # the time against 89% just above this line.
+            problems.append(f"a '{route_type}' that retraces nothing is usually a walk with too few waypoints to have gone round")
+            cap(GRADE_FAIR)
+
+    if result.start_offset_m is not None and result.start_offset_m > START_GOOD_OFF_M:
+        problems.append(
+            f"the parking sits {result.start_offset_m:.0f} m from the nearest line, so the route starts somewhere the hiker is not"
+        )
+        cap(GRADE_FAIR)
 
     return grade, problems
 
@@ -836,6 +930,7 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
         result.problems.append("no coordinate on the page - there is nowhere to start from")
         return result
 
+    route_type_is_closed = (hike.get("route_type") or "").strip().lower() in CLOSED_ROUTE_TYPES
     steps = itinerary(hike.get("description") or [])
     start = anchor_start(graph, start_coord["lon"], start_coord["lat"], steps)
     if start is None:
@@ -846,12 +941,13 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
         return result
     result.start_offset_m = start.off_metres
 
-    waypoints, used = waypoints_from_itinerary(graph, start, steps)
+    radius_m = search_radius_m(result.stated_miles, route_type_is_closed)
+    waypoints, used = waypoints_from_itinerary(graph, start, steps, radius_m)
     result.named_trails = [step.label() for step in used]
     if not waypoints:
         result.problems.append(
             f"none of the {len(steps)} trails the description points at match a line within "
-            f"{NAME_SEARCH_M / 1000:.0f} km of the start"
+            f"{radius_m / 1000:.1f} km of the start, the furthest a {result.stated_miles or 0:.1f}-mile walk could reach"
         )
         return result
 

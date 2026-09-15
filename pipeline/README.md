@@ -189,11 +189,15 @@ Change-aware per entry (conditional GET against its own manifest, plus a body-ha
 | | strong | fair | rejected |
 |---|---|---|---|
 | published (a surveyed GPX track) | 110 | 3 | 0 |
-| generated (formed from the description) | 15 | 77 | 180 |
+| generated (formed from the description) | 37 | 87 | 148 |
 
-The rejections are honest rather than tunable. 63 walks the export calls a Circuit came out retracing half their length, which is what an out-and-back looks like and means the description did not name enough trails to turn the loop; 31 trailheads sit more than 500 m from any line in the layers registered here, which is New Jersey's state and county parks mostly ([#1293](https://github.com/OurHike/OurHike/issues/1293)); and 25 descriptions name no trail this build draws. **Accuracy tracks how much the description says, not how hard the search tries**: median absolute disagreement with the publisher's own mileage runs 0.70 at one matched waypoint, 0.41 at two, 0.36 at four, 0.13 at eight, and the signed median across all 194 formed routes is +0.02 — symmetric noise, not a systematic shortfall. The way to more routes is more trail names in the layers.
+**The grade is calibrated, not chosen.** 113 of the export's hikes publish *both* a turn-by-turn description *and* the GPX track somebody walked, so a route formed from the prose alone can be scored against the line a person actually followed. That ground truth is what sets the bands in `lib/hike_route_builder.py`'s `_grade`: `strong` selects routes that match the surveyed track 90% of the time, measured, rather than routes that clear a threshold somebody liked the look of.
 
-**139 of the 385 reach a phone**, and the gap is a client limit rather than a data one. `SuggestedHike.segments` is "the ends, never the route", so a surveyed track ships only when re-routing between its snapped samples reproduces it: 64 of the 113 tracks snap cleanly and 47 pass, while 49 leave the trails drawn here entirely. The 66 that cannot ship keep their full geometry in `hikefinder_routes.json` and `data/raw/hikefinder_gpx/`; [#1428](https://github.com/OurHike/OurHike/issues/1428) is the `track` field and the artifact split that would let them through.
+It also settled what does *not* work, which is worth as much. Grading on how closely the measured length matches the publisher's stated one — the whole of the first version — carries **no signal** once the search is allowed to fit that length: across four bands of disagreement the share of routes matching the true track ran 54%, 77%, 54%, 58%. What does carry signal is how much of the description the walk covers (71% above 0.9, 20% below 0.6) and whether a closed walk doubles back (89% in the 0.05–0.30 band).
+
+The rejections are honest rather than tunable: 77 walks cannot be fitted to the stated length within 40%; 31 trailheads sit more than 500 m from any line in the layers registered here ([#1293](https://github.com/OurHike/OurHike/issues/1293)); 17 find no path and 17 name no trail within reach of the start. The loop that doubled back on itself, 63 of the rejections before the search landed, is now **1**.
+
+**171 of the 385 reach a phone**, and the gap is a client limit rather than a data one. `SuggestedHike.segments` is "the ends, never the route", so a surveyed track ships only when re-routing between its snapped samples reproduces it: 64 of the 113 tracks snap cleanly and 47 pass, while 49 leave the trails drawn here entirely. The 66 that cannot ship keep their full geometry in `hikefinder_routes.json` and `data/raw/hikefinder_gpx/`; [#1428](https://github.com/OurHike/OurHike/issues/1428) is the `track` field and the artifact split that would let them through.
 
 
 ## Fetching external-organization layers

@@ -1,0 +1,194 @@
+# Recovers NYNJTC's lost hike photographs and write-ups from the Internet
+# Archive, and proposes which photograph belongs to which hike (#1450).
+#
+# ON DEMAND ONLY, by instruction. There is no schedule and no push trigger,
+# and that is the point rather than an omission: the source is a frozen
+# capture of a site that has already changed, so a second run can only
+# re-fetch what the first one got. This is a ONE-TIME recovery that happens to
+# live in a workflow.
+#
+# WHY IT RUNS HERE RATHER THAN ON A LAPTOP. Two things only CI has:
+#
+#   - A DIFFERENT EGRESS ADDRESS. An agent sandbox earned web.archive.org's
+#     rate limiter on 2026-09-15 (429s, then 503s, then the IP refused
+#     outright) and could not read the archive at all for hours afterwards.
+#   - HIKEFINDER_PASSWORD. The 385-hike export went behind a site password on
+#     2026-09-15 (#1468) and the secret is injected into workflow runs, so the
+#     hike side of the join is reachable here and nowhere else.
+#
+# NOTHING HERE PUBLISHES, and that is load-bearing rather than an oversight.
+# It invokes no publisher, so scripts/pipeline_scopes.py keeps finding exactly
+# five publishing paths and this does not quietly become a sixth.
+#
+# That sentence is deliberately phrased without naming the publisher's
+# filename, and the reason is worth a line because the first draft got it
+# wrong: the roster is derived by matching that literal name ANYWHERE in a
+# workflow's text, comments included - a trade pipeline_scopes.py documents
+# ("a filename that appears only in a comment counting"). A comment saying
+# this workflow does not publish was therefore enough to classify it as one,
+# and scripts/pipelines.sh duly told a reader to dispatch it with an input it
+# does not have.
+#
+# What it produces is a REVIEW SHEET and the caches behind it, uploaded
+# as artifacts for a person to work through. CONTRIBUTING.md reserves
+# pipeline/reference/ for "a join that encodes judgement somebody reviews row
+# by row", and the confirmed join belongs there, written by hand afterwards.
+# Loading anything into R2 is a separate, deliberate act.
+#
+# IT IS SLOW ON PURPOSE. lib/wayback_rate.py caps every archive request at ten
+# a minute across the whole process, retries included. At that rate the photo
+# recovery is roughly 40 minutes and the write-ups - two requests each, a CDX
+# lookup and a fetch - can run to a couple of hours. A recovery that finishes
+# beats one that gets the runner's address refused, and this is paid once.
+
+name: NYNJTC archive recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: "Which part to run"
+        type: choice
+        default: index
+        options:
+          - index          # what /view/hike lists; a handful of requests
+          - pages          # every write-up: the photo -> hike join
+          - photos         # the 403 photographs themselves
+          - match          # score the join, write the review sheet
+          - everything     # all four, in order
+      limit:
+        description: "Cap the number fetched (a trial run). Empty = no cap."
+        type: string
+        default: ""
+      min_score:
+        description: "What the review sheet puts above the fold. Ranks; decides nothing."
+        type: string
+        default: "2.5"
+
+# Never cancel a run in progress. These legs spend tens of minutes inside a
+# rate limit, and a superseding dispatch that killed one would throw away
+# archive goodwill that cannot be bought back quickly - the same argument
+# shard-seam-spike.yml makes for its long builds, with a scarcer resource.
+concurrency:
+  group: nynjtc-archive-recovery
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    # Generous because the rate limit, not the work, sets the duration: 403
+    # photographs at ten a minute is ~40 minutes, and the write-ups are two
+    # requests apiece.
+    timeout-minutes: 330
+    defaults:
+      run:
+        working-directory: pipeline
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Said out loud before anything runs, because "0 photographs" and "the
+      # archive would not talk to us" look identical in a log and mean
+      # opposite things.
+      - name: What this run may reach
+        run: |
+          echo "stage:     ${{ inputs.stage }}"
+          echo "limit:     ${{ inputs.limit || '(none)' }}"
+          if [ -n "${HIKEFINDER_PASSWORD}" ]; then
+            echo "export:    password present - the hike side of the join is reachable"
+          else
+            echo "export:    NO HIKEFINDER_PASSWORD - the match cannot run, and will say so"
+          fi
+        env:
+          HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+
+      - name: The index - what /view/hike lists
+        if: inputs.stage == 'index' || inputs.stage == 'everything'
+        run: |
+          set -o pipefail
+          python -u fetch_wayback_hike_pages.py --index-only | tee index.log
+
+      - name: The write-ups - name, location, description, photo
+        if: inputs.stage == 'pages' || inputs.stage == 'everything'
+        run: |
+          set -o pipefail
+          python -u fetch_wayback_hike_pages.py \
+            ${{ inputs.limit != '' && format('--limit {0}', inputs.limit) || '' }} \
+            | tee pages.log
+
+      - name: The photographs
+        if: inputs.stage == 'photos' || inputs.stage == 'everything'
+        run: |
+          set -o pipefail
+          python -u fetch_wayback_hike_photos.py \
+            ${{ inputs.limit != '' && format('--limit {0}', inputs.limit) || '' }} \
+            | tee photos.log
+
+      # The hike side of the join. continue-on-error for the reason
+      # expected-settings.yml gives about this secret: a missing password
+      # costs the 385 day hikes and nothing else, and the matcher below says
+      # so plainly rather than reporting an empty join as a finding.
+      - name: The hike export (needs the site password)
+        if: inputs.stage == 'match' || inputs.stage == 'everything'
+        continue-on-error: true
+        env:
+          HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+        run: |
+          set -o pipefail
+          python -u fetch_hikefinder.py | tee hikefinder.log
+
+      - name: Propose the join, and write the sheet
+        if: inputs.stage == 'match' || inputs.stage == 'everything'
+        run: |
+          set -o pipefail
+          python -u match_wayback_hike_photos.py --min "${{ inputs.min_score || '2.5' }}" | tee match.log
+
+      # What a person actually reads, rather than a link to a log they have to
+      # open. The counts are the whole output of the earlier stages.
+      - name: Summarise
+        if: always()
+        run: |
+          {
+            echo "## NYNJTC archive recovery - ${{ inputs.stage }}"
+            echo
+            for stage in index pages photos match; do
+              if [ -f "$stage.log" ]; then
+                echo "### $stage"
+                echo '```'
+                tail -25 "$stage.log"
+                echo '```'
+              fi
+            done
+            echo "### Nothing here shipped"
+            echo "A confirmed join lives in \`pipeline/reference/nynjtc_hike_photos.json\`,"
+            echo "written by a person working the review sheet in the artifact below."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The caches and the sheet, not the images: the photographs are already
+      # content-addressed under data/raw/poi_photos and a run that uploaded
+      # hundreds of them would be paying to move bytes the next run would
+      # re-derive. CONTRIBUTING.md's "data does not go in commits" is about
+      # the repository, and this keeps the same shape for artifacts.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nynjtc-archive-recovery-${{ inputs.stage }}
+          path: |
+            pipeline/*.log
+            pipeline/data/raw/wayback_hike_pages.json
+            pipeline/data/raw/wayback_hike_photos.json
+            pipeline/data/processed/wayback_photo_review.html
+            pipeline/data/processed/wayback_photo_matches.json
+          retention-days: 14
+          if-no-files-found: warn

@@ -65,7 +65,10 @@ settings:
     required: false
     why: >-
       The site password NYNJTC's Hike Finder export went behind on 2026-09-15
-      (#1468), read only by the hike fetch step of publish-vector-data.yml.
+      (#1468). Read by the hike fetch step of publish-vector-data.yml, and by
+      nynjtc-archive-recovery.yml, which needs the 385 hikes to match against
+      the photographs recovered from the Internet Archive (#1450) - that one
+      is dispatch-only and publishes nothing.
       REQUIRED: FALSE IS THE POINT, not an oversight. The export was open
       before that date and may be open again, and a run without this fetches
       as an anonymous reader; if the export is in fact locked, the fetcher

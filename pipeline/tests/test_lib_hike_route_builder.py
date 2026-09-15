@@ -25,12 +25,15 @@ from lib.hike_route_builder import (
     GRADE_REJECTED,
     GRADE_STRONG,
     PUBLISHED,
+    Step,
+    _route_score,
     form_route,
+    itinerary,
     normalise_name,
     published_route,
     retrace_ratio,
     trail_mentions,
-    waypoints_from_description,
+    waypoints_from_itinerary,
 )
 from lib.hikefinder import Track, TrackPoint
 from tests.test_lib_trail_graph_route import LAT, LON, STEP, graph_files
@@ -86,8 +89,8 @@ def test_a_waypoint_is_taken_nearest_the_walk_s_current_position_not_the_car(gra
     Ridge Loop", the nearest point on Ridge Loop to WHERE THE WALK IS is the
     junction that sentence means."""
     start = router.nearest_point(graph, LON, LAT, max_off_m=500)
-    points, used = waypoints_from_description(graph, start, ["Ridge Loop"])
-    assert used == ["Ridge Loop"]
+    points, used = waypoints_from_itinerary(graph, start, [Step(name="Ridge Loop", blaze=None)])
+    assert [step.name for step in used] == ["Ridge Loop"]
     # Node 2 is where Pine Meadow meets Ridge Loop - not either far end of it.
     assert points[0].at[0] == pytest.approx(LON + 2 * STEP, abs=1e-6)
 
@@ -97,8 +100,9 @@ def test_a_name_no_line_nearby_carries_is_skipped_rather_than_failing_the_hike(g
     whose layer nobody has registered. None of those should cost the route
     its other legs."""
     start = router.nearest_point(graph, LON, LAT, max_off_m=500)
-    points, used = waypoints_from_description(graph, start, ["Nonexistent Trail", "Ridge Loop"])
-    assert used == ["Ridge Loop"]
+    steps = [Step(name="Nonexistent Trail", blaze=None), Step(name="Ridge Loop", blaze=None)]
+    points, used = waypoints_from_itinerary(graph, start, steps)
+    assert [step.name for step in used] == ["Ridge Loop"]
     assert len(points) == 1
 
 
@@ -239,3 +243,78 @@ def test_a_published_track_ships_on_its_ends_although_it_has_no_graph_route():
     result = published_route({"id": 1, "stated_miles": 1.38, "route_type": "Shuttle"}, track([(41.0, -74.0), (41.02, -74.0)]))
     assert result.route is None
     assert result.ships is True
+
+
+# --- reading a description as an itinerary (#1427 follow-up) -------------------
+
+
+def test_a_step_carries_a_name_a_colour_or_both():
+    steps = itinerary(
+        [
+            "From the parking area, follow the red-blazed Butler Trail into the woods.",
+            "Head into the woods on a blue-blazed trail, then follow the white blazes of the Appalachian Trail.",
+            "Turn onto the Timp-Torne Trail.",
+        ],
+        nameless=True,
+    )
+    assert [(s.name, s.blaze) for s in steps] == [
+        ("Butler Trail", "Red"),
+        (None, "Blue"),
+        ("Appalachian Trail", "White"),
+        ("Timp-Torne Trail", None),
+    ]
+
+
+def test_a_nameless_blaze_step_is_the_case_nothing_else_could_place():
+    """ "head into the woods on a blue-blazed trail" names no trail at all, and
+    before the blaze patterns landed this module saw nothing here."""
+    steps = itinerary(["Head into the woods on a blue-blazed trail."], nameless=True)
+    assert len(steps) == 1
+    assert steps[0].name is None and steps[0].blaze == "Blue"
+
+
+def test_a_trail_named_twice_with_and_without_its_colour_is_one_step():
+    """Keying a step on the name AND the colour made "the white-blazed
+    Appalachian Trail" and a later bare "Appalachian Trail" into two steps,
+    which put a second waypoint on a trail the walk was already on."""
+    steps = itinerary(["Follow the white-blazed Appalachian Trail north.", "The Appalachian Trail then descends."])
+    assert len(steps) == 1
+
+
+def test_a_colour_this_build_cannot_place_yields_no_step():
+    """A blaze word narrows the candidates or it is not worth having; silver
+    is not in the graph's vocabulary, so it narrows nothing."""
+    assert itinerary(["Follow the silver-blazed trail."], nameless=True) == []
+
+
+def test_a_blaze_only_matches_a_line_of_that_colour_and_a_name_does_not_have_to(graph):
+    """A named step is matched on its name and the colour only breaks ties,
+    because 398,882 of the graph's 631,915 edges carry `Unknown` - demanding
+    the colour agree would throw away the right trail whenever its surveyor
+    recorded none."""
+    start = router.nearest_point(graph, LON, LAT, max_off_m=500)
+    points, used = waypoints_from_itinerary(graph, start, [Step(name=None, blaze="Yellow")])
+    assert [(s.name, s.blaze) for s in used] == [(None, "Yellow")]
+    assert graph.edges[points[0].edge_index]["blaze_color"] == "Yellow"
+
+
+def test_the_search_may_drop_a_step_the_description_only_mentions(graph):
+    """THE REASON THE SEARCH EXISTS. Measured over the 113 ground-truth hikes,
+    a surveyed track walks a median of 3 distinct trails while the parser finds
+    6 steps in the same description - a write-up names the trails you cross and
+    decline as readily as the ones you walk. A greedy walk has to take all six;
+    this one may take the subset that fits the publisher's own mileage."""
+    walk = hike(route_type="Shuttle", stated_miles=0.05, description=["Take the Spur Trail, then the Ridge Loop."])
+    result = form_route(graph, walk)
+    if result.route is None:
+        pytest.skip("no route formed on this synthetic graph")
+    assert result.checks["steps_kept"] <= result.checks["steps_proposed"]
+
+
+def test_the_score_prefers_the_walk_that_matches_the_publishers_mileage(graph):
+    start = router.nearest_point(graph, LON, LAT, max_off_m=500)
+    near = router.nearest_point(graph, LON + STEP, LAT, max_off_m=500)
+    far = router.nearest_point(graph, LON + 3 * STEP, LAT, max_off_m=500)
+    short, long = router.route_between(graph, start, near), router.route_between(graph, start, far)
+    stated = long.miles
+    assert _route_score(long, stated, 1, False, 1.0) > _route_score(short, stated, 1, False, 1.0)

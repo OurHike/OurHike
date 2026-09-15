@@ -120,6 +120,18 @@ START_MAX_OFF_M = 500.0
 #: this is one the phone would refuse if it were not snapped first.
 START_GOOD_OFF_M = 150.0
 
+#: How many of the description's opening steps may name the trail the walk
+#: leaves the car on. @unvalidated - 3 rather than 1 because the first
+#: sentence often crosses a road or names the park before it names the tread
+#: ("cross Route 17A and follow the white blazes of the A.T."), and rather
+#: than more because a step this far in is describing the walk, not the
+#: trailhead.
+ANCHOR_STEPS = 3
+
+#: Whether the start is chosen by the description's opening steps at all.
+#: Measured on the ground-truth set - see this module's docstring.
+ANCHOR_START_ON_ITINERARY = False
+
 #: How far from the start to look for a line carrying a named trail. 8 km
 #: @unvalidated: the longest hike the export states is 19.5 miles and a walk
 #: that long can put a named trail a long way from the car, but a name matched
@@ -173,6 +185,36 @@ TRAILS_FAIR = 0.34
 #: came - so only Shuttle is left open.
 CLOSED_ROUTE_TYPES = {"circuit", "lollipop", "out and back"}
 
+#: The blaze words a description uses, mapped onto the values the graph's
+#: `blaze_color` actually carries (measured over the 2026-09-14 graph: White
+#: 66,432 edges, Blue 31,197, Yellow 22,774, Red 21,700, Aqua 16,118, Green
+#: 11,861, Orange 10,327, Purple 2,079, Other 703, and None/Unknown on the
+#: rest). "Teal" and "turquoise" are the Highlands Trail's diamond, which this
+#: build's layers spell Aqua - the export's writers use all three words.
+#:
+#: A colour NOT in this map resolves to nothing rather than to `Other`: the
+#: point of a blaze is to narrow the candidates, and a word this build cannot
+#: place narrows nothing. Silver, brown, black and pink are deliberately
+#: absent for that reason.
+BLAZE_WORDS = {
+    "white": "White",
+    "blue": "Blue",
+    "yellow": "Yellow",
+    "red": "Red",
+    "green": "Green",
+    "orange": "Orange",
+    "purple": "Purple",
+    "aqua": "Aqua",
+    "teal": "Aqua",
+    "turquoise": "Aqua",
+}
+
+#: What a blaze is worth when the name already matched, as a share of the
+#: distance score. @unvalidated - see `_candidate_points`, which uses it only
+#: to BREAK TIES between same-named candidates, so its exact value cannot move
+#: a route on its own.
+BLAZE_TIE_BREAK_M = 250.0
+
 #: A trail-shaped phrase: up to four capitalised words before Trail, Path,
 #: Way or Loop. Deliberately greedy about what it proposes and strict about
 #: what it accepts - a proposal only becomes a waypoint if a line of that
@@ -197,6 +239,28 @@ _TRAIL_PHRASE = re.compile(r"((?:[A-Z][\w'’.-]*\s+){0,4}(?:Trail|Path|Way|Loop
 #: so this is about what a reviewer reads, not about what matches what.
 _LEADING_THE = re.compile(r"^the\s+", re.IGNORECASE)
 
+#: The four shapes a description uses to point at a trail, measured over all
+#: 385 descriptions on 2026-09-15: 354 of them name a blaze colour at least
+#: once, 4,217 mentions in all. Order matters - the first two carry BOTH a
+#: name and a colour and must be tried before the looser two, or
+#: "the red-blazed Duggan Trail" would match `_BLAZE_ONLY` and lose its name.
+#:
+#:   "the red-blazed Butler Trail"      -> name + colour
+#:   "the white blazes of the A.T."     -> name + colour
+#:   "a blue-blazed trail"              -> colour, NO NAME
+#:   "the Timp-Torne Trail"             -> name, no colour
+#:
+#: The third is the one that pays for this whole block: a description that
+#: says "head into the woods on a blue-blazed trail" names no trail at all,
+#: and before #1427's follow-up nothing in this module could place it.
+_TRAIL_TAIL = r"(?:[A-Z][\w'\u2019.-]*\s+){0,4}(?:Trail|Path|Way|Loop)"
+_BLAZE_WORD = "|".join(BLAZE_WORDS)
+_STEP_PATTERNS = (
+    ("name_blaze", re.compile(rf"\b({_BLAZE_WORD})[- ]blazed\s+({_TRAIL_TAIL})\b", re.IGNORECASE)),
+    ("blaze_of", re.compile(rf"\b({_BLAZE_WORD})\b[^.]{{0,24}}?\bblazes?\s+of\s+the\s+({_TRAIL_TAIL})\b", re.IGNORECASE)),
+    ("blaze_only", re.compile(rf"\b({_BLAZE_WORD})[- ]blazed\s+(trail|path|route)\b", re.IGNORECASE)),
+)
+
 #: Words that carry no identity, dropped before two names are compared. The
 #: export writes "the Timp-Torne Trail" where this build's layer writes
 #: "Timp-Torne", and nynjtc.org writes "Appalachian Trail" where the ATC layer
@@ -217,6 +281,89 @@ def normalise_name(name: str | None) -> str:
         return ""
     lowered = _NON_WORD.sub(" ", name.lower().replace("&", "and"))
     return _SPACES.sub(" ", _NOISE_WORDS.sub(" ", lowered)).strip()
+
+
+@dataclass
+class Step:
+    """One pointer at a trail, as the description gives it.
+
+    EITHER half may be missing and the pair is what makes this worth having.
+    A name with no colour is the ordinary case; a COLOUR WITH NO NAME is the
+    case nothing in this module could place before ("head into the woods on a
+    blue-blazed trail"); and a name WITH a colour is the strongest, because
+    the two have to agree on the same line before it is taken.
+    """
+
+    name: str | None
+    blaze: str | None
+
+    @property
+    def key(self) -> str:
+        """What makes two steps the same trail.
+
+        THE NAME ALONE WHERE THERE IS ONE. A description says "the
+        white-blazed Appalachian Trail" and then just "the A.T." three
+        sentences later, and those are one trail; keying on the pair made them
+        two steps, which put a second waypoint on a trail the walk was already
+        on. Only a nameless step is keyed by its colour, because there the
+        colour is all the identity it has.
+        """
+        return normalise_name(self.name) if self.name else f"blaze:{self.blaze or ''}"
+
+    def label(self) -> str:
+        if self.name and self.blaze:
+            return f"{self.name} ({self.blaze.lower()})"
+        return self.name or f"a {(self.blaze or '?').lower()}-blazed trail"
+
+
+#: Whether a step carrying a colour and NO name may become a waypoint.
+#: Measured on the ground-truth set - see this module's docstring.
+USE_NAMELESS_BLAZE_STEPS = False
+
+
+def itinerary(paragraphs: list[str], nameless: bool | None = None) -> list[Step]:
+    """The trails a description points at, in the order it points at them.
+
+    ORDER IS THE WHOLE POINT - it is the only thing in a write-up that says
+    which way round the walk goes, and a set would throw it away.
+
+    Blaze-carrying phrases are matched FIRST and the spans they consume are
+    closed, so "the red-blazed Duggan Trail" yields one step carrying both
+    halves rather than a bare "Duggan Trail" beside a nameless red one.
+    """
+    nameless = USE_NAMELESS_BLAZE_STEPS if nameless is None else nameless
+    text = " ".join(paragraphs)
+    found: list[tuple[int, Step]] = []
+    taken: list[tuple[int, int]] = []
+
+    for kind, pattern in _STEP_PATTERNS:
+        for match in pattern.finditer(text):
+            colour = BLAZE_WORDS.get(match.group(1).lower())
+            if colour is None:
+                continue
+            name = None if kind == "blaze_only" else _LEADING_THE.sub("", match.group(2).strip()).strip()
+            if name is not None and not normalise_name(name):
+                name = None
+            taken.append((match.start(), match.end()))
+            if name is None and not nameless:
+                continue
+            found.append((match.start(), Step(name=name, blaze=colour)))
+
+    for match in _TRAIL_PHRASE.finditer(text):
+        if any(start <= match.start() < end for start, end in taken):
+            continue
+        name = _LEADING_THE.sub("", match.group(1).strip()).strip()
+        if normalise_name(name):
+            found.append((match.start(), Step(name=name, blaze=None)))
+
+    steps: list[Step] = []
+    seen: set[str] = set()
+    for _, step in sorted(found, key=lambda pair: pair[0]):
+        if step.key in seen:
+            continue
+        seen.add(step.key)
+        steps.append(step)
+    return steps
 
 
 def trail_mentions(paragraphs: list[str]) -> list[str]:
@@ -336,19 +483,84 @@ def retrace_ratio(route: router.Route) -> float:
     return repeated / total
 
 
-def _candidate_points(graph: router.Graph, name_key: str, near: router.GraphPoint, radius_m: float) -> router.GraphPoint | None:
-    """The nearest point to `near` on any line whose name matches `name_key`."""
+def _edge_matches(graph: router.Graph, edge_index: int, step: Step) -> bool:
+    """Whether this line is one the step could be pointing at.
+
+    A NAMED step is matched on its name alone, and the blaze is left to break
+    ties below rather than to refuse: this build's layers carry `Unknown` on
+    398,882 of 631,915 edges, so demanding the colour agree would throw away
+    the correct trail whenever its surveyor did not record one. A NAMELESS
+    step has only the colour, and there the colour must match exactly - it is
+    the whole of the evidence.
+    """
+    edge = graph.edges[edge_index]
+    if step.name:
+        return normalise_name(edge.get("name")) == normalise_name(step.name)
+    return bool(step.blaze) and edge.get("blaze_color") == step.blaze
+
+
+def _blaze_bonus(graph: router.Graph, edge_index: int, step: Step) -> float:
+    """Metres to forgive a candidate whose blaze agrees with the description.
+
+    Only ever a TIE-BREAK between lines that already matched the name, which
+    is why it is subtracted from a distance rather than scored separately: two
+    stretches of "Blue Trail" a mile apart are told apart by the colour the
+    sentence gave, and a line whose blaze is `Unknown` is neither rewarded nor
+    punished for what its surveyor did not write down.
+    """
+    if not (step.name and step.blaze):
+        return 0.0
+    return BLAZE_TIE_BREAK_M if graph.edges[edge_index].get("blaze_color") == step.blaze else 0.0
+
+
+def _candidate_points(graph: router.Graph, step: Step, near: router.GraphPoint, radius_m: float) -> router.GraphPoint | None:
+    """The nearest point to `near` on any line this step could mean."""
     best: router.GraphPoint | None = None
+    best_score = float("inf")
     for edge_index in router.edges_near(graph, near.at[0], near.at[1], radius_m):
-        if normalise_name(graph.edges[edge_index].get("name")) != name_key:
+        if not _edge_matches(graph, edge_index, step):
             continue
         fraction, off_m, at = router.project_onto_edge(graph, edge_index, near.at)
-        if best is None or off_m < best.off_metres:
+        score = off_m - _blaze_bonus(graph, edge_index, step)
+        if score < best_score:
+            best_score = score
             best = router.GraphPoint(edge_index=edge_index, fraction=fraction, at=at, off_metres=off_m)
     return best
 
 
-def _far_point_on(graph: router.Graph, name_key: str, near: router.GraphPoint, radius_m: float) -> router.GraphPoint | None:
+def anchor_start(
+    graph: router.Graph, lon: float, lat: float, steps: list[Step], max_off_m: float = None
+) -> router.GraphPoint | None:
+    """Where the walk leaves the car, chosen by what the description says it
+    walks first rather than by whichever line happens to be nearest.
+
+    THE MAINTAINER'S OBSERVATION, 2026-09-15, and it is the cheapest accuracy
+    in this module: a parking area serves more than one trail, and the
+    description's first sentence almost always says which one - "follow the
+    red-blazed Butler Trail into the woods", "head into the woods on a
+    blue-blazed trail". Snapping to the nearest line instead starts the walk on
+    the wrong trail, and every waypoint after it is then resolved from the
+    wrong place, so one bad metre at the car becomes a route on the wrong side
+    of the hill.
+
+    The first step that resolves within `max_off_m` wins; falling back to the
+    plain nearest point when none of them does, because a start on the wrong
+    trail is still better than no route at all - and the grade downstream is
+    what decides whether the result is worth showing.
+    """
+    max_off_m = START_MAX_OFF_M if max_off_m is None else max_off_m
+    plain = router.nearest_point(graph, lon, lat, max_off_m=max_off_m, search_m=max_off_m * 2)
+    if plain is None or not ANCHOR_START_ON_ITINERARY:
+        return plain
+    here = router.GraphPoint(edge_index=plain.edge_index, fraction=plain.fraction, at=(lon, lat), off_metres=0.0)
+    for step in steps[:ANCHOR_STEPS]:
+        found = _candidate_points(graph, step, here, max_off_m)
+        if found is not None and found.off_metres <= max_off_m:
+            return found
+    return plain
+
+
+def _far_point_on(graph: router.Graph, step: Step, near: router.GraphPoint, radius_m: float) -> router.GraphPoint | None:
     """The point on a line of this name that sits FARTHEST from `near`, within
     `radius_m` of it.
 
@@ -372,7 +584,7 @@ def _far_point_on(graph: router.Graph, name_key: str, near: router.GraphPoint, r
     best: router.GraphPoint | None = None
     best_m = -1.0
     for edge_index in router.edges_near(graph, near.at[0], near.at[1], radius_m):
-        if normalise_name(graph.edges[edge_index].get("name")) != name_key:
+        if not _edge_matches(graph, edge_index, step):
             continue
         fraction, off_m, at = router.project_onto_edge(graph, edge_index, near.at)
         for end_fraction in (0.0, 1.0):
@@ -389,35 +601,160 @@ def _far_point_on(graph: router.Graph, name_key: str, near: router.GraphPoint, r
     return best
 
 
-def waypoints_from_description(
-    graph: router.Graph, start: router.GraphPoint, names: list[str], radius_m: float = NAME_SEARCH_M
-) -> tuple[list[router.GraphPoint], list[str]]:
-    """Each named trail as a point on the network, in the description's order.
+def waypoints_from_itinerary(
+    graph: router.Graph, start: router.GraphPoint, steps: list[Step], radius_m: float = NAME_SEARCH_M
+) -> tuple[list[router.GraphPoint], list[Step]]:
+    """Each step as a point on the network, in the description's order.
 
-    Walks FORWARD from the start, each name resolved against the position the
+    Walks FORWARD from the start, each step resolved against the position the
     walk has reached rather than against the car - see this module's docstring,
-    step 3. A name no line nearby carries is skipped rather than failing the
+    step 3. A step no line nearby carries is skipped rather than failing the
     hike: descriptions name road crossings, side trails to viewpoints, and
     trails in parks whose layer this build has not registered, and none of
     those should cost the route its other legs.
     """
     points: list[router.GraphPoint] = []
-    used: list[str] = []
+    used: list[Step] = []
     here = start
-    for name in names:
+    for step in steps:
         if len(points) >= MAX_WAYPOINTS:
             break
-        key = normalise_name(name)
-        found = _candidate_points(graph, key, here, radius_m)
+        found = _candidate_points(graph, step, here, radius_m)
         if found is None:
             continue
         if router.metres_between(here.at, found.at) < MIN_WAYPOINT_SEPARATION_M:
             continue
         points.append(found)
-        if name not in used:
-            used.append(name)
+        if step.key not in {seen.key for seen in used}:
+            used.append(step)
         here = found
     return points, used
+
+
+#: How many partial walks the search keeps alive. @unvalidated as a number,
+#: but the SHAPE is measured: a true track walks a median of 3 distinct trails
+#: while the parser finds a median of 6 steps in its description (measured over
+#: the 113 ground-truth hikes, 2026-09-15), because a write-up names the trails
+#: you cross, pass and decline as readily as the ones you walk. So roughly half
+#: the steps are not waypoints at all, and which half is the question this
+#: search exists to answer.
+SEARCH_BEAM = 24
+
+#: What a kept step is worth against a mile of disagreement, when the score
+#: below chooses between two walks. @unvalidated - small on purpose: the
+#: publisher's own mileage is evidence about the walk and a step count is not,
+#: so this only ever separates two routes the length cannot separate.
+COVERAGE_WEIGHT = 0.03
+
+
+#: How the search weighs what it can see. SWEPT against the 113 ground-truth
+#: hikes rather than picked (2026-09-15), scoring each setting by how many
+#: routes clear the calibrated `strong` bar and what share of those actually
+#: match the surveyed track:
+#:
+#:     length 1.0, coverage 1.0   18 strong, 89% of them correct   <- this
+#:     length 1.0, coverage 0.0   10 strong, 90%
+#:     length 0.35, coverage 1.0  21 strong, 81%
+#:     length 0.0, coverage 1.0   21 strong, 81%
+#:
+#: BOTH TERMS CARRY INFORMATION and dropping either costs something real -
+#: length alone finds too few, coverage alone finds more and is wrong more
+#: often. Equal weights was the best trade on this sample and the sample is
+#: 51 scored routes, so these are evidence rather than proof.
+LENGTH_WEIGHT = 1.0
+RETRACE_WEIGHT = 1.0
+COVERAGE_WEIGHT = 1.0
+
+
+def _route_score(route: router.Route, stated_miles: float | None, kept: int, closed: bool, covered: float = 0.0) -> float:
+    """How much this walk looks like the one the description describes.
+
+    THE PUBLISHER'S OWN MILEAGE IS THE EVIDENCE, and it is used here to CHOOSE
+    rather than only to check afterwards. That is the whole change: the first
+    version of this module built one walk greedily and then asked whether its
+    length agreed, so a spurious waypoint - a trail the description merely
+    mentions crossing - could not be recovered from. Scoring lets the search
+    drop that step and keep the walk.
+
+    Higher is better. Length disagreement dominates; retracing is penalised on
+    a closed walk because an out-and-back that calls itself a Circuit is the
+    most common wrong answer; coverage only breaks ties.
+    """
+    score = COVERAGE_WEIGHT * covered
+    if stated_miles:
+        score -= LENGTH_WEIGHT * abs(route.miles - stated_miles) / stated_miles
+    if closed:
+        score -= RETRACE_WEIGHT * retrace_ratio(route)
+    return score
+
+
+def _covered_share(graph: router.Graph, route: router.Route, steps: list[Step]) -> float:
+    """The share of the trails the description pointed at that this walk is
+    actually on. The search's main objective - see LENGTH_WEIGHT."""
+    if not steps:
+        return 0.0
+    names = {normalise_name(leg.name) for leg in route.legs if leg.name}
+    blazes = {leg.blaze_color for leg in route.legs if leg.blaze_color}
+    hit = sum(1 for s in steps if (normalise_name(s.name) in names if s.name else s.blaze in blazes))
+    return hit / len(steps)
+
+
+def _search_waypoints(
+    graph: router.Graph,
+    start: router.GraphPoint,
+    waypoints: list[router.GraphPoint],
+    kept_steps: list[Step],
+    closed: bool,
+    stated_miles: float | None,
+) -> tuple[router.Route | None, list[router.GraphPoint], list[Step]]:
+    """The best walk through SOME ordered subset of the proposed waypoints.
+
+    A beam over one decision per step - take it or leave it - keeping the
+    partial walks whose length so far sits closest to the publisher's figure.
+    Order is never rearranged: the description's order is the only thing that
+    says which way round the walk goes, and a search free to permute it would
+    be inventing a route rather than reading one.
+    """
+    memo: dict[tuple[int, float, int, float], router.Route | None] = {}
+
+    def leg(a: router.GraphPoint, b: router.GraphPoint) -> router.Route | None:
+        key = (a.edge_index, round(a.fraction, 6), b.edge_index, round(b.fraction, 6))
+        if key not in memo:
+            memo[key] = router.route_between(graph, a, b)
+        return memo[key]
+
+    # Each beam entry: the points kept so far, the steps they came from, and
+    # the miles walked to reach the last of them.
+    beam: list[tuple[list[router.GraphPoint], list[Step], float]] = [([start], [], 0.0)]
+    for index, waypoint in enumerate(waypoints):
+        step = kept_steps[index] if index < len(kept_steps) else None
+        nxt = list(beam)
+        for points, steps, miles in beam:
+            if len(points) > MAX_WAYPOINTS:
+                continue
+            onward = leg(points[-1], waypoint)
+            if onward is None:
+                continue
+            nxt.append(([*points, waypoint], [*steps, step] if step else steps, miles + onward.miles))
+        # Keep the partial walks that have not already overshot, nearest first.
+        target = stated_miles or 0.0
+        nxt.sort(key=lambda entry: (abs(entry[2] - target) if target else -entry[2], -len(entry[0])))
+        beam = nxt[:SEARCH_BEAM]
+
+    best: tuple[float, router.Route, list[router.GraphPoint], list[Step]] | None = None
+    for points, steps, _ in beam:
+        if len(points) < 2:
+            continue
+        route = router.close_the_loop(graph, points) if closed else router.route_through(graph, points)
+        if route is None:
+            continue
+        covered = _covered_share(graph, route, kept_steps)
+        score = _route_score(route, stated_miles, len(points) - 1, closed, covered)
+        if best is None or score > best[0]:
+            best = (score, route, points, steps)
+    if best is None:
+        return None, [], []
+    return best[1], best[2], best[3]
 
 
 def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]:
@@ -499,9 +836,8 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
         result.problems.append("no coordinate on the page - there is nowhere to start from")
         return result
 
-    start = router.nearest_point(
-        graph, start_coord["lon"], start_coord["lat"], max_off_m=START_MAX_OFF_M, search_m=START_MAX_OFF_M * 2
-    )
+    steps = itinerary(hike.get("description") or [])
+    start = anchor_start(graph, start_coord["lon"], start_coord["lat"], steps)
     if start is None:
         result.problems.append(
             f"the parking is more than {START_MAX_OFF_M:.0f} m from any line this build draws - "
@@ -510,12 +846,11 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
         return result
     result.start_offset_m = start.off_metres
 
-    names = trail_mentions(hike.get("description") or [])
-    waypoints, used = waypoints_from_description(graph, start, names)
-    result.named_trails = used
+    waypoints, used = waypoints_from_itinerary(graph, start, steps)
+    result.named_trails = [step.label() for step in used]
     if not waypoints:
         result.problems.append(
-            f"none of the {len(names)} trail names in the description match a line within "
+            f"none of the {len(steps)} trails the description points at match a line within "
             f"{NAME_SEARCH_M / 1000:.0f} km of the start"
         )
         return result
@@ -523,57 +858,31 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
     route_type = (hike.get("route_type") or "").strip().lower()
     result.closed = route_type in CLOSED_ROUTE_TYPES
 
-    # A waypoint this build's lines cannot be reached from is DROPPED rather
-    # than fatal. `route_through` refuses a whole route if any single leg
-    # fails, which is right for a reviewed row - a hole in a signed-off walk
-    # is a hiker told something false - but wrong here, where one unreachable
-    # side trail would throw away a walk the other six waypoints describe
-    # perfectly well. How many were dropped is carried into the checks, so a
-    # route held together by dropping half its waypoints is visible as that.
-    points = [start]
-    dropped = 0
-    for waypoint in waypoints:
-        if router.route_between(graph, points[-1], waypoint) is None:
-            dropped += 1
-            continue
-        points.append(waypoint)
-    if len(points) < 2:
-        result.problems.append("this build's lines hold no path from the start to any trail the description names")
-        return result
-
-    route = router.close_the_loop(graph, points) if result.closed else router.route_through(graph, points)
+    # THE SEARCH, rather than one greedy walk. Roughly half the trails a
+    # description names are not waypoints at all - measured over the 113
+    # ground-truth hikes, a track walks a median of 3 distinct trails while
+    # the parser finds 6 steps - so the question is which of them the walk
+    # actually turns onto, and the publisher's own mileage is the evidence that
+    # answers it. `_search_waypoints` keeps the ordered subset that best fits.
+    route, points, walked_steps = _search_waypoints(graph, start, waypoints, used, result.closed, result.stated_miles)
     if route is None:
-        result.problems.append("this build's lines hold no path between two consecutive points of the walk")
+        result.problems.append("this build's lines hold no path from the start through any trail the description names")
         return result
-
-    # THE LOOP REPAIR. A closed walk whose chain of junctions leaves it short
-    # of halfway round has only one way home - the way it came - so the route
-    # comes out as an exact out-and-back on a page that says Circuit. Where
-    # that happened, try once more with the far extremity of the last trail the
-    # description names appended, which is the second junction a two-trail loop
-    # turns on. The repair is KEPT ONLY IF IT IS ACTUALLY MORE LOOP-SHAPED:
-    # both candidates are measured and the one with less retracing wins, so a
-    # hike this makes worse keeps the route it already had.
-    repaired = 0
-    if result.closed and retrace_ratio(route) > RETRACE_GOOD and used:
-        far = _far_point_on(graph, normalise_name(used[-1]), points[-1], NAME_SEARCH_M)
-        if far is not None and router.metres_between(points[-1].at, far.at) >= MIN_WAYPOINT_SEPARATION_M:
-            candidate_points = [*points, far]
-            candidate = router.close_the_loop(graph, candidate_points)
-            if candidate is not None and retrace_ratio(candidate) < retrace_ratio(route):
-                route, points, repaired = candidate, candidate_points, 1
 
     result.route = route
     result.miles = route.miles
     result.ends = [(point.at[0], point.at[1]) for point in points]
     result.retrace_ratio = retrace_ratio(route)
-    walked_keys = {normalise_name(leg.name) for leg in route.legs if leg.name}
-    result.walked_trails = [name for name in used if normalise_name(name) in walked_keys]
+    walked_names = {normalise_name(leg.name) for leg in route.legs if leg.name}
+    walked_blazes = {leg.blaze_color for leg in route.legs if leg.blaze_color}
+    result.walked_trails = [
+        step.label() for step in used if (normalise_name(step.name) in walked_names if step.name else step.blaze in walked_blazes)
+    ]
     result.checks = {
         "waypoints": len(points) - 1,
-        "waypoints_dropped": dropped,
-        "loop_repaired": repaired,
-        "names_in_description": len(names),
+        "steps_in_description": len(steps),
+        "steps_proposed": len(waypoints),
+        "steps_kept": len(walked_steps),
         "legs": len(route.legs),
     }
 

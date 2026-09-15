@@ -311,6 +311,6 @@ def test_the_funnel_separates_what_the_freshness_bar_costs(monkeypatch, requests
 
 def test_an_unknown_flag_is_rejected_rather_than_silently_ignored():
     with pytest.raises(SystemExit) as excinfo:
-        spike.run(["--shot"])
+        spike.run(["--shotz"])  # not "--shot": that is a prefix of --shots
 
     assert excinfo.value.code == 2

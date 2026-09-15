@@ -152,7 +152,7 @@ jobs:
           python cut_cells.py data/processed/dem.pmtiles \
             --family dem
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dem-archive-${{ inputs.variant }}
           path: |

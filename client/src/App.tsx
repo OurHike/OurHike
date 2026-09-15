@@ -106,7 +106,7 @@ import { closureDraft } from './lib/closureDraft'
 import { disputeFor } from './lib/disputes'
 import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
-import { REPORT_FORM_TITLES, type ReportFormSubmission } from './screens/ReportForm'
+import type { ReportFormSubmission } from './screens/ReportForm'
 import {
   ReportWindow,
   UNDO_WINDOW_MS,
@@ -8449,8 +8449,6 @@ function App() {
   /** The long report form, rendered as an overlay at the foot of this
    *  component rather than in `flowScreen` - see where it is assigned. */
   let reportFormNode: ReactNode = null
-  /** What that overlay calls itself, for its `aria-label`. */
-  let reportingTitle = 'Report'
   if (authFlow !== null) {
     flowScreen =
       authFlow.screen === 'email' ? (
@@ -8530,10 +8528,6 @@ function App() {
       // the flow slot did - and `--stood-aside` hides it by visibility alone
       // while the tap is taken, keeping its scroll position and its focus
       // history.
-      // The form's own title, lifted so the modal wrapper below can name
-      // itself: an `aria-modal` subtree with no accessible name announces as
-      // "dialog" and nothing else.
-      reportingTitle = REPORT_FORM_TITLES[reporting.type]
       reportFormNode = (
         <ReportForm
           type={reporting.type}
@@ -10625,17 +10619,11 @@ function App() {
               ? 'reporting-window reporting-window--stood-aside'
               : 'reporting-window'
           }
-          // A MODAL, SAID OUT LOUD. As a `flowScreen` this form replaced the
-          // screen, so there was nothing behind it to reach; as an overlay
-          // there is - the tab bar and whichever tab screen was up. `inert`
-          // cannot go on those without a wrapper this component does not
-          // have and a remount it must not cause, so the claim is made from
-          // this side instead: `aria-modal` is what tells assistive
-          // technology that everything outside this subtree is out of play
-          // while it is open.
-          role="dialog"
-          aria-modal="true"
-          aria-label={reportingTitle}
+          // THE DIALOG ITSELF IS THE FORM, not this wrapper (see
+          // screens/ReportForm.tsx). This div only positions it, and a
+          // second `role="dialog"` around one would be two dialogs where
+          // there is one screen. What stays here is the pair that hides the
+          // whole layer while the crosshair is out.
           // Out of reach as well as out of sight, which the hike window gets
           // from `visibility: hidden` alone. Said explicitly here because
           // this form has a Cancel and so does the pick bar in front of it,

@@ -486,6 +486,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // The crews section's two shared pieces (#1440). `planned` for
   // WorkdaySheet's own reason, and it is the same blocker: #1402 - no workday
   // artifact is published, so there is nothing for a flow to drive them with.
+  'chrome/CrewsSection.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/WorkdayRow.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/WorkdayCalendar.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },

@@ -16,7 +16,7 @@
 // score - the guardrail four docs share and the reason nothing in this app
 // totals a hiker's anything.
 
-import { MAX_DAY_DOTS, type WorkdayCalendarMonth } from '../lib/workProjects'
+import { MAX_DAY_DOTS, type WorkdayCalendarMonth } from '../lib/crews'
 import './workdayCalendar.css'
 
 /** Monday first, because a weekend reads as one block that way rather than

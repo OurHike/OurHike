@@ -18,10 +18,7 @@ import './reporting.css'
 
 export type ReportFormType = ReportDraft['type']
 
-/** What each kind of report calls itself. Exported since #1439 because the
- *  shell's modal wrapper needs the same words for its `aria-label` - one home
- *  for them, rather than the window and the heading drifting apart. */
-export const REPORT_FORM_TITLES: Record<ReportFormType, string> = {
+const TITLES: Record<ReportFormType, string> = {
   blowdown: 'Blow down',
   flooding: 'Flooding',
   trash: 'Trash',
@@ -243,8 +240,31 @@ export function ReportForm({
   const isThanks = type === 'thanks'
 
   return (
-    <main className="reporting">
-      <h1 className="reporting__title">{REPORT_FORM_TITLES[type]}</h1>
+    // A MODAL, SAID OUT LOUD, AND SAID HERE (#1439). As a `flowScreen` this
+    // form replaced the screen, so there was nothing behind it to reach; as
+    // an overlay there is - the tab bar and whichever tab screen was up.
+    // `inert` cannot go on those without a wrapper App.tsx does not have and
+    // a remount it must not cause, so the claim is made from this side:
+    // `aria-modal` is what tells assistive technology that everything outside
+    // this subtree is out of play while it is open.
+    //
+    // ON THE FORM RATHER THAN ON THE SHELL'S POSITIONING DIV, which is the
+    // detail worth keeping: naming it from up there meant lifting these
+    // titles into App.tsx, and that one value import pulled this whole
+    // deferred screen into the eager bundle and put the launch budget 2,972
+    // bytes over (features/LAUNCH_BUDGET.md §3). `aria-labelledby` on the
+    // heading this form already renders costs nothing and is the more
+    // correct spelling anyway - the dialog is the form, not the box holding
+    // it.
+    <main
+      className="reporting"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="reporting-title"
+    >
+      <h1 className="reporting__title" id="reporting-title">
+        {TITLES[type]}
+      </h1>
 
       {isThanks && stewards !== null && <p className="reporting__stewards">{stewards}</p>}
 

@@ -335,6 +335,23 @@ update check run after the shell frame, on idle, in that order of usefulness to 
 hiker. The head preload of `trails_overview.geojson` is emitted only for a first run,
 which is the only launch that reads it.
 
+**And a constant read out of a screen brings the screen with it.** A static value
+import puts the exporting module in the importer's chunk, whole — Rollup cannot take
+the number and leave the file — so `App.tsx`'s `import { FIT_PADDING } from
+'./map/MapView'`, one integer used twice, held the map view in the eager closure along
+with everything it statically reaches. **Measured** 2026-09-15, by attributing a
+production-configured build's `main-*.js` to its sources through the sourcemap:
+14,808 raw bytes came out when the constant moved to `map/fitPadding.ts` —
+`map/MapView.tsx` 5,931, `map/trailsInView.ts` 4,762, `map/lineTaps.ts` 1,826,
+`map/closureTape.ts` 849, `map/longPress.ts` 715, `map/mapDetail.ts` 351,
+`map/labelVisibility.ts` 231, `map/mapEngineLoader.ts` 207 — taking the eager total
+from 256,159 to 251,098 compressed, on a Today screen that mounts no map. This is
+§4.2's shape without §4.2's marker: `check-build-output.mjs` finds MapLibre by name
+and had nothing to find here, so the only thing that reported it was the budget going
+red and the attribution being read afterwards. The rule it generalises to: **a
+constant the shell reads out of a screen-sized module belongs in a module of its
+own**, and the screen imports it too.
+
 ### 4.5 Waypoints are the worker's, not the render's
 
 The waypoint list is read and shaped off the launch thread — either stored packed

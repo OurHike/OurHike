@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { FIT_PADDING } from './map/MapView'
+import { FIT_PADDING } from './map/fitPadding'
 import { TRAIL_BADGE_LAYER_ID } from './map/trailBadges'
 import { BLAZE_UNTAKEN_LAYER_ID } from './map/style'
 import { act, render, screen, cleanup, waitFor, within } from '@testing-library/react'

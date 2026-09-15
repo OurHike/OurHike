@@ -39,13 +39,32 @@ on:
         type: choice
         options: [ua, production, dev]
         default: ua
-      # ~40 min for the three, MEASURED on run #63 (2026-08-27, the run that
-      # first published the per-edge profile): tiles 27s, the A.T. profile
-      # 6m33s, the per-edge climb 16m22s, the per-edge profile 16m24s. The
-      # figure here said ~25 min for two artifacts and was correct for those
-      # two - #1045 added the third and this is the whole cost now.
+      # ~30 min for the three, MEASURED on run #120 (2026-09-15, the first
+      # elevation run since the graph went nationwide): tiles 3m45s, the
+      # A.T. profile 1m01s, the per-edge climb 20m34s, the per-edge profile
+      # 3m24s - 28m44s end to end.
+      #
+      # THE OLD FIGURE WAS ~40 MIN AND IT WAS NOT SIMPLY OUT OF DATE. It was
+      # run #63's (2026-08-27) against a 40,596-edge graph; #1231 took that
+      # to 466,966 edges, and the same step was killed twice at the
+      # 120-minute ceiling on 2026-09-08 before #1287 stopped it reading
+      # whole DEM tiles and made it read only the blocks the trails touch.
+      # So the number to expect was genuinely unknown between those dates.
+      # What run #120 measured is that the per-edge climb cost 20m34s against
+      # 16m22s - 1.26x - across a graph that grew by roughly an order of
+      # magnitude in between (466,966 edges on 2026-09-07 against 40,596 on
+      # 2026-08-27; this run's own count is in its "Build the junction graph"
+      # step and is not copied here rather than guessed at). The two
+      # A.T.-only steps, on data that did not change at all, fell
+      # 6m33s -> 1m01s and 16m24s -> 3m24s: the same block reads, on the
+      # corridor's own thin ribbon.
+      #
+      # The tile fetch went the other way, 27s -> 3m45s, and that is the
+      # nationwide index doing what fetch_elevation.py says it does - one
+      # HEAD per 1-degree cell, over a cell list computed from every
+      # registered organization's lines rather than from the A.T. corridor.
       include_elevation:
-        description: "Also sample elevation: the A.T. profile behind the ribbon, the per-edge climb a day hike is priced from, and the per-edge profile a followed walk's ribbon is drawn from (~40 min). Untick and all three stay at the last elevation run's."
+        description: "Also sample elevation: the A.T. profile behind the ribbon, the per-edge climb a day hike is priced from, and the per-edge profile a followed walk's ribbon is drawn from (~30 min). Untick and all three stay at the last elevation run's."
         type: boolean
         default: false
       include_photos:

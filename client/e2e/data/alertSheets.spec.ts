@@ -35,6 +35,22 @@
 // hard-coded mile would be this file naming a number off one release, which is
 // the thing `mapSheets.spec.ts` refuses to do for shelters and counts.
 //
+// RUNNING IT BY HAND IN THE SANDBOX, AND THE TRAP THAT COSTS AN HOUR. The
+// data half needs `scripts/data-proxy.mjs`, and the build it serves must carry
+// the proxy's own base:
+//
+//     VITE_DATA_BASE_URL=/data/environments/ua npm run build
+//     node scripts/data-proxy.mjs dist 8787
+//     FLOW_DATA=1 FLOW_DATA_ORIGIN=http://localhost:8787 npx playwright test \
+//       e2e/data/alertSheets.spec.ts --project=phone
+//
+// `scripts/test.sh` REBUILDS `dist` WITHOUT THAT VARIABLE on its way past the
+// hermetic half, so a run after it serves an app pointed at a bucket the
+// sandbox's browser cannot reach - no trail, no marks, and every test here
+// fails with "swept the whole frame and never opened", which reads exactly
+// like the marks not drawing. Rebuild before re-running. CI never meets this:
+// the runner reaches the bucket itself.
+//
 // A NEW FILE RATHER THAN MORE TESTS IN mapSheets.spec.ts, deliberately: that
 // file is being rewritten for #1443 on another branch, and BRANCHING.md §2 is
 // about not slicing two changes through one file. The sweep below is therefore
@@ -64,11 +80,19 @@ const REPORTS_KEY = 'conditions/reports.json'
  * also the assertion. A mark that never draws fails here saying how many full
  * passes of the frame found nothing, which is a more useful failure than a
  * timeout on a legend section this file does not otherwise care about.
+ *
+ * 90 s RATHER THAN 120, AND THE TEST BUDGET IS 300 RATHER THAN 180, because
+ * the last test sweeps TWICE. At 120 s inside a 180 s test the second sweep
+ * could never reach its own deadline: Playwright would kill the test first
+ * and report a timeout, throwing away the count-of-passes message that says
+ * what actually went wrong. Two 90 s sweeps and their overhead fit inside 300
+ * with room, so a failure here is always the informative one. Measured: a
+ * mark that IS drawn is found in the first pass, in about 20 s.
  */
-const MARKS_BOUND_MS = 120_000
+const MARKS_BOUND_MS = 90_000
 
-/** The sweeps get the other half of the budget. */
-test.describe.configure({ timeout: 180_000 })
+/** Room for two full sweeps and their boot - see MARKS_BOUND_MS. */
+test.describe.configure({ timeout: 300_000 })
 
 /**
  * A point on the A.T. `metres` north-east of the camera's centre.
@@ -253,7 +277,15 @@ async function frameOf(
  * exactly what this camera is looking at, so meeting them is expected rather
  * than a failure.
  */
-async function sweepFor(page: Page, sheetName: string): Promise<Locator> {
+interface Swept {
+  sheet: Locator
+  /** Where the tap that opened it landed, in page coordinates. Stable for as
+   *  long as the camera does not move, which is what lets the stacking test
+   *  re-tap a mark without sweeping over an open sheet. */
+  at: { x: number; y: number }
+}
+
+async function sweepFor(page: Page, sheetName: string): Promise<Swept> {
   const box = await frameOf(page)
   const wanted = page.getByRole('dialog', { name: sheetName })
   /**
@@ -280,15 +312,37 @@ async function sweepFor(page: Page, sheetName: string): Promise<Locator> {
       const close = dialog.getByRole('button', { name: /^Close/ }).first()
       if ((await close.count()) > 0) await close.click()
     }
-    await expect(page.getByRole('dialog')).toHaveCount(0)
+    // WAIT FOR IT TO ACTUALLY GO, then say what it was if it did not.
+    //
+    // The wait is load-bearing and was learned the hard way: clicking Close
+    // and reading `count()` straight afterwards returns 0 before React has
+    // re-rendered, so the sweep carried on tapping into a sheet that was
+    // still up and found nothing at all - "never opened", on a mark that was
+    // drawn. Two seconds rather than the 30-second default, so a dialog that
+    // genuinely cannot be closed costs one tap's worth of time instead of
+    // half the budget, and is then named rather than left as a bare count.
+    try {
+      await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 2_000 })
+    } catch {
+      const stuck = await page.getByRole('dialog').first().getAttribute('aria-label')
+      throw new Error(
+        `the sweep cannot close "${stuck}", so it can never reach the canvas again`,
+      )
+    }
   }
 
+  let landed: { x: number; y: number } | null = null
+
   const tap = async (across: number, down: number): Promise<boolean> => {
-    await page.mouse.click(
-      box.x + (box.width * across) / 20,
-      box.y + (box.height * down) / 20,
-    )
-    if ((await wanted.count()) > 0) return true
+    const at = {
+      x: box.x + (box.width * across) / 20,
+      y: box.y + (box.height * down) / 20,
+    }
+    await page.mouse.click(at.x, at.y)
+    if ((await wanted.count()) > 0) {
+      landed = at
+      return true
+    }
     if ((await page.getByRole('dialog').count()) > 0) await clearOthers()
     return false
   }
@@ -305,7 +359,7 @@ async function sweepFor(page: Page, sheetName: string): Promise<Locator> {
     for (const step of [2, 1]) {
       for (let down = HEADER_ROWS; down <= 19; down += step) {
         for (let across = 1; across <= 19; across += step) {
-          if (await tap(across, down)) return wanted
+          if (await tap(across, down)) return { sheet: wanted, at: landed! }
         }
       }
     }
@@ -322,7 +376,7 @@ test.describe('the sheet behind a closure band', () => {
     await serveConditions(page, { closures: [A_CLOSED_STRETCH] })
     await openMapOnTheTrail(page)
 
-    const sheet = await sweepFor(page, 'Trail closure')
+    const { sheet } = await sweepFor(page, 'Trail closure')
 
     // The reason, in the app's own words for `storm_damage` — not the wire
     // value, which a hiker never sees.
@@ -338,7 +392,7 @@ test.describe('the sheet behind a closure band', () => {
     await serveConditions(page, { closures: [A_CLOSED_STRETCH] })
     await openMapOnTheTrail(page)
 
-    const sheet = await sweepFor(page, 'Trail closure')
+    const { sheet } = await sweepFor(page, 'Trail closure')
     await sheet.getByRole('button', { name: /^Close$/ }).click()
 
     await expect(page.getByRole('dialog', { name: 'Trail closure' })).toHaveCount(0)
@@ -353,7 +407,7 @@ test.describe('the sheet behind a serious-warning pin', () => {
     await serveConditions(page, { reports: [AN_ESCALATED_REPORT] })
     await openMapOnTheTrail(page)
 
-    const sheet = await sweepFor(page, 'Serious warning')
+    const { sheet } = await sweepFor(page, 'Serious warning')
 
     await expect(sheet).toContainText('Serious warning')
     await expect(sheet.getByRole('note')).toBeVisible()
@@ -366,17 +420,46 @@ test.describe('two safety claims at once', () => {
   }) => {
     // alertSheetsPanel's stated rule, and the reason for it: "two safety
     // sheets stacked is two claims a hiker has to reconcile with a thumb."
-    // This is the assertion that rule is worth having a test for.
+    //
+    // IT CANNOT BE TWO SWEEPS, which is what this test was until review
+    // caught it. `sweepFor`'s own `clearOthers` closes any sheet that is not
+    // the one being swept for, so sweeping for the warning with the closure
+    // sheet open closes the closure ON THE FIRST TAP - and the final
+    // "the closure is gone" then passed whether the panel replaced it or
+    // stacked on it. A test that cannot fail is worse than no test, and this
+    // one was carrying a `covered` row for `alertSheetsPanel.tsx`.
+    //
+    // So: find the warning by sweeping, note where it is, close it, open the
+    // closure, and then tap the warning's own point ONCE. Nothing clears
+    // anything between that tap and the assertion, so the closure is gone
+    // only if the panel closed it.
     await serveConditions(page, {
       closures: [A_CLOSED_STRETCH],
       reports: [AN_ESCALATED_REPORT],
     })
     await openMapOnTheTrail(page)
 
-    await sweepFor(page, 'Trail closure')
+    const warning = await sweepFor(page, 'Serious warning')
+    await warning.sheet.getByRole('button', { name: /^Close$/ }).click()
+    await expect(page.getByRole('dialog', { name: 'Serious warning' })).toHaveCount(0)
+
+    const closure = await sweepFor(page, 'Trail closure')
     await expect(page.getByRole('dialog', { name: 'Trail closure' })).toHaveCount(1)
 
-    await sweepFor(page, 'Serious warning')
+    // The pin has to still be reachable with the closure's sheet up, or the
+    // tap below would land on the sheet and this would be vacuous a second
+    // way. Asserted rather than assumed, and loudly, because a fixture moved
+    // under a bottom sheet is a fixture problem and not a finding about the
+    // app.
+    const sheetBox = await closure.sheet.boundingBox()
+    if (sheetBox !== null && warning.at.y >= sheetBox.y) {
+      throw new Error(
+        `the warning pin at y=${warning.at.y} is under the closure sheet (y=${sheetBox.y}), ` +
+          'so this test cannot tap it - move the fixture, do not weaken the assertion',
+      )
+    }
+
+    await page.mouse.click(warning.at.x, warning.at.y)
 
     await expect(page.getByRole('dialog', { name: 'Serious warning' })).toHaveCount(1)
     await expect(page.getByRole('dialog', { name: 'Trail closure' })).toHaveCount(0)

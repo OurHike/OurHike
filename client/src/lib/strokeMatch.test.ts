@@ -244,12 +244,130 @@ describe('blank-named trails, on the stroke path too (#1444)', () => {
     expect(match.stretches[0].alternatives.length).toBeGreaterThan(0)
   })
 
+  it('does not fragment a stroke along one blank-named trail the publisher split', () => {
+    // THE REGRESSION THIS FILE EXISTS TO STOP, caught in review of #1444's own
+    // change rather than in theory. Routing `trailKeyOf` through
+    // `askableIdentity` gave an unnamed edge the EDGE as its key, and a stroke
+    // down one blank-named trail split across five lines came back as five
+    // stretches instead of one - measured, 1 stretch of 31 points became 5 of
+    // 7/6/6/6/6. `shapesOffered` and `canCloseLoop` both require
+    // `segments.length === 1`, so the hiker loses the shape picker and "Close
+    // the loop", and `gapsAcross` invents four zero-mile gaps.
+    //
+    // One trail_id across all five, which is a publisher splitting a line at
+    // junctions and keeping its own identity for the whole thing.
+    const nodes: [number, number][] = Array.from({ length: 6 }, (_, at) => [
+      -74.1 + at * 0.002,
+      41.25,
+    ])
+    const oneTrail: TrailGraph = {
+      nodes,
+      edges: Array.from({ length: 5 }, (_, at) => ({
+        from: at,
+        to: at + 1,
+        length_m: 167,
+        trail_id: 'nh_granit:8801',
+        source: 'nh_granit_trails',
+        name: ' ',
+        blaze_color: null,
+      })),
+    }
+    const index = buildGraphIndex(published(oneTrail))
+    const stroke = Array.from({ length: 31 }, (_, at) => ({
+      lon: -74.1 + (0.01 * at) / 30,
+      lat: 41.25,
+    }))
+
+    const match = matchStroke(index, stroke)
+
+    expect(match.stretches).toHaveLength(1)
+    expect(match.stretches[0].name).toBeNull()
+  })
+
+  it('still ends the stretch where one unnamed trail becomes a different one', () => {
+    // The other half, and this path's share of the #1444 defect: a blank name
+    // used to merge two DIFFERENT unnamed trails into one stretch, claiming
+    // the hiker never left the trail when they changed trails. Distinct ids
+    // are the only thing that says they are different, so they are what the
+    // key reads.
+    const nodes: [number, number][] = Array.from({ length: 6 }, (_, at) => [
+      -74.1 + at * 0.002,
+      41.25,
+    ])
+    const twoTrails: TrailGraph = {
+      nodes,
+      edges: Array.from({ length: 5 }, (_, at) => ({
+        from: at,
+        to: at + 1,
+        length_m: 167,
+        trail_id: at < 2 ? 'nh_granit:8801' : 'nh_granit:9002',
+        source: 'nh_granit_trails',
+        name: ' ',
+        blaze_color: null,
+      })),
+    }
+    const index = buildGraphIndex(published(twoTrails))
+    const stroke = Array.from({ length: 31 }, (_, at) => ({
+      lon: -74.1 + (0.01 * at) / 30,
+      lat: 41.25,
+    }))
+
+    const match = matchStroke(index, stroke)
+
+    expect(match.stretches).toHaveLength(2)
+  })
+
   it('calls a blank name no name, which is what the field promises', () => {
     // `StrokeStretch.name` is documented "Null for a piece nobody named", and
     // a ' ' made that false - the shell prints this in a sentence.
     const match = matchStroke(blank, along(41.25, -74.099, -74.091))
 
     expect(match.stretches[0].name).toBeNull()
+
+    // NOT a loop over `alsoKnownAs`: this fixture's two lines are 22 m apart
+    // and `SAME_TREAD_METRES` is 8, so that array is always empty and a loop
+    // over it asserts nothing at all. The same-tread case gets its own
+    // fixture below rather than riding on one that cannot produce it.
+    expect(match.stretches[0].alternatives.length).toBeGreaterThan(0)
+  })
+
+  it('calls a blank name no name on a trail SHARING the tread, where alsoKnownAs is populated', () => {
+    // Two blank-named lines on the same tread - inside SAME_TREAD_METRES, so
+    // the second is "also known as" rather than an alternative. This is the
+    // only shape that exercises `askableName` on the alsoKnownAs branch.
+    const stacked: TrailGraph = {
+      nodes: [
+        [-74.1, 41.25],
+        [-74.09, 41.25],
+        [-74.1, 41.250005],
+        [-74.09, 41.250005],
+      ],
+      edges: [
+        {
+          ...GRAPH.edges[0],
+          from: 0,
+          to: 1,
+          name: ' ',
+          blaze_color: null,
+          trail_id: 'a',
+          source: 'nh_granit_trails',
+        },
+        {
+          ...GRAPH.edges[0],
+          from: 2,
+          to: 3,
+          name: '  ',
+          blaze_color: null,
+          trail_id: 'b',
+          source: 'nh_granit_trails',
+        },
+      ],
+    }
+    const index = buildGraphIndex(published(stacked))
+
+    const match = matchStroke(index, along(41.25, -74.099, -74.091))
+
+    expect(match.stretches[0].alsoKnownAs.length).toBeGreaterThan(0)
     for (const also of match.stretches[0].alsoKnownAs) expect(also.name).toBeNull()
   })
 

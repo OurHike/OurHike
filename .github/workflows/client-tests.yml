@@ -171,9 +171,16 @@ jobs:
       # Chromium's it does, which is why this step is new with the engine axis
       # (#1392) and not before it. Locally, `playwright install webkit`
       # downloads happily and then fails to launch on four missing libraries
-      # (libenchant-2, libsecret-1, libGLESv2, libx264); these 61 packages are
+      # (libenchant-2, libsecret-1, libGLESv2, libx264); these 51 packages are
       # `playwright install-deps webkit`'s own list for Ubuntu 24.04, read off
       # apt's history after running it rather than copied from a doc.
+      #
+      # ITS LIST IS 61 AND TEN ARE DELIBERATELY NOT HERE: `xvfb`, which a
+      # headless run does not use, and nine font packages the runner image
+      # already carries for Chromium's sake - the step below installs
+      # chromium too and has never needed them named. If a WebKit text
+      # rendering difference ever turns up, the fonts are the first place to
+      # look and adding them back is one line.
       #
       # NOT `--with-deps`, WHICH IS WHAT THAT FLAG WOULD HAVE DONE FOR US.
       # .github/tests/test_apt_update_is_not_fatal.py refuses it, and the
@@ -305,8 +312,16 @@ jobs:
         if: steps.scope.outputs.run == 'true' && steps.data.outputs.url != ''
         run: npm ci
 
-      # Chromium alone and no `--with-deps`, for the reason the `flow` job
-      # gives above (#1361).
+      # CHROMIUM ALONE HERE, WHERE THE `flow` JOB TAKES BOTH - and that is a
+      # finding rather than an oversight. `playwright.config.ts` leaves
+      # `phone-webkit` out of FLOW_DATA mode because WebKit reaches 150
+      # seconds still reporting "No trail line" against real data where
+      # Chromium has one in 30, and nobody has established whether that is
+      # WebKit or the sandbox proxy it was measured through (#1467). So this
+      # job installs the one engine its projects ask for; installing WebKit
+      # here would be paying for a browser nothing launches.
+      #
+      # Still no `--with-deps`, for #1361's reason, which is unchanged.
       - name: Install Chromium
         if: steps.scope.outputs.run == 'true' && steps.data.outputs.url != ''
         run: npx playwright install chromium

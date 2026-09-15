@@ -178,8 +178,10 @@ section already draws this line and this layer inherits it exactly:
   What had been missing was not the four lines, it was a WebKit that runs.
   `npx playwright install webkit` downloads and then fails to launch on four missing
   system libraries (`libenchant-2`, `libsecret-1`, `libGLESv2`, `libx264`);
-  `npx playwright install-deps webkit` supplies them. CI installs the same 61 packages by
-  hand rather than with `--with-deps`, because
+  `npx playwright install-deps webkit` supplies them. CI installs 51 of those 61 packages by
+  hand rather than with `--with-deps` — `xvfb` and nine font packages are left out, the
+  first because a headless run does not use it and the rest because the runner already
+  carries them for Chromium — because
   `.github/tests/test_apt_update_is_not_fatal.py` refuses that flag for a reason that
   still holds (#1361) — and doing it by hand is what lets it follow this repository's own
   apt rule instead (#1366).

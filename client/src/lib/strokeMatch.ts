@@ -38,7 +38,6 @@
 import {
   DRAWN_SNAP_METRES,
   SAME_TREAD_METRES,
-  askableIdentity,
   askableName,
   trailsNear,
   type GraphPoint,
@@ -111,19 +110,40 @@ function metresBetween(from: LonLat, to: LonLat): number {
  * ran the length of the Pine Meadow Trail crosses several of them without
  * ever leaving the trail.
  *
- * NOW ONE HELPER RATHER THAN TWO COPIES (#1444). This function reimplemented
- * `askableIdentity` line for line - the same `null`-only guard, the same
- * `source\0name\0blaze` key, a different NUL escape - so the drawn-stroke
- * path and the tap path could disagree about which trail a hiker meant, and
- * did: a name that is only whitespace is not `null`, and 12,510 of the
- * network's 631,915 edges carry one. Both read `edge.name` directly, so
- * fixing either alone would have left the other wrong. The separator argument
- * the two copies shared lives with the helper now; what mattered about it was
- * that a literal NUL byte made this file BINARY to git, so `git diff`
- * answered "Binary files differ" and a review of any change here saw nothing.
+ * ONE NAME RULE, TWO FALLBACKS, AND THE SPLIT IS THE POINT (#1444). This
+ * function reimplemented `askableIdentity` line for line - the same
+ * `null`-only guard, the same `source\0name\0blaze` key, a different NUL
+ * escape - so both carried the same defect: a name that is only whitespace is
+ * not `null`, and 12,510 of the network's 631,915 edges carry one, which
+ * keyed a whole state's worth of unnamed tread onto one string. `askableName`
+ * is now the single home of that rule and both callers read it.
+ *
+ * WHAT IS NOT SHARED IS WHAT AN UNNAMED PIECE FALLS BACK TO, because the two
+ * questions want opposite answers and collapsing them was a real regression -
+ * caught in review of this change, not in theory. `askableIdentity` answers
+ * "is this the same ANSWER to which trail did you mean", so it falls back to
+ * the EDGE: two unnamed trails must stay two candidates rather than become
+ * one answer wrong for at least one of them. This function answers "is the
+ * stroke still on the same trail", and an edge-wise fallback fragments a
+ * stroke along one blank-named trail into a stretch per published line -
+ * measured on a five-line fixture, 1 stretch of 31 points became 5 - which
+ * costs `shapesOffered` and `canCloseLoop` their `segments.length === 1` and
+ * makes `gapsAcross` invent zero-mile gaps between pieces of one trail.
+ *
+ * So unnamed tread keys on THE TRAIL'S OWN ID here. A publisher who split one
+ * unnamed trail across five lines under one id keeps one stretch; two
+ * different unnamed trails, which is what distinct ids say, stay two - and
+ * that second half is this path's share of the #1444 defect, because a blank
+ * name used to merge them. Only an edge with no id at all falls through to
+ * the edge, and then the app genuinely has nothing to tell it otherwise.
  */
 function trailKeyOf(index: TrailGraphIndex, point: GraphPoint): string {
-  return askableIdentity(index.graph.edges[point.edgeIndex], point.edgeIndex)
+  const edge = index.graph.edges[point.edgeIndex]
+  const name = askableName(edge.name)
+  if (name !== null) {
+    return `${edge.source ?? ''}\u0000${name}\u0000${edge.blaze_color ?? ''}`
+  }
+  return `unnamed\u0000${edge.trail_id ?? `edge:${point.edgeIndex}`}`
 }
 
 /** One stretch of a matched stroke: the trail it ran along, and the points on

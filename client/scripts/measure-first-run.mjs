@@ -286,8 +286,24 @@ async function clickThrough() {
       { timeout: 180_000 },
     )
   }
+  await refuseToMeasureOnboarding()
+}
+
+/**
+ * Raise if onboarding is STILL up after `MAX_CARDS`, and say nothing if it is
+ * not.
+ *
+ * The null check is the whole point and is not defensive: a flow of exactly
+ * `MAX_CARDS` cards is walked to its end by the loops above and then falls out
+ * of them, so a bare throw here would fail a run that had in fact finished -
+ * and print `still showing "null"` while doing it, which is a message asserting
+ * the opposite of what happened.
+ */
+async function refuseToMeasureOnboarding() {
+  const stuck = await currentCard()
+  if (stuck === null) return
   throw new Error(
-    `onboarding still showing "${await currentCard()}" after ${MAX_CARDS} cards - ` +
+    `onboarding still showing "${stuck}" after ${MAX_CARDS} cards - ` +
       'the flow grew, or a card has no .onboarding__skip / .onboarding__secondary. ' +
       'Measuring past this point would time the wrong screen (#1376).',
   )
@@ -465,6 +481,10 @@ for (let step = 0; !returning && step < MAX_CARDS; step += 1) {
     changed: Date.now() - clicked,
   })
 }
+// Same refusal as the warming walk, and for the same reason: everything below
+// this line times what is on screen, so a walk that ran out of attempts with a
+// card still up must not reach it.
+if (!returning) await refuseToMeasureOnboarding()
 
 // Long enough for whatever the last tap started to finish, so the timeline
 // covers the hand-over into the map screen as well as the steps themselves.

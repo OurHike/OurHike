@@ -24,7 +24,12 @@
 // transit (absent means nothing published, never "none exists"), a climb the
 // document cannot spell is `undefined` - the app never knew - and never 0.
 
-import { DATA_CONFIGURED, SUGGESTED_HIKES_KEY, dataUrl } from './config'
+import {
+  DATA_CONFIGURED,
+  SUGGESTED_HIKES_KEY,
+  dataUrl,
+  suggestedHikeDetailKey,
+} from './config'
 import { recallPublished, rememberPublished } from './conditionsCache'
 import { validClimb, validSegments } from './dayHikes'
 import {
@@ -279,6 +284,126 @@ export function validateSuggestedHikes(document: unknown): SuggestedHike[] {
     hikes.push(hike)
   }
   return hikes
+}
+
+/**
+ * The number a hike's detail is published under, from its shelf id.
+ *
+ * A shelf id is `<source>:<number>` - "nynjtc_hike_finder:50". The published
+ * object is `50.json`, keyed on the number alone so the URL does not carry
+ * the pipeline's own naming, and so a colon never has to survive a path.
+ *
+ * Null for an id with no number after the colon, which no exporter writes -
+ * it is here so a malformed shelf record asks for nothing rather than
+ * fetching a URL built out of a broken string.
+ *
+ * DIGITS, NOT MERELY "SOMETHING AFTER THE COLON", because this string becomes
+ * an object name in the bucket and lib/r2_keys.py's NAME_PATTERN allows no
+ * hyphens. The retired scraper's ids looked like
+ * `nynjtc_favorite_hikes:hike-vista-loop-trail`; one of those would build
+ * `suggested_hikes_detail_hike-vista-loop-trail.json`, a name that could
+ * never have been published under it. Null is the honest answer for an id
+ * this scheme cannot address, and the screen already reads null as "nothing
+ * more to show".
+ */
+export function detailKeyFor(id: string): string | null {
+  const number = id.slice(id.lastIndexOf(':') + 1).trim()
+  if (number === '' || number === id.trim()) return null
+  return /^[0-9]+$/.test(number) ? number : null
+}
+
+/**
+ * One hike's prose, from the bucket, kept for next time (#1473).
+ *
+ * NULL IS ORDINARY AND MEANS "NOTHING MORE TO SHOW", not an error. The screen
+ * has always treated every detail field as optional - absent is what the
+ * publisher did not say - so a phone with no signal, a 404, or an object that
+ * will not parse all land on the state the screen was already built for. That
+ * property is what makes fetching prose on demand safe rather than a new way
+ * for the screen to break.
+ *
+ * Kept raw, like the shelf: the same validation runs on the way back out, and
+ * only after it has parsed, so a broken object never replaces a good one.
+ */
+export async function fetchHikeDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SuggestedHikeDetail | null> {
+  if (!DATA_CONFIGURED) return null
+  const number = detailKeyFor(id)
+  if (number === null) return null
+  try {
+    const response = await fetch(dataUrl(suggestedHikeDetailKey(number)), { signal })
+    if (!response.ok) return null
+    const document: unknown = await response.json()
+    if (typeof document !== 'object' || document === null) return null
+    if (!saysItIs(document as Record<string, unknown>, id)) return null
+    // KEPT BEFORE IT IS JUDGED, the way fetchSuggestedHikes keeps the shelf:
+    // whether `validDetail` found a field worth printing is a question about
+    // what to SHOW, not about whether the bytes arrived. A detail carrying
+    // only its own id - a publisher who said nothing beyond the shelf - reads
+    // as undefined here, and returning before this line would refetch it on
+    // every single open, forever, for exactly the hikes with the least to
+    // say. `saysItIs` is the one gate that stays in front: prose belonging to
+    // another walk is not this walk's to keep.
+    await rememberPublished(
+      suggestedHikeDetailKey(number),
+      document as Record<string, unknown>,
+    )
+    const detail = validDetail(document)
+    if (detail === undefined) return null
+    return detail
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The last detail for this hike that reached the phone, validated again.
+ *
+ * ONE ENTRY PER HIKE SOMEBODY OPENED, and nothing prunes them - which is a
+ * decision rather than an omission, given this whole split exists over a byte
+ * ceiling. conditionsCache.ts's MAX_CACHED_BYTES is PER ARTIFACT, not per
+ * store, so it bounds one detail and not the family: the largest of the 201
+ * published on 2026-09-15 is 10,086 B, 0.48% of it. What bounds the family is
+ * how many walks a hiker opened - all 385 would be about 2.3 MB, beside the
+ * 1.18 GB a downloaded map occupies - and the thing bought with it is that an
+ * already-read walk reads again with no signal.
+ *
+ * A hike dropped from a later export leaves its detail here forever. 6 kB of
+ * prose nothing can reach, because the shelf record that names it is gone.
+ */
+export async function recallHikeDetail(id: string): Promise<SuggestedHikeDetail | null> {
+  const number = detailKeyFor(id)
+  if (number === null) return null
+  const cached = await recallPublished(suggestedHikeDetailKey(number))
+  if (cached === null || !saysItIs(cached.document, id)) return null
+  return validDetail(cached.document) ?? null
+}
+
+/**
+ * Whether this document admits to being the hike that was asked for.
+ *
+ * export_suggested_hikes.py writes `id` onto every detail object for exactly
+ * this check - "a phone that asked for one and was handed another by a stale
+ * cache or a mis-keyed upload would render the wrong prose under the right
+ * name, silently". That sentence is only true if somebody reads the field,
+ * and this is where it is read.
+ *
+ * WHAT THE WRONG ANSWER COSTS, and why this is not paranoia about a rename:
+ * the prose is turn-by-turn directions. A hiker acting on another walk's
+ * directions under this walk's name is the confidently-wrong answer
+ * CLAUDE.md's safety section exists to prevent, and no field on the object
+ * would look wrong while they did it.
+ *
+ * A document carrying NO id passes. Nothing this exporter has ever published
+ * is missing one, but absent has always meant "the publisher did not say"
+ * here, and refusing on absence would discard prose over a field that is not
+ * itself evidence of a mix-up. Only a DISAGREEING id is a mix-up.
+ */
+function saysItIs(document: Record<string, unknown>, id: string): boolean {
+  const said = document.id
+  return typeof said !== 'string' || said === id
 }
 
 /** The last document that reached this phone, validated again, or null. */

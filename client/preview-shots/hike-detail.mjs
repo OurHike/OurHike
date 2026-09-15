@@ -8,6 +8,14 @@
 //    publisher's own 8.5 mi beside it. On the routes shipping today the
 //    two differ by up to a fifth, and one dressed as the other would be a
 //    display outrunning its source.
+//
+//    SINCE #1473 THOSE TWO FIGURES COME FROM TWO OBJECTS. The 7.9 is on
+//    the shelf record; the publisher's 8.5 arrives with the prose, fetched
+//    when this screen opened. So this shot is now also the evidence that
+//    the split's fetch path renders - and the reason the drive below waits
+//    on the publisher's half rather than on the phone's own, which is
+//    printed before anything has been fetched and would photograph a
+//    half-arrived screen.
 //  - NO TIME. The fixture's climb is null, so the figures line reads
 //    "no time - climb unmeasured" rather than pricing an unmeasured climb
 //    as flat ground - which is what a time computed from zero would be.
@@ -44,5 +52,12 @@ export default async function drive(page) {
 
   await page.getByRole('button', { name: /Wapiti to Docs Knob/ }).click()
   await page.getByRole('heading', { name: 'Wapiti to Docs Knob' }).waitFor()
-  await page.getByText(/measured on the trail lines this phone holds/).waitFor()
+  // The PUBLISHER's half, not this phone's. "measured on the trail lines
+  // this phone holds" is printed from the shelf record alone and is on
+  // screen before the detail has been read, so waiting on it would let the
+  // camera fire mid-fetch and photograph a screen with no prose on it.
+  // "says 8.5 mi" cannot appear until suggested_hikes_detail_7909.json has
+  // arrived and merged, which is the sequence this shot is evidence for.
+  await page.getByText(/says 8\.5 mi/).waitFor()
+  await page.getByText(/Park at the pull-off/).waitFor()
 }

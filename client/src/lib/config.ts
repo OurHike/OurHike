@@ -542,17 +542,73 @@ export const RETIRED_POI_KEY = 'retired_poi.geojson'
 // works with no signal like everything else here.
 //
 // THE CLIENT HALF LANDED FIRST (#1284), and the pipeline half followed with
-// NYNJTC's Favorite Hikes (#1290): pipeline/export_suggested_hikes.py writes
-// this from the routes a person has signed off in
-// pipeline/reference/nynjtc_hike_routes.json, measured on the junction graph
-// by the twin of this app's own router. It is absent from a release for
-// three reasons the client reads alike - the source's reaches_hikers, no row
-// signed off yet, or a run that did not reach the exporter - and every one
-// is a phone with an empty shelf and no section, never a failed download.
+// NYNJTC's hikes (#1290, rebuilt on the Hike Finder export in #1427):
+// pipeline/export_suggested_hikes.py forms a route for every hike whose
+// description it can follow, grades it against what the publisher
+// independently stated, and ships the ones it can stand behind - measured on
+// the junction graph by the twin of this app's own router. It is absent from
+// a release for three reasons the client reads alike - the source's
+// reaches_hikers, no hike whose route passed grading, or a run that did not
+// reach the exporter - and every one is a phone with an empty shelf and no
+// section, never a failed download.
+//
+// (This paragraph named pipeline/reference/nynjtc_hike_routes.json until
+// 2026-09-15. That file was a per-hike sign-off sheet and #1427 deleted it
+// along with the scraper it served; the gate is now the grade.)
 //
 // @release optional - gated in publish.py on a manifest the exporter writes
-// only when a reviewed row exists; see the paragraph above.
+// only when a hike passed grading; see the paragraph above.
 export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
+
+/**
+ * One hike's prose, fetched when somebody opens it (#1473).
+ *
+ * THE SHELF STOPPED CARRYING THIS, and the reason is a cliff rather than
+ * tidiness. `suggested_hikes.json` had reached 1.70 MB of
+ * conditionsCache.ts's 2 MB ceiling, and that ceiling DELETES the copy a
+ * phone is holding rather than trimming it - so the publish that crossed it
+ * would have emptied the shelf offline on every phone, with no warning and
+ * no partial list. Measured over the 201 records published on 2026-09-15,
+ * `description` was 58.1% of the bytes and `directions` another 6.6%: prose
+ * the shelf and the finder never read. The shelf is 176,303 B now - 877.1 B
+ * a record against 8,477, so ~2,391 hikes fit under the ceiling where 247
+ * did.
+ *
+ * ONE OBJECT PER HIKE, not a shard, because a hiker opens one walk. The SHELF
+ * is what gets cut into 1-degree coverage cells, being the artifact that
+ * grows with how much ground somebody downloaded.
+ *
+ * `id` is the number off the shelf record's own id, which is
+ * `<source>:<number>` - see suggestedHikesData.ts's `detailKeyFor`.
+ *
+ * NO `@release` LINE, AND NOT BY OVERSIGHT - this is a key BUILDER, not one
+ * of the `*_KEY` artifacts the release contract governs, and it is spelled in
+ * camelCase to keep that difference visible. verify_release.py's check 2 asks
+ * of every declared key "must a release carry it", which is a question about
+ * one named object; there is one of these per hike and they are named at
+ * runtime.
+ *
+ * The same shape the coverage cells use, for the same reason: a cell family
+ * declares its INDEX (`BASEMAP_CELLS_KEY`, `NEARBY_TRAILS_CELLS_KEY`) and the
+ * per-cell objects carry no tag of their own. Here the SHELF is the index -
+ * every record's id names its detail - so nothing extra needs declaring.
+ *
+ * A FLAT NAME RATHER THAN A `suggested_hikes_detail/` DIRECTORY, and that is
+ * the bucket's rule, not a preference. pipeline/lib/r2_keys.py declares five
+ * top-level prefixes and this is not one of them, so a slash here makes every
+ * one of these keys illegal and `assert_valid_keys` fails the whole publish
+ * before a byte is uploaded. `at_basemap_cell_n40w074.pmtiles` and
+ * `trail_graph_cell_<name>.json` are the same shape for the same reason.
+ *
+ * WHERE THIS DIFFERS FROM A CELL, and why nothing verifies these the way
+ * check 20 verifies cells: a promised cell that is missing is blank map, so
+ * its absence is a defect. A missing detail is a hike whose publisher said
+ * nothing more - the state the detail screen was built around long before this
+ * split, since every field in SuggestedHikeDetail is optional and absent has
+ * always meant "they did not say". There is no failure here to detect.
+ */
+export const suggestedHikeDetailKey = (id: string): string =>
+  `suggested_hikes_detail_${id}.json`
 
 // The places a hiker can name before anything is downloaded - parks, towns,
 // trailheads, parking areas and the long trails - published by

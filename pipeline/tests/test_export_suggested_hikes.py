@@ -24,6 +24,7 @@ import pytest
 
 import export_suggested_hikes as exporter
 from lib.hikefinder import SOURCE_KEY
+from lib.r2_keys import assert_valid_keys
 from tests.test_lib_trail_graph_route import LAT, LON, STEP, graph_files
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -93,6 +94,8 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setattr(exporter, "OUT_PATH", processed / "suggested_hikes.json")
     monkeypatch.setattr(exporter, "MANIFEST_PATH", processed / "suggested_hikes_manifest.json")
     monkeypatch.setattr(exporter, "ROUTES_PATH", processed / "hikefinder_routes.json")
+    monkeypatch.setattr(exporter, "DETAIL_DIR", processed / "suggested_hikes_detail")
+    monkeypatch.setattr(exporter, "DETAIL_MANIFEST_PATH", processed / "suggested_hikes_detail_manifest.json")
 
     def write(hikes: dict, routes: dict):
         monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: hikes)
@@ -103,6 +106,17 @@ def sandbox(tmp_path, monkeypatch):
 
 def published(sandbox) -> list[dict]:
     return json.loads(sandbox["out"].read_text())["hikes"]
+
+
+def detail_of(record: dict) -> dict:
+    """The detail object published beside one shelf record (#1473).
+
+    Keyed on the number off the record's own id, which is what the client
+    builds its URL from - so reading it this way exercises the same lookup a
+    phone does rather than trusting the filename.
+    """
+    number = record["id"].split(":", 1)[-1]
+    return json.loads((exporter.DETAIL_DIR / f"{number}.json").read_text())
 
 
 # --- the gates -----------------------------------------------------------------
@@ -171,16 +185,24 @@ def test_the_publishers_tags_ride_through_to_the_record(sandbox):
     assert published(sandbox)[0]["features"] == ["Views", "Waterfall"]
 
 
-def test_everything_the_export_said_is_carried_onto_the_record(sandbox):
+def test_everything_the_export_said_is_carried_across_the_two_objects(sandbox):
+    """#1473 split the record; it did not drop anything out of it. What the
+    export said still all ships - the finder's facts on the shelf, the prose
+    in the hike's own object - and this walks both sides to prove it."""
     sandbox["write"]({"7": hike()}, {"7": route()})
     exporter.main()
     record = published(sandbox)[0]
+    detail = detail_of(record)
+
+    # On the shelf, because a finder filters what it already holds.
     assert record["park"] == "Harriman State Park"
     assert record["routeType"] == "Circuit"
     assert record["dogs"] == "Allowed on leash"
-    assert record["directions"] == ["Park at the gate."]
-    assert record["publishedMiles"] == 0.3
-    assert record["overview"] == ["A short loop."]
+
+    # In the hike's own object, because only its screen reads them.
+    assert detail["directions"] == ["Park at the gate."]
+    assert detail["publishedMiles"] == 0.3
+    assert detail["overview"] == ["A short loop."]
 
 
 def test_the_two_authors_are_kept_apart(sandbox):
@@ -194,7 +216,7 @@ def test_the_two_authors_are_kept_apart(sandbox):
     exporter.main()
     record = published(sandbox)[0]
     assert record["author"] == {"kind": "club", "name": STEWARD}
-    assert record["publication"]["submittedBy"] == "Daniel Chazin"
+    assert detail_of(record)["publication"]["submittedBy"] == "Daniel Chazin"
 
 
 def test_a_hike_naming_no_author_ships_no_publication_block(sandbox):
@@ -236,8 +258,8 @@ def test_a_difficulty_the_client_has_no_slot_for_is_absent_rather_than_guessed(s
 
 
 def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorded(sandbox):
-    """The claim being made is "the phone walking these ends walks the
-    surveyed route", and it is only made after measuring it."""
+    """The claim being made is "the phone walking these ends walks the line the
+    publisher drew", and it is only made after measuring it."""
     ends = [[LON, LAT], [LON + STEP, LAT], [LON + 2 * STEP, LAT], [LON + 3 * STEP, LAT]]
     miles = exporter.router.metres_to_miles(exporter.router.metres_between((LON, LAT), (LON + 3 * STEP, LAT)))
     sandbox["write"](
@@ -246,8 +268,8 @@ def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorde
     )
     manifest = exporter.main()
     record = published(sandbox)[0]
-    assert record["routeProvenance"] == "published"
-    assert "trackReproduction" in record
+    assert record["routeProvenance"] == "published", "provenance rides the SHELF, beside the line it describes"
+    assert "trackReproduction" in detail_of(record)
     assert manifest["by_provenance"] == {"published": 1}
 
 
@@ -309,17 +331,149 @@ def test_the_record_is_flat_because_the_client_reads_it_flat(sandbox):
 
     So this test reads the client's own validator and checks the exporter
     against it. It fails if either side moves without the other.
+
+    #1473 SPLIT THE RECORD AND THIS GOT STRONGER RATHER THAN WEAKER. The
+    fields are still flat - `validDetail` is handed a whole object either way
+    - but they now live across two of them, so what has to hold is that the
+    UNION covers what the client reads. A field that fell out of the shelf and
+    never landed in the detail would be exactly the original bug wearing a new
+    coat.
     """
     sandbox["write"]({"7": hike()}, {"7": route()})
     exporter.main()
     record = published(sandbox)[0]
+    detail = detail_of(record)
 
-    assert "detail" not in record, "the detail fields are flat on the wire - validDetail reads the whole record"
+    for obj, where in ((record, "shelf record"), (detail, "detail object")):
+        assert "detail" not in obj, f"the fields are flat on the wire - validDetail reads the whole {where}"
+
     wanted = _fields_the_client_reads()
-    missing = {name for name in wanted if name not in record}
+    carried = set(record) | set(detail)
+    missing = wanted - carried
     # `hikerNote` is deliberately never written: its contract is that a person
     # reviewed the route, and nobody has reviewed these.
-    assert missing <= {"hikerNote"}, f"the client reads {sorted(missing)} and this record does not carry them"
+    assert missing <= {"hikerNote"}, f"the client reads {sorted(missing)} and neither object carries them"
+
+
+def test_the_shelf_and_the_detail_share_no_field(sandbox):
+    """What lib/useHikeDetail.ts's merge rests on (#1473).
+
+    It spreads the fetched detail OVER the shelf's own fields, which is only
+    safe while the two carry nothing in common - the moment they overlap,
+    spread order silently becomes a precedence decision nobody made, and the
+    field it would quietly win is `routeProvenance`: the one that says whether
+    a hiker is looking at a line somebody drew or a line this pipeline
+    inferred.
+
+    Disjoint by construction today, since the detail is built by excluding
+    SHELF_FIELDS. This is the guard for the day somebody adds a field to both
+    lists by hand.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    detail = detail_of(record)
+
+    shared = (set(record) & set(detail)) - {"id"}
+    assert shared == set(), f"{sorted(shared)} is on both objects - useHikeDetail's merge would pick a winner silently"
+    assert detail["id"] == record["id"], "a detail fetched on its own has to say which hike it is"
+
+
+def test_every_detail_key_is_one_the_bucket_will_accept(sandbox):
+    """The check that would have caught this split breaking the whole publish.
+
+    publish.py calls `assert_valid_keys` over every artifact BEFORE it opens a
+    connection, and that call RAISES - so one illegal name among the details
+    does not skip those objects, it aborts the vector-data publish entirely
+    and the bucket goes on serving the release before it. The first version of
+    #1473 keyed these `suggested_hikes_detail/<n>.json`, which is a top-level
+    prefix nobody declared in lib/r2_keys.py, and CI was green on it: no suite
+    ran a real key through the validator.
+
+    This runs the manifest publish.py actually reads, rather than a key built
+    by hand here, so a template changed in one place and not the other fails
+    here instead of in the bucket.
+    """
+    sandbox["write"](
+        {"7": hike(), "1234": hike(id=1234, name="Another Walk")},
+        {"7": route(), "1234": route(hike_id=1234)},
+    )
+    exporter.main()
+
+    keys = list(json.loads(exporter.DETAIL_MANIFEST_PATH.read_text())["artifacts"])
+    assert keys, "the manifest is what publish.py uploads from; an empty one publishes no prose at all"
+    assert_valid_keys(keys)
+
+
+def test_a_stale_detail_from_an_earlier_run_is_not_left_behind(sandbox):
+    """A hike dropped or renumbered between runs leaves prose in the bucket
+    that no shelf record points at. Harmless to a phone, which never asks for
+    it - and exactly the kind of debris that makes a later reader mistrust the
+    whole family."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    orphan = exporter.DETAIL_DIR / "999.json"
+    orphan.write_text('{"id": "gone:999"}')
+
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert not orphan.exists(), "the detail directory is rebuilt, not added to"
+    assert sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json")) == ["7.json"]
+
+
+def test_an_id_this_scheme_cannot_name_costs_the_run_and_not_the_last_good_one(sandbox):
+    """A bad id raises BEFORE anything is deleted, and takes the manifest with
+    it rather than leaving one that names files this run just removed.
+
+    Two ways to get this wrong and one of them is worse than the failure it
+    is reporting: a manifest naming deleted paths is read by publish.py on
+    the NEXT run and aborts the whole vector-data upload, where a missing
+    manifest is read as "this run published no prose" and costs the release
+    its prose alone.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    kept = sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json"))
+    assert kept == ["7.json"]
+
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        exporter.write_details([{"id": "nynjtc_favorite_hikes:hike-vista-loop-trail"}])
+    # And the other half of the same gate: a bare number is an id the client
+    # answers null for, so writing its detail would publish prose nothing can
+    # ask for.
+    with pytest.raises(ValueError, match="detailKeyFor"):
+        exporter.write_details([{"id": "50"}])
+
+    assert sorted(path.name for path in exporter.DETAIL_DIR.glob("*.json")) == kept, (
+        "the check runs before the delete, so a bad id leaves the last good run intact"
+    )
+    assert exporter.DETAIL_MANIFEST_PATH.exists(), "nothing was deleted, so the manifest still describes what is there"
+
+
+def test_a_manifest_never_outlives_the_files_it_names(sandbox):
+    """The manifest goes first, so a crash between the delete and the rewrite
+    leaves publish.py with no manifest rather than one pointing at nothing."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    named = json.loads(exporter.DETAIL_MANIFEST_PATH.read_text())["artifacts"]
+    assert all(pathlib.Path(entry["path"]).exists() for entry in named.values())
+
+    # Every id checks out, so this run reaches the delete - and dies there,
+    # the way a killed CI job would.
+    def die(*_args, **_kwargs):
+        raise KeyboardInterrupt
+
+    original = exporter.sha256_file
+    exporter.sha256_file = die
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            exporter.write_details([{"id": f"{SOURCE_KEY}:7"}])
+    finally:
+        exporter.sha256_file = original
+
+    assert not exporter.DETAIL_MANIFEST_PATH.exists(), (
+        "publish.py reads a missing manifest as 'no prose this run'; one naming deleted paths aborts the publish"
+    )
 
 
 def test_the_provenance_fields_are_spelled_the_way_the_client_reads_them(sandbox):

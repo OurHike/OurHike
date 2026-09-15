@@ -9438,6 +9438,7 @@ function App() {
         hike={openHike}
         pace={pace}
         units={units}
+        online={online}
         onBack={goBack}
         onSave={saveSuggestedHike}
         {...(savedCopy === undefined

@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest'
 import 'fake-indexeddb/auto'
 import { set } from 'idb-keyval'
 import { conditionsCacheKey } from './conditionsCache'
-import { SUGGESTED_HIKES_KEY, dataUrl } from './config'
+import { SUGGESTED_HIKES_KEY, dataUrl, suggestedHikeDetailKey } from './config'
 import {
+  detailKeyFor,
+  recallHikeDetail,
   recallSuggestedHikes,
   validateSuggestedHike,
   validateSuggestedHikes,
@@ -265,5 +267,91 @@ describe('the kept copy', () => {
     })
     const kept = await recallSuggestedHikes()
     expect(kept?.map((hike) => hike.id)).toEqual(['sunrise'])
+  })
+})
+
+// --- the shelf/detail split (#1473) -------------------------------------------
+//
+// The shelf stopped carrying every hike's prose because it had reached 1.70 MB
+// of conditionsCache.ts's 2 MB ceiling, and that ceiling DELETES the copy a
+// phone holds rather than trimming it. What these pin is the property that
+// makes fetching prose on demand safe: a detail that never arrives is a hike
+// whose publisher said nothing more, which every field here was already
+// written for.
+
+describe('the key a detail is published under', () => {
+  it('is the number off the shelf id, because that is what a URL can carry', () => {
+    expect(detailKeyFor('nynjtc_hike_finder:50')).toBe('50')
+  })
+
+  it('is null for an id with no source prefix, so a broken record asks for nothing', () => {
+    // No exporter writes this. It is here so a malformed shelf record fetches
+    // nothing rather than building a URL out of whatever the string was.
+    expect(detailKeyFor('50')).toBeNull()
+    expect(detailKeyFor('nynjtc_hike_finder:')).toBeNull()
+    expect(detailKeyFor('')).toBeNull()
+  })
+
+  it('is null for an id this bucket could not have published, rather than a name it refuses', () => {
+    // The retired scraper's shape (#1427 replaced it). `hike-vista-loop-trail`
+    // would build `suggested_hikes_detail_hike-vista-loop-trail.json`, and
+    // pipeline/lib/r2_keys.py's NAME_PATTERN allows no hyphens - so no such
+    // object can exist and asking for one is a request that could only 404.
+    expect(detailKeyFor('nynjtc_favorite_hikes:hike-vista-loop-trail')).toBeNull()
+  })
+})
+
+describe('recalling a detail this phone already has', () => {
+  it('reads it back through the same validator it went in by', async () => {
+    await set(conditionsCacheKey(suggestedHikeDetailKey('77')), {
+      document: {
+        id: 'nynjtc_hike_finder:77',
+        url: 'https://example.test/hike/77',
+        description: ['Follow the blue blazes.'],
+        publishedMiles: 4.1,
+      },
+      storedAt: new Date().toISOString(),
+    })
+
+    const detail = await recallHikeDetail('nynjtc_hike_finder:77')
+    expect(detail?.description).toEqual(['Follow the blue blazes.'])
+    expect(detail?.publishedMiles).toBe(4.1)
+  })
+
+  it('answers null for a hike it has never opened, which is not a failure', async () => {
+    // The screen reads this exactly as "the publisher said nothing more" -
+    // the state it was built around long before the split.
+    expect(await recallHikeDetail('nynjtc_hike_finder:31337')).toBeNull()
+  })
+
+  it('refuses prose that names a different walk', async () => {
+    // WHY THE EXPORTER PUTS `id` ON EVERY DETAIL. A mis-keyed upload or a
+    // cache entry left by an earlier numbering hands back another hike's
+    // turn-by-turn under this hike's name, and nothing else on the object
+    // would look wrong. The prose is directions; acting on the wrong walk's
+    // is the failure this check exists to prevent.
+    await set(conditionsCacheKey(suggestedHikeDetailKey('88')), {
+      document: {
+        id: 'nynjtc_hike_finder:41',
+        description: ['Turn left at the second stream crossing.'],
+      },
+      storedAt: new Date().toISOString(),
+    })
+
+    expect(await recallHikeDetail('nynjtc_hike_finder:88')).toBeNull()
+  })
+
+  it('accepts prose that names no walk at all, because absent has never meant wrong', async () => {
+    // Nothing published is missing an id. But absent means "they did not say"
+    // everywhere else in this file, and discarding prose over a field that is
+    // not itself evidence of a mix-up would cost a hiker their directions to
+    // enforce a convention.
+    await set(conditionsCacheKey(suggestedHikeDetailKey('89')), {
+      document: { description: ['Follow the white blazes.'] },
+      storedAt: new Date().toISOString(),
+    })
+
+    const detail = await recallHikeDetail('nynjtc_hike_finder:89')
+    expect(detail?.description).toEqual(['Follow the white blazes.'])
   })
 })

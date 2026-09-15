@@ -1641,12 +1641,27 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
 # than declared one by one in config.ts. The four halves, any cell name.
 _GRAPH_CELL_SHARD = re.compile(r"^trail_graph(_geometry|_elevation|_profile)?_cell_[ns]\d{2}[ew]\d{3}\.json$")
 
+# One hike's prose (#1473, export_suggested_hikes.py's DETAIL_KEY): fetched
+# whole by lib/useHikeDetail.ts when somebody opens that hike, and named per
+# hike rather than declared in config.ts - the same reason the graph shards
+# need a pattern here.
+#
+# WEIGHED RATHER THAN SKIPPED, and the budget is not the only ceiling it is
+# standing in for. A detail is kept in the conditions cache, whose
+# MAX_CACHED_BYTES DELETES an oversize artifact rather than trimming it, so a
+# runaway description reaches a phone, fails to keep, and refetches on every
+# open forever. Left unmatched here, all 201 of these would have SKIPPED with
+# a reason that is not true of them - and `--strict` counts a skip as a
+# failure.
+_SUGGESTED_HIKE_DETAIL = re.compile(r"^suggested_hikes_detail_\d+\.json$")
+
 
 def _fetched_whole_by_the_client(key: str, client_keys: set[str]) -> bool:
     """Whether some phone running the current client fetches `key` entire -
-    the artifacts check 22 weighs. Declared keys, and the graph shards the
-    client derives from a declared index."""
-    return key in client_keys or _GRAPH_CELL_SHARD.match(key) is not None
+    the artifacts check 22 weighs. Declared keys, plus the two families the
+    client names at runtime from an index rather than declaring one by one:
+    the graph shards, and one hike's prose."""
+    return key in client_keys or _GRAPH_CELL_SHARD.match(key) is not None or _SUGGESTED_HIKE_DETAIL.match(key) is not None
 
 
 def check_launch_budget(

@@ -3377,6 +3377,13 @@ function App() {
     belowSeam,
     clubSections,
     clubRuns,
+    // The graph the tapped line's climb is summed out of (#1476), and whether
+    // the climb half may be fetched with signal. `graphMerged` rather than
+    // `dayHikeIndex`: this needs the edges and their climb, never their
+    // vertices, so it must not wait on the geometry artifact the builder's
+    // door pulls.
+    graphMerged,
+    online,
     highlights,
     elevation,
     onCloseLegend: closeLegend,

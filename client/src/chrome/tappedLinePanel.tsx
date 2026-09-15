@@ -16,13 +16,15 @@
 // answers to one question, which is the failure App.tsx's own comments keep
 // naming ("two surfaces measuring the same distance two ways").
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MapScreenProps } from './MapScreen'
 import { LineSheet } from './LineSheet'
 import { trailIdForSource } from '../map/trailBadges'
 import { ClubSheet } from './ClubSheet'
 import { HighlightSheet } from './HighlightSheet'
 import { buildLineDetail, type LineDetail } from '../lib/lineDetail'
+import { lineClimb, type LineClimb } from '../lib/lineClimb'
+import { fetchTrailGraphElevationCells, type MergedGraph } from '../lib/trailGraphData'
 import { buildClubDetail, type ClubDetail } from '../lib/clubDetail'
 import { buildHighlightDetail, type HighlightDetail } from '../lib/highlightDetail'
 import type { ClubRun, ClubSections } from '../lib/clubSections'
@@ -66,6 +68,17 @@ export interface TappedLineInput {
    *  Passed in because the legend's maintainer line reads the same answer. */
   belowSeam: boolean
   clubSections: ClubSections
+  /**
+   * The junction graph as merged from the cells this phone holds (#1476), or
+   * null before any lands. What the climb figure is summed out of: an edge
+   * carries its parent line's `trail_id`, so the tapped feature's id selects
+   * its own edges and nothing else.
+   */
+  graphMerged: MergedGraph | null
+  /** Whether the climb half may be fetched with signal. Passed rather than
+   *  assumed, for lib/trailGraphData.ts's reason: offline the store read is
+   *  what makes this work at a trailhead instead of only at the hostel. */
+  online: boolean
   /** The corridor read end to end, in mile order. Passed in for the same
    *  reason `belowSeam` is. */
   clubRuns: readonly ClubRun[]
@@ -138,6 +151,8 @@ export function useTappedLinePanel({
   belowSeam,
   clubSections,
   clubRuns,
+  graphMerged,
+  online,
   highlights,
   elevation,
   onCloseLegend,
@@ -151,6 +166,72 @@ export function useTappedLinePanel({
    *  destination's name - is resolved here, where the data is. */
   const [selectedLine, setSelectedLine] = useState<TappedLine | null>(null)
   const [selectedHighlightId, setSelectedHighlightId] = useState<string | null>(null)
+
+  /**
+   * The climb half of the graph cells this phone holds, and the graph it was
+   * fetched for (#1476).
+   *
+   * PAIRED WITH ITS GRAPH RATHER THAN KEPT ALONE, because the merge is
+   * append-only: a cell landing after this was fetched leaves the array
+   * shorter than the edges it would be read against, and an array priced
+   * against the wrong edges is a plausible figure on the wrong trail. Holding
+   * the graph beside it makes the staleness checkable in one `===` instead of
+   * inferred from a length.
+   *
+   * `data: null` is a DECIDED absence - published without the climb half, or
+   * a 404 - and is recorded so it is not re-asked on every tap. An undecided
+   * answer (the network refused) is deliberately NOT recorded: nothing was
+   * learned, so the next tap may ask again. That is lib/trailGraphData.ts's
+   * own three-way distinction, kept rather than flattened here.
+   */
+  const [heldClimb, setHeldClimb] = useState<{
+    graph: MergedGraph
+    data: Array<[number, number] | null> | null
+  } | null>(null)
+
+  // FETCHED ON THE TAP, not at launch. The climb half is small beside the
+  // shard it aligns with, but it is not free, and a hiker who never taps a
+  // line never needs it - the same lazily-when-a-door-opens shape the builder
+  // uses for the geometry half.
+  const wantsClimb = selectedLine !== null
+  useEffect(() => {
+    if (!wantsClimb || graphMerged === null) return
+    if (heldClimb?.graph === graphMerged) return
+
+    const controller = new AbortController()
+    let wanted = true
+    void fetchTrailGraphElevationCells(graphMerged, controller.signal, online).then(
+      (outcome) => {
+        if (!wanted || outcome.kind === 'undecided') return
+        setHeldClimb({
+          graph: graphMerged,
+          data: outcome.kind === 'loaded' ? outcome.data : null,
+        })
+      },
+    )
+
+    return () => {
+      wanted = false
+      controller.abort()
+    }
+  }, [wantsClimb, graphMerged, heldClimb, online])
+
+  /**
+   * What this phone can honestly say about the tapped line's climb.
+   *
+   * The array is used only while it still belongs to the graph in hand;
+   * otherwise nothing is passed and `lineClimb` reads whatever the edges
+   * themselves carry, which for a plain merged shard is nothing at all - the
+   * honest "no figures" rather than a figure summed against stale alignment.
+   */
+  const climb: LineClimb = useMemo(() => {
+    if (selectedLine === null || graphMerged === null) return { kind: 'none' }
+    return lineClimb(
+      graphMerged.graph,
+      selectedLine,
+      heldClimb?.graph === graphMerged ? heldClimb.data : null,
+    )
+  }, [selectedLine, graphMerged, heldClimb])
 
   /**
    * The tapped line's sheet content (#134), resolved here for the reason
@@ -167,8 +248,9 @@ export function useTappedLinePanel({
       trailName,
       pace,
       trailSources,
+      climb,
     )
-  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources])
+  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources, climb])
 
   const clubDetail: ClubDetail | null = useMemo(() => {
     if (!belowSeam || selectedLine === null || trailIndex === null) return null

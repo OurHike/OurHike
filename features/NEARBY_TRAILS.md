@@ -135,6 +135,31 @@ row in `pipeline/sources.json`'s `org_marks`. Switching trails stays in
 the picker ([#558 — Let a hiker take the stretch they are walking, without picking it off a
 list](https://github.com/OurHike/OurHike/issues/558) is that flow's home).
 
+**And since [#1476 — Tapping a trail says how far it goes and never how much it climbs,
+though every edge's gain is already measured and cut into the cell the tap just
+loaded](https://github.com/OurHike/OurHike/issues/1476), how much it climbs.** The sheet
+had always said how far a trail goes and never how much it rises, on every trail including
+the A.T., and nineteen flat miles and nineteen miles over five Harriman knobs are not the
+same walk. The figure was already published — `export_network_elevation.py` measures
+`[gain_ft, loss_ft]` along every edge of the junction graph and `cut_trail_graph.py` files
+it into the same cells — and had exactly one reader, `lib/dayHikeCard.ts`, for a *resolved
+day hike*. A hiker who never opened the builder had never seen it.
+
+`lib/lineClimb.ts` is the sum, and it is written in feet over edges rather than over a
+concatenated profile, which is what keeps [#559](https://github.com/OurHike/OurHike/issues/559)'s
+phantom ~36,800 ft out of it: `ENDPOINT_SNAP_M` lets two edges meeting at one node sit
+metres apart on the ground, and the step between them is never a term here because there is
+nothing to sum across. Three absences are told apart rather than flattened into "unknown",
+because two of them are things a hiker can act on and one is not — a **hole in the DEM**
+(no total, and say how much of the trail it is), a line running **past the cells this phone
+holds** (no total, and point at the download), and **no figures on this phone at all** (say
+nothing, because a permanent "climb unknown" on every line is the caveat-on-every-line that
+buries the two a hiker's safety turns on). The figure that does print carries the estimate
+sentence `DayHikeCard` gives it: the maintainer's decision of 2026-08-25 was to ship it
+*and* frame it, and the two measurements either side of it — a dead band reading +18.8%
+against a maintaining club on rolling ground, and junction-chopping understating a
+continuous profile by a median 6.9% — have never been netted against each other.
+
 Why, argued: making a nearby trail the chosen one swaps the mile frame, the elevation
 ribbon, the Naismith numbers and the amenity POI set **at once** — the whole context a hiker
 is navigating by. At 263 junctions per park, a one-tap switch on the map is an accidental

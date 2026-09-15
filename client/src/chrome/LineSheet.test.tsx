@@ -18,6 +18,8 @@ const FULL: LineDetail = {
   junctionLine: 'Joins the AT at mi 1,043.2',
   sourceLine: 'From the Appalachian Trail Conservancy’s side trails data.',
   extentLine: null,
+  climbLine: null,
+  climbNote: null,
   closureLine: null,
   switchNote: null,
   trailMark: null,
@@ -35,6 +37,8 @@ const NEARBY: LineDetail = {
   sourceLine:
     'From New York State Office of Parks, Recreation and Historic Preservation.',
   extentLine: '24.0 mi · Harriman State Park',
+  climbLine: null,
+  climbNote: null,
   closureLine: null,
   switchNote: 'Not the trail you chose. Switching happens in the picker.',
   trailMark: null,
@@ -68,6 +72,8 @@ describe('the line-detail sheet', () => {
           junctionLine: null,
           sourceLine: null,
           extentLine: null,
+          climbLine: null,
+          climbNote: null,
           closureLine: null,
           switchNote: null,
           trailMark: null,
@@ -250,5 +256,57 @@ describe('the trail mark', () => {
   it('draws no mark at all - not a placeholder - where the detail has none', () => {
     const { container } = render(<LineSheet detail={NEARBY} onClose={() => {}} />)
     expect(container.querySelector('img')).toBeNull()
+  })
+})
+
+describe('the climb lines (#1476)', () => {
+  it('draws the figure and the sentence saying what it is', () => {
+    render(
+      <LineSheet
+        detail={{
+          ...NEARBY,
+          extentLine: '19.1 mi · Harriman State Park',
+          climbLine: '+4,900 ft / −4,870 ft',
+          climbNote:
+            'Climb is an estimate from the best elevation data available — expect other sources to differ.',
+        }}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByText('+4,900 ft / −4,870 ft')).toBeInTheDocument()
+    // The note is a note, not part of the number: a hiker weighing whether
+    // they beat the dark has to be able to tell them apart.
+    expect(screen.getByRole('note')).toHaveTextContent(/estimate/)
+  })
+
+  it('draws the sentence with no figure where there is no honest total', () => {
+    render(
+      <LineSheet
+        detail={{
+          ...NEARBY,
+          climbLine: null,
+          climbNote:
+            'Climb is not measured on 2.0 mi of this trail, so no total is shown.',
+        }}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole('note')).toHaveTextContent(/not measured on 2.0 mi/)
+  })
+
+  it('draws neither where this phone has no figures, rather than a placeholder', () => {
+    // The sheet's own rule, applied to one more line: a null is OMITTED. A
+    // permanent "climb unknown" on every trail reads as a broken app and
+    // buries the sentences that matter.
+    render(
+      <LineSheet
+        detail={{ ...NEARBY, climbLine: null, climbNote: null }}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.queryByRole('note')).toBeNull()
   })
 })

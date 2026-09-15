@@ -28,11 +28,12 @@
 //   spur's own elevation profile, which does not exist.
 
 import { blazeLabel } from './blaze'
+import type { LineClimb } from './lineClimb'
 import { describeSpur, type SpurRecord } from './spurDestination'
 import { trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
-import { formatDistance } from './units'
+import { formatDistance, formatElevation } from './units'
 import type { UnitSystem } from './units'
 
 /** The tapped feature's published properties, as map/lineTaps.ts reports
@@ -106,6 +107,26 @@ export interface LineDetail {
    *  because they answer one question (what and where this trail is), and
    *  collapsing to whichever half is known when the other is not. */
   extentLine: string | null
+  /**
+   * "+4,900 ft / −4,870 ft" - how much this trail climbs and drops (#1476),
+   * or null whenever no honest total exists. The sheet has always said how
+   * FAR a trail goes and never how much it climbs, and nineteen flat miles
+   * and nineteen miles over five knobs are not the same walk.
+   *
+   * Written in DayHikeCard's own vocabulary - `+x / −y` through
+   * formatElevation - rather than a second one, because a hiker meeting the
+   * same fact on two screens should not have to translate between them.
+   */
+  climbLine: string | null
+  /**
+   * The sentence under it, and the one doing the safety work: either the
+   * estimate disclosure that must accompany every climb figure, or the
+   * reason there is no figure - which is never "unknown" alone, because
+   * three different absences send a hiker to three different places
+   * (lib/lineClimb.ts). Null only where nothing at all is known and nothing
+   * would be gained by saying so.
+   */
+  climbNote: string | null
   /** §3's closure sentence, kept in the SHEET rather than in the line, which
    *  is where the whole distinction lives: the taped band on the map says
    *  "do not walk this" for both kinds, and only the sheet says which kind
@@ -281,6 +302,10 @@ export function buildLineDetail(
    *  what an A.T.-only release has and what every existing caller passes by
    *  omission - the two ATC feeds are named without it. */
   sources: TrailSourceTable = {},
+  /** What this phone can honestly say about the line's climb (#1476).
+   *  Defaults to the absence every caller written before it had, so a sheet
+   *  on a release with no elevation renders exactly as it did. */
+  climb: LineClimb = { kind: 'none' },
 ): LineDetail {
   const throughRoute = line.source !== null && THROUGH_ROUTE_SOURCES.includes(line.source)
   // Whether this line belongs to somebody else's network - the same question
@@ -356,6 +381,45 @@ export function buildLineDetail(
     lengthLabel === null && park === null
       ? null
       : [lengthLabel, park].filter((part) => part !== null).join(' · ')
+
+  // #1476: how much this climbs, and - whenever it cannot be said - which
+  // KIND of silence it is. Three absences, three different things for a hiker
+  // to do about them, and reporting any of them as another is the failure
+  // this whole shape exists to avoid:
+  //
+  //   unmeasured  a hole in the DEM. Downloading nothing fixes it, so the
+  //               sentence must not offer a download. It says how much of
+  //               the trail has no figure, because "some of it" is the part
+  //               a hiker can plan around.
+  //   partial     the line runs past the cells this phone holds. This one IS
+  //               fixable, and pointing at the download is the whole value
+  //               of telling somebody.
+  //   none        no climb figures here at all - a release published without
+  //               the elevation leg, or a cell with no climb half. Nothing
+  //               to say and nothing to do, so nothing is said: a permanent
+  //               "unknown" on every line would be the caveat-on-every-line
+  //               that buries the two that matter.
+  //
+  // The estimate disclosure is not optional decoration on the measured case.
+  // The maintainer's decision of 2026-08-25 was to ship the figure AND frame
+  // it as an estimate; the pipeline's own check reads +18.8% against a
+  // maintaining club on rolling ground (pipeline/reference/published_gain.json),
+  // and chopping at junctions pulls the other way by a median 6.9%
+  // (export_network_profile.py). Nobody has measured the net of the two, so
+  // the figure goes out with the same sentence DayHikeCard gives it, minus
+  // the half about walking time that this sheet does not print.
+  const climbLine =
+    climb.kind === 'measured'
+      ? `+${formatElevation(climb.gainFt, units)} / −${formatElevation(climb.lossFt, units)}`
+      : null
+  const climbNote =
+    climb.kind === 'measured'
+      ? 'Climb is an estimate from the best elevation data available — expect other sources to differ.'
+      : climb.kind === 'unmeasured'
+        ? `Climb is not measured on ${formatDistance(climb.unmeasuredMiles, units)} of this trail, so no total is shown.`
+        : climb.kind === 'partial'
+          ? `Only ${formatDistance(climb.heldMiles, units)} of this trail is downloaded, so its climb would be low.`
+          : null
 
   // §3: the closure, in the voice of whoever actually closed it (#1142).
   //
@@ -444,6 +508,8 @@ export function buildLineDetail(
     junctionLine,
     sourceLine: source === null ? null : `From ${source}.`,
     extentLine,
+    climbLine,
+    climbNote,
     closureLine,
     sharedLine,
     // §2's refusal, and the sheet is where it is SAID rather than merely

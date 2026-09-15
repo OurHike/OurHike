@@ -16,6 +16,21 @@
 // hiker has taken from one that is merely a through-route, and the Long
 // Path is the first line to be the second kind rather than neither.
 //
+// AMENDED AGAIN (#1476) - THE SHEET GAINED A CLIMB ROW. The same tap now
+// prints "+x ft / -y ft" under the length and the park, and the sentence
+// under that saying it is an estimate, wherever the graph cell under the
+// Palisades carries its climb half. This recipe is touched rather than
+// replaced because it already reaches the one screen that changed, which is
+// what pr-preview.yml re-photographs.
+//
+// WHAT THE THIRD HONEST FRAME IS, AND WHY IT IS NOT A BROKEN SHOT. The climb
+// half only reaches the bucket on a publish run with include_elevation
+// ticked, which defaults to off - so a preview built against a bucket whose
+// last elevation run predates the current graph shows the sheet with its
+// length and park and NO climb row at all. That is this change's own
+// "no figures on this phone" state rendered correctly, and it is the state
+// most previews will photograph until an elevation publish lands.
+//
 // A TAP AT THE CAMERA'S OWN CENTRE, because a drive cannot aim a canvas
 // click at a line unless it knows what is under the pixel - and it does,
 // exactly once: the camera's centre is a lon/lat this recipe chose, and the
@@ -46,9 +61,9 @@
 // pipelines section exists to track.
 
 export const caption =
-  'The Long Path’s line sheet, now heading “Long Path” rather than “side trail” since it joined the through-route tier (#1307) — the trail’s own mark beside its name too (#1288); the bare map over the Palisades until nearby_trails.pmtiles is in the bucket this preview reads'
+  'The Long Path’s line sheet, which since #1476 says how much the trail CLIMBS under how far it goes — “+x ft / −y ft” and the sentence saying it is an estimate — wherever this preview’s bucket carries the graph cell’s climb half; no climb row at all where it does not, which is that change’s own honest absence; and the bare map over the Palisades until nearby_trails.pmtiles is there at all'
 export const alt =
-  'Either the tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, then the Long Path’s round logo beside the words “Long Path” again, its length and park, and a line saying the data is from the New York-New Jersey Trail Conference; or, where this build has no network archive, the map over the Palisades crest with no trail line to tap.'
+  'Either the tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, the Long Path’s round logo beside the words “Long Path” again, its length and park, then a climb figure written as plus-feet over minus-feet with a note under it saying climb is an estimate, and a line saying the data is from the New York-New Jersey Trail Conference; or the same sheet with no climb row where this build’s bucket has no per-edge climb; or, where this build has no network archive at all, the map over the Palisades crest with no trail line to tap.'
 
 /** Vector tiles from the bucket plus contours over a cliff take longer than
  *  chrome; the sheet is waited on by the drive, this is the settle after. */

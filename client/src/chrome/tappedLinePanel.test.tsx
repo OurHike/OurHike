@@ -6,6 +6,22 @@ import { clubTimeline, parseClubSections } from '../lib/clubSections'
 import { parseHighlights, NAMED } from '../lib/highlights'
 import { STANDARD_PACE } from '../lib/pace'
 import type { TappedLine } from '../map/lineTaps'
+import type { MergedGraph } from '../lib/trailGraphData'
+import { emptyMergedGraph } from '../lib/trailGraphData'
+import type { GraphEdge } from '../lib/trailGraph'
+import type { ReactElement } from 'react'
+import type { LineDetail } from '../lib/lineDetail'
+
+// The climb half is mocked at the fetch rather than at IndexedDB: what is
+// under test here is that a TAP is what asks for it, that the answer is
+// paired with the graph it was fetched for, and that an undecided answer is
+// not recorded as an absence. lib/trailGraphData.ts's own tests own the
+// fetching (#1476).
+const fetchElevation = vi.hoisted(() => vi.fn())
+vi.mock('../lib/trailGraphData', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/trailGraphData')>()),
+  fetchTrailGraphElevationCells: fetchElevation,
+}))
 
 // #327 moved this feature out of App.tsx whole. One tap asks one question,
 // and the answer depends on the zoom and on what was under the finger - that
@@ -104,6 +120,11 @@ function panel(overrides: Partial<TappedLineInput> = {}) {
         belowSeam: false,
         clubSections: CLUB_SECTIONS,
         clubRuns: clubTimeline(CLUB_SECTIONS),
+        // No graph and no signal by default: the state every test written
+        // before #1476 was in, and the one that must still render the sheet
+        // exactly as it did - no climb line, no note about one.
+        graphMerged: null,
+        online: false,
         highlights: HIGHLIGHTS,
         elevation: null,
         onCloseLegend,
@@ -205,5 +226,103 @@ describe('useTappedLinePanel', () => {
     act(() => result.current.mapScreen.onSelectHighlight?.('not-a-real-highlight'))
 
     expect(result.current.mapScreen.lineSheet).toBeNull()
+  })
+})
+
+describe('the tapped line’s climb (#1476)', () => {
+  /** A one-edge graph for the trail the fixture tap is on. */
+  function merged(overrides: Partial<GraphEdge> = {}): MergedGraph {
+    const edge: GraphEdge = {
+      from: 0,
+      to: 1,
+      length_m: 1609.344,
+      trail_id: TAP.id,
+      source: 'nynjtc_trails',
+      name: 'Ramapo–Dunderberg',
+      blaze_color: 'Red',
+      ...overrides,
+    }
+    return {
+      ...emptyMergedGraph(),
+      graph: { nodes: [], edges: [edge] },
+      edgeIds: [0],
+    }
+  }
+
+  afterEach(() => fetchElevation.mockReset())
+
+  /** The detail the rendered sheet was handed. `lineSheet` is the element
+   *  itself, which is what MapScreen takes - so the assertion reads it the
+   *  way the screen would rather than reaching past the seam for a copy. */
+  function detailOf(sheet: unknown): LineDetail {
+    return (sheet as ReactElement<{ detail: LineDetail }>).props.detail
+  }
+
+  it('asks for nothing until a line is actually tapped', () => {
+    panel({ graphMerged: merged(), online: true })
+
+    // A hiker who never opens a sheet never pays for the climb half.
+    expect(fetchElevation).not.toHaveBeenCalled()
+  })
+
+  it('prints the climb of the tapped line once the half lands', async () => {
+    fetchElevation.mockResolvedValue({ kind: 'loaded', data: [[400, 120]] })
+    const { result } = panel({ graphMerged: merged(), online: true })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+
+    expect(detailOf(result.current.mapScreen.lineSheet).climbLine).toBe(
+      '+400 ft / −120 ft',
+    )
+  })
+
+  it('says nothing about climb where the release published none', async () => {
+    // A decided absence: the elevation leg is opt-in, so a release without it
+    // is ordinary rather than broken, and the sheet must not invent a state.
+    fetchElevation.mockResolvedValue({ kind: 'absent' })
+    const { result } = panel({ graphMerged: merged(), online: true })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+
+    expect(detailOf(result.current.mapScreen.lineSheet).climbLine).toBeNull()
+    expect(detailOf(result.current.mapScreen.lineSheet).climbNote).toBeNull()
+  })
+
+  it('does not record a refused network as an absence', async () => {
+    // #1274's distinction, kept: nothing was learned, so the next tap may
+    // ask again rather than the sheet settling on "no figures" forever.
+    fetchElevation.mockResolvedValue({ kind: 'undecided' })
+    const { result } = panel({ graphMerged: merged(), online: true })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(null)
+    })
+    fetchElevation.mockResolvedValue({ kind: 'loaded', data: [[400, 120]] })
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+
+    expect(detailOf(result.current.mapScreen.lineSheet).climbLine).toBe(
+      '+400 ft / −120 ft',
+    )
+  })
+
+  it('refuses a figure for an edge the DEM never covered', async () => {
+    fetchElevation.mockResolvedValue({ kind: 'loaded', data: [null] })
+    const { result } = panel({ graphMerged: merged(), online: true })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+
+    expect(detailOf(result.current.mapScreen.lineSheet).climbLine).toBeNull()
+    expect(detailOf(result.current.mapScreen.lineSheet).climbNote).toMatch(/not measured/)
   })
 })

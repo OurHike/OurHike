@@ -126,6 +126,26 @@ export function LineSheet({
         <p className="closure-sheet__range">{detail.extentLine}</p>
       )}
 
+      {/* How much it climbs (#1476), directly under how far it goes, because
+          the two answer one question and reading them apart is what makes
+          "19.1 mi" sound like a flat nineteen miles. On the range class for
+          the same reason the extent line is: it is a fact about the trail,
+          not a status. */}
+      {detail.climbLine !== null && (
+        <p className="closure-sheet__range">{detail.climbLine}</p>
+      )}
+
+      {/* And what it rests on, or why there is no figure. `role="note"` is
+          DayHikeCard's own treatment of the same disclosure, and the same
+          reason applies: this is the sentence a hiker deciding whether they
+          beat the dark has to be able to weigh, and it must not read as part
+          of the number above it. */}
+      {detail.climbNote !== null && (
+        <p className="closure-sheet__meta" role="note">
+          {detail.climbNote}
+        </p>
+      )}
+
       {/* Two trails on one treadway (#1384, map/sharedGround.ts): the
           two-tone line says there are two, and this says which other one.
           On the range class, since it is a fact about where the trail is. */}

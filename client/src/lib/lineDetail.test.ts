@@ -11,6 +11,8 @@ import { CHOSEN_SYSTEM_SOURCES as MAP_CHOSEN_SYSTEM_SOURCES } from '../map/nearb
 import { TRAILS } from './trails'
 import type { SpurRecord } from './spurDestination'
 import type { StoredPoi } from './trailData'
+import type { LineClimb } from './lineClimb'
+import { STANDARD_PACE } from './pace'
 
 // What the line-detail sheet says (#134), decided as strings so the
 // decisions are testable without a canvas. The fixture spur is the one
@@ -518,5 +520,109 @@ describe('two trails on one treadway (#1384)', () => {
       [],
     )
     expect(blank.sharedLine).toBeNull()
+  })
+})
+
+describe('what the sheet says about climb (#1476)', () => {
+  const LINE: TappedLineFacts = {
+    id: 'nynjtc:ramapo-dunderberg',
+    source: 'nynjtc_trails',
+    name: 'Ramapo–Dunderberg',
+    blazeColor: 'Red',
+    lengthMiles: 19.1,
+  }
+
+  function detail(climb: LineClimb, units: 'imperial' | 'metric' = 'imperial') {
+    return buildLineDetail(
+      LINE,
+      {},
+      [],
+      units,
+      'Appalachian Trail',
+      STANDARD_PACE,
+      {},
+      climb,
+    )
+  }
+
+  it('prints gain and loss in DayHikeCard’s own vocabulary', () => {
+    // One fact, two screens, one way of writing it: a hiker meeting +4,900 ft
+    // on the card and something else here would have to translate.
+    const { climbLine } = detail({
+      kind: 'measured',
+      gainFt: 4900,
+      lossFt: 4870,
+      miles: 19.1,
+    })
+
+    expect(climbLine).toBe('+4,900 ft / −4,870 ft')
+  })
+
+  it('never prints a figure without the sentence saying it is an estimate', () => {
+    // The maintainer's decision of 2026-08-25: ship the figure AND frame it.
+    // The pipeline's own check reads +18.8% against a maintaining club on
+    // rolling ground, and the junction chopping pulls the other way; nobody
+    // has measured the net.
+    const { climbNote } = detail({
+      kind: 'measured',
+      gainFt: 4900,
+      lossFt: 4870,
+      miles: 19.1,
+    })
+
+    expect(climbNote).toMatch(/estimate/)
+  })
+
+  it('follows the hiker’s units', () => {
+    const { climbLine } = detail(
+      { kind: 'measured', gainFt: 4900, lossFt: 4870, miles: 19.1 },
+      'metric',
+    )
+
+    expect(climbLine).toBe('+1,494 m / −1,484 m')
+  })
+
+  it('refuses a total over a DEM hole, and says how much of the trail it is', () => {
+    const { climbLine, climbNote } = detail({
+      kind: 'unmeasured',
+      measuredMiles: 17.1,
+      unmeasuredMiles: 2,
+    })
+
+    expect(climbLine).toBeNull()
+    expect(climbNote).toBe(
+      'Climb is not measured on 2.0 mi of this trail, so no total is shown.',
+    )
+  })
+
+  it('points a partly-downloaded line at the download rather than at the data', () => {
+    // The one absence a hiker can act on, and it must not be worded like the
+    // one they cannot.
+    const { climbLine, climbNote } = detail({
+      kind: 'partial',
+      heldMiles: 4.2,
+      publishedMiles: 19.1,
+    })
+
+    expect(climbLine).toBeNull()
+    expect(climbNote).toBe(
+      'Only 4.2 mi of this trail is downloaded, so its climb would be low.',
+    )
+  })
+
+  it('says nothing at all where there are no figures on this phone', () => {
+    // A permanent "climb unknown" on every line is the caveat-on-every-line
+    // that buries the two a hiker's safety turns on.
+    const { climbLine, climbNote } = detail({ kind: 'none' })
+
+    expect(climbLine).toBeNull()
+    expect(climbNote).toBeNull()
+  })
+
+  it('renders exactly as it always did for a caller that passes no climb', () => {
+    const before = buildLineDetail(LINE, {}, [])
+
+    expect(before.climbLine).toBeNull()
+    expect(before.climbNote).toBeNull()
   })
 })

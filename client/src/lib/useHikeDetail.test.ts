@@ -3,7 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import 'fake-indexeddb/auto'
 import { set } from 'idb-keyval'
 import { conditionsCacheKey } from './conditionsCache'
-import { SUGGESTED_HIKE_DETAIL_KEY } from './config'
+import { suggestedHikeDetailKey } from './config'
 import type { SuggestedHike } from './suggestedHikes'
 import { useHikeDetail } from './useHikeDetail'
 
@@ -61,7 +61,7 @@ describe('useHikeDetail', () => {
   })
 
   it('keeps the shelf fields once the prose arrives, rather than replacing them', async () => {
-    await set(conditionsCacheKey(SUGGESTED_HIKE_DETAIL_KEY('42')), {
+    await set(conditionsCacheKey(suggestedHikeDetailKey('42')), {
       document: {
         id: 'nynjtc_hike_finder:42',
         description: ['Follow the white blazes north.'],
@@ -82,7 +82,7 @@ describe('useHikeDetail', () => {
   })
 
   it('does not show one hike’s prose under another hike’s name', async () => {
-    await set(conditionsCacheKey(SUGGESTED_HIKE_DETAIL_KEY('42')), {
+    await set(conditionsCacheKey(suggestedHikeDetailKey('42')), {
       document: { id: 'nynjtc_hike_finder:42', description: ['The first walk.'] },
       storedAt: new Date().toISOString(),
     })
@@ -123,7 +123,7 @@ describe('useHikeDetail', () => {
     // A 404 is not evidence the prose was withdrawn - the same rule the shelf
     // keeps. A phone that has read this walk once goes on being able to read
     // it, which is the whole point of keeping anything.
-    await set(conditionsCacheKey(SUGGESTED_HIKE_DETAIL_KEY('7')), {
+    await set(conditionsCacheKey(suggestedHikeDetailKey('7')), {
       document: { id: 'nynjtc_hike_finder:7', description: ['Still here.'] },
       storedAt: new Date().toISOString(),
     })

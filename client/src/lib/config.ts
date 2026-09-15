@@ -579,13 +579,26 @@ export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
  * `id` is the number off the shelf record's own id, which is
  * `<source>:<number>` - see suggestedHikesData.ts's `detailKeyFor`.
  *
- * @release optional - and absent is ORDINARY here, not a failure. A hike
- * whose detail has not arrived is a hike whose publisher said nothing more,
- * which is the state the detail screen was built around long before this
- * split: every field in SuggestedHikeDetail is optional and absent has always
- * meant "they did not say".
+ * NO `@release` LINE, AND NOT BY OVERSIGHT - this is a key BUILDER, not one
+ * of the `*_KEY` artifacts the release contract governs, and it is spelled in
+ * camelCase to keep that difference visible. verify_release.py's check 2 asks
+ * of every declared key "must a release carry it", which is a question about
+ * one named object; there is one of these per hike and they are named at
+ * runtime.
+ *
+ * The same shape the coverage cells use, for the same reason: a cell family
+ * declares its INDEX (`BASEMAP_CELLS_KEY`, `NEARBY_TRAILS_CELLS_KEY`) and the
+ * per-cell objects carry no tag of their own. Here the SHELF is the index -
+ * every record's id names its detail - so nothing extra needs declaring.
+ *
+ * WHERE THIS DIFFERS FROM A CELL, and why nothing verifies these the way
+ * check 20 verifies cells: a promised cell that is missing is blank map, so
+ * its absence is a defect. A missing detail is a hike whose publisher said
+ * nothing more - the state the detail screen was built around long before this
+ * split, since every field in SuggestedHikeDetail is optional and absent has
+ * always meant "they did not say". There is no failure here to detect.
  */
-export const SUGGESTED_HIKE_DETAIL_KEY = (id: string): string =>
+export const suggestedHikeDetailKey = (id: string): string =>
   `suggested_hikes_detail/${id}.json`
 
 // The places a hiker can name before anything is downloaded - parks, towns,

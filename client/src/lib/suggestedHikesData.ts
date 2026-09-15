@@ -27,8 +27,8 @@
 import {
   DATA_CONFIGURED,
   SUGGESTED_HIKES_KEY,
-  SUGGESTED_HIKE_DETAIL_KEY,
   dataUrl,
+  suggestedHikeDetailKey,
 } from './config'
 import { recallPublished, rememberPublished } from './conditionsCache'
 import { validClimb, validSegments } from './dayHikes'
@@ -323,14 +323,14 @@ export async function fetchHikeDetail(
   const number = detailKeyFor(id)
   if (number === null) return null
   try {
-    const response = await fetch(dataUrl(SUGGESTED_HIKE_DETAIL_KEY(number)), { signal })
+    const response = await fetch(dataUrl(suggestedHikeDetailKey(number)), { signal })
     if (!response.ok) return null
     const document: unknown = await response.json()
     if (typeof document !== 'object' || document === null) return null
     const detail = validDetail(document)
     if (detail === undefined) return null
     await rememberPublished(
-      SUGGESTED_HIKE_DETAIL_KEY(number),
+      suggestedHikeDetailKey(number),
       document as Record<string, unknown>,
     )
     return detail
@@ -343,7 +343,7 @@ export async function fetchHikeDetail(
 export async function recallHikeDetail(id: string): Promise<SuggestedHikeDetail | null> {
   const number = detailKeyFor(id)
   if (number === null) return null
-  const cached = await recallPublished(SUGGESTED_HIKE_DETAIL_KEY(number))
+  const cached = await recallPublished(suggestedHikeDetailKey(number))
   return cached === null ? null : (validDetail(cached.document) ?? null)
 }
 

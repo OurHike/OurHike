@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import 'fake-indexeddb/auto'
 import { set } from 'idb-keyval'
 import { conditionsCacheKey } from './conditionsCache'
-import { SUGGESTED_HIKES_KEY, SUGGESTED_HIKE_DETAIL_KEY, dataUrl } from './config'
+import { SUGGESTED_HIKES_KEY, dataUrl, suggestedHikeDetailKey } from './config'
 import {
   detailKeyFor,
   recallHikeDetail,
@@ -295,7 +295,7 @@ describe('the key a detail is published under', () => {
 
 describe('recalling a detail this phone already has', () => {
   it('reads it back through the same validator it went in by', async () => {
-    await set(conditionsCacheKey(SUGGESTED_HIKE_DETAIL_KEY('77')), {
+    await set(conditionsCacheKey(suggestedHikeDetailKey('77')), {
       document: {
         id: 'nynjtc_hike_finder:77',
         url: 'https://example.test/hike/77',

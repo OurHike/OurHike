@@ -168,12 +168,31 @@ section already draws this line and this layer inherits it exactly:
   are Phase 3 acceptance runs on real devices plus field testing — a documented manual
   procedure, the same category as the full USGS fetch. **Appium, not Playwright, is the
   tool if those are ever automated**, and nothing here pretends otherwise.
-- **Status: not yet run.** A WebKit project is a four-line addition to `projects`, and it is
-  deliberately not added yet, because no environment this suite has been written in has
-  WebKit installed (`/opt/pw-browsers` holds Chromium alone), and a project whose first run
-  is in CI is a project whose first result is a red pull request. Whoever turns it on runs
-  it locally first, in an environment with `npx playwright install webkit`, and fixes what
-  the engine difference turns up in the same change. `@unvalidated` until then.
+- **Status: on, and it was run first (#1392).** `phone-webkit` is a project in
+  `playwright.config.ts`, running the same hermetic specs as `phone` at the same width.
+  The condition this section set — run it locally, fix what the engine turns up in the
+  same change, and only then let CI see it — was met rather than waived: **146 passed, 3
+  skipped, nothing failed, in 3.6 minutes** (2026-09-15, WebKit 26.6, in the agent
+  sandbox). There was nothing to fix, and that is the finding.
+
+  What had been missing was not the four lines, it was a WebKit that runs.
+  `npx playwright install webkit` downloads and then fails to launch on four missing
+  system libraries (`libenchant-2`, `libsecret-1`, `libGLESv2`, `libx264`);
+  `npx playwright install-deps webkit` supplies them. CI installs the same 61 packages by
+  hand rather than with `--with-deps`, because
+  `.github/tests/test_apt_update_is_not_fatal.py` refuses that flag for a reason that
+  still holds (#1361) — and doing it by hand is what lets it follow this repository's own
+  apt rule instead (#1366).
+
+  **No `desktop-webkit`, deliberately.** WebKit at phone width is the iOS shell; WebKit at
+  laptop width is a combination nothing this project ships runs, and it would cost a third
+  of the suite's time to assert it. The day a WebKit laptop browser is a target is the day
+  that project earns its place.
+
+  It runs the whole phone suite rather than a tagged subset, which is the one place this
+  departs from what the issue suggested. An engine difference is not knowable in advance
+  the way a layout fork is: a `@webkit` tag can only carry the differences somebody
+  already found, and those are exactly the ones that need no test.
 
 ### Data freshness — live, cached, and absent
 
@@ -557,9 +576,10 @@ check read either answer. A test nobody runs is a comment with a longer syntax.
 
 The job carries the same scope gate as the unit suite and the same deliberate absence of
 a job-level `if:`, so a change touching nothing under `client/` finishes it green rather
-than leaving a required check unreported. It installs Chromium alone — the engine axis
-above says why WebKit is not on yet — builds the real bundle rather than running the dev
-server, and keeps the HTML report, traces included, for a fortnight when it fails.
+than leaving a required check unreported. It installs Chromium and WebKit — both engines,
+since #1392, because one bundle ships in two WebViews and Chromium alone tested half of
+what a hiker runs — builds the real bundle rather than running the dev server, and keeps
+the HTML report, traces included, for a fortnight when it fails.
 
 ## Boundaries
 

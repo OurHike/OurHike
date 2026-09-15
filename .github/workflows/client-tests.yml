@@ -167,19 +167,51 @@ jobs:
         if: steps.scope.outputs.run == 'true'
         run: npm ci
 
-      # Chromium alone, and no `--with-deps`. The engine axis wants WebKit too
-      # and deliberately does not have it yet - features/FLOW_TESTING.md's own
-      # "Status: not yet run", which asks that whoever turns it on runs it
-      # locally first rather than discovering the engine's differences as a red
-      # pull request. The flag is refused by
-      # .github/tests/test_apt_update_is_not_fatal.py, and the reason is worth
-      # knowing rather than working around: it has Playwright shell out to apt
-      # and propagate apt's exit 100, so an inconsistent upstream mirror fails a
-      # required check for a download that needs no apt at all (#1361). This
-      # runner already carries the shared libraries Chromium wants.
-      - name: Install Chromium
+      # WebKit's shared libraries, which the runner image does NOT carry -
+      # Chromium's it does, which is why this step is new with the engine axis
+      # (#1392) and not before it. Locally, `playwright install webkit`
+      # downloads happily and then fails to launch on four missing libraries
+      # (libenchant-2, libsecret-1, libGLESv2, libx264); these 61 packages are
+      # `playwright install-deps webkit`'s own list for Ubuntu 24.04, read off
+      # apt's history after running it rather than copied from a doc.
+      #
+      # NOT `--with-deps`, WHICH IS WHAT THAT FLAG WOULD HAVE DONE FOR US.
+      # .github/tests/test_apt_update_is_not_fatal.py refuses it, and the
+      # reason survives here: the flag has Playwright shell out to apt and
+      # propagate apt's exit 100, so an inconsistent upstream mirror fails a
+      # required check (#1361). Doing the install ourselves means it follows
+      # this repository's own apt rule instead - drop the vendor source lists
+      # first, then let `update` fail loudly on the archive we DO depend on
+      # (#1366) - which the flag cannot be made to do.
+      - name: Install WebKit's system libraries
         if: steps.scope.outputs.run == 'true'
-        run: npx playwright install chromium
+        run: |
+          sudo mkdir -p /etc/apt/sources.list.d
+          sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \
+            ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            gstreamer1.0-libav gstreamer1.0-plugins-bad \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good libicu74 \
+            libatomic1 libatk-bridge2.0-0t64 libatk1.0-0t64 \
+            libcairo-gobject2 libcairo2 libdbus-1-3 libdrm2 libenchant-2-2 \
+            libepoxy0 libevent-2.1-7t64 libflite1 libfontconfig1 \
+            libfreetype6 libgbm1 libgdk-pixbuf-2.0-0 libgles2 \
+            libglib2.0-0t64 libgstreamer-gl1.0-0 \
+            libgstreamer-plugins-bad1.0-0 libgstreamer-plugins-base1.0-0 \
+            libgstreamer1.0-0 libgtk-4-1 libharfbuzz-icu0 libharfbuzz0b \
+            libhyphen0 libjpeg-turbo8 liblcms2-2 libmanette-0.2-0 libopus0 \
+            libpango-1.0-0 libpangocairo-1.0-0 libpng16-16t64 libsecret-1-0 \
+            libvpx9 libwayland-client0 libwayland-egl1 libwayland-server0 \
+            libwebp7 libwebpdemux2 libwoff1 libx11-6 libxkbcommon0 libxml2 \
+            libxslt1.1 libx264-164 libavif16
+
+      # Both engines now: one bundle ships in two WebViews, so Chromium alone
+      # tested half of what a hiker runs (#1392). Still no `--with-deps` - the
+      # step above is the deps, done this repository's way.
+      - name: Install Chromium and WebKit
+        if: steps.scope.outputs.run == 'true'
+        run: npx playwright install chromium webkit
 
       # playwright.config.ts builds and serves the real bundle under CI rather
       # than running the dev server - "what CI shoots: same bytes it deploys",

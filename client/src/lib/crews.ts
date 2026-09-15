@@ -31,18 +31,35 @@ import {
  * A crew running TODAY - the only urgent part of the whole layer (#1440,
  * D18, frame 14g).
  *
- * "Today" is the row's own UTC day span, matching `upcomingWorkProjects`'
- * reading of `starts_on`/`ends_on` rather than a second one: a date means one
- * day everywhere, and a hiker in Georgia and one in Maine read the same row
- * the same way. A multi-day crew counts on every day it covers, which is the
- * same `ends_on` test the list keeps - a crew mid-weekend is still out on the
- * Sunday.
+ * **"TODAY" IS THE HIKER'S CALENDAR DAY, NOT UTC'S** (#1447 review). The two
+ * halves of the comparison are deliberately read differently, and the split is
+ * the whole of what makes it right:
+ *
+ *   - `starts_on`/`ends_on` are CALENDAR DATES a club published, with no time
+ *     and no zone. `utcDayOf` reads them at UTC midnight, the same spelling
+ *     `upcomingWorkProjects` uses, so a date still means one day everywhere.
+ *   - `now` is a MOMENT, and which calendar day it falls on is a question only
+ *     the hiker's own clock can answer. It is read with the local getters and
+ *     then expressed in that same UTC-midnight space, so what is compared is
+ *     two calendar dates and nothing else.
+ *
+ * This used to read `now` in UTC too, justified as "a hiker in Georgia and one
+ * in Maine read the same row the same way". That argument is about rendering a
+ * date and this function is not rendering one - it is answering "is a crew out
+ * RIGHT NOW", which is local by construction. The A.T. spans one timezone, so
+ * the consistency it bought was worth nothing, while the cost was real: from
+ * about 8pm every evening, Eastern being four or five hours behind UTC, a crew
+ * starting TOMORROW read as out today. That is the cry-wolf direction on a
+ * surface the hiking modes present as trail information.
+ *
+ * A multi-day crew counts on every day it covers, which is the same `ends_on`
+ * test the list keeps - a crew mid-weekend is still out on the Sunday.
  */
 export function crewsOutToday(
   projects: readonly WorkProjectSummary[],
   now: Date,
 ): WorkProjectSummary[] {
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
   return projects.filter(
     (project) =>
       project.status === 'upcoming' &&
@@ -235,12 +252,18 @@ export function workdayCalendarMonth(
   /** Which month, as any date inside it. Defaults to the one `now` is in. */
   month: Date = now,
 ): WorkdayCalendarMonth {
-  const year = month.getUTCFullYear()
-  const monthIndex = month.getUTCMonth()
+  // WHICH MONTH, and whose today, both read off the local clock for
+  // `crewsOutToday`'s reason above. In UTC these were wrong for the same four
+  // or five hours every evening, and visibly so: at 8pm on the 31st the grid
+  // opened on the NEXT month, and the day a hiker was still living was already
+  // greyed as `past`. The cells themselves stay in UTC-midnight space, because
+  // a cell IS a calendar date and that is how `utcDayOf` spells one.
+  const year = month.getFullYear()
+  const monthIndex = month.getMonth()
   const first = new Date(Date.UTC(year, monthIndex, 1))
   const days = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate()
 
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
   const horizon = today + WORK_PROJECT_WINDOW_DAYS * DAY_IN_MS
 
   // Monday-first: getUTCDay() is Sunday-first, so Sunday's six columns of

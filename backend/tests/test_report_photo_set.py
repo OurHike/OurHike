@@ -81,6 +81,45 @@ def test_a_second_photo_lands_beside_the_first(client, db_session, r2):  # noqa:
     assert r2.get_object(Bucket=_BUCKET, Key=photo_key(report.id, 2))["Body"].read().endswith(b"the second trunk")
 
 
+def test_a_client_cannot_name_a_photo_it_never_uploaded(client, db_session):
+    """`photo_url` is not something a caller may say (#1439 review).
+
+    THE HALF THAT MADE THE INVARIANT BELOW A LIE. `ReportCreate` carried a
+    settable `photo_url`, so a report could be filed naming an object nobody
+    had uploaded: `photo_url` written, `photo_count` nought, and
+    `_record_photo`'s "exactly when" false on a row no upload had touched.
+    Nothing was reachable through it - the read path derives the key and gates
+    on the count - but a column that decides nothing and contradicts its
+    neighbour is a trap left for whoever next reads the pair as authoritative.
+
+    Accepted and ignored rather than removed or refused. Removing the field
+    would break every retained baseline that carries it
+    (tests/test_openapi_compat.py refuses a request field's removal), and
+    422-ing would break the same clients louder - so it is deprecated in the
+    document and simply not stored. This asserts both halves: still a 201,
+    and nothing written.
+    """
+    reporter = _reporter(db_session)
+
+    response = client.post(
+        "/reports",
+        json={
+            "type": "blowdown",
+            "reporter_type": "thru",
+            "lat": 35.6,
+            "lon": -83.5,
+            "note": "Large tree across the trail near the gap.",
+            "photo_url": "reports/somebody-elses/1.jpg",
+        },
+        headers=auth_headers(reporter.id),
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["photo_url"] is None
+    assert body["photo_count"] == 0
+
+
 def test_photo_url_keeps_naming_the_first_of_the_set(client, db_session, r2):  # noqa: F811
     """The invariant `_record_photo` holds while both columns exist.
 
@@ -88,6 +127,9 @@ def test_photo_url_keeps_naming_the_first_of_the_set(client, db_session, r2):  #
     written breaks the previous release, which is still running during the
     rollout. So `photo_url` is photo 1's key exactly when the count is at
     least 1, and a later revision contracts.
+
+    True by construction since the review above: this endpoint is the only
+    writer of either column, so the two cannot come apart.
     """
     reporter = _reporter(db_session)
     report = _report(db_session, reporter)

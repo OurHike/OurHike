@@ -18,11 +18,24 @@ Not a `report_photos` table. Every column such a table would hold - the
 report, the index, the key - is already derivable from the id, so it would be
 a join whose only content is a count.
 
-**Backfilled, and the backfill is not a guess.** A row with a non-null
-`photo_url` has exactly one object, because until now one was all the uploader
-could write; a row without has none. That is a fact about what the bucket
-holds, not an estimate of it, which is the difference between this and
-d4a91c3e7b25's refusal to backfill `mile`.
+**Backfilled, and the backfill rests on the maintainer's own statement** that
+nothing has been uploaded yet (2026-09-15, reviewing #1447) - so in practice it
+touches no rows, and it is kept only for the direction its failure would take.
+A row the UPLOADER wrote has exactly one object, because one was all it could
+write; a row where `photo_url` merely CAME FROM THE CLIENT - `create_report`
+stored a caller's `photo_url` until that same review stopped it - names an
+object that may never have existed, and this counts it as one.
+
+That is the safe way round and deliberately so: over-counting shows a
+moderator a broken image, while under-counting would make a real photo
+unreachable, because the read path now gates on `photo_count`. If the premise
+turns out wrong in the other direction, the repair is a second backfill read
+off a bucket listing rather than off this column.
+
+**Which is a weaker sentence than the first draft of this header, which said
+the backfill was "a fact about what the bucket holds, not an estimate of it".**
+It was not - not while a client could set the column - and the difference from
+d4a91c3e7b25's refusal to backfill `mile` is smaller than that claimed.
 
 **`photo_url` is untouched.** tests/test_migration_expand_contract.py enforces
 RELEASING.md §8c - a column dropped in the same release that stops writing it

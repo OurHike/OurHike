@@ -92,7 +92,6 @@ export interface ReportDraft {
    * `mile` stay absent beside it and a moderator places it.
    */
   place_words?: string
-  photo_url?: string
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server
    *  resolves it from location and authored date instead. */
@@ -292,11 +291,13 @@ export interface OutboxItem {
   /**
    * The photo, as bytes, already downscaled and re-encoded (lib/reportPhoto.ts).
    *
-   * **The bytes and not a URL**, which is the whole reason this field exists
-   * rather than `payload.photo_url` carrying it. `photo_url` is the shape for
-   * a photo that has already been uploaded; out here the ordinary path is that
-   * the report is written with no signal at all and flushes days later, so the
-   * image has to survive in IndexedDB alongside the report it belongs to.
+   * **The bytes and not a URL**, which is the whole reason this field exists.
+   * A URL is the shape for a photo that has already been uploaded; out here
+   * the ordinary path is that the report is written with no signal at all and
+   * flushes days later, so the image has to survive in IndexedDB alongside the
+   * report it belongs to. The draft used to carry a `photo_url` beside these
+   * bytes and nothing ever set it; the server stopped storing the one a
+   * client sends (#1447 review), so there is no longer a URL worth carrying.
    * `idb-keyval` stores a `Blob` natively, so this costs nothing extra.
    *
    * Prepared at pick time rather than at flush time, deliberately: shrinking

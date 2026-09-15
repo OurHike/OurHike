@@ -224,3 +224,73 @@ describe('the crews calendar', () => {
     expect(month.cells).toHaveLength(30)
   })
 })
+
+// A HIKER'S DAY IS NOT UTC'S (#1447 review).
+//
+// The suite pins TZ=UTC (vite.config.ts, #323), so a real zone cannot be
+// used and no test above could tell the two readings apart - which is
+// exactly why `crewsOutToday` read `now` in UTC for as long as it did, with
+// fourteen green tests over it. This class is the stand-in: a `Date` whose
+// LOCAL getters answer as a phone in Eastern time would, while UTC has
+// already rolled into tomorrow. It overrides only the three getters the
+// module calls, so a change that went back to `getUTCDate()` fails here.
+//
+// Eastern because that is the trail: the A.T. sits in one zone, four or five
+// hours behind UTC, which is what makes the evening gap a daily event rather
+// than an edge case.
+const EASTERN_OFFSET_MS = 5 * 60 * 60 * 1000
+
+class PhoneOnTheTrail extends Date {
+  private get local(): Date {
+    return new Date(this.getTime() - EASTERN_OFFSET_MS)
+  }
+  override getFullYear(): number {
+    return this.local.getUTCFullYear()
+  }
+  override getMonth(): number {
+    return this.local.getUTCMonth()
+  }
+  override getDate(): number {
+    return this.local.getUTCDate()
+  }
+}
+
+describe("a crew is out on the hiker's day, not on UTC's", () => {
+  // 01:00 UTC on the 15th is 8pm on the 14th at the shelter. Every assertion
+  // below is the opposite of what the UTC reading gave.
+  const evening = new PhoneOnTheTrail('2026-09-15T01:00:00Z')
+
+  it('does not call tomorrow morning a crew that is out now', () => {
+    const tomorrow = project({ starts_on: '2026-09-15', ends_on: '2026-09-15' })
+
+    expect(crewsOutToday([tomorrow], evening)).toHaveLength(0)
+  })
+
+  it('still counts the crew whose day the hiker is still in', () => {
+    // The other half, and the one that matters more: a crew that IS out
+    // while somebody is walking past must not vanish at eight in the evening.
+    const today = project({ starts_on: '2026-09-14', ends_on: '2026-09-14' })
+
+    expect(crewsOutToday([today], evening)).toHaveLength(1)
+  })
+
+  it('does not grey out the day the hiker is still living', () => {
+    const { cells } = workdayCalendarMonth([], evening)
+    const state = (date: string) => cells.find((cell) => cell.date === date)?.state
+
+    expect(state('2026-09-14')).toBe('open')
+    expect(state('2026-09-13')).toBe('past')
+  })
+
+  it('opens the grid on the month the hiker is in, not the one UTC has reached', () => {
+    // 8pm on the last day of September, which is October in UTC. A grid that
+    // skipped a month on the evening of the 30th would be the same defect
+    // wearing a different face.
+    const lastEvening = new PhoneOnTheTrail('2026-10-01T01:00:00Z')
+
+    const { cells } = workdayCalendarMonth([], lastEvening)
+
+    expect(cells[0]?.date).toBe('2026-09-01')
+    expect(cells.at(-1)?.date).toBe('2026-09-30')
+  })
+})

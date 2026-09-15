@@ -347,18 +347,28 @@ def test_invasive_species_can_be_verified_unlike_a_thanks(client, db_session):
     assert response.json()["status"] == ReportStatus.verified.value
 
 
-def test_invasive_species_still_carries_a_photo_and_an_authored_time(client):
-    """The user-facing ask was description + photos + location + when."""
+def test_invasive_species_still_carries_an_authored_time(client):
+    """The user-facing ask was description + photos + location + when.
+
+    THE PHOTO HALF OF THAT ASK MOVED, and this test moved with it rather than
+    being deleted. It used to send `photo_url` in the create payload and read
+    it back, which proved only that the server stored a string the client
+    chose - and #1439's review took that field out, because a caller could
+    name an object nobody had uploaded and leave `photo_count` contradicting
+    it. Photos are attached through `PUT /reports/{id}/photos/{n}` now, and
+    that they work for any type is tests/test_report_photo_set.py's.
+
+    What is left here is the half this file is the right home for: a report
+    written two days ago keeps the time it was WRITTEN.
+    """
     authored = datetime.now(timezone.utc) - timedelta(days=2)
-    payload = dict(
-        _INVASIVE,
-        photo_url="https://example.org/knotweed.jpg",
-        authored_at=authored.isoformat(),
-    )
+    payload = dict(_INVASIVE, authored_at=authored.isoformat())
 
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
-    assert body["photo_url"] == "https://example.org/knotweed.jpg"
+    assert body["type"] == "invasive_species"
+    # And the field a client may no longer set is not set by having been sent.
+    assert body["photo_url"] is None
     stored = datetime.fromisoformat(body["timestamp"])
     assert abs((stored - authored).total_seconds()) < 5
 
@@ -905,8 +915,8 @@ def _report_emitting_routes():
             # question about everything the handler reaches; whether a BARE
             # ORM ROW is returned on the wire is a question about the handler
             # alone - a helper returning a `Report` for the handler to work
-            # with is exactly what `_owned_report_or_404` is for, and is not
-            # a leak.
+            # with is exactly what `_report_this_caller_may_upload_to` is
+            # for, and is not a leak.
             yield route, source, deep
 
 

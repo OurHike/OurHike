@@ -290,7 +290,6 @@ def create_report(
         mile=payload.mile,
         reporter_type=payload.reporter_type,
         note=payload.note,
-        photo_url=payload.photo_url,
         # Stored as prose and resolved to nothing (#1439). A report that
         # carries this carries no coordinates either, deliberately - see
         # ReportCreate.place_words and the model's column.
@@ -578,7 +577,7 @@ async def upload_report_photo_at(
     cap enforced as the body arrives, the row written last - is unchanged from
     the single-photo endpoint below, and is shared with it rather than copied.
     """
-    report = _owned_report_or_404(db, report_id, current_user)
+    report = _report_this_caller_may_upload_to(db, report_id, current_user)
 
     if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
         raise HTTPException(
@@ -631,7 +630,7 @@ async def upload_report_photo(
     and status first. Nothing here makes a photo reachable.
     """
     return await _store_report_photo(
-        _owned_report_or_404(db, report_id, current_user),
+        _report_this_caller_may_upload_to(db, report_id, current_user),
         FIRST_PHOTO_INDEX,
         request,
         db,
@@ -639,8 +638,16 @@ async def upload_report_photo(
     )
 
 
-def _owned_report_or_404(db: Session, report_id: str, current_user: Profile) -> Report:
-    """The report, if this caller filed it.
+def _report_this_caller_may_upload_to(db: Session, report_id: str, current_user: Profile) -> Report:
+    """The report, if there is a bucket to store into and this caller filed it.
+
+    BOTH CHECKS, WHICH IS WHY THE NAME IS NOT `_owned_report_or_404`. It was,
+    and the name described half of what the body did - the 503 below was
+    folded in when the two upload endpoints were merged, and a reader had no
+    way to know from the call site that ownership was not the whole of it
+    (#1439 review). Two gates in one function is right here: they are the
+    pair every upload passes before a byte is read, and splitting them would
+    invite an endpoint to take one and not the other.
 
     404, not 403: a report that is not yours is one you have no business
     knowing exists, and distinguishing "wrong owner" from "no such id" turns a
@@ -707,14 +714,25 @@ def _record_photo(report: Report, index: int, key: str) -> None:
     are not in the bucket is the one direction of drift this design refuses
     (app/core/photos.py).
 
-    **THE ONE PLACE `photo_url` AND `photo_count` ARE KEPT IN STEP**, which is
-    what makes two columns about one fact safe for as long as they both exist.
-    The invariant, stated once: `photo_url` is photo 1's key exactly when
-    `photo_count >= 1`. `photo_count` is the authoritative half of the pair -
-    it is what says how far `reports/{id}/{n}.jpg` runs - and `photo_url` is
-    kept written because the previous release still reads it during a rollout
-    (RELEASING.md §8c). A later revision drops it, and this function is the
-    only line that has to change.
+    **THE ONE PLACE `photo_url` AND `photo_count` ARE WRITTEN AT ALL**, which
+    is what makes two columns about one fact safe for as long as they both
+    exist. The invariant, stated once: `photo_url` is photo 1's key exactly
+    when `photo_count >= 1`.
+
+    That sentence is true because this is the only writer. It was NOT true
+    when it was first written - `create_report` stored a `photo_url` a caller
+    could set without uploading anything, so a report could hold a key for an
+    object that did not exist and a `photo_count` of nought. The field is
+    still DECLARED, because removing it would break six retained baselines,
+    and is no longer STORED (app/schemas/report.py): that is what turned the
+    claim from plausible into checkable, and
+    tests/test_report_photo_set.py holds it.
+
+    `photo_count` is the authoritative half of the pair - it is what says how
+    far `reports/{id}/{n}.jpg` runs - and `photo_url` is kept written because
+    the previous release still reads it during a rollout (RELEASING.md §8c).
+    A later revision drops it, and this function is the only line that has to
+    change.
     """
     if index == FIRST_PHOTO_INDEX:
         report.photo_url = key

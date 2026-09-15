@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.time import UtcDatetime
 from app.models.profile import MODERATOR_ROLES, Profile
@@ -92,7 +92,30 @@ class ReportCreate(BaseModel):
 
     reporter_type: ReporterType
     note: NoteText | None = None
-    photo_url: str | None = None
+
+    # ACCEPTED AND IGNORED, WHICH IS NOT THE SAME AS SUPPORTED (#1447 review).
+    #
+    # A caller could name an object it had never uploaded, and `create_report`
+    # stored the string - which made `photo_count`'s invariant
+    # ("`photo_url` is photo 1's key exactly when `photo_count >= 1`",
+    # app/routers/reports.py) false on any row that used it. Nothing was
+    # reachable through it, because the read path derives the key and gates on
+    # the count; what it produced was a column that decided nothing and
+    # contradicted the column beside it.
+    #
+    # `PUT /reports/{id}/photos/{n}` is the only writer now, so the pair cannot
+    # come apart. tests/test_report_photo_set.py holds both halves: sending
+    # this is still a 201, and the value is not stored.
+    #
+    # STILL DECLARED, because removing it is a contract break and this is not
+    # the place to take one. Six retained baselines carry the field
+    # (openapi_baselines/), and tests/test_openapi_compat.py refuses a request
+    # field's removal on the grounds that an old client may still send it. The
+    # field is therefore deprecated rather than deleted, exactly the way the
+    # `photo_url` COLUMN is kept written through a rollout under
+    # RELEASING.md §8c - same discipline, same reason, and a later release
+    # contracts both together.
+    photo_url: str | None = Field(default=None, deprecated=True)
 
     # WHERE THE HIKER SAYS IT WAS, when the phone cannot say (#1439, D16).
     #

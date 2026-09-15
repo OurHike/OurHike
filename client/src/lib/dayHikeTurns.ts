@@ -23,21 +23,29 @@
 // colour, not a junction's name, which is the thing they cannot see from
 // where they are standing.
 //
-// A TURN IS EXACTLY A LEG BOUNDARY, and that is by construction rather than
-// by coincidence: the test below is `sameTrail`, the same predicate
-// lib/trailGraph.ts's leg grouping uses. So a hike with three legs in a
-// segment has two turns in it, and the header's "leg 2 of 3" and this list
-// cannot disagree about where Pine Meadow becomes Seven Hills.
+// A TURN USED TO BE EXACTLY A LEG BOUNDARY, and #1433 is where the two parted
+// company. It is worth reading why, because the obvious move was wrong.
 //
-// WHICH IS WHY #1433 REACHED THIS FILE WITHOUT EDITING IT. That predicate used
-// to compare `trail_id`, which is one id per SOURCE FEATURE rather than one per
-// trail, so a publisher's line ending mid-trail was a leg boundary and
-// therefore a turn: a card at a degree-2 node - no fork, no other arm, the
-// same name and the same blaze on both sides of it - telling a hiker to turn
-// onto the trail they were already walking. It is grouped on the name, the
-// blaze and the organization now, so those stop being turns. Turns nobody can
-// act on are what a hiker learns to ignore the card for, which is the
-// cry-wolf failure HIKER_SAFETY.md's posture is about.
+// The leg list now groups on what a hiker READS - the name and the blaze
+// (lib/trailGraph.ts's `sameTrail`) - so that the route order carries no two
+// rows a reader cannot tell apart. Following that predicate here looked free
+// and is not: measured on the published graph (data.ourhike.org, 2026-09-15),
+// 192,675 joins it calls one trail sit at a node that has a THIRD arm on it.
+// A fork where both ways are "Pine Meadow Trail, blue" is precisely the fork
+// a hiker cannot resolve by looking, and a turn list on the row rule would
+// have gone silent at every one of them. Lost is the first of CLAUDE.md's
+// four ways.
+//
+// So this list keeps the artifact's own question - `samePublishedLine`, the
+// old `sameTrail` - and answers the noise complaint with a gate instead: a
+// node with no other arm is not a junction, and a card there is only printed
+// when the name or the blaze changes under the hiker. That removes the 30,290
+// places a publisher's line merely ended mid-trail (`trail_id` is one id per
+// source FEATURE) and keeps every card at a place somebody could go wrong.
+//
+// Two questions, two predicates, and the header's "leg 2 of 3" follows the
+// leg list rather than this one: a turn can now fall INSIDE a leg, which is
+// the honest shape of a fork between two lines of one trail.
 //
 // WHAT IS NOT HERE, AND WHY
 //
@@ -54,6 +62,7 @@ import {
   bearingDegrees,
   hasVertices,
   metresToMiles,
+  samePublishedLine,
   sameTrail,
   type LonLat,
   type TrailGraphIndex,
@@ -178,7 +187,7 @@ export function dayHikeTurnPlaces(
 
     const arriving = graph.edges[step.edgeIndex]
     const taking = graph.edges[next.edgeIndex]
-    if (sameTrail(arriving, taking)) continue
+    if (samePublishedLine(arriving, taking)) continue
 
     // Where the hiker is FACING as they arrive: the reverse of the bearing
     // the arm they came in on leaves this junction by.
@@ -202,6 +211,20 @@ export function dayHikeTurnPlaces(
       if (neighbour.edgeIndex === next.edgeIndex) continue
       others.push(armOf(neighbour.edgeIndex))
     }
+
+    // A NODE WITH NO OTHER ARM IS NOT A JUNCTION, and #1433 is why this line
+    // exists. `trail_id` is one id per source FEATURE, so a publisher's line
+    // ending mid-trail is a node with exactly two edges on it - no fork, no
+    // arm to take by mistake - and the check above used to call that a change
+    // of trail and print a card telling a hiker to turn onto the trail they
+    // were already walking. Measured on the published graph (data.ourhike.org,
+    // 2026-09-15): 30,290 such seams.
+    //
+    // What survives the gate is the case where nothing forks but what the
+    // hiker should be SEEING changes - the name over them, or the paint on the
+    // tree. That card has no turn in it and is still worth printing, so the
+    // test is the row rule (`sameTrail`) rather than the degree alone.
+    if (others.length === 0 && sameTrail(arriving, taking)) continue
 
     const node = graph.nodes[junction]
     out.push({

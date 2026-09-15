@@ -31,10 +31,12 @@ import {
   routeLines,
   routeThrough,
   SAME_TREAD_METRES,
+  samePublishedLine,
   sameTrail,
   sameTread,
   trailChoice,
   trailsNear,
+  type GraphEdge,
   type TrailGraph,
 } from './trailGraph'
 
@@ -277,10 +279,14 @@ describe('legs, which is what the hiker reads', () => {
 })
 
 describe('what makes two pieces of tread one trail (#1433)', () => {
+  // The maintainer's rule: the path carries no duplicate consecutive row where
+  // neither the trail name nor the blaze changed. So the predicate is the name
+  // and the blaze, and every test here is a way of asking whether two rows
+  // would read the same.
+  //
   // `trail_id` is `f"{key}:{feature_id}"` - one per source FEATURE, never one
   // per trail - so this fixture is ONE trail its publisher happened to draw as
-  // two lines. Grouping on the id ended a leg at that seam, and the route
-  // order printed two rows a reader could not tell apart.
+  // two lines. Grouping on the id ended a leg at that seam.
   const SPLIT: TrailGraph = {
     nodes: GRAPH.nodes,
     edges: GRAPH.edges.map((edge, at) =>
@@ -288,56 +294,71 @@ describe('what makes two pieces of tread one trail (#1433)', () => {
     ),
   }
 
-  it('is the name, the blaze and the organization - not the publisher’s line', () => {
+  it('is the name and the blaze, not the publisher’s line', () => {
     expect(sameTrail(SPLIT.edges[0], SPLIT.edges[1])).toBe(true)
   })
 
-  it('still ends a leg where the name changes', () => {
-    expect(sameTrail(GRAPH.edges[0], GRAPH.edges[2])).toBe(false)
+  it('ends a leg where the name changes, with nothing else changing', () => {
+    // Isolated deliberately. Pointing this at GRAPH.edges[2] would change the
+    // name, the blaze AND the organization at once, and would still pass if
+    // the predicate ignored the name entirely - which is the one field the
+    // maintainer's rule leads with.
+    expect(
+      sameTrail(SPLIT.edges[0], { ...SPLIT.edges[1], name: 'Seven Hills Trail' }),
+    ).toBe(false)
   })
 
-  it('still ends a leg where the blaze changes, on one name', () => {
-    // The maintainer's rule is name OR blaze: a trail re-blazed under the same
-    // name is a different thing to follow, and the row has to say so.
+  it('ends a leg where the blaze changes, with nothing else changing', () => {
+    // Name OR blaze: a trail re-blazed under one name is a different thing to
+    // follow, and the row has to say so.
     expect(sameTrail(SPLIT.edges[0], { ...SPLIT.edges[1], blaze_color: 'red' })).toBe(
       false,
     )
   })
 
-  it('ends a leg where the steward changes, so neither loses its credit', () => {
-    // No row prints the organization, so this one is not about what a hiker
-    // reads: `tallyBySource` counts stewards one per leg (#1115), and a leg
-    // folding two organizations' ground together would drop one of them from
-    // the tally printed beside the list.
-    expect(sameTrail(SPLIT.edges[0], { ...SPLIT.edges[1], source: 'nynjtc' })).toBe(false)
+  it('carries one name across a change of steward, because no row prints one', () => {
+    // The maintainer's call, 2026-09-15. An earlier cut kept the organization
+    // in the rule and left these as two rows; a reader cannot tell them apart,
+    // so they are one row. What that costs is credit, and the test below is
+    // where credit gets paid.
+    // Typed as the edge it is rather than passed as a literal: `source` is
+    // deliberately not on `TrailIdentity` any more, and an object literal
+    // carrying it would be rejected for saying something the predicate does
+    // not read - which is the point being made, not a thing to work around.
+    const handedOver: GraphEdge = { ...SPLIT.edges[1], source: 'nynjtc' }
+
+    expect(sameTrail(SPLIT.edges[0], handedOver)).toBe(true)
   })
 
-  it('keeps two unnamed pieces apart rather than merging what nobody named', () => {
+  it('merges two unnamed pieces under one blaze', () => {
+    // Also the maintainer's call. "Unnamed trail" twice over is two rows a
+    // reader cannot tell apart, which is exactly what the rule forbids.
     const one = { ...GRAPH.edges[0], name: null, trail_id: 'oprhp_trails:7' }
     const two = { ...GRAPH.edges[1], name: null, trail_id: 'oprhp_trails:8' }
 
-    expect(sameTrail(one, two)).toBe(false)
-  })
-
-  it('reads a blank name as no name at all', () => {
-    // Not a nicety: 12,510 edges on the 2026-09-15 graph carry a name that is
-    // only whitespace, almost all of them nh_granit_trails' - 10,352 distinct
-    // trail ids between them. Treating ' ' as a name would merge every
-    // adjacent pair of those per blaze, which is the collapse the null case
-    // below refuses, done to the pieces least able to survive it.
-    const one = { ...GRAPH.edges[0], name: ' ', trail_id: 'nh_granit_trails:7' }
-    const two = { ...GRAPH.edges[1], name: ' ', trail_id: 'nh_granit_trails:8' }
-
-    expect(sameTrail(one, two)).toBe(false)
-  })
-
-  it('keeps ONE unnamed published line together across a junction', () => {
-    // The conservative fallback still has to hold the case the id really does
-    // settle: one drawn line, cut in two where another trail meets it.
-    const one = { ...GRAPH.edges[0], name: null }
-    const two = { ...GRAPH.edges[1], name: null }
-
     expect(sameTrail(one, two)).toBe(true)
+  })
+
+  it('reads a blank name, a missing one and a padded one as the same name', () => {
+    // A fact about the artifact rather than a nicety: on the 2026-09-15 graph
+    // 10,967 edges carry `null`, 12,510 carry whitespace, and 650 real names
+    // are padded with a stray space - 12 joins are one trail split by nothing
+    // else. None of that reaches a reader, so none of it reaches this.
+    const blank = { ...GRAPH.edges[0], name: ' ' }
+    const missing = { ...GRAPH.edges[1], name: null }
+    const padded = { ...GRAPH.edges[1], name: 'Pine Meadow Trail ' }
+
+    expect(sameTrail(blank, missing)).toBe(true)
+    expect(sameTrail(GRAPH.edges[0], padded)).toBe(true)
+  })
+
+  it('still tells two unnamed pieces of different blazes apart', () => {
+    // The rule has one half left to do the work once the name is gone, and it
+    // does it: nothing merges across a blaze.
+    const one = { ...GRAPH.edges[0], name: null }
+    const two = { ...GRAPH.edges[1], name: null, blaze_color: 'red' }
+
+    expect(sameTrail(one, two)).toBe(false)
   })
 
   it('lists the trail once, not once per line it was drawn as', () => {
@@ -348,6 +369,24 @@ describe('what makes two pieces of tread one trail (#1433)', () => {
     expect(legs[0].miles).toBeCloseTo(metresToMiles(1672), 4)
   })
 
+  it('pays the credit it folds away when a run crosses two stewards', () => {
+    // #1115's rule, applied to #1433's merge: `tallyBySource` counts stewards
+    // one per leg, so a leg that swallowed a second organization's ground
+    // without recording it would drop that organization from "N organizations
+    // keep this route walkable".
+    const crossed: TrailGraph = {
+      nodes: SPLIT.nodes,
+      edges: SPLIT.edges.map((edge, at) =>
+        at === 1 ? { ...edge, source: 'nynjtc_long_path' } : edge,
+      ),
+    }
+    const legs = legsFromEdges(crossed, [0, 1])
+
+    expect(legs).toHaveLength(1)
+    expect(legs[0].source).toBe('oprhp_trails')
+    expect(legs[0].concurrent_sources).toEqual(['nynjtc_long_path'])
+  })
+
   it('counts the legs a hiker can see, so the org tally agrees with the list', () => {
     // chrome/DayHikePickBar.tsx prints `N legs` and one `org · N legs` row off
     // this tally, beside the route order on the same screen.
@@ -356,6 +395,40 @@ describe('what makes two pieces of tread one trail (#1433)', () => {
 
     expect(route?.legs).toHaveLength(1)
     expect(route?.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 1 }])
+  })
+
+  it('keeps every steward in the tally when the merged run crossed one', () => {
+    const crossed: TrailGraph = {
+      nodes: SPLIT.nodes,
+      edges: SPLIT.edges.map((edge, at) =>
+        at === 1 ? { ...edge, source: 'nynjtc_long_path' } : edge,
+      ),
+    }
+    const index = buildGraphIndex(published(crossed))
+    const route = routeBetween(index, pointOn(0, 0), pointOn(1, 1))
+
+    expect(route?.legs).toHaveLength(1)
+    // One leg, two organizations, counted once each - the shape #1115 settled.
+    expect(route?.legsBySource).toEqual([
+      { source: 'oprhp_trails', legs: 1 },
+      { source: 'nynjtc_long_path', legs: 1 },
+    ])
+  })
+})
+
+describe('the published line, which is a different question (#1433)', () => {
+  // `samePublishedLine` is what `sameTrail` used to be, kept for the three
+  // readers that ask about the artifact rather than about the row: the turn
+  // list, holdDesignation and concurrentSourcesOf.
+  const SPLIT_EDGE = { ...GRAPH.edges[1], trail_id: 'oprhp_trails:2' }
+
+  it('tells one trail’s two published lines apart, where the row rule does not', () => {
+    expect(samePublishedLine(GRAPH.edges[0], SPLIT_EDGE)).toBe(false)
+    expect(sameTrail(GRAPH.edges[0], SPLIT_EDGE)).toBe(true)
+  })
+
+  it('holds one line together across a junction', () => {
+    expect(samePublishedLine(GRAPH.edges[0], GRAPH.edges[1])).toBe(true)
   })
 })
 

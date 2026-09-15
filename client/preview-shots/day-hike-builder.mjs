@@ -134,7 +134,7 @@
 // used to end where the publisher's line ended - `trail_id` is one id per
 // source FEATURE - so one trail drawn as three lines printed three rows all
 // reading the same name and the same blaze, each holding a third of the
-// miles. Legs group on the name, the blaze and the organization now, so the
+// miles. Legs group on the name and the blaze now, so the
 // list in this frame carries no consecutive pair a reader cannot tell apart,
 // and the "N legs" in the panel's summary and in the bar below it counts the
 // rows the hiker can actually see.
@@ -343,20 +343,28 @@ export default async function drive(page) {
   // there after this line.
   const grip = page.locator('.day-hike-bar [data-sheet-grip]').first()
 
-  /** Press the grip and wait for the bar to report `snap`; false if it did
-   *  not settle there. Guarded because losing the pushed-down state should
-   *  cost that state and not the whole frame - the caption promises the
-   *  builder with a walk in it, which is already on screen by here. */
-  const snapTo = async (snap) => {
-    await grip.click()
-    return page
-      .locator(`.day-hike-bar[data-snap="${snap}"]`)
-      .waitFor({ timeout: 5000 })
+  /**
+   * Press the grip and wait for the bar to report `snap`; false if it did not
+   * settle there.
+   *
+   * THE CLICK IS INSIDE THE GUARD, not just the wait. The bar re-renders on
+   * every snap (chrome/SheetGrip.tsx rewrites its height and `data-snap` from
+   * a layout effect), so the second press can meet a detached element or an
+   * unstable box and throw - out of `drive`, which costs the whole photograph
+   * rather than the pushed-down state this promises to be the only casualty.
+   * Losing a frame to a flourish at the end of the drive is the failure
+   * ec04fc54 exists to fix, arriving one line later.
+   */
+  const snapTo = async (snap) =>
+    grip
+      .click()
+      .then(() =>
+        page.locator(`.day-hike-bar[data-snap="${snap}"]`).waitFor({ timeout: 5000 }),
+      )
       .then(
         () => true,
         () => false,
       )
-  }
 
   if ((await grip.count()) > 0 && (await snapTo('full'))) await snapTo('peek')
 }

@@ -186,6 +186,52 @@ describe('dayHikeBailOuts', () => {
     expect(bailOuts[0].miles).toBeCloseTo(0.26, 2)
   })
 
+  it('lists a crossing trail once even where its two sides are two published lines (#1433)', () => {
+    // The same claim as the test above, against the artifact's real shape:
+    // `trail_id` is one id per source FEATURE, so a junction is routinely also
+    // the place a publisher's line ends. Keyed on the id, Seven Hills listed
+    // twice here - two identical rows on the list somebody reads while working
+    // out how to get off a trail.
+    const split: TrailGraph = {
+      nodes: GRAPH.nodes,
+      edges: GRAPH.edges.map((edge, at) =>
+        at === 3 ? { ...edge, trail_id: 'nynjtc_long_path:99' } : edge,
+      ),
+    }
+    const splitIndex = buildGraphIndex(published(split))
+    const resolved = resolveDayHike(
+      splitIndex,
+      hikeOf([[end(-74.095, 41.25), end(-74.085, 41.25)]]),
+    )
+    const bailOuts = dayHikeBailOuts(splitIndex, resolved!)
+
+    expect(bailOuts).toHaveLength(1)
+    expect(bailOuts[0].name).toBe('Seven Hills Trail')
+  })
+
+  it('keeps two unnamed ways off apart, where the route order would merge them', () => {
+    // WHERE THIS LIST PARTS COMPANY WITH THE ROUTE ORDER, deliberately. There,
+    // two consecutive "Unnamed trail" rows are a repeat and #1433 merges them.
+    // Here a row is a way off a trail somebody may need to leave in a hurry,
+    // so two unnamed arms stay two rows: folding them would delete an escape
+    // route rather than a duplicate.
+    const unnamed: TrailGraph = {
+      nodes: GRAPH.nodes,
+      edges: GRAPH.edges.map((edge, at) =>
+        at === 2 || at === 3
+          ? { ...edge, name: null, blaze_color: null, trail_id: `nynjtc:${at}` }
+          : edge,
+      ),
+    }
+    const unnamedIndex = buildGraphIndex(published(unnamed))
+    const resolved = resolveDayHike(
+      unnamedIndex,
+      hikeOf([[end(-74.095, 41.25), end(-74.085, 41.25)]]),
+    )
+
+    expect(dayHikeBailOuts(unnamedIndex, resolved!)).toHaveLength(2)
+  })
+
   it('answers a single-edge walk with an empty list, which the card must print', () => {
     const resolved = resolveDayHike(
       index,

@@ -184,3 +184,80 @@ describe('the bearing an arm leaves on', () => {
     expect(turns[0].onto.bearingDeg).toBeCloseTo(0, 1)
   })
 })
+
+describe('a publisher’s line ending is not a turn (#1433)', () => {
+  // WHY THIS BLOCK EXISTS. `trail_id` is one id per source FEATURE, so one
+  // trail drawn as two lines has a node between them carrying nothing else.
+  // The old test - "the trail changed" - called that a turn and printed a card
+  // telling a hiker to turn onto the trail they were already walking; 30,290
+  // such seams on the published graph, measured 2026-09-15.
+  //
+  // And the obvious repair is the one this block guards against. Following the
+  // route-order rule (name and blaze) instead would ALSO silence every fork
+  // where two arms share a name - 192,675 joins on the same graph - which is a
+  // hiker at a Y with no instruction. So the test is the published line, and
+  // the gate is whether there is another arm at all.
+
+  /** Pine Meadow alone, west to east: node 1 has nothing else on it. */
+  function straightThrough(edits: Partial<(typeof NETWORK.edges)[number]>) {
+    return {
+      nodes: NETWORK.nodes,
+      edges: [NETWORK.edges[0], { ...NETWORK.edges[1], ...edits }],
+    }
+  }
+
+  it('prints no card where one trail’s two lines meet and nothing forks', () => {
+    const turns = turnsFor(
+      straightThrough({ trail_id: 'oprhp_trails:2' }),
+      hikeThrough([WEST_END, EAST_END]),
+    )
+
+    expect(turns).toEqual([])
+  })
+
+  it('still prints one where the name changes under the hiker, fork or not', () => {
+    // No choice to make and still worth saying: what is over them and what is
+    // painted on the tree is what they check the app against.
+    const turns = turnsFor(
+      straightThrough({ trail_id: 'oprhp_trails:2', name: 'Seven Hills Trail' }),
+      hikeThrough([WEST_END, EAST_END]),
+    )
+
+    expect(turns).toHaveLength(1)
+    expect(turns[0].onto.name).toBe('Seven Hills Trail')
+    expect(turns[0].others).toEqual([])
+  })
+
+  it('still prints one where the blaze changes under the hiker', () => {
+    const turns = turnsFor(
+      straightThrough({ trail_id: 'oprhp_trails:2', blaze_color: 'Red' }),
+      hikeThrough([WEST_END, EAST_END]),
+    )
+
+    expect(turns).toHaveLength(1)
+    expect(turns[0].onto.blaze_color).toBe('Red')
+  })
+
+  it('prints one at a FORK whose arms share a name and a blaze', () => {
+    // The case a rule built on the route order would have swallowed: the
+    // hiker has three ways on and two of them read identically, which is
+    // exactly when the card's side and its list of the others are the only
+    // thing that can settle it.
+    const forked = {
+      nodes: NETWORK.nodes,
+      edges: NETWORK.edges.map((edge, at) =>
+        at === 1 ? { ...edge, trail_id: 'oprhp_trails:2' } : edge,
+      ),
+    }
+
+    const turns = turnsFor(forked, hikeThrough([WEST_END, EAST_END]))
+
+    expect(turns).toHaveLength(1)
+    expect(turns[0].onto.name).toBe('Pine Meadow Trail')
+    expect(turns[0].from.name).toBe('Pine Meadow Trail')
+    expect(turns[0].others.map((arm) => arm.name).sort()).toEqual([
+      'Reeves Meadow Trail',
+      'Seven Hills Trail',
+    ])
+  })
+})

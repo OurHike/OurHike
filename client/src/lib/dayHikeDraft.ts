@@ -667,13 +667,27 @@ function tallyLegsBySource(
 ): Array<{ source: string | null; legs: number }> {
   const order: Array<string | null> = []
   const counts = new Map<string | null, number>()
-  for (const leg of legs) {
-    const seen = counts.get(leg.source)
+  const bump = (source: string | null) => {
+    const seen = counts.get(source)
     if (seen === undefined) {
-      order.push(leg.source)
-      counts.set(leg.source, 1)
+      order.push(source)
+      counts.set(source, 1)
     } else {
-      counts.set(leg.source, seen + 1)
+      counts.set(source, seen + 1)
+    }
+  }
+  for (const leg of legs) {
+    bump(leg.source)
+    // AND THE ORGANIZATIONS THE LEG CARRIES BUT DOES NOT WEAR (#1115, and
+    // #1433's merge). `trailGraph.tallyBySource` has counted these since
+    // #1115 and this copy never did, which cost nothing while a leg could
+    // only gain a concurrent from shared tread. Since #1433 a leg is one name
+    // and one blaze and can cross from one steward's ground onto another's,
+    // so the bar beside the route order would have printed one organization
+    // where two keep the walk open. Counted once per org per leg, exactly as
+    // there.
+    for (const source of leg.concurrent_sources ?? []) {
+      if (source !== leg.source) bump(source)
     }
   }
   return order.map((source) => ({ source, legs: counts.get(source) as number }))

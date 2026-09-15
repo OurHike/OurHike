@@ -26,7 +26,7 @@ side is findable from the other:
     entered_nodes       enteredNodes
     route_climb         routeClimb (pro-rated partial edges, direction swap)
     route_lines         routeLines / routeGeometry / cutPolyline
-    same_trail          sameTrail (trail_id AND name)
+    same_trail          sameTrail (the name and the blaze, #1433)
 
 WHAT IS DELIBERATELY NOT TWINNED, said so the difference is known rather
 than discovered: `holdDesignation`, the client's swap of an edge for its
@@ -174,9 +174,26 @@ def metres_to_miles(metres: float) -> float:
     return metres / METRES_PER_MILE
 
 
+def _trail_name(name) -> str:
+    """A name as a reader sees it: absent, blank and padded are one thing."""
+    return (name or "").strip()
+
+
 def same_trail(a, b) -> bool:
-    """trailGraph.ts's sameTrail: BOTH the id and the name."""
-    return a.get("trail_id") == b.get("trail_id") and a.get("name") == b.get("name")
+    """trailGraph.ts's sameTrail: the name and the blaze, and nothing else.
+
+    The maintainer's rule (#1433): a route lists no two consecutive rows where
+    neither the trail name nor the blaze changed. `trail_id` is not a trail's
+    id - export_trails.build_trail_records writes f"{key}:{feature_id}", one
+    per source FEATURE - so grouping on it ended a leg wherever a publisher's
+    line ended and printed one trail as several identical rows.
+
+    Twinned deliberately rather than left behind: export_suggested_hikes.py
+    publishes `measured.legs` from this module, and a suggested hike listing
+    "Pine Meadow Trail" three times beside a phone that shows it once would be
+    the two halves of pipeline/README.md's promise disagreeing about one walk.
+    """
+    return _trail_name(a.get("name")) == _trail_name(b.get("name")) and a.get("blaze_color") == b.get("blaze_color")
 
 
 def load_graph(
@@ -438,7 +455,7 @@ def _legs_from_walk(graph: Graph, edge_indices: list[int], walked: list[float]) 
     legs: list[Leg] = []
     for at, edge_index in enumerate(edge_indices):
         edge = graph.edges[edge_index]
-        if legs and same_trail({"trail_id": legs[-1].trail_id, "name": legs[-1].name}, edge):
+        if legs and same_trail({"name": legs[-1].name, "blaze_color": legs[-1].blaze_color}, edge):
             legs[-1].miles += metres_to_miles(walked[at])
             continue
         legs.append(
@@ -522,7 +539,8 @@ def route_through(graph: Graph, points: list[GraphPoint]) -> Route | None:
             edge_indices.append(edge_index)
         for leg in section.legs:
             if legs and same_trail(
-                {"trail_id": legs[-1].trail_id, "name": legs[-1].name}, {"trail_id": leg.trail_id, "name": leg.name}
+                {"name": legs[-1].name, "blaze_color": legs[-1].blaze_color},
+                {"name": leg.name, "blaze_color": leg.blaze_color},
             ):
                 legs[-1].miles += leg.miles
                 continue

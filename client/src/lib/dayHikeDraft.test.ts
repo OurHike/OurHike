@@ -192,6 +192,37 @@ describe('tapping', () => {
   })
 })
 
+describe('the organizations counted beside the route order (#1433, #1115)', () => {
+  // Since #1433 a leg is one NAME and one blaze, which two stewards can carry
+  // end to end - so a merge can swallow an organization. `tallyBySource` has
+  // counted a leg's folded-in organizations since #1115; this copy did not,
+  // and the bar beside the route order would have printed one organization
+  // where two keep the walk open. That is the silently-dropped steward #1115
+  // exists to prevent, arriving by a second door.
+  const HANDED_OVER: TrailGraph = {
+    nodes: GRAPH.nodes,
+    edges: GRAPH.edges.map((edge, at) =>
+      at === 1 ? { ...edge, trail_id: 'nynjtc:7', source: 'nynjtc' } : edge,
+    ),
+  }
+
+  it('counts both stewards of a run that crossed between them, on one leg', () => {
+    const handed = buildGraphIndex(published(HANDED_OVER))
+    const draft = tapAt(handed, tapAt(handed, EMPTY_DRAFT, ON_TRAIL), FURTHER)
+    const status = draftStatus(handed, draft)
+
+    expect(status.kind).toBe('routed')
+    if (status.kind !== 'routed') return
+    // One row, because a reader cannot tell the two halves apart.
+    expect(status.legs).toHaveLength(1)
+    // Two organizations, because both of them keep it walkable.
+    expect(status.legsBySource).toEqual([
+      { source: 'oprhp_trails', legs: 1 },
+      { source: 'nynjtc', legs: 1 },
+    ])
+  })
+})
+
 describe('undo', () => {
   it('takes back the last tap', () => {
     const two = tapAt(index, tapAt(index, EMPTY_DRAFT, ON_TRAIL), FURTHER)

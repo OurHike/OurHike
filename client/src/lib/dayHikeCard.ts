@@ -203,7 +203,23 @@ export function dayHikeBailOuts(
           const departing = graph.edges[neighbour.edgeIndex]
           // A trail CROSSING the junction contributes an edge on each side;
           // one trail is one way off, so both collapse onto one row.
-          const identity = departing.trail_id ?? `${departing.name}|${departing.source}`
+          //
+          // WHAT MAKES TWO ARMS ONE TRAIL HERE IS WHAT THE ROW PRINTS (#1433):
+          // the name and the blaze. Keyed on `trail_id` this listed one trail
+          // twice wherever the junction was also the end of a publisher's
+          // line - `f"{key}:{feature_id}"` is one id per source FEATURE - and
+          // two identical rows on the list somebody reads while deciding how
+          // to get off is the failure that issue is about.
+          //
+          // AN UNNAMED ARM KEEPS ITS OWN ROW, and this is where the ways off
+          // part company with the route order. There, folding two unnamed rows
+          // together drops a repeat; here it would drop an escape route, and
+          // this is the "unable to get off the trail quickly" path.
+          const name = (departing.name ?? '').trim()
+          const identity =
+            name === ''
+              ? `edge:${neighbour.edgeIndex}`
+              : `${name}|${departing.blaze_color ?? ''}`
           if (seenTrails.has(identity)) continue
           seenTrails.add(identity)
           out.push({

@@ -127,6 +127,47 @@ If the queue was empty, say that in one line. **Never invent work to fill a
 night.** An hour of nothing is a correct answer and a manufactured refactor is
 not.
 
+## If the GitHub tools are not there
+
+A scheduled run can start without the `mcp__github__*` tools — a Routine created
+from a session carries only the connectors that session could pass through, and
+one created without them fires sessions that have none. That is a real state to
+land in, not a hypothetical, and it is recoverable: the environment carries a
+`GH_TOKEN` (and a `GITHUB_TOKEN`), which is the same identity those tools use.
+
+So GitHub work falls back to the REST API over `curl`. `scripts/nightshift.sh`
+already reads this way, and the writes a night needs are three:
+
+```bash
+TOKEN="${GH_TOKEN:-$GITHUB_TOKEN}"
+api="https://api.github.com/repos/OurHike/OurHike"
+hdr=(-H "Authorization: Bearer $TOKEN" -H "Accept: application/vnd.github+json"
+     -H "Content-Type: application/json")
+
+# the claim comment (step 2)
+curl -sS -X POST "${hdr[@]}" "$api/issues/N/comments" -d @body.json
+
+# the draft pull request (step 5)
+curl -sS -X POST "${hdr[@]}" "$api/pulls" -d @pr.json   # {"draft": true, ...}
+
+# checks on the head commit, to drive it green (step 5)
+curl -sS "${hdr[@]}" "$api/commits/SHA/check-runs"
+```
+
+`Content-Type: application/json` is not optional — without it the API answers
+415 and the message names the media type rather than the missing header, which
+reads like a malformed body.
+
+Build each body with a heredoc into a file and `-d @file` rather than inlining
+it. A pull request body is long enough to overflow the argument list, and the
+error when it does (`Argument list too long`) says nothing about what was being
+sent.
+
+**What this fallback cannot do is subscribe to the pull request's events.** So
+after opening one, poll the check-runs endpoint above rather than waiting for a
+wake that is not coming, and say in the morning report that the pull request was
+left un-watched.
+
 ## What an unattended session must never do
 
 Six, and none of them has an exception for "CI was green" or "it was plainly

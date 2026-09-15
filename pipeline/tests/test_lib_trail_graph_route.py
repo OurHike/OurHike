@@ -109,7 +109,23 @@ class TestRouting:
 
         assert loop is not None
         assert loop.sections[-1].end.edge_index == loop.sections[0].start.edge_index
-        assert [leg.name for leg in loop.legs] == ["Pine Meadow Trail", "Ridge Loop", "Pine Meadow Trail"]
+        # FIVE ROWS FOR THREE POINTS AND A CLOSE, and it read
+        # ["Pine Meadow Trail", "Ridge Loop", "Pine Meadow Trail"] until
+        # 2026-09-15. The change is the maintainer's rule rather than a
+        # regression: a point placed by the caller is a boundary the squash
+        # does not cross, so Ridge Loop is the two stretches either side of
+        # the point at (2, 0.9) and Pine Meadow is the two either side of the
+        # point at 2.9. Consecutive rows of one name mean exactly one thing
+        # now - somebody put a point between them.
+        assert [leg.name for leg in loop.legs] == [
+            "Pine Meadow Trail",
+            "Ridge Loop",
+            "Ridge Loop",
+            "Pine Meadow Trail",
+            "Pine Meadow Trail",
+        ]
+        # The walk is no longer or shorter for being listed in more rows.
+        assert sum(leg.miles for leg in loop.legs) == pytest.approx(loop.miles)
 
     def test_an_unroutable_leg_refuses_the_whole_walk(self, graph):
         """An island edge: nothing connects to it, so no walk reaches it."""
@@ -344,3 +360,90 @@ class TestWhatMakesTwoPiecesOneLeg:
         route = router.route_between(graph, point(graph, 0.0), point(graph, 1.5))
 
         assert "concurrent_sources" not in route.legs[0].to_dict()
+
+    def test_a_point_between_two_taps_is_a_boundary_the_squash_keeps(self, graph):
+        """The other half of the maintainer's rule (2026-09-15): squash the
+        lines a publisher drew, keep the points the caller placed.
+
+        Nodes 0-1-2-3 are one trail under one blaze drawn as three lines, so
+        the whole chain is one leg. Route the same ground through a point
+        halfway along the middle line and it is two - same name, same blaze,
+        same tread, and a boundary only because somebody put one there.
+        """
+        whole = router.route_through(graph, [point(graph, 0.0), point(graph, 3.0)])
+        tapped = router.route_through(graph, [point(graph, 0.0), point(graph, 1.5), point(graph, 3.0)])
+
+        assert [leg.name for leg in whole.legs] == ["Pine Meadow Trail"]
+        assert [leg.name for leg in tapped.legs] == ["Pine Meadow Trail", "Pine Meadow Trail"]
+
+    def test_splitting_at_a_point_moves_no_distance(self, graph):
+        """#1002's guard, which the removed merge used to get credit for. The
+        edge under the point is walked by both pairs and deduplicated for
+        DRAWING only, so the miles must not follow it out of the total."""
+        whole = router.route_through(graph, [point(graph, 0.0), point(graph, 3.0)])
+        tapped = router.route_through(graph, [point(graph, 0.0), point(graph, 1.5), point(graph, 3.0)])
+
+        assert tapped.miles == pytest.approx(whole.miles)
+        assert sum(leg.miles for leg in tapped.legs) == pytest.approx(whole.miles)
+        assert len(tapped.edge_indices) == len(whole.edge_indices)
+
+    def test_a_split_moves_nothing_the_publishing_path_reads(self, graph):
+        """What `export_suggested_hikes.py` and `lib/hike_route_builder.py`
+        actually take from a Route, pinned here because the answer decides
+        whether a change to this file has to be published.
+
+        The exporter reads `route.miles` and nothing else. The builder reads
+        the leg names and blazes as SETS, and `len(route.legs)` only into
+        `result.checks`, a diagnostic the exporter never writes. So splitting
+        one leg into two is invisible downstream - and this test is what would
+        go red if somebody started reading the leg COUNT into an artifact,
+        which is the day a change like this needs a publish.
+        """
+        whole = router.route_through(graph, [point(graph, 0.0), point(graph, 3.0)])
+        tapped = router.route_through(graph, [point(graph, 0.0), point(graph, 1.5), point(graph, 3.0)])
+
+        assert len(tapped.legs) != len(whole.legs)
+        assert tapped.miles == pytest.approx(whole.miles)
+        assert {leg.name for leg in tapped.legs} == {leg.name for leg in whole.legs}
+        assert {leg.blaze_color for leg in tapped.legs} == {leg.blaze_color for leg in whole.legs}
+
+    def test_a_split_pays_the_same_credit_on_both_sides(self, tmp_path):
+        """#1115's failure was a merge dropping the other steward; a split
+        must not drop them either. One trail, one blaze, two organizations,
+        with a point placed in the middle of the first one's ground."""
+        nodes = [node(0), node(1), node(2)]
+        edges = [
+            {
+                "from": 0,
+                "to": 1,
+                "trail_id": "t:pine-a",
+                "source": "oprhp_trails",
+                "name": "Pine Meadow Trail",
+                "blaze_color": "Red",
+            },
+            {
+                "from": 1,
+                "to": 2,
+                "trail_id": "t:pine-b",
+                "source": "nynjtc_long_path",
+                "name": "Pine Meadow Trail",
+                "blaze_color": "Red",
+            },
+        ]
+        for edge in edges:
+            edge["length_m"] = router.metres_between(tuple(nodes[edge["from"]]), tuple(nodes[edge["to"]]))
+        (tmp_path / "trail_graph.json").write_text(json.dumps({"nodes": nodes, "edges": edges}))
+        (tmp_path / "trail_graph_geometry.json").write_text(json.dumps([[nodes[e["from"]], nodes[e["to"]]] for e in edges]))
+        graph = router.load_graph(tmp_path / "trail_graph.json", tmp_path / "trail_graph_geometry.json")
+
+        route = router.route_through(
+            graph,
+            [point(graph, 0.0), point(graph, 0.5), router.point_at_node(graph, 2)],
+        )
+
+        assert len(route.legs) == 2
+        # The second row is the one that crosses the handover, so it is the
+        # one carrying the folded-away steward - and the first must not have
+        # invented a credit it never swallowed.
+        assert route.legs[0].concurrent_sources is None
+        assert route.legs[1].concurrent_sources == ["nynjtc_long_path"]

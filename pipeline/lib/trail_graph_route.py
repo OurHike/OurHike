@@ -593,7 +593,15 @@ def route_between(graph: Graph, start: GraphPoint, end: GraphPoint) -> Route | N
 def route_through(graph: Graph, points: list[GraphPoint]) -> Route | None:
     """trailGraph.ts's routeThrough: every point in order, or None if ANY
     leg cannot be routed - a partial route with a hole in it is a hiker told
-    something false about the missing leg."""
+    something false about the missing leg.
+
+    A TAP IS A LEG BOUNDARY AND THE SQUASH STOPS AT IT. `_legs_from_walk`
+    merges the published lines inside one pair (#1433 - a trail drawn as five
+    geometry segments is one leg); this does not carry that merge across the
+    join between two pairs, because the lines are the publisher's accident of
+    digitisation and the points are the caller's own structure. Twinned from
+    routeThrough, whose header carries the reasoning.
+    """
     if len(points) < 2:
         return None
     sections: list[Section] = []
@@ -615,11 +623,11 @@ def route_through(graph: Graph, points: list[GraphPoint]) -> Route | None:
             if edge_indices and edge_indices[-1] == edge_index:
                 continue
             edge_indices.append(edge_index)
+        # Appended, never merged across the join - see the docstring. The
+        # shared edge was deduplicated above for DRAWING only; each section
+        # already priced its own walked span of it, so the total is unchanged
+        # by listing the two spans as the two legs they are.
         for leg in section.legs:
-            if legs and same_trail(legs[-1].name, legs[-1].blaze_color, leg.name, leg.blaze_color):
-                legs[-1].miles += leg.miles
-                add_concurrents(legs[-1], [leg.source, *(leg.concurrent_sources or [])])
-                continue
             legs.append(Leg(**leg.to_dict()))
     climb: tuple[float, float] | None = (0.0, 0.0)
     for part in climbs:

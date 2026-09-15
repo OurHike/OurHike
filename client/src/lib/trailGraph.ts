@@ -1519,6 +1519,22 @@ export function routeBetween(
  * Returns null if ANY leg of it cannot be routed, rather than a partial route
  * with a silent hole in it. A hiker handed four legs of a five-leg walk has
  * been told something false about the fifth.
+ *
+ * A TAP IS A LEG BOUNDARY, AND THE SQUASH STOPS AT IT. `legsFromWalk` merges
+ * the published lines inside one tapped pair, which is #1433 - a trail drawn
+ * as five geometry segments is one row, because five identical rows tell a
+ * reader nothing. This function does NOT carry that merge across the join
+ * between two pairs, and the difference is who put the boundary there. The
+ * lines are the publisher's accident of digitisation; the taps are the
+ * hiker's own structure, placed one by one, and squashing them away deletes
+ * the thing they were building (the maintainer's rule, 2026-09-15).
+ *
+ * So two consecutive rows naming one trail and one blaze mean exactly one
+ * thing here: the hiker put a point between them. That is the only way to
+ * get a pair of them, which is what makes them readable rather than
+ * duplicates - they are the two stretches either side of a place the hiker
+ * chose. It is also why an out-and-back on one trail lists its two halves
+ * rather than one doubled row: the turnaround is a tapped point.
  */
 export function routeThrough(
   index: TrailGraphIndex,
@@ -1545,24 +1561,21 @@ export function routeThrough(
       if (edgeIndices[edgeIndices.length - 1] === edgeIndex) continue
       edgeIndices.push(edgeIndex)
     }
-    // Each section's own priced legs, merged across the join. The shared edge
-    // was deduplicated above for DRAWING, but both sections' walked spans of
-    // it are real distance, so their legs ADD - the out-and-back half of
-    // #1002, where a leg priced off the deduplicated list undercounted every
-    // re-walked stretch.
+    // Each section's own priced legs, appended and never merged across the
+    // join - see this function's header for why a tap is a boundary the
+    // squash does not cross.
+    //
+    // #1002 IS STILL PAID, by the pricing rather than by a merge. The shared
+    // edge at the join was deduplicated above for DRAWING only; each section
+    // priced its own walked span of it in `walkedMetresPerEdge`, so both
+    // spans are already in `metres` and in these legs. What used to add two
+    // legs' miles together now lists them as the two rows they are, and the
+    // total is the same number either way - the undercount #1002 fixed was in
+    // the pricing, not here.
     for (const leg of section.legs) {
-      const last = legs[legs.length - 1]
-      if (last !== undefined && sameTrail(last, leg)) {
-        last.miles += leg.miles
-        addConcurrents(last, leg.concurrent_sources ?? [])
-        // The merged-away leg's OWN organization too (#1433) - see the same
-        // line in `legsFromWalk`.
-        addConcurrents(last, leg.source === null ? [] : [leg.source])
-        continue
-      }
       const copied: RouteLeg = { ...leg }
-      // A copy of the array too: addConcurrents mutates it when a later
-      // section merges in, and the section's own leg must not change under it.
+      // A copy of the array too, so nothing downstream that mutates a leg's
+      // credit can reach back into the section's own copy of it.
       if (leg.concurrent_sources !== undefined) {
         copied.concurrent_sources = [...leg.concurrent_sources]
       }

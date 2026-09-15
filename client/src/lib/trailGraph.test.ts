@@ -255,17 +255,27 @@ describe('legs, which is what the hiker reads', () => {
     expect(route?.legs[0].miles).toBeCloseTo(route!.miles, 4)
   })
 
-  it('counts re-walked ground in the leg, which a deduplicated edge list cannot (#1002)', () => {
+  it('counts re-walked ground in the legs, which a deduplicated edge list cannot (#1002)', () => {
     // Mid-e0, up Seven Hills, back down to mid-e1: both Seven Hills spans are
     // real distance while the drawn edge list holds edge 2 once. The legs sum
-    // to the route, and the Seven Hills leg carries both passes.
+    // to the route, and Seven Hills carries both passes.
     const route = routeThrough(index, [pointOn(0, 0.5), pointOn(2, 0.5), pointOn(1, 0.5)])
 
     expect(route).not.toBeNull()
     const legMiles = route!.legs.reduce((sum, leg) => sum + leg.miles, 0)
     expect(legMiles).toBeCloseTo(route!.miles, 4)
-    const sevenHills = route!.legs.find((leg) => leg.name === 'Seven Hills Trail')
-    expect(sevenHills?.miles).toBeCloseTo(metresToMiles(1112), 4)
+
+    // ACROSS BOTH SEVEN HILLS ROWS, and it used to be one. The tap at
+    // `pointOn(2, 0.5)` is the turnaround, so the walk up and the walk back
+    // are the two stretches either side of a point the hiker placed - the
+    // maintainer's rule, 2026-09-15, and `routeThrough`'s header carries it.
+    // The claim this test exists to make is untouched by that: re-walked
+    // ground is COUNTED rather than deduplicated away, which is what #1002
+    // was, and the sum below is where it is checked.
+    const sevenHills = route!.legs.filter((leg) => leg.name === 'Seven Hills Trail')
+    expect(sevenHills).toHaveLength(2)
+    const bothPasses = sevenHills.reduce((sum, leg) => sum + leg.miles, 0)
+    expect(bothPasses).toBeCloseTo(metresToMiles(1112), 4)
   })
 
   it('carries each leg its own organization, for frame 1j to tally live', () => {
@@ -429,6 +439,87 @@ describe('the published line, which is a different question (#1433)', () => {
 
   it('holds one line together across a junction', () => {
     expect(samePublishedLine(GRAPH.edges[0], GRAPH.edges[1])).toBe(true)
+  })
+})
+
+describe('a tap is a boundary the squash does not cross (#1433)', () => {
+  // The maintainer's refinement, 2026-09-15, and the two halves have to be
+  // read together:
+  //
+  //   "You should be able to add the points 1 by 1. You don't need to squash
+  //    each of those points... But you should squash anything between the
+  //    points where the trail & blaze are consecutive."
+  //
+  // So the question a merge asks is not only "would these two rows read the
+  // same" but "who put the boundary here". A seam between two published
+  // lines is the publisher's accident of digitisation and goes; a tap is the
+  // hiker's own structure and stays.
+  //
+  // One trail drawn as two lines, which is the fixture the whole of #1433
+  // turns on: `trail_id` is `f"{key}:{feature_id}"`, one per source FEATURE.
+  const SPLIT: TrailGraph = {
+    nodes: GRAPH.nodes,
+    edges: GRAPH.edges.map((edge, at) =>
+      at === 1 ? { ...edge, trail_id: 'oprhp_trails:2' } : edge,
+    ),
+  }
+  const split = buildGraphIndex(published(SPLIT))
+
+  it('squashes the two lines inside one tapped pair', () => {
+    const route = routeThrough(split, [pointOn(0, 0), pointOn(1, 1)])
+
+    expect(route).not.toBeNull()
+    if (route === null) return
+    expect(route.legs).toHaveLength(1)
+    expect(route.legs[0].name).toBe('Pine Meadow Trail')
+  })
+
+  it('keeps the hiker’s own point, where neither name nor blaze changed', () => {
+    // A tap halfway along the FIRST line, so the split is not the seam
+    // between two published lines wearing a disguise - it is the hiker's
+    // point and nothing else, in the middle of one drawn line.
+    const route = routeThrough(split, [pointOn(0, 0), pointOn(0, 0.5), pointOn(1, 1)])
+
+    expect(route).not.toBeNull()
+    if (route === null) return
+    expect(route.legs).toHaveLength(2)
+    expect(route.legs.map((leg) => leg.name)).toEqual([
+      'Pine Meadow Trail',
+      'Pine Meadow Trail',
+    ])
+    // And the second row still carries BOTH published lines squashed into it,
+    // which is the pair of rules holding at once rather than one of them
+    // winning: the tap split the walk, the seam inside the second pair did
+    // not.
+    expect(route.legs[1].miles).toBeCloseTo(metresToMiles(418 + 836), 6)
+  })
+
+  it('neither loses nor gains distance by splitting at a tap', () => {
+    // #1002's guard, which is what the removed merge used to be credited
+    // with. The edge under the tap is walked by both pairs and deduplicated
+    // for DRAWING; the miles must not follow it out of the total.
+    const whole = routeThrough(split, [pointOn(0, 0), pointOn(1, 1)])
+    const tapped = routeThrough(split, [pointOn(0, 0), pointOn(0, 0.5), pointOn(1, 1)])
+
+    expect(whole).not.toBeNull()
+    expect(tapped).not.toBeNull()
+    if (whole === null || tapped === null) return
+    expect(tapped.miles).toBeCloseTo(whole.miles, 6)
+    const summed = tapped.legs.reduce((total, leg) => total + leg.miles, 0)
+    expect(summed).toBeCloseTo(whole.miles, 6)
+  })
+
+  it('counts a steward once per leg, so a tap does not double its credit', () => {
+    // `tallyBySource` prints `org · N legs` beside the route order. Splitting
+    // one trail at a tap genuinely makes two legs of it, so two is the honest
+    // count here - what would be wrong is the organization vanishing, or the
+    // tally disagreeing with the list the hiker is looking at.
+    const route = routeThrough(split, [pointOn(0, 0), pointOn(0, 0.5), pointOn(1, 1)])
+
+    expect(route).not.toBeNull()
+    if (route === null) return
+    expect(route.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 2 }])
+    expect(route.legsBySource[0].legs).toBe(route.legs.length)
   })
 })
 
@@ -1175,13 +1266,28 @@ describe('holding a designation across shared tread (#1115)', () => {
     expect(route.legsBySource).toContainEqual({ source: 'nynjtc_long_path', legs: 1 })
   })
 
-  it('keeps the merged leg through a multi-tap walk', () => {
+  it('splits the concurrency at a tap, and credits both stewards on both sides', () => {
+    // THIS TEST ASSERTED ONE LEG UNTIL 2026-09-15, and the change is the
+    // maintainer's rather than a fix to it: `routeThrough` used to merge
+    // across a tap, so a walk over the concurrency with a point in the middle
+    // of it came back as a single row. A tap is the hiker's own boundary now,
+    // so the same walk is the two stretches either side of their point.
+    //
+    // What must NOT change is the credit. #1115's failure was a merge
+    // silently dropping the other steward; a split must not drop them either,
+    // so both rows carry the folded-away designation.
     const route = routeThrough(corridor, [on(0, 0.5), on(3, 0.5), on(5, 0.5)])
     expect(route).not.toBeNull()
     if (route === null) return
 
-    expect(route.legs).toHaveLength(1)
-    expect(route.legs[0].concurrent_sources).toEqual(['nynjtc_long_path'])
+    expect(route.legs).toHaveLength(2)
+    for (const leg of route.legs) {
+      expect(leg.name).toBe('Pine Meadow Trail')
+      expect(leg.concurrent_sources).toEqual(['nynjtc_long_path'])
+    }
+    // And the walk is the same length it was as one row.
+    const whole = routeBetween(corridor, on(0, 0.5), on(5, 0.5))
+    expect(route.miles).toBeCloseTo(whole?.miles ?? -1, 6)
   })
 
   it('never swaps onto a fork, however alike its length', () => {

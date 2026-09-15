@@ -283,6 +283,73 @@ describe('no two rows a reader cannot tell apart (#1433)', () => {
     expect(status.legs).toHaveLength(1)
     expect(status.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 1 }])
   })
+
+  // THE OTHER HALF OF THE RULE (the maintainer, 2026-09-15): the squash is for
+  // the lines a publisher drew, not for the points a hiker placed. Same
+  // fixture, one more tap - partway along the FIRST line, so what splits the
+  // walk can only be the tap and not the seam.
+  /** The same trail, with a point tapped halfway along the first line. */
+  function withAPointInTheMiddle() {
+    const index = buildGraphIndex(SPLIT)
+    let draft = tapAt(index, EMPTY_DRAFT, { lon: -74.1, lat: 41.25 })
+    draft = tapAt(index, draft, { lon: -74.095, lat: 41.25 })
+    draft = tapAt(index, draft, { lon: -74.08, lat: 41.25 })
+    const status = draftStatus(index, draft)
+    if (status.kind !== 'routed') throw new Error('fixture should route')
+    return status
+  }
+
+  it('keeps a row either side of a point the hiker placed', () => {
+    const status = withAPointInTheMiddle()
+    const legs = routeRows(status.legs, [], status.gaps).filter(
+      (row) => row.kind === 'leg',
+    )
+
+    expect(legs).toHaveLength(2)
+    expect(legs.map((row) => row.name)).toEqual([
+      'Pine Meadow Trail',
+      'Pine Meadow Trail',
+    ])
+  })
+
+  it('splits at the hiker’s point, not at the publisher’s seam', () => {
+    // The sharpest statement of the pair of rules, because the two candidate
+    // boundaries are at different distances and only one of them is taken.
+    // The tap is 418 m in; the seam between the two drawn lines is 836 m in.
+    // A walk split at the seam would read 0.52 / 0.52; split at the tap it
+    // reads 0.26 / 0.78, and the second row holds the rest of line one plus
+    // the whole of line two.
+    const status = withAPointInTheMiddle()
+    const legs = routeRows(status.legs, [], status.gaps).filter(
+      (row) => row.kind === 'leg',
+    )
+
+    expect(legs[0].miles).toBeCloseTo(418 / 1609.344, 4)
+    expect(legs[1].miles).toBeCloseTo((418 + 836) / 1609.344, 4)
+  })
+
+  it('runs one mile axis through both rows, with no gap and no overlap', () => {
+    // A row's `fromMile`/`toMile` is what the panel prints as
+    // "mile 0.3–0.8". Two rows of one trail either side of a tap have to read
+    // as one continuous walk, or the split has invented a discontinuity the
+    // hiker did not walk.
+    const status = withAPointInTheMiddle()
+    const legs = routeRows(status.legs, [], status.gaps).filter(
+      (row) => row.kind === 'leg',
+    )
+
+    expect(legs.map((row) => row.index)).toEqual([1, 2])
+    expect(legs[0].fromMile).toBe(0)
+    expect(legs[0].toMile).toBeCloseTo(legs[1].fromMile, 6)
+    expect(legs[1].toMile).toBeCloseTo(status.miles, 6)
+  })
+
+  it('still counts one steward, on the walk the tap made two legs of', () => {
+    const status = withAPointInTheMiddle()
+
+    expect(status.legs).toHaveLength(2)
+    expect(status.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 2 }])
+  })
 })
 
 describe('the turns', () => {

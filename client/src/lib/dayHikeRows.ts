@@ -19,14 +19,25 @@
 //     silently did nothing, or did something else, is worse than no control.
 //   - A TURN (one of the hiker's taps) IS deletable - that is genuinely the
 //     design's per-row delete, and `removeTap` is new for it - but it does
-//     not appear in this list. It has no honest mile: `routeThrough` merges
-//     legs across tap joins, so the walk knows how far it is to the end of a
-//     LEG and does not, without re-routing every pair on every render, know
-//     how far it is to a tap in the middle of one. A row printing "mile 1.8"
-//     next to a number nobody computed is exactly what CLAUDE.md's standard
-//     is about, and a row in a mile-ordered list with no mile is a row in the
-//     wrong place. So turns are listed apart, as {@link turnMarks}, where
-//     ordinal is the only claim made and it is one the draft can back.
+//     not appear in this list. Turns are listed apart, as {@link turnMarks},
+//     where ordinal is the only claim made and it is one the draft can back.
+//
+//     THE REASON THAT USED TO BE WRITTEN HERE NO LONGER HOLDS, and saying so
+//     is the point of leaving this paragraph longer than it needs to be. It
+//     said a turn "has no honest mile", because `routeThrough` merged legs
+//     across tap joins and the walk therefore knew the mile at the end of a
+//     LEG and not the mile at a tap inside one. `routeThrough` stops its
+//     squash at a tap now (its header carries why), so every tap lands on a
+//     leg boundary and its mile is exactly `toMile` of the leg before it -
+//     computed already, on every render, by this function.
+//
+//     So what keeps turns out of this list is now a design question nobody
+//     has answered rather than an arithmetic one: whether a hiker reading a
+//     mile-ordered list wants their own taps interleaved with the trails, or
+//     wants the trails alone and the taps somewhere they can be deleted
+//     without hunting. @unvalidated - it would be settled by watching
+//     somebody edit a route they had already saved, which nobody here has
+//     done.
 //
 // The gap between stretches is a row, because it is a real thing the walk
 // contains and the one thing in it the app declines to describe.

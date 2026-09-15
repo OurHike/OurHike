@@ -497,8 +497,17 @@ jobs:
       # continue-on-error for the same reason as the guide fetch above: a
       # website's bad afternoon must not fail an A.T. publish, and the
       # export reads whatever the restore left on disk.
+      #
+      # The export went behind a site password on 2026-09-15 (#1468). The
+      # secret is injected here rather than read from sources.json, which is
+      # published to hikers as registry.json. A run where the secret is unset
+      # fetches as an anonymous reader and, if the export is locked, lands on
+      # the fetcher's own listing guard - which is the whole reason this step
+      # is continue-on-error.
       - name: Fetch NYNJTC's hikes from the Hike Finder export
         continue-on-error: true
+        env:
+          HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
         run: python fetch_hikefinder.py
 
       - name: Export the waypoints other organizations publish

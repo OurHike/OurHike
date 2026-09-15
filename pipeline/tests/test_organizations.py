@@ -240,4 +240,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 12, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 14, "unresolved": 1}

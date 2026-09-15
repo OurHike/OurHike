@@ -211,3 +211,37 @@ def test_dec_water_stays_refused_until_dec_publishes_something_new():
     water = COVERAGE["orgs"]["NYS DEC"]["types"]["water"]
     assert water["status"] == "unsuitable"
     assert water["measured"]["org_flags_public"] == 0
+
+
+def test_a_registered_poi_source_that_ships_has_a_shipping_cell():
+    """The reverse of the check above, and the one that was missing (#1461).
+
+    That test asks: does a `shipping` cell name an org whose data reaches
+    hikers? This asks the other direction: does an org whose POI layer DOES
+    reach hikers have a cell that says so. Without it the matrix can silently
+    describe the state before a layer was registered - which is exactly what
+    happened here. NYC Parks' water cell read `unsuitable` and its privy cell
+    `available` while both layers were registered, filtered and exporting, and
+    nothing in this file noticed.
+
+    That direction is the one that matters, because a stale `unsuitable` is
+    not a shrug: it is this survey's strongest word, and POI_COVERAGE_SURVEY.md
+    spends a section on water being refused. A reader finding it beside a
+    layer that ships cannot tell which of the two is out of date.
+    """
+    by_type_and_provider = {
+        (source["provider"], source["poi_type"]): source["key"]
+        for source in REGISTRY["sources"]
+        if source.get("poi_type") and source.get("reaches_hikers")
+    }
+
+    stale = []
+    for (provider, poi_type), key in sorted(by_type_and_provider.items()):
+        org = COVERAGE["orgs"].get(provider)
+        if org is None:
+            continue
+        cell = org["types"].get(poi_type)
+        if cell is not None and cell["status"] != "shipping":
+            stale.append(f"{provider}/{poi_type} reads {cell['status']!r} while {key} ships it")
+
+    assert not stale, "; ".join(stale)

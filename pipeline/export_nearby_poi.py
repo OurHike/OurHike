@@ -171,6 +171,7 @@ TRAIL_IDS = {
     "NYS DEC": "NYSDEC",
     "NYS OPRHP": "NYSOPRHP",
     "USFS": "USFS",
+    "NYC Parks": "NYCPARKS",
 }
 
 # DEC's ASSET values, for the two POI types DEC publishes no per-type service
@@ -381,6 +382,25 @@ def public_verdict(source: dict, properties: dict) -> tuple[bool, str]:
     return flagged, CONFIDENCE_HIGH
 
 
+def confidence_for(source: dict, verdict: str) -> str:
+    """`verdict` unless the whole layer is registered as low confidence.
+
+    A FLOOR, NOT A FLAG, and the difference is the reason it exists (#1461).
+    `public_field` above answers a per-ROW question - this org says this one
+    is not for the public - and there was no way to say the LAYER cannot
+    support a confident claim about any of its rows. New York City's drinking
+    fountains are exactly that: `featuresta` reads `Active` on all 3,849, so
+    the column carries nothing about whether any given fountain works, and
+    shipping them at CONFIDENCE_HIGH would assert of every one of them the
+    thing the source cannot say about a single one.
+
+    It only ever lowers. A source that declares the floor and also has a
+    public flag keeps the flag's LOW answers - there is nowhere lower to go -
+    and cannot be raised back to HIGH by it.
+    """
+    return CONFIDENCE_LOW if source.get("confidence_floor") == CONFIDENCE_LOW else verdict
+
+
 def classify(source: dict, properties: dict) -> str | None:
     """This feature's poi_type, or None if the layer does not publish one for it."""
     declared = source.get("poi_type")
@@ -497,6 +517,7 @@ def build_records(source: dict, features: list[dict]) -> tuple[list[dict], dict]
             dropped[f"{source['public_field']} says not public"] = dropped.get(f"{source['public_field']} says not public", 0) + 1
             continue
 
+        confidence = confidence_for(source, confidence)
         record = unify_poi(feature, poi_type, key, trail_id, {**field_map, "confidence": confidence})
         # export_poi.py attaches a mile by projecting onto ATC's centerline.
         # These points are not on it, so the key is removed rather than

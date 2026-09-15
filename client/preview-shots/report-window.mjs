@@ -17,7 +17,23 @@
 //   - the two HEAVY ROWS below the grid, full width with a chevron, because
 //     neither files on a tap: a closure needs two miles, and something unsafe
 //     is private to moderators.
-//   - the 911 line, above the fold of that decision rather than after it.
+//
+// WHAT #1480 CHANGED IN THIS FRAME, which is why the recipe was touched:
+//
+//   - the 911 line is the band DIRECTLY UNDER THE HEADER now, not the last
+//     thing in the body. It used to be 39 px below the fold here and 190 px
+//     below it on a 360x640 phone, which is a notice about calling for help
+//     that a hiker met only by scrolling past six categories first.
+//   - the whole window fits with no scroll at all - 607 px of window in
+//     820 px of scrim, where it needed 656 of 812 and scrolled by 53.
+//   - each tile's icon sits BESIDE its label rather than above it, which is
+//     where the height came from: tiles 75 px against 98, and the grid 268 px
+//     against 328. Nothing a hiker reads got smaller - no font size, no
+//     padding, no touch target.
+//   - the closure row is the height of its own text again. It declares
+//     `min-height: 44px`, so it was the one thing the flex squeeze could take
+//     room from, and it rendered its description 15 px outside its own
+//     border - visible in the photograph that opened #1480.
 //
 // THIS ONE NEEDS NO TRAIL DATA, which is worth saying because the other
 // recipes in this directory spend most of their comments on it. The window
@@ -30,9 +46,9 @@
 // anyone has filed.
 
 export const caption =
-  'Report a problem — a window over Today, not a page instead of it (#1133)'
+  'Report a problem — the 911 line pinned under the header, and a window that no longer scrolls (#1480). It is still a window over Today rather than a page instead of it (#1133).'
 export const alt =
-  'A centred dialog over a dimmed Today screen, its header on dark pine reading “Report a problem / What did you find?”: six left-aligned category tiles two per row with a line icon, a label and a description each, then two full-width rows below them — “The trail is closed” and “Something unsafe happened” — and a tinted notice reading “Call 911 if you are in danger now.” The tab bar is still visible at the foot of the screen behind the scrim.'
+  'A centred dialog over a dimmed Today screen, its header on dark pine reading “Report a problem / What did you find?” and, immediately under it, a full-width pale band in red type reading “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.” Below the band, six left-aligned category tiles two per row, each with a line icon beside its label and a description underneath, then two full-width rows — “The trail is closed” and “Something unsafe happened” — both showing their full two-line descriptions inside their own borders. The whole window is on screen with nothing cut off and no scrollbar. The tab bar is still visible at the foot of the screen behind the scrim.'
 
 export default async function drive(page) {
   // Today is where the app opens (#1054), and where the report entry now
@@ -52,13 +68,14 @@ export default async function drive(page) {
   // shot depends on.
   await page.getByRole('dialog', { name: 'What did you find?' }).waitFor()
 
-  // The 911 notice is the last thing in the body and the reason the two heavy
-  // rows are rows. Scrolled into frame by the thing that IS the change rather
-  // than by a pixel offset: how far down it sits moves whenever the category
-  // list does. `scrollIntoViewIfNeeded` also waits, so this is the settle as
-  // well as the scroll.
-  await page
-    .getByRole('note')
-    .scrollIntoViewIfNeeded()
-    .catch(() => {})
+  // NOTHING IS SCROLLED INTO FRAME, and that is the assertion this drive
+  // makes by omission (#1480). It used to end with
+  // `getByRole('note').scrollIntoViewIfNeeded()`, because the 911 line was
+  // the last thing in a body that overflowed - a recipe scrolling to reach
+  // the notice was the defect, photographed every time and read as framing.
+  //
+  // Settled on the notice being present rather than on a delay: it is the
+  // last thing this window renders after the header, so having it is having
+  // the window. Where it sits is the frame's business and not this drive's.
+  await page.getByRole('note').waitFor()
 }

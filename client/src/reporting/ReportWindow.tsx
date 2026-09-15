@@ -36,6 +36,12 @@
 // leaves for ClosureSheet, and something unsafe, which is private to
 // moderators and must show the 911 line before the tap rather than after it.
 // reporting/categories.ts owns that distinction; this file only renders it.
+//
+// AND THE 911 LINE IS CHROME, NOT A LIST ITEM (#1480). It sits between the
+// header and the body, outside the region that scrolls, because "before the
+// tap" is a claim about what a hiker has READ and a notice under a scroll has
+// not been read. What is inside the body is everything a tap can act on; what
+// is pinned around it is what the window says about itself.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { formatDistance, type UnitSystem } from '../lib/units'
@@ -490,6 +496,10 @@ export function ReportWindow({
         </span>
       </button>
 
+      {/* Still ruled off from the grid above it - what is up there is the
+          trail, and this is about people on it. The 911 line used to close
+          this block; it is pinned above the body now (#1480), which leaves
+          the wrapper carrying one child and the rule that separates it. */}
       <div className="report-window__unsafe">
         <button
           type="button"
@@ -510,15 +520,6 @@ export function ReportWindow({
             ›
           </span>
         </button>
-
-        {/* Before the tap, not after. Somebody in trouble right now needs to
-            know this is the wrong tool while they can still act on it, rather
-            than once they are already filling in a form. `role="note"`
-            deliberately, not an alert: it is standing guidance, not an event.
-            Copy is verbatim from what shipped and stays that way. */}
-        <p className="report-window__emergency" role="note">
-          {EMERGENCY_NOTICE}
-        </p>
       </div>
     </>
   )
@@ -654,6 +655,33 @@ export function ReportWindow({
             <span aria-hidden="true">×</span>
           </button>
         </div>
+
+        {/* THE 911 LINE IS PINNED, above the scroll rather than inside it
+            (#1480). It used to close the body, which meant a hiker met it
+            only by scrolling past every category first - measured 53 px below
+            the fold on a 390x844 phone and 184 px below it on a 375x667 one,
+            and the whole reason the line exists is to be read BEFORE the tap
+            by somebody who is in trouble now.
+
+            OUT OF THE BODY ENTIRELY rather than merely moved to the top of
+            it, because a category list grows: anything added to the grid
+            pushes what follows it down, and this is the one thing on this
+            surface that must not be pushable. Pinned here it survives the
+            scroll the body still has on a small phone or at a large text
+            size.
+
+            Only while the tiles are up, which is unchanged. After a tap the
+            body is a receipt for a report that is already filed, and this is
+            guidance about a decision that has been taken.
+
+            `role="note"` deliberately, not an alert: it is standing guidance,
+            not an event. Copy is verbatim from what shipped and stays that
+            way - the position was wrong, the words were not. */}
+        {filed === null && (
+          <p className="report-window__emergency" role="note">
+            {EMERGENCY_NOTICE}
+          </p>
+        )}
 
         <div className="report-window__body">{filed === null ? tiles : receipt}</div>
 

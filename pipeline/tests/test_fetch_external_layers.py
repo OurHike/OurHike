@@ -390,3 +390,139 @@ def test_editing_info_wins_over_a_registered_substitute(tmp_path, monkeypatch, r
 
     manifest = json.loads(manifest_path.read_text())
     assert manifest["dec_fake"]["feature_count"] == 3
+
+
+# --- The Socrata half of this script (#1432) -------------------------------
+#
+# New York City's layers reach this loop through the same code as everybody
+# else except one branch each in `current_marker`, `fetch_one` and
+# `source_location`. That branch decides whether 10,089 rows are re-fetched or
+# skipped, and it had no coverage here at all when it was written.
+
+SOCRATA_DOMAIN = "data.example.gov"
+SOCRATA_DATASET = "abcd-1234"
+SOCRATA_RESOURCE = f"https://{SOCRATA_DOMAIN}/resource/{SOCRATA_DATASET}.geojson"
+SOCRATA_VIEWS = f"https://{SOCRATA_DOMAIN}/api/views/{SOCRATA_DATASET}.json"
+
+
+def _socrata(key="nyc_fake", **extra):
+    return {
+        "key": key,
+        "title": "Fake Socrata Dataset",
+        "kind": "socrata_geojson_layer",
+        "domain": SOCRATA_DOMAIN,
+        "dataset_id": SOCRATA_DATASET,
+        **extra,
+    }
+
+
+def test_a_socrata_layer_is_fetched_through_the_portal(tmp_path, monkeypatch, requests_mock):
+    """The dispatch, end to end: the marker comes from rowsUpdatedAt rather
+    than an editingInfo request that would 404, the bytes come from the SODA
+    resource, and the manifest records a real fetchable URL."""
+    raw_dir, manifest_path = _setup(tmp_path, monkeypatch, sources=[_socrata()])
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    requests_mock.get(
+        SOCRATA_RESOURCE,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["nyc_fake"]["feature_count"] == 1
+    assert manifest["nyc_fake"]["url"] == SOCRATA_RESOURCE
+    assert manifest["nyc_fake"]["marker"]["kind"] == "rows_updated_at"
+    # ArcGIS's millisecond field stays null for a Socrata entry - the two
+    # scales must never be compared as one number.
+    assert manifest["nyc_fake"]["data_last_edit_date"] is None
+    assert json.loads((raw_dir / "nyc_fake.geojson").read_text())["features"]
+
+
+def test_an_unchanged_socrata_dataset_is_skipped(tmp_path, monkeypatch, requests_mock):
+    raw_dir, _ = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_socrata()],
+        prior_manifest={
+            "nyc_fake": {
+                "title": "Fake Socrata Dataset",
+                "url": SOCRATA_RESOURCE,
+                "feature_count": 1,
+                "marker": {"kind": "rows_updated_at", "value": "1788000000", "where": None},
+            }
+        },
+    )
+    (raw_dir / "nyc_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    # Deliberately no mock for the resource URL - a fetch attempt raises.
+
+    fetch_external_layers.main()
+
+
+def test_changing_the_filter_refetches_even_though_the_dataset_has_not_moved(tmp_path, monkeypatch, requests_mock):
+    """THE ONE THAT MATTERS, and the reason `where` is inside the marker.
+
+    `where` is applied server-side, so tightening it changes the file
+    completely while the portal's own rowsUpdatedAt does not move. If the
+    skip compared the timestamp alone, the run would find the marker
+    unchanged and the cached file present, skip, and go on shipping exactly
+    the rows the new clause was written to remove - on nyc_dot_greenways
+    that clause is what keeps a walker off a road.
+    """
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_socrata(where="status='Current' AND onoffst='OFF'")],
+        prior_manifest={
+            "nyc_fake": {
+                "title": "Fake Socrata Dataset",
+                "url": SOCRATA_RESOURCE,
+                "feature_count": 9,
+                # The looser filter the last run used.
+                "marker": {"kind": "rows_updated_at", "value": "1788000000", "where": "status='Current'"},
+            }
+        },
+    )
+    (raw_dir / "nyc_fake.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    requests_mock.get(
+        SOCRATA_RESOURCE,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main()
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["nyc_fake"]["feature_count"] == 1, "a changed filter must re-fetch"
+    assert manifest["nyc_fake"]["marker"]["where"] == "status='Current' AND onoffst='OFF'"
+
+
+def test_the_registered_filter_reaches_the_portal(tmp_path, monkeypatch, requests_mock):
+    """Applied BY the portal, so the excluded rows are never fetched and never
+    on disk to be drawn by mistake."""
+    _setup(tmp_path, monkeypatch, sources=[_socrata(where="grnwy='Greenway'")])
+
+    requests_mock.get(SOCRATA_VIEWS, json={"rowsUpdatedAt": 1788000000})
+    requests_mock.get(
+        SOCRATA_RESOURCE,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main()
+
+    resource_calls = [r for r in requests_mock.request_history if r.path.endswith(".geojson")]
+    assert resource_calls
+    assert all(call.qs["$where"] == ["grnwy='greenway'"] for call in resource_calls)

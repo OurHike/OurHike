@@ -32,6 +32,7 @@ import {
   ABOVE_THE_SEAM_ZOOM,
   BELOW_THE_SEAM_ZOOM,
 } from '../support/seed'
+import { freshenNewestNotice } from '../support/freshNotice'
 
 /**
  * HOW LONG THE TRAIL SKETCHES ARE ALLOWED TO TAKE, and why this is not the
@@ -488,6 +489,17 @@ test.describe('every trail notice the app holds', () => {
     // durable state — so the claim is only worth anything across a cold boot,
     // and the boot is a sibling page for the reload trap support/seed.ts
     // documents.
+    //
+    // THE ONE TEST IN THIS FILE THAT CONTROLS ITS OWN BYTES (#1426). Every
+    // other assertion here is about a shape the release is free to change;
+    // this one is about an AGE, and the age it depended on was ATC's own
+    // posting cadence — median seven days between edits, against a 72-hour
+    // window — so it asserted that a third party had published this week and
+    // went red the moment they had not. `freshenNewestNotice` moves exactly
+    // one field of the real artifact and leaves every other byte published;
+    // its header carries the measurement and why the other three fixes do
+    // not work.
+    await freshenNewestNotice(page)
     await openMap(page)
     const legendDoor = page.getByRole('button', { name: /^Legend/ })
     await expect(legendDoor).toHaveText(/new trail notice/)

@@ -233,7 +233,7 @@ from lib.concurrency import AT_CENTERLINE_SOURCE, find_shared_ground
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
-from lib.source_registry import external_arcgis_sources, load_registry
+from lib.source_registry import external_sources, load_registry
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw" / "external"
@@ -396,13 +396,21 @@ def network_line_sources(registry: dict) -> list[dict]:
     """The external-organization entries that carry trail LINES.
 
     The same blaze-metadata marker export_trails.py's load_line_sources() uses,
-    intersected with the external kind rather than subtracted from it - so one
-    marker means "this is a trail-line source" across both exports, and `kind`
-    alone decides which of the two picks it up. An external layer that is not
-    lines (OPRHP's facilities points, its park polygons) carries no blaze keys
-    and is skipped here without needing to be named.
+    intersected with the external kinds rather than subtracted from them - so
+    one marker means "this is a trail-line source" across both exports, and
+    `kind` alone decides which of the two picks it up. An external layer that
+    is not lines (OPRHP's facilities points, its park polygons) carries no
+    blaze keys and is skipped here without needing to be named.
+
+    ASKS `external_sources()` RATHER THAN THE ARCGIS HALF (#1432), because
+    New York City's two walking-path layers are trail lines that arrive from
+    a Socrata portal instead of a FeatureServer. They are the same kind of
+    thing to every line below this one - a steward's segments, with a name
+    and a blaze marker - and the transport they came in on is settled by the
+    time this function is called. Reading only the ArcGIS half here is what
+    would have made registering NYC a no-op at the export.
     """
-    return [s for s in external_arcgis_sources(registry) if "blaze_field" in s or "blaze_default" in s]
+    return [s for s in external_sources(registry) if "blaze_field" in s or "blaze_default" in s]
 
 
 def shipped_line_source_keys(registry: dict) -> set[str]:
@@ -596,13 +604,45 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str])
     return None
 
 
+def declared_name(source: dict, properties: dict):
+    """One feature's name, or None where the steward published a PLACEHOLDER.
+
+    WHY THIS EXISTS (#1432). NYC Parks fills `trail_name` on every row, and on
+    3,775 of 7,059 - 53% - what it fills it with is `Unnamed Official Trail`,
+    `Name TBD` or `TBD`. Those are the steward saying "no name", in a column
+    that cannot be empty, and reading them as names is a display outrunning
+    its source: measured on the live layer, `Unnamed Official Trail` totals
+    128.7 miles, which clears NAMED_TRAIL_THRESHOLD_MILES and would have
+    shipped ONE overview feature named "Unnamed Official Trail", marked
+    `through_route: true`, drawn at through-route weight across five boroughs
+    beside the Appalachian Trail - and labelled that on the map and in every
+    tapped-line sheet.
+
+    So a source may declare `name_placeholders`, and a value in that list is
+    treated exactly as an absent name. CLAUDE.md's rule is the one being
+    applied: "Omit rather than guess... Absent means unknown, never zero and
+    never 'none'." The registry entry carries the measured counts, and
+    `park_name` is what a screen should fall back to for these rows - a
+    display decision that belongs to features/NEARBY_TRAILS.md, not here.
+
+    Matched case-insensitively on the stripped value, because a placeholder
+    is prose typed by whoever surveyed the segment rather than a coded domain.
+    """
+    raw = properties.get(source.get("name_field", "Name"))
+    placeholders = source.get("name_placeholders")
+    if not placeholders or raw is None:
+        return raw
+    if str(raw).strip().casefold() in {str(p).strip().casefold() for p in placeholders}:
+        return None
+    return raw
+
+
 def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> tuple[list[dict], dict]:
     """One source's shippable features as export_trails.py-shaped records
     (id/source/name/blaze_color/trail_status/wkt), plus a stats dict of what
     was dropped and why."""
     key = source["key"]
     mapping = load_blaze_mapping().get(key)
-    name_field = source.get("name_field", "Name")
     status_field = source.get("status_field")
 
     records: list[dict] = []
@@ -651,7 +691,7 @@ def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> 
             {
                 "id": f"{key}:{feature_id}",
                 "source": key,
-                "name": properties.get(name_field),
+                "name": declared_name(source, properties),
                 "blaze_color": blaze_color,
                 "trail_status": trail_status,
                 # WHICH KIND OF CLOSED, stated rather than inferred from the
@@ -673,8 +713,14 @@ def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> 
 
 def closure_area_sources(registry: dict) -> list[dict]:
     """The registered layers that publish CLOSED AREAS rather than trail lines
-    (#964). NYS Parks' temporary closures is the first and only one today."""
-    return [s for s in external_arcgis_sources(registry) if s.get("closure_areas")]
+    (#964). NYS Parks' temporary closures is the first and only one today.
+
+    Selected on the `closure_areas` marker and asked of `external_sources()`,
+    so a steward who publishes closures somewhere other than ArcGIS is picked
+    up by declaring the marker rather than by editing this line (#1432).
+    Neither New York City layer declares it - the city publishes no closure
+    state at all, which is a gap and not a silence this reads as "open"."""
+    return [s for s in external_sources(registry) if s.get("closure_areas")]
 
 
 def load_closure_areas(sources: list[dict]) -> list[dict]:

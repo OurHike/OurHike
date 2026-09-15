@@ -1,12 +1,21 @@
-"""Fetch every external-organization ArcGIS layer in sources.json, for review.
+"""Fetch every external-organization layer in sources.json, for review.
 
 Usage: python fetch_external_layers.py
 
-**The entries this fetches are `kind: "external_arcgis_layer"`** - feature
-layers on another organization's own ArcGIS org, outside the A.T. build.
-NYS OPRHP's four Parks Explorer layers are the first occupants (#769, filed
-by #768's program). lib/source_registry.py owns the kind; this script asks
-it rather than reading `kind` itself, the same split fetch_all.py uses.
+**The entries this fetches are `kind: "external_arcgis_layer"` and
+`kind: "socrata_geojson_layer"`** - another organization's own data layers,
+outside the A.T. build. NYS OPRHP's four Parks Explorer layers are the first
+occupants (#769, filed by #768's program); New York City's two walking-path
+datasets are the first that are not on ArcGIS at all (#1432), and arrive
+from a Socrata portal through lib/socrata.py. lib/source_registry.py owns
+both kinds; this script asks it rather than reading `kind` itself, the same
+split fetch_all.py uses.
+
+WHAT THE TWO KINDS SHARE IS THIS WHOLE SCRIPT EXCEPT ONE FUNCTION. The
+change-aware skip, the manifest, the completeness gate and the on-disk
+layout are all transport-agnostic, and `fetch_one()` is the single place
+that asks how the bytes arrive - so the boundary this file cares about
+stays "somebody else's layer, outside the A.T. build" rather than "ArcGIS".
 
 A separate script rather than a widened fetch_all.py, for two reasons that
 are both about that script's completeness gate:
@@ -72,7 +81,8 @@ from pathlib import Path
 
 from lib.arcgis import fetch_layer_to_file, get_layer_edit_date, get_layer_max_field, get_service_etag
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.source_registry import external_arcgis_sources, load_registry
+from lib.socrata import dataset_url, fetch_dataset_to_file, get_dataset_updated_at
+from lib.source_registry import external_sources, is_socrata_layer, load_registry
 
 ROOT = Path(__file__).parent
 SOURCES_PATH = ROOT / "sources.json"
@@ -85,6 +95,12 @@ MANIFEST_PATH = RAW_DIR / "manifest.json"
 EDIT_DATE_MARKER = "data_last_edit_date"
 ETAG_MARKER = "etag"
 MAX_FIELD_MARKER = "max_field"
+# Socrata's own (#1432). Its own kind rather than reusing EDIT_DATE_MARKER
+# because the units differ - `rowsUpdatedAt` is epoch SECONDS where ArcGIS's
+# dataLastEditDate is milliseconds - and a manifest that spelled both as a
+# bare number under one name would compare two incompatible scales the day
+# somebody wrote a reader over it.
+ROWS_UPDATED_MARKER = "rows_updated_at"
 
 
 def current_marker(src: dict) -> tuple[dict | None, str]:
@@ -96,7 +112,34 @@ def current_marker(src: dict) -> tuple[dict | None, str]:
     Preference order is the module docstring's. A marker read that fails
     is reported and treated as absent rather than raised, because a flaky
     metadata endpoint must cost a re-fetch and never the run.
+
+    A Socrata entry takes the first branch and never the ArcGIS ones: its
+    portal has no `editingInfo` to ask for, and asking would spend one wasted
+    request against somebody else's server on every run.
     """
+    if is_socrata_layer(src):
+        try:
+            updated = get_dataset_updated_at(src["domain"], src["dataset_id"])
+        except Exception as error:  # noqa: BLE001 - same posture as below
+            return None, f"couldn't check rowsUpdatedAt ({error})"
+        if updated is None:
+            return None, "the portal answered no rowsUpdatedAt"
+        # THE FILTER IS PART OF THE MARKER, not just the timestamp, because
+        # for a Socrata entry the registry decides what is fetched and the
+        # portal only decides what exists. `where` is applied server-side, so
+        # tightening it - say excluding a value found to route walkers onto a
+        # highway shoulder - changes the file completely while the dataset's
+        # own rowsUpdatedAt does not move. Without this, the next run would
+        # find the marker unchanged and the cached file present (the publish
+        # workflow caches data/raw/external), print "up to date, skipping",
+        # and go on shipping exactly the rows the new clause was written to
+        # remove - silently, on the clause nyc_dot_greenways calls a safety
+        # property.
+        return (
+            {"kind": ROWS_UPDATED_MARKER, "value": str(updated), "where": src.get("where")},
+            "rowsUpdatedAt/filter",
+        )
+
     try:
         edit_date = get_layer_edit_date(src["url"])
     except Exception as error:  # noqa: BLE001 - reported, then fetched
@@ -139,9 +182,45 @@ def recorded_marker(prior: dict | None) -> dict | None:
     return None
 
 
+def fetch_one(src: dict, out_path: Path) -> int:
+    """Fetch one entry by its kind. Returns the feature count written.
+
+    The only place in this script that branches on transport (#1432);
+    everything either side of it - the marker comparison, the manifest, the
+    completeness gate - is the same for both, because they are the same kind
+    of thing arriving by a different road.
+    """
+    if is_socrata_layer(src):
+        return fetch_dataset_to_file(
+            src["domain"],
+            src["dataset_id"],
+            out_path,
+            # Applied BY THE PORTAL, so the rows a filter excludes are never
+            # fetched and never on disk to be drawn by mistake. See the
+            # entry's own `where_comment` for what each one excludes and why.
+            where=src.get("where"),
+        )
+    return fetch_layer_to_file(src["url"], out_path)
+
+
+def source_location(src: dict) -> str:
+    """Where an entry's bytes come from - the log line and the manifest.
+
+    Asks lib/socrata.py for the Socrata address rather than rebuilding it:
+    that module declares itself the one home for assembling a domain and a
+    dataset id into a URL, and a second spelling here produced a schemeless,
+    extension-less string sitting in the manifest's `url` beside ArcGIS
+    entries whose `url` is a fetchable https service URL. One field, two
+    shapes, is what any future reader of that manifest trips over.
+    """
+    if is_socrata_layer(src):
+        return dataset_url(src["domain"], src["dataset_id"])
+    return src["url"]
+
+
 def main():
     registry = load_registry(SOURCES_PATH)
-    sources = external_arcgis_sources(registry)
+    sources = external_sources(registry)
     prior_manifest = json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else {}
 
     results = {}
@@ -159,13 +238,13 @@ def main():
             continue
 
         why = f"{described} moved" if marker is not None and prior else described
-        print(f"Fetching {src['title']} ({key}) from {src['url']} ({why}) ...")
+        print(f"Fetching {src['title']} ({key}) from {source_location(src)} ({why}) ...")
         try:
-            count = fetch_layer_to_file(src["url"], out_path)
+            count = fetch_one(src, out_path)
             print(f"  -> {count} features -> {out_path}")
             results[key] = {
                 "title": src["title"],
-                "url": src["url"],
+                "url": source_location(src),
                 "feature_count": count,
                 # Kept under its old name for every reader of the manifest
                 # that predates `marker`; None when the server has none.

@@ -56,7 +56,7 @@ from lib.corridor import build_corridor
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
-from lib.source_registry import is_external_arcgis_layer
+from lib.source_registry import is_external_source
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -99,14 +99,21 @@ def load_line_sources(sources_path: Path | None = None) -> list[dict]:
         the fraction that happens to run near the A.T. and drop the rest as
         though it had never been fetched.
 
-    So `external_arcgis_layer` entries are excluded here and exported by
+    So EXTERNAL entries are excluded here and exported by
     export_nearby_trails.py instead, which reads the other directory and clips
     to the NYC ring. The blaze keys still mean "this is a trail-line source" for
     both - one marker, two exports, and lib/source_registry.py's `kind` is what
-    says which."""
+    says which.
+
+    THE TEST IS `is_external_source`, NOT `is_external_arcgis_layer` (#1432).
+    Both reasons above are about whose data it is and where it was fetched to,
+    and neither is about ArcGIS; New York City's layers are somebody else's
+    subject on somebody else's extent exactly as OPRHP's are, and they land in
+    the same data/raw/external/ directory this export does not read. Naming the
+    transport here would have let them through."""
     path = sources_path if sources_path is not None else SOURCES_PATH
     data = json.loads(path.read_text(encoding="utf-8"))
-    return [s for s in data["sources"] if ("blaze_field" in s or "blaze_default" in s) and not is_external_arcgis_layer(s)]
+    return [s for s in data["sources"] if ("blaze_field" in s or "blaze_default" in s) and not is_external_source(s)]
 
 
 def load_features(path: Path) -> list[dict]:

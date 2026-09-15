@@ -2,7 +2,12 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, act, waitFor } from '@testing-library/react'
 import { del, get, getMany, keys, update } from 'idb-keyval'
 import { PoiCard, type PoiDetail } from './PoiCard'
-import { addOwnPhoto, POI_PHOTOS_PREFIX } from '../lib/poiPhotos'
+import {
+  addOwnPhoto,
+  CARD_PHOTO_EDGE,
+  MIN_HERO_PHOTO_WIDTH,
+  POI_PHOTOS_PREFIX,
+} from '../lib/poiPhotos'
 import { preparePhoto, PhotoUnusable } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
 import { fetchPoiPhotos } from '../lib/api'
@@ -758,5 +763,95 @@ describe('the community rung (#578, from #576)', () => {
     // The card as it shipped before the rung existed: placeholder, no error.
     expect(screen.getByTestId('poi-card-placeholder')).toBeInTheDocument()
     expect(screen.queryByTestId('poi-card-photo-count')).not.toBeInTheDocument()
+  })
+})
+
+// --- which frame the card draws a photograph in (#1495) ------------------------
+//
+// The card used to stretch every photograph to fill a 16:10 box, which was
+// right while every source was a 640px rendering and stopped being right when
+// #1450 recovered 403 NYNJTC photographs of which 396 are under 640px wide
+// (measured over the whole corpus 2026-09-15: min 100, median 250, max 4000).
+//
+// These assert on `data-frame` rather than on layout, and that is a real
+// limitation worth stating: jsdom has no layout, so nothing here proves a
+// pixel. What they prove is the DECISION - which is where the bug would be,
+// because the CSS either side of it is four declarations.
+describe('the frame a photograph is drawn in', () => {
+  /** Decode the photograph on screen at a given natural width. jsdom loads no
+   *  images and reports `naturalWidth` 0 forever, so the width has to be put
+   *  there and the load event fired by hand. */
+  function decodeAt(width: number) {
+    const photo = screen.getByTestId('poi-card-photo')
+    Object.defineProperty(photo, 'naturalWidth', { value: width, configurable: true })
+    fireEvent.load(photo)
+    return photo
+  }
+
+  const WITH_PHOTO = {
+    ...SHELTER,
+    photoUrl: 'https://photos.example/one.jpg',
+    photoAuthor: 'A. Photographer',
+    photoLicense: 'CC BY-SA 4.0',
+    photoTaken: '2026-07-01',
+  }
+
+  it('fills the box with a photograph big enough to fill it honestly', async () => {
+    await renderCard(WITH_PHOTO)
+
+    expect(decodeAt(CARD_PHOTO_EDGE)).toHaveAttribute('data-frame', 'hero')
+  })
+
+  it('draws a 250px archive photograph at its own size instead', async () => {
+    // The corpus this exists for: stretched to fill, this is a ~2x upscale
+    // and then a crop to 16:10, applied to the image least able to afford it.
+    await renderCard(WITH_PHOTO)
+
+    const photo = decodeAt(250)
+
+    expect(photo).toHaveAttribute('data-frame', 'inset')
+    expect(photo.className).toContain('poi-card__photo--inset')
+  })
+
+  it('fills the box until it has measured, so nothing flashes small then grows', async () => {
+    await renderCard(WITH_PHOTO)
+
+    // Rendered, not yet decoded - which is every first paint.
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('data-frame', 'hero')
+  })
+
+  it('treats an image that decoded to nothing as unmeasured, not as tiny', async () => {
+    // A broken decode reports 0. That is not evidence the photograph is
+    // small, so it must not be read as the strongest possible case for inset.
+    await renderCard(WITH_PHOTO)
+
+    expect(decodeAt(0)).toHaveAttribute('data-frame', 'hero')
+  })
+
+  it('forgets the previous photograph width when the photo changes', async () => {
+    // Otherwise a small photo followed by a large one draws the large one
+    // inset for a frame, which is the flicker this reset exists to prevent.
+    const view = await renderCard(WITH_PHOTO)
+    expect(decodeAt(250)).toHaveAttribute('data-frame', 'inset')
+
+    view.rerender(
+      <PoiCard
+        poi={{ ...WITH_PHOTO, photoUrl: 'https://photos.example/two.jpg' }}
+        map={null}
+        onClose={vi.fn()}
+      />,
+    )
+    await act(async () => {})
+
+    expect(screen.getByTestId('poi-card-photo')).toHaveAttribute('data-frame', 'hero')
+  })
+
+  it('puts the line at the slot on a DPR-2 phone, not a round number', async () => {
+    await renderCard(WITH_PHOTO)
+    expect(decodeAt(MIN_HERO_PHOTO_WIDTH)).toHaveAttribute('data-frame', 'hero')
+
+    cleanup()
+    await renderCard(WITH_PHOTO)
+    expect(decodeAt(MIN_HERO_PHOTO_WIDTH - 1)).toHaveAttribute('data-frame', 'inset')
   })
 })

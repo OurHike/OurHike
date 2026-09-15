@@ -113,7 +113,7 @@ import type { HikeDirection } from './Header'
 import { formatShortDistance, MIN_STATED_FEET, type UnitSystem } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
 import { exifCaptureDate } from '../lib/exifDate'
-import { CARD_PHOTO_EDGE, type OwnPhotoSource } from '../lib/poiPhotos'
+import { CARD_PHOTO_EDGE, photoFrame, type OwnPhotoSource } from '../lib/poiPhotos'
 import { useOwnPhotos, type OwnCardPhoto } from '../lib/useOwnPhotos'
 import { useCommunityPhotos } from '../lib/useCommunityPhotos'
 import { enqueueAction } from '../lib/outbox'
@@ -949,6 +949,18 @@ export function PoiCard({
   const [photoFailed, setPhotoFailed] = useState(false)
   useEffect(() => setPhotoFailed(false), [current?.url])
 
+  // How big the photograph on screen actually is, read off the decoded image
+  // rather than taken from anything the pipeline said about it - so a card
+  // showing a 250px recovery and a card showing a 640px rendering are told
+  // apart by the file itself (#1495).
+  //
+  // Reset with the URL for the same reason `photoFailed` is: the previous
+  // photo's width must not decide this one's frame for the frame or two
+  // before the new image decodes.
+  const [naturalWidth, setNaturalWidth] = useState<number | null>(null)
+  useEffect(() => setNaturalWidth(null), [current?.url])
+  const frame = photoFrame(naturalWidth)
+
   const accent = poiColor(shown.type)
   const showPhoto = current !== undefined && !photoFailed
   // "Your photo" instead of an author for rung 1: the one photo on this card
@@ -1360,7 +1372,12 @@ export function PoiCard({
                 </p>
               )}
 
-              <div className="poi-card__media" id={mediaId}>
+              {/* `data-testid` as well as the id: the id is what the expander
+                  points `aria-controls` at, and preview-shots/waypoint-photo.mjs
+                  needs a handle that is present in BOTH states - a photograph and
+                  the category glyph - so a waypoint with no picture photographs as
+                  itself rather than timing out. */}
+              <div className="poi-card__media" id={mediaId} data-testid="poi-card-media">
                 {/* A just-picked photo under review covers the media box: the
                   preview IS the prepared rendering a Keep would store, so what
                   the hiker approves is what they get, byte for byte. Nothing has
@@ -1374,13 +1391,18 @@ export function PoiCard({
                   />
                 ) : showPhoto ? (
                   <img
-                    className="poi-card__photo"
+                    className={`poi-card__photo poi-card__photo--${frame}`}
                     data-testid="poi-card-photo"
+                    // What the frame was decided from, for a reviewer and for
+                    // the tests - the decision is otherwise invisible in a
+                    // jsdom render, where nothing has a size.
+                    data-frame={frame}
                     src={current.url}
                     // Empty on purpose: the app knows nothing about the photo beyond
                     // which waypoint it belongs to, and the name is the next line
                     // down. Announcing "photo of {name}" would say the name twice.
                     alt=""
+                    onLoad={(event) => setNaturalWidth(event.currentTarget.naturalWidth)}
                     onError={() => setPhotoFailed(true)}
                   />
                 ) : (

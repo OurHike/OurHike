@@ -315,6 +315,65 @@ def write_cache(pages: list[HikePage], links: list[str], path: Path | None = Non
     )
 
 
+def probe(made, url: str) -> int:
+    """Fetch ONE archived write-up and say what a coordinate parser can see in it.
+
+    WHY THIS EXISTS (#1497). The first full run recovered 439 write-ups and
+    found a coordinate in **none** of them. That is either a fact about the
+    corpus - in which case the matcher's distance route can never fire and
+    says so - or it is `_LATLON_RES` missing the shape these pages use, which
+    is a bug. Zero out of 439 is exactly what a broken regex looks like, so
+    the two have to be told apart rather than guessed between.
+
+    It could not be told apart from an agent sandbox: web.archive.org refuses
+    that egress address, and the environment's fetch tools decline the host
+    outright. So the question comes here, where two requests answer it.
+
+    Prints what EACH pattern found and a raw window around any "lat" in the
+    markup, because "no pattern matched" and "the page has no coordinate" are
+    different answers and only the second one is a finding.
+    """
+    print(f"Probing {url}")
+    found = latest_capture(made, url.replace("https://", "").replace("http://", ""))
+    if found is None:
+        print("  the archive would not name a capture of it")
+        return 1
+    page_url, page_ts = found
+    print(f"  most recent capture {page_ts}")
+
+    response = get(made, archived(page_url, page_ts))
+    if response is None:
+        print("  the capture would not fetch")
+        return 1
+    markup = response.text
+    print(f"  {len(markup)} bytes of markup")
+
+    print()
+    for index, pattern in enumerate(_LATLON_RES, 1):
+        hits = pattern.findall(markup)
+        print(f"  pattern {index}: {len(hits)} hit(s){' -> ' + str(hits[:3]) if hits else ''}")
+
+    where = coordinates(markup)
+    print(f"  coordinates() -> {where}")
+
+    # The fallback question: is anything coordinate-SHAPED in there at all? A
+    # bare decimal pair near a latitude-ish word is what a fifth pattern would
+    # have to match, and seeing the surrounding characters is what says which
+    # one to write.
+    print()
+    windows = [markup[max(0, m.start() - 60) : m.start() + 120] for m in re.finditer(r"(?i)lat(?:itude)?", markup)]
+    print(f"  {len(windows)} mention(s) of lat/latitude in the markup")
+    for window in windows[:5]:
+        print("    ..." + " ".join(window.split()) + "...")
+
+    pairs = re.findall(r"-?\d{2}\.\d{3,}\s*[,;]\s*-?\d{2}\.\d{3,}", markup)
+    print(f"  {len(pairs)} bare decimal pair(s){' -> ' + str(pairs[:3]) if pairs else ''}")
+
+    photos = [urllib.parse.unquote(src.rsplit("/", 1)[-1]) for src in _U26_IMG_RE.findall(markup)]
+    print(f"  {len(photos)} u26 image(s) -> {photos[:3]}")
+    return 0
+
+
 def main(limit: int | None, index_only: bool) -> int:
     made = session()
 
@@ -386,7 +445,15 @@ def run(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--limit", type=int, default=None, help="Fetch only the first N write-ups.")
     parser.add_argument("--index-only", action="store_true", help="List what the index points at; fetch no pages.")
+    parser.add_argument(
+        "--probe",
+        metavar="URL",
+        default=None,
+        help="Fetch ONE write-up and report what each coordinate pattern sees in it (#1497).",
+    )
     args = parser.parse_args(argv)
+    if args.probe:
+        return probe(session(), args.probe)
     return main(args.limit, args.index_only)
 
 

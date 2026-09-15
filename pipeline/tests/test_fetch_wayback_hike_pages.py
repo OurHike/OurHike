@@ -324,3 +324,117 @@ def test_an_unknown_flag_is_rejected_rather_than_silently_ignored():
         pages.run(["--indx"])
 
     assert excinfo.value.code == 2
+
+
+# --- the probe (#1497) ----------------------------------------------------------
+#
+# The first full run recovered 439 write-ups and found a coordinate in NONE of
+# them. That is either a fact about the corpus - and then the matcher's
+# distance route can never fire - or `_LATLON_RES` misses the shape these
+# pages use, which is a bug. Zero out of 439 is exactly what the second one
+# looks like, and it could not be told apart from an agent sandbox because
+# web.archive.org refuses that address.
+#
+# So the probe's job is NOT to find a coordinate. It is to make the two cases
+# distinguishable in a log, which is why these tests care about what it prints
+# rather than what it returns.
+
+
+def _probe_mocks(requests_mock, markup):
+    requests_mock.get(CDX, json=_cdx(("https://www.nynjtc.org/hike/x", "20230924170506")))
+    requests_mock.get(
+        pages.archived("https://www.nynjtc.org/hike/x", "20230924170506"),
+        text=markup,
+    )
+
+
+def test_the_probe_reports_which_pattern_matched(monkeypatch, capsys, requests_mock):
+    _no_sleep(monkeypatch)
+    _probe_mocks(requests_mock, '<div data-lat="41.2" data-lon="-74.1">Claudius Smiths Rock</div>')
+
+    assert pages.probe(_session(), "https://www.nynjtc.org/hike/x") == 0
+
+    printed = capsys.readouterr().out
+    assert "coordinates() -> (41.2, -74.1)" in printed
+    assert "pattern 2: 1 hit" in printed
+
+
+def test_a_page_with_no_coordinate_says_every_pattern_found_nothing(monkeypatch, capsys, requests_mock):
+    """The finding case. Every pattern at zero AND no lat mention AND no bare
+    pair is evidence the page carries none - which is a different claim from
+    "the parser missed it", and the whole reason this prints three things."""
+    _no_sleep(monkeypatch)
+    _probe_mocks(requests_mock, "<p>Park at the lot on Route 17 and walk north.</p>")
+
+    assert pages.probe(_session(), "https://www.nynjtc.org/hike/x") == 0
+
+    printed = capsys.readouterr().out
+    assert "coordinates() -> None" in printed
+    assert "0 mention(s) of lat/latitude" in printed
+    assert "0 bare decimal pair(s)" in printed
+
+
+def test_the_probe_shows_a_coordinate_the_parser_missed(monkeypatch, capsys, requests_mock):
+    """THE case this exists for. A page carrying a coordinate in a shape none
+    of the four patterns match must come back as "coordinates() -> None" WITH
+    the evidence beside it, or the run that found zero of 439 stays
+    unexplained."""
+    _no_sleep(monkeypatch)
+    _probe_mocks(requests_mock, '<span class="geo">Latitude 41.2345678 / Longitude -74.1234567</span>')
+
+    assert pages.probe(_session(), "https://www.nynjtc.org/hike/x") == 0
+
+    printed = capsys.readouterr().out
+    assert "coordinates() -> None" in printed
+    # The mention is what says "look again at the patterns" rather than
+    # "this page has no location".
+    assert "1 mention(s) of lat/latitude" in printed
+    assert "Latitude 41.2345678" in printed
+
+
+def test_a_coordinate_outside_the_region_is_shown_as_matched_then_rejected(monkeypatch, capsys, requests_mock):
+    """The third cause, and it reads like neither of the others: a pattern DID
+    match and `coordinates()` threw it away for being outside the NY/NJ/PA
+    box. Printing the raw hits beside the verdict is what separates a bounds
+    rejection from a miss."""
+    _no_sleep(monkeypatch)
+    _probe_mocks(requests_mock, '<div data-lat="51.5" data-lon="-0.12">London</div>')
+
+    assert pages.probe(_session(), "https://www.nynjtc.org/hike/x") == 0
+
+    printed = capsys.readouterr().out
+    assert "pattern 2: 1 hit" in printed
+    assert "coordinates() -> None" in printed
+
+
+def test_the_probe_names_the_photographs_the_page_shows(monkeypatch, capsys, requests_mock):
+    """The other half of the join, checked in the same two requests: 154 of
+    439 pages cited a photograph, and the probe is where a reader can see
+    whether a page that cites none really shows none."""
+    _no_sleep(monkeypatch)
+    _probe_mocks(
+        requests_mock,
+        '<img src="https://www.nynjtc.org/sites/default/files/u26/Beaver_Lodge.jpg">',
+    )
+
+    assert pages.probe(_session(), "https://www.nynjtc.org/hike/x") == 0
+
+    assert "Beaver_Lodge.jpg" in capsys.readouterr().out
+
+
+def test_a_write_up_the_archive_never_captured_ends_the_probe(monkeypatch, capsys, requests_mock):
+    _no_sleep(monkeypatch)
+    requests_mock.get(CDX, json=_cdx())
+
+    assert pages.probe(_session(), "https://www.nynjtc.org/hike/x") == 1
+
+    assert "would not name a capture" in capsys.readouterr().out
+
+
+def test_probe_is_not_prefix_matched_by_another_flag():
+    """argparse accepts unambiguous prefixes, and a test that meant to check a
+    flag once ran a whole archive job here because `--index` matched
+    `--index-only`. `--probe` takes a URL, so a prefix collision would send a
+    stage's worth of requests at the archive with the wrong argument."""
+    with pytest.raises(SystemExit):
+        pages.run(["--prob"])  # ambiguous only if a second --prob* flag ever appears

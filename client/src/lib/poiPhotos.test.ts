@@ -2,11 +2,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { del, get, getMany, keys, update } from 'idb-keyval'
 import {
   addOwnPhoto,
+  CARD_PHOTO_EDGE,
+  CARD_PHOTO_SLOT_PX,
   chooseOwnPhoto,
   deleteOwnPhoto,
   listAllOwnPhotos,
   listOwnPhotos,
+  MIN_HERO_PHOTO_WIDTH,
   ownPhotoUsage,
+  photoFrame,
   POI_PHOTOS_PREFIX,
 } from './poiPhotos'
 
@@ -213,5 +217,60 @@ describe('ownPhotoUsage', () => {
   it('reports zero for a phone with no photos', async () => {
     withStore()
     await expect(ownPhotoUsage()).resolves.toEqual({ count: 0, bytes: 0 })
+  })
+})
+
+// --- which frame a photograph earns (#1495) -----------------------------------
+//
+// The decision lives here rather than in PoiCard so it can be checked without
+// rendering anything, and so the number it rests on sits beside the slot width
+// it is derived from.
+describe('photoFrame', () => {
+  it('derives the line from the slot rather than picking a round number', () => {
+    // 240 is the 264px card less the body's 12px padding either side, and 2 is
+    // the density POI_PHOTOS.md sizes every other photo decision against. If
+    // either moves, this fails rather than drifting quietly.
+    expect(CARD_PHOTO_SLOT_PX).toBe(240)
+    expect(MIN_HERO_PHOTO_WIDTH).toBe(480)
+  })
+
+  it('sits inside the gap the recorded decision left', () => {
+    // The maintainer's decision of 2026-09-15 was "hero at 640 and above,
+    // inset below 400" and said nothing about 400-639. The line has to honour
+    // both bounds rather than override either.
+    expect(photoFrame(640)).toBe('hero')
+    expect(photoFrame(399)).toBe('inset')
+    expect(MIN_HERO_PHOTO_WIDTH).toBeGreaterThan(400)
+    expect(MIN_HERO_PHOTO_WIDTH).toBeLessThan(640)
+  })
+
+  it('fills the box at the line and insets one pixel under it', () => {
+    expect(photoFrame(MIN_HERO_PHOTO_WIDTH)).toBe('hero')
+    expect(photoFrame(MIN_HERO_PHOTO_WIDTH - 1)).toBe('inset')
+  })
+
+  it('insets the width the NYNJTC archive corpus actually is', () => {
+    // 396 of 403 recovered images are under 640px, measured over the whole
+    // corpus 2026-09-15: min 100, median 250, max 4000. The two widths below
+    // are the measured minimum and the measured median, so this asserts the
+    // real distribution rather than two round numbers near it.
+    // This is the case the whole rule exists for, so it is asserted with the
+    // real numbers rather than a token small one.
+    expect(photoFrame(100)).toBe('inset')
+    expect(photoFrame(250)).toBe('inset')
+  })
+
+  it('fills the box for every source the card was built for', () => {
+    // The hiker's own photos are re-encoded to CARD_PHOTO_EDGE on the device,
+    // and the Commons and ATC fetches ask for the same edge. None of them
+    // should ever take the new path.
+    expect(photoFrame(CARD_PHOTO_EDGE)).toBe('hero')
+  })
+
+  it.each([null, undefined, 0, -1])('fills the box when unmeasured: %s', (width) => {
+    // Unmeasured is what every first paint is, and 0 is what a broken decode
+    // reports. Neither is evidence the photograph is small, and both must
+    // render as the card always did rather than flashing small then growing.
+    expect(photoFrame(width)).toBe('hero')
   })
 })

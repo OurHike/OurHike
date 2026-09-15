@@ -2851,6 +2851,40 @@
   object-fit: cover;
 }
 
+/* A photograph too small to fill the slot honestly is drawn at its own size,
+   centred, rather than stretched and cropped to 16:10 (#1495).
+
+   The slot is 240 CSS pixels - the 264px card less the body's 12px padding
+   either side - so `lib/poiPhotos.ts` puts the line at 480, which is that
+   slot on a DPR-2 phone. Below it, filling would upscale a file past what it
+   holds and then crop what somebody framed; the crop falls hardest on the
+   images least able to afford it. The NYNJTC archive corpus recovered in
+   #1450 is 396 of 403 images under 640px - measured over the whole corpus on
+   2026-09-15, min 100, median 250, max 4000 - so this is most of that corpus
+   rather than an edge case.
+
+   There is deliberately no `--hero` rule: filling the box is what the base
+   class above already does, and an empty ruleset restating it would be one
+   more place to keep in step. The class is still on the element, because
+   `data-frame` alone would not survive somebody reading the DOM in a browser.
+
+   `inset: 0` with `margin: auto` centres on both axes without making the
+   media box a flex container, which would disturb the credit line and the
+   placeholder already positioned inside it. `object-fit: none` with auto
+   width and height is what renders at natural size; the max-* pair is the
+   guard for a photograph wider than the slot but still under the line on a
+   narrow screen, where it should shrink to fit rather than overflow. */
+.poi-card__photo--inset {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  margin: auto;
+  object-fit: none;
+}
+
 /* The photo's credit line - author, licence, month, from the pipeline's
    Wikimedia Commons match (PoiCard.tsx). Like the map's ODbL line
    (map/style.ts), this is load-bearing attribution, not decoration: CC BY /

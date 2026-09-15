@@ -56,6 +56,7 @@ on:
           - photos         # the 403 photographs themselves
           - match          # score the join, write the review sheet
           - everything     # all four, in order
+          - probe          # two requests: what one write-up carries (#1497)
       limit:
         description: "Cap the number fetched (a trial run). Empty = no cap."
         type: string
@@ -64,6 +65,10 @@ on:
         description: "What the review sheet puts above the fold. Ranks; decides nothing."
         type: string
         default: "2.5"
+      probe_url:
+        description: "Which write-up the probe stage reads. Ignored by every other stage."
+        type: string
+        default: "https://www.nynjtc.org/hike/claudius-smiths-rock"
 
 # Never cancel a run in progress. These legs spend tens of minutes inside a
 # rate limit, and a superseding dispatch that killed one would throw away
@@ -98,6 +103,69 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # WHAT MAKES THE STAGES STAGES (#1497). Each dispatch gets a fresh
+      # runner and pipeline/data/ is gitignored scratch that dies with it, so
+      # without this `pages`, `photos` and `match` are not four steps of one
+      # recovery - they are four runs that happen to share a filename, and
+      # `match` reads a directory that does not exist.
+      #
+      # The first draft had no cache and no download, and the only combination
+      # that worked was `everything`: about 890 requests for the write-ups plus
+      # 403 for the images, re-fetched on one runner at a deliberate ten a
+      # minute, so roughly two and a half hours. Paying that to work around a
+      # missing step is the wrong trade twice - once for the hours, and once
+      # for an archive that is donation-funded and already refused this
+      # project's other egress address today.
+      #
+      # A cache rather than download-artifact because cross-run artifact
+      # download needs the earlier run's id, which a person dispatching a
+      # stage does not have and should not have to find. `restore-keys` takes
+      # the most recent cache whose key starts with the prefix, and the
+      # run-id suffix makes every run save a new one rather than hitting an
+      # immutable key and silently keeping the old.
+      # Restore and save are SEPARATE steps, and the first draft of this used a
+      # single combined `actions/cache` keyed on the run id. That is the
+      # pattern .github/tests/test_cache_keys_are_content_addressed.py exists
+      # to refuse, and it refused this one: a key carrying the run id is
+      # distinct by construction, so the step never overwrites an entry, it
+      # only ever adds one - and GitHub's per-repository cache is 10 GB with
+      # least-recently-used eviction, so a workflow saving under unrepeatable
+      # keys spends the whole repository's cache on itself. That test has the
+      # arithmetic from publish-conditions.yml, which is what made it a test
+      # rather than a fix.
+      #
+      # A RESTORE may use the run-id idiom, and does: it stores nothing, and
+      # `key` + `restore-keys` is the documented way to say "never hit
+      # exactly, take the most recent match by prefix".
+      - name: What earlier stages already fetched
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            pipeline/data/raw/wayback_hike_pages.json
+            pipeline/data/raw/wayback_hike_photos.json
+            pipeline/data/raw/poi_photos
+          key: nynjtc-archive-recovery-data-${{ github.run_id }}
+          restore-keys: |
+            nynjtc-archive-recovery-data-
+
+      # Said out loud, because "the cache was empty" and "the archive gave us
+      # nothing" produce the same counts and mean opposite things - the same
+      # argument the step below makes about the password.
+      - name: What the cache handed over
+        run: |
+          for f in data/raw/wayback_hike_pages.json data/raw/wayback_hike_photos.json; do
+            if [ -f "$f" ]; then
+              echo "restored: $f ($(wc -c < "$f") bytes)"
+            else
+              echo "absent:   $f - this stage starts from nothing"
+            fi
+          done
+          if [ -d data/raw/poi_photos ]; then
+            echo "restored: data/raw/poi_photos ($(find data/raw/poi_photos -type f | wc -l) images)"
+          else
+            echo "absent:   data/raw/poi_photos"
+          fi
+
       # Said out loud before anything runs, because "0 photographs" and "the
       # archive would not talk to us" look identical in a log and mean
       # opposite things.
@@ -112,6 +180,18 @@ jobs:
           fi
         env:
           HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+
+      # Two requests, and the only stage that answers a question rather than
+      # fetching a corpus. The first full `pages` run found a coordinate in
+      # none of 439 write-ups, which is either a fact about the corpus or a
+      # regex that misses the shape these pages use - and zero out of 439 is
+      # exactly what the second one looks like. It runs here because an agent
+      # sandbox cannot reach web.archive.org at all.
+      - name: The probe - what one write-up actually carries
+        if: inputs.stage == 'probe'
+        run: |
+          set -o pipefail
+          python -u fetch_wayback_hike_pages.py --probe "${{ inputs.probe_url }}" | tee probe.log
 
       - name: The index - what /view/hike lists
         if: inputs.stage == 'index' || inputs.stage == 'everything'
@@ -162,7 +242,7 @@ jobs:
           {
             echo "## NYNJTC archive recovery - ${{ inputs.stage }}"
             echo
-            for stage in index pages photos match; do
+            for stage in probe index pages photos match; do
               if [ -f "$stage.log" ]; then
                 echo "### $stage"
                 echo '```'
@@ -175,11 +255,51 @@ jobs:
             echo "written by a person working the review sheet in the artifact below."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # The caches and the sheet, not the images: the photographs are already
-      # content-addressed under data/raw/poi_photos and a run that uploaded
+      # THE IMAGES SHIP WITH THE SHEET, and the first draft's reasoning for
+      # leaving them out was wrong (#1497). It said "a run that uploaded
       # hundreds of them would be paying to move bytes the next run would
-      # re-derive. CONTRIBUTING.md's "data does not go in commits" is about
-      # the repository, and this keeps the same shape for artifacts.
+      # re-derive" - true of the next RUN, and irrelevant to the only reader
+      # this artifact has. write_sheet() renders
+      # <img src="../raw/poi_photos/{digest}.jpg">, so without them a person
+      # downloads an HTML file of broken image icons.
+      #
+      # That is not a cosmetic loss. The whole design of this join is that a
+      # score is a claim about strings and whether a photograph is OF a hike
+      # is a claim about the world, which only somebody looking at it can
+      # settle - features/POI_PHOTOS.md's Asiatic dayflower passed every
+      # automatic bar there was. A review sheet nobody can see the pictures in
+      # is not a review sheet.
+      #
+      # MEASURED, run 35026550773 on 2026-09-15: 403 images, 46.1 MB. The
+      # first draft of this comment guessed "20-40 KB each, so 10-15 MB" and
+      # was out by a factor of three - the real average is ~114 KB. Still an
+      # ordinary artifact, and now a number somebody can check. The paths
+      # keep their pipeline/data/ shape so the sheet's relative src resolves
+      # when the zip is unpacked. CONTRIBUTING.md's "data does not go in
+      # commits" is about the repository and is untouched by this: an artifact
+      # expires in 14 days and enters no tree.
+      # Keyed on what is being saved, so a stage that fetched nothing computes
+      # the same key as the entry it restored and the save is a no-op rather
+      # than a new entry. The two manifests are the hash input rather than the
+      # whole photo store: both are rewritten by the run that changes the
+      # store, so they move exactly when it does, and hashing 403 files to
+      # learn the same thing would be slower for nothing.
+      #
+      # The `if` is the other half of what the test asks for. hashFiles()
+      # returns an empty string when none of its paths exist, so an `index` or
+      # `probe` run - which fetch no corpus at all - would otherwise save the
+      # bare prefix as a key and poison every later restore with an empty
+      # entry.
+      - name: Hand this on to the next stage
+        if: hashFiles('pipeline/data/raw/wayback_hike_pages.json', 'pipeline/data/raw/wayback_hike_photos.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            pipeline/data/raw/wayback_hike_pages.json
+            pipeline/data/raw/wayback_hike_photos.json
+            pipeline/data/raw/poi_photos
+          key: nynjtc-archive-recovery-data-${{ hashFiles('pipeline/data/raw/wayback_hike_pages.json', 'pipeline/data/raw/wayback_hike_photos.json') }}
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -188,6 +308,7 @@ jobs:
             pipeline/*.log
             pipeline/data/raw/wayback_hike_pages.json
             pipeline/data/raw/wayback_hike_photos.json
+            pipeline/data/raw/poi_photos
             pipeline/data/processed/wayback_photo_review.html
             pipeline/data/processed/wayback_photo_matches.json
           retention-days: 14

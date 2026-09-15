@@ -131,12 +131,14 @@ about, and it is one nobody can reproduce. §4.1 is the repair.
 ### 1.2 A laptop, which none of the above measures
 
 Measured 2026-09-15 after a report of "the first page is loading blank for like 5
-seconds" with a screenshot of a sidebar and an empty pane. Chromium at 1728×1080,
-returning hiker — onboarding done, the 2026-09-14 release on the machine — reloaded
-with the service worker, cache storage and HTTP cache cleared, which is the state a
-deploy leaves every returning hiker in because it re-hashes every asset. The cold
-column is the report's own case; the warm column is the same launch with the
-precache intact.
+seconds" with a screenshot of a sidebar and an empty pane.
+
+**Against production**: `https://ourhike.org/app/`, serving `main-Bx2gadkk.js`,
+whose inlined version reads 1.3.0. Chromium at 1728×1080, returning hiker —
+onboarding done, the 2026-09-14 release on the machine — reloaded with the service
+worker, cache storage and HTTP cache cleared, which is the state a deploy leaves
+every returning hiker in because it re-hashes every asset. The cold column is the
+report's own case; the warm column is the same launch with the precache intact.
 
 | | warm precache | cold, 1× CPU | cold, 4× CPU |
 |---|---:|---:|---:|
@@ -165,6 +167,12 @@ production's public build values, with `performance.mark` at each phase boundary
 | **`archivesRead` — the last gate to open** | **2,009 ms** |
 | Today's journal has text | 2,230 ms |
 | the map engine's chunk landed | 2,394 ms |
+
+**These two tables are not comparable to each other**, for the reason §1 states in
+bold about its own pair: one is production with its own release, the other a local
+build on this sandbox's network. The 2,725 ms above and the 2,230 ms here are two
+launches, not a before and an after. Each is comparable only to another run of the
+same kind.
 
 Two things that table settles and one it does not. It settles that the journal waits
 on `archivesRead` alone on this run: MapScreen's chunk landed 347 ms before the gate
@@ -467,7 +475,12 @@ engine back fails its own build before CI sees it.
 operations rather than milliseconds: the tab bar is on screen before any IndexedDB
 read resolves; the launch thread performs no full pass over the waypoint list before
 it; the archive sweep never unmounts a rendered tree. Each is a count, so it fails on
-any machine.
+any machine. Its desktop block (§1.2, §6's bullet) counts the same way above the
+breakpoint — the sidebar paints before any read resolves, one map is built for a
+launch that lands on Today, and the pane beside the sidebar is empty until the store
+answers. That last one is characterisation rather than a budget: it goes red the day
+Today renders beside a held-up map, which is the fix, and whoever makes it inverts
+the test rather than deleting it.
 
 **In review, by hand** — a pull request touching the launch path pastes the
 stopwatch's `--returning` and first-run output into its body, the way #857 — *Skip on the first-run steps feels like a broken button* —
@@ -502,8 +515,12 @@ release's effect on the launch is a row in an issue rather than a feeling.
   is the launch #857 fixed and only happens when the stored preferences do not say
   onboarding is done. The other two runs, and both local runs, launched normally from
   the same warm-up. Whether a phone can hit it — a preferences read that rejects falls
-  back to defaults, and defaults mean first run (`App.tsx:1165–1188`) — is not known,
-  and it is the kind of thing §4.1's readout would catch on a real device.
+  back to defaults, and defaults mean first run, which is the mirror-seeded
+  `preferences` state beside `readLaunchMirror` and the `setPreferencesLoaded(true)`
+  that a rejected read still runs — is not known, and it is the kind of thing §4.1's
+  readout would catch on a real device. (This bullet used to cite `App.tsx:1165–1188`
+  for that fallback; those lines are day-hike chart state today. The same drift §6's
+  desktop bullet below records, found while editing the section around it.)
 - **Whether a hiker ever notices the map arriving cold.** #1324 stopped building the
   map behind the entry steps and warms it on an idle callback once they are done, so a
   hiker who reaches the Map tab before that callback runs pays the build then. On the
@@ -536,8 +553,10 @@ release's effect on the launch is a row in an issue rather than a feeling.
   **Today**, because above the breakpoint Today is the map's `journal` prop and not a
   screen of its own. So the one form factor where the front door renders behind the
   map is the one form factor with no budget on the front door. §1.2 is what that cost,
-  measured; `App.loadBudget.test.tsx`'s desktop block is the tripwire. What is still
-  not decided here is the budget itself — §3's rows are the phone's and a laptop's
-  numbers are not them — and the line reference this bullet used to carry
-  (`App.tsx:1024`) had drifted off the symbol it named, which is its own small lesson
-  about citing a line rather than a name.
+  measured; §5 names the counts `App.loadBudget.test.tsx` now holds above the
+  breakpoint. **What is still not decided here is the budget itself** — §3's rows are
+  the phone's, a laptop's are not them, and what they should be wants §4.1's on-device
+  readout rather than a number picked here. The line reference this bullet used to
+  carry (`App.tsx:1024`) had drifted off the symbol it named; so had
+  `App.tsx:1165-1188` three bullets above, and citing a name rather than a line is the
+  repair for both.

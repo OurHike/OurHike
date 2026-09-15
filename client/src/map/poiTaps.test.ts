@@ -5,6 +5,8 @@ import { CLOSURE_LAYER_ID } from '../lib/closureStyle'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
+import { ATC_UPDATE_ID_PROPERTY } from './atcUpdateLayers'
+import { ATC_UPDATE_LAYER_ID } from '../lib/atcUpdateStyle'
 import { attachPoiTaps, poiIdAt, POI_DOT_TAP_SLOP_PX, POI_TAP_SLOP_PX } from './poiTaps'
 
 // The behaviour under test is "a hiker touches a pin and the app knows which
@@ -171,6 +173,42 @@ describe('tapping a pin', () => {
     map.renderedFeatures.set(POI_DOT_LAYER_ID, [dot('atc_springs:xyz', 10, 10)])
 
     expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('yields a DOT to the ATC notice band, so one touch is still one sheet', () => {
+    // #1419's REVIEW, not #1419. The pin stopped yielding to ambient marks,
+    // and `attachAtcUpdateTaps` gained a yield to the pin so pin-against-band
+    // had one interpreter - but nothing arbitrated DOT against band, and both
+    // handlers answered: the waypoint card opened AND the notice sheet did,
+    // with the order two effects happened to bind deciding which sat on top.
+    // A dot is ambient (~20 px) like the band, so it loses, exactly as it
+    // already loses to the closure tape.
+    const map = buildMap()
+    map.layerIds.push(ATC_UPDATE_LAYER_ID)
+    map.layerIds.push(POI_DOT_LAYER_ID)
+    map.renderedFeatures.set(ATC_UPDATE_LAYER_ID, [
+      { properties: { [ATC_UPDATE_ID_PROPERTY]: 'atc1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [])
+    map.renderedFeatures.set(POI_DOT_LAYER_ID, [dot('atc_springs:xyz', 10, 10)])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBeNull()
+  })
+
+  it('still opens a waypoint PIN standing on an ATC notice band', () => {
+    // The band is below the pin in the order, so the pin keeps the touch and
+    // attachAtcUpdateTaps yields to it. The two together are what make the
+    // pair one interpreter rather than none.
+    const map = buildMap()
+    map.layerIds.push(ATC_UPDATE_LAYER_ID)
+    map.renderedFeatures.set(ATC_UPDATE_LAYER_ID, [
+      { properties: { [ATC_UPDATE_ID_PROPERTY]: 'atc1' } },
+    ])
+    map.renderedFeatures.set(POI_LAYER_ID, [pin('atc_shelters:abc')])
+
+    expect(poiIdAt(map as unknown as MapLibreMap, { x: 10, y: 10 })).toBe(
+      'atc_shelters:abc',
+    )
   })
 
   it('still yields to the warning pin, which did not move', () => {

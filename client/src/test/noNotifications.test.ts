@@ -55,13 +55,26 @@ import { join, relative, resolve } from 'node:path'
 // it reads files OUTSIDE the client tree, which is a different job.
 const ROOT = resolve(process.cwd(), 'src')
 
-/** Every TypeScript module the app ships, tests and this directory aside. */
+/**
+ * Every module the app ships, tests and this directory aside.
+ *
+ * `.jsx` AND `.js` ARE IN THE LIST, and leaving them out was this file's own
+ * first defect. The filter was `/\.tsx?$/`, which misses the seven shipped
+ * `.jsx` modules under `design-system/components/` - Button, Card, Badge,
+ * Logo, Input, Select, Callout - every one of them imported by a `.tsx`
+ * screen (chrome/PressPlate.tsx, chrome/FacetSheet.tsx,
+ * chrome/SuggestedHikeCard.tsx, screens/HikeDetail.tsx). A `new
+ * Notification()` in Button.jsx left this suite green while
+ * site/public/Privacy/index.html told hikers in bold that the check reads
+ * every module the web app ships. That is the exact over-claim #1398 exists
+ * to remove, committed one layer down inside the fix for it.
+ */
 function sourceFiles(dir = ROOT): string[] {
   return readdirSync(dir).flatMap((entry) => {
     const full = join(dir, entry)
     if (statSync(full).isDirectory()) return sourceFiles(full)
-    if (!/\.tsx?$/.test(full)) return []
-    if (/\.test\.tsx?$/.test(full)) return []
+    if (!/\.(tsx?|jsx?|mts|cts|mjs|cjs)$/.test(full)) return []
+    if (/\.test\.(tsx?|jsx?)$/.test(full)) return []
     if (full.startsWith(join(ROOT, 'test'))) return []
     return [full]
   })
@@ -104,5 +117,16 @@ describe('the app sends no notifications, which is what the privacy policy says'
     // lib/ alone at the time of writing) so an ordinary refactor cannot
     // trip it, while a walk that broke and returned [] would.
     expect(sourceFiles().length).toBeGreaterThan(100)
+  })
+
+  it('reaches the .jsx modules a .tsx screen imports', () => {
+    // NAMED RATHER THAN COUNTED, because the count floor above could not see
+    // this: seven files is well inside its slack, so the suite stayed green
+    // while the privacy page's guarantee had a hole in it. A named file is
+    // what fails the day the extension filter narrows again.
+    const scanned = sourceFiles().map((file) => relative(ROOT, file))
+
+    expect(scanned).toContain(join('design-system', 'components', 'core', 'Button.jsx'))
+    expect(scanned.filter((file) => file.endsWith('.jsx')).length).toBeGreaterThan(5)
   })
 })

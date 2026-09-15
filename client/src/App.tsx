@@ -4522,6 +4522,25 @@ function App() {
    * exists to prevent. Three of the four doors reach it that way; only
    * `handlePlanChartStretch` was parked whole in the first cut.
    */
+  // A PARKED SWEEP MUST NOT OUTLIVE THE DRAFT IT IS ASKING ABOUT. `pendingSweep`
+  // was only ever cleared by the sheet's own two buttons, and the sheet is
+  // hidden (not unmounted) whenever the navigator parks a move of its own -
+  // `nav.pending === null` gates it. So: draft live, a builder door parks the
+  // sweep, the hiker instead takes a tab, answers the NAVIGATOR's sheet with
+  // "Discard it", and `discardBuilder` clears the draft. `pendingSweep` is
+  // still set, so the sweep's sheet reappears on the new tab asking whether to
+  // drop a half-built route that no longer exists - with no figures, because
+  // there is nothing to price - and "Discard it" there runs a sweep the hiker
+  // never asked for, yanking them back to the map with the A.T. builder open.
+  //
+  // The draft going away IS the answer to the question, so the question goes
+  // with it. Keyed on `dayHike` rather than on the discard path, because every
+  // route to null - Cancel on the bar, the navigator's sheet, a save - has to
+  // count, and only the value says so.
+  useEffect(() => {
+    if (dayHike === null) setPendingSweep(null)
+  }, [dayHike])
+
   const openBuilderAfterSweep = useCallback(
     (proceed: () => void) =>
       askBeforeSweeping(() => {
@@ -4577,10 +4596,17 @@ function App() {
    *  the panel. Declared here rather than beside its siblings above because
    *  `routeBuilder` is built on the line before it, and a dependency array is
    *  evaluated where it is written. */
+  // INSIDE THE CONTINUATION, NOT BEFORE IT (#1378's review). `openRouteBuilder`
+  // may now park behind the bail sheet, and work done on the way in does not
+  // park with it - so "Stay here" used to leave the section draft discarded
+  // for a move the hiker had just cancelled. Same argument as
+  // `handlePlanChartStretch` and `openRouteBuilderFrom`, applied to the three
+  // doors that were missed.
   const handleSectionOnMap = useCallback(() => {
-    setSectionDraft(null)
-    setSectionPointAt(null)
-    routeBuilder.openRouteBuilder()
+    routeBuilder.openRouteBuilder(() => {
+      setSectionDraft(null)
+      setSectionPointAt(null)
+    })
   }, [routeBuilder])
   /**
    * Toggle a shelter or campsite as a stop, and say whether the tap was
@@ -9715,9 +9741,10 @@ function App() {
                             onOpen={handleOpenTrip}
                             onRename={handleRenameTrip}
                             onRemove={handleRemoveTrip}
+                            // Closing the sheet rides the continuation, so a
+                            // declined sweep leaves it open (#1378's review).
                             onNew={() => {
-                              setTripsOpen(false)
-                              routeBuilder.openRouteBuilder()
+                              routeBuilder.openRouteBuilder(() => setTripsOpen(false))
                             }}
                             onGroupIntoHike={handleGroupIntoHike}
                             groups={tripStore.groups}
@@ -10508,9 +10535,15 @@ function App() {
             else openDayHike()
           }}
           onMapPick={() => {
+            // The long branch may park (#1378's review), so closing the picker
+            // rides its continuation; the day branch does not park and closes
+            // as it always did.
+            if (hikerMode === 'long') {
+              routeBuilder.openRouteBuilder(() => setStepPickerOpen(false))
+              return
+            }
             setStepPickerOpen(false)
-            if (hikerMode === 'long') routeBuilder.openRouteBuilder()
-            else openDayHike()
+            openDayHike()
           }}
           onRemove={() => setStepPickerOpen(false)}
           onClose={() => setStepPickerOpen(false)}

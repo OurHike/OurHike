@@ -570,6 +570,24 @@ export function forgetVerifiedCompanions(): void {
   verifiedThisSession.clear()
 }
 
+interface BatchSnapshot {
+  hash: (key: string) => string | null
+  decodedBytes: (key: string) => number | null
+  version: string | null
+  readable: boolean
+}
+
+/** One manifest read, shaped for the many key lookups a batch makes of it. */
+async function batchSnapshot(signal?: AbortSignal): Promise<BatchSnapshot> {
+  const snapshot = await publishedSnapshot({ signal })
+  return {
+    hash: (key: string) => snapshot.hashes[key] ?? null,
+    decodedBytes: (key: string) => snapshot.decodedSizes[key] ?? null,
+    version: snapshot.version,
+    readable: snapshot.readable,
+  }
+}
+
 /**
  * One cell's companion half, held to its published hash and to ITS CELL'S
  * edge count - and saying which kind of nothing it is when there is none.
@@ -586,6 +604,20 @@ async function fetchCompanionCell<E>(
   isShape: (value: unknown) => value is E[],
   signal?: AbortSignal,
   online = true,
+  /**
+   * The manifest, read ONCE for the whole batch (#1275).
+   *
+   * This used to `await published(key, signal)` per cell, inside a sequential
+   * loop - and `publishedSnapshot` only shares a read still in flight, so cell
+   * k+1's began after cell k's had settled and was a fresh round trip.
+   * `latest.json` is served `cache-control: no-cache`, so that was one
+   * uncached fetch per cell per half per run, against an effect that re-runs
+   * every time a cell merges: the same n^2 the artifact cache removes, in the
+   * smaller file. Hoisting it also makes a batch read ONE manifest, so a
+   * publish landing mid-loop can no longer hand two cells two different
+   * answers about the same release.
+   */
+  snapshot?: BatchSnapshot,
 ): Promise<CompanionOutcome<E>> {
   if (!DATA_CONFIGURED) return ABSENT
   const key = trailGraphCellKey(cell.name, half)
@@ -607,12 +639,10 @@ async function fetchCompanionCell<E>(
     // Weighed at the manifest before the fetch and at the response after it,
     // exactly as the shard is (#1254); absent is what this half already means
     // by "not on this phone".
-    const {
-      hash: expected,
-      decodedBytes,
-      version,
-      readable,
-    } = await published(key, signal)
+    const read = snapshot ?? (await batchSnapshot(signal))
+    const expected = read.hash(key)
+    const decodedBytes = read.decodedBytes(key)
+    const { version, readable } = read
     // AN UNREAD MANIFEST DECIDES NOTHING, and this is the trap the first cut
     // of #1274 walked straight into. `readSnapshot` never rejects: an
     // unreachable bucket, a refused origin and its own 20-second timeout all
@@ -641,9 +671,6 @@ async function fetchCompanionCell<E>(
     }
 
     const response = await fetch(dataUrl(key), { signal })
-    // A 404 is the bucket answering: there is no such artifact. Any other
-    // refusal - 500, 502, a gateway timeout - is the bucket failing to
-    // answer, which decides nothing (#1274).
     // A 404 is the bucket answering: there is no such artifact. Any other
     // refusal - 500, 502, a gateway timeout - is the bucket failing to
     // answer, which decides nothing (#1274). Either way the STORE is asked
@@ -713,8 +740,18 @@ async function fetchCompanionCells<E>(
   online = true,
 ): Promise<CompanionOutcome<E>> {
   const halves: E[][] = []
+  // One read for the whole batch (#1275). Skipped when offline, where no cell
+  // consults it.
+  const snapshot = online ? await batchSnapshot(signal) : undefined
   for (const cell of merged.cells) {
-    const outcome = await fetchCompanionCell(cell, half, isShape, signal, online)
+    const outcome = await fetchCompanionCell(
+      cell,
+      half,
+      isShape,
+      signal,
+      online,
+      snapshot,
+    )
     if (outcome.kind !== 'loaded') return outcome
     halves.push(outcome.data)
   }

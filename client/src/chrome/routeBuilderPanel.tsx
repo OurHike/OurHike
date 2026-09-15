@@ -256,7 +256,16 @@ export interface RouteBuilderPanel {
   draftStretch: ChartStretch | null
   draftLive: boolean
   draftSouth: boolean | null
-  openRouteBuilder: () => void
+  /**
+   * Open the builder, optionally running `first` on the way in.
+   *
+   * `first` exists because this may now PARK behind the bail sheet (#1378),
+   * and work a door does before calling this does not park with it - a door
+   * that closed its own sheet first left it closed for a move the hiker then
+   * declined. Anything a door wants done only if the builder actually opens
+   * goes here.
+   */
+  openRouteBuilder: (first?: () => void) => void
   handlePlanGap: (gap: Extract<HikePiece, { kind: 'gap' }>) => void
   handlePlanFrom: (from: PlaceRef, toward: PlaceRef) => void
   /** The draft is spent - a plan was laid out of it (#758's re-target door
@@ -632,11 +641,17 @@ export function useRouteBuilderPanel({
   // A draft already in progress reopens where it stood - the entrance is
   // for starting, never a toll gate on the way back to your own route.
   const openRouteBuilderFrom = useCallback(
-    (start: RouteDraftStop | null, south?: boolean) => {
+    (start: RouteDraftStop | null, south?: boolean, first?: () => void) => {
       // Everything this door does, handed over as one act (#1378): the shell
       // either runs it now or parks it behind the bail sheet, and nothing
       // below happens until the sweep it depends on has.
       onOpenBuilder(() => {
+        // The caller's own way-in work, where it has any - run here so a
+        // declined sweep leaves it undone rather than half-done (#1378).
+        // Guarded on being callable: every caller passes a function or
+        // nothing, and the guard is what keeps a future `onClick={open...}`
+        // from handing this a React event to invoke.
+        if (typeof first === 'function') first()
         // The chart's selection now mirrors the draft; a measurement left
         // behind here would resurface the moment the builder closed.
         clearFreeChartStretch()
@@ -667,7 +682,7 @@ export function useRouteBuilderPanel({
   )
 
   const openRouteBuilder = useCallback(
-    () => openRouteBuilderFrom(null),
+    (first?: () => void) => openRouteBuilderFrom(null, undefined, first),
     [openRouteBuilderFrom],
   )
 

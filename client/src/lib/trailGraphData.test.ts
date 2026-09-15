@@ -1035,6 +1035,26 @@ describe('not re-fetching what this session already verified (#1275)', () => {
     expect(fetched().length).toBeGreaterThan(afterFirst)
   })
 
+  it('reads the manifest once for the whole batch, not once per cell', async () => {
+    // THE OTHER HALF OF THE n^2 (#1275's review). The artifact cache stopped
+    // the megabytes being re-downloaded; `published()` was still called inside
+    // the per-cell loop, and `publishedSnapshot` only shares a read that is
+    // still IN FLIGHT - these awaits are sequential, so cell k+1's read began
+    // after cell k's had settled and was a fresh round trip. latest.json is
+    // served `cache-control: no-cache`, so that was one uncached fetch per
+    // cell per half per run, on the weak-signal path this feature targets.
+    //
+    // It also makes the batch read ONE manifest: a publish landing mid-loop
+    // can no longer hand two cells two different answers about one release.
+    await serveBoth()
+
+    await fetchTrailGraphGeometryCells(merged())
+
+    const manifestReads = fetched().filter((url) => url.includes(RELEASE_MANIFEST_PATH))
+    expect(merged().cells).toHaveLength(2)
+    expect(manifestReads).toHaveLength(1)
+  })
+
   it('re-fetches when the manifest advertises a different hash', async () => {
     // The invalidation, which is the part #1275 asks for thought about. The
     // key says WHICH artifact; the manifest's hash says which VERSION, and

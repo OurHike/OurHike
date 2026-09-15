@@ -23,6 +23,7 @@ import type { Map as MapLibreMap, MapMouseEvent, PointLike } from 'maplibre-gl'
 import { POI_DOT_LAYER_ID, POI_ID_PROPERTY } from './poiLayers'
 import { warningIdAt } from './warningLayers'
 import { closureIdAt } from './closureLayers'
+import { atcBandIdAt } from './atcUpdateLayers'
 import { POI_TAP_SLOP_PX, poiPinAt, poiTapBox } from './poiPinProbe'
 
 // The pin rank's slop and box live in map/poiPinProbe.ts, a leaf
@@ -137,15 +138,26 @@ export function poiIdAt(
   const pin = poiPinAt(map, point)
   if (pin !== undefined) return idOf(pin)
 
-  // THE DOT RANK STILL YIELDS, and that is a limit rather than an oversight
-  // (#1419's own closing note). POI_DOT_TAP_SLOP_PX is ~20 px against the
-  // tape's 22 - the same order, both ambient - so the narrow-beats-wide
-  // argument above does not reach it, and a spring at a zoom where it draws
-  // as a dot stays unreachable by tap on closed trail. Whether that matters
-  // enough to solve is a question about which zooms hikers actually tap
-  // water at, and nobody has looked. Other doors still reach the waypoint:
-  // search, "In view", Today's rows.
+  // THE DOT RANK STILL YIELDS - to the tape AND to the ATC band - and that
+  // is a limit rather than an oversight (#1419's own closing note).
+  // POI_DOT_TAP_SLOP_PX is ~20 px against the tape's 22: the same order,
+  // both ambient, so the narrow-beats-wide argument that moved the PIN above
+  // the tape does not reach a dot. A spring at a zoom where it draws as a dot
+  // stays unreachable by tap on closed or noticed trail. Whether that matters
+  // enough to solve is a question about which zooms hikers actually tap water
+  // at, and nobody has looked. Other doors still reach the waypoint: search,
+  // "In view", Today's rows.
+  //
+  // THE BAND IS ASKED HERE RATHER THAN IN ITS OWN HANDLER, which is the half
+  // the first cut of this missed. `attachAtcUpdateTaps` yields to a waypoint
+  // PIN, so pin-against-band has one interpreter - but nothing arbitrated
+  // dot-against-band, and both handlers answered: the card opened AND the
+  // notice sheet did, with the order two effects happened to bind deciding
+  // which sat on top. That is the defect closureLayers.ts's "ONE TOUCH, ONE
+  // INTERPRETER" note records as the first version's, reappearing one rank
+  // down. A dot loses to an ambient mark; that rule now covers both of them.
   if (yieldToMarks && closureIdAt(map, point) !== null) return null
+  if (yieldToMarks && atcBandIdAt(map, point) !== null) return null
 
   // Guarded for the same reason the probe is: before the style has parsed,
   // querying a layer it does not hold fires an error event rather than

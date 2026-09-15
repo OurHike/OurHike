@@ -98,8 +98,14 @@ export async function seedFixAtMile(
  * restart" claim is actually about. The caller closes it, or the context
  * does at the end of the test.
  */
-export async function bootFreshPage(page: Page): Promise<Page> {
+export async function bootFreshPage(
+  page: Page,
+  /** Run against the new page BEFORE it loads - a clock to pin, state to
+   *  seed. Anything that has to be true of the boot rather than after it. */
+  before?: (fresh: Page) => Promise<void>,
+): Promise<Page> {
   const second = await page.context().newPage()
+  await before?.(second)
   await second.goto('/')
   return second
 }

@@ -367,6 +367,20 @@ jobs:
       # will not install costs the pull request its pictures, never its
       # testable build. Without it that sentence was true of the photograph
       # step and false of the step that feeds it.
+      #
+      # AND THAT SPLIT IS THE ANSWER FOR ALL THREE PLAYWRIGHT SITES (#1366),
+      # which asked for one decision rather than three. The other two are
+      # check-deployed-app.yml and check-launch-speed.yml, and they carry the
+      # same two lines for the same reason. The apt scoping the three
+      # `apt-get install` sites now use is unavailable here - the apt call is
+      # inside `playwright install`, not ours to pass options to - so the
+      # exposure is neutralised by making the apt half non-fatal instead of
+      # by making it correct. The costs differ and both are acceptable: a
+      # scoped `update` keeps a real archive failure loud, while here a real
+      # archive failure is silently skipped and the job proceeds on the
+      # runner image's own libraries. That is the right trade for a step
+      # whose product is a photograph, and would not be for one that installs
+      # something a test needs.
       - name: Install a browser to photograph it with
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         continue-on-error: true

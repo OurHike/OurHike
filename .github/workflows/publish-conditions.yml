@@ -339,8 +339,69 @@ jobs:
           key: atc-updates-${{ github.run_id }}
           restore-keys: atc-updates-
 
+      # A BUDGET OF ITS OWN, BECAUSE `continue-on-error` DOES NOT COVER SLOW
+      # (#1318).
+      #
+      # The intent of the flag below is that ATC being unreachable or
+      # re-themed still publishes every reviewed row. That held for a step
+      # that FAILS and not for one that is merely slow: a slow ATC ate the
+      # job's whole ten minutes, the job timeout cancelled the run, and every
+      # step from `Export the ATC's reviewed trail updates` onward reported
+      # `skipped`. Nothing published, for either environment, and the run's
+      # conclusion was `cancelled` - a word that reads like somebody pressed a
+      # button. Observed twice: runs 340 (18:57:14Z) and 343 (02:17:12Z),
+      # both dying here on the same ten-minute signature.
+      #
+      # The retry ladder is larger than the container it runs in and is not
+      # wrong to be. lib/http_retry.py is 3 attempts x 60 s of request timeout
+      # plus its local backoff of (5, 30) = 215 s per request - AND that is a
+      # floor, not a ceiling: `retry_after_seconds` honours a server's
+      # `Retry-After` up to MAX_RETRY_AFTER_SECONDS = 120, so a host answering
+      # 429 or 503 twice costs 180 s of request timeout plus 240 s of sleeping,
+      # about 420 s for ONE request. lib/atc_scrape.py walks up to
+      # MAX_LISTING_PAGES = 20 of them. Capping the STEP is what turns that
+      # overrun back into a step failure, which the flag then absorbs exactly
+      # as its comment has always claimed - cache carried forward, reviewed
+      # rows exported, publish happens.
+      #
+      # So the four minutes below is NOT "the worst case, bounded" - a single
+      # Retry-After-throttled request already exceeds it. It is the largest
+      # budget that leaves the publish able to run, which is the property that
+      # matters here: this step is `continue-on-error`, so reaching the cap
+      # costs the ATC refresh and nothing else.
+      #
+      # FOUR MINUTES, SIZED FROM THE RUNS RATHER THAN PICKED. Measured on run
+      # 381 (2026-09-14 21:02Z), the two matrix legs: this step took 1m43s
+      # (production) and 1m38s (ua), the whole job 2m19s and 2m22s, and
+      # everything after the last fetch - exports, the ledger line, the R2
+      # upload - 6s and 8s. Four minutes is about 2.3x the observed fetch, so
+      # a slow-but-working ATC still finishes, and it leaves the publish
+      # roughly five minutes it needs under a minute of.
+      #
+      # THE FOUR CAPS HAVE TO FIT THE JOB, which is what sizes the other three
+      # rather than each step's own worst case. The job budget is 10 minutes;
+      # run 381 measured 32 s of set-up, checkout, Python and install before
+      # the first fetch and 6-8 s of exports, ledger and R2 upload after the
+      # last one. So the four ceilings may total about 8 minutes, and they do:
+      # 4 + 1 + 2 + 1. ATC keeps the largest because it is the step that
+      # actually overran, twice; the others sit far enough above their measured
+      # cost (NYNJTC 3-4 s, drought 0-1 s warm) that reaching a cap means
+      # something is wrong.
+      #
+      # If all four hit their ceilings the job would still die at 10 minutes.
+      # That is not a regression - it is today's behaviour - and it is the case
+      # no step timeout can fix. What these buy is the case that has happened:
+      # one slow upstream, bounded, with the publish still reached.
+      #
+      # `@unvalidated` in one respect, stated rather than implied: nobody has
+      # measured the DISTRIBUTION of this step, only these two runs and the
+      # two that overran. If ATC routinely takes three minutes on some days,
+      # four is tighter than it looks. What would settle it is the spread of
+      # step 7's duration across a few weeks of runs, which the Actions API
+      # answers and this change did not wait for.
       - name: Fetch ATC's trail updates
         continue-on-error: true
+        timeout-minutes: 4
         run: python fetch_atc_updates.py
 
       # `always()`, so an hour when ATC was unreachable still carries the
@@ -424,8 +485,15 @@ jobs:
       # conditions down with it. The fetcher already exits non-zero rather
       # than writing a payload it does not recognise, and leaves the previous
       # cache in place when it does.
+      # One minute, on the ATC step's argument - this is the sibling with the
+      # identical shape, and an unbounded `continue-on-error` fetch is the trap
+      # whichever host is slow. Measured on run 381: 4s and 3s, so the ceiling
+      # is about fifteen times the observed cost and will only ever be reached
+      # by something going wrong. One rather than two because the four caps
+      # have to fit the job budget - see the ATC step.
       - name: Fetch NYNJTC's trail alerts
         continue-on-error: true
+        timeout-minutes: 1
         run: python fetch_nynjtc_alerts.py
 
       # Same shape as the ATC save above, and the same two caveats. The guard
@@ -495,8 +563,22 @@ jobs:
           key: drought-inputs-${{ github.run_id }}
           restore-keys: drought-inputs-
 
+      # A ceiling here buys something different from the two above, and the
+      # difference is worth naming rather than letting the number imply a
+      # rescue it cannot perform. #1318 calls the drought fetch an identical
+      # shape to the ATC one; it is not, because it carries no
+      # `continue-on-error`. A timeout on this step therefore fails the job
+      # rather than being absorbed - the publish does not happen either way.
+      # What it converts is `cancelled` with every step from here down
+      # `skipped` into `failure` naming the step that hung, which is the
+      # difference between a maintainer reading the Actions tab and guessing,
+      # and reading it and knowing. Two minutes: measured at 0s and 1s on run
+      # 381's warm cache, and this fetch pulls USDM's weekly shapefile when the
+      # week has moved. Bounded by the job budget rather than by that fetch's
+      # own worst case - see the ATC step.
       - name: Fetch this week's drought release
         id: drought-fetch
+        timeout-minutes: 2
         run: python fetch_drought.py
 
       # The centerline, only when the cache did not carry one. Its own step
@@ -511,7 +593,17 @@ jobs:
       # docstring has the argument. Being a real file also makes this fetch
       # visible to scripts/pipeline_scopes.py, which reads a workflow's scope
       # off the <name>.py files it mentions and could not see a heredoc.
+      # One minute, on the drought step's argument (legibility, not rescue),
+      # and this is the cap most obviously bounded by the job rather than by
+      # the work: it is 0s whenever the restore carried a centerline, and an
+      # ArcGIS offset-paged fetch of the whole corridor when it did not, which
+      # a minute may well not cover. SAID PLAINLY rather than sized to look
+      # generous - a cold-cache run needing longer than this had already lost,
+      # since the four ceilings together fill the job budget and there is no
+      # minute to give it. What the cap changes is that the log names this step
+      # instead of the run reading `cancelled`.
       - name: Fetch the centerline, if the cache did not have it
+        timeout-minutes: 1
         run: |
           if [ ! -s data/raw/centerline.geojson ]; then
             python fetch_centerline.py

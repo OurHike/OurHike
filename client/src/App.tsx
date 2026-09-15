@@ -352,7 +352,7 @@ import {
   NETWORK_STILL_ARRIVING,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
-import { buildCourse, mileTicks } from './lib/dayHikeCourse'
+import { buildCourse, lonLatBounds, mileTicks } from './lib/dayHikeCourse'
 import { isStoppable, orderStops, toggleStop } from './lib/dayHikeStops'
 import { waterOnCourse } from './lib/dayHikeWater'
 import { poiIdAt } from './map/poiTaps'
@@ -4460,7 +4460,7 @@ function App() {
    * is what `openPlanKind` does - is the kinder behaviour and a different
    * decision; #997 records it.
    */
-  const sweepForBuilder = useCallback(() => {
+  const sweepForBuilderNow = useCallback(() => {
     setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
@@ -4495,6 +4495,100 @@ function App() {
     // - and that button reaches this same sweep, discarding the route.
     applyHikerMode('long')
   }, [applyHikerMode, setActiveTab])
+
+  /**
+   * A sweep parked behind the bail sheet, and the one door that runs it
+   * (#1378).
+   *
+   * THE EXIT THE NAVIGATOR'S GUARD CANNOT SEE. D8 says every exit from a
+   * half-built route shows the bail sheet, and `nav.setGuard` above delivers
+   * that for the moves the navigator makes - a tab tap that takes the map,
+   * and the builder on it, off screen. `sweepForBuilderNow` is not one of
+   * those. It is a plain callback, so this chain drops a draft with nothing
+   * asked, and every link in it is a control on screen:
+   *
+   *   1. build part of a day hike on the map - the draft is live;
+   *   2. "< Hike" back to step 1, which pushes the step with the draft still
+   *      live behind it (the rail's promise, R3);
+   *   3. flip the sidebar's mode switch to Long hike - `handleChangeMode` ->
+   *      `enterTripsRoom` -> `applyHikerMode('long')`, none of which clears
+   *      `dayHike`, and none of which is destructive;
+   *   4. step 1's "Pick on the map" opens the A.T. builder, whose opener
+   *      sweeps - and the draft is gone.
+   *
+   * Step 4 is the destructive one, so step 4 is what asks. A tab tap from
+   * step 1 with a draft live is NOT this defect: nothing in the tab branch
+   * clears the draft, and `openPlanKind` routes a live draft back to its own
+   * builder, so "Keep it for later" there genuinely keeps it.
+   *
+   * THE WHOLE ACTION IS PARKED, not the sweep alone. `handlePlanChartStretch`
+   * sweeps and then opens the builder from the chart's own miles; parking
+   * only the first line would open a builder over a draft the sweep never
+   * cleared, which is the state #997 exists to prevent.
+   *
+   * NARROW ON PURPOSE. The deeper fix is steps 2 and 3 on the navigator's
+   * stack, so the guard reads what a move LEAVES rather than pattern-matching
+   * on tabs - that is item 1 of #1380, whose own instruction is to take those
+   * one at a time on their own branches because every one touches this file.
+   * Doing it here would close that item sideways without the review it asks
+   * for.
+   */
+  const [pendingSweep, setPendingSweep] = useState<{ run: () => void } | null>(null)
+  // THROUGH A REF, SO THE CALLBACK STAYS STABLE. `tapAt` returns a new draft
+  // object on every tap - a refused one included, which is #1093's whole
+  // finding - so a `[dayHike]` dependency would give `askBeforeSweeping` a
+  // new identity per tap, and with it `openRouteBuilderFrom` and every door
+  // built on it. That is exactly the memoisation `routeBuilder`'s return
+  // value is destructured to protect (see the note at the destructure). What
+  // this reads is "is a draft live", which the ref answers as well as the
+  // value does and without the identity.
+  const dayHikeRef = useRef(dayHike)
+  dayHikeRef.current = dayHike
+  const askBeforeSweeping = useCallback((run: () => void) => {
+    if (dayHikeRef.current === null) {
+      run()
+      return
+    }
+    setPendingSweep({ run })
+  }, [])
+  /**
+   * The route builder's doors, asked about before the sweep they depend on.
+   *
+   * Takes the door's own remaining work rather than running the sweep and
+   * returning (#1378). `openRouteBuilderFrom` used to call the sweep and then
+   * set the route draft in the same batch, so a parked sweep put the A.T.
+   * builder on screen BEHIND the sheet asking whether to drop the day hike -
+   * and "Stay here" left both drafts live, which is the #997 state the sweep
+   * exists to prevent. Three of the four doors reach it that way; only
+   * `handlePlanChartStretch` was parked whole in the first cut.
+   */
+  // A PARKED SWEEP MUST NOT OUTLIVE THE DRAFT IT IS ASKING ABOUT. `pendingSweep`
+  // was only ever cleared by the sheet's own two buttons, and the sheet is
+  // hidden (not unmounted) whenever the navigator parks a move of its own -
+  // `nav.pending === null` gates it. So: draft live, a builder door parks the
+  // sweep, the hiker instead takes a tab, answers the NAVIGATOR's sheet with
+  // "Discard it", and `discardBuilder` clears the draft. `pendingSweep` is
+  // still set, so the sweep's sheet reappears on the new tab asking whether to
+  // drop a half-built route that no longer exists - with no figures, because
+  // there is nothing to price - and "Discard it" there runs a sweep the hiker
+  // never asked for, yanking them back to the map with the A.T. builder open.
+  //
+  // The draft going away IS the answer to the question, so the question goes
+  // with it. Keyed on `dayHike` rather than on the discard path, because every
+  // route to null - Cancel on the bar, the navigator's sheet, a save - has to
+  // count, and only the value says so.
+  useEffect(() => {
+    if (dayHike === null) setPendingSweep(null)
+  }, [dayHike])
+
+  const openBuilderAfterSweep = useCallback(
+    (proceed: () => void) =>
+      askBeforeSweeping(() => {
+        sweepForBuilderNow()
+        proceed()
+      }),
+    [askBeforeSweeping, sweepForBuilderNow],
+  )
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -4517,7 +4611,7 @@ function App() {
     targetOpen: targetRequest !== null,
     setTargetRequest,
     onRecordWalked: handleRecordWalked,
-    onOpenBuilder: sweepForBuilder,
+    onOpenBuilder: openBuilderAfterSweep,
     clearFreeChartStretch,
   })
   // Destructured, and the reason is memoisation rather than brevity: the
@@ -4542,10 +4636,17 @@ function App() {
    *  the panel. Declared here rather than beside its siblings above because
    *  `routeBuilder` is built on the line before it, and a dependency array is
    *  evaluated where it is written. */
+  // INSIDE THE CONTINUATION, NOT BEFORE IT (#1378's review). `openRouteBuilder`
+  // may now park behind the bail sheet, and work done on the way in does not
+  // park with it - so "Stay here" used to leave the section draft discarded
+  // for a move the hiker had just cancelled. Same argument as
+  // `handlePlanChartStretch` and `openRouteBuilderFrom`, applied to the three
+  // doors that were missed.
   const handleSectionOnMap = useCallback(() => {
-    setSectionDraft(null)
-    setSectionPointAt(null)
-    routeBuilder.openRouteBuilder()
+    routeBuilder.openRouteBuilder(() => {
+      setSectionDraft(null)
+      setSectionPointAt(null)
+    })
   }, [routeBuilder])
   /**
    * Toggle a shelter or campsite as a stop, and say whether the tap was
@@ -5309,10 +5410,49 @@ function App() {
       // the route as it was. The pointer only: the edit is recorded when it
       // is saved, not when it starts.
       void saveDayHikeOpenId(null).then(setDayHikeStore)
+
+      // AND THE CAMERA COMES TO THE ROUTE (#1404). This door loaded the legs
+      // and drew the line and left the camera wherever the map already was -
+      // which, for a hiker arriving from the Plan tab, is the whole corridor.
+      // Measured 2026-09-11 against release 2026-09-10 on the fixture walk
+      // Ramapo-Dunderberg to Timp-Torne (2.85 mi): a 1,974-point sweep of
+      // the 1280x800 map box on the camera this opened on raised the route's
+      // hover plate ZERO times. There was nothing under the frame to find.
+      // R2 - "the map never leaves" - is why the builder sits beside the map
+      // on a laptop at all, and step 2's whole job is judging a route by
+      // looking at it.
+      //
+      // FIT ONCE, ON ENTRY, which is the conservative of the two shapes
+      // #1404 names and is chosen rather than defaulted: re-fitting on every
+      // change would fight a hiker who has deliberately panned away to look
+      // at where they might extend to, which is a real thing to do here.
+      // Only where the replay produced a route with geometry - a walk this
+      // phone's graph cannot place opens on the refusal, and there is
+      // nothing to frame.
+      //
+      // The phone is UNMEASURED. The sweep above is the laptop project's;
+      // the phone's builder covers the map at step 2 anyway (measured 8% of
+      // it reachable), so this may be invisible there rather than absent.
+      if (map !== null && replayed !== null) {
+        const status = draftStatus(dayHikeIndex, replayed)
+        if (status.kind === 'routed') {
+          const bounds = lonLatBounds(
+            buildCourse(dayHikeIndex.graph, status.stretches).points.map(
+              (point) => [point.lon, point.lat] as const,
+            ),
+          )
+          // No animation: the tab is changing under it, and a flight the
+          // hiker never sees the start of is a flight they wait for.
+          if (bounds !== null) {
+            map.fitBounds(bounds, { padding: FOLLOW_FIT_PADDING, duration: 0 })
+          }
+        }
+      }
     },
     [
       dayHikeStore.hikes,
       dayHikeIndex,
+      map,
       openDayHike,
       setDayHikeStopIds,
       followingId,
@@ -5687,25 +5827,12 @@ function App() {
    *  can honestly offer somebody standing off their route. */
   const showWholeRoute = useCallback(() => {
     if (map === null || followDrawing === null) return
-    const points = followDrawing.lines.flat()
-    if (points.length === 0) return
-    let west = points[0][0]
-    let south = points[0][1]
-    let east = points[0][0]
-    let north = points[0][1]
-    for (const [lon, lat] of points) {
-      west = Math.min(west, lon)
-      east = Math.max(east, lon)
-      south = Math.min(south, lat)
-      north = Math.max(north, lat)
-    }
-    map.fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      { padding: FOLLOW_FIT_PADDING },
-    )
+    // lib/dayHikeCourse.ts's `lonLatBounds`, shared with the builder's own
+    // entry fit (#1404) rather than a second copy of the same four running
+    // minima.
+    const bounds = lonLatBounds(followDrawing.lines.flat())
+    if (bounds === null) return
+    map.fitBounds(bounds, { padding: FOLLOW_FIT_PADDING })
   }, [map, followDrawing])
 
   const followHeaderText = followHeader({
@@ -6082,14 +6209,45 @@ function App() {
       fetchTrailGraphElevationCells(graphMerged, controller.signal, online),
     ]).then(([geometry, elevation]) => {
       if (!wanted) return
+      // NOTHING LEARNED, NOTHING UNLEARNED (#1274). `undecided` is the
+      // network refusing to answer - a dropped connection, a 5xx, an origin
+      // that would not talk - and it is not a claim about what this phone
+      // holds. It was read as one: the batch is all-or-nothing across every
+      // merged cell, so a hiker being followed whose GPS drifted into a
+      // brand-new cell re-fetched the whole set, the new cell's request
+      // failed on exactly the weak signal this cell-loading feature exists
+      // for, and the correct attachment for every mile already walked was
+      // replaced by null. Nothing then retried: `dayHikeIndex` settles at
+      // null and nothing else in the dependency list changes on its own.
+      //
+      // So a non-answer leaves what is on screen where it is. What it keeps
+      // is not a guess - it is the index built from the cells the hiker has
+      // been walking through, still right about every one of them.
+      //
+      // WHAT IT KEEPS IS A STALE INDEX, THOUGH, AND NOTHING RE-ASKS. Said
+      // precisely because the trade is real and the comment below describes
+      // its other side: an index built before the graph grew draws a
+      // highlight that stops at the old cells' edge without saying so. On a
+      // transient failure this now keeps that rather than nulling - the
+      // right call for #1274's case, where the hiker is walking and the old
+      // cells are the ground under them - but nothing in this effect's
+      // dependency list changes on its own, so the only re-ask is another
+      // cell merging. A hiker who stops moving with a card open holds a
+      // short highlight until they move again. A bounded retry is what
+      // closes that, it is not smuggled into an effect with this dependency
+      // list at this size, and it is filed rather than left here.
+      if (geometry.kind === 'undecided' || elevation.kind === 'undecided') return
+
       let next = graphIndex
-      if (geometry !== null) next = attachTrailGraphGeometry(next, geometry)
-      if (elevation !== null) next = attachTrailGraphElevation(next, elevation)
+      if (geometry.kind === 'loaded') next = attachTrailGraphGeometry(next, geometry.data)
+      if (elevation.kind === 'loaded')
+        next = attachTrailGraphElevation(next, elevation.data)
       // Unchanged means neither half is on this phone for some merged cell -
       // leave dayHikeIndex null so the builder keeps routing on the graph it
       // already has. An index built before the graph grew goes too: a
       // highlight drawn from it would stop at the old cells' edge without
       // saying so, and null is the state every surface below already says.
+      // Reachable now only from a decided absence, which is the point.
       if (next !== graphIndex) setDayHikeIndex(next)
       else if (dayHikeIndexStale) setDayHikeIndex(null)
     })
@@ -6141,9 +6299,14 @@ function App() {
     void fetchTrailGraphProfileCells(graphMerged, controller.signal, online).then(
       (profile) => {
         if (!wanted) return
-        // Null is ordinary and its consequence is #1041's: no ribbon on this
-        // walk, which is the honest state rather than a missing feature.
-        if (profile !== null) setGraphProfile(profile)
+        // Same rule as the geometry effect above (#1274): a network that
+        // would not answer is not an answer, so the ribbon keeps drawing
+        // what it has rather than blanking on a dropped request.
+        if (profile.kind === 'undecided') return
+        // An absence is ordinary and its consequence is #1041's: no ribbon
+        // on this walk, which is the honest state rather than a missing
+        // feature.
+        if (profile.kind === 'loaded') setGraphProfile(profile.data)
         else if (graphProfileStale) setGraphProfile(null)
       },
     )
@@ -6401,10 +6564,21 @@ function App() {
     // repeat - setActiveTab('map') - is a no-op on this path rather than a
     // difference: the chart is a MapScreen prop, and App returns early for
     // every other tab, so nothing reaches here from anywhere else.
-    sweepForBuilder()
-    setFreeChartStretch(null)
-    openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
-  }, [freeChartStretch, freeChartSouth, openFromMiles, sweepForBuilder])
+    // Parked whole (#1378), not just its first line: a sweep asked about and
+    // declined must not leave the two lines after it to open a builder over
+    // the draft that was kept.
+    askBeforeSweeping(() => {
+      sweepForBuilderNow()
+      setFreeChartStretch(null)
+      openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
+    })
+  }, [
+    askBeforeSweeping,
+    freeChartStretch,
+    freeChartSouth,
+    openFromMiles,
+    sweepForBuilderNow,
+  ])
 
   // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
   // fix - a desk has none - only the published profile; the fix, when one
@@ -9797,9 +9971,10 @@ function App() {
                             onOpen={handleOpenTrip}
                             onRename={handleRenameTrip}
                             onRemove={handleRemoveTrip}
+                            // Closing the sheet rides the continuation, so a
+                            // declined sweep leaves it open (#1378's review).
                             onNew={() => {
-                              setTripsOpen(false)
-                              routeBuilder.openRouteBuilder()
+                              routeBuilder.openRouteBuilder(() => setTripsOpen(false))
                             }}
                             onGroupIntoHike={handleGroupIntoHike}
                             groups={tripStore.groups}
@@ -10656,9 +10831,15 @@ function App() {
             else openDayHike()
           }}
           onMapPick={() => {
+            // The long branch may park (#1378's review), so closing the picker
+            // rides its continuation; the day branch does not park and closes
+            // as it always did.
+            if (hikerMode === 'long') {
+              routeBuilder.openRouteBuilder(() => setStepPickerOpen(false))
+              return
+            }
             setStepPickerOpen(false)
-            if (hikerMode === 'long') routeBuilder.openRouteBuilder()
-            else openDayHike()
+            openDayHike()
           }}
           onRemove={() => setStepPickerOpen(false)}
           onClose={() => setStepPickerOpen(false)}
@@ -10676,6 +10857,24 @@ function App() {
             nav.proceed()
           }}
           onStay={nav.stay}
+        />
+      )}
+      {/* The same sheet for the exit the navigator cannot see (#1378): a
+          sweep, which opens the other kind of plan and drops the day-hike
+          draft on its way. No "Keep it for later" — only one route can be
+          live (#997), so the sweep IS the discard and offering to keep would
+          be the sheet lying about what the button does. `nav.pending` and
+          this cannot both be up: a navigator move parks before anything
+          runs, and a sweep is not a navigator move. */}
+      {nav.pending === null && pendingSweep !== null && (
+        <BailSheet
+          figures={bailFigures}
+          onDiscard={() => {
+            const { run } = pendingSweep
+            setPendingSweep(null)
+            run()
+          }}
+          onStay={() => setPendingSweep(null)}
         />
       )}
       {/* Where you hike (#1373), from More → You: a sheet over whichever

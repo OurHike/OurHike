@@ -230,6 +230,121 @@ function obstacleBoxes(map: TrailsInViewMap): Box[] {
   return boxes
 }
 
+/**
+ * Side of one bucket in the obstacle grid, in CSS px.
+ *
+ * Comfortably more than an obstacle's own 48 px box, so a pin lands in one
+ * bucket or two rather than smeared across a row of them, and small enough
+ * that a bucket holds a handful of pins on the densest screen this app
+ * draws. Nothing downstream depends on the value: the index is a superset
+ * filter, so a wrong size costs work and never an answer.
+ */
+const OBSTACLE_CELL_PX = 64
+
+/** Cells either side of the origin the grid can address - 1,024 of them at
+ *  64 px is +/-65,536 px, two orders past any viewport. Out-of-range
+ *  coordinates clamp into the edge bucket rather than wrapping, which keeps
+ *  the superset property true for a pin projected far off screen. */
+const CELL_RANGE = 1024
+
+const NO_OBSTACLES: readonly Box[] = []
+
+/** The obstacles a badge position has to be tested against, without testing
+ *  it against every pin on the screen. */
+export interface ObstacleIndex {
+  /** The indexed boxes that COULD overlap `box`: always a superset of the
+   *  ones that do, never a subset. May repeat a box that spans buckets -
+   *  `overlaps` gives the same answer twice, and the caller short-circuits
+   *  on the first hit. */
+  near(box: Box): readonly Box[]
+  /** How many boxes were indexed. */
+  readonly size: number
+}
+
+function cellOf(value: number): number {
+  const cell = Math.floor(value / OBSTACLE_CELL_PX)
+  if (cell < -CELL_RANGE) return -CELL_RANGE
+  return cell >= CELL_RANGE ? CELL_RANGE - 1 : cell
+}
+
+function cellKey(cx: number, cy: number): number {
+  return (cx + CELL_RANGE) * CELL_RANGE * 2 + (cy + CELL_RANGE)
+}
+
+/**
+ * A uniform grid over the pin boxes, built once per camera settle.
+ *
+ * WHY THIS EXISTS (#1415). `anchorWithRoom` is
+ * `fits x candidates x anchors x obstacles`, and while it returns on the
+ * first position that fits, the case it cannot return early from is the one
+ * that matters: when NOTHING fits - the exact case the "always finds a
+ * place" fallback exists for, and the case the maintainer's z12 render hit -
+ * every candidate is tried at every anchor in both fits, and each of those
+ * has to look at every obstacle to conclude there is no room. At z12-z13
+ * over Harriman that is CANDIDATE_LIMIT 600 x TRAIL_BADGE_ANCHORS 8 x 2 fits
+ * = 9,600 positions against a few hundred pin boxes, per named trail, on the
+ * main thread at every `idle` and `moveend` - and `attachTrailsInView` is
+ * bound to `moveend` too, so it repeats through a pan rather than once at
+ * the end of one.
+ *
+ * #1415 offers two fixes and calls either sufficient: a spatial bucket, or
+ * breaking out of the candidate loop once a fit is found. The second was
+ * already here - `anchorWithRoom` has always returned on its first fit - and
+ * does nothing for the nothing-fits case, which is the expensive one. So
+ * this is the bucket.
+ *
+ * `@unvalidated` and deliberately so: nobody has profiled this on a phone,
+ * so how much of a pan's jank it owned remains unmeasured and this does not
+ * claim to have measured it. What IS measured is the work itself - see
+ * trailsInView.test.ts, which counts obstacle examinations over the issue's
+ * own numbers. What would settle the rest is a frame profile on a real
+ * device at z12 over Harriman, which nobody has taken.
+ */
+export function indexObstacles(obstacles: readonly Box[]): ObstacleIndex {
+  const cells = new Map<number, Box[]>()
+  for (const obstacle of obstacles) {
+    const lastX = cellOf(obstacle.x2)
+    const lastY = cellOf(obstacle.y2)
+    for (let cx = cellOf(obstacle.x1); cx <= lastX; cx += 1) {
+      for (let cy = cellOf(obstacle.y1); cy <= lastY; cy += 1) {
+        const key = cellKey(cx, cy)
+        const bucket = cells.get(key)
+        if (bucket === undefined) cells.set(key, [obstacle])
+        else bucket.push(obstacle)
+      }
+    }
+  }
+
+  return {
+    size: obstacles.length,
+    near(box: Box): readonly Box[] {
+      const firstX = cellOf(box.x1)
+      const lastX = cellOf(box.x2)
+      const firstY = cellOf(box.y1)
+      const lastY = cellOf(box.y2)
+      // The mark's own box is 32 px against a 64 px cell, so the common
+      // query touches one bucket - returned as it stands, so it allocates
+      // nothing at all.
+      if (firstX === lastX && firstY === lastY) {
+        return cells.get(cellKey(firstX, firstY)) ?? NO_OBSTACLES
+      }
+      let found: Box[] | null = null
+      for (let cx = firstX; cx <= lastX; cx += 1) {
+        for (let cy = firstY; cy <= lastY; cy += 1) {
+          const bucket = cells.get(cellKey(cx, cy))
+          if (bucket === undefined) continue
+          if (found === null) {
+            found = bucket.slice()
+            continue
+          }
+          for (const obstacle of bucket) found.push(obstacle)
+        }
+      }
+      return found ?? NO_OBSTACLES
+    },
+  }
+}
+
 interface BadgeAnchor {
   point: Position
   fit: BadgeFit
@@ -350,7 +465,7 @@ function withinFrame(box: Box, frame: Box): boolean {
  */
 function anchorWithRoom(
   candidates: readonly Candidate[],
-  obstacles: readonly Box[],
+  obstacles: ObstacleIndex,
   frame: Box,
   name: string,
 ): BadgeAnchor | null {
@@ -360,8 +475,15 @@ function anchorWithRoom(
     for (const candidate of candidates) {
       for (const anchor of TRAIL_BADGE_ANCHORS) {
         const box = plateBox(anchor, candidate.at, text)
+        // Frame first, and it stays first: it is four comparisons against
+        // no lookup at all, and it rejects every position hanging off an
+        // edge before the grid is consulted.
         if (!withinFrame(box, frame)) continue
-        if (obstacles.some((obstacle) => overlaps(box, obstacle))) continue
+        // `near`, not every pin (#1415). The answer is identical - the
+        // index returns a superset of what could overlap - and the work is
+        // the handful of pins in the buckets this box touches rather than
+        // the few hundred on the screen.
+        if (obstacles.near(box).some((obstacle) => overlaps(box, obstacle))) continue
         return { point: candidate.point, fit, anchor }
       }
     }
@@ -571,8 +693,12 @@ export function trailsInView(
     y2: container.clientHeight - insets.bottom,
   }
   const centre = { x: (frame.x1 + frame.x2) / 2, y: (frame.y1 + frame.y2) / 2 }
-  let obstacles: readonly Box[] | undefined
-  const pins = () => (obstacles ??= obstacleBoxes(map))
+  // Built at most once per settle and shared by every named trail, like the
+  // frame and the centre above. Indexed rather than listed (#1415): the
+  // grid is built from one pass over the pins and paid for by the first
+  // trail that searches against it.
+  let obstacles: ObstacleIndex | undefined
+  const pins = () => (obstacles ??= indexObstacles(obstacleBoxes(map)))
 
   const features = map.queryRenderedFeatures(undefined, { layers })
   const byName = new Map<string, TrailInView & { runs: Run[]; clearRuns: Run[] }>()

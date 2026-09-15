@@ -55,6 +55,7 @@ const {
   attachTrailGraphGeometry,
   emptyMergedGraph,
   fetchTrailGraphElevationCells,
+  forgetVerifiedCompanions,
   fetchTrailGraphGeometryCells,
   fetchTrailGraphProfileCells,
   isSettledAbsence,
@@ -226,6 +227,11 @@ function fetched(): string[] {
 afterEach(() => {
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  // The session cache #1275 added lives for the module's lifetime, which in a
+  // suite is every test in this file. Dropped between them so each one still
+  // exercises the fetch it is written about - and so a cache bug cannot hide
+  // behind one test having warmed it for the next.
+  forgetVerifiedCompanions()
 })
 
 describe('the junction graph, one cell at a time', () => {
@@ -483,11 +489,12 @@ describe('the geometry half, fetched when the door opens', () => {
 
     const geometry = await fetchTrailGraphGeometryCells(merged())
 
-    expect(geometry).not.toBeNull()
-    expect(geometry).toHaveLength(3)
-    expect(geometry?.[0]).toEqual([NODE[0], NODE[1]])
-    expect(geometry?.[1]).toEqual(SEAM_EDGE)
-    expect(geometry?.[2]).toEqual([NODE[2], NODE[3]])
+    expect(geometry.kind).toBe('loaded')
+    if (geometry.kind !== 'loaded') return
+    expect(geometry.data).toHaveLength(3)
+    expect(geometry.data[0]).toEqual([NODE[0], NODE[1]])
+    expect(geometry.data[1]).toEqual(SEAM_EDGE)
+    expect(geometry.data[2]).toEqual([NODE[2], NODE[3]])
     // Both cells' halves were asked for, by their own names.
     expect(fetched()).toContain(`https://data.example/${releasePath(WEST_KEYS.geometry)}`)
     expect(fetched()).toContain(`https://data.example/${releasePath(EAST_KEYS.geometry)}`)
@@ -500,7 +507,9 @@ describe('the geometry half, fetched when the door opens', () => {
     // switchback they held.
     await serveBoth({ [EAST_KEYS.geometry]: JSON.stringify([[NODE[2], NODE[3]]]) })
 
-    await expect(fetchTrailGraphGeometryCells(merged())).resolves.toBeNull()
+    await expect(fetchTrailGraphGeometryCells(merged())).resolves.toEqual({
+      kind: 'absent',
+    })
   })
 
   it('refuses unhashed or missing geometry the same way the shard is refused', async () => {
@@ -509,13 +518,17 @@ describe('the geometry half, fetched when the door opens', () => {
       [EAST_KEYS.geometry]: EAST_GEOMETRY,
     }
     serve({ files, manifest: { artifacts: {} } })
-    await expect(fetchTrailGraphGeometryCells(merged())).resolves.toBeNull()
+    await expect(fetchTrailGraphGeometryCells(merged())).resolves.toEqual({
+      kind: 'absent',
+    })
 
     serve({
       files: { [WEST_KEYS.geometry]: WEST_GEOMETRY },
       manifest: await hashed(files),
     })
-    await expect(fetchTrailGraphGeometryCells(merged())).resolves.toBeNull()
+    await expect(fetchTrailGraphGeometryCells(merged())).resolves.toEqual({
+      kind: 'absent',
+    })
   })
 
   it('attaches onto a new index and leaves the routing-only one untouched', () => {
@@ -553,11 +566,14 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
       [EAST_KEYS.elevation]: EAST_CLIMB,
     })
 
-    expect(await fetchTrailGraphElevationCells(merged())).toEqual([
-      [120, 40],
-      [10, 5],
-      [0, 300],
-    ])
+    expect(await fetchTrailGraphElevationCells(merged())).toEqual({
+      kind: 'loaded',
+      data: [
+        [120, 40],
+        [10, 5],
+        [0, 300],
+      ],
+    })
   })
 
   it('keeps a null entry rather than reading it as a broken file', async () => {
@@ -569,11 +585,10 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
       [EAST_KEYS.elevation]: EAST_CLIMB,
     })
 
-    expect(await fetchTrailGraphElevationCells(merged())).toEqual([
-      null,
-      [10, 5],
-      [0, 300],
-    ])
+    expect(await fetchTrailGraphElevationCells(merged())).toEqual({
+      kind: 'loaded',
+      data: [null, [10, 5], [0, 300]],
+    })
   })
 
   it('refuses a cell whose entry count disagrees with its shard', async () => {
@@ -584,7 +599,7 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
       [EAST_KEYS.elevation]: EAST_CLIMB,
     })
 
-    expect(await fetchTrailGraphElevationCells(merged())).toBeNull()
+    expect(await fetchTrailGraphElevationCells(merged())).toEqual({ kind: 'absent' })
   })
 
   it('treats a cell with no climb published as no figures, rather than a failure', async () => {
@@ -592,7 +607,7 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
     // earlier graph, so the cutter refuses to cut them and the cells carry
     // none. The builder still routes and the card still prints miles.
     await serveBoth()
-    expect(await fetchTrailGraphElevationCells(merged())).toBeNull()
+    expect(await fetchTrailGraphElevationCells(merged())).toEqual({ kind: 'absent' })
   })
 
   it('refuses bytes the manifest names no hash for', async () => {
@@ -601,7 +616,7 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
       [EAST_KEYS.elevation]: EAST_CLIMB,
     }
     serve({ files, manifest: { artifacts: {} } })
-    expect(await fetchTrailGraphElevationCells(merged())).toBeNull()
+    expect(await fetchTrailGraphElevationCells(merged())).toEqual({ kind: 'absent' })
   })
 
   it("attaches the climb onto a new index, leaving the caller's untouched", () => {
@@ -625,11 +640,10 @@ describe('the climb half, fetched with the geometry (#1011)', () => {
       [EAST_KEYS.profile]: JSON.stringify([[950, 1000, 1050], null]),
     })
 
-    expect(await fetchTrailGraphProfileCells(merged())).toEqual([
-      [900, 950],
-      [950, 1000, 1050],
-      null,
-    ])
+    expect(await fetchTrailGraphProfileCells(merged())).toEqual({
+      kind: 'loaded',
+      data: [[900, 950], [950, 1000, 1050], null],
+    })
   })
 })
 
@@ -774,7 +788,7 @@ describe('a cell the phone cannot hold (#1254)', () => {
         artifacts: { [WEST_KEYS.geometry]: { sha256: 'x', size_bytes: TOO_BIG } },
       },
     })
-    await expect(fetchTrailGraphGeometryCells(west)).resolves.toBeNull()
+    await expect(fetchTrailGraphGeometryCells(west)).resolves.toEqual({ kind: 'absent' })
     expect(fetched()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
 
     serve({
@@ -782,7 +796,7 @@ describe('a cell the phone cannot hold (#1254)', () => {
         artifacts: { [WEST_KEYS.elevation]: { sha256: 'x', size_bytes: TOO_BIG } },
       },
     })
-    await expect(fetchTrailGraphElevationCells(west)).resolves.toBeNull()
+    await expect(fetchTrailGraphElevationCells(west)).resolves.toEqual({ kind: 'absent' })
     expect(fetched()).toEqual([`https://data.example/${RELEASE_MANIFEST_PATH}`])
   })
 })
@@ -886,10 +900,181 @@ describe('the phone that has no signal (#1050)', () => {
     holding({
       [graphCellStoreKey(WEST.name, 'geometry')]: JSON.stringify([[NODE[0], NODE[1]]]),
     })
-    expect(await fetchTrailGraphGeometryCells(west, undefined, false)).toBeNull()
+    expect(await fetchTrailGraphGeometryCells(west, undefined, false)).toEqual({
+      kind: 'absent',
+    })
 
     holding({ [graphCellStoreKey(WEST.name, 'geometry')]: WEST_GEOMETRY })
-    expect(await fetchTrailGraphGeometryCells(west, undefined, false)).toHaveLength(2)
+    expect(await fetchTrailGraphGeometryCells(west, undefined, false)).toMatchObject({
+      kind: 'loaded',
+      data: expect.objectContaining({ length: 2 }),
+    })
+  })
+})
+
+describe('what the network refusing to answer is NOT (#1274)', () => {
+  it('says undecided, not absent, when a fetch fails with nothing stored', async () => {
+    // The defect, at its source. The batch is all-or-nothing across every
+    // merged cell, so a hiker being followed whose GPS drifts into a
+    // brand-new cell re-fetches the whole set. If the new cell's request
+    // fails on exactly the weak signal this cell-loading feature exists for,
+    // `null` used to come back for the lot - and App.tsx read that as "this
+    // phone has no geometry" and replaced an attachment that was correct for
+    // every mile already walked. Nothing then retried.
+    // The manifest answers — this is not a phone with no connection at all,
+    // it is the connection this feature is built for: good enough to read
+    // latest.json, not good enough to finish an artifact.
+    const files = {
+      [WEST_KEYS.geometry]: WEST_GEOMETRY,
+      [EAST_KEYS.geometry]: EAST_GEOMETRY,
+    }
+    const manifest = await hashed(files)
+    vi.mocked(readStoredGraph).mockResolvedValue(null)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        if (String(url).includes(RELEASE_MANIFEST_PATH)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () => Promise.resolve(manifest),
+          } as unknown as Response)
+        }
+        return Promise.reject(new TypeError('Failed to fetch'))
+      }),
+    )
+
+    expect(await fetchTrailGraphGeometryCells(merged())).toEqual({ kind: 'undecided' })
+  })
+
+  it('says undecided when the MANIFEST could not be read, not absent', async () => {
+    // THE TRAP THE FIRST CUT OF THIS FIX WALKED INTO, caught in review.
+    // `readSnapshot` never rejects: an unreachable bucket, a refused origin
+    // and its own 20-second timeout all resolve to a snapshot with empty
+    // `hashes`. So "the manifest names no hash for this key" and "there was
+    // no manifest" arrive identically, and reading the first as a fact about
+    // the data turns a network failure into exactly the verdict that wipes a
+    // followed hiker's figures - the defect #1274 exists to remove, wearing
+    // the fix's own clothes.
+    //
+    // `readable` is what separates them, and this is the test that would
+    // have failed on the first cut. Note the difference from the test below:
+    // there the manifest ANSWERS and the artifact 404s.
+    vi.mocked(readStoredGraph).mockResolvedValue(null)
+    serve({ failing: true })
+
+    expect(await fetchTrailGraphGeometryCells(merged())).toEqual({ kind: 'undecided' })
+  })
+
+  it('consults the store before calling a 404 an absence', async () => {
+    // A hash-verified copy in IndexedDB is a sound answer during a
+    // mid-publish window where latest.json still advertises a key the object
+    // store has not caught up with. The old code reached `stored()` for every
+    // non-ok response; splitting 404 from 5xx must not quietly drop that.
+    const files = {
+      [WEST_KEYS.geometry]: WEST_GEOMETRY,
+      [EAST_KEYS.geometry]: EAST_GEOMETRY,
+    }
+    serve({ files: {}, manifest: await hashed(files) })
+    vi.mocked(readStoredGraph).mockImplementation(async (storeKey: string) => {
+      const body =
+        storeKey === graphCellStoreKey(WEST.name, 'geometry')
+          ? WEST_GEOMETRY
+          : storeKey === graphCellStoreKey(EAST.name, 'geometry')
+            ? EAST_GEOMETRY
+            : undefined
+      if (body === undefined) return null
+      return { bytes: new Blob([body]), hash: 'whatever', version: 'r', fetchedAt: 1 }
+    })
+
+    const outcome = await fetchTrailGraphGeometryCells(merged())
+
+    expect(outcome.kind).toBe('loaded')
+  })
+
+  it('still says absent when the bucket answers that there is no such file', async () => {
+    // A 404 is the bucket ANSWERING. That is a fact about the data, and the
+    // honest-unknown state downstream is the right response to it - which is
+    // why this is not simply "never null on a bad fetch".
+    serve({ files: {}, manifest: await hashed({ [WEST_KEYS.geometry]: WEST_GEOMETRY }) })
+
+    expect(await fetchTrailGraphGeometryCells(merged())).toEqual({ kind: 'absent' })
+  })
+
+  it('reads offline-with-nothing-stored as a decision, because the store IS the source', async () => {
+    // Offline the phone has looked at everything it holds. That is a fact
+    // about the data rather than about the network, so it decides - and
+    // `undecided` stays reserved for the network being asked and refusing.
+    vi.mocked(readStoredGraph).mockResolvedValue(null)
+
+    expect(await fetchTrailGraphGeometryCells(merged(), undefined, false)).toEqual({
+      kind: 'absent',
+    })
+  })
+})
+
+describe('not re-fetching what this session already verified (#1275)', () => {
+  it('serves the second ask from memory, without a fetch or a re-hash', async () => {
+    // The cost this removes. `fetchCompanionCells` iterates every cell in
+    // `merged.cells` every time it runs, and the effect that calls it re-runs
+    // on every `graphMerged` change - which is every time one more cell
+    // merges while a walk is open. Cells are never unloaded, so over a
+    // multi-day hike that is O(n^2) fetches and SHA-256 verifications of
+    // megabytes that have not changed.
+    await serveBoth()
+    const first = await fetchTrailGraphGeometryCells(merged())
+    expect(first.kind).toBe('loaded')
+    const afterFirst = fetched().length
+
+    const second = await fetchTrailGraphGeometryCells(merged())
+
+    expect(second).toEqual(first)
+    // The manifest is still read - it is what the cache is validated on -
+    // but neither cell's geometry is downloaded again.
+    expect(fetched().filter((url) => url.includes('geometry'))).toHaveLength(2)
+    expect(fetched().length).toBeGreaterThan(afterFirst)
+  })
+
+  it('reads the manifest once for the whole batch, not once per cell', async () => {
+    // THE OTHER HALF OF THE n^2 (#1275's review). The artifact cache stopped
+    // the megabytes being re-downloaded; `published()` was still called inside
+    // the per-cell loop, and `publishedSnapshot` only shares a read that is
+    // still IN FLIGHT - these awaits are sequential, so cell k+1's read began
+    // after cell k's had settled and was a fresh round trip. latest.json is
+    // served `cache-control: no-cache`, so that was one uncached fetch per
+    // cell per half per run, on the weak-signal path this feature targets.
+    //
+    // It also makes the batch read ONE manifest: a publish landing mid-loop
+    // can no longer hand two cells two different answers about one release.
+    await serveBoth()
+
+    await fetchTrailGraphGeometryCells(merged())
+
+    const manifestReads = fetched().filter((url) => url.includes(RELEASE_MANIFEST_PATH))
+    expect(merged().cells).toHaveLength(2)
+    expect(manifestReads).toHaveLength(1)
+  })
+
+  it('re-fetches when the manifest advertises a different hash', async () => {
+    // The invalidation, which is the part #1275 asks for thought about. The
+    // key says WHICH artifact; the manifest's hash says which VERSION, and
+    // it is the same figure the fetch would have verified the bytes against.
+    // So a publish invalidates this by construction, with nothing having to
+    // remember to clear it.
+    await serveBoth()
+    await fetchTrailGraphGeometryCells(merged())
+
+    // A new publish: the west cell's first edge is re-traced, so its bytes
+    // and therefore its hash move. The cached entry must not win.
+    const RETRACED: Array<[number, number]> = [NODE[0], [-74.02, 41.252], NODE[1]]
+    await serveBoth({
+      [WEST_KEYS.geometry]: JSON.stringify([RETRACED, SEAM_EDGE]),
+    })
+    const after = await fetchTrailGraphGeometryCells(merged())
+
+    expect(after.kind).toBe('loaded')
+    if (after.kind !== 'loaded') return
+    expect(after.data[0]).toEqual(RETRACED)
   })
 })
 

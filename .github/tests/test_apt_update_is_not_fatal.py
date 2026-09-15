@@ -31,13 +31,29 @@ retry clears, it lasts as long as the upstream mirror is inconsistent.
 
 THE RULE, in both directions:
 
-  - Never chain the install behind `update` with `&&`. Run
-    `apt-get update -qq || true` and then install as its own command. apt says
-    it ignores the bad index and uses what it has, so the install still
-    succeeds; and a genuinely broken update surfaces as an install failure,
-    which names the package rather than the repository.
+  - Never chain the install behind `update` with `&&`. The `&&` is what turned
+    a vendor repository's bad index into "the install never ran".
   - Never pass `--with-deps` to `playwright install`. Downloading a browser
     needs no apt at all.
+
+AND THE IMMUNITY IS NO LONGER `|| true` (#1366). This file used to prescribe
+`apt-get update -qq || true`, and every apt install site was written that way.
+It bought the green at a price: a real problem with the archive this project
+DOES depend on became invisible too, and `update` is the step that would have
+said so. The three install sites now drop the source lists nothing here
+installs from - by what a source is, not by name, so the next vendor
+repository is covered too - and let `update` fail loudly again. Measured
+2026-09-15: with only `ubuntu.sources` configured, `apt-get update` succeeds
+and both packages this repository installs still resolve from noble/universe
+(pgbouncer 1.22.0-1build4, osmium-tool 1.16.0-1build1), so nothing needed is
+lost. Both apt formats survive it - Ubuntu's own archives live in
+/etc/apt/sources.list on older images and in sources.list.d/ubuntu.sources on
+noble, and neither is touched.
+
+`test_an_apt_install_scopes_the_sources_first` is what keeps the next workflow
+from reintroducing the exposure a different way: a bare `apt-get update` with
+no scoping is an offender in its own right now, where before only the `&&`
+was.
 
 This lives here rather than in any workflow because it is a property of all of
 them, and because the next workflow to install a package is the one that will
@@ -92,8 +108,42 @@ def test_an_install_is_never_chained_behind_apt_get_update(workflow):
         f"{workflow.name} chains an install behind `apt-get update &&`, so any "
         f"vendor repository preinstalled on the runner can stop it running "
         f"(#1361):\n" + "\n".join(f"  {name}: {line}" for name, line in offenders) + "\n\nSplit it:\n"
-        "  sudo apt-get update -qq || true\n"
+        "  sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \\\n"
+        "    ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete\n"
+        "  sudo apt-get update -qq\n"
         "  sudo apt-get install -y -qq <package>"
+    )
+
+
+@pytest.mark.parametrize("workflow", _workflows(), ids=lambda p: p.name)
+def test_an_apt_install_scopes_the_sources_first(workflow):
+    """An `apt-get update` that still consults vendor repositories is the exposure.
+
+    THE HALF #1361 LEFT OPEN. That issue removed the `&&` and made `update`
+    non-fatal with `|| true`, which stops a vendor outage failing the job and
+    also stops a REAL archive failure being heard. #1366 replaced it: drop the
+    sources nothing here installs from, then let `update` fail loudly. This is
+    the guard for the replacement - without it a fourth workflow writing a bare
+    `sudo apt-get update -qq` passes every other check in this file and dies on
+    the next Google-Chrome-style bad index exactly as on 2026-09-09.
+
+    Scoped to workflows that actually install, because an `update` with nothing
+    behind it is nobody's problem.
+    """
+    lines = [line for _, line in _run_lines(workflow)]
+    if not any("apt-get install" in line for line in lines):
+        return
+    updates = [line for line in lines if "apt-get update" in line]
+    if not updates:
+        return
+
+    assert any("sources.list.d" in line for line in lines), (
+        f"{workflow.name} runs `apt-get update` before an install without "
+        f"dropping the vendor source lists first, so a repository this project "
+        f"does not use can fail it (#1366):\n" + "\n".join(f"  {line}" for line in updates) + "\n\nAdd, above the update:\n"
+        "  sudo mkdir -p /etc/apt/sources.list.d\n"
+        "  sudo find /etc/apt/sources.list.d -maxdepth 1 -type f \\\n"
+        "    ! -name 'ubuntu.sources' ! -name 'ubuntu.list' -print -delete"
     )
 
 

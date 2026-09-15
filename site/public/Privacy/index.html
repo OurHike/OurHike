@@ -229,7 +229,7 @@
 
     <main class="wrap">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated August 13, 2026</p>
+      <p class="updated">Last updated September 15, 2026</p>
 
       <p class="lede">
         OurHike is a small, volunteer-built offline map for hikers,
@@ -287,11 +287,11 @@
         is.
       </p>
       <p>
-        That includes the off-trail alert. If you turn it on, OurHike
-        watches your position continuously to notice when you may have
-        left the trail — and it does that entirely on your phone. Your
-        track is not uploaded, not stored on our side, and not used for
-        anything else.
+        Nothing watches your position in the background. OurHike reads
+        your location while you have the app open and are using a screen
+        that needs it — the map, or a walk you are following — and it
+        does that entirely on your phone. Your track is not uploaded,
+        not stored on our side, and not used for anything else.
       </p>
       <p>
         <strong>One feature keeps a record rather than forgetting it.</strong>
@@ -310,12 +310,25 @@
 
       <h3>Notifications</h3>
       <p>
-        <strong>OurHike sends exactly one kind of notification: the
-        off-trail alert.</strong> Nothing else — no news, no reminders,
-        no marketing, no "come back and use the app". That is a rule in
-        the code rather than a promise here: there is a single function
-        allowed to send a notification, and an automated check reads the
-        whole codebase and fails the build if anything else tries to.
+        <strong>OurHike sends no notifications at all.</strong> Not news,
+        not reminders, not marketing, not "come back and use the app" —
+        and not alerts either. Nothing this app does puts anything on
+        your lock screen. That is a rule in the code rather than a
+        promise here: an automated check reads every module the web app
+        ships and fails the build if any of them reaches for the browser's
+        notification or push machinery. It does not read the iOS and Android
+        wrappers, which are not written in the same language — so that is
+        the one place this page is telling you what we intend rather than
+        what a test proves.
+      </p>
+      <p>
+        This page used to say something weaker — that there was exactly
+        one notification, an off-trail alert. That feature was built and
+        then removed before anyone was using it, and this paragraph did
+        not come back for the sentence. It says so here rather than
+        quietly, because a privacy policy that overstates what an app
+        does with your attention and your position is wrong in the
+        direction that matters.
       </p>
 
       <h3>Reports you submit</h3>

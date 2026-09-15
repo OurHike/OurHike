@@ -1398,11 +1398,21 @@ export function Today({
         <p className="today__footer">Everything here works with no signal.</p>
       </div>
 
-      {/* THE PINNED BAR (#1373, rule R4 and frames 2a-2e): Find and Plan on
+      {/* THE PINNED BAR (#1373, frames 2a-2e): Find and Plan on
           every state of this screen, forever. Under the paper rather than
           in it, so it stays put while the column scrolls, with the tab bar
           under it. Emphasis goes to Plan while nothing is loaded - that is
-          the next step - and to neither once something is. */}
+          the next step - and to neither once something is.
+
+          NO RULE NUMBER, DELIBERATELY (#1394). This cited "rule R4", which
+          is features/PATHWAY.md's "The mode stays global" - about "Today
+          I'm..." re-ranking Today without moving a hiker between rooms, and
+          nothing to do with a pinned bar. Nothing in R1-R11 covers this bar;
+          the nearest, R11 "Four tabs and the mode, on every screen", is
+          about the tab row under it. The frames are the real provenance, so
+          the frames are what this cites. If the maintainer means the bar to
+          be a rule, PATHWAY.md is where that is decided - picking a nearby
+          number is the one option that should not survive. */}
       {onFindHike !== undefined && onPlanHike !== undefined && (
         <PinnedBar
           onFind={() => onFindHike()}

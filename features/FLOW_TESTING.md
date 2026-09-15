@@ -465,7 +465,7 @@ its chips landing pre-filtered; Cancel landing in Plan's room whatever door open
 kept (R3); the shape control's three values; undo; the gap-crossing acknowledgement; a
 route that cannot be routed saying so.
 
-**F5 step 3 · Details and Save** — the review card under the rail; the name field committing
+**F5 step 3 · Details** — the review card under the rail; the name field committing
 on blur rather than per keystroke; water and stop rows **absent rather than "none"** when
 there is nothing to list; "‹ Route" keeping the name and date; Save landing on the saved
 card; the saved card's doors — Walk this, Leave it with someone, Edit the route, Delete —
@@ -486,6 +486,19 @@ the note that says why.
 **F9 reporting** — the report window; a report queued offline and sent on reconnect with the
 authoring timestamp; "Your reports" showing waiting and sent with status; "Your photos and
 notes" saying what is not kept there.
+
+**There is no F10 and no F11, and nobody recorded why** (#1394). Saying that rather than
+inventing a reason, because a reason is what a reader would otherwise reconstruct and there
+is nothing to reconstruct it from: `git log -S F10` and `-S F11` over this file and
+`client/src/test/flowCoverage.ts` return **no commit at all**, so the two numbers were never
+used and then dropped — they were simply never assigned. The catalogue is consistent with
+the ledger either way, which is why nothing is broken and why nothing caught it.
+
+Left as it stands rather than renumbered, and that part *is* a decision. The numbers are
+load-bearing — `flowCoverage.ts`'s `step` strings quote them — so closing the gap means
+editing both files in one commit and re-reading every row to check it still describes the
+step it now claims, to buy a reader nothing this paragraph does not already give them. **F13
+does not mean thirteenth**, and that is the whole of what the gap costs.
 
 **F12 the map** — In view counting what is actually in view; the legend's fold and its
 switches; the two safety sheets on their taps and **the tap order between them**; a waypoint
@@ -620,10 +633,13 @@ headed, and there is no display in CI or in an agent sandbox.
 
 - **`sweepForBuilder` is the one exit the guard cannot see.** #1374's review found it: a live
   day-hike draft under step 1 survives an ordinary tab tap, but switching mode to Long and
-  tapping "Pick on the map" sweeps it with no bail sheet. `e2e/bailSheet.spec.ts` carries the
-  repro written out in full as a `test.skip`, blocked on **#1387 — Neither the Playwright
-  suite nor the screenshot recipes can put a live draft in the day-hike builder without a
-  reachable bucket**.
+  tapping "Pick on the map" sweeps it with no bail sheet. The defect is
+  **#1378 — Switching the mode under step 1 with a live day-hike draft, then picking on the
+  map, sweeps the draft without asking**; `e2e/bailSheet.spec.ts` carries the repro written
+  out in full as a `test.skip`, blocked on **#1387 — Neither the Playwright suite nor the
+  screenshot recipes can put a live draft in the day-hike builder without a reachable
+  bucket**. Both numbers, because they answer different questions: #1387 says why the test
+  cannot run, #1378 says what it is for (#1394).
 
   **Part of that blocker is gone and the skip stays, which is worth being exact about.** Since
   2026-09-11 `e2e/data/` reaches the builder with a real junction graph under it — proved:

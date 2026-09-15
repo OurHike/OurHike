@@ -71,7 +71,7 @@ import { WATER_SAID_OFF_FEET, type RouteWater } from '../lib/dayHikeWater'
 import { blazeLabel, blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
 import { dayHikeGaps } from '../lib/dayHikeShelf'
 import { HIKER_MODE_LABELS } from '../lib/hikerMode'
-import { dayLongDateLabel } from '../lib/planDisplay'
+import { dayLongDateLabel, legLabel } from '../lib/planDisplay'
 import { paceEstimate, type PaceProfile } from '../lib/pace'
 import {
   formatDistance,
@@ -585,9 +585,7 @@ export function DayHikeCard({
                 >
                   <span className="visually-hidden">{blazeLabel(leg.blaze_color)}</span>
                 </span>
-                <span className="day-hike-card__row-name">
-                  {leg.name ?? 'Unnamed trail'}
-                </span>
+                <span className="day-hike-card__row-name">{legLabel(leg.name)}</span>
                 <span className="day-hike-card__row-figures">
                   {formatDistance(leg.miles, units)}
                 </span>
@@ -615,7 +613,7 @@ export function DayHikeCard({
                     at {formatDistance(bailOut.miles, units)}
                   </span>
                   <span className="day-hike-card__row-name">
-                    {bailOut.name ?? 'Unnamed trail'}
+                    {legLabel(bailOut.name)}
                     {bailOut.blaze_color !== null && ` (${bailOut.blaze_color})`}
                   </span>
                 </div>

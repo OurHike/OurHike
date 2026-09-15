@@ -109,6 +109,50 @@ describe('the two that must never file on a tap', () => {
     )
     expect(EMERGENCY_NOTICE).toBe(notice.textContent)
   })
+
+  it('puts the 911 line OUTSIDE the region that scrolls, and above it', () => {
+    // #1480, and the assertion this file was missing when the maintainer
+    // photographed the defect. "Before the tap" was tested as document order
+    // within the body, which the notice satisfied while sitting 39 px below
+    // the fold on a 390x844 phone and 190 px below it on a 360x640 one - the
+    // test passed and nobody could read the line.
+    //
+    // jsdom has no layout, so this cannot assert pixels. It asserts the thing
+    // that MAKES the pixels right and that a future change would have to
+    // undo deliberately: the notice is not inside the scrolling element, and
+    // it precedes it. A category added to the grid can then push nothing but
+    // other categories.
+    setup()
+
+    const notice = screen.getByRole('note')
+    const body = document.querySelector('.report-window__body')
+
+    expect(body).not.toBeNull()
+    expect(body?.contains(notice)).toBe(false)
+    // DOCUMENT_POSITION_FOLLOWING: the body comes after the notice, so the
+    // notice is read first by a screen reader and drawn first on the glass.
+    expect(notice.compareDocumentPosition(body as Node)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    )
+  })
+
+  it('keeps the 911 line off the receipt, where the decision has been taken', async () => {
+    // Unchanged by #1480 and worth holding down now that it could drift.
+    // While the tiles are up the line is guidance about a choice somebody is
+    // ABOUT to make; after a tap the body is a receipt for a report that is
+    // already filed. Pinning it outside the body made "it renders whenever
+    // the window does" the easy mistake, so this is the test that would catch
+    // it.
+    setup()
+    expect(screen.getByRole('note')).toBeTruthy()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
 })
 
 describe('filing on the tap', () => {

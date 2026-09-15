@@ -32,6 +32,22 @@
 //
 // No trail data needed, for `report-window.mjs`'s reason. No account, no
 // location fix, nobody else's anything.
+//
+// TOUCHED BY #1480 THOUGH THE DRIVE DID NOT CHANGE, which is the whole reason
+// this comment exists. That change is about the window's OTHER state - the
+// tiles, and the 911 line pinned above them - and none of its copy reaches
+// this frame. But four of its rules are on the window itself rather than on
+// the tiles, so they land here too: the scrim's gutter went 16 to 12 and
+// became inset-aware, `.report-window` took `box-sizing: border-box` against
+// its 334 px cap, and `.report-window__body` went to 12 px of padding and an
+// 8 px gap. The receipt is 463 px tall and every one of those moves it.
+//
+// `pr-preview.yml` photographs the recipes a pull request adds or CHANGES, so
+// a receipt that shifted and a recipe nobody touched would have meant the
+// preview comment showing the pre-change frame for the one state that still
+// had a visible difference in it. CLAUDE.md's rule is that a UI change is not
+// finished until a recipe reaches the screen it changed; this is that recipe,
+// and this paragraph is what re-points the camera at it.
 
 export const caption =
   'One tap files it — and the Undo that makes that safe to do (#1133)'

@@ -13,7 +13,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-4, 16px);
+  /* 12 rather than 16 (#1480), and INSET-AWARE, which it was not and could
+     afford not to be.
+
+     The gutter is what keeps the window off the screen edges. While
+     `.report-window` was capped at 74% that was a claim nothing tested - at
+     320x568 the window was 397 px tall with 86 px of clearance top and
+     bottom, so a notch could not reach it whatever this padding said. Lifting
+     the cap to 100% is what makes the number load-bearing, and a flat 12 is
+     wrong the moment there is a notch: the scrim is `position: fixed` and so
+     escapes `.app__screen`'s own inset padding (App.css), the shells run
+     edge-to-edge WebViews (#101), and index.html sets `viewport-fit=cover` so
+     the insets are real rather than zero.
+
+     What that would have put under the status bar is the header and, since
+     this same change, the 911 band directly beneath it - the one thing on
+     this surface that must stay readable. `max()` against each inset is
+     chrome.css's own pattern for exactly this (`.map-screen__float`,
+     `.status-strip`), so this is the app's existing answer rather than a new
+     one.
+
+     All four resolve to 12 px in a browser tab, which is where every
+     measurement in this file was taken; the insets only bite in the shells. */
+  padding-top: max(var(--space-3, 12px), env(safe-area-inset-top, 0px));
+  padding-right: max(var(--space-3, 12px), env(safe-area-inset-right, 0px));
+  padding-bottom: max(var(--space-3, 12px), env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--space-3, 12px), env(safe-area-inset-left, 0px));
   /* A literal rather than a token, and the one in this file. It is the ink of
      the app's own `--black` at 55%, and there is no token for "a scrim" — the
      palette names surfaces and foregrounds, not overlays. Stated here rather
@@ -31,8 +56,23 @@
   max-width: 334px;
   /* Content-driven up to here, then the BODY scrolls. The header must not:
      the anchor and the close button are what orient somebody who opened this
-     by accident. */
-  max-height: 74%;
+     by accident - nor the 911 line under it, which is why both are `flex:
+     none` below.
+
+     ALL OF THE ROOM THE SCRIM LEAVES, where it used to be 74% of it (#1480).
+     74% was a proportion nothing asked for: measured against the dev server
+     on 2026-09-15 in Chromium, the window needed 656 px on a 390x844 phone
+     that had 812 px of scrim to give it, and the cap handed over 601 and
+     scrolled - 576 px of body content into 523 px of body, and into 392 px at
+     375x667.
+
+     `box-sizing` IS LOAD-BEARING here, not tidiness. This app sets no
+     universal border-box reset (see screens/plan.css, which says the same of
+     itself), so without it the 1 px border on each side lands OUTSIDE the
+     100% and the window overflows the scrim by 2 px at exactly the sizes
+     this line exists to make fit. */
+  box-sizing: border-box;
+  max-height: 100%;
   overflow: hidden;
   background: var(--bg-surface);
   border: 1px solid var(--border-1);
@@ -51,6 +91,7 @@
    under both themes, so the window reads the same way at night. */
 .report-window__header {
   display: flex;
+  flex: none;
   align-items: flex-start;
   gap: var(--space-2, 10px);
   padding: var(--space-3, 12px) 14px;
@@ -105,14 +146,68 @@
   cursor: pointer;
 }
 
+/* The only region that scrolls, and on every mainstream phone size it now has
+   no need to. 12 and 8 where this was 14 and 12 (#1480) - twelve px, taken
+   from padding and the gaps between blocks rather than from anything a hiker
+   reads. (`--space-2` is 8px, not the 10 this line first claimed; two rules
+   above still carry a 10px fallback for that token, which predates this
+   change and is left alone rather than quietly re-spaced.)
+
+   IT CAN STILL SCROLL, AND THAT IS NOT A LOOSE END. 320x568 - an iPhone SE
+   1st generation, below the 375x667 the room audit of #1374 calls the
+   smallest phone this app is designed for - needs 683 px and has 544. So does
+   any phone whose owner has turned the system text size up. Nothing short of
+   dropping the tile descriptions closes that, and #1133 put them there on the
+   finding that six of the eight tiles read as self-evident without one
+   ("Trash" being the tile that gives it away), so they are not the thing to
+   spend.
+
+   What the scroll may never hide is the 911 line, which is why that is pinned
+   outside this element rather than trusted to fit inside it. A short screen
+   scrolling through a list of categories is an inconvenience; a short screen
+   hiding how to call for help is the defect #1480 was filed about, and it is
+   fixed by position rather than by arithmetic. */
 .report-window__body {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: var(--space-3, 12px);
+  gap: var(--space-2, 8px);
   min-height: 0;
-  padding: 14px;
+  padding: var(--space-3, 12px);
   overflow-y: auto;
+}
+
+/* NOTHING IN HERE IS SQUEEZABLE, and this is a defect fix rather than
+   housekeeping (#1480).
+
+   A column flex container shrinks its children when its content will not fit,
+   and a child stops shrinking at its own min-content height - except where
+   something declares a floor lower than that. `.report-window__row` declares
+   `min-height: 44px`, the touch-target minimum, so the closure row was the one
+   thing here the algorithm could take room from: measured 2026-09-15 at
+   390x844, squeezed from its natural 77 px to exactly 44, with its description
+   rendering 15 px BELOW its own border and through the rule under it. A touch
+   floor is a promise about the smallest the row may be, and the flex algorithm
+   was reading it as the size the row should become.
+
+   TWO RULES, because one of them is a child combinator and the row it is
+   named after is not always a child. `.report-window__body > *` floors the
+   blocks this element lays out directly - the grid, the closure row, the
+   unsafe wrapper, the receipt. It does NOT reach
+   `.report-window__row--unsafe`, which sits one level down inside
+   `.report-window__unsafe`, and that row carries the same `min-height: 44px`
+   as the one that clipped. It is safe today only because its wrapper happens
+   to be content-sized, which is a coincidence rather than a rule.
+
+   So the floor also goes on `.report-window__row` itself, below, where the
+   `min-height` that causes this lives. That travels with the row wherever it
+   is nested, which is what the first version of this comment claimed the
+   child combinator did and it did not.
+
+   A body with too much in it now scrolls, which is visible and recoverable;
+   clipped text is neither. */
+.report-window__body > * {
+  flex: none;
 }
 
 /* Two per row. Four answers squeezed onto one row inside a narrow card is the
@@ -125,13 +220,62 @@
 
 /* LEFT-ALIGNED, NOT CENTRED, which is a change from the shipped picker. With
    a description under every label, centred text goes ragged on both edges and
-   has to be read line by line; left-aligned with the icon at the top scans in
-   one vertical sweep. */
+   has to be read line by line; left-aligned scans in one vertical sweep.
+
+   THE ICON MOVED BESIDE THE LABEL rather than above it (#1480), and that is a
+   fit decision taken on the maintainer's call rather than a taste one. Stacked
+   above the label, the icon owned 27 px of every grid row - itself, its
+   margin and a gap - that nothing else could use. Beside the label it shares
+   a track with it, so a 22 px icon next to an 18 px line costs 4. Measured
+   against the dev server on 2026-09-15 in Chromium, at 334 px of dialog,
+   which is what both design phones give it:
+
+     tile                         stacked   inline
+     one-line label                 98 px    75 px
+     two-line label                116 px    89 px
+     the grid, all three rows      328 px   268 px
+
+   A NARROWER COLUMN IS WHAT IT COSTS, and it is visible in the frame:
+   `.report-window__tile-label` has 94 px to wrap in rather than 124, so
+   "Invasive species" takes two lines where it took one, and its row is now as
+   tall as the shelter row instead of as short as the first. That is priced
+   into the 268 above - 60 px saved with the extra wrap already paid for, not
+   before it.
+
+   What that buys, as the height the whole window needs against the height the
+   scrim has to give it. Both columns carry every other change on this branch,
+   so the only difference between them is the icon:
+
+     viewport   icon stacked   icon inline
+     390x844     664 of 820     605 of 820
+     375x667     664 of 643     605 of 643
+     360x640     664 of 616     605 of 616
+     320x568     746 of 544     683 of 544
+
+   So the three mainstream phone sizes stopped scrolling, by 215, 38 and 11 px
+   of headroom, and 320x568 did not - see `.report-window__body` for why that
+   one is left scrolling rather than chased. Eleven pixels at 360x640 is a fit
+   and not a comfortable one; it is stated rather than rounded up, because the
+   next thing added to this window spends it.
+
+   WHAT IT DID NOT COST is the point of doing it this way: no font size, no
+   padding, no gap between two controls that file a report on a tap, and no
+   touch target - 75 px is still comfortably past the 44 px minimum. The
+   alternative costed at the same time - shaving the tile padding, the icon's
+   margin, the row descriptions and the unsafe block's padding - bought
+   375x667 by six pixels and never reached 360x640 at all.
+
+   It is also the shape `.report-window__row` below already uses, so the two
+   halves of this window now read as one vocabulary rather than two. */
 .report-window__tile {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
+  display: grid;
+  /* Icon, then everything else. `minmax(0, 1fr)` rather than `1fr` so a long
+     label wraps instead of widening the track past the tile - the same
+     `minmax(0, …)` the grid above uses, for the same reason. */
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  column-gap: var(--space-2, 8px);
+  row-gap: 3px;
   /* Comfortably past the 44px minimum: this is the control the whole surface
      exists for, and under 1a a tap on it files a report. */
   min-height: 64px;
@@ -156,6 +300,8 @@
   transform: scale(0.97);
 }
 
+/* Shared by the tiles and by the two heavy rows, which is why the placement
+   below is scoped to the tile and this is not. */
 .report-window__icon {
   width: 22px;
   height: 22px;
@@ -163,7 +309,21 @@
   color: var(--fg-2);
 }
 
+/* Row one, column one - and no margin under it, because the stack it was
+   spacing is gone. Centred against the label the way `.report-window__row`
+   centres its own icon, so "Shelter or campsite" wrapping to two lines moves
+   the icon to the middle of them rather than leaving it hanging on the first. */
+.report-window__tile .report-window__icon {
+  grid-row: 1;
+  grid-column: 1;
+  align-self: center;
+  margin-bottom: 0;
+}
+
 .report-window__tile-label {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: center;
   font-family: var(--font-display, Georgia, serif);
   font-size: 15px;
   font-weight: 600;
@@ -171,7 +331,15 @@
   color: var(--fg-1);
 }
 
+/* THE FULL WIDTH, not indented under the label - which is where this parts
+   company with `.report-window__row`, deliberately. A row is 310 px wide and
+   can spend 30 px indenting its description to hang under its label; a tile is
+   150 px, so the same indent takes a fifth of the line and pushes "Litter,
+   dumped gear, an overflowing bin" onto a fourth line. The tile would end up
+   taller than the stack this change replaced, which is the whole saving spent
+   on an alignment nobody asked for. */
 .report-window__tile-description {
+  grid-column: 1 / -1;
   font-size: 11px;
   line-height: 1.25;
   color: var(--fg-3);
@@ -181,6 +349,11 @@
    than as answers — neither files on a tap. */
 .report-window__row {
   display: flex;
+  /* The floor that stops `min-height: 44px` being read as a target - see
+     `.report-window__body > *` above. Here rather than only on the container,
+     because the unsafe row is a grandchild of the body and the closure row is
+     a child, and both declare the same touch minimum. */
+  flex: none;
   align-items: center;
   gap: var(--space-2, 10px);
   width: 100%;
@@ -243,7 +416,6 @@
 .report-window__unsafe {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2, 8px);
   padding-top: var(--space-3, 12px);
   border-top: 1px solid var(--border-1);
 }
@@ -253,15 +425,44 @@
   border-color: color-mix(in srgb, var(--warning) 55%, transparent);
 }
 
+/* The 911 line, as a BAND rather than a card (#1480).
+
+   It is pinned between the header and the body now, so its shape has to say
+   which of the two it belongs to. A rounded, bordered card directly under the
+   header would read as the first item of the list below it - one more thing to
+   choose from, sitting where the first thing to choose from goes. Full-bleed
+   with a single rule under it reads as what it is: the window still talking,
+   about every tap below rather than about any one of them.
+
+   The 8% wash and the 35% rule are the card's own colours, carried over
+   unchanged - #1122 measured that pairing as the point where a tint under text
+   of the same hue still clears AA under both themes, and losing the corners
+   changes none of that arithmetic. Re-measured on the band anyway, because it
+   now sits against the dark chrome rather than inside a list, and a pairing
+   that has moved is a pairing nobody has checked: resolved 2026-09-15 in
+   Chromium and run through the WCAG formula, rgb(153 78 21) on rgb(247 241 236)
+   is 5.42:1 in light and rgb(224 129 60) on rgb(44 34 24) is 5.46:1 in dark.
+   Both clear the 4.5:1 AA floor for text this size.
+
+   `flex: none` for the header's reason: this is the one thing on the surface
+   that may never be shrunk to make room for something else.
+
+   THE PADDING IS TWO EXISTING NUMBERS, not two new ones. 14 horizontally is
+   `.report-window__header`'s own, so the notice's first character sits on the
+   same line as the title above it rather than a pixel off it; `--space-2`
+   vertically keeps it on the scale everything else here is on. The first cut
+   of this rule said `9px 14px`, and the 9 was typed rather than derived -
+   on a surface this file elsewhere says may never be shrunk, a number nobody
+   can place is a number nobody can safely change. */
 .report-window__emergency {
+  flex: none;
   margin: 0;
-  padding: 10px var(--space-3, 12px);
+  padding: var(--space-2, 8px) 14px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, var(--bg-surface));
-  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
-  border-radius: 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
 }
 
 /* The receipt. Success-tinted at the same 8% #1122 measured for the place

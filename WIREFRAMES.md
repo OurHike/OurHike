@@ -222,6 +222,14 @@ Three screens, each skippable, each with a step counter:
 > - **The anchor is stated rather than asked** — every entry point supplies one — with a `Change` control listing the places today's walked miles covered, nearest first, for the blow-down noticed and remembered a mile later. It never counts them ([features/DATA_NUDGES.md](features/DATA_NUDGES.md)).
 >
 > The icon gap under **Known deviations** is closed for this screen: the tiles carry real Lucide paths (`client/src/reporting/icons.ts`), not emoji, at 1.5px stroke.
+>
+> **Amended 2026-09-15 ([#1480](https://github.com/OurHike/OurHike/issues/1480)) — the 911 line is chrome, and the window does not scroll on a phone.** The maintainer photographed the window on a phone and the notice was not on it. As shipped, the line closed the body, and the body overflowed a `max-height: 74%` the content never asked for — measured against the dev server in Chromium, the window needed 656 px of a scrim that had 812 px to give it at 390×844, and the notice sat 39 px below the fold there, 170 px below it at 375×667 and 190 px below it at 360×640. Three things changed, and only the first is about the notice:
+>
+> - **The 911 line is pinned between the header and the body**, outside the scrolling region entirely, rather than being the last thing inside it. Position rather than emphasis: the copy is unchanged and stays unchanged. Out of the body rather than merely at the top of it, because a category list grows and this is the one thing on the surface that must never be pushable.
+> - **The cap is gone and the tile's icon sits beside its label** rather than above it, which is where the height came from — no font size, padding, tap target or gap between two one-tap controls was spent. The window needs 605 px now and fits at 390×844, 375×667 and 360×640, by 215, 38 and 11 px. It still scrolls at 320×568 (by 139 px, against 323 before) and at a raised system text size, which is why the notice is pinned rather than merely fitted.
+> - **The closure row is the height of its own text again.** `min-height: 44px` made it the one child a column flex container could shrink, so the squeeze took 33 px from it and its description rendered outside its own border — visible in the photograph that opened the issue. Every child of the body is `flex: none` now, so an overflow becomes a scrollbar rather than clipped text.
+>
+> The **short-screen density rules** declined by [#1374 — One pathway from first run to a walk finished: the front-end rebuild from the ClaudeDesign flow review](https://github.com/OurHike/OurHike/pull/1374), the room audit above — a `max-height` media query — stay declined; none of this is conditional on viewport height.
 
 Six condition types in a 2-col grid (`14a`, updated 2026-07-30 to add invasive species):
 

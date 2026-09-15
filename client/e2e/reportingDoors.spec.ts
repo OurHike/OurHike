@@ -102,6 +102,87 @@ test.describe('the reporting doors', () => {
     await expect(page.getByRole('heading', { name: 'Contribute' })).toBeVisible()
   })
 
+  test('layout: the 911 line is on screen without scrolling, on both phones this app designs for', async ({
+    page,
+  }) => {
+    // #1480, and the one assertion in this repository that needs a real
+    // browser to make. The unit suite runs in jsdom, which has no layout: it
+    // can hold the notice OUTSIDE the scrolling element and above it, which
+    // is what makes this true, but it cannot see a pixel and so cannot tell
+    // a reader whether the thing is actually legible on a phone.
+    //
+    // WHAT WENT WRONG WITHOUT IT. The notice was the last child of a body
+    // that overflowed its cap, so every existing test passed - the words were
+    // right, the role was right, the document order was right - while the
+    // line sat 39 px below the fold at 390x844 and 170 px below it at
+    // 375x667. The maintainer found it by opening the app.
+    //
+    // 375x667 IS THE POINT OF THE SECOND HALF. The room audit of #1374 calls
+    // it the smallest phone this app is designed for, and it is where the
+    // window was 184 px over rather than 53. Set here rather than left to the
+    // project's viewport, because the `phone` project is 390x844 and the
+    // claim that matters is the one made on the smaller screen.
+    await openContribute(page)
+
+    for (const size of [
+      { width: 390, height: 844 },
+      { width: 375, height: 667 },
+    ]) {
+      await page.setViewportSize(size)
+      const window_ = await openReportWindow(page)
+      const notice = window_.getByRole('note')
+
+      // Visible AND inside the viewport's own box. `toBeVisible` alone passes
+      // for an element scrolled out of frame inside a scrolling parent, which
+      // is exactly the state this test exists to catch.
+      await expect(notice).toBeVisible()
+      await expect(notice).toContainText('Call 911 if you are in danger now')
+      await expect(notice).toBeInViewport({ ratio: 1 })
+
+      // NOT MERELY REACHABLE - never scrolled to. Asserted on the scrolling
+      // element itself rather than by comparing positions, because "the body
+      // has no overflow" is the property, and it is the one that stops the
+      // next category added to the grid pushing anything below the fold.
+      const overflow = await window_
+        .locator('.report-window__body')
+        .evaluate((body) => body.scrollHeight - body.clientHeight)
+      expect(overflow, `the body scrolls at ${size.width}x${size.height}`).toBe(0)
+
+      // BOTH heavy rows whole inside their own borders, not just the one that
+      // was caught clipping. They declare the same `min-height: 44px`, which
+      // is what let the flex squeeze read a touch floor as a target: the
+      // closure row rendered at 44 px against a natural 77 and spilled its
+      // description 15 px past its own edge.
+      //
+      // The unsafe row is here because it is the one the container-level fix
+      // does NOT reach. `.report-window__body > *` is a child combinator and
+      // that row is a grandchild, inside `.report-window__unsafe` - so it is
+      // floored by `.report-window__row`'s own `flex: none` and by nothing
+      // else. Asserting only the closure row would have left the row the 911
+      // line exists to qualify covered by a coincidence.
+      //
+      // Compared against each row's own padding box rather than against a
+      // number, so this keeps meaning what it says if the copy or the type
+      // changes.
+      for (const row of [/^The trail is closed/, /^Something unsafe happened/]) {
+        const spill = await window_.getByRole('button', { name: row }).evaluate((el) => {
+          const description = el.querySelector('.report-window__row-description')
+          if (description === null) return Number.NaN
+          return Math.round(
+            description.getBoundingClientRect().bottom -
+              el.getBoundingClientRect().bottom,
+          )
+        })
+        expect(spill, `${row.source} clips at ${size.width}x${size.height}`).toBeLessThan(
+          0,
+        )
+      }
+
+      await window_.getByRole('button', { name: /^Close/ }).click()
+      await expect(window_).toHaveCount(0)
+    }
+  })
+
   test('states: a simple kind files on ONE TAP, and the only thing between a mis-tap and a filed report is the undo', async ({
     page,
   }) => {

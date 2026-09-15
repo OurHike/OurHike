@@ -146,6 +146,40 @@ Leave that line alone and name the issue in full in the prose above it.
 This governs what you write. It is not a licence to go retitling references in files you are
 not otherwise touching.
 
+## Name the thing, then say the thing about it
+
+**A sentence about this repository carries something a reader can look up** — a file, a
+function, a constant, a number with a unit, an issue number, a string the app renders.
+The section above makes that rule for issue references; it is the same rule everywhere
+else, and everywhere else it is being missed.
+
+Measured 2026-09-15: **10 of the last 100 non-merge commit subjects** contain any such
+token, and **471 of 7,202 `it()` names** in `client/src` do. The commands are in the
+skill and re-run in a second. Read them as a proxy rather than a defect count — `shows
+the distance in miles when the hiker chose miles` names no symbol and is perfectly clear
+— but 6.5% is low enough to explain a maintainer who cannot follow along.
+
+The bodies are not the problem. `Answer the bucket in the detail recipes, rather than
+racing it` sits on a commit whose body names the failing selector, the timeout, the hook,
+and says outright that the diagnosis was reasoned rather than reproduced. The information
+existed and did not reach the line people read. So the fix is a check on the short
+surfaces, not more effort: **the search test** (does the sentence contain one thing a
+reader could find), **the "the" test** (every `the X` — was X introduced, or is `X` its
+real name), and, for tests, **the 2 a.m. test** (it goes red in CI and you see only the
+name; do you know what broke).
+
+[`.claude/skills/plain-language/SKILL.md`](.claude/skills/plain-language/SKILL.md) is the
+rest: the three checks worked through, the five habits that produce a cryptic line
+(a pronoun-shaped noun, definition by contrast alone, anthropomorphism in place of a
+verb, the aphorism as the only statement of a rule, elegance checked instead of
+information), and what each surface needs — comments, test names, test bodies, commit
+subjects, and a chat reply.
+
+**None of this touches the evidence grades.** Plain is not confident: `nobody has checked
+this` is plainer than whatever would replace it. What gets cut is the private referent,
+never the caveat.
+
+
 ## Show what you changed
 
 **Every pull request body carries a `## Screenshot` section**, and the template

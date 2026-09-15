@@ -2,12 +2,12 @@
 say how much the result is worth (#1427).
 
 WHAT THE HARD PART ACTUALLY IS. 272 of the export's 385 hikes publish one
-parking coordinate and a turn-by-turn description somebody walked, and no
+parking coordinate and a turn-by-turn description somebody wrote, and no
 line at all. Putting one of those on a map means CONSTRUCTING the route:
 reading "turn left onto the blue-blazed Timp-Torne Trail" and finding, on this
 build's own trail lines, the junction that sentence means. The other 113
 publish a GPX track, and those are not this module's business - a survey
-somebody walked outranks anything inferred here, and `route_hikefinder.py`
+the publisher drew outranks anything inferred here, and `route_hikefinder.py`
 uses it verbatim.
 
 THE METHOD, AND WHY IT IS THE ONE THE REST OF THIS BUILD ALREADY USES. A
@@ -43,6 +43,20 @@ It chooses them from the description, in four steps:
      that returns to its start - which the export says is all but the 17 it
      calls Shuttle.
 
+WHAT A PUBLISHED TRACK ACTUALLY IS, because the first version of this module
+got it wrong and said so in shipped code (#1451). These files are DRAWN, not
+recorded: 110 of the 113 carry `creator="https://gpx.studio"`, a route drawing
+tool; only 2 carry a `<time>` element at all, where a recorded GPS track
+timestamps essentially every point; none carry the heart-rate or cadence
+extensions a recording device writes; and their elevations land on exact 0.25 m
+multiples, which is a DEM being sampled along a line rather than an altimeter.
+
+So a published route is the publisher's own STATEMENT OF WHERE THE HIKE GOES,
+traced along the trails they were describing. That is still the best evidence
+this import has - better than anything inferred from prose - and it is still
+the right thing to draw. It is just not a survey, and nothing here may call it
+one. Its elevations are not used at all: see `FormedRoute.climb`.
+
 WHY A FORMED ROUTE IS GRADED AND NOT JUST BUILT. A line drawn on a map is
 read by a hiker as somewhere a person walked. This one was not: it is an
 inference from prose, and CLAUDE.md's four ways this app can hurt somebody
@@ -55,7 +69,7 @@ which half is wrong, so it does not ship.
 
 The grades, and what each is allowed to mean:
 
-    strong    calibrated to match the surveyed track 90% of the time: the walk
+    strong    calibrated to match the publisher's drawn line 90% of the time: the walk
               covers nearly all the trails its description names, a closed one
               goes round rather than doubling back, and the length has not
               wandered off the publisher's
@@ -79,11 +93,11 @@ print a hike nobody has a line for.
 THERE IS GROUND TRUTH, AND THIS MODULE IS MEASURED AGAINST IT. That sentence
 replaces the opposite one, which stood here until 2026-09-15 and was wrong:
 113 of the export's hikes publish BOTH a turn-by-turn description AND the GPX
-track somebody walked. Forming a route for those from the prose alone - with
+line the publisher drew. Forming a route for those from the prose alone - with
 the track held back - and scoring it against the line a person actually
 followed is a direct measurement of whether this module works. The score is a
 buffered overlap: what share of the formed walk lies within 60 m of the
-surveyed one and what share of the surveyed one lies within 60 m of the formed
+drawn one and what share of the drawn one lies within 60 m of the formed
 walk, combined as an F1.
 
 WHAT THAT MEASUREMENT HAS ALREADY OVERTURNED, listed because each was believed
@@ -128,7 +142,6 @@ from lib import trail_graph_route as router
 #: never blur: PUBLISHED is a GPX track whoever wrote the hike up recorded,
 #: GENERATED is this module's inference from their prose.
 METRES_PER_MILE = 1609.344
-FEET_PER_METRE = 3.280839895
 
 PUBLISHED = "published"
 GENERATED = "generated"
@@ -159,7 +172,7 @@ START_MAX_OFF_M = 500.0
 #:
 #: It stays at 150 m rather than moving to 45.7 m, because the measurement
 #: says so: over the ground-truth set a start 50-150 m off matched the
-#: surveyed track 50% of the time against 65% under 50 m, which is a real
+#: published line 50% of the time against 65% under 50 m, which is a real
 #: difference but not the cliff a hard cap implies, and tightening to 45.7 m
 #: would cap dozens of routes at `fair` on the strength of a number nobody
 #: measured either. What would settle it: whether a parking pin that far out
@@ -256,7 +269,7 @@ LENGTH_FAIR = 0.40
 #: A Lollipop is a loop with a stem and legitimately retraces the stem, which
 #: is why the fair ceiling is as loose as it is.
 #: CALIBRATED against the ground-truth set (see `_grade`): of the closed walks
-#: retracing between 5% and 30% of their length, 89% match the surveyed track;
+#: retracing between 5% and 30% of their length, 89% match the publisher's drawn line;
 #: below 3% the figure falls to 40%, because a walk that doubles back on
 #: nothing has usually not gone round at all, and above 30% it falls to 48%.
 RETRACE_MIN = 0.03
@@ -268,7 +281,7 @@ RETRACE_FAIR = 0.60
 #: description even if its length happens to agree.
 #: CALIBRATED against the ground-truth set (see `_grade`): 71% of walks
 #: covering at least 0.9 of the trails their description names match the
-#: surveyed track, against 45% between 0.6 and 0.9 and 20% below 0.6.
+#: published line, against 45% between 0.6 and 0.9 and 20% below 0.6.
 TRAILS_GOOD = 0.9
 TRAILS_FAIR = 0.34
 
@@ -512,10 +525,20 @@ class FormedRoute:
     start_offset_m: float | None = None
     closed: bool = False
     retrace_ratio: float | None = None
-    #: Feet gained and lost, or None when nothing could price it. ABSENT MEANS
-    #: NEVER MEASURED, never flat - a walk with one unpriced edge reported as
-    #: zero is a flat-ground claim about real ground, and it fails SHORT, which
-    #: is the direction that gets somebody caught by the dark.
+    #: Feet gained and lost, from THIS BUILD'S elevation sidecar and from
+    #: nothing else. ABSENT MEANS NEVER PRICED, never flat - a walk with one
+    #: unpriced edge reported as zero is a flat-ground claim about real ground,
+    #: and it fails SHORT, which is the direction that gets somebody caught by
+    #: the dark.
+    #:
+    #: A PUBLISHED TRACK'S OWN `<ele>` VALUES ARE NOT USED, and that is the
+    #: maintainer's call (#1451) rather than an oversight. They are not
+    #: measurements: 110 of the 113 files are drawn in gpx.studio, only 2 carry
+    #: a `<time>` element at all, and their elevations land on exact 0.25 m
+    #: multiples - a DEM sampled along a drawn line, which is the same KIND of
+    #: estimate this build's own sidecar produces. Preferring them would mean
+    #: two sources for one figure, one of which is absent whenever a hike has
+    #: no track, for no gain in what the number actually rests on.
     climb: tuple[float, float] | None = None
     named_trails: list[str] = field(default_factory=list)
     walked_trails: list[str] = field(default_factory=list)
@@ -530,7 +553,7 @@ class FormedRoute:
         different fields: a GENERATED route carries a `route` measured over
         this build's graph, while a PUBLISHED one carries only the track's own
         points and never touches the graph at all. Testing `route` graded every
-        one of the 113 surveyed tracks as not shipping - the best routes in the
+        one of the 113 published lines as not shipping - the best routes in the
         import, silently dropped - which is what this property looked like
         when it was first written.
         """
@@ -826,7 +849,7 @@ COVERAGE_WEIGHT = 0.03
 #: How the search weighs what it can see. SWEPT against the 113 ground-truth
 #: hikes rather than picked (2026-09-15), scoring each setting by how many
 #: routes clear the calibrated `strong` bar and what share of those actually
-#: match the surveyed track:
+#: match the publisher's drawn line:
 #:
 #:     length 1.0, coverage 1.0   18 strong, 89% of them correct   <- this
 #:     length 1.0, coverage 0.0   10 strong, 90%
@@ -971,9 +994,9 @@ def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]
     should read them.
 
     CALIBRATED, NOT PICKED. The bands below were fitted against the 113 hikes
-    that publish BOTH a description and the GPX track somebody walked: form a
+    that publish BOTH a description and a GPX line the publisher drew: form a
     route from the prose alone, measure how much of it lies within 60 m of the
-    surveyed line, and keep the rule that best separates the walks that match
+    drawn line, and keep the rule that best separates the walks that match
     from the walks that do not. Measured 2026-09-15 over the 51 routes that
     formed, this rule selects 20 and 90% of them match the true track at
     F1 >= 0.6, against a median of 0.68 across all 51.
@@ -1040,7 +1063,7 @@ def _grade(result: FormedRoute, route_type: str | None) -> tuple[str, list[str]]
         elif result.retrace_ratio < RETRACE_MIN:
             # A closed walk that retraces NOTHING has usually not closed at
             # all - it is two points with one leg between them, and the
-            # ground-truth set says these match the surveyed track only 40% of
+            # ground-truth set says these match the publisher's drawn line only 40% of
             # the time against 89% just above this line.
             problems.append(f"a '{route_type}' that retraces nothing is usually a walk with too few waypoints to have gone round")
             cap(GRADE_FAIR)
@@ -1131,48 +1154,6 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
     return result
 
 
-#: How much a track has to rise before the rise is counted. @unvalidated -
-#: a recorded elevation wanders by a metre or two at rest, and summing every
-#: wobble over a 900-point track inflates the gain badly. 3 m is the smallest
-#: step that reads as a step rather than as noise.
-#:
-#: THE DIRECTION THIS ERRS IN IS WORTH STATING. A threshold can only ever
-#: REMOVE gain, so the figure it produces can understate a climb - and
-#: understating is the unsafe direction for a hiker deciding whether they beat
-#: the dark. It is used anyway because the unthresholded figure is not a
-#: smaller error in the other direction, it is noise; what would settle the
-#: number is comparing these tracks against a surveyed profile for the same
-#: ground.
-TRACK_CLIMB_STEP_M = 3.0
-
-
-def track_climb(track) -> tuple[float, float] | None:
-    """Feet gained and lost along a published track, from its own elevations.
-
-    From the SURVEYOR'S recording rather than from this build's elevation
-    sidecar, for the reason the whole `published` path exists: they were there.
-    Returns None when the track carries no elevation at all, because absent has
-    to stay distinguishable from flat.
-    """
-    if track is None:
-        return None
-    measured = [point.ele_m for point in track.points if point.ele_m is not None]
-    if len(measured) < 2:
-        return None
-    gain = loss = 0.0
-    anchor = measured[0]
-    for value in measured[1:]:
-        step = value - anchor
-        if abs(step) < TRACK_CLIMB_STEP_M:
-            continue
-        if step > 0:
-            gain += step
-        else:
-            loss -= step
-        anchor = value
-    return gain * FEET_PER_METRE, loss * FEET_PER_METRE
-
-
 def published_route(hike: dict, track) -> FormedRoute:
     """The publisher's own GPX track, as the route, checked but never rebuilt.
 
@@ -1194,7 +1175,6 @@ def published_route(hike: dict, track) -> FormedRoute:
         return result
 
     result.miles = track.length_miles
-    result.climb = track_climb(track)
     result.ends = [(point.lon, point.lat) for point in track.points]
     first, last = track.points[0], track.points[-1]
     gap_m = router.metres_between((first.lon, first.lat), (last.lon, last.lat))

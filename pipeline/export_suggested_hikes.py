@@ -41,7 +41,7 @@ changing anything here.
   NOT pretend otherwise. What it does is sample the track, snap each sample to
   the network, and then CHECK that re-routing between those samples reproduces
   the track's own length within TRACK_REPRODUCTION_TOLERANCE. If it does, the
-  phone walking those ends walks the surveyed route, and that is a claim this
+  phone walking those ends walks the publisher's own route, and that is a claim this
   file can make with a measurement behind it. If it does not - the track goes
   somewhere this build draws no line - the hike ships no route rather than a
   re-drawn one.
@@ -58,7 +58,7 @@ changing anything here.
   Their full geometry, every point and every elevation, is in
   data/processed/hikefinder_routes.json and data/raw/hikefinder_gpx/. What
   would let them reach a hiker is a `track` field on SuggestedHike, so a
-  surveyed line ships as a line and nothing is re-derived - and that cannot be
+  published line ships as a line and nothing is re-derived - and that cannot be
   added here without also splitting this artifact, because it is already
   1.68 MB for 201 records (most of it the export's prose) against the
   client's 2 MB cache ceiling (conditionsCache.ts, itself @unvalidated), and
@@ -191,7 +191,12 @@ def track_ends(
     drift = abs(route.miles - track_miles) / track_miles
     if drift > TRACK_REPRODUCTION_TOLERANCE:
         return None
-    return [[round(point.at[0], 6), round(point.at[1], 6)] for point in snapped], f"{drift * 100:.1f}%"
+    # The route is handed back as well as the ends, because it is the only
+    # place a published hike's CLIMB can come from: the track's own `<ele>`
+    # values are a DEM sampled along a drawn line (#1451) and are not used, so
+    # the figure comes from this build's sidecar over this walk - the same
+    # source, and the same arithmetic, as a generated route's.
+    return [[round(point.at[0], 6), round(point.at[1], 6)] for point in snapped], f"{drift * 100:.1f}%", route
 
 
 def segments_for(coords: list[list[float]], closed: bool) -> list[list[dict]]:
@@ -238,7 +243,7 @@ def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str,
         "trails": list(route.get("walked_trails") or []),
         "start": {"lat": start.get("lat"), "lon": start.get("lon"), "basis": start.get("label")} if start else None,
         # THE WHOLE POINT OF #1427, on the record a hiker's phone holds:
-        # `published` is a track somebody surveyed, `generated` is a line this
+        # `published` is a line the publisher drew, `generated` is a line this
         # pipeline inferred from their prose. A screen that prints one in the
         # voice of the other is the failure these fields exist to prevent.
         "routeProvenance": route["provenance"],
@@ -307,7 +312,9 @@ def build_document(graph: router.Graph, cache: dict, routes: dict, steward: str,
                     )
                 )
                 continue
-            coords, reproduced = found
+            coords, reproduced, rewalk = found
+            if rewalk.climb is not None:
+                route = {**route, "climb": [round(rewalk.climb[0]), round(rewalk.climb[1])]}
         else:
             coords = [[round(end[0], 6), round(end[1], 6)] for end in route["ends"]]
 

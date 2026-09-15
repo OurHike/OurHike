@@ -52,7 +52,7 @@ THE TWO KINDS OF PAGE, and the whole reason `route_hikefinder.py` exists:
   the first 160 pages sampled were routed.
 
   AN UNROUTED PAGE publishes one coordinate - the parking - and a
-  turn-by-turn description somebody walked. Nothing on it places a line.
+  turn-by-turn description somebody wrote. Nothing on it places a line.
   `lib/hike_route_builder.py` is the attempt to form one; this module's job
   stops at saying, in `has_published_route`, which kind of page this was.
 

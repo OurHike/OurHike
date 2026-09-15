@@ -181,7 +181,7 @@ describe('the detail block a route carries', () => {
   })
 
   it('reads where the line came from, which is the point of carrying it', () => {
-    // #1427: `published` is a track somebody surveyed, `generated` is one the
+    // #1427: `published` is a line the publisher drew, `generated` is one the
     // pipeline inferred from their prose. A card may not draw the second in
     // the voice of the first, and it cannot tell them apart unless this is
     // read off the wire.
@@ -201,11 +201,11 @@ describe('the detail block a route carries', () => {
 
   it('refuses a provenance it does not know, rather than passing it through', () => {
     // Absent has to stay distinguishable from `published`: a card that treats
-    // an unreadable value as "somebody walked it" is the display outrunning
+    // an unreadable value as "the publisher drew it" is the display outrunning
     // its source on the one field that exists to stop exactly that.
     const read = validateSuggestedHike({
       ...SOUND,
-      routeProvenance: 'surveyed-ish',
+      routeProvenance: 'drawn-ish',
       routeGrade: 'rejected',
     })
 

@@ -164,7 +164,7 @@ export interface SuggestedHikeDetail {
    * WHERE THIS LINE CAME FROM, and the reason this block exists at all
    * (#1427).
    *
-   * `published` is a track whoever wrote the hike up recorded on the ground.
+   * `published` is a line whoever wrote the hike up drew on the ground.
    * `generated` is a line OurHike inferred from their turn-by-turn prose over
    * the trail graph - nobody walked it, and the pipeline graded it against
    * what the publisher independently stated before letting it ship.
@@ -176,8 +176,8 @@ export interface SuggestedHikeDetail {
    */
   routeProvenance?: RouteProvenance
   /** How much the pipeline stands behind a `generated` line. Calibrated
-   *  against the 113 hikes that publish both a description and a surveyed
-   *  track: `strong` matched that track 92% of the time. */
+   *  against the 113 hikes that publish both a description and a line the
+   *  publisher drew: `strong` matched that line 92% of the time. */
   routeGrade?: RouteGrade
   /** Every check that was not clean, in the publisher's and the pipeline's
    *  own words - a length well off the stated one, a loop that doubles back,

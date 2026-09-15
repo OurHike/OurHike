@@ -29,8 +29,8 @@ WHAT THIS RUN MEASURED, 2026-09-15, against the 2026-09-14 production graph
 (631,915 edges): of 272 formable hikes, 43 graded `strong`, 111 `fair` and 118
 `rejected`. The grade is CALIBRATED rather than chosen - see
 `lib/hike_route_builder.py`'s `_grade`, which was fitted against the 113 hikes
-that publish both a description and the track somebody walked, and selects
-routes matching the surveyed line 92% of the time.
+that publish both a description and the track the publisher drew, and selects
+routes matching the publisher's drawn line 92% of the time.
 
 The rejections are honest rather than tunable: 44 walks cannot be fitted to the
 length the publisher states within 40%; 31 trailheads sit more than 500 m from

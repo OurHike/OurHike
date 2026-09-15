@@ -604,13 +604,45 @@ def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str])
     return None
 
 
+def declared_name(source: dict, properties: dict):
+    """One feature's name, or None where the steward published a PLACEHOLDER.
+
+    WHY THIS EXISTS (#1432). NYC Parks fills `trail_name` on every row, and on
+    3,775 of 7,059 - 53% - what it fills it with is `Unnamed Official Trail`,
+    `Name TBD` or `TBD`. Those are the steward saying "no name", in a column
+    that cannot be empty, and reading them as names is a display outrunning
+    its source: measured on the live layer, `Unnamed Official Trail` totals
+    128.7 miles, which clears NAMED_TRAIL_THRESHOLD_MILES and would have
+    shipped ONE overview feature named "Unnamed Official Trail", marked
+    `through_route: true`, drawn at through-route weight across five boroughs
+    beside the Appalachian Trail - and labelled that on the map and in every
+    tapped-line sheet.
+
+    So a source may declare `name_placeholders`, and a value in that list is
+    treated exactly as an absent name. CLAUDE.md's rule is the one being
+    applied: "Omit rather than guess... Absent means unknown, never zero and
+    never 'none'." The registry entry carries the measured counts, and
+    `park_name` is what a screen should fall back to for these rows - a
+    display decision that belongs to features/NEARBY_TRAILS.md, not here.
+
+    Matched case-insensitively on the stripped value, because a placeholder
+    is prose typed by whoever surveyed the segment rather than a coded domain.
+    """
+    raw = properties.get(source.get("name_field", "Name"))
+    placeholders = source.get("name_placeholders")
+    if not placeholders or raw is None:
+        return raw
+    if str(raw).strip().casefold() in {str(p).strip().casefold() for p in placeholders}:
+        return None
+    return raw
+
+
 def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> tuple[list[dict], dict]:
     """One source's shippable features as export_trails.py-shaped records
     (id/source/name/blaze_color/trail_status/wkt), plus a stats dict of what
     was dropped and why."""
     key = source["key"]
     mapping = load_blaze_mapping().get(key)
-    name_field = source.get("name_field", "Name")
     status_field = source.get("status_field")
 
     records: list[dict] = []
@@ -659,7 +691,7 @@ def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> 
             {
                 "id": f"{key}:{feature_id}",
                 "source": key,
-                "name": properties.get(name_field),
+                "name": declared_name(source, properties),
                 "blaze_color": blaze_color,
                 "trail_status": trail_status,
                 # WHICH KIND OF CLOSED, stated rather than inferred from the

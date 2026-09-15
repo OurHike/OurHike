@@ -438,10 +438,15 @@ def test_the_greenway_layer_never_ships_an_on_street_bike_lane():
     filter's whole value is that it runs AT THE PORTAL, so the excluded rows
     never arrive - there is no local artifact in which their absence could be
     checked, and the registry string is the only place the guarantee lives.
+
+    ASSERTED AS THE WHOLE STRING, not as three substrings, and that is the
+    point rather than pedantry. Three `in` checks pass on
+    `status='Current' OR grnwy='Greenway' OR onoffst='OFF'` - a predicate that
+    ships 24,461 of the 29,695 rows, every painted bike lane that happens to
+    be current - while reading as though all three clauses were enforced. A
+    safety property pinned by a test that its own negation satisfies is not
+    pinned.
     """
     entry = find_source(load_registry(REAL_REGISTRY), "nyc_dot_greenways")
-    where = entry["where"]
 
-    assert "onoffst='OFF'" in where, "the off-street clause is what keeps walkers out of traffic"
-    assert "grnwy='Greenway'" in where
-    assert "status='Current'" in where, "retired facilities are trail drawn where there is none"
+    assert entry["where"] == "status='Current' AND grnwy='Greenway' AND onoffst='OFF'"

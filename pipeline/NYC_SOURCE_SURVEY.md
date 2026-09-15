@@ -529,9 +529,23 @@ Three things the registration carries that a reader should know before trusting 
   and a hiker matching a painted blaze against a drawn one cannot tell those apart. The
   honest version, if wanted, is a reviewed `blaze_mapping.json` table, not a regex in an
   exporter.
-- **Half of it has no name.** `Unnamed Official Trail` 3,448, `Name TBD` 239, `TBD` 88 —
-  3,775 rows, **53%**, carrying a placeholder. `park_name` is populated on every row and is
-  the usable label.
+- **Half of it has no name, and the placeholders are registered as such.** `Unnamed
+  Official Trail` 3,448, `Name TBD` 239, `TBD` 88 — 3,775 rows, **53%**, carrying a
+  placeholder in a column that cannot be empty. The entry declares them in
+  `name_placeholders` and the exporter reads them as an **absent** name, which is
+  CLAUDE.md's "absent means unknown" applied to a steward's own idiom. That is not
+  cosmetic: measured live, `Unnamed Official Trail` totals **128.7 miles**, past
+  `NAMED_TRAIL_THRESHOLD_MILES`, so untreated it shipped as *one* overview feature named
+  "Unnamed Official Trail" with `through_route: true`, drawn at through-route weight across
+  five boroughs beside the Appalachian Trail and labelled that on the map. `park_name` is
+  populated on every row and is the usable label for these.
+- **The portal publishes no feature id, so the fetch asks for one.** A Socrata GeoJSON
+  feature carries no `id` member and no id-shaped property, which drops every row onto
+  `lib/feature_id.py`'s positional `generated-{index}` — an id that renumbers when NYC
+  Parks inserts a segment, silently re-pointing anything keyed on a line id at the next
+  publish. `$select=*,:id` returns Socrata's stable row key (`row-6p7c_bcx9.in7u`), and
+  `lib/socrata.py` promotes it. Measured before and after on the two layers: 10,089
+  warnings, then none.
 - **The dataset's freshness and the survey's freshness are different numbers, and the
   second is the one on the ground.** `date_collected` runs 2013-10-17 to 2026-08-18:
 
@@ -556,7 +570,10 @@ overwhelming majority of it is painted lanes in traffic. Three clauses cut it do
 | `grnwy='Greenway'` | 23,358 | ordinary bike lanes with no greenway designation |
 | `onoffst='OFF'` | 2,322 | **current greenway-designated segments that run *on street*** |
 
-**3,039 survive.** The last clause is the one a hiker's safety turns on and the reason the
+**3,039 survive the filter and 3,030 of them ship** — nine carry a geometry object whose
+coordinates are empty and are dropped by the exporter's own `no geometry` rule. Worth the
+extra sentence because the first version of this section said "not one null geometry",
+which is true and still hides those nine. The last clause is the one a hiker's safety turns on and the reason the
 greenway flag alone is not enough: those 2,322 are the on-street connectors that link one
 off-street greenway to the next — signed as part of the route, and carrying a walker into
 traffic. Some are certainly pleasant to walk; dropping them is the acceptable false
@@ -628,7 +645,17 @@ Two riders travel with it:
 - **(b) The version-and-modifications rider**, above. An ask to OTI settles it.
 - **(c) Walkability on the greenways is inferred**, not declared — 12c.
 - **(d) The blaze colours in `trail_name` are unparsed** and 1,494 segments carry one. A
-  reviewed mapping table is the honest route if they are ever wanted.
+  reviewed mapping table is the honest route if they are ever wanted. Note this interacts
+  with the placeholder rule above: the colour-named rows are exactly the ones that *do*
+  carry a real name, so nothing here is lost by treating the placeholders as absent.
+- **(f) NYC Parks publishes no use column at all** — no FOOT/BIKE/HORSE matrix — so no
+  foot filter is possible, and the entry keeps every row. That is a widening of
+  `export_nearby_trails.py`'s keep-everything default, whose stated justification ("a
+  source with no use flags at all keeps every row, because NYNJTC and Mohonk publish
+  hiking trails and nothing else") does not describe a municipal layer with 198
+  bridle-named rows and 2,174 fully-paved ones. Every row is still walkable on foot, which
+  is why it is right anyway — but for a different reason than the default's, and the entry
+  says so rather than inheriting it quietly.
 - **(e) Nothing here is field-checked.** This is the section of the survey whose ground the
   maintainer can actually stand on, which is the whole reason it exists — Van Cortlandt and
   Pelham Bay are a subway ride, and a single afternoon would settle (c), (d) and the 2013

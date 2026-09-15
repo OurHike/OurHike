@@ -139,25 +139,37 @@ export const NYC_DOT_CREDIT = 'New York City Department of Transportation'
  * one string map/style.ts declares on both sources that draw it (#1432).
  *
  * ONE HOME, because there were two copies and adding New York City would have
- * made it a third. style.ts sets this on NEARBY_TRAILS_SOURCE_ID and again on
- * NETWORK_OVERVIEW_SOURCE_ID - the tiles and the corridor-view sketch of the
- * same network - and its own comment already said the match between them "is a
- * licence condition rather than tidiness". A condition maintained by two
- * hand-written strings agreeing is a condition one careless edit away from
- * being false, which is the failure this module's header is about.
+ * made it a third. style.ts sets the joined form on NEARBY_TRAILS_SOURCE_ID
+ * and again on NETWORK_OVERVIEW_SOURCE_ID - the tiles and the corridor-view
+ * sketch of the same network - and its own comment already said the match
+ * between them "is a licence condition rather than tidiness". A condition
+ * maintained by hand-written strings agreeing is a condition one careless
+ * edit away from being false, which is the failure this module's header is
+ * about.
+ *
+ * IT IS THE ARRAY THAT IS THE HOME, not the joined string, and that is the
+ * correction rather than the original idea: the first version of this
+ * constant was a joined string while mapCredits() below pushed the same six
+ * names again as arguments, so "one home" described two lists and a reader
+ * checking the claim would have found it false. mapCredits() spreads this
+ * array, so a seventh steward is added in exactly one place and drift is
+ * impossible rather than merely detectable.
  *
  * The ORDER is mapCredits()' order, and the membership is the same list for
  * the same reason: the artifact is all-or-nothing, so any steward in it is
  * every steward in it.
  */
-export const NEARBY_TRAILS_ATTRIBUTION = [
+export const NEARBY_TRAILS_STEWARDS = [
   OPRHP_CREDIT,
   NYNJTC_CREDIT,
   MOHONK_CREDIT,
   DEC_CREDIT,
   NYC_PARKS_CREDIT,
   NYC_DOT_CREDIT,
-].join(' · ')
+] as const
+
+/** The same list as the one string map/style.ts sets on both trail sources. */
+export const NEARBY_TRAILS_ATTRIBUTION = NEARBY_TRAILS_STEWARDS.join(' · ')
 
 /** OpenFreeMap's own terms for hosting the vector sheet - see liveTopo.ts. */
 export const OPENFREEMAP_CREDIT = 'OpenFreeMap © OpenMapTiles'
@@ -236,15 +248,7 @@ export function mapCredits({
   // source that is not on screen - and the fix if it ever matters is the
   // stewards artifact, which lib/stewards.ts already fetches and which lists
   // exactly the sources THIS release ships.
-  if (hasNearbyTrails)
-    credits.push(
-      OPRHP_CREDIT,
-      NYNJTC_CREDIT,
-      MOHONK_CREDIT,
-      DEC_CREDIT,
-      NYC_PARKS_CREDIT,
-      NYC_DOT_CREDIT,
-    )
+  if (hasNearbyTrails) credits.push(...NEARBY_TRAILS_STEWARDS)
 
   if (background === 'hiking_topo_live') {
     credits.push(OPENFREEMAP_CREDIT, ELEVATION_ATTRIBUTION)

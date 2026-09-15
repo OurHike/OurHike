@@ -112,15 +112,17 @@ EXTRA_LAYERS = [("opentrail", "at", "opentrail_at.geojson")]
 #: point is to name the clearinghouse. The other new provider, `USFS`, needs
 #: no row: one word, so it slugs to `usfs` on its own.
 #:
-#: `NYC Parks` and `NYC DOT` are #1432's registration, and are the case this
-#: constant exists for rather than a formality: BOTH begin with `NYC`, so the
-#: first-word fallback that once named two New York State agencies `nys`
-#: would now name two New York City agencies `nyc` - the same collision, one
-#: level of government down, and this time between two providers whose layers
-#: plausibly cover the same park. `nyc_parks` and `nyc_dot` keep the city in
-#: the name because in this project's table space `parks` and `dot` alone
-#: would say neither which city nor, for `parks`, which of several agencies
-#: that word already describes.
+#: `NYC Parks` and `NYC DOT` are #1432's registration. Both are two words, so
+#: `_provider_slug` REFUSES them without a row here - it raises rather than
+#: falling back to the first word, which is the lesson the `nys` collision
+#: taught and which this constant exists to keep. (An earlier version of this
+#: comment said the fallback "would now name two New York City agencies
+#: `nyc`"; it would not, because there is no such fallback any more. The rows
+#: are still needed - the load would have failed loudly at
+#: `registered_layers()` without them, not collided silently.) `nyc_parks`
+#: and `nyc_dot` keep the city in the name because in this project's table
+#: space `parks` and `dot` alone would say neither which city nor, for
+#: `parks`, which of several agencies that word already describes.
 PROVIDER_SLUGS = {
     "NYS OPRHP": "oprhp",
     "NYS DEC": "dec",

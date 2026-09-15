@@ -1629,3 +1629,80 @@ def test_a_network_with_no_shared_ground_still_cuts_its_tiles(tmp_path, monkeypa
     _, metadata = _tiles_header(manifest)
     (layer,) = metadata["vector_layers"]
     assert not {"concurrent_with", "concurrent_source", "concurrent_side"} & set(layer["fields"])
+
+
+# --- A steward's placeholder is not a name (#1432) -------------------------
+
+
+def _nyc_source(**extra):
+    return {
+        "key": "nyc_parks_trails",
+        "name_field": "trail_name",
+        "name_placeholders": ["Unnamed Official Trail", "Name TBD", "TBD"],
+        **extra,
+    }
+
+
+def test_a_registered_placeholder_reads_as_no_name():
+    """NYC Parks fills `trail_name` on every row, and on 53% of them what it
+    fills it with is a placeholder. Reading those as names is a display
+    outrunning its source, and at scale: measured live, 'Unnamed Official
+    Trail' totals 128.7 miles, which clears NAMED_TRAIL_THRESHOLD_MILES, so
+    the overview shipped ONE feature named 'Unnamed Official Trail' marked
+    `through_route: true` and drawn at through-route weight across five
+    boroughs beside the Appalachian Trail.
+    """
+    source = _nyc_source()
+
+    assert ex.declared_name(source, {"trail_name": "Blue Trail"}) == "Blue Trail"
+    assert ex.declared_name(source, {"trail_name": "Unnamed Official Trail"}) is None
+    assert ex.declared_name(source, {"trail_name": "Name TBD"}) is None
+    assert ex.declared_name(source, {"trail_name": "TBD"}) is None
+
+
+def test_placeholder_matching_ignores_case_and_surrounding_space():
+    """A placeholder is prose typed by whoever surveyed the segment, not a
+    coded domain, so it arrives however it was typed."""
+    source = _nyc_source()
+
+    assert ex.declared_name(source, {"trail_name": "  unnamed official trail "}) is None
+    assert ex.declared_name(source, {"trail_name": "TBD "}) is None
+
+
+def test_a_source_with_no_placeholders_keeps_every_name_it_is_given():
+    """The default must not change for the nine sources that declare none -
+    'Unnamed Official Trail' is NYC Parks' idiom, not a global stop-list, and
+    another steward could legitimately name a trail something this one uses as
+    a placeholder."""
+    plain = {"key": "mohonk_trails", "name_field": "Name"}
+
+    assert ex.declared_name(plain, {"Name": "Unnamed Official Trail"}) == "Unnamed Official Trail"
+    assert ex.declared_name(plain, {"Name": "Undercliff Carriage Road"}) == "Undercliff Carriage Road"
+
+
+def test_an_absent_name_stays_absent():
+    assert ex.declared_name(_nyc_source(), {}) is None
+    assert ex.declared_name(_nyc_source(), {"trail_name": None}) is None
+
+
+def test_build_records_publishes_no_name_for_a_placeholder_row():
+    """End to end through the exporter, since that is where the overview and
+    every map label read it from."""
+    features = [
+        {
+            "type": "Feature",
+            "id": "row-a",
+            "properties": {"trail_name": "Blue Trail"},
+            "geometry": {"type": "LineString", "coordinates": [[-73.89, 40.89], [-73.88, 40.90]]},
+        },
+        {
+            "type": "Feature",
+            "id": "row-b",
+            "properties": {"trail_name": "Unnamed Official Trail"},
+            "geometry": {"type": "LineString", "coordinates": [[-73.87, 40.91], [-73.86, 40.92]]},
+        },
+    ]
+
+    records, _ = ex.build_records(_nyc_source(blaze_default="Unknown"), features, {})
+
+    assert [r["name"] for r in records] == ["Blue Trail", None]

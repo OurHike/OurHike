@@ -851,9 +851,11 @@
       "licence": "See nyc_licence below. NYC's terms are STATED and statutory - Local Law 11 of 2012 (Admin Code 23-502(d)) makes the city's published data sets available without registration requirement, license requirement, or usage restrictions - which makes this the first entry in the registry that needs neither an ask nor an authorisation to stand on. The maintainer's authorisation of 2026-09-15 is recorded alongside it for the attribution rider that block describes, not for the right to use the data.",
       "attribution": "New York City Department of Parks and Recreation",
       "blaze_default": "Unknown",
+      "foot_comment": "NO FOOT FILTER, BECAUSE THERE IS NO USE COLUMN TO FILTER ON, and that is a widening of export_nearby_trails.py's keep-everything default worth stating rather than inheriting. That default is grounded in the sentence 'a source with no use flags at all keeps every row, because NYNJTC and Mohonk publish hiking trails and nothing else' - and NYC Parks is NOT that: measured live 2026-09-15, 198 rows are bridle-named and 2,174 of 7,059 are `Class V : Fully Developed`, which is a paved park path rather than a trail. The layer publishes no FOOT/BIKE/HORSE matrix of any kind, so there is nothing to allowlist; what it publishes instead is `class` and `surface`, which describe how developed a path is and not who may use it. Everything here is walkable on foot - a paved park path and a bridle path both are - so keeping every row is right, and it is right for a different reason than the default's. The maintainer's 2026-08-18 decision ('It's OurHike, not OurBike') bites on per-use flags and finds none here. What would settle it properly is NYC Parks publishing a use column, which they do not.",
       "blaze_comment": "REGISTERED AS THE NEUTRAL, AND THE COLOUR IS NOT LOST SO MUCH AS NEVER DECLARED. This layer has no blaze field. What it has is `trailmarkersinstalled`, a plain Yes/No - 4,017 against 3,042, measured live 2026-09-15 - which says WHETHER a marker is nailed to the trees and never which colour it is. The colour is instead inside the NAME: `trail_name` reads 'Blue Trail' 549 times, 'Orange Trail' 326, 'White Trail' 251, 'Red Trail' 215, 'Yellow Trail' 153. Parsing a blaze out of those strings would be easy and is deliberately NOT done here, for the reason nynjtc_highlands_trail registers its absent blaze as the neutral rather than as the teal the trail wears on the ground: a colour this project inferred from a name is this project's claim, not NYC Parks', and a hiker matching a painted blaze against a drawn one cannot tell which of those they are looking at. The honest version of that inference, if it is ever wanted, is a reference/blaze_mapping.json table keyed on the exact name strings and reviewed row by row - the shape the other sources' tables already have - and not a regular expression in an exporter. @unvalidated either way: nobody has checked a single one of those 1,494 colour-named segments against a marker in the field.",
       "name_field": "trail_name",
-      "name_comment": "HALF THIS LAYER HAS NO NAME, and it is worth knowing before a screen tries to print one. Measured live 2026-09-15 across 7,059 rows: 'Unnamed Official Trail' 3,448, 'Name TBD' 239, 'TBD' 88 - 3,775 rows, 53%, whose name field carries a placeholder rather than a name. `park_name` is populated on every row and is the useful label for those (Pelham Bay Park, Van Cortlandt Park, Prospect Park), which is a display decision for features/NEARBY_TRAILS.md rather than a registry one, recorded here because the count is the sort of thing a caller assumes away.",
+      "name_comment": "HALF THIS LAYER HAS NO NAME, and it is worth knowing before a screen tries to print one. Measured live 2026-09-15 across 7,059 rows: 'Unnamed Official Trail' 3,448, 'Name TBD' 239, 'TBD' 88 - 3,775 rows, 53%, whose name field carries a placeholder rather than a name. `park_name` is populated on every row and is the useful label for those (Pelham Bay Park, Van Cortlandt Park, Prospect Park), which is a display decision for features/NEARBY_TRAILS.md rather than a registry one. ACTED ON rather than merely recorded, which is what this comment said and did not do when it was first written: `name_placeholders` below makes export_nearby_trails.py read these three values as an ABSENT name. Without it, measured on the live layer, 'Unnamed Official Trail' totals 128.7 miles - past NAMED_TRAIL_THRESHOLD_MILES - so it shipped one overview feature named 'Unnamed Official Trail' with through_route true, drawn at through-route weight across five boroughs beside the Appalachian Trail and labelled that on the map.",
+      "name_placeholders": ["Unnamed Official Trail", "Name TBD", "TBD"],
       "may_be_empty": false,
       "discovered_via": "https://github.com/OurHike/OurHike/issues/1432, from the maintainer's own ask (2026-09-15: 'I live in NYC and will be able to test the app easiest here'). NYC_SOURCE_SURVEY.md surveyed everything within a day of the city and had no row for the city itself; reference/nynjtc_hike_routes.json already carried the hole as a held hike - 'Van Cortlandt Park, NYC Parks: only one Old Croton Aqueduct edge within 2.5 km; no source registered for NYC Parks'. Found by searching the NYC Open Data catalogue API (api.us.socrata.com/api/catalog/v1) rather than by guessing a URL. Registered by hand: discover_sources.py walks ATC's Experience Builder app, and this is not an ArcGIS layer at all.",
       "discovered_date": "2026-09-15",
@@ -885,7 +887,7 @@
       "may_be_empty": false,
       "discovered_via": "https://github.com/OurHike/OurHike/issues/1432, alongside nyc_parks_trails - see that entry. Found in the same NYC Open Data catalogue search; the greenway columns (grnwy, gwsystem, gwyjuris) are what made a bicycle dataset worth a second look rather than a skip.",
       "discovered_date": "2026-09-15",
-      "notes": "3,039 line segments after the `where` filter, out of 29,695 in the dataset - measured live 2026-09-15, all MultiLineString in WGS84, not one null geometry, and the filtered set returns in a single request. rowsUpdatedAt 2026-07-24. Fields kept include street/boro/gwsystem/gwsys2/gwyjuris/facilitycl/instdate/onoffst/status/grnwy. `gwyjuris` says who actually owns the path, across the whole current greenway set: DOT 3,667, DPR 2,095, NYSDOT 158, NPS 87, RIOC 81, MTA 63, NYSPRHP 45, GIPEC 39 - so a tenth of it is federal or state ground rather than the city's, and the NPS rows are Gateway National Recreation Area. WHY NOT THE ARCGIS COPY, since one exists and the existing fetcher could have read it with no new code: NYC DCP mirrors this dataset at services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/Bike_Routes/FeatureServer/0, and probing it live 2026-09-15 gives editingInfo.dataLastEditDate 2017-03-08, 13,953 rows against the portal's 29,695, and a field list with NO grnwy, gwsystem, gwyjuris, status or ret_date - so the mirror is nine years stale AND structurally incapable of expressing the filter above, which is the difference between registering a greenway layer and registering every bike lane in New York as a walking path. That is NYC_SOURCE_SURVEY.md section 9's 'data.ny.gov copies - precedent, not a source' meeting a second city, and it is what made lib/socrata.py worth writing instead. OVERLAP WITH nyc_parks_trails IS EXPECTED AND UNMEASURED: 2,095 of the current greenway segments are DPR's, on park land the other layer also covers, so the same tread is plausibly drawn twice from two city agencies. Nobody has run the join. That is the concurrent-sources case NYC_SOURCE_SURVEY.md section 8's overlap table already collects for other ground, and it is recorded as open rather than assumed away.",
+      "notes": "3,039 line segments come back after the `where` filter, out of 29,695 in the dataset, and 3,030 of them SHIP - measured live 2026-09-15 by running the fetched file through export_nearby_trails.build_records. The nine-row gap is the correction worth carrying rather than the round number: no row has a null geometry, which is what this note first said and is true, but nine carry a geometry OBJECT whose coordinates are empty, and keep_reason drops those as `no geometry`. A sentence that is literally true and still hides nine rows is the shape of claim CLAUDE.md asks this file to avoid. All the rest are MultiLineString in WGS84, and the filtered set returns in a single request. rowsUpdatedAt 2026-07-24. Fields kept include street/boro/gwsystem/gwsys2/gwyjuris/facilitycl/instdate/onoffst/status/grnwy. `gwyjuris` says who actually owns the path, across the whole current greenway set: DOT 3,667, DPR 2,095, NYSDOT 158, NPS 87, RIOC 81, MTA 63, NYSPRHP 45, GIPEC 39 - so a tenth of it is federal or state ground rather than the city's, and the NPS rows are Gateway National Recreation Area. WHY NOT THE ARCGIS COPY, since one exists and the existing fetcher could have read it with no new code: NYC DCP mirrors this dataset at services5.arcgis.com/GfwWNkhOj9bNBqoJ/arcgis/rest/services/Bike_Routes/FeatureServer/0, and probing it live 2026-09-15 gives editingInfo.dataLastEditDate 2017-03-08, 13,953 rows against the portal's 29,695, and a field list with NO grnwy, gwsystem, gwyjuris, status or ret_date - so the mirror is nine years stale AND structurally incapable of expressing the filter above, which is the difference between registering a greenway layer and registering every bike lane in New York as a walking path. That is NYC_SOURCE_SURVEY.md section 9's 'data.ny.gov copies - precedent, not a source' meeting a second city, and it is what made lib/socrata.py worth writing instead. OVERLAP WITH nyc_parks_trails IS EXPECTED AND UNMEASURED: 2,095 of the current greenway segments are DPR's, on park land the other layer also covers, so the same tread is plausibly drawn twice from two city agencies. Nobody has run the join. That is the concurrent-sources case NYC_SOURCE_SURVEY.md section 8's overlap table already collects for other ground, and it is recorded as open rather than assumed away.",
       "reaches_hikers": true,
       "licence_basis": "stated_by_org"
     }
@@ -1989,90 +1991,90 @@
           }
         }
       },
-    "NYC Parks": {
-      "probed_date": "2026-09-15",
-      "note": "Registered for https://github.com/OurHike/OurHike/issues/1432 (the Parks Trails line layer only, shipping), and every verdict is 'unprobed' - a real answer recorded as one rather than left blank. The registered dataset is lines and carries no points; what else the city publishes was not surveyed.",
-      "types": {
-        "shelter": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "campsite": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "water": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings. WATER IS THE ONE WORTH SAYING MORE ABOUT, because the evidence bar rises if the answer is yes (CLAUDE.md's four ways, and the OPRHP half of NYC_SOURCE_SURVEY.md section 10(g) where the answer WAS yes). A city park's drinking fountains are exactly the shape of thing NYC Parks would publish and a hiker would want. Nobody has checked, and no water ships from either registered layer."
-        },
-        "resupply": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "crossing": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "viewpoint": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "parking": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "privy": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
-        },
-        "trailhead": {
-          "status": "unprobed",
-          "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+      "NYC Parks": {
+        "probed_date": "2026-09-15",
+        "note": "Registered for https://github.com/OurHike/OurHike/issues/1432 (the Parks Trails line layer only, shipping), and every verdict is 'unprobed' - a real answer recorded as one rather than left blank. The registered dataset is lines and carries no points; what else the city publishes was not surveyed.",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings. WATER IS THE ONE WORTH SAYING MORE ABOUT, because the evidence bar rises if the answer is yes (CLAUDE.md's four ways, and the OPRHP half of NYC_SOURCE_SURVEY.md section 10(g) where the answer WAS yes). A city park's drinking fountains are exactly the shape of thing NYC Parks would publish and a hiker would want. Nobody has checked, and no water ships from either registered layer."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "crossing": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "UNPROBED rather than absent, on the NJDEP and NH GRANIT precedent: #1432's scope was the two WALKING-PATH datasets, and neither carries a point of any kind. NYC Parks publishes plenty that is POI-shaped on the same portal and none of it was examined - the catalogue search that found Parks Trails also returned 'NYC Parks Active and Passive Recreation', a 'Directory of Hiking Trails', a horseback-riding directory and the 'New York City Water Trail' launch sites, all seen as titles on 2026-09-15 and nothing more. Registering the org obliges an answer to the POI question, and the answer today is that nobody has looked. One afternoon on the portal would turn most of these rows into findings."
+          }
+        }
+      },
+      "NYC DOT": {
+        "probed_date": "2026-09-15",
+        "note": "Registered for https://github.com/OurHike/OurHike/issues/1432 (the off-street greenway subset of the bike network, shipping). Lines only, no point layer in the registered dataset, and no POI survey done.",
+        "types": {
+          "shelter": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "campsite": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "water": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15. WATER IS THE ONE WORTH SAYING MORE ABOUT, because the evidence bar rises if the answer is yes (CLAUDE.md's four ways, and the OPRHP half of NYC_SOURCE_SURVEY.md section 10(g) where the answer WAS yes). A city park's drinking fountains are exactly the shape of thing NYC Parks would publish and a hiker would want. Nobody has checked, and no water ships from either registered layer."
+          },
+          "resupply": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "crossing": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "viewpoint": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "parking": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "privy": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          },
+          "trailhead": {
+            "status": "unprobed",
+            "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
+          }
         }
       }
-    },
-    "NYC DOT": {
-      "probed_date": "2026-09-15",
-      "note": "Registered for https://github.com/OurHike/OurHike/issues/1432 (the off-street greenway subset of the bike network, shipping). Lines only, no point layer in the registered dataset, and no POI survey done.",
-      "types": {
-        "shelter": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "campsite": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "water": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15. WATER IS THE ONE WORTH SAYING MORE ABOUT, because the evidence bar rises if the answer is yes (CLAUDE.md's four ways, and the OPRHP half of NYC_SOURCE_SURVEY.md section 10(g) where the answer WAS yes). A city park's drinking fountains are exactly the shape of thing NYC Parks would publish and a hiker would want. Nobody has checked, and no water ships from either registered layer."
-        },
-        "resupply": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "crossing": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "viewpoint": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "parking": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "privy": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        },
-        "trailhead": {
-          "status": "unprobed",
-          "note": "UNPROBED, and likely to stay thin: NYC DOT's registered dataset is a line network of bicycle facilities with no point layer in it at all. What DOT plausibly holds elsewhere on the portal - bike parking, for instance - was not examined on 2026-09-15."
-        }
-      }
-    }
     }
   },
   "dec_water_holdback": "WHY NO WATER SHIPS FROM DEC, recorded beside the sources rather than only in a survey, because the next person to look at dec_backcountry_features will see 'SPRING' and 'WELL' in its ASSET column and reasonably wonder (#1097; the evidence is POI_COVERAGE_SURVEY.md \u00a73, the verdict is poi_coverage.orgs['NYS DEC'].types.water, and tests/test_poi_coverage.py pins it). Measured live 2026-08-27: DEC's only plumbed-water asset type is 'WATER SUPPLY SYSTEM', 23 features, and ZERO of them are flagged PUBLICUSE 'Y' - DEC's own answer is that none of it is for visitors. Sampling 14 found real spigots beside a 'Water Storage Tank', an 'Underground Water Line', and a drilled well whose own NOTES read 'Not Approved For Human Consum[ption]'. The 350 features whose names merely SOUND like water are worse and are also all PUBLICUSE 'N': 207 'WATERHOLE' are fire-and-wildlife impoundments ('Wetland Pool', 'Made by Tioga County SWCD in 2016'), 97 'WELL' are dominated by NATURAL GAS WELLS, 4 'CISTERN' are CCC-era fire cisterns, and 19 'SPRING' include one 'Unnoffical Unsanctioned Traditional Public Wa[ter]' and one 'Untested'. A pipeline matching on the word 'water' would have published 207 fire ponds and 97 gas wells as places to fill a bottle. The maintainer's decision on reading this, 2026-08-27: 'Lets not use water from DEC'. Reopening it should mean NEW DATA FROM DEC - a layer they publish, a flag that flips - and never a new reading of these same 23 rows.",
@@ -2108,7 +2110,8 @@
   "nyc_licence": {
     "_comment": "The basis on which nyc_parks_trails and nyc_dot_greenways above may be fetched AND republished to hikers, and it is the FIRST STATUTORY GRANT IN THIS REGISTRY. Every other non-ATC source here is unstated (dec_licence, nynjtc_licence, mohonk_licence), conditioned (njdep_licence) or restricted (oprhp_licence's non-commercial clause, which is still an open ask). New York City's is none of those. NYC Local Law 11 of 2012, codified at Administrative Code 23-502(d), requires that a published data set be available 'without registration requirement, license requirement, or usage restrictions'. That is a grant made BY STATUTE TO EVERYONE rather than a permission granted to this project - which is why it needs no ask, cannot be withdrawn by an agency changing its mind about a portal field, and does not have to be re-confirmed in its own name by a club that inherits this project. WHERE IT IS NOT READ FROM, said because this file has been wrong about a licence once before by reading the wrong field: not from the dataset pages, which carry no licence at all - `license` is null and `licenseId` absent on both vjbm-hsyr and mzxg-pwib, verified live 2026-09-15. Their silence here means the statute applies, and is the opposite of what the same silence means on DEC's or Mohonk's services, where nothing stands behind it. The City's own published standards are what quote the law and add the two riders below.",
     "author": "New York City Department of Parks and Recreation",
-    "also_covers": "New York City Department of Transportation. One city, two agencies, one statute - recorded as a single block rather than two because the terms are not the agencies' to set and are identical by law. export_sources.py matches a block to an entry on `author` against `steward`, which does not match for NYC DOT, so nyc_dot_greenways names this block explicitly in its own `licence` string instead.",
+    "also_covers": ["New York City Department of Transportation"],
+    "also_covers_comment": "One city, two agencies, one statute - recorded as a single block rather than two because the terms are not the agencies' to set and are identical by law. THIS FIELD IS READ, and saying so matters: export_sources.py matches a block to a steward on `author`, and NYC DOT is not this block's author, so before `also_covers` was a list the exporter honoured, NYC DOT shipped to hikers with `licence: null` while this block sat in the registry looking correct. That is the exact failure usdm_licence's `author_note` records - 'the block sits in the registry looking correct, the exporter emits null, the card renders attribution alone, and every test passes' - and prose here naming the other agency did nothing to stop it. tests/test_export_sources.py pins both stewards' licence text now.",
     "license": "NYC Local Law 11 of 2012, Administrative Code 23-502(d) - published data sets are available without registration requirement, license requirement, or usage restrictions",
     "terms_verbatim": "data sets must be available without registration requirement, license requirement, or usage restrictions, except as provided below",
     "terms_source": "NYC Open Data Technical Standards Manual, 'Public policies' (https://cityofnewyork.github.io/opendatatsm/publicpolicies.html), the City's own published standards, which quote Local Law 11 of 2012 and state the reuse conditions below; read 2026-09-15. The statute itself is NYC Administrative Code 23-502(d) and 23-504. Both dataset pages carry no licence field of their own, read live the same day.",

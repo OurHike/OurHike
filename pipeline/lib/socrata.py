@@ -41,6 +41,21 @@ repeat one row and skip another - the same page-boundary corruption
 lib/arcgis.py's tests cover, arriving through a different door. `:id` is
 Socrata's internal row identifier, present on every dataset and stable
 across the paging of one query.
+
+`:id` IS ALSO THE FEATURE'S IDENTITY, AND ASKING FOR IT IS NOT OPTIONAL.
+A Socrata GeoJSON feature carries no `id` member and no id-shaped property
+of its own - verified live 2026-09-15 on both NYC datasets, whose feature
+keys are exactly `type`/`geometry`/`properties`. `lib/feature_id.py` falls
+back to `generated-{index}` for such a feature, which is an id that MOVES
+WHEN THE ROW ORDER MOVES: NYC Parks inserting one segment would renumber
+every later one, and everything keyed on a line id - `map/lineTaps.ts`'s
+feature identity, the `{key}:{id}` join, any note anchored to a line -
+would silently point at a different trail after the next publish.
+`export_places.py` names that hazard in as many words and refuses the same
+fallback. So every query asks `$select=*,:id` and `fetch_dataset_geojson`
+promotes the result onto the feature's `id` member, where feature_id.py
+already looks. Measured on the first fetch that did it: 10,089 warnings
+became none.
 """
 
 from __future__ import annotations
@@ -94,6 +109,9 @@ def fetch_dataset_geojson(
     offset = 0
     while True:
         params = {
+            # Every column, plus Socrata's stable row identifier - see the
+            # module docstring on why a positional id is not acceptable here.
+            "$select": "*,:id",
             "$limit": records,
             "$offset": offset,
             # See the module docstring: without this, $offset is not safe.
@@ -105,9 +123,31 @@ def fetch_dataset_geojson(
         batch = resp.json().get("features", [])
         if not batch:
             break
-        features.extend(batch)
+        features.extend(_with_row_ids(batch))
         offset += len(batch)
     return {"type": "FeatureCollection", "features": features}
+
+
+def _with_row_ids(features: list[dict]) -> list[dict]:
+    """Move Socrata's `:id` from the properties onto the feature's `id`.
+
+    `$select=*,:id` returns the row identifier as a PROPERTY named `:id`
+    (`"row-6p7c_bcx9.in7u"`), and `lib/feature_id.py` looks for a top-level
+    `id` member. Promoting it here rather than teaching feature_id.py a
+    third place to look keeps that module's two-place rule intact, and keeps
+    the leading-colon key - which is Socrata's syntax, not a column anybody
+    models on - out of the warehouse and out of every exported property bag.
+
+    A feature that somehow arrives without one is left exactly as it is, so
+    the loud `generated-{index}` warning still fires rather than being
+    papered over: that warning is the signal that this promotion stopped
+    working.
+    """
+    for feature in features:
+        row_id = (feature.get("properties") or {}).pop(":id", None)
+        if row_id is not None and feature.get("id") is None:
+            feature["id"] = row_id
+    return features
 
 
 def fetch_dataset_to_file(

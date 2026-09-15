@@ -81,7 +81,7 @@ from pathlib import Path
 
 from lib.arcgis import fetch_layer_to_file, get_layer_edit_date, get_layer_max_field, get_service_etag
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.socrata import fetch_dataset_to_file, get_dataset_updated_at
+from lib.socrata import dataset_url, fetch_dataset_to_file, get_dataset_updated_at
 from lib.source_registry import external_sources, is_socrata_layer, load_registry
 
 ROOT = Path(__file__).parent
@@ -124,7 +124,21 @@ def current_marker(src: dict) -> tuple[dict | None, str]:
             return None, f"couldn't check rowsUpdatedAt ({error})"
         if updated is None:
             return None, "the portal answered no rowsUpdatedAt"
-        return {"kind": ROWS_UPDATED_MARKER, "value": str(updated)}, "rowsUpdatedAt"
+        # THE FILTER IS PART OF THE MARKER, not just the timestamp, because
+        # for a Socrata entry the registry decides what is fetched and the
+        # portal only decides what exists. `where` is applied server-side, so
+        # tightening it - say excluding a value found to route walkers onto a
+        # highway shoulder - changes the file completely while the dataset's
+        # own rowsUpdatedAt does not move. Without this, the next run would
+        # find the marker unchanged and the cached file present (the publish
+        # workflow caches data/raw/external), print "up to date, skipping",
+        # and go on shipping exactly the rows the new clause was written to
+        # remove - silently, on the clause nyc_dot_greenways calls a safety
+        # property.
+        return (
+            {"kind": ROWS_UPDATED_MARKER, "value": str(updated), "where": src.get("where")},
+            "rowsUpdatedAt/filter",
+        )
 
     try:
         edit_date = get_layer_edit_date(src["url"])
@@ -190,9 +204,17 @@ def fetch_one(src: dict, out_path: Path) -> int:
 
 
 def source_location(src: dict) -> str:
-    """Where an entry's bytes come from, for the log line."""
+    """Where an entry's bytes come from - the log line and the manifest.
+
+    Asks lib/socrata.py for the Socrata address rather than rebuilding it:
+    that module declares itself the one home for assembling a domain and a
+    dataset id into a URL, and a second spelling here produced a schemeless,
+    extension-less string sitting in the manifest's `url` beside ArcGIS
+    entries whose `url` is a fetchable https service URL. One field, two
+    shapes, is what any future reader of that manifest trips over.
+    """
     if is_socrata_layer(src):
-        return f"{src['domain']}/resource/{src['dataset_id']}"
+        return dataset_url(src["domain"], src["dataset_id"])
     return src["url"]
 
 

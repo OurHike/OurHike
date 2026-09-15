@@ -132,6 +132,51 @@ def test_fetch_dataset_geojson_sends_no_filter_when_none_is_registered(requests_
     assert "$where" not in requests_mock.last_request.qs
 
 
+def test_fetch_dataset_geojson_asks_for_the_row_id_and_promotes_it(requests_mock):
+    """A Socrata feature carries no `id` member, so without this every NYC
+    segment falls onto lib/feature_id.py's `generated-{index}` - an id that
+    renumbers when rows are inserted, which silently re-points anything keyed
+    on a line id after the next publish. The query must ask for `:id`, and the
+    result must land where feature_id.py looks."""
+    requests_mock.get(
+        RESOURCE_URL,
+        [
+            {
+                "json": {
+                    "type": "FeatureCollection",
+                    "features": [{"type": "Feature", "properties": {"n": 1, ":id": "row-6p7c_bcx9.in7u"}, "geometry": None}],
+                }
+            },
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fc = fetch_dataset_geojson(DOMAIN, DATASET)
+    feature = fc["features"][0]
+
+    assert requests_mock.request_history[0].qs["$select"] == ["*,:id"]
+    assert feature["id"] == "row-6p7c_bcx9.in7u"
+    # The leading-colon key is Socrata's syntax, not a column - it must not
+    # reach the warehouse or any exported property bag.
+    assert ":id" not in feature["properties"]
+
+
+def test_a_feature_with_no_row_id_is_left_alone(requests_mock):
+    """The loud generated-id warning is the signal that the promotion above
+    stopped working, so it must still be reachable rather than papered over."""
+    requests_mock.get(
+        RESOURCE_URL,
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"n": 1}, "geometry": None}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    feature = fetch_dataset_geojson(DOMAIN, DATASET)["features"][0]
+
+    assert "id" not in feature
+
+
 def test_fetch_dataset_to_file_writes_geojson_and_counts(requests_mock, tmp_path):
     requests_mock.get(
         RESOURCE_URL,

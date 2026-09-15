@@ -193,6 +193,14 @@ def _block(registry: dict, provider_sources: list[dict], suffix: str) -> dict:
     whose sources each carry their own licence, and for every steward that has
     not been asked about support.
 
+    `also_covers` IS THE SECOND AUTHOR LIST, for a block whose terms govern
+    more than one steward (#1432). `nyc_licence` is the first: New York City's
+    data is open by statute, so the terms belong to the City rather than to
+    NYC Parks or NYC DOT, and writing the block twice would be two copies of
+    one law that could drift apart. Without this clause the block joined only
+    its `author`, and NYC DOT shipped to hikers with `licence: null` - the
+    failure the next paragraph describes, reached by a different route.
+
     THE FAILURE MODE THIS MATCHING HAS: an author string that matches nothing
     is silent here and correct-looking in the registry. It happened - see this
     module's docstring on `usdm_licence` - so
@@ -205,7 +213,8 @@ def _block(registry: dict, provider_sources: list[dict], suffix: str) -> dict:
     for key, value in registry.items():
         if not key.endswith(suffix) or not isinstance(value, dict):
             continue
-        if value.get("author") in stewards:
+        authors = {value.get("author"), *(value.get("also_covers") or [])}
+        if authors & stewards:
             return value
     return {}
 

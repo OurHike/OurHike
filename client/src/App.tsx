@@ -7285,6 +7285,29 @@ function App() {
   }, [reportAiming, trailIndex])
 
   /**
+   * THE PICK DIES WITH THE FORM IT BELONGS TO.
+   *
+   * `reportCrosshairOut` below makes the bar underivable without a form, which
+   * is what stops it being drawn over nothing. It does NOT stop the FLAG
+   * outliving the form, and that difference stranded the whole flow: aim, then
+   * leave by a tab rather than by Keep or Cancel, and `reportPointOnMap` stayed
+   * true for the rest of the session - so every later form opened stood aside,
+   * hidden behind a crosshair on a tab the hiker was not looking at. Found by
+   * review, and asserted now in App.reportPlace.test.tsx.
+   *
+   * Keyed on the form alone and deliberately NOT on the tab. `handleReportChangeLocation`
+   * sets this flag and selects the map in one handler, so both land in one
+   * render - but keying the reset on the tab as well would still be one
+   * ordering assumption away from disarming the pick the hiker just asked for.
+   * The tab belongs in the derivation, which is a render and cannot race.
+   */
+  useEffect(() => {
+    if (reporting?.step === 'form') return
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [reporting?.step])
+
+  /**
    * Open the six-tile report window (#1438, D15).
    *
    * `useCallback` rather than the inline arrow the other two doors use, and
@@ -8834,7 +8857,8 @@ function App() {
    */
   const reportFormOpen = reportFormNode !== null
   /**
-   * The crosshair is out AND there is a form for it to come back to.
+   * The crosshair is out, there is a form for it to come back to, AND the map
+   * is the screen it would be drawn on.
    *
    * Derived rather than reset, which is the same argument the photo tiles
    * make one file over: `reportPointOnMap` left true with no form behind it
@@ -8842,8 +8866,21 @@ function App() {
    * nobody, and the way to make that impossible is to make it underivable
    * rather than to remember to clear a flag on every path that closes the
    * form.
+   *
+   * **THE TAB IS THE THIRD TERM BECAUSE THE FIRST TWO WERE NOT ENOUGH**, and
+   * the gap is worth keeping written down: the bar lives in the map screen's
+   * own sheet slot, so on any other tab it is in the tree and on nobody's
+   * screen - while the form, standing aside for it, is `inert` and
+   * `aria-hidden`. A hiker who aimed and then tapped Today got a Today with
+   * no form, no bar and no way back to either. Both premises held; the
+   * hiker just could not see the thing either of them was about.
+   *
+   * So the rule the two of them were reaching for, stated properly: the
+   * crosshair exists only where a hiker can both see it and answer it. The
+   * effect beside `handleKeepReportPoint` is the other half - this keeps the
+   * render honest, that keeps the flag from outliving its form.
    */
-  const reportCrosshairOut = reportPointOnMap && reportFormOpen
+  const reportCrosshairOut = reportPointOnMap && reportFormOpen && activeTab === 'map'
   const reportFormHidesMap = reportFormOpen && !reportCrosshairOut
 
   const hikeWindow = hikeWindowOpen ? (

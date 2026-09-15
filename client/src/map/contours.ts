@@ -28,8 +28,9 @@ import {
   type ContourUnits,
   type TerrainUrls,
 } from './terrain'
-import { demGetTile } from './demTiles'
+import { demGetTile, setDemCells } from './demTiles'
 import { WorkerDemManager } from './demRpc'
+import { attachDemCells } from './demCells'
 import { whenStyleReady } from './styleReady'
 
 /**
@@ -88,6 +89,23 @@ function demSource(): InstanceType<typeof mlcontour.DemSource> {
   }
   created.setupMaplibre({ addProtocol } as Parameters<typeof created.setupMaplibre>[0])
   source = created
+
+  // Where the shell's held DEM cells land (#1475), and their replay: this
+  // registers the deliverer and hands over anything already said, which is
+  // the ordinary case because the index is fetched at launch and the map is
+  // built later. The state lives in map/demCells.ts rather than here for a
+  // reason worth knowing before moving it back: THIS module imports
+  // `addProtocol` from maplibre-gl as a value, so the shell importing a
+  // function from here would put the whole engine in the eager chunk and
+  // break both #1300's rule and the launch budget - measured, at 380,684
+  // bytes against 256,000, by scripts/check-build-output.mjs.
+  attachDemCells((index, held) => {
+    const manager = created.manager
+    if (manager instanceof WorkerDemManager) manager.setCells(index, held)
+    // No worker: demTiles.ts is running right here, so its module variable is
+    // the message.
+    else setDemCells(index, held)
+  })
 
   return created
 }

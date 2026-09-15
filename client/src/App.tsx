@@ -173,6 +173,7 @@ import {
   cellsAlong,
   cellsAt,
   CONTEXT_PACKAGE_KEY,
+  DEM_CELLS,
   GRAPH_CELLS,
   NETWORK_CELLS,
   priceStretches,
@@ -182,6 +183,7 @@ import {
   useCellIndexState,
 } from './lib/coverageCells'
 import { setBasemapCells } from './map/basemap'
+import { setTerrainCells } from './map/demCells'
 import { setNetworkCells } from './map/networkTiles'
 import type { StretchOffer } from './screens/StretchCard'
 import { HEALTHY, type LiveSourceHealth, type SourceReport } from './map/liveSourceHealth'
@@ -1967,6 +1969,13 @@ function App() {
   // steward's lines held back - and then the stretch is the basemap alone,
   // exactly as before.
   const networkCellIndex = useCellIndex(NETWORK_CELLS, afterFirstFrame)
+  // The terrain under both (#1475, lib/coverageCells.ts's DEM_CELLS). The
+  // cells have been built and published since #1175 and nothing here named
+  // them, so a stretch arrived as a styled sheet with no hillshade and no
+  // contour lines on it and said nothing about that - a safety path
+  // (CLAUDE.md's four ways this app can hurt somebody) going quiet. Null on a
+  // release without the cut, and then a stretch is what it was.
+  const demCellIndex = useCellIndex(DEM_CELLS, afterFirstFrame)
   /**
    * The junction graph's cells (#1257 stage 3, lib/coverageCells.ts's
    * GRAPH_CELLS), with the two facts the Plan door reads beside the index:
@@ -2000,8 +2009,9 @@ function App() {
       // (useArchiveDownloads).
       ...cellDownloadRequests(cellIndex, BASEMAP_CELLS),
       ...cellDownloadRequests(networkCellIndex, NETWORK_CELLS),
+      ...cellDownloadRequests(demCellIndex, DEM_CELLS),
     ],
-    [catalogSheets, detailLevel, hikingLevel, cellIndex, networkCellIndex],
+    [catalogSheets, detailLevel, hikingLevel, cellIndex, networkCellIndex, demCellIndex],
   )
   const {
     statusFor: archiveStatusFor,
@@ -2399,6 +2409,34 @@ function App() {
     setNetworkCells(networkCellIndex, heldNetworkPackageKeys)
   }, [networkCellIndex, heldNetworkPackageKeys])
 
+  // And the terrain's (#1475), on the same shape and for the same reason -
+  // with one difference worth knowing: map/demTiles.ts runs inside the DEM
+  // worker, so map/contours.ts posts this across rather than setting a
+  // variable. Its own key space again, never merged with the two above: the
+  // three families share cell names, and a held basemap cell reading as held
+  // terrain would send the hillshade to a package that is not there.
+  const heldDemCells = useMemo(
+    () =>
+      demCellIndex === null
+        ? []
+        : demCellIndex.cells.filter(
+            (cell) =>
+              archiveStatusFor(cellPackageKey(cell.name, DEM_CELLS)).state ===
+              'downloaded',
+          ),
+    [demCellIndex, archiveStatusFor],
+  )
+  const demContextHeld =
+    archiveStatusFor(DEM_CELLS.contextPackageKey).state === 'downloaded'
+  const heldDemPackageKeys = useMemo(() => {
+    const keys = new Set(heldDemCells.map((cell) => cellPackageKey(cell.name, DEM_CELLS)))
+    if (demContextHeld) keys.add(DEM_CELLS.contextPackageKey)
+    return keys
+  }, [heldDemCells, demContextHeld])
+  useEffect(() => {
+    setTerrainCells(demCellIndex, heldDemPackageKeys)
+  }, [demCellIndex, heldDemPackageKeys])
+
   // Where the download ends, for the canvas: the outer edge of what is held,
   // which is nothing at all on a phone holding no cells (lib/coverageCells.ts).
   const coverageSeams = useMemo(
@@ -2437,7 +2475,20 @@ function App() {
     )
   }, [hike, trailIndex, networkCellIndex])
 
-  /** The stretch's packages: its cells of both families, and each context
+  /** And the terrain under the same walk (#1475). Its own `cellsAlong` rather
+   *  than the basemap's answer reused: the three indexes list what was BUILT,
+   *  and a DEM build covering different ground from a basemap build is exactly
+   *  the disagreement a shared list would hide. */
+  const stretchDemCells = useMemo(() => {
+    if (hike === null || trailIndex === null || demCellIndex === null) return []
+    return cellsAlong(
+      demCellIndex.cells,
+      trailSlice(trailIndex, hike.startMile, hike.endMile),
+      STRETCH_MARGIN_KM,
+    )
+  }, [hike, trailIndex, demCellIndex])
+
+  /** The stretch's packages: its cells of all three families, and each context
    *  they are legible through - fetched with the first piece, never offered
    *  as a decision (features/OFFLINE_COVERAGE.md §6). One list, because a
    *  hiker taking "the stretch I am walking" is taking the ground and every
@@ -2450,8 +2501,17 @@ function App() {
       ...stretchNetworkCells.map((cell) => cellPackageKey(cell.name, NETWORK_CELLS)),
     )
     if (networkCellIndex?.context != null) keys.push(NETWORK_CELLS.contextPackageKey)
+    keys.push(...stretchDemCells.map((cell) => cellPackageKey(cell.name, DEM_CELLS)))
+    if (demCellIndex?.context != null) keys.push(DEM_CELLS.contextPackageKey)
     return keys
-  }, [stretchCells, cellIndex, stretchNetworkCells, networkCellIndex])
+  }, [
+    stretchCells,
+    cellIndex,
+    stretchNetworkCells,
+    networkCellIndex,
+    stretchDemCells,
+    demCellIndex,
+  ])
 
   /** One state for the stretch, out of however many pieces it is - the same
    *  join the sheets use, so "3 of 21 MB" means the same thing on both. */
@@ -2508,6 +2568,12 @@ function App() {
         context: networkCellIndex?.context ?? null,
         family: NETWORK_CELLS,
       },
+      {
+        cells: stretchDemCells,
+        held: heldDemCells,
+        context: demCellIndex?.context ?? null,
+        family: DEM_CELLS,
+      },
     ]) {
       const own = part.cells.map((cell) => cellPackageKey(cell.name, part.family))
       const others = part.held.filter(
@@ -2526,6 +2592,9 @@ function App() {
     stretchNetworkCells,
     heldNetworkCells,
     networkCellIndex,
+    stretchDemCells,
+    heldDemCells,
+    demCellIndex,
     removePackage,
     refreshAvailableBytes,
   ])
@@ -3308,6 +3377,13 @@ function App() {
     belowSeam,
     clubSections,
     clubRuns,
+    // The graph the tapped line's climb is summed out of (#1476), and whether
+    // the climb half may be fetched with signal. `graphMerged` rather than
+    // `dayHikeIndex`: this needs the edges and their climb, never their
+    // vertices, so it must not wait on the geometry artifact the builder's
+    // door pulls.
+    graphMerged,
+    online,
     highlights,
     elevation,
     onCloseLegend: closeLegend,
@@ -9158,8 +9234,16 @@ function App() {
         context: networkCellIndex?.context ?? null,
         family: NETWORK_CELLS,
       },
+      {
+        cells: stretchDemCells,
+        context: demCellIndex?.context ?? null,
+        family: DEM_CELLS,
+      },
     ],
-    (key) => heldPackageKeys.has(key) || heldNetworkPackageKeys.has(key),
+    (key) =>
+      heldPackageKeys.has(key) ||
+      heldNetworkPackageKeys.has(key) ||
+      heldDemPackageKeys.has(key),
     publishedSizes,
   )
   const stretchOffer: StretchOffer = {

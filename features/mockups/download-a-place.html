@@ -1,0 +1,1149 @@
+<title>Download a Place</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bitter:ital,wght@0,400;0,600;0,700;1,400&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   Tokens.
+
+   Every colour is one of the app's own, copied from
+   client/src/design-system/tokens/colors.css and client/src/lib/blaze.ts, so
+   the phone frames render in the product's real palette rather than an
+   approximation of it. The document chrome sits one step deeper than the app's
+   paper so a phone screen reads as an object lying ON the page.
+--------------------------------------------------------------------------- */
+:root {
+  --pine-900:#122016; --pine-800:#1c2f1f; --pine-700:#284029;
+  --forest-600:#355c3a; --forest-500:#47784b;
+  --moss-400:#6b9463; --moss-300:#96b98c; --moss-200:#b7d3ad;
+  --sage-200:#c7dabd; --sage-100:#e3ecda;
+  --stone-900:#2b2620; --stone-700:#5a5346; --stone-500:#8a8271;
+  --stone-300:#c3baa4; --stone-150:#e4ddca;
+  --paper-100:#f7f3e9; --paper-0:#fffdf7;
+  --blaze-orange:#c1611a; --blaze-orange-dark:#994e15; --blaze-orange-light:#e0813c;
+  --blaze-yellow:#d69a2d; --blaze-blue:#1c6ea4;
+  --ink-950:#0e0d0a; --ink-900:#15140f; --ink-850:#1c1a15; --ink-800:#24211a;
+  --ink-700:#332f26; --ink-600:#454033;
+  --bone-100:#ece7db; --bone-300:#b9b2a2; --bone-500:#8b8474;
+  --alert-red:#b2321f; --alert-red-light:#ef7f68;
+
+  /* The only two line colours this feature is allowed, and both already exist.
+     blaze.ts: BLAZE_COLORS.White = #fffdf7, NEUTRAL_FALLBACK = #8a8271.
+     WIREFRAMES.md line 325: "the neutral-grey fallback is #8a8271". */
+  --blaze-white:#fffdf7;
+  --blaze-neutral:#8a8271;
+  --trail-casing:#14130f;
+
+  --ground:#e7e0cd;
+  --ground-2:#ded6c0;
+  --surface:var(--paper-0);
+  --ink:var(--pine-900);
+  --ink-2:var(--stone-700);
+  --ink-3:var(--stone-500);
+  --rule:var(--stone-300);
+  --rule-soft:#d5cdb6;
+  --accent:var(--blaze-orange);
+  --accent-soft:rgb(193 97 26 / 12%);
+
+  --measured:var(--forest-600);
+  --measured-bg:rgb(53 92 58 / 11%);
+  --reasoned:var(--blaze-blue);
+  --reasoned-bg:rgb(28 110 164 / 11%);
+  --unvalidated:var(--blaze-orange-dark);
+  --unvalidated-bg:rgb(214 154 45 / 20%);
+  --blocked:var(--alert-red);
+  --blocked-bg:rgb(178 50 31 / 12%);
+
+  --app-page:var(--paper-100);
+  --app-surface:#ffffff;
+  --app-fg1:var(--stone-900);
+  --app-fg2:var(--stone-700);
+  --app-fg3:var(--stone-500);
+  --app-border:var(--stone-150);
+  --app-chrome:var(--pine-900);
+  --app-chrome-fg:var(--paper-0);
+  --app-chrome-fg2:var(--sage-200);
+  --app-chrome-fg3:var(--moss-300);
+  --app-accent:var(--blaze-orange-light);
+  --app-brand:var(--forest-600);
+  --map-land:#efe9d8;
+  --map-relief:#e2dac4;
+  --sel:var(--blaze-orange);
+  --tick:var(--stone-700);
+  --pin-water:var(--blaze-blue);
+  --pin-shelter:var(--forest-600);
+  --pin-other:var(--stone-700);
+  --pin-core:var(--app-surface);
+  --phone-shell:var(--pine-900);
+  --phone-shadow:rgb(18 32 22 / 22%);
+
+  --measure:66ch;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:var(--ink-950);
+    --ground-2:var(--ink-900);
+    --surface:var(--ink-850);
+    --ink:var(--bone-100);
+    --ink-2:var(--bone-300);
+    --ink-3:var(--bone-500);
+    --rule:var(--ink-700);
+    --rule-soft:var(--ink-800);
+    --accent:var(--blaze-orange-light);
+    --accent-soft:rgb(224 129 60 / 15%);
+
+    --measured:var(--moss-400);
+    --measured-bg:rgb(107 148 99 / 15%);
+    --reasoned:#4ea3d8;
+    --reasoned-bg:rgb(78 163 216 / 14%);
+    --unvalidated:var(--blaze-yellow);
+    --unvalidated-bg:rgb(214 154 45 / 18%);
+    --blocked:var(--alert-red-light);
+    --blocked-bg:rgb(239 127 104 / 15%);
+
+    --app-page:var(--ink-900);
+    --app-surface:var(--ink-850);
+    --app-fg1:var(--bone-100);
+    --app-fg2:var(--bone-300);
+    --app-fg3:var(--bone-500);
+    --app-border:var(--ink-700);
+    --app-chrome:var(--ink-900);
+    --app-chrome-fg:var(--bone-100);
+    --app-chrome-fg2:var(--bone-300);
+    --app-chrome-fg3:var(--bone-500);
+    --app-accent:var(--moss-400);
+    --app-brand:var(--moss-400);
+    --map-land:#20201a;
+    --map-relief:#2a291f;
+    --sel:var(--blaze-orange-light);
+    --tick:var(--bone-500);
+    --pin-water:#4ea3d8;
+    --pin-shelter:var(--moss-400);
+    --pin-other:var(--bone-300);
+    --pin-core:var(--ink-950);
+    --phone-shell:#000000;
+    --phone-shadow:rgb(0 0 0 / 55%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --ground:var(--ink-950);
+  --ground-2:var(--ink-900);
+  --surface:var(--ink-850);
+  --ink:var(--bone-100);
+  --ink-2:var(--bone-300);
+  --ink-3:var(--bone-500);
+  --rule:var(--ink-700);
+  --rule-soft:var(--ink-800);
+  --accent:var(--blaze-orange-light);
+  --accent-soft:rgb(224 129 60 / 15%);
+
+  --measured:var(--moss-400);
+  --measured-bg:rgb(107 148 99 / 15%);
+  --reasoned:#4ea3d8;
+  --reasoned-bg:rgb(78 163 216 / 14%);
+  --unvalidated:var(--blaze-yellow);
+  --unvalidated-bg:rgb(214 154 45 / 18%);
+  --blocked:var(--alert-red-light);
+  --blocked-bg:rgb(239 127 104 / 15%);
+
+  --app-page:var(--ink-900);
+  --app-surface:var(--ink-850);
+  --app-fg1:var(--bone-100);
+  --app-fg2:var(--bone-300);
+  --app-fg3:var(--bone-500);
+  --app-border:var(--ink-700);
+  --app-chrome:var(--ink-900);
+  --app-chrome-fg:var(--bone-100);
+  --app-chrome-fg2:var(--bone-300);
+  --app-chrome-fg3:var(--bone-500);
+  --app-accent:var(--moss-400);
+  --app-brand:var(--moss-400);
+  --map-land:#20201a;
+  --map-relief:#2a291f;
+  --sel:var(--blaze-orange-light);
+  --tick:var(--bone-500);
+  --pin-water:#4ea3d8;
+  --pin-shelter:var(--moss-400);
+  --pin-other:var(--bone-300);
+  --pin-core:var(--ink-950);
+  --phone-shell:#000000;
+  --phone-shadow:rgb(0 0 0 / 55%);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+
+.spine { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 0; }
+.spine__rail { grid-column: 1; border-right: 1px solid var(--rule); padding-top: 40px; position: relative; }
+.spine__mark {
+  position: sticky; top: 16px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.75rem; color: var(--ink-3);
+  text-align: right; padding-right: 14px; letter-spacing: 0.02em;
+}
+.spine__mark strong { display: block; font-size: 1.0625rem; font-weight: 500; color: var(--accent); letter-spacing: 0; }
+.spine__body { grid-column: 2; padding: 40px 0 40px 32px; min-width: 0; }
+
+@media (max-width: 860px) {
+  .spine { grid-template-columns: 1fr; }
+  .spine__rail { grid-column: 1; border-right: 0; border-top: 1px solid var(--rule); padding-top: 20px; }
+  .spine__mark { position: static; text-align: left; padding-right: 0; }
+  .spine__mark strong { display: inline; margin-right: 10px; }
+  .spine__body { grid-column: 1; padding: 12px 0 40px; }
+}
+
+.masthead { padding: 64px 0 20px; }
+.eyebrow {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 20px;
+}
+h1 {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: clamp(2.4rem, 5.5vw, 3.9rem);
+  line-height: 1.04; font-weight: 700; letter-spacing: -0.015em;
+  margin: 0 0 18px; text-wrap: balance;
+}
+.standfirst {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: 1.2rem; line-height: 1.55; color: var(--ink-2);
+  max-width: var(--measure); margin: 0 0 32px;
+}
+.standfirst em { color: var(--ink); font-style: italic; }
+
+.docket { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px 0 0; border-top: 1px solid var(--rule); }
+.docket__item {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  padding: 7px 12px; border: 1px solid var(--rule); border-radius: 2px;
+  color: var(--ink-2); background: var(--surface);
+}
+.docket__item b { color: var(--ink); font-weight: 500; }
+.docket__item--open { border-color: var(--accent); color: var(--accent); }
+.docket__item--blocked { border-color: var(--blocked); color: var(--blocked); }
+
+h2 {
+  font-family: 'Bitter', ui-serif, Georgia, serif;
+  font-size: clamp(1.65rem, 3vw, 2.15rem); line-height: 1.15;
+  font-weight: 700; letter-spacing: -0.01em; margin: 0 0 14px; text-wrap: balance;
+}
+h3 { font-family: 'Bitter', ui-serif, Georgia, serif; font-size: 1.28rem; line-height: 1.28; font-weight: 600; margin: 0 0 10px; text-wrap: balance; }
+p { margin: 0 0 16px; max-width: var(--measure); }
+p:last-child { margin-bottom: 0; }
+strong { font-weight: 600; color: var(--ink); }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+code, .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.875em; }
+code { background: var(--ground-2); padding: 1px 5px; border-radius: 2px; }
+
+.grade {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.6875rem; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 2px; font-weight: 500;
+  white-space: nowrap; vertical-align: middle;
+}
+.grade--measured { color: var(--measured); background: var(--measured-bg); }
+.grade--reasoned { color: var(--reasoned); background: var(--reasoned-bg); }
+.grade--unvalidated { color: var(--unvalidated); background: var(--unvalidated-bg); }
+.grade--decided { color: var(--accent); background: var(--accent-soft); }
+.grade--blocked { color: var(--blocked); background: var(--blocked-bg); }
+
+.pair { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 40px; align-items: start; }
+@media (max-width: 900px) { .pair { grid-template-columns: 1fr; gap: 28px; } }
+
+.frames { display: flex; flex-wrap: wrap; gap: 28px; }
+.stack { display: flex; flex-direction: column; gap: 24px; }
+
+.note { border-left: 2px solid var(--accent); padding: 2px 0 2px 18px; margin: 0 0 20px; color: var(--ink-2); max-width: var(--measure); }
+.note p { margin-bottom: 10px; }
+
+.callout { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 22px 24px; margin: 0 0 22px; }
+.callout h3 { margin-bottom: 8px; }
+.callout--blocked { border-left: 3px solid var(--blocked); }
+
+.phone { width: 300px; flex: 0 0 auto; }
+.phone__label {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  color: var(--ink-3); margin: 0 0 8px; display: flex; justify-content: space-between; gap: 10px;
+}
+.phone__label b { color: var(--ink); font-weight: 500; }
+.phone__screen {
+  width: 300px; height: 538px; background: var(--app-page);
+  border: 9px solid var(--phone-shell); border-radius: 26px; overflow: hidden;
+  position: relative; box-shadow: 0 10px 28px -12px var(--phone-shadow);
+  display: flex; flex-direction: column;
+}
+.phone__screen--fit { height: auto; }
+.phone__caption { font-size: 0.8125rem; color: var(--ink-2); margin: 10px 0 0; max-width: 300px; line-height: 1.5; }
+
+.app-header {
+  background: var(--app-chrome); color: var(--app-chrome-fg);
+  padding: 7px 12px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 0.6875rem; flex: 0 0 auto;
+}
+.app-header__title { font-family: 'Bitter', serif; font-weight: 600; font-size: 0.8125rem; }
+.app-header__ico { color: var(--app-chrome-fg2); letter-spacing: 3px; }
+.app-status {
+  background: var(--app-chrome); color: var(--app-chrome-fg3);
+  padding: 0 12px 6px; font-size: 0.625rem; flex: 0 0 auto;
+  display: flex; gap: 8px; align-items: center; font-family: 'IBM Plex Mono', monospace;
+}
+.app-map { position: relative; flex: 1 1 auto; overflow: hidden; background: var(--map-land); }
+.app-map svg { display: block; width: 100%; height: 100%; }
+
+.app-tabs {
+  background: var(--app-chrome); flex: 0 0 auto;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  font-size: 0.5625rem; color: var(--app-chrome-fg3); text-align: center; padding: 6px 0 8px;
+}
+.app-tabs span { display: block; }
+.app-tabs .on { color: var(--app-chrome-fg); }
+.app-tabs .on::before { content: ''; display: block; height: 2px; width: 22px; background: var(--app-accent); margin: -6px auto 5px; border-radius: 1px; }
+.app-tabs .off::before { content: ''; display: block; height: 2px; margin: -6px auto 5px; }
+
+.app-sheet {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--app-surface); border-top: 1px solid var(--app-border);
+  border-radius: 12px 12px 0 0; padding: 12px 14px 14px;
+  box-shadow: 0 -6px 18px -10px rgb(0 0 0 / 30%); color: var(--app-fg1);
+}
+.sheet__head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+.sheet__title { font-family: 'Bitter', serif; font-size: 0.9375rem; font-weight: 600; margin: 0; line-height: 1.25; }
+.sheet__x { color: var(--app-fg3); font-size: 0.875rem; }
+.sheet__status { font-size: 0.6875rem; color: var(--app-fg2); margin: 0 0 7px; }
+.sheet__range { font-size: 0.75rem; color: var(--app-fg1); margin: 0 0 3px; }
+.sheet__meta { font-size: 0.625rem; color: var(--app-fg3); margin: 7px 0 0; line-height: 1.45; }
+.sheet__empty { font-size: 0.6875rem; color: var(--app-fg2); margin: 0; }
+.sheet__derived {
+  font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--app-fg1);
+  background: var(--app-page); border: 1px solid var(--app-border); border-radius: 3px;
+  padding: 6px 8px; margin: 7px 0 0; display: flex; gap: 10px; flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.sheet__legs { margin: 7px 0 0; padding: 0; list-style: none; }
+.sheet__legs li {
+  font-size: 0.6875rem; color: var(--app-fg1); padding: 3px 0 3px 12px;
+  border-left: 2px solid var(--app-border); margin-bottom: 2px; line-height: 1.35;
+}
+.sheet__legs li span { color: var(--app-fg3); font-family: 'IBM Plex Mono', monospace; font-size: 0.9em; }
+.sheet__basis {
+  display: inline-block; font-size: 0.5625rem; letter-spacing: 0.07em; text-transform: uppercase;
+  font-weight: 700; padding: 2px 6px; border-radius: 2px; margin: 8px 0 0;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.basis--named { color: var(--app-brand); border: 1px solid var(--app-brand); }
+.basis--published { color: var(--pin-water); border: 1px solid var(--pin-water); }
+
+.legend-row { display: flex; align-items: center; gap: 7px; font-size: 0.6875rem; color: var(--app-fg1); padding: 2px 0; }
+.legend-swatch { width: 18px; height: 4px; border-radius: 1px; flex: 0 0 auto; outline: 1px solid var(--trail-casing); }
+
+.table-scroll { overflow-x: auto; margin: 0 0 22px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 0.875rem; }
+th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; border-bottom: 1px solid var(--rule); background: var(--ground-2);
+}
+tbody tr:last-child td { border-bottom: 0; }
+.basis-name { font-family: 'IBM Plex Mono', monospace; font-weight: 500; color: var(--ink); }
+
+.decision { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 3px; padding: 22px 24px; margin: 0 0 18px; }
+.decision--blocked { border-left-color: var(--blocked); }
+.decision__q { font-family: 'Bitter', serif; font-size: 1.15rem; font-weight: 600; margin: 0 0 10px; line-height: 1.3; }
+.decision__rec { margin: 14px 0 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 2px; font-size: 0.9375rem; max-width: none; }
+.decision__rec b { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500; }
+.decision__rec--blocked { background: var(--blocked-bg); }
+.decision__rec--blocked b { color: var(--blocked); }
+
+.ol-plain { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ol-plain li { margin-bottom: 10px; }
+.ul-tight { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ul-tight li { margin-bottom: 8px; }
+
+hr.rule { grid-column: 1 / -1; border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+footer { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 0.8125rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+
+/* ---------------------------------------------------------------------------
+   This document's own components. Everything above is pace-adjustment.html's
+   token system (itself corridor-view.html's), reused verbatim so the four
+   mockups read as one family.
+
+   One new semantic pair, reusing existing hues rather than adding any:
+   ground the phone HOLDS is drawn in --app-brand, ground it does not is
+   --app-fg3 on --app-page. That is the same two-colour discipline the
+   corridor view keeps for "whose number is this", applied to "is this here".
+--------------------------------------------------------------------------- */
+.place-row {
+  display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 10px;
+  align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--app-border);
+}
+.place-row:last-child { border-bottom: 0; }
+.place-row__name { font-size: 0.8125rem; color: var(--app-fg1); font-weight: 600; line-height: 1.25; }
+.place-row__size {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem;
+  font-variant-numeric: tabular-nums; color: var(--app-fg2); white-space: nowrap;
+}
+.place-row__meta { grid-column: 1 / -1; font-size: 0.625rem; color: var(--app-fg3); line-height: 1.4; }
+.place-row--held .place-row__size { color: var(--app-brand); font-weight: 600; }
+.place-row--part .place-row__size { color: var(--app-accent); }
+
+.app-search {
+  display: flex; align-items: center; gap: 7px; margin: 0 0 4px;
+  background: var(--app-page); border: 1px solid var(--app-border); border-radius: 4px;
+  padding: 7px 9px; font-size: 0.75rem; color: var(--app-fg3);
+}
+.app-search b { color: var(--app-fg1); font-weight: 500; }
+
+.app-body { padding: 12px 14px 14px; overflow: hidden; color: var(--app-fg1); flex: 1 1 auto; }
+.app-body h4 {
+  font-family: 'Bitter', serif; font-size: 0.875rem; font-weight: 600;
+  margin: 0 0 3px; line-height: 1.25; color: var(--app-fg1);
+}
+.app-body h5 {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.625rem;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--app-fg3);
+  font-weight: 500; margin: 14px 0 5px;
+}
+.app-body p { font-size: 0.6875rem; color: var(--app-fg2); margin: 0 0 8px; line-height: 1.45; max-width: none; }
+
+.btn {
+  display: block; width: 100%; text-align: center; border-radius: 4px;
+  padding: 9px 10px; font-size: 0.8125rem; font-weight: 600; margin: 10px 0 0;
+  background: var(--app-brand); color: var(--paper-0); border: 1px solid var(--app-brand);
+}
+.btn--ghost { background: transparent; color: var(--app-fg2); border-color: var(--app-border); font-weight: 500; }
+.btn--danger { background: transparent; color: var(--blocked); border-color: var(--blocked); font-weight: 500; }
+.btn__sub { display: block; font-weight: 400; font-size: 0.625rem; opacity: 0.85; margin-top: 2px; }
+
+.breakdown { margin: 8px 0 0; padding: 0; list-style: none; }
+.breakdown li {
+  display: flex; justify-content: space-between; gap: 10px; align-items: baseline;
+  font-size: 0.6875rem; color: var(--app-fg2); padding: 4px 0;
+  border-bottom: 1px dashed var(--app-border);
+}
+.breakdown li:last-child { border-bottom: 0; }
+.breakdown b { color: var(--app-fg1); font-weight: 500; }
+.breakdown .n { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.breakdown li.total { border-top: 1px solid var(--app-border); border-bottom: 0; margin-top: 3px; padding-top: 7px; font-size: 0.75rem; }
+.breakdown li.total b, .breakdown li.total .n { color: var(--app-fg1); font-weight: 600; }
+
+.toggle { display: flex; gap: 6px; margin: 9px 0 0; }
+.toggle span {
+  flex: 1 1 0; text-align: center; font-size: 0.6875rem; padding: 6px 4px;
+  border: 1px solid var(--app-border); border-radius: 3px; color: var(--app-fg3);
+  line-height: 1.2;
+}
+.toggle span b { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.5625rem; font-weight: 400; margin-top: 2px; }
+.toggle span.on { border-color: var(--app-accent); color: var(--app-fg1); background: var(--accent-soft); font-weight: 600; }
+
+.switch { display: flex; align-items: flex-start; gap: 9px; padding: 9px 0 0; }
+.switch__box {
+  flex: 0 0 auto; width: 30px; height: 17px; border-radius: 9px; position: relative;
+  background: var(--app-brand); border: 1px solid var(--app-brand); margin-top: 1px;
+}
+.switch__box::after { content: ''; position: absolute; top: 2px; right: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--paper-0); }
+.switch__box--off { background: var(--app-page); border-color: var(--app-border); }
+.switch__box--off::after { right: auto; left: 2px; background: var(--app-fg3); }
+.switch__text { font-size: 0.6875rem; color: var(--app-fg1); line-height: 1.35; }
+.switch__text i { display: block; font-style: normal; color: var(--app-fg3); font-size: 0.625rem; margin-top: 1px; }
+
+.climb {
+  display: inline-flex; gap: 10px; font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums; font-size: 0.75rem; color: var(--app-fg1);
+}
+.climb .up { color: var(--blaze-orange-dark); }
+.climb .down { color: var(--pin-water); }
+.climb--unknown { color: var(--app-fg3); font-style: italic; font-family: 'Public Sans', sans-serif; font-size: 0.6875rem; }
+
+.optgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(258px, 1fr)); gap: 16px; margin: 0 0 22px; }
+.opt { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+.opt--pick { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.opt--dead { opacity: 0.72; }
+.opt__tag { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+.opt--pick .opt__tag { color: var(--accent); }
+.opt h3 { margin: 0; font-size: 1.05rem; }
+.opt p { margin: 0; font-size: 0.8125rem; color: var(--ink-2); }
+
+.decision { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); border-radius: 3px; padding: 22px 24px; margin: 0 0 18px; }
+.decision__q { font-family: 'Bitter', serif; font-size: 1.15rem; font-weight: 600; margin: 0 0 10px; line-height: 1.3; }
+.decision__rec { margin: 14px 0 0; padding: 12px 14px; background: var(--accent-soft); border-radius: 2px; font-size: 0.9375rem; max-width: none; }
+.decision__rec b { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; font-weight: 500; }
+
+.table-scroll { overflow-x: auto; margin: 0 0 22px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 0.875rem; }
+th, td { text-align: left; padding: 11px 15px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+thead th {
+  font-size: 0.6875rem; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 700; border-bottom: 1px solid var(--rule); background: var(--ground-2);
+}
+tbody tr:last-child td { border-bottom: 0; }
+td .mono, td code { white-space: nowrap; }
+.yes { color: var(--measured); font-weight: 600; }
+.no { color: var(--blocked); font-weight: 600; }
+.part { color: var(--unvalidated); font-weight: 600; }
+.num { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.ol-plain { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ol-plain li { margin-bottom: 10px; }
+.ul-tight { margin: 0 0 18px; padding-left: 20px; max-width: var(--measure); }
+.ul-tight li { margin-bottom: 8px; }
+.note { border-left: 2px solid var(--accent); padding: 2px 0 2px 18px; margin: 0 0 20px; color: var(--ink-2); max-width: var(--measure); }
+.note p { margin-bottom: 10px; }
+.callout { background: var(--surface); border: 1px solid var(--rule); border-radius: 3px; padding: 22px 24px; margin: 0 0 22px; }
+.callout h3 { margin-bottom: 8px; }
+hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+footer { border-top: 1px solid var(--rule); margin-top: 48px; padding-top: 24px; color: var(--ink-3); font-size: 0.8125rem; }
+</style>
+<div class="wrap">
+<div class="spine">
+  <div></div>
+  <header class="masthead">
+    <p class="eyebrow">OurHike · mock-ups for approval · 2026-09-15</p>
+    <h1>Download a Place, Not a Trail</h1>
+    <p class="standfirst">
+      The data stopped being about the A.T. months ago. The <em>download</em> did not.
+      A hiker in Harriman is still offered <strong>“the whole trail”</strong> — a button naming
+      a trail forty miles north of them — and gets no terrain, no contours and no climb
+      figures when they take it. This is the screen that fixes it, and the one decision
+      inside it that is genuinely the maintainer’s.
+    </p>
+    <div class="docket">
+      <span class="grade grade--measured">numbers measured</span>
+      <span class="grade grade--decided">unit already decided</span>
+      <span class="grade grade--blocked">1 blocking question</span>
+      <span class="mono">#552 · #558 · #1257 · #1371</span>
+      <span class="mono">OFFLINE_COVERAGE.md</span>
+    </div>
+  </header>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>1</strong>the tether</p></div>
+  <section class="spine__body">
+    <h2>What is actually tethered to the A.T., and what stopped being</h2>
+    <p>
+      Three different answers, and conflating them is why this is confusing. Read down the
+      last column: <strong>the vector data went national; the pictures did not; the numbers
+      went national in the bucket and stop before the phone.</strong>
+    </p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>What</th><th>Shape it is built in</th><th>Reaches a hiker off the A.T.?</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>Trail lines</b><br><span class="mono">nearby_trails.pmtiles</span></td>
+            <td>No geographic clip at all. The maintainer struck the ring on 2026-08-25 — <em>“Don’t limit data from orgs based on geography.”</em> 228.8 MB raw, nationwide.</td>
+            <td class="yes">Yes — with signal, or inside a stretch already taken</td>
+          </tr>
+          <tr>
+            <td><b>Junction graph</b><br><span class="mono">trail_graph_cell_*.json</span></td>
+            <td>466,966 edges, 502 one-degree cells. Nationwide since #1231.</td>
+            <td class="yes">Yes — cells load where a hiker plans</td>
+          </tr>
+          <tr>
+            <td><b>Per-edge climb</b><br><span class="mono">trail_graph_elevation_cell_*.json</span></td>
+            <td>Nationwide by construction — the DEM tile index is computed from the network’s own lines, not from the corridor.</td>
+            <td class="part">Built, gated, and not drawn on anything but a route</td>
+          </tr>
+          <tr>
+            <td><b>Hiking sheet</b><br><span class="mono">at_basemap_cell_*.pmtiles</span></td>
+            <td><b>62 cells, corridor-shaped.</b> A buffer around ATC’s centerline. New York City got a second region only on 2026-09-15 (#1458).</td>
+            <td class="no">No — outside the corridor there is no sheet to take</td>
+          </tr>
+          <tr>
+            <td><b>Terrain</b><br><span class="mono">dem_cell_*.pmtiles</span></td>
+            <td>Same corridor, tapered 30/15/6 miles by zoom. <b>Cut into cells and published</b> — and the client declares no DEM cell family, so a stretch download carries none of it.</td>
+            <td class="no">No — and not even on the A.T., for a stretch</td>
+          </tr>
+          <tr>
+            <td><b>A.T. profile</b><br><span class="mono">elevation_profile.json</span></td>
+            <td>141,000 samples along one trail, fetched whole by every phone.</td>
+            <td class="no">No — and correctly so; it is one trail’s axis</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note">
+      <strong>The one-line answer to “are we not sending the data outside the A.T.?”</strong>
+      We publish it. We mostly do not <em>package</em> it. Every artifact a hiker chooses to
+      download — the sheet, the terrain — is still cut to a buffer around one trail’s
+      centerline, and the download screen is written in that trail’s vocabulary.
+    </p>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>2</strong>climb</p></div>
+  <section class="spine__body">
+    <h2>Gain and loss for every trail is mostly a delivery problem, not a data one</h2>
+    <p>
+      This is the part worth being precise about, because the expensive-sounding version of
+      the job is already done. <code>fetch_elevation.py</code> computes its 3DEP tile list from
+      <em>the network’s own lines</em>, so registering a steward in <code>sources.json</code> pulls
+      the elevation tiles that steward’s trails need, with nobody editing a list of cells.
+      <code>export_network_elevation.py</code> then measures <code>[gain_ft, loss_ft]</code> along every
+      edge in the graph, and <code>cut_trail_graph.py</code> files it into the same squares as
+      everything else.
+    </p>
+
+    <p><strong>Four things stand between that and a hiker reading a climb figure:</strong></p>
+    <ol class="ol-plain">
+      <li>
+        <strong>The elevation leg is opt-in and defaults to off.</strong>
+        <code>include_elevation</code> on <span class="mono">publish-vector-data.yml</span> is
+        <code>default: false</code>, described as “~40 min”. Untick it and all three elevation
+        artifacts stay at whatever the last elevation run produced — which is how the
+        climb file came to hold 42,103 entries against a 466,966-edge graph, and why
+        <code>cut_trail_graph.py</code> refused to cut a single climb cell on 2026-09-07.
+      </li>
+      <li>
+        <strong>That ~40 min is a stale price.</strong> It was measured on run #63
+        (2026-08-27) against a <em>40,596-edge</em> graph. The nationwide graph killed the same
+        step twice at the 120-minute job ceiling, which is what #1287 and #1311 fixed by
+        reading DEM blocks instead of warped bounding boxes. <strong>Nobody has re-timed it
+        since.</strong>
+      </li>
+      <li>
+        <strong>Nothing but a route ever shows the figure.</strong> The climb lives on a
+        <code>ResolvedDayHike</code>. Tap a trail line and <code>lineDetail.ts</code> gives you blaze,
+        name, length, park and closure — and no elevation, on any trail, the A.T. included.
+      </li>
+      <li>
+        <strong>A hiker without a day hike has no reason to hold the cell.</strong> Graph
+        cells load where somebody plans; they are not part of any download.
+      </li>
+    </ol>
+
+    <div class="callout">
+      <h3>The honest caveat that has to ship with the number</h3>
+      <p>
+        <span class="grade grade--measured">measured</span>
+        The dead band is 3&nbsp;m, checked on the A.T. against three published sections. Two
+        sustained ascents land within ±4%; the rolling, descent-dominated Roan Highlands
+        section reads <strong>+18.8%</strong> and needed a documented 25% tolerance. Harriman is
+        rolling and descent-dominated — a junction every 1.2 trail-miles — so it matches the
+        section where the gate had to be loosened, not the ones where it was tight.
+      </p>
+      <p>
+        Pulling the other way: chopping a route at every junction understates a continuous
+        profile by a <strong>median 6.9%, p90 46.9%</strong>, and understated climb is understated
+        Naismith time — the unsafe direction. <strong>Nobody has measured the net of the two.</strong>
+        The maintainer’s 2026-08-25 call stands: ship the figure and call it an estimate.
+        Every frame below prints the word.
+      </p>
+    </div>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>3</strong>the unit</p></div>
+  <section class="spine__body">
+    <h2>Three ways to ask “what do you want offline”, and only one is new</h2>
+
+    <div class="optgrid">
+      <div class="opt opt--dead">
+        <span class="opt__tag">shipped · A.T. only</span>
+        <h3>The whole trail</h3>
+        <p>
+          One button, 458.2&nbsp;MB, the union of 62 corridor cells. Perfect for a
+          thru-hiker and meaningless anywhere else: there is no “whole trail” in Harriman,
+          and a park is not a mile range.
+        </p>
+      </div>
+      <div class="opt opt--dead">
+        <span class="opt__tag">shipped · needs a plan</span>
+        <h3>The stretch you’re walking</h3>
+        <p>
+          Derived from <code>plannedHike.ts</code>, never enumerated — which is exactly right, and
+          is why it can’t be the only answer. It requires an A.T. hike with a start and an
+          end before it can say anything at all.
+        </p>
+      </div>
+      <div class="opt opt--pick">
+        <span class="opt__tag">proposed</span>
+        <h3>A place</h3>
+        <p>
+          <code>places.json</code> already publishes named parks, towns, trailheads and long
+          trails, with a bounding box and measured trail miles. A place is a set of cells.
+          <strong>The naming layer #552 asked for already exists; nothing joins it to the
+          download.</strong>
+        </p>
+      </div>
+    </div>
+
+    <p class="note">
+      <strong>The map-you-tap-regions-on is already ruled out</strong> and is not re-opened here —
+      the maintainer struck it on 2026-08-28: it needs the map alive inside the download
+      window and fails one-handed in sun. The list is the control; a small map previews
+      what is selected.
+    </p>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>4</strong>frames</p></div>
+  <section class="spine__body">
+    <h2>Today, and the same hiker on the proposed screen</h2>
+    <p class="note">
+      Sizes are real. 458.2&nbsp;MB is the Standard hiking sheet as published; 62 cells over
+      419.1&nbsp;MB is release <code>2026-09-02</code>’s own manifest. Harriman’s figures are
+      <span class="grade grade--reasoned">reasoned</span> — the basemap cell average times
+      the cells its bbox covers, plus a fully-covered cell’s terrain — and are the first
+      thing a real cut would replace.
+    </p>
+
+    <div class="frames">
+
+      <div class="phone">
+        <p class="phone__label"><span>Downloads</span><b>today</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">Downloads</span><span class="app-header__ico">×</span></div>
+          <div class="app-body">
+            <div class="toggle">
+              <span class="on">Hiking sheet</span>
+              <span>USGS sheet</span>
+            </div>
+            <h5>the map</h5>
+            <h4>The whole trail</h4>
+            <p>The styled topographic sheet and the terrain under it, for the whole corridor.</p>
+            <ul class="breakdown">
+              <li class="total"><b>Standard</b><span class="n">458.2 MB</span></li>
+            </ul>
+            <div class="btn">Download</div>
+            <h5>or just part of it</h5>
+            <h4>Just the stretch you’re walking</h4>
+            <p style="color:var(--blocked)">Set a hike on the Plan tab and this will price the ground it crosses.</p>
+          </div>
+        </div>
+        <p class="phone__caption">
+          A hiker standing in Harriman State Park. “The whole trail” is the A.T., forty
+          miles north. The stretch card cannot speak without an A.T. hike. There is no
+          third thing to tap.
+        </p>
+      </div>
+
+      <div class="phone">
+        <p class="phone__label"><span>Downloads</span><b>proposed</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">Downloads</span><span class="app-header__ico">×</span></div>
+          <div class="app-body">
+            <p class="app-search"><span>⌕</span><b>Where are you walking?</b></p>
+            <h5>near you</h5>
+            <div class="place-row">
+              <span class="place-row__name">Harriman State Park</span>
+              <span class="place-row__size">214 MB</span>
+              <span class="place-row__meta">NYS Parks · NY · 226 mi of trail</span>
+            </div>
+            <div class="place-row">
+              <span class="place-row__name">Bear Mountain State Park</span>
+              <span class="place-row__size">— already here</span>
+              <span class="place-row__meta">NYS Parks · NY · 41 mi of trail · shares 2 of 3 pieces</span>
+            </div>
+            <div class="place-row place-row--part">
+              <span class="place-row__name">Appalachian Trail — New York</span>
+              <span class="place-row__size">+ 88 MB</span>
+              <span class="place-row__meta">ATC · NY · 88 mi · you have 3 of its 5 pieces</span>
+            </div>
+            <div class="place-row">
+              <span class="place-row__name">Catskill Forest Preserve</span>
+              <span class="place-row__size">397 MB</span>
+              <span class="place-row__meta">NYS DEC · NY · 341 mi of trail</span>
+            </div>
+            <h5>on your phone</h5>
+            <div class="place-row place-row--held">
+              <span class="place-row__name">Appalachian Trail — whole trail</span>
+              <span class="place-row__size">458 MB</span>
+              <span class="place-row__meta">62 pieces · Standard · taken 12 Sept</span>
+            </div>
+          </div>
+        </div>
+        <p class="phone__caption">
+          One question, one list, one number per row. The 1° cells stay invisible — the
+          decision already says so: <em>the cell, nobody sees; the piece, the hiker chooses</em>.
+          “Shares 2 of 3 pieces” is the structural virtue of the grid made visible as a
+          price, not as a concept.
+        </p>
+      </div>
+
+      <div class="phone">
+        <p class="phone__label"><span>Downloads → a place</span><b>proposed</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">Harriman State Park</span><span class="app-header__ico">×</span></div>
+          <div class="app-body">
+            <p style="font-size:0.6875rem;color:var(--app-fg3);margin:0 0 9px">NYS Parks · New York · 226 miles of trail held</p>
+            <ul class="breakdown">
+              <li><b>Map</b><span class="n">34 MB</span></li>
+              <li><b>Terrain — hillshade &amp; contours</b><span class="n">172 MB</span></li>
+              <li><b>Trails, junctions and climb</b><span class="n">7 MB</span></li>
+              <li><b>Shelters, water, privies, parking</b><span class="n">1 MB</span></li>
+              <li class="total"><b>3 pieces of ground</b><span class="n">214 MB</span></li>
+            </ul>
+            <div class="toggle">
+              <span class="on">Standard<b>214 MB</b></span>
+              <span>Fine<b>388 MB</b></span>
+            </div>
+            <div class="btn">Download<span class="btn__sub">11.4 GB free on this phone</span></div>
+            <p style="font-size:0.625rem;color:var(--app-fg3);margin:9px 0 0;line-height:1.45">
+              Each piece carries 3&nbsp;km past its own edge, so the edge of the download is
+              never the edge of your map.
+            </p>
+          </div>
+        </div>
+        <p class="phone__caption">
+          The breakdown is shown and not chosen. A hiker reads why it is 214&nbsp;MB; they do
+          not assemble it. One tap, one decision — the rule that retired the per-section
+          list.
+        </p>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>5</strong>terrain</p></div>
+  <section class="spine__body">
+    <h2>The one question that is genuinely yours</h2>
+    <p>
+      <strong>Terrain is 80% of a place download</strong>, and it is the thing the A.T. corridor
+      has and nowhere else does. On the published corridor sheet the DEM is 275.6&nbsp;MB
+      against the basemap’s 182.6&nbsp;MB; at a place’s scale a fully-covered 1° cell costs
+      <strong>≈24.5&nbsp;MB of terrain against ≈6.8&nbsp;MB of map</strong>
+      <span class="grade grade--reasoned">reasoned</span>. Everything else in a place —
+      lines, junctions, climb, waypoints — is single-digit megabytes.
+    </p>
+
+    <div class="decision">
+      <p class="decision__q">Does a place arrive with its terrain, or is terrain a second tap?</p>
+      <ul class="ul-tight">
+        <li><strong>Always included.</strong> One number, one tap, nothing to get wrong — and the hillshade and contours a hiker uses to work out which drainage they are in are simply there. Costs 4× the bytes.</li>
+        <li><strong>A switch, defaulting on.</strong> The number moves when you touch it, so the 80% is visible and refusable. One more thing to understand on a screen whose whole point is having one decision.</li>
+        <li><strong>Map only; terrain per place, later.</strong> Cheapest downloads, and the failure is silent: no contours on a ridge, discovered at the worst moment.</li>
+      </ul>
+      <p class="decision__rec">
+        <b>recommendation</b>
+        A switch, defaulting <strong>on</strong> — the middle one. The bytes are too large to
+        hide and the safety value too high to default off. Precedent: the USGS raster is
+        already a separate opt-in sheet at over a gigabyte, for exactly this reason.
+      </p>
+    </div>
+
+    <div class="frames">
+      <div class="phone">
+        <p class="phone__label"><span>Terrain switch</span><b>recommended</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">Harriman State Park</span><span class="app-header__ico">×</span></div>
+          <div class="app-body">
+            <ul class="breakdown">
+              <li><b>Map, trails, junctions, climb</b><span class="n">42 MB</span></li>
+              <li><b>Terrain — hillshade &amp; contours</b><span class="n">172 MB</span></li>
+              <li class="total"><b>3 pieces of ground</b><span class="n">214 MB</span></li>
+            </ul>
+            <div class="switch">
+              <span class="switch__box"></span>
+              <span class="switch__text">Include terrain
+                <i>Hillshade and contour lines. Four fifths of the download, and what tells you which valley you are in.</i>
+              </span>
+            </div>
+            <div class="btn">Download 214 MB</div>
+          </div>
+        </div>
+        <p class="phone__caption">
+          Off, the button reads <b>Download 42 MB</b> and the terrain row greys. The
+          sentence under the switch is doing the work: it says what the bytes buy, in the
+          terms a lost hiker would use.
+        </p>
+      </div>
+
+      <div class="phone">
+        <p class="phone__label"><span>Trail sheet, terrain absent</span><b>proposed</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">Seven Hills Trail</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Blue blaze · NYNJTC</p>
+              <p class="sheet__range">4.8 mi · Harriman State Park</p>
+              <p class="sheet__derived"><span class="climb"><span class="up">↑ 1,240 ft</span><span class="down">↓ 1,190 ft</span></span></p>
+              <p class="sheet__meta">Elevation gain is an estimate, measured from a 10&nbsp;m elevation model along this trail.</p>
+              <p class="sheet__meta" style="color:var(--blocked)">No contours here — this place was downloaded without terrain.</p>
+            </div>
+          </div>
+        </div>
+        <p class="phone__caption">
+          If terrain can be declined, the map has to say so where it matters rather than
+          drawing flat ground and letting a hiker read it as flat ground.
+        </p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>6</strong>the payoff</p></div>
+  <section class="spine__body">
+    <h2>What the climb file actually buys, once anything reads it</h2>
+    <p>
+      One row on a sheet that exists today. <code>lineDetail.ts</code> already renders
+      “4.8&nbsp;mi&nbsp;·&nbsp;Harriman State Park” from properties on the tapped feature; this
+      is the same line with the edges’ climb summed under it.
+    </p>
+
+    <div class="frames">
+      <div class="phone">
+        <p class="phone__label"><span>Tap a trail</span><b>measured</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">Ramapo–Dunderberg</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Red-on-white blaze · NYNJTC</p>
+              <p class="sheet__range">19.1 mi · Harriman State Park</p>
+              <p class="sheet__derived"><span class="climb"><span class="up">↑ 4,900 ft</span><span class="down">↓ 4,870 ft</span></span></p>
+              <p class="sheet__meta">Estimated from a 10&nbsp;m elevation model. Rolling ground reads high.</p>
+            </div>
+          </div>
+        </div>
+        <p class="phone__caption">
+          Every edge measured, summed within edges and never across a junction — the rule
+          that keeps #559’s phantom 36,800&nbsp;ft out of the total.
+        </p>
+      </div>
+
+      <div class="phone">
+        <p class="phone__label"><span>Tap a trail</span><b>partly measured</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">Long Path</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Aqua blaze · NYNJTC</p>
+              <p class="sheet__range">14.2 mi on this piece · Catskill Forest Preserve</p>
+              <p class="sheet__derived"><span class="climb climb--unknown">Climb not measured on 2 miles of this trail</span></p>
+              <p class="sheet__meta">The rest climbs about 3,100 ft, but the total would be low. No figure is shown.</p>
+            </div>
+          </div>
+        </div>
+        <p class="phone__caption">
+          <strong>A partial total is the confidently-wrong answer.</strong> An edge the DEM never
+          covered publishes <code>null</code>, never <code>0</code>, and the sheet refuses the sum rather
+          than printing a number that reads like the whole walk’s.
+        </p>
+      </div>
+
+      <div class="phone">
+        <p class="phone__label"><span>Tap a trail</span><b>no cell held</b></p>
+        <div class="phone__screen phone__screen--fit">
+          <div class="app-header"><span class="app-header__title">OurHike</span><span class="app-header__ico">⌕ ≡</span></div>
+          <div class="app-map">
+            <div class="app-sheet" style="position:static">
+              <div class="sheet__head"><h3 class="sheet__title">Escarpment Trail</h3><span class="sheet__x">×</span></div>
+              <p class="sheet__status">Blue blaze · NYS DEC</p>
+              <p class="sheet__range">23.5 mi · Catskill Forest Preserve</p>
+              <p class="sheet__derived"><span class="climb climb--unknown">Climb needs this place downloaded</span></p>
+              <p class="sheet__meta">Download Catskill Forest Preserve to see gain and loss here.</p>
+            </div>
+          </div>
+        </div>
+        <p class="phone__caption">
+          The one state that is not an unknown but a missing file, and it must not look
+          like the one above it. Absence of data and absence of download are different
+          sentences.
+        </p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>7</strong>the bill</p></div>
+  <section class="spine__body">
+    <h2>What this costs, and where it stops being cheap</h2>
+
+    <h3>Bytes in the bucket</h3>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Artifact</th><th>Nationwide</th><th>Grade</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Per-edge climb <span class="mono">[gain, loss]</span></td>
+            <td class="num">≈5.6 MB raw for 466,966 edges</td>
+            <td><span class="grade grade--reasoned">reasoned</span> 12 B/edge</td>
+          </tr>
+          <tr>
+            <td>Dense per-edge profile, 25&nbsp;m</td>
+            <td class="num">≈42 MB raw / ≈15 MB gzip</td>
+            <td><span class="grade grade--reasoned">reasoned</span> from 3.47&nbsp;MB / 694,955 samples measured at 40,596 edges</td>
+          </tr>
+          <tr>
+            <td>Terrain, one fully-covered 1° cell</td>
+            <td class="num">≈24.5 MB (z11–13, 41°N)</td>
+            <td><span class="grade grade--reasoned">reasoned</span> from measured 42.3 / 33.2 / 25.6 KB per tile</td>
+          </tr>
+          <tr>
+            <td>Terrain, all of CONUS at z0–13</td>
+            <td class="num">≈19.5 GB</td>
+            <td><span class="grade grade--reasoned">reasoned</span> — storage is trivial on R2; <b>building it is not</b></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">
+      <strong>Storage is not the constraint and never was.</strong> ~20&nbsp;GB of terrain cells is a
+      rounding error on R2 and egress is free. The constraints are <em>build minutes</em> and
+      <em>a phone’s disk</em>, in that order.
+    </p>
+
+    <h3>Build minutes, which is the real bill</h3>
+    <ul class="ul-tight">
+      <li>
+        <strong>Terrain is the expensive one and it is fetch-bound.</strong> The corridor’s
+        8,658 tiles come from the AWS terrarium bucket one at a time. CONUS at z13 is
+        <span class="num">≈559,000</span> tiles — 65× the corridor — which is not one job, at
+        any timeout. <strong>So terrain is built per region, on demand, never nationwide.</strong>
+        <code>export_dem.py</code> already takes <code>--region</code>; <code>export_basemap.py</code> got
+        <code>--regions</code> on 2026-09-15. The machinery exists; nothing schedules it per place.
+      </li>
+      <li>
+        <strong>Climb is nationwide already and its price is unknown.</strong> 16m22s is a
+        40,596-edge measurement. The same step on 466,966 edges was killed twice at
+        120&nbsp;min before #1287 made it read blocks instead of whole tiles. The first
+        honest thing to do is <em>tick <code>include_elevation</code> once and read the log</em> —
+        that is a dispatch, not a project.
+      </li>
+      <li>
+        <strong>The vector build already grew from ~20 to ~108 minutes in twelve days</strong>
+        with elevation <em>off</em>. The job ceiling is 180 minutes and was raised as a belt,
+        not a decision. Adding places multiplies regions, not edges — but nobody has
+        re-measured the floor.
+      </li>
+    </ul>
+
+    <h3>A phone’s disk</h3>
+    <p>
+      A place at Standard is <strong>tens to a few hundred megabytes</strong> — cheaper than
+      today’s single 458&nbsp;MB button, and additive. Three parks is not three times a
+      corridor. The existing storage headroom work (#554, #555) applies unchanged; the
+      place card is a better place to spend it than a whole-trail card, because the number
+      moves with the choice.
+    </p>
+  </section>
+</div>
+
+<hr class="rule">
+
+<div class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>8</strong>order</p></div>
+  <section class="spine__body">
+    <h2>What I would build, in this order</h2>
+    <ol class="ol-plain">
+      <li>
+        <strong>Tick <code>include_elevation</code> on one UA publish and read the log.</strong>
+        Costs a dispatch. Answers whether the climb file is current, what the nationwide
+        step now takes, and whether <code>cut_trail_graph.py</code> stops refusing to cut the
+        companions. Everything below is cheaper to plan once this number exists.
+      </li>
+      <li>
+        <strong>Put climb on the trail sheet.</strong> <code>lineDetail.ts</code> plus the graph
+        cell the map already loads. No new artifact, no new download, and it is the whole
+        of “gain and loss for every trail” as a hiker experiences it. The three states in
+        §6 are the work.
+      </li>
+      <li>
+        <strong>Declare a <code>DEM_CELLS</code> family on the client.</strong> The cells are cut and
+        published; <code>coverageCells.ts</code> has three families and no fourth. This is the
+        smallest change on the page and it gives the existing stretch download its
+        contours back — on the A.T., today.
+      </li>
+      <li>
+        <strong>Join <code>places.json</code> to the cell index.</strong> A place has a bbox;
+        <code>priceStretches()</code> already prices a set of cells across families; the missing
+        function is the one that turns a bbox into cells. Then the frames in §4 are mostly
+        assembly.
+      </li>
+      <li>
+        <strong>Build terrain and sheet per named place, on dispatch.</strong> <code>--region</code>
+        and <code>--regions</code> both exist. New York City cost <strong>1.4% of the published set
+        and no wall clock</strong> when it was measured on 2026-09-15 — because a region is a
+        buffer around trail lines, not a box around a city.
+      </li>
+    </ol>
+
+    <div class="callout">
+      <h3>Two gaps found while writing this, worth an issue either way</h3>
+      <p>
+        <span class="grade grade--blocked">safety-path</span>
+        <strong>A stretch download carries no terrain at all.</strong> The DEM cells are built by
+        <span class="mono">build-dem.yml</span> and published under <code>CELL_FAMILIES</code>, and no
+        client code declares them. A hiker who takes “just the stretch I’m walking” gets a
+        sheet with no hillshade and no contours and is told nothing about it. That is on
+        the lost-in-front-of-something-dangerous path.
+      </p>
+      <p>
+        <span class="grade grade--unvalidated">doc drift</span>
+        <strong><code>OFFLINE_COVERAGE.md</code> still says “the DEM has no cells yet”.</strong> It has
+        had them since #1175. The paragraph is dated 2026-09-02 and is now wrong in a way
+        that would send the next session to build something that exists.
+      </p>
+    </div>
+
+    <p class="note">
+      <strong>Every Harriman and Catskills figure on this page is reasoned, not weighed.</strong>
+      No cell has been cut over a network park and put on a scale — which is
+      <code>OFFLINE_COVERAGE.md</code>’s own open question 4, still open.
+      <code>spike_package_overlap.py</code> makes it a ~7-minute dispatch once there is a pair to
+      measure, and it should run before any of these numbers reach a hiker.
+    </p>
+  </section>
+</div>
+
+<div class="spine">
+  <div></div>
+  <footer>
+    Mock-up, not a build. Palette and type are the app’s own tokens
+    (<code>client/src/design-system/tokens/colors.css</code>, <code>lib/blaze.ts</code>), reused from
+    <code>corridor-view.html</code> so the four mock-ups read as one family. Sources for every
+    measured figure: <code>pipeline/LIGHT_DOWNLOAD.md</code>, <code>pipeline/BASEMAP.md</code>,
+    <code>features/OFFLINE_COVERAGE.md</code>, <code>features/NEARBY_TRAILS.md</code>,
+    <code>pipeline/cut_trail_graph.py</code>, <code>pipeline/export_network_profile.py</code>.
+  </footer>
+</div>
+</div>

@@ -41,6 +41,7 @@ import {
   BASEMAP_CELLS_KEY,
   DATA_CONFIGURED,
   dataUrl,
+  DEM_CELLS_KEY,
   NEARBY_TRAILS_CELLS_KEY,
   TRAIL_GRAPH_CELLS_KEY,
 } from './config'
@@ -133,6 +134,29 @@ export const BASEMAP_CELLS: CellFamily = {
   packagePrefix: 'ourhike:basemap-cell:',
   contextPackageKey: 'ourhike:basemap-context',
   indexStoreKey: 'ourhike:basemap-cells-index',
+}
+
+/**
+ * The terrain under the hiking sheet, in the same cells (#1475,
+ * config.ts's DEM_CELLS_KEY) - what map/demTiles.ts asks before the whole
+ * `ourhike:dem` package and long before AWS.
+ *
+ * A FOURTH FAMILY RATHER THAN A SECOND ARCHIVE UNDER THE BASEMAP'S KEYS, for
+ * the reason the interface above gives: `n41w075` is the same ground whichever
+ * sheet holds it, so one key space would let the basemap's Harriman overwrite
+ * the terrain's. It is the same square and two different archives, which is
+ * exactly what a family is for.
+ *
+ * Unlike NETWORK_CELLS this one HAS a context archive - `export_dem.py` walks
+ * its region at every zoom, so there is a z0-9 pyramid to share - and nothing
+ * here assumes either way: the index says, and `cellDownloadRequests` and
+ * `priceStretches` both read `context` off it.
+ */
+export const DEM_CELLS: CellFamily = {
+  indexKey: DEM_CELLS_KEY,
+  packagePrefix: 'ourhike:dem-cell:',
+  contextPackageKey: 'ourhike:dem-context',
+  indexStoreKey: 'ourhike:dem-cells-index',
 }
 
 /** The other organizations' trail lines as tiles, cut into the same cells

@@ -109,8 +109,31 @@ export default async function drive(page) {
 
   // The sheet, by its role and name (chrome/LineSheet.tsx). Waited on rather
   // than assumed, and let go where nothing opens: that is the second frame.
-  await page
-    .getByRole('dialog', { name: 'Trail line' })
-    .waitFor({ timeout: 10000 })
+  const sheet = page.getByRole('dialog', { name: 'Trail line' })
+  await sheet.waitFor({ timeout: 10000 }).catch(() => {})
+
+  // AND THEN THE CLIMB ROW, WHICH IS A SECOND ARRIVAL RATHER THAN PART OF
+  // THE FIRST (#1476). The sheet opens on the tap with whatever is known
+  // then, and the climb is not known then: the figure is summed out of the
+  // junction graph's cell for this ground, which is 2,638,738 bytes of JSON
+  // for n40w074 (measured off the UA bucket, 2026-09-15), and the 83,309-byte
+  // climb half is only asked for once that cell has merged AND a line has
+  // been tapped. Two round trips and a parse after the frame the tap
+  // produces.
+  //
+  // Without this wait the shot was a race the camera kept losing: run 1697
+  // (a UA preview, the bucket carrying all 505 climb cells and every one of
+  // this cell's 165 Long Path edges measured) still photographed a sheet
+  // with no climb row. That is a true screen at 6 seconds and a misleading
+  // picture of the feature, which is the one thing a shot recipe may not be.
+  //
+  // .catch is the honest half and is not belt-and-braces: where the bucket
+  // carries no climb half the row never comes, and that frame - the sheet
+  // without it - is this change's own "no figures on this phone" state and
+  // is worth photographing. So this waits for the row and takes whatever is
+  // there when the wait ends, rather than failing the recipe either way.
+  await sheet
+    .getByText(/^\+[\d,]+ (ft|m) \/ −[\d,]+ (ft|m)$/)
+    .waitFor({ timeout: 15000 })
     .catch(() => {})
 }

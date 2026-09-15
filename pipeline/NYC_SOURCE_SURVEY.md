@@ -737,3 +737,41 @@ Three options, and the measurement does not pick between them:
 Recorded here rather than decided: what a hiker should see when two city agencies both
 claim a path is a question about the map, and `@unvalidated` besides — nobody has stood on
 one of the 423 doubled segments to see whether it is one path or two.
+
+### Decided 2026-09-15: option 2, narrowed until it is safe (#1459)
+
+The maintainer chose to build a real geometric dedupe rather than leave both or drop a
+jurisdiction. `pipeline/lib/duplicates.py` is it, and the three choices that make option 2
+survivable are all rounded the same way — removing a line a hiker needs is the *lost* path:
+
+- **10 m, not the 25 m this section quotes.** `lib/concurrency.py` measured the knee of the
+  same curve at 8–10 m, and 10 m is under the width of the drawn line at z14. 25 m would
+  take in a boulevard's two sides digitised apart, which are two paths.
+- **Half the feature's length**, so a greenway that merely runs beside a park trail for a
+  stretch keeps both lines — outside that stretch it is the only record of that path.
+- **Whole features, never split ones.** Cutting at the overlap boundary would be more
+  precise and needs a rule for what the offcut is called and what happens to a fifteen-metre
+  orphan. That question is open rather than answered badly.
+
+**Measured 2026-09-15 against both live layers: 427 of the 3,030 shipped greenway records
+removed, 30.35 miles — with 86 more coming near a parks trail for less than half their
+length and kept.**
+
+**And the rule validates itself against this section's own control.** It pairs on geometry
+alone and never reads `gwyjuris`, yet:
+
+| jurisdiction | flagged | of | rate |
+| --- | ---: | ---: | ---: |
+| **DPR** (NYC Parks' own ground) | **417** | 1,823 | **22.9%** |
+| DOT | 10 | 690 | 1.4% |
+| NYSDOT, NPS, MTA, RIOC, NYSPRHP, GIPEC, BPCA, BBPDC, SBS, DCAS, private | **0** | 517 | 0.0% |
+
+**97.7% of what it flags is DPR**, and 22.9% of that jurisdiction's segments against
+23.6% of its length by the independent vertex method above. Two different methods landing on
+the same jurisdiction is the evidence that this removes double-draws rather than a dense
+city's near neighbours. The 10 DOT-jurisdiction flags sit just above the 0.9% control floor
+and are not individually checked — `@unvalidated`, and standing on one is what would settle
+it.
+
+**Option 3 is not foreclosed.** If somebody walks one of these and finds two paths, the pair
+declaration comes out of `sources.json` and the lines come back.

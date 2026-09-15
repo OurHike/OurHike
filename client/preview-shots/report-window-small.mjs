@@ -10,8 +10,8 @@
 //
 // WHAT TO LOOK AT, in one sentence: the bottom edge of the window, and whether
 // the "Something unsafe happened" row is whole inside it. Measured against the
-// dev server on 2026-09-15 in Chromium, the window needs 607px here and the
-// scrim has 643px to give it - 36px of headroom, where before this change it
+// dev server on 2026-09-15 in Chromium, the window needs 605px here and the
+// scrim has 643px to give it - 38px of headroom, where before this change it
 // needed 656 of 635 and scrolled by 184.
 //
 // `small` is the recipe contract's third viewport (scripts/screenshot.mjs's
@@ -19,7 +19,7 @@
 // claim is "fits on an SE" gets photographed on one.
 //
 // 375x667 IS THE FLOOR AND NOT THE WHOLE RANGE, which this frame cannot show
-// and the pull request says instead: 320x568 still scrolls by 141px, and so
+// and the pull request says instead: 320x568 still scrolls by 139px, and so
 // does any phone whose owner has turned the system text size up. What holds at
 // every size is the thing this pair is really about - the 911 line is pinned
 // outside the scrolling region, so a scroll can hide a category and never the

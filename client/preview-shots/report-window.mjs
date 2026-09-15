@@ -24,7 +24,7 @@
 //     thing in the body. It used to be 39 px below the fold here and 190 px
 //     below it on a 360x640 phone, which is a notice about calling for help
 //     that a hiker met only by scrolling past six categories first.
-//   - the whole window fits with no scroll at all - 607 px of window in
+//   - the whole window fits with no scroll at all - 605 px of window in
 //     820 px of scrim, where it needed 656 of 812 and scrolled by 53.
 //   - each tile's icon sits BESIDE its label rather than above it, which is
 //     where the height came from: tiles 75 px against 98, and the grid 268 px
@@ -74,8 +74,11 @@ export default async function drive(page) {
   // the last thing in a body that overflowed - a recipe scrolling to reach
   // the notice was the defect, photographed every time and read as framing.
   //
-  // Settled on the notice being present rather than on a delay: it is the
-  // last thing this window renders after the header, so having it is having
-  // the window. Where it sits is the frame's business and not this drive's.
-  await page.getByRole('note').waitFor()
+  // SETTLED ON THE LAST THING DRAWN, which since this change is no longer the
+  // notice: pinning it put it directly under the header, so waiting on it now
+  // proves only that the TOP of the window exists. The unsafe row is the foot
+  // of the body and the thing a short window would cut off, so it is what
+  // "the whole window is up" actually means here - and it is the element this
+  // frame is for a reviewer to look at.
+  await page.getByRole('button', { name: /^Something unsafe happened/ }).waitFor()
 }

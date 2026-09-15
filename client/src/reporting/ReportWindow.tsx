@@ -658,10 +658,12 @@ export function ReportWindow({
 
         {/* THE 911 LINE IS PINNED, above the scroll rather than inside it
             (#1480). It used to close the body, which meant a hiker met it
-            only by scrolling past every category first - measured 53 px below
-            the fold on a 390x844 phone and 184 px below it on a 375x667 one,
+            only by scrolling past every category first - measured 39 px below
+            the fold on a 390x844 phone and 170 px below it on a 375x667 one,
             and the whole reason the line exists is to be read BEFORE the tap
-            by somebody who is in trouble now.
+            by somebody who is in trouble now. (53 and 184 are the body's own
+            overflow at those sizes, which is a different measurement and what
+            this comment first carried.)
 
             OUT OF THE BODY ENTIRELY rather than merely moved to the top of
             it, because a category list grows: anything added to the grid

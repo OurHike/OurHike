@@ -148,23 +148,35 @@ test.describe('the reporting doors', () => {
         .evaluate((body) => body.scrollHeight - body.clientHeight)
       expect(overflow, `the body scrolls at ${size.width}x${size.height}`).toBe(0)
 
-      // The closure row whole inside its own border. It declares
-      // `min-height: 44px`, which made it the one child the flex squeeze
-      // could take room from - it rendered at 44 px against a natural 77 and
-      // spilled its description 15 px past its own edge. Compared against the
-      // row's padding box rather than against a number, so this keeps meaning
-      // what it says if the copy or the type changes.
-      const spill = await window_
-        .getByRole('button', { name: /^The trail is closed/ })
-        .evaluate((row) => {
-          const description = row.querySelector('.report-window__row-description')
+      // BOTH heavy rows whole inside their own borders, not just the one that
+      // was caught clipping. They declare the same `min-height: 44px`, which
+      // is what let the flex squeeze read a touch floor as a target: the
+      // closure row rendered at 44 px against a natural 77 and spilled its
+      // description 15 px past its own edge.
+      //
+      // The unsafe row is here because it is the one the container-level fix
+      // does NOT reach. `.report-window__body > *` is a child combinator and
+      // that row is a grandchild, inside `.report-window__unsafe` - so it is
+      // floored by `.report-window__row`'s own `flex: none` and by nothing
+      // else. Asserting only the closure row would have left the row the 911
+      // line exists to qualify covered by a coincidence.
+      //
+      // Compared against each row's own padding box rather than against a
+      // number, so this keeps meaning what it says if the copy or the type
+      // changes.
+      for (const row of [/^The trail is closed/, /^Something unsafe happened/]) {
+        const spill = await window_.getByRole('button', { name: row }).evaluate((el) => {
+          const description = el.querySelector('.report-window__row-description')
           if (description === null) return Number.NaN
-          const inside = row.getBoundingClientRect().bottom
-          return Math.round(description.getBoundingClientRect().bottom - inside)
+          return Math.round(
+            description.getBoundingClientRect().bottom -
+              el.getBoundingClientRect().bottom,
+          )
         })
-      expect(spill, `the closure row clips at ${size.width}x${size.height}`).toBeLessThan(
-        0,
-      )
+        expect(spill, `${row.source} clips at ${size.width}x${size.height}`).toBeLessThan(
+          0,
+        )
+      }
 
       await window_.getByRole('button', { name: /^Close/ }).click()
       await expect(window_).toHaveCount(0)

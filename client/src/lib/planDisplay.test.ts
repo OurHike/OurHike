@@ -8,6 +8,7 @@ import {
   MIN_ROW_PX,
   ROW_CHROME_PX,
   ROW_PX_PER_WALKING_HOUR,
+  legLabel,
   stopLabel,
   MAX_TRIP_ROW_PX,
   TRIP_CHROME_PX,
@@ -100,5 +101,36 @@ describe('tripDateRange (#805)', () => {
 
   it('reads in UTC, so it cannot shift with the phone', () => {
     expect(tripDateRange(['2026-05-12', '2026-05-12'])).toBe('12 May 2026')
+  })
+})
+
+describe('legLabel', () => {
+  it('prints a published name as published', () => {
+    expect(legLabel('Ramapo-Dunderberg')).toBe('Ramapo-Dunderberg')
+  })
+
+  it('says “Unnamed trail” for a missing name', () => {
+    expect(legLabel(null)).toBe('Unnamed trail')
+    expect(legLabel(undefined)).toBe('Unnamed trail')
+  })
+
+  // #1435. The artifact carries 12,510 whitespace-only names against 10,967
+  // nulls, so this is the common flavour of nothing, not the exotic one, and
+  // it used to draw as an empty row beside a null's "Unnamed trail".
+  it('says the same thing for a name that is only whitespace', () => {
+    expect(legLabel('')).toBe('Unnamed trail')
+    expect(legLabel(' ')).toBe('Unnamed trail')
+    expect(legLabel('   \t \n ')).toBe('Unnamed trail')
+  })
+
+  it('trims a name that has one, rather than dropping it', () => {
+    expect(legLabel('  Timp-Torne  ')).toBe('Timp-Torne')
+  })
+
+  // The two absences are indistinguishable on screen, which is the property
+  // the issue asked for: a hiker cannot act on the difference between a
+  // publisher's empty field and a publisher's missing field.
+  it('gives a blank and a null the identical line', () => {
+    expect(legLabel('  ')).toBe(legLabel(null))
   })
 })

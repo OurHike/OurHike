@@ -85,6 +85,7 @@ import {
   type LabelLayerKey,
 } from '../lib/mapLabelLayers'
 import type { PaceEstimate } from '../lib/pace'
+import { legLabel } from '../lib/planDisplay'
 import {
   formatDistance,
   formatElevation,
@@ -505,7 +506,7 @@ function RouteRowItem({
             : { background: blazePaintColor(row.blazeColor) }
         }
       />
-      <span className="day-hike-panel__row-name">{row.name ?? 'Unnamed trail'}</span>
+      <span className="day-hike-panel__row-name">{legLabel(row.name)}</span>
       <span className="day-hike-panel__row-detail">
         {formatDistance(row.miles, units)} &middot; mile {row.fromMile.toFixed(1)}&ndash;
         {row.toMile.toFixed(1)}

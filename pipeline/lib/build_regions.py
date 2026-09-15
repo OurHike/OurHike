@@ -50,9 +50,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
+import shapely
 from pyproj import Transformer
 from shapely.geometry import shape
-from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
 from lib.corridor import GEOGRAPHIC_CRS, PROJECTED_CRS
@@ -70,14 +71,47 @@ _TO_METRIC = Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True)
 _TO_GEOGRAPHIC = Transformer.from_crs(PROJECTED_CRS, GEOGRAPHIC_CRS, always_xy=True).transform
 
 
+def _projected(geometry, transform):
+    """`geometry` through a pyproj transform, one vectorised call for the lot.
+
+    `shapely.transform` hands the WHOLE coordinate array to the callable;
+    `shapely.ops.transform` walks the geometry part by part. On a city's
+    lines that is the difference between a build and a dead runner - see
+    buffer_km below for the measurement.
+    """
+    return shapely.transform(geometry, lambda coords: np.column_stack(transform(coords[:, 0], coords[:, 1])))
+
+
 def buffer_km(geometry, km: float = REGION_BUFFER_KM):
     """`geometry` buffered by `km`, measured in metres rather than degrees.
 
     Projected to EPSG:5070 and back, the same round trip lib/corridor.py makes
     for the same reason: a buffer in degrees is a different amount of ground
     at each end of the country, and the thing being promised is ground.
+
+    PART BY PART AND THEN UNIONED, WHICH IS THE WHOLE REASON THIS FUNCTION
+    HAS A BODY WORTH READING. The obvious spelling - `ops.transform`, then
+    `.buffer()` on the multi-part geometry - killed two GitHub runners before
+    it was measured, and the failure gave no Python output at all, only the
+    runner's own shutdown notice ninety seconds in. Measured 2026-09-15
+    against New York City's real two layers, 13,581 parts and 92,174
+    vertices after the union:
+
+        ops.transform (part by part)             > 100 s, then the runner died
+        shapely.transform (one array)               0.01 s
+
+        MultiLineString.buffer(3000)             > 100 s, then the runner died
+        shapely.buffer(parts) + union_all           0.53 s + 1.22 s
+
+    Both halves had to change; either alone still fails. GEOS buffers a
+    thousands-part geometry as one job and does it badly, while a cascaded
+    union over the same parts already buffered is what it is good at, so
+    the arc resolution stays the DEFAULT - lowering it was tried and bought
+    nothing, and a coarser arc would have had to be paid back by buffering
+    wider to keep the promise a superset.
     """
-    return shapely_transform(_TO_GEOGRAPHIC, shapely_transform(_TO_METRIC, geometry).buffer(km * 1000.0))
+    parts = shapely.get_parts(_projected(geometry, _TO_METRIC))
+    return _projected(shapely.union_all(shapely.buffer(parts, km * 1000.0)), _TO_GEOGRAPHIC)
 
 
 def lines_of(path: Path):

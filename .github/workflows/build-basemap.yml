@@ -142,11 +142,15 @@ jobs:
       # The `nyc` region is a buffer around the city's own registered lines
       # rather than a box drawn around a city (build_regions.py says why), so
       # the build needs those lines on disk. Skipped entirely when no region
-      # asks for them - this fetch walks every external source in the
-      # registry and is minutes that an `at` build has no use for.
+      # asks for them.
+      #
+      # --only, because the first run of this step fetched all 22 external
+      # sources and took 9m28s to get the two a region reads. The unselected
+      # layers keep their manifest entries, so the next full fetch still
+      # knows which of them are unchanged.
       - name: Fetch the external layers a region is built from
         if: contains(inputs.regions, 'nyc')
-        run: python fetch_external_layers.py
+        run: python fetch_external_layers.py --only nyc_parks_trails nyc_dot_greenways
 
       - name: Fetch the Planetiler jar
         env:

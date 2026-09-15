@@ -43,6 +43,7 @@ import duckdb
 from pmtiles.reader import all_tiles
 from shapely.geometry import shape
 
+from lib.build_regions import NYC_SOURCE_KEYS, combined, region_from_layers
 from lib.corridor import build_corridor
 from lib.http_retry import download_with_retry
 from lib.poly import clip_shape, to_poly
@@ -54,6 +55,23 @@ OUT_DIR = ROOT / "data" / "processed"
 OUT_PATH = OUT_DIR / "basemap.pmtiles"
 CLIP_POLY_PATH = OSM_RAW_DIR / "clip.poly"
 REGION_PATH = OUT_DIR / "basemap_region.geojson"
+EXTERNAL_RAW_DIR = ROOT / "data" / "raw" / "external"
+
+#: Where each region's own exact shape is written, for extract_package.py
+#: to cut against. `at` keeps REGION_PATH above under its old name, because
+#: build-basemap.yml and every published package cut have always named it.
+REGION_PATHS = {"at": REGION_PATH, "nyc": OUT_DIR / "basemap_region_nyc.geojson"}
+
+#: The whole build's shape, for the cut the coverage CELLS come from. Not
+#: the same file as any single region: the A.T. package stays exactly the
+#: A.T.'s ground (its advertised size is a published promise), while the
+#: cells are cut from everything the build covers (#1458).
+COVERAGE_REGION_PATH = OUT_DIR / "basemap_region_coverage.geojson"
+
+#: The region set a run defaults to - today's shape, so a dispatch that
+#: names nothing builds exactly what it always built.
+DEFAULT_REGIONS = ("at",)
+KNOWN_REGIONS = ("at", "nyc")
 
 GEOFABRIK_BASE = "https://download.geofabrik.de/north-america/us"
 
@@ -269,18 +287,52 @@ def load_corridor_4326(buffer_miles: float | None = None):
     return shape(json.loads(geojson))
 
 
-def write_shapes(corridor) -> None:
-    """The two derived shapes, and why they differ: the padded .poly bounds
-    what the BUILD considers (lib/poly.py's superset guarantee), while the
-    exact corridor GeoJSON is what extract_package.py cuts the shipped
-    package against. Conflating them would either ship padding or clip the
-    build to a boundary features should cross whole."""
+def build_region(name: str):
+    """One named region's exact shape, in EPSG:4326.
+
+    `at` is ATC's centerline buffered to the corridor - the shape this script
+    built unconditionally before #1458. `nyc` is the same construction over
+    the city's own two registered layers; see lib/build_regions.py for why a
+    region is a buffer around lines rather than a boundary, and for the 3 km.
+    """
+    if name == "at":
+        return load_corridor_4326()
+    if name == "nyc":
+        return region_from_layers([EXTERNAL_RAW_DIR / f"{key}.geojson" for key in NYC_SOURCE_KEYS])
+    raise SystemExit(f"unknown build region {name!r} - known: {', '.join(KNOWN_REGIONS)}")
+
+
+def _feature(geometry) -> str:
+    return json.dumps({"type": "Feature", "properties": {}, "geometry": geometry.__geo_interface__})
+
+
+def write_shapes(regions: dict) -> None:
+    """The derived shapes, and why they differ.
+
+    The padded .poly bounds what the BUILD considers (lib/poly.py's superset
+    guarantee), while the exact GeoJSONs are what extract_package.py cuts
+    against. Conflating them would either ship padding or clip the build to a
+    boundary features should cross whole.
+
+    THREE KINDS OF FILE SINCE #1458, and keeping them apart is the whole of
+    it. One .poly for the WHOLE build, because osmium and Planetiler clip
+    once. One exact GeoJSON PER REGION, because a package is cut against its
+    own ground - `at` keeps its old filename so every published cut and the
+    workflow that makes them are untouched. And one exact GeoJSON for the
+    UNION, because the coverage cells are cut from everything the build
+    covers rather than from any one region: a cell is the unit of offline
+    coverage and does not belong to a trail.
+    """
     OSM_RAW_DIR.mkdir(parents=True, exist_ok=True)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    CLIP_POLY_PATH.write_text(to_poly(clip_shape(corridor), name="basemap-clip"))
-    REGION_PATH.write_text(json.dumps({"type": "Feature", "properties": {}, "geometry": corridor.__geo_interface__}))
+    whole = combined(list(regions.values()))
+    CLIP_POLY_PATH.write_text(to_poly(clip_shape(whole), name="basemap-clip"))
+    for name, geometry in regions.items():
+        REGION_PATHS[name].write_text(_feature(geometry))
+        print(f"Region {name} -> {REGION_PATHS[name]}")
+    COVERAGE_REGION_PATH.write_text(_feature(whole))
     print(f"Clip shape -> {CLIP_POLY_PATH}")
-    print(f"Package region -> {REGION_PATH}")
+    print(f"Coverage region -> {COVERAGE_REGION_PATH}")
 
 
 def report_archive(path: Path) -> dict[int, tuple[int, int]]:
@@ -312,9 +364,9 @@ def main(args: argparse.Namespace):
     if args.no_clip and args.states == AT_STATES:
         raise SystemExit("--no-clip over the full default state list needs a machine sized for it - pass --states explicitly.")
 
-    print("Building corridor from centerline...")
-    corridor = load_corridor_4326()
-    write_shapes(corridor)
+    print(f"Building the shape from {len(args.regions)} region(s): {', '.join(args.regions)}...")
+    regions = {name: build_region(name) for name in args.regions}
+    write_shapes(regions)
 
     print(f"Fetching {len(args.states)} state extracts...")
     state_pbfs = fetch_states(args.states, OSM_RAW_DIR, refetch=args.refetch)
@@ -363,6 +415,13 @@ if __name__ == "__main__":
     # no argv would read pytest's own command line.
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--states", nargs="+", default=AT_STATES, help="Geofabrik state names (default: the 14 AT states)")
+    parser.add_argument(
+        "--regions",
+        nargs="+",
+        default=list(DEFAULT_REGIONS),
+        choices=list(KNOWN_REGIONS),
+        help=f"Which ground to build (default: {' '.join(DEFAULT_REGIONS)}). See lib/build_regions.py.",
+    )
     parser.add_argument("--planetiler-jar", type=Path, default=None, help="Path to planetiler.jar; omit to stop after clip+merge")
     parser.add_argument("--max-zoom", type=int, default=BASEMAP_MAX_ZOOM, help=f"Tile pyramid depth (default {BASEMAP_MAX_ZOOM})")
     parser.add_argument("--out", type=Path, default=OUT_PATH, help=f"Output .pmtiles path (default {OUT_PATH})")

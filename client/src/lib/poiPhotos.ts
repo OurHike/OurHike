@@ -39,6 +39,62 @@ import { del, get, keys, update } from 'idb-keyval'
  */
 export const CARD_PHOTO_EDGE = 640
 
+/**
+ * How wide the card's photo slot actually is, in CSS pixels.
+ *
+ * The card is 264 (`chrome.css`: `width: min(264px, calc(100% - 16px))`) and
+ * the media box sits inside `.poi-card__body`'s 12px padding, so the
+ * photograph gets 264 - 24.
+ *
+ * features/POI_PHOTOS.md said 264 until #1495 and was right when it was
+ * written: the photograph used to sit full-bleed at the card's top edge.
+ * #941 moved it below the heading and inside the body padding - the change
+ * whose CSS comment explains why the media box needs its own border radius
+ * now - and nothing re-derived the slot afterwards.
+ */
+export const CARD_PHOTO_SLOT_PX = 240
+
+/**
+ * The natural width at or above which a photograph may fill the card's
+ * media box.
+ *
+ * REASONED, not picked: it is `CARD_PHOTO_SLOT_PX` at DPR 2, the density
+ * POI_PHOTOS.md sizes every other photo decision against. At or above it,
+ * filling the box is a downscale or a wash; below it, filling means
+ * upscaling a file past what it holds AND cropping it to 16:10 - and the
+ * crop lands hardest on the images least able to afford it.
+ *
+ * The decision as the maintainer recorded it on 2026-09-15 was "hero at 640
+ * and above, inset below 400", which leaves 400-639 unruled. 480 sits inside
+ * that gap, so it settles the middle band without overriding either bound.
+ */
+export const MIN_HERO_PHOTO_WIDTH = CARD_PHOTO_SLOT_PX * 2
+
+/**
+ * How the card draws a photograph: filling the box, or at its own size
+ * centred inside it.
+ */
+export type PhotoFrame = 'hero' | 'inset'
+
+/**
+ * Which frame a photograph of this natural width earns.
+ *
+ * `null` - not measured yet, or a browser that reported nothing - is HERO,
+ * deliberately. It is what the card did before this existed, so an
+ * unmeasured photo renders exactly as it always has rather than flashing
+ * small and then growing; and every source the card was built for (the
+ * hiker's own 640px re-encodes, the 640px Commons and ATC renderings) is
+ * hero anyway, so the unmeasured case and the common case agree.
+ */
+export function photoFrame(naturalWidth: number | null | undefined): PhotoFrame {
+  if (naturalWidth === null || naturalWidth === undefined) return 'hero'
+  // 0 is what a broken or not-yet-decoded image reports. Treated as
+  // unmeasured rather than as "very small", because a decode failure is not
+  // evidence about the photograph's size.
+  if (naturalWidth <= 0) return 'hero'
+  return naturalWidth >= MIN_HERO_PHOTO_WIDTH ? 'hero' : 'inset'
+}
+
 export const POI_PHOTOS_PREFIX = 'ourhike:my-photos:'
 
 /** Which affordance the photo came through - the fact #573's wording turns on. */

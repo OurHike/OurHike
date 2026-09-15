@@ -370,5 +370,16 @@ export default async function drive(page) {
         () => false,
       )
 
-  if ((await grip.count()) > 0 && (await snapTo('full'))) await snapTo('peek')
+  if ((await grip.count()) > 0 && (await snapTo('full'))) {
+    // AND OFF `full` AGAIN IF THE SECOND PRESS DOES NOT SETTLE. The guard
+    // above means a failure costs the pushed-down state rather than the whole
+    // photograph - but the state it leaves behind is the bar at its TALLEST,
+    // covering the map this recipe's caption and alt text both promise is in
+    // the middle of the frame. A picture that contradicts its own caption is
+    // the "unrelated screenshot attached to fill the section" CLAUDE.md rules
+    // out: it looks like evidence and is not. `rest` is the bar's own default
+    // and the state the caption already describes, so one more guarded press
+    // lands somewhere the words are true.
+    if (!(await snapTo('peek'))) await snapTo('rest')
+  }
 }

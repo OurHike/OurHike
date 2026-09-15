@@ -250,3 +250,97 @@ def test_keep_near_drops_geometry_far_from_the_points_but_keeps_the_graph_whole(
     assert len(graph.edges) == 6
     assert graph.has_geometry(0)
     assert not graph.has_geometry(5)
+
+
+class TestWhatMakesTwoPiecesOneLeg:
+    """#1433's rule, twinned. The client has seven cases pinning it; this side
+    feeds `export_suggested_hikes.py`, so a revert here would land in
+    `suggested_hikes.json` rather than on the phone, where nothing would catch
+    it."""
+
+    def test_the_name_and_the_blaze_decide_it(self):
+        assert router.same_trail("Pine Meadow Trail", "Red", "Pine Meadow Trail", "Red")
+        assert not router.same_trail("Pine Meadow Trail", "Red", "Seven Hills Trail", "Red")
+        assert not router.same_trail("Pine Meadow Trail", "Red", "Pine Meadow Trail", "Blue")
+
+    def test_absent_blank_and_padded_names_are_one_name(self):
+        assert router.same_trail(None, "Red", "  ", "Red")
+        assert router.same_trail("Pine Meadow Trail ", "Red", "Pine Meadow Trail", "Red")
+
+    def test_one_trail_drawn_as_two_lines_is_one_leg(self, tmp_path):
+        """`trail_id` is one id per source FEATURE, so this is the shape the
+        artifact really has: one trail, two published lines, a node between
+        them. Grouping on the id made it two legs and printed two rows saying
+        the same thing."""
+        nodes = [node(0), node(1), node(2)]
+        edges = [
+            {
+                "from": 0,
+                "to": 1,
+                "trail_id": "t:pine-a",
+                "source": "oprhp_trails",
+                "name": "Pine Meadow Trail",
+                "blaze_color": "Red",
+            },
+            {
+                "from": 1,
+                "to": 2,
+                "trail_id": "t:pine-b",
+                "source": "oprhp_trails",
+                "name": "Pine Meadow Trail",
+                "blaze_color": "Red",
+            },
+        ]
+        for edge in edges:
+            edge["length_m"] = router.metres_between(tuple(nodes[edge["from"]]), tuple(nodes[edge["to"]]))
+        (tmp_path / "trail_graph.json").write_text(json.dumps({"nodes": nodes, "edges": edges}))
+        (tmp_path / "trail_graph_geometry.json").write_text(json.dumps([[nodes[e["from"]], nodes[e["to"]]] for e in edges]))
+        graph = router.load_graph(tmp_path / "trail_graph.json", tmp_path / "trail_graph_geometry.json")
+
+        route = router.route_between(graph, point(graph, 0.0), router.point_at_node(graph, 2))
+
+        assert [leg.name for leg in route.legs] == ["Pine Meadow Trail"]
+
+    def test_a_run_crossing_two_stewards_credits_both(self, tmp_path):
+        """#1115's rule reaching the twin. One name and one blaze can cross
+        from one organization's ground onto another's, and a leg wearing the
+        first one's name still stands on the second one's."""
+        nodes = [node(0), node(1), node(2)]
+        edges = [
+            {
+                "from": 0,
+                "to": 1,
+                "trail_id": "t:pine-a",
+                "source": "oprhp_trails",
+                "name": "Pine Meadow Trail",
+                "blaze_color": "Red",
+            },
+            {
+                "from": 1,
+                "to": 2,
+                "trail_id": "t:pine-b",
+                "source": "nynjtc_long_path",
+                "name": "Pine Meadow Trail",
+                "blaze_color": "Red",
+            },
+        ]
+        for edge in edges:
+            edge["length_m"] = router.metres_between(tuple(nodes[edge["from"]]), tuple(nodes[edge["to"]]))
+        (tmp_path / "trail_graph.json").write_text(json.dumps({"nodes": nodes, "edges": edges}))
+        (tmp_path / "trail_graph_geometry.json").write_text(json.dumps([[nodes[e["from"]], nodes[e["to"]]] for e in edges]))
+        graph = router.load_graph(tmp_path / "trail_graph.json", tmp_path / "trail_graph_geometry.json")
+
+        route = router.route_between(graph, point(graph, 0.0), router.point_at_node(graph, 2))
+
+        assert len(route.legs) == 1
+        assert route.legs[0].source == "oprhp_trails"
+        assert route.legs[0].concurrent_sources == ["nynjtc_long_path"]
+        # And it reaches the artifact, which is the whole point of twinning it.
+        assert route.legs[0].to_dict()["concurrent_sources"] == ["nynjtc_long_path"]
+
+    def test_a_leg_with_nothing_folded_in_carries_no_field_at_all(self, graph):
+        """Omitted, not [] - the rule RouteLeg.concurrent_sources keeps, so a
+        record predating the field round-trips unchanged."""
+        route = router.route_between(graph, point(graph, 0.0), point(graph, 1.5))
+
+        assert "concurrent_sources" not in route.legs[0].to_dict()

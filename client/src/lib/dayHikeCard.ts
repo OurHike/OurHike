@@ -41,6 +41,7 @@ import {
   routeBetween,
   routeThrough,
   closeTheLoop,
+  trailName,
   type GraphPoint,
   type GraphRoute,
   type RouteClimb,
@@ -215,10 +216,18 @@ export function dayHikeBailOuts(
           // part company with the route order. There, folding two unnamed rows
           // together drops a repeat; here it would drop an escape route, and
           // this is the "unable to get off the trail quickly" path.
-          const name = (departing.name ?? '').trim()
+          //
+          // BUT IT FALLS BACK TO THE PUBLISHED LINE FIRST, because the case
+          // above has not gone away for a trail with no name: one line
+          // crossing the junction is still two edges, `build_trail_graph.py`
+          // still gives both the parent feature's id, and keying straight off
+          // the edge index listed that one trail as two identical "Unnamed
+          // trail" rows. Per-edge is the LAST resort, for a piece its
+          // publisher numbered no more than it named.
+          const name = trailName(departing.name)
           const identity =
             name === ''
-              ? `edge:${neighbour.edgeIndex}`
+              ? (departing.trail_id ?? `edge:${neighbour.edgeIndex}`)
               : `${name}|${departing.blaze_color ?? ''}`
           if (seenTrails.has(identity)) continue
           seenTrails.add(identity)

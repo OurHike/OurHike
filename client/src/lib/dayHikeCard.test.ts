@@ -232,6 +232,28 @@ describe('dayHikeBailOuts', () => {
     expect(dayHikeBailOuts(unnamedIndex, resolved!)).toHaveLength(2)
   })
 
+  it('lists ONE unnamed trail crossing the junction as one way off', () => {
+    // The crossing case, for a trail nobody named. `build_trail_graph.py`
+    // splits a published line at every junction and gives each piece the
+    // parent feature's id, so both sides of the crossing share one - which is
+    // why the identity above falls back to the id before it falls back to the
+    // edge. Keyed straight off the edge this listed one trail twice, both rows
+    // reading "Unnamed trail" at the same mile.
+    const crossing: TrailGraph = {
+      nodes: GRAPH.nodes,
+      edges: GRAPH.edges.map((edge, at) =>
+        at === 2 || at === 3 ? { ...edge, name: null, blaze_color: null } : edge,
+      ),
+    }
+    const crossingIndex = buildGraphIndex(published(crossing))
+    const resolved = resolveDayHike(
+      crossingIndex,
+      hikeOf([[end(-74.095, 41.25), end(-74.085, 41.25)]]),
+    )
+
+    expect(dayHikeBailOuts(crossingIndex, resolved!)).toHaveLength(1)
+  })
+
   it('answers a single-edge walk with an empty list, which the card must print', () => {
     const resolved = resolveDayHike(
       index,

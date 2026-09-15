@@ -27,6 +27,7 @@ side is findable from the other:
     route_climb         routeClimb (pro-rated partial edges, direction swap)
     route_lines         routeLines / routeGeometry / cutPolyline
     same_trail          sameTrail (the name and the blaze, #1433)
+    add_concurrents     addConcurrents (the credit a merge folds away)
 
 WHAT IS DELIBERATELY NOT TWINNED, said so the difference is known rather
 than discovered: `holdDesignation`, the client's swap of an edge for its
@@ -96,15 +97,40 @@ class Leg:
     blaze_color: str | None
     trail_id: str | None
     miles: float
+    #: Other organizations whose ground this leg covers - trailGraph.ts's
+    #: RouteLeg.concurrent_sources, twinned because #1433 gave that field a
+    #: second way in. A leg is one name and one blaze now, which two stewards
+    #: can carry end to end, so a merge recording nothing would credit
+    #: whichever organization the walk happened to enter on for ground two
+    #: maintain. Omitted from the artifact - not [] - when there is nothing to
+    #: say, so a record predating the field round-trips unchanged.
+    concurrent_sources: list[str] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        record = {
             "name": self.name,
             "source": self.source,
             "blaze_color": self.blaze_color,
             "trail_id": self.trail_id,
             "miles": self.miles,
         }
+        if self.concurrent_sources:
+            record["concurrent_sources"] = list(self.concurrent_sources)
+        return record
+
+
+def add_concurrents(leg: Leg, sources) -> None:
+    """Fold organizations into a leg's credit, never its own and never twice.
+
+    trailGraph.ts's `addConcurrents`, same rule and same reason (#1115).
+    """
+    for source in sources:
+        if source is None or source == leg.source:
+            continue
+        if leg.concurrent_sources is None:
+            leg.concurrent_sources = []
+        if source not in leg.concurrent_sources:
+            leg.concurrent_sources.append(source)
 
 
 @dataclass
@@ -179,7 +205,7 @@ def _trail_name(name) -> str:
     return (name or "").strip()
 
 
-def same_trail(a, b) -> bool:
+def same_trail(name_a, blaze_a, name_b, blaze_b) -> bool:
     """trailGraph.ts's sameTrail: the name and the blaze, and nothing else.
 
     The maintainer's rule (#1433): a route lists no two consecutive rows where
@@ -192,8 +218,16 @@ def same_trail(a, b) -> bool:
     publishes `measured.legs` from this module, and a suggested hike listing
     "Pine Meadow Trail" three times beside a phone that shows it once would be
     the two halves of pipeline/README.md's promise disagreeing about one walk.
+
+    FOUR VALUES RATHER THAN TWO DICTS, which is the signature earning its keep.
+    This read `a.get("blaze_color")` when #1433 changed the rule, and both call
+    sites below were still handing it dicts built for the old one -
+    `{"trail_id": ..., "name": ...}` - so every comparison would have come back
+    False against a real blaze and every edge would have become its own leg:
+    the defect this function exists to remove, republished with no error and no
+    failing test. A missing argument is a TypeError at the call now.
     """
-    return _trail_name(a.get("name")) == _trail_name(b.get("name")) and a.get("blaze_color") == b.get("blaze_color")
+    return _trail_name(name_a) == _trail_name(name_b) and blaze_a == blaze_b
 
 
 def load_graph(
@@ -455,8 +489,9 @@ def _legs_from_walk(graph: Graph, edge_indices: list[int], walked: list[float]) 
     legs: list[Leg] = []
     for at, edge_index in enumerate(edge_indices):
         edge = graph.edges[edge_index]
-        if legs and same_trail({"name": legs[-1].name, "blaze_color": legs[-1].blaze_color}, edge):
+        if legs and same_trail(legs[-1].name, legs[-1].blaze_color, edge.get("name"), edge.get("blaze_color")):
             legs[-1].miles += metres_to_miles(walked[at])
+            add_concurrents(legs[-1], [edge.get("source")])
             continue
         legs.append(
             Leg(
@@ -538,11 +573,9 @@ def route_through(graph: Graph, points: list[GraphPoint]) -> Route | None:
                 continue
             edge_indices.append(edge_index)
         for leg in section.legs:
-            if legs and same_trail(
-                {"name": legs[-1].name, "blaze_color": legs[-1].blaze_color},
-                {"name": leg.name, "blaze_color": leg.blaze_color},
-            ):
+            if legs and same_trail(legs[-1].name, legs[-1].blaze_color, leg.name, leg.blaze_color):
                 legs[-1].miles += leg.miles
+                add_concurrents(legs[-1], [leg.source, *(leg.concurrent_sources or [])])
                 continue
             legs.append(Leg(**leg.to_dict()))
     climb: tuple[float, float] | None = (0.0, 0.0)

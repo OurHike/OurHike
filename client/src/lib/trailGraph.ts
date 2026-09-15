@@ -329,8 +329,14 @@ export function samePublishedLine(a: TrailIdentity, b: TrailIdentity): boolean {
   return a.trail_id === b.trail_id && a.name === b.name
 }
 
-/** A name as a reader sees it: absent, blank and padded are one thing. */
-function trailName(name: string | null): string {
+/**
+ * A name as a reader sees it: absent, blank and padded are one thing.
+ *
+ * Exported because {@link sameTrail} is not the only place that rule has to
+ * hold - lib/dayHikeCard.ts keys the ways off on it too - and a rule with two
+ * spellings is a rule that will be changed in one of them.
+ */
+export function trailName(name: string | null): string {
   return (name ?? '').trim()
 }
 
@@ -502,7 +508,16 @@ function concurrentSourcesOf(index: TrailGraphIndex, edgeIndex: number): string[
   for (const candidate of parallelsOf(index, edgeIndex)) {
     const other = index.graph.edges[candidate]
     if (other.source === null || other.source === edge.source) continue
-    if (samePublishedLine(edge, other)) continue
+    // A DIFFERING SOURCE USUALLY IMPLIES A DIFFERING ID, because
+    // `export_trails.build_trail_records` prefixes every id with the source
+    // key - so this guard is normally unreachable and is kept for the case
+    // that is not: `build_trail_graph.py` writes `properties.get("id")`, which
+    // is null for a feature its publisher never numbered, and two null ids
+    // with two null names would compare EQUAL and skip an organization that
+    // really does share this tread. Measured on the 2026-09-15 artifact: 0 of
+    // 631,915 edges carry a null id today, so this is a guard against the data
+    // changing rather than against the data as it is.
+    if (edge.trail_id !== null && samePublishedLine(edge, other)) continue
     if (!sameTread(index.graph, edgeIndex, candidate)) continue
     sources.add(other.source)
   }
@@ -951,14 +966,21 @@ function snapCandidates(
  * what a hiker can read - the name, the blaze and the organization - is what
  * the figure recorded in features/HIKE_PLANNING.md measures instead.
  *
- * THAT MEASUREMENT NOW ANSWERS BOTH QUESTIONS. This docstring used to open
+ * THAT MEASUREMENT SETTLED THE LEG LIST TOO. This docstring used to open
  * "`sameTrail` compares `trail_id` and `name`, and it is right to: a leg is a
  * run of one published line" - and #1433 was the bill for that sentence, a
  * route order printing one trail as three rows nobody could tell apart. A leg
- * groups on the same name + blaze + organization this does. What still differs
- * is the UNNAMED fallback below: `sameTrail` keeps two unnamed pieces of ONE
- * published line together, because there the id really does say they are one
- * line; here every unnamed piece stays its own candidate.
+ * stopped grouping on the id there.
+ *
+ * THE TWO KEYS ARE STILL NOT THE SAME KEY, and the differences are worth
+ * naming because they are deliberate. This one carries the ORGANIZATION;
+ * {@link sameTrail} does not, on the maintainer's call (2026-09-15), because
+ * no ROW prints an organization while a CANDIDATE is offered with one. And
+ * this one keeps every unnamed piece apart, where `sameTrail` merges unnamed
+ * pieces that share a blaze: a duplicate unnamed row is a repeat, a second
+ * unnamed candidate is a choice the app would otherwise make for somebody.
+ * What they agree on is the part #1433 was about - that a publisher's line id
+ * is not a trail.
  *
  * An UNNAMED piece falls back to its own edge, which is the conservative
  * direction: two unnamed trails stay two candidates rather than collapsing

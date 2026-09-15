@@ -54,12 +54,26 @@ export const WORKDAY_LAYER_ID = 'work-project-pins'
  *  `parseInt`, and a reviewed row's id is not a number. */
 export const WORKDAY_ID_PROPERTY = 'project_id'
 
+/** Where a pin carries the day it runs, for the label beside it (#1440). */
+export const WORKDAY_DATE_PROPERTY = 'dates'
+
 /** A workday reduced to what the canvas needs. The shell does the windowing,
  *  the staleness check and the placement; this draws points. */
 export interface WorkdayPoint {
   id: string
   lon: number
   lat: number
+  /**
+   * The day it runs, already formatted (`workProjectDates`) - "Sat 12" or
+   * "Sun 13-14" - or absent.
+   *
+   * ON THE PIN RATHER THAN BEHIND THE TAP (#1440, frame 14i). The one thing a
+   * hiker needs before travelling to a workday is WHICH DAY, and a bare mark
+   * makes them tap each one to find out. Absent draws an unlabelled pin,
+   * which is what every caller written before this did and still a true
+   * drawing of a workday.
+   */
+  dates?: string
 }
 
 export interface WorkdayFeatureCollection {
@@ -68,7 +82,7 @@ export interface WorkdayFeatureCollection {
     type: 'Feature'
     id: string
     geometry: { type: 'Point'; coordinates: [number, number] }
-    properties: { [WORKDAY_ID_PROPERTY]: string }
+    properties: { [WORKDAY_ID_PROPERTY]: string; [WORKDAY_DATE_PROPERTY]: string }
   }>
 }
 
@@ -81,7 +95,13 @@ export function workdayFeatureCollection(
       type: 'Feature',
       id: workday.id,
       geometry: { type: 'Point', coordinates: [workday.lon, workday.lat] },
-      properties: { [WORKDAY_ID_PROPERTY]: workday.id },
+      properties: {
+        [WORKDAY_ID_PROPERTY]: workday.id,
+        // Empty rather than absent: MapLibre's `text-field` on a missing
+        // property draws the property NAME in some builds, and an empty
+        // string is the one value that reliably draws nothing.
+        [WORKDAY_DATE_PROPERTY]: workday.dates ?? '',
+      },
     })),
   }
 }
@@ -102,6 +122,29 @@ export function buildWorkdayLayer(
       'icon-image': WORKDAY_ICON_ID,
       'icon-size': 1,
       'icon-padding': 2,
+      // THE DATE, BESIDE THE MARK (#1440, frame 14i). "Sat 12" saves the tap
+      // that was the only way to learn which day a pin meant.
+      //
+      // BELOW the pin, not over it: the glyph is the thing that says "trail
+      // work" and a label across it would cost the shape, which
+      // map/poiIcons.ts is explicit is the primary channel. And the label
+      // takes `text-optional`, so where there is no room the PIN still
+      // draws - a workday whose date did not fit is still a workday, and
+      // dropping the pair would be the label deciding what the map shows.
+      'text-field': ['get', WORKDAY_DATE_PROPERTY],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 10,
+      'text-anchor': 'top',
+      'text-offset': [0, 0.9],
+      'text-optional': true,
+      'text-allow-overlap': false,
+    },
+    paint: {
+      // The map's own label ink and halo, so a date on a workday reads like
+      // every other label on the sheet rather than like a second system.
+      'text-color': '#2b2620',
+      'text-halo-color': '#fffdf7',
+      'text-halo-width': 1.2,
     },
   }
 }

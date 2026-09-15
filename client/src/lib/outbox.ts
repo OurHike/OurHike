@@ -78,6 +78,20 @@ export interface ReportDraft {
    * before the trail index has downloaded. Zero would be Springer Mountain.
    */
   mile?: number
+  /**
+   * Where the hiker says this was, in their own words (#1439, D16).
+   *
+   * Sent only when there is no fix AND no `poi_id` - the one state in which
+   * nothing else on the report can say where it happened. "The brook crossing
+   * about half a mile north of Fitzgerald Falls."
+   *
+   * **It is never turned into coordinates, on this phone or on the server.**
+   * A typed name geocoded into a lat/lon would be a confident wrong dot on
+   * every phone that downloads the report, which is the exact failure the
+   * omitted-not-zeroed rule above exists to prevent - so `lat`, `lon` and
+   * `mile` stay absent beside it and a moderator places it.
+   */
+  place_words?: string
   photo_url?: string
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server
@@ -292,6 +306,26 @@ export interface OutboxItem {
    */
   photo?: Blob
   /**
+   * A report's photos, in the order they were picked (#1439).
+   *
+   * **A SEPARATE FIELD FROM `photo` ABOVE, AND DELIBERATELY SO.** `photo` is
+   * still exactly right for the two cargos that carry one - a field note's
+   * picture (#879) and a photo action (#577/#579) - and widening it to an
+   * array for them would let a surface attach three photos to a note that
+   * can send one. This is the report's set: `PUT /reports/{id}/photos/{n}`,
+   * one request each, numbered by position here.
+   *
+   * **`photo` is still read for a report, and that is not tidiness.** An item
+   * queued by the previous build is sitting in this phone's IndexedDB with a
+   * `photo` and no `photos`, and it is the only copy of something somebody
+   * wrote down on a ridge. lib/api.ts reads both; see `reportPhotos` there.
+   *
+   * Prepared at pick time for `photo`'s reason, and now independently: each
+   * pick is shrunk on its own, so one that fails costs its own tile and
+   * leaves the rest attached.
+   */
+  photos?: Blob[]
+  /**
    * Set when the server refused this in a way retrying cannot fix.
    *
    * A marked item is kept, not deleted - it is still the only copy of
@@ -414,7 +448,8 @@ export async function listQueued(): Promise<OutboxItem[]> {
 export async function enqueue(
   payload: ReportDraft,
   authoredAt: Date = new Date(),
-  photo?: Blob,
+  /** The report's photos, in pick order (#1439). Empty and none is stored. */
+  photos?: readonly Blob[],
   /** Hold it back until this moment, for the report window's Undo (#1133).
    *  Absent means sendable now, which is what every caller but that one
    *  wants and what every item written before it had. */
@@ -424,10 +459,12 @@ export async function enqueue(
     id: crypto.randomUUID(),
     authoredAt: authoredAt.toISOString(),
     payload,
-    // Spread rather than `photo` outright so an item without one has no key
+    // Spread rather than `photos` outright so an item without any has no key
     // at all. The queue is compared and rewritten in several places, and an
-    // explicit `photo: undefined` is a difference that reads as one.
-    ...(photo !== undefined ? { photo } : {}),
+    // explicit `photos: undefined` is a difference that reads as one. An
+    // EMPTY array is the same difference wearing a value, so it is dropped
+    // too.
+    ...(photos !== undefined && photos.length > 0 ? { photos: [...photos] } : {}),
     ...(holdUntil !== undefined ? { holdUntil: holdUntil.toISOString() } : {}),
   }
 

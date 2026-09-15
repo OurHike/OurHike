@@ -2379,6 +2379,33 @@
   cursor: pointer;
 }
 
+.route-map-pick__keep {
+  flex: none;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* THE REPORT'S CROSSHAIR IS NOT THE ROUTE'S (#1439).
+ *
+ * It shares the bar, which is the point - one slot over the map, one shape -
+ * and it differs in the one place that matters. `role="status"` in the route
+ * bar carries a REFUSAL ("no honest mile to give it"), so the rule above
+ * paints it `--danger`. Here it carries the ANSWER: a mile, "This spot", or a
+ * distance off the trail, none of which is a refusal and none of which should
+ * arrive in alert orange. Mono because it is a figure, which is this app's
+ * whole type argument for the face - mono means the app measured it. */
+.route-map-pick--report .route-map-pick__hint [role='status'] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--fg-1);
+}
+
 /* ---------- Every ATC notice (AtcNoticeList.tsx) ---------- */
 
 /* The single-notice sheet's frame, with one difference that is the whole

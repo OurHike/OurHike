@@ -117,7 +117,16 @@ export function ageOf(iso: string, now: Date = new Date()): string {
  *  `describeLocation` for why 0,0 is never a stand-in for "unknown". */
 function placeOf(report: QueuedReport): string {
   if (report.poi_id !== null) return `at ${report.poi_id}`
-  if (report.lat === null || report.lon === null) return 'no location'
+  if (report.lat === null || report.lon === null) {
+    // THE HIKER'S OWN WORDS, when they are the only thing that can say where
+    // this was (#1439, D16). A report with no fix and no waypoint is exactly
+    // the one a moderator cannot place any other way, so dropping the words
+    // here would leave the queue saying "no location" about a report that
+    // named one. Quoted, because they are somebody's sentence and not this
+    // app's - and never turned into a pin: placing it is the moderator's act.
+    const words = report.place_words ?? null
+    return words === null || words.trim() === '' ? 'no location' : `“${words}”`
+  }
   return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}`
 }
 
@@ -179,7 +188,24 @@ const TYPE_WORDS: Record<string, string> = {
  *  one request against a check that has to run every time anyway - which is
  *  why the TTL did not need lengthening, and app/core/photos.py records why
  *  lengthening it would have been the wrong trade. */
-function ReportPhoto({ report }: { report: QueuedReport }) {
+function ReportPhotos({ report }: { report: QueuedReport }) {
+  // HOW MANY THERE ARE, and the fallback is the rollout (#1439). A server
+  // running the previous release sends no `photo_count` at all, and a report
+  // with a `photo_url` has one photo - which is exactly what the migration's
+  // own backfill says about the same row. Nothing is inferred beyond that.
+  const count = report.photo_count ?? (report.photo_url !== null ? 1 : 0)
+  if (count === 0) return null
+
+  return (
+    <>
+      {Array.from({ length: count }, (_, at) => (
+        <ReportPhoto key={at + 1} report={report} index={at + 1} />
+      ))}
+    </>
+  )
+}
+
+function ReportPhoto({ report, index }: { report: QueuedReport; index: number }) {
   // Photos of people wait to be asked for; a blowdown does not.
   const sensitive = report.type === 'bad_hikers'
   const [asked, setAsked] = useState(!sensitive)
@@ -191,17 +217,16 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
   // failure is reported rather than retried around forever.
   const [brokeOnce, setBrokeOnce] = useState(false)
 
-  // `photo_url` is checked here as well as at the early return below, because
-  // the early return comes after the hooks - so without it a report with no
-  // photo would still spend a request asking for one.
-  const has = report.photo_url !== null
+  // The caller only renders as many of these as the report claims, so there
+  // is always one to ask for by the time this mounts.
+  const has = true
 
   useEffect(() => {
     if (!has || !asked) return
     let live = true
     const controller = new AbortController()
 
-    fetchReportPhotoLink(report.id, controller.signal)
+    fetchReportPhotoLink(report.id, index, controller.signal)
       .then((link) => {
         if (!live) return
         setUrl(link.url)
@@ -217,7 +242,7 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
       live = false
       controller.abort()
     }
-  }, [has, asked, request, report.id])
+  }, [has, asked, request, report.id, index])
 
   const askAgain = () => {
     setRefused(false)
@@ -270,7 +295,7 @@ function ReportPhoto({ report }: { report: QueuedReport }) {
       src={url}
       // Named rather than empty: a moderator on a screen reader is deciding
       // the same thing, and "" would say this image carries no information.
-      alt={`Attached to this ${(TYPE_WORDS[report.type] ?? report.type).toLowerCase()} report`}
+      alt={`Photo ${index} attached to this ${(TYPE_WORDS[report.type] ?? report.type).toLowerCase()} report`}
       onLoad={() => setBrokeOnce(false)}
       onError={() => {
         // First failure is almost always an expired link, because a queue is
@@ -460,7 +485,7 @@ export function Moderation({ onClose }: ModerationProps) {
         </span>
       </p>
       {report.note !== null && <p className="moderation__note">{report.note}</p>}
-      <ReportPhoto report={report} />
+      <ReportPhotos report={report} />
       <div className="moderation__actions">
         <button
           type="button"

@@ -40,7 +40,7 @@ from the map — and:
    in the outbox for that window rather than sent, so taking it back is a
    delete of something never transmitted, not a withdrawal of something
    published.
-5. **Detail is optional and comes after.** A note, and a photo, on the receipt
+5. **Detail is optional and comes after.** A note, and photos, on the receipt
    — the same fields, no longer in the way of the thing a hiker actually came
    to do.
 6. The report enters the **moderation queue for club admins** and the
@@ -80,7 +80,7 @@ not the app's to silently rewrite.
 
 ## Follow-up info, phased (per your "eventually")
 
-v1 doesn't need type-specific fields - type + location + note + optional photo is enough to be useful and to route into the existing moderation workflow. Structured follow-up is a natural incremental add once there's real report volume to see what's actually missing, e.g.:
+v1 doesn't need type-specific fields - type + location + note + optional photos is enough to be useful and to route into the existing moderation workflow. Structured follow-up is a natural incremental add once there's real report volume to see what's actually missing, e.g.:
 
 - **Animals:** species, count, distance/behavior (fed near a shelter? aggressive? just sighted?)
 - **Flooding:** still passable? approximate depth?
@@ -135,8 +135,16 @@ Report
   reporter_type (thru-hiker / section-hiker / day-hiker / maintainer -
                  FEATURES.md's existing "reporter type shown" line)
   timestamp
+  place_words (free text, optional - the hiker's own words for where this
+               was, and sent ONLY with no location reference at all. Never
+               geocoded: a typed name turned into coordinates is a confident
+               wrong dot on every phone that downloads it, which is what the
+               omitted-not-zeroed rule on lat/lon/mile exists to prevent)
   note (free text, optional)
-  photo (optional)
+  photos (optional, several - #1439. One object per photo under a derived
+          key `reports/{id}/{n}.jpg`, and `photo_count` on the row is what
+          says how far the numbering runs. Capped server-side; the cap is
+          @unvalidated, see backend/app/core/photos.py)
   follow_up (type-specific structured fields - empty in v1, additive later)
   status: submitted | verified | resolved | dismissed
   visibility: public | internal-only | club-only

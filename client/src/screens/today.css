@@ -876,3 +876,88 @@
   font-size: 11px;
   color: var(--fg-3);
 }
+
+/* THE CREWS SECTION (#1440, frames 14g–14k).
+
+   In volunteer mode this is the screen: crews out today, the switch, the
+   window filter, then the view. In the hiking modes it is the two headings a
+   walking hiker gets, and it renders only when there are crews - an absence
+   announced every morning is the app talking about itself. */
+.today__crews {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.today__crew-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.today__crews-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.today__crews-age,
+.today__rule-age {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--fg-3);
+}
+
+/* The switch and the window filter share an idiom, because they are the same
+   kind of control - narrowing what is already here - and differ only in
+   whether one answer or one of three is on. */
+.today__crew-views,
+.today__crew-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 6px);
+}
+
+.today__crew-view,
+.today__crew-chip {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-3, 12px);
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+}
+
+.today__crew-view--on,
+.today__crew-chip--on {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.today__crew-view {
+  flex: 1;
+}
+
+/* A DOOR, AND IT SAYS SO. Frame 14i draws the map as a third view in this
+   column; this app holds one MapLibre instance and MapView takes 86 props, so
+   what ships is the Map tab - where the workday layer, the in-view list and
+   its "3 of 4" count already are - reached by a row that reads as a row.
+   A third segment that navigated away would be a control lying about being a
+   view. screens/Today.tsx's crews section has the whole argument. */
+.today__crew-map {
+  align-self: flex-start;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--brand-primary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}

@@ -58,6 +58,22 @@ export function dayDateLabel(isoDate: string): string {
  * UTC throughout, for dayDateLabel's reason: the label must not shift a day
  * as a phone crosses a timezone.
  */
+/**
+ * "Saturday 12 September" - a whole date, written out (#1440, frame 14j).
+ *
+ * The calendar's day heading, and its own function rather than a
+ * `toLocaleDateString` call at the call site for this file's standing reason:
+ * a date has one spelling per role, and `en-US`'s own long form is
+ * "Saturday, September 12", which is not what the design writes. Composed
+ * from the parts, in UTC, so it reads the same on both ends of the trail.
+ */
+export function longDayLabel(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
+  const month = date.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })
+  return `${weekday} ${date.getUTCDate()} ${month}`
+}
+
 export function dayLongDateLabel(isoDate: string): string {
   const date = new Date(`${isoDate}T00:00:00Z`)
   const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })

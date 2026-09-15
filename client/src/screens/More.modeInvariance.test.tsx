@@ -33,7 +33,6 @@ const PROPS = {
   page: 'home' as MorePage,
   onNavigate: vi.fn(),
   account: null as { email: string } | null,
-  reporterType: 'thru' as const,
   onSignIn: vi.fn(),
   onSignOut: vi.fn(),
   preferences: DEFAULT_PREFERENCES,

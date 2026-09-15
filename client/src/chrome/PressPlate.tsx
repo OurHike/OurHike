@@ -21,8 +21,11 @@
 // a press on bare map has said only where.
 
 import { Button } from '../design-system/components/core/Button'
-import { MAX_OFF_TRAIL_MILES } from '../lib/trailPosition'
-import { formatDistance, type UnitSystem } from '../lib/units'
+// The one placement function, shared with the report form's crosshair
+// (#1439, D16) - see lib/placement.ts for why the three answers cannot be
+// allowed to diverge between the two surfaces that name a chosen point.
+import { placeWords } from '../lib/placement'
+import type { UnitSystem } from '../lib/units'
 import './pressPlate.css'
 
 export interface PressPlateProps {
@@ -120,7 +123,7 @@ export function PressPlate({
       }}
     >
       <p className="press-plate__where" data-testid="press-plate-where">
-        {whereWords(mile, knowsTrail, units)}
+        {placeWords(mile, knowsTrail, units)}
       </p>
       {/* Located by their accessible names rather than test ids: the
           design-system Button destructures a fixed prop list and does not
@@ -156,30 +159,4 @@ export function PressPlate({
       </button>
     </div>
   )
-}
-
-/**
- * The one line naming where the press landed.
- *
- * Three answers, and the third is the one worth having: a mile when there is
- * one, "we could not check" when the trail index is not on the phone, and "off
- * the trail" when the index IS here and refused the point. Collapsing the last
- * two into one sentence would tell a hiker with no download that they were
- * standing in the woods.
- */
-function whereWords(mile: number | null, knowsTrail: boolean, units: UnitSystem): string {
-  if (mile !== null) {
-    // A MARKER, NOT A DISTANCE - so it is written the way every other mile
-    // marker in this app is, and never through `formatDistance`. #986 is the
-    // bug: the same number through a distance formatter reads "1,010.4 km" for
-    // a metric hiker, which is a position on this trail naming somewhere else.
-    return `mi ${mile.toLocaleString('en-US', {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    })}`
-  }
-  if (!knowsTrail) return 'This spot'
-  // A DISTANCE here, genuinely, so it goes through lib/units.ts: it is how far
-  // the corridor search reaches, not a place on it.
-  return `More than ${formatDistance(MAX_OFF_TRAIL_MILES, units, 'trimmed')} off the trail`
 }

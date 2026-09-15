@@ -257,6 +257,61 @@ def test_oprhp_parks_app_keeps_the_row_and_lowers_its_confidence():
     assert stats["low_confidence"] == 1
 
 
+NYC_FOUNTAINS = {
+    "key": "nyc_drinking_fountains",
+    "provider": "NYC Parks",
+    "poi_type": "water",
+    "confidence_floor": "low",
+    "id_field": "objectid",
+    "name_field": "name",
+    "facility_field": "propname",
+    "asset_field": "fountainty",
+}
+
+
+def test_a_layer_with_a_confidence_floor_ships_every_row_low():
+    """The 3,195 fountains (#1461). `featuresta` reads Active on all 3,849 of
+    NYC Parks' rows, so the layer cannot support a confident claim about any
+    one of them - and this is the only thing standing between that and a pin
+    saying there is working water here.
+
+    Asserted through build_records rather than on confidence_for directly: the
+    floor being computed is not the property that matters, the floor reaching
+    the exported record is, and #1459 was exactly a value that was set and
+    then dropped before anybody could see it."""
+    features = [feature(objectid=1, fountainty="A"), feature(objectid=2, fountainty="B")]
+
+    records, stats = export_nearby_poi.build_records(NYC_FOUNTAINS, features)
+
+    assert [r["confidence"] for r in records] == [CONFIDENCE_LOW, CONFIDENCE_LOW]
+    assert stats["low_confidence"] == 2, "the stat must count the floor, or the run reports more confidence than it shipped"
+
+
+@pytest.mark.parametrize("floor", ["Low", "LOW", "lower", "high", True, ""])
+def test_a_floor_this_does_not_recognise_is_refused(floor):
+    """The failure this whole key is one careless edit away from.
+
+    `confidence_floor` is read in one place by string equality and sources.json
+    has no schema behind it - lib/source_registry.py says discovery carries
+    unknown fields straight through. So every value here would once have
+    compared False and shipped the layer at CONFIDENCE_HIGH with CI green,
+    asserting working water at 3,195 points from a source that says nothing
+    about any of them. `high` is in the list deliberately: a floor that raises
+    confidence is the one reading that must never quietly work."""
+    source = {**NYC_FOUNTAINS, "confidence_floor": floor}
+
+    with pytest.raises(ValueError, match="confidence_floor"):
+        export_nearby_poi.build_records(source, [feature(objectid=1, fountainty="A")])
+
+
+def test_a_layer_with_no_floor_is_untouched():
+    """The floor only ever lowers, and a source that declares none keeps the
+    per-row answer it had - otherwise adding the key would have changed every
+    other layer in the registry."""
+    assert export_nearby_poi.confidence_for(USFS, CONFIDENCE_HIGH) == CONFIDENCE_HIGH
+    assert export_nearby_poi.confidence_for(USFS, CONFIDENCE_LOW) == CONFIDENCE_LOW
+
+
 def test_the_filter_applies_to_dec_per_type_services_too():
     """They are already DEC's public slice - the filter is there for the day one isn't.
 

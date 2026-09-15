@@ -397,8 +397,38 @@ def confidence_for(source: dict, verdict: str) -> str:
     It only ever lowers. A source that declares the floor and also has a
     public flag keeps the flag's LOW answers - there is nowhere lower to go -
     and cannot be raised back to HIGH by it.
+
+    AN UNRECOGNISED VALUE RAISES RATHER THAN BEING IGNORED, which is the half
+    of this that review added and the half worth reading. The floor is read
+    here and nowhere else, by string equality, against a key sources.json has
+    no schema for - lib/source_registry.py's header records that
+    `discover_sources.py` carries unknown fields through, so nothing rejects a
+    key or a value it does not know. A floor written "Low", "lower", or as
+    anything else somebody reasonably invents would have compared False and
+    shipped all 3,195 of New York City's drinking fountains at
+    CONFIDENCE_HIGH - asserting working water at every one of them from a
+    source whose `featuresta` says nothing about any of them. Silently, with
+    CI green, on `out of water`.
+
+    sources.json's own comment called that "one careless edit from being
+    undone". It was right, and a comment is not a guard; this is.
+
+    WHAT THIS STILL DOES NOT CATCH, stated because the gap is invisible from
+    here: a misspelled KEY. `confidence_flor` reads as absent and the layer
+    ships at whatever the row said. Closing that needs an allowed-key schema
+    over the whole registry, which is a change to every source rather than to
+    this one and is not attempted here.
     """
-    return CONFIDENCE_LOW if source.get("confidence_floor") == CONFIDENCE_LOW else verdict
+    declared = source.get("confidence_floor")
+    if declared is None:
+        return verdict
+    if declared != CONFIDENCE_LOW:
+        raise ValueError(
+            f"{source.get('key', '?')}: confidence_floor must be {CONFIDENCE_LOW!r}, got {declared!r}. "
+            f"The floor only ever lowers, so {CONFIDENCE_LOW!r} is the only value it can mean - "
+            "and a value this does not recognise would silently ship the layer at full confidence."
+        )
+    return CONFIDENCE_LOW
 
 
 def classify(source: dict, properties: dict) -> str | None:

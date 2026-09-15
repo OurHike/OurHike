@@ -23,6 +23,7 @@ import {
   tileBounds,
   useCellIndexState,
   widen,
+  type Bounds,
   type CellIndex,
   type CoverageCell,
 } from './coverageCells'
@@ -503,6 +504,73 @@ describe('seamEdges', () => {
 
   it('draws nothing for nothing', () => {
     expect(seamEdges([])).toEqual([])
+  })
+
+  // Every case above is one somebody thought of, which is the weakness they
+  // share: the sweep replaced a lattice walk, and the walk passed its own
+  // hand-written cases too. This one is written against an oracle instead.
+  //
+  // The oracle rasterises the union on a grid finer than any edge in the
+  // arrangement and counts the cell sides where covered meets uncovered.
+  // That is O(area) and far too slow to ship, but it shares no code, no
+  // lattice and no reasoning with the function under test - so the two
+  // agreeing on an arrangement neither was written for is evidence the
+  // hand-written cases cannot give. Boxes are generated on halves so the
+  // 0.5 grid lands exactly on every edge.
+  it('agrees with an independent rasteriser on 200 random arrangements', () => {
+    const covers = (boxes: Bounds[], x: number, y: number) =>
+      boxes.some(([w, s, e, n]) => x > w && x < e && y > s && y < n)
+
+    const rasterisedPerimeter = (boxes: Bounds[]) => {
+      const step = 0.5
+      let total = 0
+      for (let x = -12; x < 12; x += step) {
+        for (let y = -12; y < 12; y += step) {
+          const here = covers(boxes, x + step / 2, y + step / 2)
+          if (here !== covers(boxes, x - step / 2, y + step / 2)) total += step
+          if (here !== covers(boxes, x + step / 2, y - step / 2)) total += step
+        }
+      }
+      return total
+    }
+
+    // Seeded, so a failure is reproducible rather than a story about a
+    // machine that saw it once.
+    let seed = 20260915
+    const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+    const half = (span: number) => Math.round(rand() * span * 2) / 2
+
+    const disagreed: string[] = []
+    for (let trial = 0; trial < 200; trial += 1) {
+      const boxes: Bounds[] = []
+      for (let i = 0; i <= Math.floor(rand() * 4); i += 1) {
+        const west = half(8) - 4
+        const south = half(8) - 4
+        boxes.push([west, south, west + half(3) + 0.5, south + half(3) + 0.5])
+      }
+      const swept = totalLength(
+        // `bounds` is deliberately poisoned rather than set to the same box:
+        // reading it instead of `covered` IS the #1458 defect, and an oracle
+        // that passed either way would be checking the geometry while leaving
+        // the field the whole issue is about untested.
+        seamEdges(
+          boxes.map((b, i) => ({
+            name: `c${i}`,
+            key: `k${i}`,
+            bounds: [-99, -99, 99, 99] as Bounds,
+            covered: b,
+          })),
+        ),
+      )
+      const rasterised = rasterisedPerimeter(boxes)
+      if (Math.abs(swept - rasterised) > 1e-9) {
+        disagreed.push(
+          `${JSON.stringify(boxes)} swept ${swept}, rasterised ${rasterised}`,
+        )
+      }
+    }
+
+    expect(disagreed).toEqual([])
   })
 })
 

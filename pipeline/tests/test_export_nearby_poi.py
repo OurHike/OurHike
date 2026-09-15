@@ -727,6 +727,95 @@ class TestTheRingAroundThePublishedTrails:
         assert kept == records
         assert ring["ran"] is False
 
+    @staticmethod
+    def _boundary(tmp_path, rings, name="nyc_park_polygons"):
+        path = tmp_path / f"{name}.geojson"
+        path.write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "geometry": {"type": "Polygon", "coordinates": [ring]},
+                            "properties": {"signname": "Fixture Park", "gispropnum": "M010"},
+                        }
+                        for ring in rings
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return path
+
+    def test_a_waypoint_inside_its_park_survives_however_far_the_nearest_path_is(self, tmp_path):
+        """The case the ring gets wrong in a city (#1493): in a park the PARK is
+        the destination and the path through it is incidental.
+
+        MEASURED on the real layers 2026-09-15 - the 500 ft ring admits 982 of
+        3,195 NYC fountains, and in Central Park alone 182 of 221 points do not
+        ship, the losses falling on the Great Lawn and the Reservoir's outer
+        edge."""
+        # ~3,650 ft from the line, which the ring cannot reach, but inside the square.
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        park = self._boundary(tmp_path, [[[-74.02, 43.99], [-73.98, 43.99], [-73.98, 44.03], [-74.02, 44.03], [-74.02, 43.99]]])
+        far_but_in_the_park = self._poi("water", -74.01, 44.0005, source="nyc_drinking_fountains")
+
+        without, _ = export_nearby_poi.clip_to_network([far_but_in_the_park], network)
+        with_park, ring = export_nearby_poi.clip_to_network([far_but_in_the_park], network, {"nyc_drinking_fountains": park})
+
+        assert without == [], "the ring alone must still drop it, or this test proves nothing"
+        assert [r["id"] for r in with_park] == [far_but_in_the_park["id"]]
+        assert ring["boundary_kept"] == {"nyc_park_polygons": 1}
+
+    def test_a_waypoint_in_neither_the_park_nor_the_ring_is_still_dropped(self, tmp_path):
+        """The boundary must not become a blanket exemption. A fountain on a
+        street corner with no park around it and no path near it is exactly what
+        the clip is for, and 81 of the 3,195 real fountains are outside every
+        NYC Parks boundary."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        park = self._boundary(tmp_path, [[[-74.02, 43.99], [-73.98, 43.99], [-73.98, 44.03], [-74.02, 44.03], [-74.02, 43.99]]])
+        nowhere = self._poi("water", -73.5, 43.5, source="nyc_drinking_fountains")
+
+        kept, _ring = export_nearby_poi.clip_to_network([nowhere], network, {"nyc_drinking_fountains": park})
+
+        assert kept == []
+
+    def test_a_source_that_declares_no_boundary_is_unaffected_by_one(self, tmp_path):
+        """The opt-in is per source. OPRHP's waypoints must not start surviving
+        because New York City registered park boundaries."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        park = self._boundary(tmp_path, [[[-74.02, 43.99], [-73.98, 43.99], [-73.98, 44.03], [-74.02, 44.03], [-74.02, 43.99]]])
+        oprhp = self._poi("campsite", -74.01, 44.0005)
+
+        kept, _ring = export_nearby_poi.clip_to_network([oprhp], network, {"nyc_drinking_fountains": park})
+
+        assert kept == []
+
+    def test_a_boundary_layer_that_never_fetched_costs_coverage_and_cannot_invent_it(self, tmp_path):
+        """A `boundary_source` naming a layer nobody fetched leaves the ring
+        alone deciding - the clip this file had before #1493 - rather than
+        raising or admitting everything. A typo must cost pins, never invent
+        them."""
+        network = self._network(tmp_path, [[[-74.0, 44.0], [-74.0, 44.02]]])
+        far = self._poi("water", -74.01, 44.0005, source="nyc_drinking_fountains")
+
+        kept, ring = export_nearby_poi.clip_to_network(
+            [far], network, {"nyc_drinking_fountains": tmp_path / "never_fetched.geojson"}
+        )
+
+        assert kept == []
+        assert ring["boundary_kept"] == {}
+
+    def test_boundary_paths_are_read_from_the_registry(self):
+        """The wiring, so a registry entry and the clip cannot drift: both NYC
+        POI layers name the boundary layer, and nothing else does."""
+        registry = json.loads((export_nearby_poi.ROOT / "sources.json").read_text(encoding="utf-8"))
+        paths = export_nearby_poi.boundary_paths_for(export_nearby_poi.poi_sources(registry))
+
+        assert set(paths) == {"nyc_drinking_fountains", "nyc_public_restrooms"}
+        assert {p.name for p in paths.values()} == {"nyc_park_polygons.geojson"}
+
     def test_the_manifest_says_what_the_ring_did(self, tmp_path, monkeypatch):
         """Each `sources` entry counts what its layer contributed BEFORE the
         clip, so without this block the manifest's per-source figures and its

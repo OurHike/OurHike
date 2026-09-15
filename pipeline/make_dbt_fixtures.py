@@ -800,6 +800,35 @@ def _nyc_parks_trails_layer():
     )
 
 
+def _nyc_park_polygons_layer():
+    """Two boundaries, and BOTH CARRY THE FIELDS sources.json NAMES.
+
+    The opposite call from `_oprhp_park_polygons_layer`, and the difference is
+    the registry rather than a preference: that entry records not one field
+    name, so a property here would be an invented schema. This one declares
+    `signname` and `gispropnum`, so a fixture without them would describe a
+    layer that cannot exist.
+
+    `gispropnum` matters beyond being present. It is the borough-letter
+    property number `nyc_drinking_fountains` also carries, which is what makes
+    the two layers joinable at all (#1493) - the clip is spatial rather than
+    keyed on it, but a fixture that dropped the column would stop a later
+    change noticing the join is there.
+
+    The POLYGONS THEMSELVES ARE NOT NEW YORK, and that is `_polygon`'s own
+    convention rather than sloppiness: every fixture in this file draws its
+    geometry from the same synthetic helpers, so nothing here can be mistaken
+    for measured ground truth. What the fixture asserts is the SCHEMA.
+    """
+    return _features(
+        [
+            {"signname": "Fixture Park", "gispropnum": "M010"},
+            {"signname": "Fixture Playground", "gispropnum": "B123"},
+        ],
+        _polygon,
+    )
+
+
 def _nyc_dot_greenways_layer():
     """nyc_dot_greenways' measured field list, 2026-09-15.
 
@@ -1154,6 +1183,7 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/njdep_park_trails.geojson": _njdep_park_trails_layer(),
         "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
         "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),
+        "external/nyc_park_polygons.geojson": _nyc_park_polygons_layer(),
         "external/nyc_dot_greenways.geojson": _nyc_dot_greenways_layer(),
         "external/nyc_public_restrooms.geojson": _nyc_public_restrooms_layer(),
         "external/nyc_drinking_fountains.geojson": _nyc_drinking_fountains_layer(),

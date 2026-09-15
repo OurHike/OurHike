@@ -24,15 +24,26 @@
 // what pr-preview.yml re-photographs.
 //
 // WHAT THE THIRD HONEST FRAME IS, AND WHY IT IS NOT A BROKEN SHOT. The climb
-// half only reaches the bucket on a publish run with include_elevation
-// ticked, which defaults to off. MEASURED rather than predicted, against
-// the release the preview pins (2026-09-14, read from the manifest
-// 2026-09-15): 505 `trail_graph_cell_*`, 505 `trail_graph_geometry_cell_*`,
-// and ZERO `trail_graph_elevation_cell_*` - cut_trail_graph.py refusing to
-// cut a companion written for an earlier graph. So the sheet draws with no
-// climb row at all, which is this change's own "no figures on this phone"
-// state rendered correctly, and it is what every preview photographs until
-// an elevation publish lands.
+// row needs the climb half in THE RELEASE THIS BUILD PINS, which is a
+// narrower condition than "somebody ran a publish with include_elevation"
+// and is the distinction that cost two wrong diagnoses on 2026-09-15.
+//
+// Measured that day, off three manifests:
+//
+//   production releases/2026-09-14   505 graph cells, 0 elevation cells
+//   UA          releases/2026-09-14   502 graph cells, 0 elevation cells
+//   UA          releases/2026-09-15-7 505 graph cells, 505 elevation cells
+//
+// `client/src/lib/dataRelease.ts` pins DATA_RELEASE to 2026-09-14, so BOTH
+// preview modes read the top two rows. Dispatching this workflow with
+// `data_environment: ua` moves the bucket PREFIX and not the release, which
+// is why a UA preview taken after a successful elevation publish still drew
+// no climb row. The row arrives when the pin moves to a release carrying
+// the cells - a maintainer's act (RELEASING.md), not this recipe's.
+//
+// Until then the frame is the sheet without a climb row, which is #1476's
+// own "no figures on this phone" state rendered correctly and is worth
+// photographing.
 //
 // AND NO LENGTH OR PARK EITHER, on this particular line - the frame of
 // 2026-09-15 shows neither, so the tapped Long Path feature publishes no
@@ -71,7 +82,7 @@
 // pipelines section exists to track.
 
 export const caption =
-  'The Long Path’s line sheet. Since #1476 it says how much the trail CLIMBS — “+x ft / −y ft” and a line saying that is an estimate — but ONLY where the bucket carries the graph cell’s climb half, and release 2026-09-14 carries 505 graph cells, 505 geometry cells and zero elevation ones (read 2026-09-15). So the frame to expect today is the sheet WITHOUT a climb row, which is that change’s own honest absence rendered correctly; the row appears on the first preview built after an include_elevation publish'
+  'The Long Path’s line sheet. Since #1476 it says how much the trail CLIMBS — “+x ft / −y ft” and a line saying that is an estimate — but only where the climb half is in the release this build PINS, and dataRelease.ts pins 2026-09-14, which carries zero elevation cells on production and on UA alike (all three manifests read 2026-09-15). A UA preview does not change that: it moves the bucket prefix, not the release. So the frame here is the sheet WITHOUT a climb row, which is that change’s own honest absence rendered correctly; the row arrives when the pin moves to a release carrying the cells'
 export const alt =
   'The tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, the Long Path’s round logo beside the words “Long Path” again, and a line saying the data is from the New York-New Jersey Trail Conference. Where this build’s bucket carries per-edge climb, a climb figure written as plus-feet over minus-feet sits above that with a note under it saying climb is an estimate; where it does not, there is no such row. Where the build has no network archive at all, there is no sheet: just the map over the Palisades crest with no trail line to tap.'
 
@@ -115,23 +126,22 @@ export default async function drive(page) {
   // AND THEN THE CLIMB ROW, WHICH IS A SECOND ARRIVAL RATHER THAN PART OF
   // THE FIRST (#1476). The sheet opens on the tap with whatever is known
   // then, and the climb is not known then: the figure is summed out of the
-  // junction graph's cell for this ground, which is 2,638,738 bytes of JSON
-  // for n40w074 (measured off the UA bucket, 2026-09-15), and the 83,309-byte
-  // climb half is only asked for once that cell has merged AND a line has
-  // been tapped. Two round trips and a parse after the frame the tap
-  // produces.
+  // junction graph's cell for this ground - 2,638,738 bytes of JSON for
+  // n40w074 - and the 83,309-byte climb half is only asked for once that
+  // cell has merged AND a line has been tapped. Two round trips and a parse
+  // after the frame the tap produces, against a 6-second settle.
   //
-  // Without this wait the shot was a race the camera kept losing: run 1697
-  // (a UA preview, the bucket carrying all 505 climb cells and every one of
-  // this cell's 165 Long Path edges measured) still photographed a sheet
-  // with no climb row. That is a true screen at 6 seconds and a misleading
-  // picture of the feature, which is the one thing a shot recipe may not be.
+  // THIS WAIT IS RIGHT AND IT WAS NOT WHAT WAS HIDING THE ROW, and saying so
+  // is worth a line because the commit that added it claimed otherwise. Two
+  // UA previews drew no climb row with this wait in place; the cause was the
+  // pinned release, per the header above, not the settle. What the wait
+  // earns is that once a release does carry the cells, the frame is the
+  // figure rather than a coin toss against the network.
   //
-  // .catch is the honest half and is not belt-and-braces: where the bucket
-  // carries no climb half the row never comes, and that frame - the sheet
-  // without it - is this change's own "no figures on this phone" state and
-  // is worth photographing. So this waits for the row and takes whatever is
-  // there when the wait ends, rather than failing the recipe either way.
+  // .catch is the honest half and is not belt-and-braces: where the pinned
+  // release carries no climb half the row never comes, and that frame - the
+  // sheet without it - is #1476's own "no figures on this phone" state and
+  // is worth photographing. So this waits, then takes whatever is there.
   await sheet
     .getByText(/^\+[\d,]+ (ft|m) \/ −[\d,]+ (ft|m)$/)
     .waitFor({ timeout: 15000 })

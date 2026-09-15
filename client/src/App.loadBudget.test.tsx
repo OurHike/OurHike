@@ -48,11 +48,11 @@
 // Skip. That is where a number in milliseconds can be honest. See TESTING.md.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, getMany } from 'idb-keyval'
 import App from './App'
-import { appHarness, openMapTab } from './test/appHarness'
+import { appHarness, openMapTab, stubDesktop } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
@@ -138,6 +138,30 @@ const POIS = [
 /** How many times a key was read out of the phone this launch. */
 function readsOf(key: string): number {
   return vi.mocked(get).mock.calls.filter(([asked]) => asked === key).length
+}
+
+/**
+ * Every IndexedDB read hangs forever, for the tests that ask what is on screen
+ * BEFORE the store has answered.
+ *
+ * The strong form of that question: a test that merely raced a fast mock would
+ * pass against a tree that waits, which is the regression these are here to
+ * catch. `getMany` follows whatever `get` is doing right now, so #1303's one
+ * transaction in lib/trailData.ts reads this file's store like every other
+ * read, and a caller that re-points `get` need not re-point both.
+ */
+function stallEveryRead(): void {
+  vi.mocked(get).mockImplementation(() => new Promise(() => {}))
+  vi.mocked(getMany).mockImplementation((keys) =>
+    Promise.all(keys.map((key) => vi.mocked(get)(key))),
+  )
+}
+
+/** A beat for anything that would land one commit later to land. The counting
+ *  tests above use the same 50 ms, and the reason is the same: a frame sampled
+ *  the tick a render finished cannot see what the next tick does. */
+async function settle(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 50))
 }
 
 beforeEach(() => {
@@ -382,13 +406,7 @@ describe('what the shell paints before the phone has answered (#1301)', () => {
     // against the old gate too.
     app.onboard()
     app.putTrailData({ pois: POIS })
-    vi.mocked(get).mockImplementation(() => new Promise(() => {}))
-    // `getMany` follows whatever `get` is doing right now, so #1303's one
-    // transaction in lib/trailData.ts reads this file's store like every other
-    // read, and a test that re-points `get` need not re-point both.
-    vi.mocked(getMany).mockImplementation((keys) =>
-      Promise.all(keys.map((key) => vi.mocked(get)(key))),
-    )
+    stallEveryRead()
 
     render(<App />)
 
@@ -510,5 +528,135 @@ describe('what a launch does once, and must not do twice', () => {
     await renderedMap()
 
     expect(vi.mocked(buildPoiIcons).mock.calls.length).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('what a desktop launch paints before the store has answered', () => {
+  // THE FIFTH BUDGET, and the form factor the other four do not cover.
+  //
+  // features/LAUNCH_BUDGET.md §6 excluded desktop in one sentence - "the
+  // budget above is the phone's, and a desktop budget is not decided here" -
+  // written on the reading that what a laptop pays extra for is the MAP, which
+  // `isDesktop` mounts at launch by design. That reading is incomplete, and
+  // this block is the incompleteness written down as counts.
+  //
+  // Today is not its own screen above the breakpoint. `App.tsx`'s Today branch
+  // is guarded `activeTab === 'today' && !isDesktop`, and the journal is handed
+  // to `MapScreen` as its `journal` prop instead - so on a laptop the front
+  // door renders only once the map's own gate (`preferencesLoaded &&
+  // archivesRead`) has opened AND MapScreen's deferred chunk has landed.
+  // Excluding desktop from the budget therefore excluded Today from it, on the
+  // one form factor where Today is behind the map.
+  //
+  // Measured 2026-09-15, cold cache, returning hiker with the 2026-09-14
+  // release on the machine, Chromium at 1728x1080 against a LOCAL BUILD of
+  // `main` carrying production's public build values, 4x CPU: the sidebar is
+  // on screen at 212 ms and the journal has text at 2,230 ms. The whole
+  // 2,018 ms between them is the frame the report that prompted this shows -
+  // a sidebar and an empty pane. `archivesRead` is the last gate to open, at
+  // 2,009 ms; MapScreen's chunk landed at 1,662 ms and the engine at 2,394 ms,
+  // so on that run neither was on the journal's critical path. WHAT MAKES
+  // `archivesRead` LATE IS NOT ESTABLISHED and is @unvalidated: the sweep is
+  // one IndexedDB read per package and the package set grows to the coverage
+  // cells (62 basemap + 681 network as published on 2026-09-15), but the same
+  // window holds the release read and the index build, so "the sweep is slow"
+  // and "the thread was busy" are not separated by anything measured. What
+  // would settle it is a mark at the sweep's own first and last read.
+  //
+  // These are counts rather than milliseconds, like every other budget here.
+  //
+  // WHAT EACH TEST BELOW ASSERTS IS DESKTOP-ONLY, deliberately. A block that
+  // passes with `stubDesktop()` removed is a block quietly testing the phone,
+  // and the stub is a `matchMedia` fake keyed on lib/useDesktop.ts's query -
+  // renaming that export or moving the breakpoint would disarm it in silence.
+  // So each test names something the phone's own frame does not have.
+
+  beforeEach(() => {
+    stubDesktop()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+  })
+
+  it('puts the sidebar on screen before any IndexedDB read has resolved', async () => {
+    // The half that already holds above the breakpoint, and must keep holding:
+    // the launch mirror answers what the first frame needs synchronously, so
+    // the spine paints from the first commit on a laptop exactly as the tab bar
+    // does on a phone. Proven the strong way, like its phone twin - every read
+    // hangs forever and the navigation is there anyway.
+    stallEveryRead()
+
+    render(<App />)
+
+    const today = await screen.findByRole('tab', { name: 'Today' })
+    expect(today).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
+    // The desktop-only half of the frame, and what stops this passing on a
+    // phone. App.tsx hands TabBar a `modeSwitch` only above the breakpoint
+    // (`isDesktop ? sidebarModeSwitch : undefined`), so the switch is IN THE
+    // BAR here. Asking for the radiogroup unscoped would not say that: a phone
+    // renders Today on this same frame and Today's own header carries an
+    // identical one, so the unscoped query passes either way - checked by
+    // running this block with `stubDesktop()` removed, where it stayed green
+    // until the scope was added.
+    const bar = screen.getByRole('tab', { name: 'Today' }).closest('.tab-bar')
+    expect(bar).not.toBe(null)
+    expect(
+      within(bar as HTMLElement).getByRole('radiogroup', { name: "Today I'm" }),
+    ).toBeInTheDocument()
+    // And that the store really was asked, so "before any read has resolved"
+    // cannot be vacuously true of a launch that stopped reading.
+    expect(vi.mocked(get).mock.calls.length).toBeGreaterThan(0)
+  })
+
+  it('leaves the pane beside it empty until the store answers, which is the defect', async () => {
+    // CHARACTERISATION, NOT APPROVAL. This asserts what a desktop launch does
+    // today so that changing it is visible: the moment Today renders beside a
+    // held-up map, this test fails and whoever fixed it inverts it.
+    //
+    // The phone's equivalent - `puts the tab bar and the Today header on
+    // screen before any IndexedDB read has resolved` above - passes on the
+    // same stalled store, which is the whole asymmetry: identical launches,
+    // and only one of them has a front door.
+    stallEveryRead()
+
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    // A tripwire that samples one frame is a tripwire a fix can step over: the
+    // prototype on #1429 renders the journal synchronously, but a fix that
+    // lands it from an effect or a resolved chunk a tick later would satisfy
+    // an assertion taken the instant the tab bar appeared.
+    await settle()
+
+    // Nothing of Today's own is on screen - not the journal, not the map it is
+    // docked against. The sidebar's mode switch is NOT evidence either way: it
+    // is the tab bar's, and it renders on this frame by design.
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+    expect(MockMap.instances).toHaveLength(0)
+    // Today's own root element rather than anything it says. screens/Today.tsx
+    // contributes no landmark of its own, and the copy inside it is somebody's
+    // to reword: anchored on "Nothing planned today" this assertion would go
+    // quietly vacuous the day that string changes, leaving the block green
+    // whether or not the defect is still there - which is the one thing it
+    // exists to notice.
+    expect(document.querySelector('.today')).toBe(null)
+  })
+
+  it('builds no more than one map for a launch that lands on Today', async () => {
+    // What the §6 sentence DOES say, held: a laptop mounts the map at launch
+    // deliberately, so one is allowed here where the phone's budget allows
+    // none - which is also what proves `stubDesktop()` took effect, since the
+    // phone's own launch onto Today builds zero (the block above).
+    //
+    // NOT a guard against the coverage cells rebuilding it. `mapKept` exists
+    // for that, and this test cannot see it: readArchiveZooms and
+    // readArchiveFootprint are mocked to null at the top of this file, so the
+    // sweep never re-answers here and no growth is simulated. The bound is on
+    // the launch, and App.mapLifecycle.test.tsx holds the growth case.
+    render(<App />)
+    await renderedMap()
+    await indexLanded()
+    await settle()
+
+    expect(MockMap.instances).toHaveLength(1)
   })
 })

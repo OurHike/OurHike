@@ -9058,6 +9058,30 @@ function App() {
         ? findHikeScreen
         : todayScreen
 
+  /**
+   * Today as a laptop reads it: the journal, and the card a tapped row opens
+   * docked in the same column (#1054).
+   *
+   * ONE DEFINITION, TWO PLACES THAT RENDER IT (#1429). Above the breakpoint
+   * Today is not a screen of its own - the branch below is guarded
+   * `!isDesktop` - so this is what a laptop's front door actually is. It goes
+   * to `MapScreen`'s `journal` slot once there is a map, and to the pre-map
+   * branch at the return below until there is. Written once so the two
+   * cannot drift into rendering different Todays.
+   */
+  const desktopJournal =
+    !entering && isDesktop && activeTab === 'today' ? (
+      <>
+        {todayPane}
+        {/* The same card the phone's Today docks, in the column the row was
+            tapped in rather than over the map beside it - the map's own sheet
+            slot belongs to the builders and the trailhead door, and a shelf
+            tap must not outrank a walk in progress there. desktop.css makes
+            the column its containing block. */}
+        {savedDayHikeCardNode}
+      </>
+    ) : null
+
   // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
   // for it, and only the desktop needs it there - the phone carries the same
   // control on the Today header. Undefined below the breakpoint, so TabBar
@@ -9675,6 +9699,44 @@ function App() {
     <>
       {nothingWouldRender && (
         <div className="app__screen">
+          {/* THE FRONT DOOR, WHILE THE MAP IS STILL COMING (#1429).
+              
+              A laptop landing on Today used to get this branch's tab bar and
+              nothing beside it - measured 2026-09-15 at 1,913 ms of sidebar
+              against an empty pane on a cold cache at 4x CPU, which is the
+              frame the report that opened #1429 shows. Today's own data was
+              ready 1,265 ms before it drew.
+
+              WHY IT WAS WAITING ON THE MAP AT ALL. `mapNeededNow` holds the
+              map until `archivesRead`, so it is built around the background
+              this phone actually has rather than drawing the live sheet for a
+              beat and throwing itself away (the note at the render gate has
+              the history, and ~2 MB of somebody's data). That is a decision
+              about the MAP. Today does not participate in it - it draws
+              waypoints, a journal and a download notice, none of which care
+              which sheet the canvas ends up on - and above the breakpoint
+              Today is the map's `journal` prop, so it inherited the wait
+              anyway. This renders it in its own column until the map arrives
+              to take it.
+
+              THE COLUMN IS `.map-screen__journal` BECAUSE IT IS THE SAME
+              COLUMN. desktop.css sizes it, inks Today's chrome for it and
+              makes it the containing block for the docked card; `.app__screen`
+              is already `flex-direction: row` up here and the tab bar takes
+              `order: -1`, so this lands to the sidebar's right exactly where
+              MapScreen will put it.
+
+              WHAT THIS COSTS, said out loud: when the map arrives this branch
+              unmounts and MapScreen's slot mounts the same journal, so the
+              column is rebuilt once. Everything a hiker can have changed by
+              then is the shell's state and survives it - which page Today is
+              on, the mode, an open day-hike card - because Today holds none of
+              it. What does not survive is scroll position inside the column,
+              in the second or two before the map lands. Rendering nothing for
+              that second was the alternative. */}
+          {desktopJournal !== null && (
+            <div className="map-screen__journal">{desktopJournal}</div>
+          )}
           <TabBar
             active={activeTab}
             onSelect={selectTab}
@@ -9722,20 +9784,7 @@ function App() {
               // breakpoint, this branch is the one rendering - the Today branch
               // stands aside - and the journal reads beside the map. Never during
               // first run, whose backdrop must stay bare down to the canvas.
-              journal={
-                !entering && isDesktop && activeTab === 'today' ? (
-                  <>
-                    {todayPane}
-                    {/* The same card the phone's Today docks, in the column
-                        the row was tapped in rather than over the map beside
-                        it - the map's own sheet slot belongs to the builders
-                        and the trailhead door, and a shelf tap must not
-                        outrank a walk in progress there. desktop.css makes
-                        the column its containing block. */}
-                    {savedDayHikeCardNode}
-                  </>
-                ) : undefined
-              }
+              journal={desktopJournal ?? undefined}
               modeSwitch={sidebarModeSwitch}
               hikeSwitch={sidebarHikeSwitch}
               // The ask before this phone's map is replaced (#919). Undefined

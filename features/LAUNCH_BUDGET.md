@@ -181,13 +181,52 @@ was on the journal's critical path. It settles that the data Today draws was rea
 965 ms and sat unrendered for 1,265 ms behind a gate about which background the map
 is built around — a decision Today does not participate in.
 
-**What it does not settle is why `archivesRead` is late, and that is `@unvalidated`.**
-The sweep is one IndexedDB read per package and the package set grows to the coverage
-cells (62 basemap and 681 network, as published on 2026-09-15), which is a plausible
-cause and is not evidence: the same window holds the release read and the index build
-(`ourhike:index` at 2,345 ms), so "the sweep is slow" and "the thread was busy when
-its callbacks came due" are not separated by anything measured here. What would settle
-it is a mark at the sweep's own first and last read, which nothing has yet taken.
+**What it did not settle was why `archivesRead` is late.** That mark has since been
+taken — #1429, same profile, a probe on the archive sweep's own first read:
+
+| | at |
+|---|---:|
+| the sweep issues its first read | 337 ms |
+| **that read answers** | **663 ms** |
+| `archivesRead` — every package finally answered | 2,327 ms |
+
+**So it was never one slow read.** The sweep's first IndexedDB round trip costs 326 ms
+on a 4× core and is done at 663 ms; the gate then takes a further 1,664 ms. What is
+left to explain is an accumulation rather than a latency — many packages, a thread busy
+with the release read and the index build (`ourhike:today` at 1,141 ms,
+`ourhike:index` at 2,704 ms), or both. **Which of those, and in what proportion, is
+still `@unvalidated`**: separating them wants a per-read timing and a package count at
+the moment the gate opens, and nothing has taken those. It stopped being the front
+door's problem in #1429 — Today no longer waits on this gate — so what remains is a
+question about when the MAP arrives, which is a laptop's to answer and not a hiker's
+first screen.
+
+### 1.3 After #1429: the front door stops waiting for the map
+
+Today above the breakpoint was `MapScreen`'s `journal` prop and nothing else, so it
+could not draw until the map did. It renders in its own `.map-screen__journal` column
+before the map arrives now, and MapScreen takes the same node over when the map lands.
+Same profile as §1.2's attributed table — cold cache, returning hiker, 1728×1080, 4×
+CPU, local build carrying production's public build values:
+
+| | before | after |
+|---|---:|---:|
+| sidebar on screen | 263 ms | 255 ms |
+| **Today's journal has text** | **2,565 ms** | **255 ms** |
+| map canvas sized | 2,870 ms | 2,665 ms |
+| **the pane beside the sidebar is empty for** | **2,302 ms** | **0 ms** |
+
+The journal now arrives on the same frame as the sidebar, which is what "0 ms" means:
+there is no frame in which a laptop shows navigation and nothing else. **The map is
+unmoved** — 2,870 → 2,665 ms is this profile's run-to-run spread, not a saving, and no
+part of this change was aimed at it. Eager JavaScript is unchanged at 254,816 bytes:
+the column reuses what the shell already imports.
+
+What did not change, and is the honest cost: when the map lands, the pre-map branch
+unmounts and MapScreen mounts the same journal, so the column is rebuilt once. Every
+piece of state a hiker can have touched by then is the shell's and survives — which
+page Today is on, the mode, an open day-hike card. Scroll position inside the column
+does not. Drawing nothing for those two seconds was the alternative.
 
 One measurement nearby, for whoever picks this up: the map engine ships as
 `mapWorker-*.js` at 991 KB raw and 257 KB compressed. It is correctly outside the
@@ -477,10 +516,10 @@ read resolves; the launch thread performs no full pass over the waypoint list be
 it; the archive sweep never unmounts a rendered tree. Each is a count, so it fails on
 any machine. Its desktop block (§1.2, §6's bullet) counts the same way above the
 breakpoint — the sidebar paints before any read resolves, one map is built for a
-launch that lands on Today, and the pane beside the sidebar is empty until the store
-answers. That last one is characterisation rather than a budget: it goes red the day
-Today renders beside a held-up map, which is the fix, and whoever makes it inverts
-the test rather than deleting it.
+launch that lands on Today, and Today itself is on screen before the store answers.
+That last one stood as characterisation until #1429: it asserted the pane WAS empty,
+said the fix would turn it red, and named inverting it as the repair. #1429 inverted
+it, which is the shape to copy the next time a defect is pinned before it is fixed.
 
 **In review, by hand** — a pull request touching the launch path pastes the
 stopwatch's `--returning` and first-run output into its body, the way #857 — *Skip on the first-run steps feels like a broken button* —
@@ -553,8 +592,10 @@ release's effect on the launch is a row in an issue rather than a feeling.
   **Today**, because above the breakpoint Today is the map's `journal` prop and not a
   screen of its own. So the one form factor where the front door renders behind the
   map is the one form factor with no budget on the front door. §1.2 is what that cost,
-  measured; §5 names the counts `App.loadBudget.test.tsx` now holds above the
-  breakpoint. **What is still not decided here is the budget itself** — §3's rows are
+  measured, and §1.3 is #1429 removing it — Today draws in its own column before the
+  map arrives now, so a laptop's front door is on screen at 255 ms rather than
+  2,565 ms. §5 names the counts `App.loadBudget.test.tsx` holds above the breakpoint,
+  including the one that was characterisation until #1429 inverted it. **What is still not decided here is the budget itself** — §3's rows are
   the phone's, a laptop's are not them, and what they should be wants §4.1's on-device
   readout rather than a number picked here. The line reference this bullet used to
   carry (`App.tsx:1024`) had drifted off the symbol it named; so had

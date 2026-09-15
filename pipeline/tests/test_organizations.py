@@ -219,6 +219,20 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     a screen that somebody could simplify away. tests/test_export_sources.py's
     `TestTermsTravelWithTheData` is what fails if they do.
 
+    NEW YORK CITY IS A FOURTH KIND, and it is the first one where nobody had
+    to answer anything (#1432). nyc_parks_trails and nyc_dot_greenways went
+    straight in as `stated_by_org`, 10 -> 12, on terms no agency set and no
+    maintainer negotiated: NYC Local Law 11 of 2012 opens the city's published
+    data by statute, to everyone. That is why the count moved without an ask
+    in the way the paragraphs above describe, and it is worth separating from
+    the other three because a statutory grant is the only one here that cannot
+    rot - an agency cannot withdraw it by editing a portal field, and a club
+    inheriting this project does not have to re-confirm it in its own name.
+    What it does NOT settle is the attribution rider (`nyc_licence`), which is
+    a condition this project has only half built and ships anyway on the
+    maintainer's authorisation of 2026-09-15 - recorded there rather than
+    here, because it is not what `licence_basis` is answering.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -226,4 +240,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 10, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 12, "unresolved": 1}

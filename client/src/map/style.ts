@@ -185,14 +185,7 @@ import {
   sheetVariant,
   type SheetAppearance,
 } from './liveTopo'
-import {
-  DEC_CREDIT,
-  MOHONK_CREDIT,
-  NYNJTC_CREDIT,
-  OPRHP_CREDIT,
-  OSM_CREDIT,
-  USGS_TOPO_CREDIT,
-} from './credits'
+import { NEARBY_TRAILS_ATTRIBUTION, OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import { whenStyleReady } from './styleReady'
 import { TRAILS } from '../lib/trails'
 import type { GeoJSONSource, Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
@@ -1921,17 +1914,20 @@ export function buildMapStyle({
         tiles: [NETWORK_TILES_URL],
         minzoom: NEARBY_TRAILS_TILES_MIN_ZOOM,
         maxzoom: NEARBY_TRAILS_TILES_MAX_ZOOM,
-        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT} · ${DEC_CREDIT}`,
+        attribution: NEARBY_TRAILS_ATTRIBUTION,
       },
       // The same network as a corridor-view sketch (#1135), empty until
-      // lib/nearbyTrailData.ts hands one over. The SAME attribution string as
-      // its parent above, and that is a licence condition rather than
+      // lib/nearbyTrailData.ts hands one over. The SAME attribution constant
+      // as its parent above, and that is a licence condition rather than
       // tidiness: OPRHP's credit is owed whenever their lines are drawn, and
-      // below the seam these are the only drawing of them.
+      // below the seam these are the only drawing of them. It is a shared
+      // constant rather than a repeated string since #1432, when adding New
+      // York City's two stewards would have made it three copies of a list
+      // that has to agree.
       [NETWORK_OVERVIEW_SOURCE_ID]: {
         type: 'geojson',
         data: emptyTrailOverview(),
-        attribution: `${OPRHP_CREDIT} · ${NYNJTC_CREDIT} · ${MOHONK_CREDIT} · ${DEC_CREDIT}`,
+        attribution: NEARBY_TRAILS_ATTRIBUTION,
       },
       // The through-route badges (#1283): points map/trailsInView.ts computes
       // from what the trail layers are actually drawing, one per named

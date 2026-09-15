@@ -48,6 +48,8 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_dec__dec_viewing_areas",
             "raw_dec__dec_parking_areas",
             "raw_dec__dec_backcountry_features",
+            "raw_nyc_parks__nyc_parks_trails",
+            "raw_nyc_dot__nyc_dot_greenways",
             "raw_usfs__usfs_trails",
             "raw_usfs__usfs_rec_sites",
             "raw_granit__nh_granit_trails",

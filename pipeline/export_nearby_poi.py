@@ -431,6 +431,35 @@ def confidence_for(source: dict, verdict: str) -> str:
     return CONFIDENCE_LOW
 
 
+def low_confidence_reason(source: dict) -> str:
+    """Why this source's low-confidence records are low, for the run log.
+
+    TWO MECHANISMS NOW, AND THIS LINE ASSUMED ONE. It read
+    `source['public_field']` unconditionally, which was true while the only
+    way to be low was OPRHP's per-row flag - and became a KeyError the moment
+    `confidence_floor` shipped a layer that is low WITHOUT a public field.
+    The UA publish after #1474 died here, 17 minutes in, having already
+    exported all 3,195 fountains and 975 restrooms correctly: the export was
+    right and the sentence describing it was not.
+
+    So the reason is chosen rather than assumed, and the two do not mean the
+    same thing - "ParksApp says not in the org's own app" is a claim about
+    3,195 New York fountains that no NYC column makes.
+
+    NOTHING HERE RAISES. A progress line is not worth a pipeline: an
+    unrecognised combination prints that it is unrecognised, because losing
+    the publish to a print is exactly the trade this function exists to stop
+    making. The guarantee that a floor is real lives in `confidence_for`,
+    which does raise.
+    """
+    if source.get("confidence_floor") == CONFIDENCE_LOW:
+        return f"confidence_floor - the layer cannot support a confident claim about any row ({source['key']})"
+    field = source.get("public_field")
+    if field:
+        return f"{field} says not in the org's own app"
+    return "reason not recorded - a source lowered confidence by a route this line does not know"
+
+
 def classify(source: dict, properties: dict) -> str | None:
     """This feature's poi_type, or None if the layer does not publish one for it."""
     declared = source.get("poi_type")
@@ -797,7 +826,7 @@ def main() -> dict:
 
         print(f"  {key}: {stats['kept']:,} of {len(features):,} features kept  {stats['by_type']}")
         if stats["low_confidence"]:
-            print(f"      {stats['low_confidence']:,} at low confidence ({source['public_field']} says not in the org's own app)")
+            print(f"      {stats['low_confidence']:,} at low confidence ({low_confidence_reason(source)})")
         if stats["kept"]:
             print(f"      {stats['unnamed']:,} unnamed, {stats['described']:,} carry a composed description")
         for reason, count in sorted(stats["dropped"].items(), key=lambda kv: -kv[1])[:8]:

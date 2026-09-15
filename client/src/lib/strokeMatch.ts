@@ -38,6 +38,8 @@
 import {
   DRAWN_SNAP_METRES,
   SAME_TREAD_METRES,
+  askableIdentity,
+  askableName,
   trailsNear,
   type GraphPoint,
   type LonLat,
@@ -109,18 +111,19 @@ function metresBetween(from: LonLat, to: LonLat): number {
  * ran the length of the Pine Meadow Trail crosses several of them without
  * ever leaving the trail.
  *
- * SEPARATED BY `\0`, WRITTEN AS AN ESCAPE. The separator has to be a character
- * no steward can put in a trail name, or two trails collide into one key, and
- * every printable choice is a character somebody's name might carry. It was a
- * literal NUL byte typed into the template until now - identical at runtime,
- * and it made this file BINARY to git: `git diff` answered "Binary files
- * differ", `git grep` skipped it, and a review of any change here saw nothing.
- * The escape is the same character to the parser and leaves the file text.
+ * NOW ONE HELPER RATHER THAN TWO COPIES (#1444). This function reimplemented
+ * `askableIdentity` line for line - the same `null`-only guard, the same
+ * `source\0name\0blaze` key, a different NUL escape - so the drawn-stroke
+ * path and the tap path could disagree about which trail a hiker meant, and
+ * did: a name that is only whitespace is not `null`, and 12,510 of the
+ * network's 631,915 edges carry one. Both read `edge.name` directly, so
+ * fixing either alone would have left the other wrong. The separator argument
+ * the two copies shared lives with the helper now; what mattered about it was
+ * that a literal NUL byte made this file BINARY to git, so `git diff`
+ * answered "Binary files differ" and a review of any change here saw nothing.
  */
 function trailKeyOf(index: TrailGraphIndex, point: GraphPoint): string {
-  const edge = index.graph.edges[point.edgeIndex]
-  if (edge.name === null) return `edge:${point.edgeIndex}`
-  return `${edge.source ?? ''}\0${edge.name}\0${edge.blaze_color ?? ''}`
+  return askableIdentity(index.graph.edges[point.edgeIndex], point.edgeIndex)
 }
 
 /** One stretch of a matched stroke: the trail it ran along, and the points on
@@ -271,7 +274,10 @@ export function matchStroke(
     )
     current = {
       points: [chosen],
-      name: edge.name,
+      // `askableName` rather than `edge.name`, so this field's own contract -
+      // "Null for a piece nobody named" - is true of a blank name as well as
+      // an absent one (#1444). The shell prints this in a sentence.
+      name: askableName(edge.name),
       blaze_color: edge.blaze_color,
       source: edge.source,
       alternatives: rest.filter(
@@ -279,7 +285,11 @@ export function matchStroke(
       ),
       alsoKnownAs: sameTread.map((other) => {
         const also = index.graph.edges[other.edgeIndex]
-        return { name: also.name, blaze_color: also.blaze_color, source: also.source }
+        return {
+          name: askableName(also.name),
+          blaze_color: also.blaze_color,
+          source: also.source,
+        }
       }),
     }
     currentKey = trailKeyOf(index, chosen)

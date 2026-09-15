@@ -204,6 +204,61 @@ describe('two trails on one tread', () => {
   })
 })
 
+describe('blank-named trails, on the stroke path too (#1444)', () => {
+  // The same defect `lib/trailGraph.test.ts` pins for a tap, arriving here
+  // because `trailKeyOf` reimplemented `askableIdentity` line for line: the
+  // same `null`-only guard, the same `source\0name\0blaze` key. Fixing either
+  // alone would have left the other wrong, so both now call one helper and
+  // this suite is what says so.
+  //
+  // Two blank-named trails, 22 m apart, both carrying the single space the
+  // artifact actually publishes - 12,510 of 631,915 edges do, and on
+  // `nh_granit_trails` they are 10,352 distinct trail ids.
+  const BLANK: TrailGraph = {
+    nodes: GRAPH.nodes,
+    edges: [
+      {
+        ...GRAPH.edges[0],
+        name: ' ',
+        blaze_color: null,
+        trail_id: 'nh_granit:8801',
+        source: 'nh_granit_trails',
+      },
+      {
+        ...GRAPH.edges[1],
+        name: ' ',
+        blaze_color: null,
+        trail_id: 'nh_granit:9002',
+        source: 'nh_granit_trails',
+      },
+    ],
+  }
+  const blank = buildGraphIndex(published(BLANK))
+
+  it('does not read a walk down one blank-named trail as a walk down two', () => {
+    // The stroke runs the length of the southern line only. Under one key for
+    // both, `alternatives` could not tell them apart either.
+    const match = matchStroke(blank, along(41.25, -74.099, -74.091))
+
+    expect(match.stretches).toHaveLength(1)
+    expect(match.stretches[0].alternatives.length).toBeGreaterThan(0)
+  })
+
+  it('calls a blank name no name, which is what the field promises', () => {
+    // `StrokeStretch.name` is documented "Null for a piece nobody named", and
+    // a ' ' made that false - the shell prints this in a sentence.
+    const match = matchStroke(blank, along(41.25, -74.099, -74.091))
+
+    expect(match.stretches[0].name).toBeNull()
+    for (const also of match.stretches[0].alsoKnownAs) expect(also.name).toBeNull()
+  })
+
+  it('still names a trail the publisher did name', () => {
+    const match = matchStroke(index, along(41.25, -74.099, -74.091))
+    expect(match.stretches[0].name).toBe('Pine Meadow Trail')
+  })
+})
+
 describe('the thresholds', () => {
   it('keeps the hold margin under the match radius', () => {
     // The bug the margin's own note records: a hold WIDER than the radius

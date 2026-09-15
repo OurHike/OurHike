@@ -33,6 +33,7 @@ import {
   SAME_TREAD_METRES,
   sameTrail,
   sameTread,
+  askableName,
   trailChoice,
   trailsNear,
   type TrailGraph,
@@ -931,6 +932,94 @@ describe('which trail a drawn line meant (#935)', () => {
 
     expect(SAME_TREAD_METRES).toBe(8)
     expect(choice.kind).toBe('one')
+  })
+})
+
+describe('a name that is only whitespace is no name (#1444)', () => {
+  // MEASURED over `trail_graph.json` as data.ourhike.org served it 2026-09-15
+  // (release `2026-09-14`, sha256 `222306f1eac1ad8c7372d466f0cc...`): 12,510
+  // edges of 631,915 carry a whitespace-only name, and on `nh_granit_trails`
+  // those blank-named lines are 10,352 DISTINCT trail ids. Every one of them
+  // keyed onto `nh_granit_trails\0 \0None` while the guard tested `null`
+  // alone, so a whole state's worth of unnamed tread stood as one candidate
+  // and the app answered where it should have asked.
+  //
+  // Two blank-named trails 22 m apart: inside the 25 m a drawn line may reach
+  // and well outside the 8 m that means "the same place".
+  const BLANK: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      [-74.1, 41.2502],
+      [-74.09, 41.2502],
+    ],
+    edges: [
+      {
+        ...GRAPH.edges[0],
+        from: 0,
+        to: 1,
+        name: ' ',
+        blaze_color: null,
+        trail_id: 'nh_granit:8801',
+        source: 'nh_granit_trails',
+      },
+      {
+        ...GRAPH.edges[0],
+        from: 2,
+        to: 3,
+        name: ' ',
+        blaze_color: null,
+        trail_id: 'nh_granit:9002',
+        source: 'nh_granit_trails',
+      },
+    ],
+  }
+  const blank = buildGraphIndex(published(BLANK))
+  // Both are the SAME blank string, which is what the artifact actually
+  // carries - the 10,352 ids above all key onto one `nh_granit_trails\0 \0None`.
+  // Two DIFFERENTLY padded blanks were two candidates even under the old
+  // guard, for the wrong reason: it read them as two different names.
+  const between = { lon: -74.095, lat: 41.2501 }
+
+  it('keeps two blank-named trails as two candidates rather than one', () => {
+    // THE DEFECT. Both lines carry a name, a source and a blaze that are
+    // string-equal, so a `null`-only guard built one key for both and
+    // `trailsNear` kept one `best` under it.
+    expect(trailsNear(blank, between, DRAWN_SNAP_METRES)).toHaveLength(2)
+  })
+
+  it('asks which one the hiker meant instead of picking for them', () => {
+    // The whole point: `{kind: 'one'}` here is the app answering a question
+    // it cannot answer, for at least one of two trails it cannot tell apart.
+    expect(trailChoice(blank, between).kind).toBe('ask')
+  })
+
+  it('reads a blank name as no name, and trims one that is merely padded', () => {
+    expect(askableName(null)).toBeNull()
+    expect(askableName(' ')).toBeNull()
+    expect(askableName('\t\n  ')).toBeNull()
+    expect(askableName('')).toBeNull()
+    // Padding is not a difference a hiker can see, so it is not a difference
+    // worth asking them about - two candidates spelled the same way after
+    // trimming are one answer.
+    expect(askableName('  Pine Meadow Trail ')).toBe('Pine Meadow Trail')
+  })
+
+  it('still collapses two pieces of one genuinely named trail', () => {
+    // The rule this issue must not break: the blank-name fix widens what
+    // counts as unnamed, and nothing else. Two lines a publisher split, both
+    // reading "Pine Meadow Trail", stay one candidate.
+    const split: TrailGraph = {
+      nodes: BLANK.nodes,
+      edges: BLANK.edges.map((edge) => ({
+        ...edge,
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+      })),
+    }
+    const index = buildGraphIndex(published(split))
+    expect(trailsNear(index, between, DRAWN_SNAP_METRES)).toHaveLength(1)
+    expect(trailChoice(index, between).kind).toBe('one')
   })
 })
 

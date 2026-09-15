@@ -317,3 +317,41 @@ export function mileTicks(course: DayHikeCourse, everyMiles = 1): MileTick[] {
 
   return ticks
 }
+
+/** A bounding box, in the order MapLibre's `fitBounds` takes it. */
+export type LonLatBounds = [[number, number], [number, number]]
+
+/**
+ * The box around a set of drawn points, or null where there are none.
+ *
+ * ONE HOME FOR THE LOOP (#1404). Two cameras frame a drawn route - "show the
+ * whole route" on the follow card, and the builder's fit on entry - and both
+ * need the same four running minima. A second copy is not a correctness risk
+ * so much as a place for one of them to grow padding or a clamp the other
+ * does not, which is how two cameras onto one line start disagreeing about
+ * where it is.
+ *
+ * Takes points rather than a course, because the follow card's input is a
+ * drawn polyline and the builder's is a course, and the box does not care.
+ * Null rather than a zero-size box at the origin: an empty route has no
+ * bounds, and `[[0,0],[0,0]]` is the Gulf of Guinea.
+ */
+export function lonLatBounds(
+  points: Iterable<readonly [number, number]>,
+): LonLatBounds | null {
+  let west = Infinity
+  let south = Infinity
+  let east = -Infinity
+  let north = -Infinity
+  for (const [lon, lat] of points) {
+    west = Math.min(west, lon)
+    east = Math.max(east, lon)
+    south = Math.min(south, lat)
+    north = Math.max(north, lat)
+  }
+  if (west === Infinity) return null
+  return [
+    [west, south],
+    [east, north],
+  ]
+}

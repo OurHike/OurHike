@@ -351,7 +351,7 @@ import {
   NETWORK_STILL_ARRIVING,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
-import { buildCourse, mileTicks } from './lib/dayHikeCourse'
+import { buildCourse, lonLatBounds, mileTicks } from './lib/dayHikeCourse'
 import { isStoppable, orderStops, toggleStop } from './lib/dayHikeStops'
 import { waterOnCourse } from './lib/dayHikeWater'
 import { poiIdAt } from './map/poiTaps'
@@ -4420,7 +4420,7 @@ function App() {
    * is what `openPlanKind` does - is the kinder behaviour and a different
    * decision; #997 records it.
    */
-  const sweepForBuilder = useCallback(() => {
+  const sweepForBuilderNow = useCallback(() => {
     setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
@@ -4455,6 +4455,59 @@ function App() {
     // - and that button reaches this same sweep, discarding the route.
     applyHikerMode('long')
   }, [applyHikerMode, setActiveTab])
+
+  /**
+   * A sweep parked behind the bail sheet, and the one door that runs it
+   * (#1378).
+   *
+   * THE EXIT THE NAVIGATOR'S GUARD CANNOT SEE. D8 says every exit from a
+   * half-built route shows the bail sheet, and `nav.setGuard` above delivers
+   * that for the moves the navigator makes - a tab tap that takes the map,
+   * and the builder on it, off screen. `sweepForBuilderNow` is not one of
+   * those. It is a plain callback, so this chain drops a draft with nothing
+   * asked, and every link in it is a control on screen:
+   *
+   *   1. build part of a day hike on the map - the draft is live;
+   *   2. "< Hike" back to step 1, which pushes the step with the draft still
+   *      live behind it (the rail's promise, R3);
+   *   3. flip the sidebar's mode switch to Long hike - `handleChangeMode` ->
+   *      `enterTripsRoom` -> `applyHikerMode('long')`, none of which clears
+   *      `dayHike`, and none of which is destructive;
+   *   4. step 1's "Pick on the map" opens the A.T. builder, whose opener
+   *      sweeps - and the draft is gone.
+   *
+   * Step 4 is the destructive one, so step 4 is what asks. A tab tap from
+   * step 1 with a draft live is NOT this defect: nothing in the tab branch
+   * clears the draft, and `openPlanKind` routes a live draft back to its own
+   * builder, so "Keep it for later" there genuinely keeps it.
+   *
+   * THE WHOLE ACTION IS PARKED, not the sweep alone. `handlePlanChartStretch`
+   * sweeps and then opens the builder from the chart's own miles; parking
+   * only the first line would open a builder over a draft the sweep never
+   * cleared, which is the state #997 exists to prevent.
+   *
+   * NARROW ON PURPOSE. The deeper fix is steps 2 and 3 on the navigator's
+   * stack, so the guard reads what a move LEAVES rather than pattern-matching
+   * on tabs - that is item 1 of #1380, whose own instruction is to take those
+   * one at a time on their own branches because every one touches this file.
+   * Doing it here would close that item sideways without the review it asks
+   * for.
+   */
+  const [pendingSweep, setPendingSweep] = useState<{ run: () => void } | null>(null)
+  const askBeforeSweeping = useCallback(
+    (run: () => void) => {
+      if (dayHike === null) {
+        run()
+        return
+      }
+      setPendingSweep({ run })
+    },
+    [dayHike],
+  )
+  const sweepForBuilder = useCallback(
+    () => askBeforeSweeping(sweepForBuilderNow),
+    [askBeforeSweeping, sweepForBuilderNow],
+  )
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -5269,10 +5322,49 @@ function App() {
       // the route as it was. The pointer only: the edit is recorded when it
       // is saved, not when it starts.
       void saveDayHikeOpenId(null).then(setDayHikeStore)
+
+      // AND THE CAMERA COMES TO THE ROUTE (#1404). This door loaded the legs
+      // and drew the line and left the camera wherever the map already was -
+      // which, for a hiker arriving from the Plan tab, is the whole corridor.
+      // Measured 2026-09-11 against release 2026-09-10 on the fixture walk
+      // Ramapo-Dunderberg to Timp-Torne (2.85 mi): a 1,974-point sweep of
+      // the 1280x800 map box on the camera this opened on raised the route's
+      // hover plate ZERO times. There was nothing under the frame to find.
+      // R2 - "the map never leaves" - is why the builder sits beside the map
+      // on a laptop at all, and step 2's whole job is judging a route by
+      // looking at it.
+      //
+      // FIT ONCE, ON ENTRY, which is the conservative of the two shapes
+      // #1404 names and is chosen rather than defaulted: re-fitting on every
+      // change would fight a hiker who has deliberately panned away to look
+      // at where they might extend to, which is a real thing to do here.
+      // Only where the replay produced a route with geometry - a walk this
+      // phone's graph cannot place opens on the refusal, and there is
+      // nothing to frame.
+      //
+      // The phone is UNMEASURED. The sweep above is the laptop project's;
+      // the phone's builder covers the map at step 2 anyway (measured 8% of
+      // it reachable), so this may be invisible there rather than absent.
+      if (map !== null && replayed !== null) {
+        const status = draftStatus(dayHikeIndex, replayed)
+        if (status.kind === 'routed') {
+          const bounds = lonLatBounds(
+            buildCourse(dayHikeIndex.graph, status.stretches).points.map(
+              (point) => [point.lon, point.lat] as const,
+            ),
+          )
+          // No animation: the tab is changing under it, and a flight the
+          // hiker never sees the start of is a flight they wait for.
+          if (bounds !== null) {
+            map.fitBounds(bounds, { padding: FOLLOW_FIT_PADDING, duration: 0 })
+          }
+        }
+      }
     },
     [
       dayHikeStore.hikes,
       dayHikeIndex,
+      map,
       openDayHike,
       setDayHikeStopIds,
       followingId,
@@ -5647,25 +5739,12 @@ function App() {
    *  can honestly offer somebody standing off their route. */
   const showWholeRoute = useCallback(() => {
     if (map === null || followDrawing === null) return
-    const points = followDrawing.lines.flat()
-    if (points.length === 0) return
-    let west = points[0][0]
-    let south = points[0][1]
-    let east = points[0][0]
-    let north = points[0][1]
-    for (const [lon, lat] of points) {
-      west = Math.min(west, lon)
-      east = Math.max(east, lon)
-      south = Math.min(south, lat)
-      north = Math.max(north, lat)
-    }
-    map.fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      { padding: FOLLOW_FIT_PADDING },
-    )
+    // lib/dayHikeCourse.ts's `lonLatBounds`, shared with the builder's own
+    // entry fit (#1404) rather than a second copy of the same four running
+    // minima.
+    const bounds = lonLatBounds(followDrawing.lines.flat())
+    if (bounds === null) return
+    map.fitBounds(bounds, { padding: FOLLOW_FIT_PADDING })
   }, [map, followDrawing])
 
   const followHeaderText = followHeader({
@@ -6384,10 +6463,21 @@ function App() {
     // repeat - setActiveTab('map') - is a no-op on this path rather than a
     // difference: the chart is a MapScreen prop, and App returns early for
     // every other tab, so nothing reaches here from anywhere else.
-    sweepForBuilder()
-    setFreeChartStretch(null)
-    openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
-  }, [freeChartStretch, freeChartSouth, openFromMiles, sweepForBuilder])
+    // Parked whole (#1378), not just its first line: a sweep asked about and
+    // declined must not leave the two lines after it to open a builder over
+    // the draft that was kept.
+    askBeforeSweeping(() => {
+      sweepForBuilderNow()
+      setFreeChartStretch(null)
+      openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
+    })
+  }, [
+    askBeforeSweeping,
+    freeChartStretch,
+    freeChartSouth,
+    openFromMiles,
+    sweepForBuilderNow,
+  ])
 
   // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
   // fix - a desk has none - only the published profile; the fix, when one
@@ -10403,6 +10493,24 @@ function App() {
             nav.proceed()
           }}
           onStay={nav.stay}
+        />
+      )}
+      {/* The same sheet for the exit the navigator cannot see (#1378): a
+          sweep, which opens the other kind of plan and drops the day-hike
+          draft on its way. No "Keep it for later" — only one route can be
+          live (#997), so the sweep IS the discard and offering to keep would
+          be the sheet lying about what the button does. `nav.pending` and
+          this cannot both be up: a navigator move parks before anything
+          runs, and a sweep is not a navigator move. */}
+      {nav.pending === null && pendingSweep !== null && (
+        <BailSheet
+          figures={bailFigures}
+          onDiscard={() => {
+            const { run } = pendingSweep
+            setPendingSweep(null)
+            run()
+          }}
+          onStay={() => setPendingSweep(null)}
         />
       )}
       {/* Where you hike (#1373), from More → You: a sheet over whichever

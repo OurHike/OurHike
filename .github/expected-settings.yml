@@ -60,6 +60,22 @@ settings:
       The other half, and the one shown exactly once at creation. If this is
       missing it cannot be looked up anywhere - the token has to be reminted.
 
+  HIKEFINDER_PASSWORD:
+    where: secret
+    required: false
+    why: >-
+      The site password NYNJTC's Hike Finder export went behind on 2026-09-15
+      (#1468), read only by the hike fetch step of publish-vector-data.yml.
+      REQUIRED: FALSE IS THE POINT, not an oversight. The export was open
+      before that date and may be open again, and a run without this fetches
+      as an anonymous reader; if the export is in fact locked, the fetcher
+      lands on its own listing guard, which #1462 turned into "no hikes this
+      run" rather than a dead publish. So a missing secret costs the 385 day
+      hikes and never the A.T. data - which is the whole reason that step is
+      continue-on-error. The value is never in the repository, in
+      sources.json, or in a log: sources.json is published to hikers as
+      registry.json, and it records this name and not the password.
+
   DATA_BASE_URL:
     where: variable
     also-accepted-as-secret: true

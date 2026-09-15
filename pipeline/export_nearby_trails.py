@@ -230,6 +230,7 @@ from export_trails import (
 from lib.blaze import NEUTRAL_FALLBACK, load_blaze_mapping, map_source_blaze
 from lib.completeness import count_problems, fail_if_incomplete
 from lib.concurrency import AT_CENTERLINE_SOURCE, find_shared_ground
+from lib.duplicates import apply_duplicates, find_duplicates
 from lib.feature_id import resolve_feature_id
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
@@ -709,6 +710,41 @@ def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> 
         )
 
     return records, {"kept": len(records), "dropped": drops, "blazes": blazes}
+
+
+def declared_duplicate_pairs(sources: list[dict]) -> list[tuple[str, str]]:
+    """The (senior, junior) source pairs a registry entry declares (#1459).
+
+    Declared rather than derived, one pair at a time, by somebody who has
+    looked at the measurement for that pair - lib/duplicates.py says why.
+    A junior naming a senior this export is not shipping is skipped rather
+    than raising: a steward held back by `reaches_hikers` must not take the
+    other one's lines down with them.
+    """
+    shipping = {source["key"] for source in sources}
+    return [
+        (source["duplicate_of"], source["key"])
+        for source in sources
+        if source.get("duplicate_of") and source["duplicate_of"] in shipping
+    ]
+
+
+def deduplicate(records: list[dict], pairs: list[tuple[str, str]]) -> tuple[list[dict], list[dict]]:
+    """`records` with each declared pair's duplicates removed, plus the stats.
+
+    Pairs are applied in order against the records still standing, so a
+    source that is junior in one pair and senior in another sees the first
+    pair's result. No such chain exists today and the ordering is stated so
+    that adding one is a decision rather than an accident.
+    """
+    stats: list[dict] = []
+    for senior_key, junior_key in pairs:
+        senior = [r for r in records if r.get("source") == senior_key]
+        junior = [r for r in records if r.get("source") == junior_key]
+        duplicates, pair_stats = find_duplicates(senior, junior)
+        records = apply_duplicates(records, duplicates)
+        stats.append({"senior": senior_key, "junior": junior_key, **pair_stats})
+    return records, stats
 
 
 def closure_area_sources(registry: dict) -> list[dict]:
@@ -1261,6 +1297,25 @@ def main() -> dict:
     # produced anything. Before, because simplify_records guarantees the
     # tolerance against the geometry it is handed, and the split is what makes
     # that geometry final.
+    # One path two organizations each recorded, drawn once (#1459). BEFORE the
+    # closures and the simplification, and both orders matter: a closure that
+    # split a senior record would leave two halves for a junior to be judged
+    # against, and simplify_records is what makes geometry final, so a
+    # proximity test belongs on the geometry the sources actually published.
+    duplicate_pairs = declared_duplicate_pairs(sources)
+    if duplicate_pairs:
+        before = len(all_records)
+        all_records, duplicate_stats = deduplicate(all_records, duplicate_pairs)
+        for pair in duplicate_stats:
+            print(
+                f"  {pair['junior']} against {pair['senior']}: {pair['duplicates']:,} duplicate(s) removed "
+                f"({pair['junior_miles_removed']:.1f} mi) at {pair['tolerance_m']:.0f} m, "
+                f"{pair['touched_but_kept']:,} near but under {pair['min_share']:.0%} and kept"
+            )
+        print(f"  {before:,} records -> {len(all_records):,} after deduplication")
+    else:
+        duplicate_stats = []
+
     areas = load_closure_areas(closure_area_sources(registry))
     all_records, closure_stats = apply_area_closures(all_records, areas)
     if closure_stats["areas"]:
@@ -1280,6 +1335,7 @@ def main() -> dict:
     simplified = simplify_records(all_records)
     manifest = write_artifact(simplified, per_source)
     manifest["closures"] = closure_stats
+    manifest["duplicates"] = duplicate_stats
     # The shared-ground pairs (#1384), from the records just written plus the
     # A.T.'s centerline, into their own file - never into the one above, for
     # the eleven readers the module docstring counts.

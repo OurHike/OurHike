@@ -8,7 +8,7 @@ writes, all in a temp directory - never the real network, cache or graph
 
 What is pinned is the gate and the contract: nothing ships from an entry that
 does not reach hikers, nothing ships from a route graded `rejected`, a
-published track that this build's lines cannot re-walk is dropped rather than
+published line that this build's lines cannot re-walk is dropped rather than
 re-drawn, and what does ship is spelled the way lib/suggestedHikesData.ts
 reads it - ends as snapped coordinates, a loop closed by repeating its first
 end, and the publisher's own tags carried through.
@@ -232,12 +232,12 @@ def test_a_difficulty_the_client_has_no_slot_for_is_absent_rather_than_guessed(s
     assert published(sandbox)[0]["difficulty"] is None
 
 
-# --- a published track has to survive the round trip ---------------------------
+# --- a published line has to survive the round trip ----------------------------
 
 
 def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorded(sandbox):
     """The claim being made is "the phone walking these ends walks the
-    published route", and it is only made after measuring it."""
+    surveyed route", and it is only made after measuring it."""
     ends = [[LON, LAT], [LON + STEP, LAT], [LON + 2 * STEP, LAT], [LON + 3 * STEP, LAT]]
     miles = exporter.router.metres_to_miles(exporter.router.metres_between((LON, LAT), (LON + 3 * STEP, LAT)))
     sandbox["write"](
@@ -253,7 +253,7 @@ def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorde
 
 def test_a_track_that_leaves_this_builds_lines_is_dropped_rather_than_re_drawn(sandbox):
     """49 of the export's 113 tracks do this. Snapping them onto whatever
-    happens to be nearest would publish a line the publisher never drew."""
+    happens to be nearest would publish a line the surveyor never walked."""
     ends = [[LON + 1.0, LAT + 1.0], [LON + 1.01, LAT + 1.0]]
     sandbox["write"](
         {"7": hike(has_published_route=True, route_type="Shuttle"), "8": hike(id=8, name="Ridge Walk")},
@@ -364,3 +364,46 @@ def test_a_run_where_nothing_passes_writes_no_artifact_at_all(sandbox):
     sandbox["write"]({"7": hike()}, {"7": route(grade="rejected", ends=[], problems=["too far apart"])})
     assert exporter.main() is None
     assert not sandbox["out"].exists()
+
+
+def test_a_published_hikes_climb_is_priced_from_this_builds_graph(sandbox):
+    """#1451. The track's own `<ele>` values are not used; the figure comes
+    from the re-walk that `track_ends` already performs to prove the phone can
+    reproduce the line, which prices climb from this build's sidecar exactly as
+    a generated route's does. One source for one number."""
+    ends = [[LON, LAT], [LON + STEP, LAT], [LON + 2 * STEP, LAT], [LON + 3 * STEP, LAT]]
+    miles = exporter.router.metres_to_miles(exporter.router.metres_between((LON, LAT), (LON + 3 * STEP, LAT)))
+    sandbox["write"](
+        {"7": hike(has_published_route=True, route_type="Shuttle")},
+        {"7": route(provenance="published", ends=ends, closed=False, miles=miles, stated_miles=miles, climb=None)},
+    )
+    exporter.main()
+    record = published(sandbox)[0]
+    # The synthetic graph carries an elevation sidecar that fits it, so the
+    # re-walk prices the climb even though the routes artifact carried none.
+    assert record["climb"]["gainFt"] > 0
+
+
+def test_a_missing_fetch_or_route_pass_publishes_nothing_rather_than_failing(sandbox, monkeypatch, capsys):
+    """#1462. The exporter is the second of the two scripts that used to treat
+    a skipped hike fetch as fatal, and between them they threw away a whole
+    A.T. publish (run 114 of publish-vector-data.yml) because one website
+    timed out. Both now return "nothing to publish", which is what the
+    workflow's `continue-on-error` on that fetch always meant."""
+    monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: {})
+    assert exporter.main() is None
+    assert "No fetch cache" in capsys.readouterr().err
+
+    monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: {"7": {"id": 7}})
+    assert not exporter.ROUTES_PATH.exists()
+    assert exporter.main() is None
+    assert "No routes artifact" in capsys.readouterr().err
+
+
+def test_a_routes_artifact_that_will_not_parse_still_fails_loudly(sandbox):
+    """The other half, and the reason the one above is safe: absence is a fact
+    about this run, corruption is a defect, and softening both together would
+    turn a loud failure into a silent one."""
+    exporter.ROUTES_PATH.write_text("{ not json at all")
+    with pytest.raises(SystemExit, match="unreadable"):
+        exporter.load_routes()

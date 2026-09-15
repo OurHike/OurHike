@@ -53,6 +53,37 @@ If you are proposing something substantial, the design doc is usually the first 
 
 Area labels: `client`, `backend`, `pipeline`, `data`, `ops`, `docs`.
 
+### Two lanes, decided by whether a hiker can see it
+
+Work here runs in two lanes, and an issue's labels put it in one of them. The split is
+about **who reviews it**, not about how hard it is.
+
+- **`client` present — the maintainer's lane.** A change a hiker can see is reviewed on a
+  phone by somebody who can tell whether it looks right. CI cannot stand in for that, so
+  nothing unattended picks these up.
+- **No `client`, at least one area label — the night lane.** An unattended session may
+  claim it, branch, build it, and open a **draft** pull request. It merges nothing: the
+  maintainer's merge is the gate, exactly as it is for every other pull request here.
+- **`night-shift-hold` — never unattended**, whatever else the issue carries. The veto, for
+  the issues where the derived rule gets it wrong and for the ones whose answer is a
+  decision rather than a change: what OurHike costs to run, what the website should say,
+  what goes in a store listing.
+- **`blocked-external` and `needs-field-testing`** are in neither lane. Neither is waiting
+  on work — one waits on a third party, the other on somebody standing on a trail.
+
+```
+scripts/nightshift.sh             what an unattended session may take, and why not the rest
+scripts/nightshift.sh --triage    the issues carrying no label, which no rule can route
+scripts/nightshift.sh --census    the bucket counts
+```
+
+**An unlabeled issue is in no lane at all.** When #1463 was opened, 32 of 112 open issues
+carried no label, so nothing could route three quarters of the backlog — labelling one is
+a smaller job than working it and unblocks more.
+
+[`.claude/skills/night-shift/SKILL.md`](.claude/skills/night-shift/SKILL.md) is what a
+session does with the answer, and the six things it must never do unattended.
+
 ## Working on the code
 
 Three independent parts, each with its own tests, plus a small fourth suite covering the repository's own CI configuration. CI runs the same commands, so a green local run means a green CI run.

@@ -124,7 +124,8 @@ GUIDE_PAGES = "guide_pages"
 # the parking as a pin. Fetched by fetch_hikefinder.py into
 # data/raw/hikefinder.json and parsed by lib/hikefinder.py into facts. THE
 # ROUTE ARRIVES TWO WAYS and the difference is carried all the way to the
-# card: 113 of the 385 publish a GPX track the writer surveyed, and 272
+# card: 113 of the 385 publish a GPX track the writer DREW (#1451 - they
+# are drawn in gpx.studio, not recorded on the ground), and 272
 # publish no line at all, so route_hikefinder.py forms one from the
 # description over the junction graph and grades it. export_suggested_hikes.py
 # ships what passes, behind the entry's own `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the

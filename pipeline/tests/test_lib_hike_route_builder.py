@@ -9,7 +9,7 @@ What is pinned is the judgement, not the arithmetic. A route formed from a
 description is an INFERENCE about where somebody walked, and every test here
 is about the line between one this build may show a hiker and one it may not:
 that disagreement with the publisher's own mileage is fatal rather than
-cosmetic, that a "Circuit" which doubles back is not a loop, that a published
+cosmetic, that a "Circuit" which doubles back is not a loop, that a surveyed
 track is reported on rather than overruled, and that a refusal is a route of
 None rather than a faint line.
 """
@@ -32,7 +32,6 @@ from lib.hike_route_builder import (
     normalise_name,
     published_route,
     retrace_ratio,
-    track_climb,
     trail_mentions,
     waypoints_from_itinerary,
 )
@@ -61,19 +60,6 @@ def hike(**overrides) -> dict:
 
 def track(points, ele=True) -> Track:
     return Track(name="t", points=[TrackPoint(lat=lat, lon=lon, ele_m=100.0 if ele else None) for lat, lon in points])
-
-
-def profile(elevations) -> Track:
-    """A track carrying these metre elevations, on points that go somewhere.
-
-    The coordinates are incidental - `track_climb` reads elevations alone -
-    but they are spread rather than stacked so the fixture is not a shape the
-    real corpus never takes.
-    """
-    return Track(
-        name="t",
-        points=[TrackPoint(lat=41.0 + index * 0.001, lon=-74.0, ele_m=value) for index, value in enumerate(elevations)],
-    )
 
 
 # --- reading the description ---------------------------------------------------
@@ -217,9 +203,9 @@ def test_a_published_track_is_marked_published_and_measured_on_its_own_points():
 def test_a_track_whose_length_disagrees_with_the_page_is_reported_not_rejected():
     """THE ASYMMETRY THAT MATTERS. A generated route disagreeing with the
     stated mileage is rejected, because the inference is the weaker claim. A
-    published track disagreeing is not: what is established is that one of the
-    publisher's own two figures is wrong, and the line the publisher drew is
-    not the likelier candidate."""
+    published line disagreeing is not: what is established is that one of the
+    publisher's own two figures is wrong, and the recorded line is not the
+    likelier candidate."""
     result = published_route({"id": 1, "stated_miles": 9.0, "route_type": "Shuttle"}, track([(41.0, -74.0), (41.02, -74.0)]))
     assert result.grade == GRADE_FAIR
     assert result.ships
@@ -253,66 +239,10 @@ def test_a_closed_track_is_recognised_as_closed():
 def test_a_published_track_ships_on_its_ends_although_it_has_no_graph_route():
     """The two roads fill different fields: a generated route carries a
     `route` measured over the graph, a published one only the track's own
-    points. Testing `route` graded every published track as not shipping."""
+    points. Testing `route` graded every published line as not shipping."""
     result = published_route({"id": 1, "stated_miles": 1.38, "route_type": "Shuttle"}, track([(41.0, -74.0), (41.02, -74.0)]))
     assert result.route is None
     assert result.ships is True
-
-
-# --- the climb along a published track (#1451) ---------------------------------
-#
-# THESE TRACKS WERE DRAWN, NOT WALKED, so their elevations are DEM samples and
-# do not wobble: 110 of the 113 are gpx.studio files, 2 of 113 carry any
-# timestamp, and consecutive `<ele>` values land on exact 0.25 m multiples with
-# a median step of 0.75-1.75 m. A `TRACK_CLIMB_STEP_M = 3.0` stood in front of
-# this function until 2026-09-15 to remove a wobble that is not there, and cost
-# a measured 15.2% of the median track's gain. Understating climb is the
-# direction that gets a hiker caught by the dark, so these are on a safety path
-# and the fixtures below are shaped like the real data rather than like a unit.
-
-
-def test_a_rolling_profile_keeps_every_rise_although_no_single_step_is_large():
-    """THE DEFECT #1451 NAMES, at its sharpest. A trail that rolls - up two
-    metres, down two, up two - gains real height a hiker really climbs. Under
-    the old 3 m threshold not one of those steps counted, so this same profile
-    reported a flat zero. The fixture's steps are all well inside the 0.75-1.75 m
-    median the real corpus carries, which is why the loss was 15% and not 1%."""
-    gain, loss = track_climb(profile([100.0, 102.0, 100.0, 102.0, 100.0, 102.0]))
-    assert gain == pytest.approx(6.0 * 3.280839895)
-    assert loss == pytest.approx(4.0 * 3.280839895)
-
-
-def test_a_quantised_climb_is_reported_at_the_height_its_own_points_state():
-    """A monotone climb sampled off a raster, in the 0.25 m multiples the real
-    files carry. The answer is arithmetic over the points and nothing is
-    withheld: 3.5 m gained, no loss."""
-    gain, loss = track_climb(profile([10.0, 10.75, 11.75, 12.0, 13.5]))
-    assert gain == pytest.approx(3.5 * 3.280839895)
-    assert loss == 0.0
-
-
-def test_the_figure_never_reads_lower_than_the_points_themselves_state():
-    """The invariant the threshold broke, pinned so a future smoothing step
-    cannot quietly reintroduce it. A threshold can only ever REMOVE gain, and
-    removing gain is the unsafe direction - so whatever this function grows
-    later, it may not report less climb than the elevations it was handed."""
-    elevations = [100.0, 100.5, 101.75, 101.0, 104.25, 103.0, 106.5]
-    rises = sum(b - a for a, b in zip(elevations, elevations[1:]) if b > a)
-    gain, _ = track_climb(profile(elevations))
-    assert gain == pytest.approx(rises * 3.280839895)
-    assert gain >= rises * 3.280839895
-
-
-def test_a_track_with_no_elevation_at_all_is_absent_rather_than_flat():
-    """Absent has to stay distinguishable from flat: a hiker deciding whether
-    they beat the dark is better served by no figure than by a zero nobody
-    stands behind."""
-    assert track_climb(Track(name="t", points=[TrackPoint(lat=41.0, lon=-74.0, ele_m=None)] * 4)) is None
-    assert track_climb(None) is None
-
-
-def test_one_measured_point_is_not_enough_to_state_a_climb():
-    assert track_climb(profile([100.0])) is None
 
 
 # --- reading a description as an itinerary (#1427 follow-up) -------------------
@@ -370,7 +300,7 @@ def test_a_blaze_only_matches_a_line_of_that_colour_and_a_name_does_not_have_to(
 
 def test_the_search_may_drop_a_step_the_description_only_mentions(graph):
     """THE REASON THE SEARCH EXISTS. Measured over the 113 ground-truth hikes,
-    a published track walks a median of 3 distinct trails while the parser finds
+    a published line walks a median of 3 distinct trails while the parser finds
     6 steps in the same description - a write-up names the trails you cross and
     decline as readily as the ones you walk. A greedy walk has to take all six;
     this one may take the subset that fits the publisher's own mileage."""
@@ -388,3 +318,27 @@ def test_the_score_prefers_the_walk_that_matches_the_publishers_mileage(graph):
     short, long = router.route_between(graph, start, near), router.route_between(graph, start, far)
     stated = long.miles
     assert _route_score(long, stated, 1, False, 1.0) > _route_score(short, stated, 1, False, 1.0)
+
+
+def test_a_published_track_takes_no_climb_from_its_own_elevations():
+    """#1451: the maintainer's call, and it corrects a claim this module
+    shipped. The GPX files are DRAWN, not recorded - 110 of 113 come from
+    gpx.studio, 2 carry a `<time>` element, and their elevations are a surface
+    sampled along the drawn line - on an exact 0.25 m grid in 55 of the 113,
+    stepping by hundredths of a metre in the other 53, an altimeter in none.
+    That is the same KIND of estimate this build's own sidecar produces, and
+    it is measured rather than assumed (see the module docstring), so
+    preferring it would
+    mean two sources for one figure, one of which is absent whenever a hike has
+    no track. Climb comes from the sidecar or it is absent."""
+    with_elevation = track([(41.0, -74.0), (41.01, -74.0), (41.02, -74.0)])
+    assert all(point.ele_m is not None for point in with_elevation.points)
+    assert published_route({"id": 1, "stated_miles": 1.38, "route_type": "Shuttle"}, with_elevation).climb is None
+
+
+def test_a_generated_route_takes_its_climb_from_the_graph(graph):
+    """The one source there is. Absent means never priced, never flat."""
+    result = form_route(graph, hike(route_type="Shuttle", stated_miles=0.2))
+    if result.route is None:
+        pytest.skip("no route formed on this synthetic graph")
+    assert result.climb == result.route.climb

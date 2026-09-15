@@ -250,6 +250,86 @@ def test_the_index_states_core_bounds_not_the_margin(tmp_path):
     assert index["cells"][0]["bounds"] == [-75.0, 40.0, -74.0, 41.0]
 
 
+def test_the_index_says_what_the_cell_actually_carries(tmp_path):
+    """The n40w074 case, in miniature (#1458). A source clipped to a trail
+    corridor puts tiles across one corner of a square and none in the rest,
+    so `bounds` is the ground PROMISED and `covered` the ground DELIVERED.
+    Publishing only the promise is what let a phone in Brooklyn hold the
+    cell over New York City, call itself covered, and draw blank paper."""
+    northern_strip = [_tile_at(-74.5, 40.78), _tile_at(-74.3, 40.72)]
+    out_dir, _manifest = _cut(tmp_path, northern_strip, margin_km=0.0)
+    cell = json.loads((out_dir / "at_basemap_cells.json").read_text())["cells"][0]
+
+    assert cell["bounds"] == [-75.0, 40.0, -74.0, 41.0]
+    # The tiles sit in the top fifth; the promise ran to the bottom.
+    assert cell["covered"][1] > 40.7
+    assert cell["covered"][3] < 40.8
+
+
+def test_covered_never_claims_ground_outside_the_cell(tmp_path):
+    """The margin stays generosity in the bytes. A tile the seam margin pulls
+    in from the neighbour lies outside this square, and widening `covered`
+    onto it would turn the margin into the coverage promise the index comment
+    has always refused to make."""
+    tiles = [*_both_cells_tiles(), _tile_at(SEAM_LON - 0.01, 40.5)]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=25.0)
+    cells = {c["name"]: c for c in json.loads((out_dir / "at_basemap_cells.json").read_text())["cells"]}
+
+    # n40w074 holds the borrowed tile, whose ground is west of -74.0.
+    assert _tile_at(SEAM_LON - 0.01, 40.5) in read_all(out_dir / "at_basemap_cell_n40w074.pmtiles")
+    assert cells["n40w074"]["covered"][0] >= -74.0
+
+
+@pytest.mark.parametrize("margin_km", [0.0, 3.0, 25.0])
+def test_every_tile_a_cell_holds_is_inside_what_it_claims_to_cover(tmp_path, margin_km):
+    """The guarantee narrowing a footprint onto `covered` rests on, and the
+    direction that would be dangerous to get wrong: ground that draws but is
+    left outside the claim is a hiker told they are past the edge of a
+    download that would in fact have drawn for them - #352's mistake,
+    arriving the other way round.
+
+    WITHIN THE SQUARE is the whole of it, and the parametrisation is what
+    makes that worth saying: at a 25 km margin a cell carries tiles whose
+    ground is wholly its neighbour's, and those were outside `bounds` too -
+    so a phone answers the same there whichever key it reads. What must hold
+    is that no part of a tile INSIDE this cell's own square falls outside
+    the claim, at any margin.
+
+    Checked against the tiles the cut actually wrote rather than the input,
+    so the borrowed ones are really in the set being checked."""
+    tiles = [*_both_cells_tiles(), _tile_at(SEAM_LON - 0.01, 40.5), _tile_at(-74.5, 40.78)]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=margin_km)
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+
+    for cell in index["cells"]:
+        west, south, east, north = cell["covered"]
+        bw, bs, be, bn = cell["bounds"]
+        held = read_all(out_dir / cell["key"])
+        assert held, f"{cell['name']} was published holding nothing"
+        for z, x, y in held:
+            tw, ts, te, tn = cut_cells.tile_bounds_lonlat(z, x, y)
+            # The part of this tile that is this cell's own ground.
+            ow, os_, oe, on = max(tw, bw), max(ts, bs), min(te, be), min(tn, bn)
+            if ow >= oe or os_ >= on:
+                continue  # wholly the neighbour's, borrowed by the margin
+            assert west <= ow and oe <= east, f"{z}/{x}/{y} escapes {cell['name']}'s covered lon span"
+            assert south <= os_ and on <= north, f"{z}/{x}/{y} escapes {cell['name']}'s covered lat span"
+
+
+def test_covered_is_always_inside_the_cell_it_belongs_to(tmp_path):
+    """`covered` is a subset of `bounds`, at every margin - so a client may
+    read it wherever it read `bounds` and be strictly more honest, never
+    differently generous."""
+    tiles = [*_both_cells_tiles(), _tile_at(SEAM_LON - 0.01, 40.5)]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=25.0)
+
+    for cell in json.loads((out_dir / "at_basemap_cells.json").read_text())["cells"]:
+        bw, bs, be, bn = cell["bounds"]
+        cw, cs, ce, cn = cell["covered"]
+        assert bw <= cw <= ce <= be
+        assert bs <= cs <= cn <= bn
+
+
 def test_the_manifest_prices_and_hashes_every_artifact(tmp_path):
     out_dir, manifest = _cut(tmp_path, _both_cells_tiles(), margin_km=0.0)
 

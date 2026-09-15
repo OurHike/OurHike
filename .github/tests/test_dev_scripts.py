@@ -29,6 +29,10 @@ SCRIPTS = [
     REPO_ROOT / "scripts" / "sweep-pages-previews.sh",
     # Behaviour held in test_pipeline_scopes.py (#1123).
     REPO_ROOT / "scripts" / "pipelines.sh",
+    # Behaviour held in test_night_queue.py (#1463). The fetch half is here
+    # for the parse check only - it shells out to curl against the live API,
+    # which is what TESTING.md's small-synthetic-fixture rule keeps out of CI.
+    REPO_ROOT / "scripts" / "nightshift.sh",
 ]
 SUITE_SCOPES = REPO_ROOT / "scripts" / "suite_scopes.py"
 

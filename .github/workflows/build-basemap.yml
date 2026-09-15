@@ -39,6 +39,20 @@ on:
         description: "Space-separated Geofabrik state names. Empty = the 14 AT states."
         type: string
         default: ""
+      # Which GROUND to build, as pipeline/lib/build_regions.py names it
+      # (#1458). Empty = `at`, today's corridor shape, so a dispatch that
+      # names nothing builds exactly what it always built. `at nyc` adds New
+      # York City - the first case where the app draws other organizations'
+      # trail lines over ground the basemap does not cover.
+      #
+      # Orthogonal to `states` on purpose: states bound what is FETCHED and
+      # regions bound what is KEPT, so a region needs its states present (NYC
+      # is inside `new-york` and `new-jersey`, both already in the default
+      # fourteen) and adding one does not change the fetch.
+      regions:
+        description: "Space-separated build regions (at, nyc). Empty = at."
+        type: string
+        default: ""
       max_zoom:
         description: "Tile pyramid depth (14 = OpenMapTiles convention)"
         type: string
@@ -125,6 +139,19 @@ jobs:
       - name: Fetch ArcGIS sources
         run: python fetch_all.py
 
+      # The `nyc` region is a buffer around the city's own registered lines
+      # rather than a box drawn around a city (build_regions.py says why), so
+      # the build needs those lines on disk. Skipped entirely when no region
+      # asks for them.
+      #
+      # --only, because the first run of this step fetched all 22 external
+      # sources and took 9m28s to get the two a region reads. The unselected
+      # layers keep their manifest entries, so the next full fetch still
+      # knows which of them are unchanged.
+      - name: Fetch the external layers a region is built from
+        if: contains(inputs.regions, 'nyc')
+        run: python fetch_external_layers.py --only nyc_parks_trails nyc_dot_greenways
+
       - name: Fetch the Planetiler jar
         env:
           # Through env, never interpolated into bash (#660) - dispatch
@@ -142,7 +169,8 @@ jobs:
         run: |
           python export_basemap.py --planetiler-jar planetiler.jar \
             --max-zoom "${{ inputs.max_zoom }}" \
-            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }}
+            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \
+            ${{ inputs.regions != '' && format('--regions {0}', inputs.regions) || '' }}
 
       - name: Cut the AT package from the build
         run: |
@@ -182,18 +210,36 @@ jobs:
             --out data/processed/at_basemap_package_z12.pmtiles \
             --name "OurHike AT corridor basemap (z12)"
 
-      # The 1-degree coverage cells (#1175): the corridor package partitioned
+      # The ground the cells are cut from, which is the WHOLE build rather
+      # than the A.T.'s share of it (#1458). With the default region set this
+      # shape IS the corridor, so the cut below is the corridor package under
+      # another name and the published cells do not move. With `at nyc` it is
+      # both, and the cells covering New York City stop being a thin band
+      # across one corner of a square they claim whole.
+      #
+      # Its own extract rather than reusing at_basemap_package.pmtiles above,
+      # because that package's advertised size is a published promise about
+      # the A.T. and must keep being exactly the A.T.'s ground. A cell is the
+      # unit of offline coverage and belongs to no trail.
+      - name: Cut the coverage package from the build
+        run: |
+          python extract_package.py data/processed/basemap.pmtiles \
+            --region data/processed/basemap_region_coverage.geojson \
+            --out data/processed/basemap_coverage.pmtiles \
+            --name "OurHike coverage basemap"
+
+      # The 1-degree coverage cells (#1175): the coverage package partitioned
       # by graticule cell, plus one shared context archive and the coverage
-      # index. Cut from the package rather than the build because the package
-      # is already corridor-clipped - every tile in it belongs to some cell.
+      # index. Cut from a package rather than the build because a package is
+      # already region-clipped - every tile in it belongs to some cell.
       #
       # This replaces the 50-mile stretch cut (#556), which built the unit the
       # maintainer's #552 decision superseded on 2026-08-25. Needs no
       # centerline and no half-mile markers: cell membership is a rectangle
       # overlap, not a projection onto a calibrated mile axis.
-      - name: Cut the coverage cells from the package
+      - name: Cut the coverage cells from the coverage package
         run: |
-          python cut_cells.py data/processed/at_basemap_package.pmtiles \
+          python cut_cells.py data/processed/basemap_coverage.pmtiles \
             --family at_basemap
 
       # The whole point of the spike: real numbers where estimates were. To
@@ -227,6 +273,7 @@ jobs:
           path: |
             pipeline/data/processed/basemap.pmtiles
             pipeline/data/processed/basemap_region.geojson
+            pipeline/data/processed/basemap_region_coverage.geojson
           retention-days: 7
           if-no-files-found: error
 
@@ -273,11 +320,29 @@ jobs:
       # corridor build's z0-14 cut, measured size). A states-subset build
       # would publish a package with most of the trail missing from it -
       # refused loudly rather than quietly skipped.
+      #
+      # REGIONS ARE NOT IN THIS GUARD, and the asymmetry is the point (#1458).
+      # A narrower `states` makes the A.T. package SMALLER than its published
+      # promise; a wider `regions` leaves that package untouched - it is still
+      # cut against basemap_region.geojson, the A.T.'s own ground - and widens
+      # only the coverage cells, which advertise their own size per cell in
+      # the index they publish. So `at nyc` may ship and a states subset may
+      # not, because only one of them makes an existing promise false.
       - name: Refuse a non-canonical shape
         if: inputs.states != '' || inputs.max_zoom != '14'
         working-directory: .
         run: |
           echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='${{ inputs.states }}' at z0-${{ inputs.max_zoom }}"
+          exit 1
+
+      # What regions MUST include, for the same reason: the A.T. package is
+      # cut against the `at` region, so a run without it publishes a release
+      # whose headline download was never built.
+      - name: Refuse a publish that did not build the A.T.
+        if: inputs.regions != '' && !contains(inputs.regions, 'at')
+        working-directory: .
+        run: |
+          echo "::error::publish needs the at region; this run built regions='${{ inputs.regions }}'"
           exit 1
 
       - uses: actions/checkout@v7

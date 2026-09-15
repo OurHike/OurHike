@@ -94,11 +94,86 @@ TIMEOUT = 60
 #: and caching the shorter answer would report a shrunken export as complete.
 COUNT_TOLERANCE = 0
 
+#: The environment variable carrying the export's site password (#1468).
+#: A GitHub Actions secret on the fetch step of publish-vector-data.yml; it
+#: is never in this repository, in sources.json, or in a log line.
+#:
+#: ABSENT IS A SUPPORTED STATE, not a misconfiguration. The export was open
+#: until 2026-09-15 and may be open again; a run without this variable fetches
+#: exactly as it did before, and if the export is in fact locked it lands on
+#: the `if not ids` guard below, which #1462 turned into "no hikes this run"
+#: rather than a dead publish. So the cost of a missing secret is the hikes,
+#: never the A.T. data.
+PASSWORD_ENV = "HIKEFINDER_PASSWORD"
+
+#: The form field the login page posts. Read off the live page 2026-09-15:
+#: `<form method="POST" action="">` with one `<input type="password"
+#: name="site_password" required>`, answered with a `PHPSESSID` cookie that
+#: requests.Session then carries for the rest of the run. One extra request
+#: per run, not per page.
+PASSWORD_FIELD = "site_password"
+
+#: How much of the listing must actually parse before the run may write a
+#: cache (#1466). Below this the run is refused and the PREVIOUS cache is left
+#: in place, because a fetch that lost most of its pages and cached the rest
+#: would report a fragment of the export as the whole of it - the same
+#: sentence COUNT_TOLERANCE refuses one level up, at the listing.
+#:
+#: TWO NUMBERS RATHER THAN ONE, and the second is not padding. A share alone
+#: cannot tell "a small export lost one page" from "a big export lost most of
+#: them": 385 hikes losing 1 is 99.7% and fine, while 2 hikes losing 1 is 50%
+#: and also fine. So a run is refused only when it is BOTH past the absolute
+#: allowance and under the share - the allowance covers the odd dead page on a
+#: short listing, and the share covers a run that fell over partway through a
+#: long one. `test_one_unreadable_page_is_recorded_rather_than_failing_the_run`
+#: is the case the allowance exists for, and it predates this guard.
+#:
+#: @unvalidated, both of them. Nobody knows what a normal day's failure count
+#: looks like here, because this fetcher has never completed a run in CI - it
+#: merged on 2026-09-15 and the export went behind a password the same day.
+#: They are picked to sit far from the only two cases anybody has seen: a
+#: clean run parses 385 of 385, and an export gone dark parses 0.
+#:
+#: What would settle them: the spread of `unreadable` over a few weeks of real
+#: runs. If a routine day loses more than a couple of pages, the allowance is
+#: too tight; if a day ever loses 10% without anything being wrong, the share
+#: is.
+MIN_PARSED_SHARE = 0.9
+ALLOWED_LOST_PAGES = 2
+
 
 def session() -> requests.Session:
     made = requests.Session()
     made.headers["User-Agent"] = USER_AGENT
     return made
+
+
+def sign_in(http, base: str, password: str | None = None) -> bool:
+    """Post the site password, if there is one, and keep the session cookie.
+
+    Returns whether a password was sent - NOT whether it worked, and the
+    difference is the point (#1468). This function deliberately does not
+    inspect the response or decide anything about it: a wrong password serves
+    the same login page a missing one does, and the only thing that should
+    ever judge what came back is `listing_ids` against the real listing. A
+    sign-in that quietly "succeeded" against a login page would route around
+    the one guard that caught this export going dark in the first place.
+
+    The password is never printed, and never put in a URL.
+    """
+    password = os.environ.get(PASSWORD_ENV) if password is None else password
+    if not password:
+        return False
+    request_with_retry(
+        urljoin(base, LISTING_PATH),
+        method="POST",
+        session=http,
+        timeout=TIMEOUT,
+        label="hikefinder sign-in",
+        throttle_seconds=THROTTLE_SECONDS,
+        data={PASSWORD_FIELD: password},
+    )
+    return True
 
 
 def load_previous(path: Path | None = None) -> dict:
@@ -165,11 +240,17 @@ def main(argv: list[str] | None = None) -> int:
     now = datetime.now(timezone.utc)
     stamp = now.isoformat(timespec="seconds")
     http = session()
+    signed_in = sign_in(http, base)
+    print(f"sign-in: {'sent the site password' if signed_in else f'no {PASSWORD_ENV} set, fetching as an anonymous reader'}")
 
     listing = fetch_text(http, urljoin(base, LISTING_PATH))
     ids = listing_ids(listing)
     if not ids:
         print("The listing linked no hike at all, which means the parse broke rather than that there are none.")
+        if signed_in:
+            print(f"A password WAS sent, so {PASSWORD_ENV} is likely wrong or the login form has changed.")
+        else:
+            print(f"No password was sent. If the export is behind one, set {PASSWORD_ENV} (#1468).")
         return 1
     stated = listing_count(listing)
     if stated is not None and abs(stated - len(ids)) > COUNT_TOLERANCE:
@@ -211,6 +292,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if not hikes:
         print(f"{len(ids)} hikes listed and none parsed - the export's shape has changed, not its contents.")
+        return 1
+
+    if len(unreadable) > ALLOWED_LOST_PAGES and len(hikes) < len(ids) * MIN_PARSED_SHARE:
+        # #1466. Not "none parsed", which is the case above, but "most of
+        # them lost" - a session that expired partway through, a host that
+        # started refusing, a network that went away mid-run. Caching what
+        # was read would publish a fragment as the export, so the previous
+        # cache stands and the run says why.
+        print(
+            f"{len(ids)} hikes listed but only {len(hikes)} parsed - {len(unreadable)} lost, past the "
+            f"{ALLOWED_LOST_PAGES}-page allowance and under the {MIN_PARSED_SHARE:.0%} floor (see "
+            "MIN_PARSED_SHARE). Leaving the previous cache in place; this run lost most of the export."
+        )
+        print(f"  unreadable: {', '.join(map(str, unreadable[:20]))}{' ...' if len(unreadable) > 20 else ''}")
         return 1
 
     document = {

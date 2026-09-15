@@ -51,11 +51,13 @@ def sandbox(tmp_path, monkeypatch):
     graph_files(processed)
     gpx_dir = tmp_path / "gpx"
     gpx_dir.mkdir()
+    raw = tmp_path / "raw"
+    raw.mkdir()
     monkeypatch.setattr(script, "PROCESSED_DIR", processed)
     monkeypatch.setattr(script, "GPX_DIR", gpx_dir)
     monkeypatch.setattr(script, "OUT_PATH", processed / "hikefinder_routes.json")
     monkeypatch.setattr(script, "REVIEW_PATH", processed / "review.html")
-    return {"processed": processed, "gpx": gpx_dir}
+    return {"processed": processed, "gpx": gpx_dir, "raw": raw}
 
 
 def run(sandbox, monkeypatch, hikes: dict) -> dict:
@@ -138,10 +140,28 @@ def test_the_sheet_prints_the_publishers_tags(sandbox, monkeypatch):
     assert "Views" in (sandbox["processed"] / "review.html").read_text()
 
 
-def test_a_cache_with_no_hikes_is_a_run_that_cannot_start(sandbox, monkeypatch):
+def test_a_cache_with_no_hikes_routes_nothing_and_lets_the_publish_through(sandbox, monkeypatch):
+    """#1462, and it is the whole reason that issue exists. This used to raise
+    SystemExit, which cost publish-vector-data.yml run 114 forty-two minutes of
+    built trails, POIs and junction graph because one website timed out for
+    three of them. Nothing downstream of the A.T. data needs NYNJTC's day
+    hikes, so a run that has none writes no artifact and exits clean."""
     monkeypatch.setattr(script, "load_cache", lambda *a, **k: {})
-    with pytest.raises(SystemExit):
-        script.main([])
+    assert script.main([]) == 0
+    assert not (sandbox["processed"] / "hikefinder_routes.json").exists()
+
+
+def test_a_cache_that_is_absent_is_quiet_but_one_that_will_not_parse_is_not(sandbox):
+    """The other half of #1462, and the half that keeps it honest. Absence is a
+    fact about this run; a file that is there and unreadable is a defect, and
+    softening both together would trade a loud failure for a silent one."""
+    missing = sandbox["raw"] / "nothing_here.json"
+    assert script.load_cache(missing) == {}
+
+    corrupt = sandbox["raw"] / "hikefinder.json"
+    corrupt.write_text("{ this is not json")
+    with pytest.raises(SystemExit, match="unreadable"):
+        script.load_cache(corrupt)
 
 
 def test_only_narrows_the_run_to_the_ids_named(sandbox, monkeypatch):

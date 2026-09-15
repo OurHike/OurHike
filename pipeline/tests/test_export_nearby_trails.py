@@ -1706,3 +1706,61 @@ def test_build_records_publishes_no_name_for_a_placeholder_row():
     records, _ = ex.build_records(_nyc_source(blaze_default="Unknown"), features, {})
 
     assert [r["name"] for r in records] == ["Blue Trail", None]
+
+
+# ------------------------------------------------- declared duplicate pairs
+
+
+def _src(key, **extra):
+    return {"key": key, **extra}
+
+
+def test_a_declared_pair_is_read_off_the_registry():
+    """Declared rather than derived, one pair at a time, by somebody who has
+    looked at the measurement for that pair (#1459, lib/duplicates.py)."""
+    sources = [_src("nyc_parks_trails"), _src("nyc_dot_greenways", duplicate_of="nyc_parks_trails")]
+
+    assert ex.declared_duplicate_pairs(sources) == [("nyc_parks_trails", "nyc_dot_greenways")]
+
+
+def test_a_junior_whose_senior_is_not_shipping_is_skipped():
+    """The safety case. A steward held back by `reaches_hikers` drops out of
+    `network_line_sources`, and a junior still pointing at them must NOT then
+    be judged against nothing - or, worse, be removed on the strength of a
+    source this release does not carry. No senior, no pair, both lines ship."""
+    sources = [_src("nyc_dot_greenways", duplicate_of="nyc_parks_trails")]
+
+    assert ex.declared_duplicate_pairs(sources) == []
+
+
+def test_sources_without_the_key_declare_nothing():
+    assert ex.declared_duplicate_pairs([_src("oprhp_trails"), _src("dec_trails")]) == []
+
+
+def test_deduplicate_removes_the_junior_and_reports_what_it_cost():
+    """The stats ride into the manifest, because a rule that removes somebody's
+    lines has to say how many and how far in the artifact it produced."""
+    line = "LINESTRING (-73.97 40.66, -73.97 40.6636)"
+    beside = "LINESTRING (-73.96995 40.66, -73.96995 40.6636)"
+    records = [
+        {"id": "p1", "source": "nyc_parks_trails", "name": "Park Loop", "wkt": line},
+        {"id": "g1", "source": "nyc_dot_greenways", "name": "Greenway", "wkt": beside},
+        {"id": "g2", "source": "nyc_dot_greenways", "name": "Far", "wkt": "LINESTRING (-74.2 40.5, -74.2 40.54)"},
+    ]
+
+    kept, stats = ex.deduplicate(records, [("nyc_parks_trails", "nyc_dot_greenways")])
+
+    assert [r["id"] for r in kept] == ["p1", "g2"]
+    assert stats[0]["senior"] == "nyc_parks_trails"
+    assert stats[0]["junior"] == "nyc_dot_greenways"
+    assert stats[0]["duplicates"] == 1
+    assert stats[0]["junior_miles_removed"] > 0
+
+
+def test_no_declared_pairs_leaves_every_record_alone():
+    records = [{"id": "a", "source": "oprhp_trails", "wkt": "LINESTRING (0 0, 0 1)"}]
+
+    kept, stats = ex.deduplicate(records, [])
+
+    assert kept == records
+    assert stats == []

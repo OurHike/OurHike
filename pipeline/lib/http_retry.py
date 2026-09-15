@@ -82,6 +82,7 @@ def request_with_retry(
     session: requests.Session | None = None,
     method: str = "get",
     params: dict | None = None,
+    data: dict | None = None,
     timeout: int = 60,
     backoff: tuple[int, ...] = DEFAULT_BACKOFF_SECONDS,
     retryable_statuses: tuple[int, ...] = DEFAULT_RETRYABLE_STATUSES,
@@ -91,6 +92,13 @@ def request_with_retry(
     sleep=None,
 ) -> requests.Response:
     """One request, retried over `backoff` on transient faults and statuses.
+
+    `data` is the form body a POST carries, for the one caller that signs in
+    rather than reads: fetch_hikefinder.py posts the export's site password
+    (#1468). It rides every attempt unchanged, like `headers`. NOTHING HERE
+    PRINTS IT - the retry lines carry `label` and the exception type, never
+    the body - and a caller sending a secret should keep it out of `label`
+    and out of the URL for the same reason.
 
     `headers` rides every attempt unchanged, the same as download_with_retry's
     and for a third caller (#1288): fetch_nynjtc_long_path_guide.py sends
@@ -116,7 +124,7 @@ def request_with_retry(
 
     for attempt, delay in enumerate((*backoff, None)):
         try:
-            response = requester.request(method, url, params=params, timeout=timeout, headers=headers)
+            response = requester.request(method, url, params=params, data=data, timeout=timeout, headers=headers)
         except TRANSIENT_EXCEPTIONS as error:
             if delay is None:
                 raise

@@ -51,6 +51,86 @@ def test_unchanged_source_is_skipped_not_refetched(tmp_path, monkeypatch, reques
     assert manifest["oprhp_fake"]["data_last_edit_date"] == 123
 
 
+def test_only_fetches_the_named_sources_and_leaves_the_rest_alone(tmp_path, monkeypatch, requests_mock):
+    """build-basemap.yml builds a region from two named layers (#1458), and
+    fetching all 22 to read two cost 9m28s on the run that proved it."""
+    other_url = LAYER_URL.replace("Fake", "Other")
+    raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(), _external(key="other_fake", url=other_url)],
+    )
+
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 5}})
+    # Two pages, the second empty: a single fixed non-empty response makes the
+    # pagination loop request forever - the neighbouring test says so and this
+    # one learned it the hard way.
+    requests_mock.get(
+        f"{LAYER_URL}/query",
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature"}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+    # No mock for the other layer at all: touching it raises NoMockAddress,
+    # which is how this asserts it was never reached rather than merely that
+    # its manifest entry did not change.
+
+    fetch_external_layers.main(["--only", "oprhp_fake"])
+
+    assert (raw_dir / "oprhp_fake.geojson").exists()
+    assert not (raw_dir / "other_fake.geojson").exists()
+    assert json.loads(manifest_path.read_text())["oprhp_fake"]["feature_count"] == 1
+
+
+def test_a_partial_fetch_does_not_shorten_the_manifest(tmp_path, monkeypatch, requests_mock):
+    """The manifest is what tells the NEXT run which layers are unchanged.
+    Dropping the entries this run did not look at would make the following
+    full fetch re-download every one of them, and would lose the only record
+    of when each last moved."""
+    other_url = LAYER_URL.replace("Fake", "Other")
+    _raw_dir, manifest_path = _setup(
+        tmp_path,
+        monkeypatch,
+        sources=[_external(), _external(key="other_fake", url=other_url)],
+        prior_manifest={
+            "oprhp_fake": {"title": "Fake External Layer", "url": LAYER_URL, "feature_count": 1, "data_last_edit_date": 1},
+            "other_fake": {"title": "Other", "url": other_url, "feature_count": 9, "data_last_edit_date": 7},
+        },
+    )
+
+    requests_mock.get(LAYER_URL, json={"editingInfo": {"dataLastEditDate": 2}})
+    requests_mock.get(
+        f"{LAYER_URL}/query",
+        [
+            {"json": {"type": "FeatureCollection", "features": [{"type": "Feature"}]}},
+            {"json": {"type": "FeatureCollection", "features": []}},
+        ],
+    )
+
+    fetch_external_layers.main(["--only", "oprhp_fake"])
+
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["oprhp_fake"]["data_last_edit_date"] == 2, "the named source was refetched"
+    assert manifest["other_fake"] == {
+        "title": "Other",
+        "url": other_url,
+        "feature_count": 9,
+        "data_last_edit_date": 7,
+    }, "the source nobody asked for kept its entry untouched"
+
+
+def test_an_unknown_key_refuses_the_run_rather_than_fetching_nothing(tmp_path, monkeypatch):
+    """A typo in the workflow would otherwise fetch nothing, build a region
+    from no lines, and hand the build a clip shape missing a city - quietly."""
+    _setup(tmp_path, monkeypatch, sources=[_external()])
+
+    with pytest.raises(SystemExit) as caught:
+        fetch_external_layers.main(["--only", "nyc_parks_trials"])
+
+    assert "nyc_parks_trials" in str(caught.value)
+
+
 def test_changed_source_is_refetched(tmp_path, monkeypatch, requests_mock):
     raw_dir, manifest_path = _setup(
         tmp_path,

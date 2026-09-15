@@ -69,17 +69,8 @@ export const DIFFICULTIES = [
 export type Difficulty = (typeof DIFFICULTIES)[number]
 
 export const ROUTE_PROVENANCES = ['published', 'generated'] as const
-/** Whether the publisher DREW this line or the pipeline inferred it. Quoted
- *  from the document, never decided here.
- *
- *  `published` does NOT mean anybody walked it and recorded it - that claim
- *  stood here until #1451 and was false. 110 of the 113 tracks behind it are
- *  gpx.studio files and 2 of 113 carry a single timestamp, so they are routes
- *  drawn on a map. It still outranks `generated`, because the publisher
- *  drawing a line along the trails they wrote about is the publisher saying
- *  where the hike goes, where `generated` is this project's inference from
- *  their prose. A screen may lean on that difference; it may not call either
- *  one a recording. */
+/** Whether a person walked this line or the pipeline inferred it. Quoted from
+ *  the document, never decided here. */
 export type RouteProvenance = (typeof ROUTE_PROVENANCES)[number]
 
 export const ROUTE_GRADES = ['strong', 'fair'] as const
@@ -173,7 +164,7 @@ export interface SuggestedHikeDetail {
    * WHERE THIS LINE CAME FROM, and the reason this block exists at all
    * (#1427).
    *
-   * `published` is a track whoever wrote the hike up recorded on the ground.
+   * `published` is a line whoever wrote the hike up drew on the ground.
    * `generated` is a line OurHike inferred from their turn-by-turn prose over
    * the trail graph - nobody walked it, and the pipeline graded it against
    * what the publisher independently stated before letting it ship.
@@ -185,8 +176,8 @@ export interface SuggestedHikeDetail {
    */
   routeProvenance?: RouteProvenance
   /** How much the pipeline stands behind a `generated` line. Calibrated
-   *  against the 113 hikes that publish both a description and a track the
-   *  publisher drew: `strong` matched that track 92% of the time. */
+   *  against the 113 hikes that publish both a description and a line the
+   *  publisher drew: `strong` matched that line 92% of the time. */
   routeGrade?: RouteGrade
   /** Every check that was not clean, in the publisher's and the pipeline's
    *  own words - a length well off the stated one, a loop that doubles back,

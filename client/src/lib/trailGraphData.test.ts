@@ -82,11 +82,13 @@ const WEST: CoverageCell = {
   name: 'n41w075',
   key: trailGraphCellKey('n41w075', 'graph'),
   bounds: [-75, 41, -74, 42],
+  covered: [-75, 41, -74, 42],
 }
 const EAST: CoverageCell = {
   name: 'n41w074',
   key: trailGraphCellKey('n41w074', 'graph'),
   bounds: [-74, 41, -73, 42],
+  covered: [-74, 41, -73, 42],
 }
 
 const edge = (from: number, to: number) => ({

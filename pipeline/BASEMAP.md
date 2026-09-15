@@ -58,6 +58,50 @@ one for two, so the shape is:
 The corridor polygon is a *parameter* end to end. Nothing in either script
 assumes the AT; today's defaults point at it.
 
+**That was true of the functions and false of the one caller, until #1458.**
+`export_basemap.main()` built the AT corridor and handed it straight to the clip,
+so there was no way to ask for a different shape without editing the module.
+`--regions` is that parameter made real, and `pipeline/lib/build_regions.py`
+holds the named shapes. Two today:
+
+| region | what it is |
+| --- | --- |
+| `at` | ATC's centerline buffered to the corridor — the shape this script built unconditionally before, and still the default, so a dispatch naming no region builds exactly what it always built |
+| `nyc` | the same construction over New York City's two registered layers (`nyc_parks_trails`, `nyc_dot_greenways`), buffered 3 km |
+
+**A region is a buffer around lines, which is what the corridor already is.**
+That matters beyond tidiness: it keeps the shape a statement about *where the
+trails are* rather than a box somebody drew around a city — the distinction the
+maintainer drew on 2026-08-25 when they struck the proposed ring around New York
+("Don't limit data from orgs based on geography"). A build has to have some
+extent; this one is derived from the same lines the app draws.
+
+The 3 km is **borrowed rather than picked**: `features/OFFLINE_COVERAGE.md` §4
+already had to answer "how far past the edge of the data does somebody need map"
+for the seam margin and answered 3 km, so this inherits that number *and its
+`@unvalidated` status*.
+
+**What the regions change and what they do not.** The clip is the union, so the
+build considers both. The AT package cut is unchanged — still cut against
+`basemap_region.geojson`, the AT's own ground, so its advertised size stays a
+true promise. What widens is the **coverage cells**, which `build-basemap.yml`
+now cuts from a separate coverage package covering the whole build. That is why
+`regions` is absent from the publish guard while `states` is in it: a narrower
+`states` makes an existing promise false, a wider `regions` does not.
+
+**Regions are added one at a time, each with its cost measured by the run that
+builds it.** New York City's, measured 2026-09-15 on run 34961028812 against the
+same morning's `at`-only build of `main`: **+10.9 MB** of source build and
+**+14.3 MB (+1.4%)** of published packages-and-cells, in **11 min 36 s** end to
+end against the 12.5 min the corridor alone took — so no wall clock, and 77 GB
+of the runner's disk still free. Small because a region is a 3 km ribbon around
+the city's own trail lines rather than a box around the city. The A.T. package
+was byte-for-byte the same shape through it (z14 62,097 / z13 15,899 / z12
+4,172, the counts recorded below). Nothing here tries to reach the 525 cells the trail lines occupy —
+the measured table below marks the whole US *marginal* against a free runner and
+North America *does not fit*, so a region set reaching them would be a promise
+this document has already measured itself unable to keep.
+
 **Low-zoom context rides in every package** (decided with #189): through z9,
 `extract_package.py` keeps the source build's *entire* footprint rather than
 only region-intersecting tiles, so panning out offline shows the ground

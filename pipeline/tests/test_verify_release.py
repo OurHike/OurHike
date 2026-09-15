@@ -1292,6 +1292,48 @@ class TestCellCoverage:
         assert report["state"] == "failed"
         assert "context archive" in report["detail"]
 
+    def test_a_cell_covering_less_than_its_square_passes(self, requests_mock):
+        """The New York City shape (#1458): a cell cut from a corridor-clipped
+        source holds a band across one corner, and saying so is the point of
+        the key. Less than the square is ordinary and must not fail."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[1]["covered"] = [-74.0, 40.714, -73.125, 41.0]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "ok"
+
+    def test_a_cell_claiming_ground_outside_its_square_fails(self, requests_mock):
+        """The phone narrows its coverage claim onto `covered` (#1458), which
+        is only safe while `covered` sits inside the square the cell owns. A
+        claim past that edge is the seam margin turned into a promise - the
+        app telling a hiker it has ground that belongs to a cell they never
+        downloaded."""
+        from verify_release import check_cell_coverage
+
+        cells = self._published()
+        cells[1]["covered"] = [-74.5, 40.0, -73.0, 41.0]
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(cells))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "failed"
+        assert "outside their own square" in report["detail"]
+
+    def test_an_index_with_no_covered_key_still_passes(self, requests_mock):
+        """Every index cut before #1458 carries none, and they are the ones
+        already on hikers' phones."""
+        from verify_release import check_cell_coverage
+
+        requests_mock.get(f"{BASE}/at_basemap_cells.json", json=self._index(self._published()))
+
+        report = next(r for r in check_cell_coverage(BASE, self._manifest()) if r["key"] == "at_basemap_cells.json")
+
+        assert report["state"] == "ok"
+
     def test_a_ragged_cell_fails(self, requests_mock):
         """A cell that is not a whole square means the grid was anchored to a
         bounding box rather than the graticule - which is what would silently

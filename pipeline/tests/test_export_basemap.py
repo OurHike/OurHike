@@ -17,7 +17,7 @@ import pytest
 import requests
 from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import write
-from shapely.geometry import box
+from shapely.geometry import Point, box, shape
 
 import export_basemap
 from export_basemap import (
@@ -145,6 +145,7 @@ def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, mon
             refetch=False,
             max_zoom=14,
             out=tmp_path / "out.pmtiles",
+            regions=["at"],
         )
     )
 
@@ -174,6 +175,69 @@ def test_the_shipped_build_excludes_the_layers_the_app_never_draws(tmp_path, mon
     # the layer exclusion, measured - small, and kept because it is free and
     # stops being small the moment this builds outside the United States.
     assert f"--languages={BUILD_LANGUAGES}" in planetiler
+
+
+def test_the_shapes_written_are_one_clip_one_per_region_and_one_union(tmp_path, monkeypatch):
+    """The three kinds of file build-basemap.yml reads by name (#1458), and
+    the reason they are three: the workflow cuts the A.T. package against the
+    `at` region and the coverage CELLS against the union, so conflating them
+    would either shrink the cells to the corridor or grow the published A.T.
+    package past its advertised size."""
+    external = tmp_path / "external"
+    external.mkdir()
+    for key, coords in (
+        ("nyc_parks_trails", [[-73.97, 40.66], [-73.96, 40.67]]),
+        ("nyc_dot_greenways", [[-74.01, 40.70], [-74.00, 40.71]]),
+    ):
+        (external / f"{key}.geojson").write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {"type": "Feature", "properties": {}, "geometry": {"type": "LineString", "coordinates": coords}}
+                    ],
+                }
+            )
+        )
+
+    out_dir, raw_dir = tmp_path / "processed", tmp_path / "osm"
+    monkeypatch.setattr(export_basemap, "EXTERNAL_RAW_DIR", external)
+    monkeypatch.setattr(export_basemap, "OUT_DIR", out_dir)
+    monkeypatch.setattr(export_basemap, "OSM_RAW_DIR", raw_dir)
+    monkeypatch.setattr(export_basemap, "CLIP_POLY_PATH", raw_dir / "clip.poly")
+    monkeypatch.setattr(
+        export_basemap,
+        "REGION_PATHS",
+        {"at": out_dir / "basemap_region.geojson", "nyc": out_dir / "basemap_region_nyc.geojson"},
+    )
+    monkeypatch.setattr(export_basemap, "COVERAGE_REGION_PATH", out_dir / "basemap_region_coverage.geojson")
+
+    at = box(-75, 41, -74, 42)
+    export_basemap.write_shapes({"at": at, "nyc": export_basemap.build_region("nyc")})
+
+    assert (raw_dir / "clip.poly").exists()
+    corridor = shape(json.loads((out_dir / "basemap_region.geojson").read_text())["geometry"])
+    city = shape(json.loads((out_dir / "basemap_region_nyc.geojson").read_text())["geometry"])
+    coverage = shape(json.loads((out_dir / "basemap_region_coverage.geojson").read_text())["geometry"])
+
+    # The A.T.'s own file is untouched by the second region - the promise the
+    # publish guard rests on.
+    assert corridor.equals(at)
+    # Brooklyn is in the city's region and in the union, and in neither the
+    # corridor nor anything the build covered before this change.
+    brooklyn = Point(-73.965, 40.665)
+    assert city.contains(brooklyn)
+    assert coverage.contains(brooklyn)
+    assert not corridor.contains(brooklyn)
+    # And the union still carries the corridor.
+    assert coverage.contains(Point(-74.5, 41.5))
+
+
+def test_an_unknown_region_is_refused_by_name():
+    with pytest.raises(SystemExit) as caught:
+        export_basemap.build_region("catskills")
+
+    assert "catskills" in str(caught.value)
 
 
 def test_fetch_states_skips_files_already_present(tmp_path, requests_mock):
@@ -293,7 +357,13 @@ def test_main_clips_and_merges_a_synthetic_state_end_to_end(tmp_path, monkeypatc
     monkeypatch.setattr(export_basemap, "fetch_states", fake_fetch)
 
     args = argparse.Namespace(
-        states=["testonia"], planetiler_jar=None, max_zoom=14, out=out_dir / "basemap.pmtiles", refetch=False, no_clip=False
+        states=["testonia"],
+        planetiler_jar=None,
+        max_zoom=14,
+        out=out_dir / "basemap.pmtiles",
+        refetch=False,
+        no_clip=False,
+        regions=["at"],
     )
     export_basemap.main(args)
 

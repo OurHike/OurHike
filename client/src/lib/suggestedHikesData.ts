@@ -190,7 +190,7 @@ function validDetail(candidate: unknown): SuggestedHikeDetail | undefined {
     // WHERE THE LINE CAME FROM (#1427). Read like every other field here -
     // junk costs the field and never the route - but unlike the others its
     // absence is load-bearing: a card may not draw an inferred route in the
-    // voice of a surveyed one, and "the document did not say" has to stay
+    // voice of a published one, and "the document did not say" has to stay
     // distinguishable from "the publisher walked it".
     ...(validProvenance(raw.routeProvenance) !== undefined
       ? { routeProvenance: validProvenance(raw.routeProvenance) }

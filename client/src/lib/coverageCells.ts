@@ -61,8 +61,32 @@ export interface CoverageCell {
    * Core bounds. The 3 km seam margin the archive carries past these is
    * generosity in the bytes and never a promise in the metadata
    * (cut_cells.py) - so nothing here treats a margin as coverage.
+   *
+   * THE GROUND THIS CELL IS THE UNIT OF, which is not the same as the ground
+   * it draws - see `covered`. Every routing question is this one: which cell
+   * holds a tile, which cells a hike crosses, which to fetch. Those are
+   * questions about the grid and must never move onto `covered`, or a tile
+   * inside a cell stops being asked for from the cell that has it.
    */
   bounds: Bounds
+  /**
+   * The part of `bounds` the cut actually put tiles in (#1458).
+   *
+   * THE COVERAGE QUESTION, and the only one that may read this: is there map
+   * here. A cell is a whole graticule square but its tiles are whatever the
+   * source archive held over that square, and a source clipped to a trail
+   * corridor holds a band across one corner. Measured 2026-09-15 against the
+   * published `at_basemap_cell_n40w074.pmtiles`: it declares 40.0 to 41.0 and
+   * its 290 tiles stop at 40.714, so a phone holding it over Brooklyn read
+   * the square, called itself covered, and drew blank paper with no banner.
+   *
+   * `bounds` when the index does not carry it, so an older release answers
+   * exactly as it did rather than losing coverage it has. The pipeline
+   * guarantees this is inside `bounds` and holds every tile of the cell that
+   * is (cut_cells.covered_bounds), so reading it here can only stop a claim
+   * that was false - never hide a tile the phone would have drawn.
+   */
+  covered: Bounds
 }
 
 export interface CellIndex {
@@ -225,12 +249,18 @@ export function parseCellIndex(raw: unknown): CellIndex | null {
   const cells: CoverageCell[] = []
   for (const entry of record.cells) {
     if (typeof entry !== 'object' || entry === null) return null
-    const { name, key, bounds } = entry as Record<string, unknown>
+    const { name, key, bounds, covered } = entry as Record<string, unknown>
     const box = boundsOf(bounds)
     if (typeof name !== 'string' || name === '') return null
     if (typeof key !== 'string' || key === '') return null
     if (box === null) return null
-    cells.push({ name, key, bounds: box })
+    // Absent is ordinary - every index published before #1458 - and means
+    // "no better answer than the square". Present and malformed is a corrupt
+    // row, refused like every other, because a coverage claim that parsed
+    // half-way is the thing this function exists to not produce.
+    const drawn = covered === undefined ? box : boundsOf(covered)
+    if (drawn === null) return null
+    cells.push({ name, key, bounds: box, covered: drawn })
   }
 
   return {
@@ -448,6 +478,21 @@ function corner(west: number, south: number): string {
  * sees a dead-straight edge that reads as a rendering fault unless it is
  * named (OFFLINE_COVERAGE.md §7). map/coverageLayers.ts draws these dashed
  * and labelled for exactly that reason.
+ *
+ * CORE BOUNDS, NOT `covered`, AND THIS IS THE ONE PLACE THE TWO DISAGREE ON
+ * SCREEN (#1458). The algorithm is a lattice walk - a cell's neighbour is
+ * found by its south-west corner one cell over - and `covered` boxes do not
+ * tile, so running this on them would find no neighbours and draw a dashed
+ * line down the middle of continuous coverage. That is a worse failure than
+ * the one it would fix.
+ *
+ * So on a cell that carries less than its square, the banner says "outside"
+ * (App.tsx reads `covered`) while the nearest seam is still drawn at the
+ * square, possibly miles away. Stated rather than left to be found: the
+ * banner is the half that matters, and this is the residue. Drawing the seam
+ * around what is really held needs the outline of a union of rectangles
+ * rather than a lattice walk, which is a different function and not one this
+ * change attempts.
  */
 export function seamEdges(
   held: readonly CoverageCell[],

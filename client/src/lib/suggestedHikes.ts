@@ -68,6 +68,16 @@ export const DIFFICULTIES = [
 /** The publisher's own rating. Quoted, never computed - see the header. */
 export type Difficulty = (typeof DIFFICULTIES)[number]
 
+export const ROUTE_PROVENANCES = ['published', 'generated'] as const
+/** Whether a person walked this line or the pipeline inferred it. Quoted from
+ *  the document, never decided here. */
+export type RouteProvenance = (typeof ROUTE_PROVENANCES)[number]
+
+export const ROUTE_GRADES = ['strong', 'fair'] as const
+/** How far the pipeline stands behind an inferred line. `rejected` is not a
+ *  member: such a route ships no line at all, so it can never reach a phone. */
+export type RouteGrade = (typeof ROUTE_GRADES)[number]
+
 export const AUTHOR_KINDS = ['club', 'guidebook', 'hiker', 'ourhike'] as const
 /** Who published a route. "OurHike pick" is a label on a route, never a
  *  score on it or on anybody. */
@@ -143,11 +153,36 @@ export interface SuggestedHikeDetail {
    * publisher's page - what is not drawn and why, where it starts if not at
    * their pin, a measured length well off theirs.
    *
-   * Reviewed by a person before it ships (pipeline's
-   * reference/nynjtc_hike_routes.json), which is what separates it from
-   * anything the app could generate: it says what somebody checked.
+   * Reviewed by a person before it ships, which is what separates it from
+   * anything the app could generate: it says what somebody checked. A route
+   * the pipeline formed on its own therefore carries NO hikerNote - see
+   * {@link routeProvenance}, which is the machine's own account of itself and
+   * is deliberately a different field.
    */
   hikerNote?: string
+  /**
+   * WHERE THIS LINE CAME FROM, and the reason this block exists at all
+   * (#1427).
+   *
+   * `published` is a track whoever wrote the hike up recorded on the ground.
+   * `generated` is a line OurHike inferred from their turn-by-turn prose over
+   * the trail graph - nobody walked it, and the pipeline graded it against
+   * what the publisher independently stated before letting it ship.
+   *
+   * A SCREEN MUST NEVER PRINT ONE IN THE VOICE OF THE OTHER
+   * (features/SUGGESTED_HIKES.md). Absent means the document did not say,
+   * which is not the same as `published` and must not be drawn as though it
+   * were.
+   */
+  routeProvenance?: RouteProvenance
+  /** How much the pipeline stands behind a `generated` line. Calibrated
+   *  against the 113 hikes that publish both a description and a surveyed
+   *  track: `strong` matched that track 92% of the time. */
+  routeGrade?: RouteGrade
+  /** Every check that was not clean, in the publisher's and the pipeline's
+   *  own words - a length well off the stated one, a loop that doubles back,
+   *  trails named but not walked. Empty is not the same as absent. */
+  routeNotes?: string[]
 }
 
 export interface SuggestedHike {

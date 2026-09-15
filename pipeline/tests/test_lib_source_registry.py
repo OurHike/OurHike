@@ -375,24 +375,40 @@ def test_an_unregistered_poi_source_resolves_to_nobody_rather_than_to_a_guess():
     assert poi_source_entry(registry, "nhd_crossing") is None
 
 
-def test_the_real_registry_registers_nynjtc_favorite_hikes_as_published_hikes_and_shipping():
-    """#1290's registration, checked as data: the twenty public write-ups,
-    their own kind (fetch_all.py must skip it; export_suggested_hikes.py is
-    what reads it), a steward whose name joins the licence block
-    (nynjtc_hikes_licence, matched by author - export_sources.py's rule),
-    and reaches_hikers True on the maintainer's relay of NYNJTC's
-    permission. No `freshness` block, deliberately: the REST route serves no
-    validator and the fetcher compares modified_gmt itself."""
+def test_the_real_registry_registers_the_hike_finder_export_as_published_hikes_and_shipping():
+    """#1427's registration, checked as data: NYNJTC's full hike list, its own
+    kind (fetch_all.py must skip it; fetch_hikefinder.py is what reads it), a
+    steward whose name joins the licence block (nynjtc_hikes_licence, matched
+    by author - export_sources.py's rule), and reaches_hikers True on the
+    maintainer's relay of NYNJTC's permission. No `freshness` block,
+    deliberately: the export serves no validator and no feed, so the fetcher
+    compares each page's own Last Updated against its previous cache."""
     registry = load_registry(REAL_REGISTRY)
-    entry = find_source(registry, "nynjtc_favorite_hikes")
+    entry = find_source(registry, "nynjtc_hike_finder")
 
-    assert entry is not None, "sources.json no longer registers nynjtc_favorite_hikes (#1290)"
+    assert entry is not None, "sources.json no longer registers nynjtc_hike_finder (#1427)"
     assert entry["kind"] == PUBLISHED_HIKES
     assert entry["steward"] == registry["nynjtc_hikes_licence"]["author"]
     assert entry["reaches_hikers"] is True
     assert entry["licence_basis"] == "maintainer_authorisation"
     assert "freshness" not in entry
     assert registry["nynjtc_hikes_licence"]["attribution_required"] is True
+
+
+def test_the_scraped_favorite_hikes_source_is_gone_and_its_licence_block_is_not():
+    """#1427 closed the road, not the permission. `nynjtc_favorite_hikes` read
+    nynjtc.org's WordPress API and reached 20 hikes of 59; the maintainer
+    asked for the scrape to stop and supplied the full list as an export.
+
+    The LICENCE BLOCK outlives the source entry that first needed it, because
+    `nynjtc_hike_finder` ships the same organization's same prose on the same
+    permission and points at it by name. Deleting the block with the entry
+    would have left the new source citing nothing."""
+    registry = load_registry(REAL_REGISTRY)
+
+    assert find_source(registry, "nynjtc_favorite_hikes") is None
+    assert "nynjtc_hikes_licence" in registry
+    assert find_source(registry, "nynjtc_hike_finder")["licence"].count("nynjtc_hikes_licence") >= 1
 
 
 def test_the_real_registry_registers_new_york_citys_two_walking_path_layers():

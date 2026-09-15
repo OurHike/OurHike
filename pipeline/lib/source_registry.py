@@ -118,15 +118,16 @@ WEEKLY_POLYGONS = "weekly_polygons"
 # a schedule, and fetch_all.py skips it like everything not ArcGIS.
 GUIDE_PAGES = "guide_pages"
 
-# Day hikes an organization writes up for people to walk - NYNJTC's Favorite
-# Hikes first (#1290): a name, an overview, a dated turn-by-turn, a credited
-# photograph, and the trailhead as a pin on a map, published as WordPress
-# posts of a custom type behind the REST API. Fetched by fetch_nynjtc_hikes.py
-# into data/raw/nynjtc_hikes.json and parsed by lib/nynjtc_hikes.py into
-# facts; the ROUTE each one walks is not published anywhere and is built here
-# from the description, reviewed row by row in reference/nynjtc_hike_routes
-# .json, and shipped by export_suggested_hikes.py behind the entry's own
-# `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
+# Day hikes an organization writes up for people to walk - NYNJTC's, through
+# the Hike Finder export (#1427, and #1290 before it): a name, a summary, a
+# turn-by-turn description, the publisher's own categorisation and tags, and
+# the parking as a pin. Fetched by fetch_hikefinder.py into
+# data/raw/hikefinder.json and parsed by lib/hikefinder.py into facts. THE
+# ROUTE ARRIVES TWO WAYS and the difference is carried all the way to the
+# card: 113 of the 385 publish a GPX track the writer surveyed, and 272
+# publish no line at all, so route_hikefinder.py forms one from the
+# description over the junction graph and grades it. export_suggested_hikes.py
+# ships what passes, behind the entry's own `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
 # thing a reader gets is a hike, not a waypoint, and the exporter that reads
 # it is a different one; and rather than PUBLISHED_NOTICES because these are
 # fetched on a schedule, not reviewed by hand into git. fetch_all.py skips it

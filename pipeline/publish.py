@@ -1073,13 +1073,13 @@ def collect_artifacts() -> dict[str, dict]:
         artifacts["highlights.json"] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
     # The routes somebody wrote up, if export_suggested_hikes.py has run
-    # (#1290, features/SUGGESTED_HIKES.md) - NYNJTC's reviewed Favorite
-    # Hikes first. Same shape again. It is absent from a release for THREE
+    # (#1427, features/SUGGESTED_HIKES.md) - NYNJTC's hikes from the Hike
+    # Finder export. Same shape again. It is absent from a release for THREE
     # reasons rather than one, and the client reads all three as an empty
-    # shelf rather than a failure: the entry's reaches_hikers, no row yet
-    # signed off in reference/nynjtc_hike_routes.json, or a run that did not
-    # reach the exporter. config.ts declares it `@release optional` for
-    # exactly that.
+    # shelf rather than a failure: the entry's reaches_hikers, no hike whose
+    # route passed route_hikefinder.py's grading, or a run that did not reach
+    # the exporter. config.ts declares it `@release optional` for exactly
+    # that.
     suggested_manifest = PROCESSED_DIR / "suggested_hikes_manifest.json"
     if suggested_manifest.exists():
         manifest = json.loads(suggested_manifest.read_text())

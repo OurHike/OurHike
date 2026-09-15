@@ -156,7 +156,8 @@ jobs:
         pipeline/data/raw/elevation
         pipeline/data/raw/nynjtc_long_path_guide
         pipeline/data/raw/external
-        pipeline/data/raw/nynjtc_hikes.json
+        pipeline/data/raw/hikefinder.json
+        pipeline/data/raw/hikefinder_gpx
 
     steps:
       - uses: actions/checkout@v7
@@ -482,19 +483,23 @@ jobs:
         continue-on-error: true
         run: python fetch_nynjtc_long_path_guide.py
 
-      # NYNJTC's Favorite Hikes (#1290): the twenty public write-ups, with
-      # their photographs, into data/raw/nynjtc_hikes.json (in FETCH_OUTPUTS
-      # above) and the content-addressed photo store. One listing request
-      # and one per photograph the cache does not already hold. The export
-      # that reads this cache runs far below, after the junction graph is
-      # built, because a published route is measured on that graph.
+      # NYNJTC's hikes, through the Hike Finder export (#1427): all 385
+      # write-ups into data/raw/hikefinder.json and the published GPX track
+      # for the 113 that have one into data/raw/hikefinder_gpx/ (both in
+      # FETCH_OUTPUTS above). 499 requests on a cold run and 386 on a warm
+      # one - a track is downloaded once and carried forward. This replaced
+      # fetch_nynjtc_hikes.py, which read nynjtc.org itself and reached 20
+      # hikes of 59; the maintainer asked for the scrape to stop.
+      #
+      # The two steps that READ this cache run far below, after the junction
+      # graph is built, because a formed route is measured on that graph.
       #
       # continue-on-error for the same reason as the guide fetch above: a
       # website's bad afternoon must not fail an A.T. publish, and the
       # export reads whatever the restore left on disk.
-      - name: Fetch NYNJTC's Favorite Hikes
+      - name: Fetch NYNJTC's hikes from the Hike Finder export
         continue-on-error: true
-        run: python fetch_nynjtc_hikes.py
+        run: python fetch_hikefinder.py
 
       - name: Export the waypoints other organizations publish
         run: python export_nearby_poi.py
@@ -820,17 +825,24 @@ jobs:
         if: inputs.include_elevation
         run: python export_network_profile.py
 
-      # The routes somebody wrote up (#1290, features/SUGGESTED_HIKES.md):
-      # NYNJTC's Favorite Hikes, each one's ends signed off by a person in
-      # reference/nynjtc_hike_routes.json and measured here on this run's
-      # own junction graph by lib/trail_graph_route.py, the twin of the
-      # phone's router. AFTER the two elevation steps and NOT gated on
-      # include_elevation: the export needs the graph, and prices climb only
-      # when this run also wrote a climb sidecar that fits it - a run
-      # without elevation ships the routes with their climb absent, which
-      # the card reads as unknown. Three gates decide what it writes, none of
-      # them this workflow's (the script's docstring); a run where no row
-      # is reviewed yet writes nothing, and publish.py collects nothing.
+      # Give every hike a route where one can be had honestly (#1427): the
+      # publisher's own GPX track for the 113 that carry one, and for the
+      # other 272 a route FORMED from the trailhead and the turn-by-turn
+      # description over this run's own junction graph, graded against
+      # everything the publisher independently stated about the walk. Writes
+      # the routes artifact and the sign-off sheet a person reads; it never
+      # fails a run for a hike it could not route, because a hike with no
+      # route is this script's ordinary output.
+      - name: Form or read a route for every NYNJTC hike
+        run: python route_hikefinder.py
+
+      # What that leaves, as the artifact a phone reads
+      # (features/SUGGESTED_HIKES.md). AFTER the two elevation steps and NOT
+      # gated on include_elevation: the export needs the graph, and prices
+      # climb only when this run also wrote a climb sidecar that fits it - a
+      # run without elevation ships the routes with their climb absent, which
+      # the card reads as unknown. The gates are the script's own, not this
+      # workflow's: the entry's reaches_hikers, and each route's grade.
       - name: Export the routes NYNJTC publishes
         run: python export_suggested_hikes.py
 

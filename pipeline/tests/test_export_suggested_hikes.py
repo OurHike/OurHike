@@ -1,16 +1,17 @@
-"""export_suggested_hikes.py - the reviewed rows as the artifact the shelf reads (#1290).
+"""export_suggested_hikes.py - the graded routes as the artifact the shelf
+reads (#1427).
 
-The synthetic graph from test_lib_trail_graph_route.py, a one-hike cache in
-the shape fetch_nynjtc_hikes.py writes, reference rows, and a registry in a
-temp directory - never the real network, cache or rows (TESTING.md).
+The synthetic graph from test_lib_trail_graph_route.py, a cache in the shape
+fetch_hikefinder.py writes, and a routes file in the shape route_hikefinder.py
+writes, all in a temp directory - never the real network, cache or graph
+(TESTING.md).
 
-What is pinned is the three gates and the contract: nothing ships from an
-entry that does not reach hikers, nothing ships from a row nobody signed
-off, a signed-off row the ground moved from under is dropped loudly and
-named in the manifest, and what does ship is spelled the way
-lib/suggestedHikesData.ts reads it - ends as snapped coordinates, a loop
-closed by repeating its first end, a climb that is absent rather than zero
-when nothing priced it, a photo that is absent rather than uncredited.
+What is pinned is the gate and the contract: nothing ships from an entry that
+does not reach hikers, nothing ships from a route graded `rejected`, a
+surveyed track that this build's lines cannot re-walk is dropped rather than
+re-drawn, and what does ship is spelled the way lib/suggestedHikesData.ts
+reads it - ends as snapped coordinates, a loop closed by repeating its first
+end, and the publisher's own tags carried through.
 """
 
 from __future__ import annotations
@@ -20,48 +21,49 @@ import json
 import pytest
 
 import export_suggested_hikes as exporter
-import route_nynjtc_hikes as script
-from lib.nynjtc_hikes import SOURCE_KEY
+from lib.hikefinder import SOURCE_KEY
 from tests.test_lib_trail_graph_route import LAT, LON, STEP, graph_files
 
 STEWARD = "New York-New Jersey Trail Conference"
 
 
-def registry(reaches: bool = True) -> dict:
-    return {"sources": [{"key": SOURCE_KEY, "kind": "published_hikes", "steward": STEWARD, "reaches_hikers": reaches}]}
-
-
 def hike(**overrides) -> dict:
     base = {
+        "id": 7,
         "name": "Pine Meadow Loop",
-        "source_url": "https://www.nynjtc.org/hike/pine/",
-        "difficulty": "easy-moderate",
-        "stated_miles": 0.25,
-        "terms": {
-            "route-type": [{"slug": "loop", "name": "Loop"}],
-            "park": [{"slug": "h", "name": "Harriman State Park"}],
-            "trail": [{"slug": "p", "name": "Pine Meadow Trail"}, {"slug": "r", "name": "Ridge Loop"}],
-        },
-        "overview": ["A short loop."],
-        "description": ["Turn right onto the Ridge Loop."],
-        "publication": {"submitted_by": "Daniel Chazin", "submitted_on": "2016-08-24", "verified_on": "2021-08-15"},
-        "start": {"lat": LAT, "lon": LON, "basis": "marker"},
-        "photo": {"key": "photos/" + "a" * 64 + ".jpg", "digest": "a" * 64, "credit": "Daniel Chazin"},
+        "source_url": "https://example.test/hikefinder/hike.php?id=7",
+        "summary": "A short loop.",
+        "stated_miles": 0.3,
+        "difficulty": "Easy To Moderate",
+        "estimated_hours": 1.0,
+        "route_type": "Circuit",
+        "dogs": "Allowed on leash",
+        "park": "Harriman State Park",
+        "region": "Lower Hudson",
+        "author": "Daniel Chazin",
+        "features": ["Views", "Waterfall"],
+        "published_on": "July 11, 2013",
+        "updated_on": None,
+        "directions": ["Park at the gate."],
+        "description": ["Follow the Pine Meadow Trail."],
+        "public_transport": [],
+        "has_published_route": False,
+        "start": {"lat": LAT, "lon": LON, "label": "Parking location"},
     }
     base.update(overrides)
     return base
 
 
-def row(**overrides) -> dict:
+def route(**overrides) -> dict:
     base = {
-        "status": "reviewed",
+        "hike_id": 7,
+        "provenance": "generated",
+        "grade": "strong",
+        "ends": [[LON, LAT], [LON + 2 * STEP, LAT]],
         "closed": True,
-        "ends": [[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT + 0.9 * STEP]],
-        "measured_miles": 0.3,
-        "basis": "two junctions",
-        "hiker_note": "Starts at the kiosk.",
-        "proposed": "2026-09-09",
-        "reviewed": "2026-09-10",
+        "miles": 0.3,
+        "stated_miles": 0.3,
+        "problems": [],
     }
     base.update(overrides)
     return base
@@ -72,247 +74,169 @@ def sandbox(tmp_path, monkeypatch):
     processed = tmp_path / "processed"
     processed.mkdir()
     graph_files(processed)
-    raw = tmp_path / "raw"
-    raw.mkdir()
-    cache_path = raw / "nynjtc_hikes.json"
-    cache_path.write_text(json.dumps({"hikes": {"hike-pine": hike()}}))
-    reference_path = tmp_path / "routes.json"
-    reference_path.write_text(json.dumps({"routes": {"hike-pine": row()}}))
-    registry_path = tmp_path / "sources.json"
-    registry_path.write_text(json.dumps(registry()))
-    monkeypatch.setattr(script, "CACHE_PATH", cache_path)
-    monkeypatch.setattr(script, "REFERENCE_PATH", reference_path)
-    monkeypatch.setattr(exporter, "SOURCES_PATH", registry_path)
-    monkeypatch.setattr(exporter, "PROCESSED_DIR", processed)
-    monkeypatch.setattr(exporter, "OUT_PATH", processed / "suggested_hikes.json")
-    monkeypatch.setattr(exporter, "MANIFEST_PATH", processed / "suggested_hikes_manifest.json")
-    return {"processed": processed, "cache": cache_path, "reference": reference_path, "registry": registry_path}
+    sources = tmp_path / "sources.json"
 
-
-def published(sandbox) -> dict:
-    return json.loads((sandbox["processed"] / "suggested_hikes.json").read_text())
-
-
-class TestTheGates:
-    def test_an_entry_that_does_not_reach_hikers_publishes_nothing(self, sandbox, capsys):
-        sandbox["registry"].write_text(json.dumps(registry(reaches=False)))
-
-        assert exporter.main() is None
-        assert not (sandbox["processed"] / "suggested_hikes.json").exists()
-        assert "reaches_hikers: false" in capsys.readouterr().out
-
-    def test_a_proposed_row_is_not_close_enough(self, sandbox, capsys):
-        sandbox["reference"].write_text(json.dumps({"routes": {"hike-pine": row(status="proposed", reviewed=None)}}))
-
-        assert exporter.main() is None
-        assert not (sandbox["processed"] / "suggested_hikes.json").exists()
-        assert "1 proposed, waiting for sign-off" in capsys.readouterr().out
-
-    def test_a_held_row_never_ships(self, sandbox):
-        sandbox["reference"].write_text(
+    def registry(reaches: bool = True):
+        sources.write_text(
             json.dumps(
-                {
-                    "routes": {
-                        "hike-pine": row(),
-                        "hike-far": {"status": "held", "reason": "no lines - #1293", "proposed": "2026-09-09"},
-                    }
-                }
+                {"sources": [{"key": SOURCE_KEY, "kind": "published_hikes", "steward": STEWARD, "reaches_hikers": reaches}]}
             )
         )
 
-        manifest = exporter.main()
-        assert manifest["count"] == 1
-        assert [h["id"] for h in published(sandbox)["hikes"]] == [f"{SOURCE_KEY}:hike-pine"]
+    registry()
+    monkeypatch.setattr(exporter, "SOURCES_PATH", sources)
+    monkeypatch.setattr(exporter, "PROCESSED_DIR", processed)
+    monkeypatch.setattr(exporter, "OUT_PATH", processed / "suggested_hikes.json")
+    monkeypatch.setattr(exporter, "MANIFEST_PATH", processed / "suggested_hikes_manifest.json")
+    monkeypatch.setattr(exporter, "ROUTES_PATH", processed / "hikefinder_routes.json")
 
-    def test_a_reviewed_row_the_ground_moved_from_under_is_dropped_loudly(self, sandbox, capsys):
-        sandbox["reference"].write_text(
-            json.dumps({"routes": {"hike-pine": row(ends=[[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT - 3 * STEP]])}})
-        )
+    def write(hikes: dict, routes: dict):
+        monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: hikes)
+        (processed / "hikefinder_routes.json").write_text(json.dumps({"routes": routes}))
 
-        manifest = exporter.main()
-
-        assert manifest["count"] == 0
-        assert manifest["dropped"] == ["hike-pine"]
-        assert "did not publish" in capsys.readouterr().err
-        assert published(sandbox)["hikes"] == []
-
-    def test_a_reviewed_row_with_no_cached_hike_is_dropped_and_named(self, sandbox, capsys):
-        sandbox["cache"].write_text(json.dumps({"hikes": {"hike-other": hike()}}))
-
-        manifest = exporter.main()
-
-        assert manifest["dropped"] == ["hike-pine"]
-        assert "not in the fetch cache" in capsys.readouterr().err
-
-    def test_reviewed_rows_and_no_cache_is_an_exit(self, sandbox):
-        sandbox["cache"].unlink()
-
-        with pytest.raises(SystemExit, match="no fetch cache"):
-            exporter.main()
+    return {"processed": processed, "write": write, "registry": registry, "out": processed / "suggested_hikes.json"}
 
 
-class TestTheContract:
-    def test_a_reviewed_hike_ships_what_the_client_validates(self, sandbox):
-        manifest = exporter.main()
-        record = published(sandbox)["hikes"][0]
-
-        assert record["id"] == f"{SOURCE_KEY}:hike-pine"
-        assert record["name"] == "Pine Meadow Loop"
-        assert record["miles"] > 0
-        assert record["difficulty"] == "easy-moderate"
-        assert record["author"] == {"kind": "club", "name": STEWARD}
-        assert record["photo"] == {
-            "url": "photos/" + "a" * 64 + ".jpg",
-            "credit": "Photo by Daniel Chazin",
-            "licence": exporter.PHOTO_LICENCE,
-        }
-        assert manifest["count"] == 1
-        assert manifest["with_photo"] == 1
-        assert manifest["path"].endswith("suggested_hikes.json")
-
-    def test_the_ends_are_snapped_onto_the_line_and_a_loop_repeats_its_first_end(self, sandbox):
-        exporter.main()
-        (segment,) = published(sandbox)["hikes"][0]["segments"]
-
-        assert len(segment) == 3
-        assert segment[0] == segment[-1]
-        assert all(point["poiId"] is None for point in segment)
-        # The second end was placed 0.9 * STEP north of the line; what ships
-        # is the point on the line, not the point somebody typed.
-        assert abs(segment[1]["coord"][1] - (LAT + 0.9 * STEP)) < 1e-9 or abs(segment[1]["coord"][1] - LAT) < 1e-6
-
-    def test_an_open_walk_does_not_close(self, sandbox):
-        sandbox["reference"].write_text(json.dumps({"routes": {"hike-pine": row(closed=False)}}))
-
-        exporter.main()
-        (segment,) = published(sandbox)["hikes"][0]["segments"]
-
-        assert len(segment) == 2
-        assert published(sandbox)["hikes"][0]["closed"] is False
-
-    def test_climb_ships_when_priced_and_is_absent_when_not(self, sandbox):
-        exporter.main()
-        assert "climb" in published(sandbox)["hikes"][0]
-        assert set(published(sandbox)["hikes"][0]["climb"]) == {"gainFt", "lossFt"}
-
-        graph_files(sandbox["processed"], misaligned=True)
-        manifest = exporter.main()
-
-        assert "climb" not in published(sandbox)["hikes"][0]
-        assert manifest["with_climb"] == 0
-
-    def test_a_photo_with_no_credit_or_no_bytes_does_not_ship(self, sandbox):
-        sandbox["cache"].write_text(
-            json.dumps({"hikes": {"hike-pine": hike(photo={"key": "photos/" + "b" * 64 + ".jpg", "credit": None})}})
-        )
-        exporter.main()
-        assert "photo" not in published(sandbox)["hikes"][0]
-
-        sandbox["cache"].write_text(
-            json.dumps({"hikes": {"hike-pine": hike(photo={"credit": "Jane Daniels", "source_url": "https://x/y.jpg"})}})
-        )
-        exporter.main()
-        assert "photo" not in published(sandbox)["hikes"][0]
-
-    def test_the_detail_fields_carry_nynjtcs_own_facts_beside_this_builds_measurement(self, sandbox):
-        exporter.main()
-        record = published(sandbox)["hikes"][0]
-
-        assert record["publishedMiles"] == 0.25
-        assert record["measured"]["miles"] == record["miles"]
-        assert record["measured"]["note"] == exporter.router.SAME_TREAD_NOTE
-        assert [leg["name"] for leg in record["measured"]["legs"]]
-        assert record["park"] == "Harriman State Park"
-        assert record["trails"] == ["Pine Meadow Trail", "Ridge Loop"]
-        assert record["publication"]["verifiedOn"] == "2021-08-15"
-        assert record["hikerNote"] == "Starts at the kiosk."
-        assert record["reviewed"] == "2026-09-10"
-        assert record["url"] == "https://www.nynjtc.org/hike/pine/"
-        assert record["overview"] == ["A short loop."]
-
-    def test_the_document_is_dated_and_named(self, sandbox):
-        exporter.main()
-        document = published(sandbox)
-
-        assert document["source"] == SOURCE_KEY
-        assert document["generated_at"].endswith("Z")
+def published(sandbox) -> list[dict]:
+    return json.loads(sandbox["out"].read_text())["hikes"]
 
 
-class TestVariants:
-    """One NYNJTC page, three walks (#1290, maintainer's call 2026-09-09).
+# --- the gates -----------------------------------------------------------------
 
-    "Platte Clove to Overlook Mountain via Codfish Point and Echo Lake"
-    offers 4.5, 8.8 and 13 miles under one title. A row key is the slug plus
-    "#" and a variant name; everything before the "#" is the cache key and
-    the page a hiker is sent to.
-    """
 
-    def rows(self) -> dict:
-        return {
-            "hike-pine#short": row(
-                name="Pine Meadow, the short way", ends=[[LON + 0.2 * STEP, LAT], [LON + STEP, LAT]], closed=False
-            ),
-            "hike-pine#long": row(
-                name="Pine Meadow to the ridge", ends=[[LON + 0.2 * STEP, LAT], [LON + 2 * STEP, LAT]], closed=False
-            ),
-        }
+def test_an_entry_that_does_not_reach_hikers_publishes_nothing(sandbox, capsys):
+    sandbox["registry"](reaches=False)
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    assert exporter.main() is None
+    assert not sandbox["out"].exists()
 
-    def test_both_variants_ship_from_one_cached_hike(self, sandbox):
-        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
 
-        manifest = exporter.main()
+def test_a_rejected_route_ships_nothing_and_is_named_in_the_manifest(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route(grade="rejected", ends=[], problems=["too far apart"])})
+    manifest = exporter.main()
+    assert published(sandbox) == []
+    assert manifest["dropped"] == ["7"]
 
-        assert manifest["count"] == 2
-        # Published in key order, which is deterministic and is all this end
-        # promises - the shelf and the finder sort for themselves.
-        records = published(sandbox)["hikes"]
-        assert [r["name"] for r in records] == ["Pine Meadow to the ridge", "Pine Meadow, the short way"]
-        # Both point at NYNJTC's one page.
-        assert {r["url"] for r in records} == {"https://www.nynjtc.org/hike/pine/"}
 
-    def test_each_variant_gets_its_own_id_so_the_client_cannot_dedupe_them_away(self, sandbox):
-        """lib/suggestedHikesData.ts drops a second record sharing an id.
-        Keying on the base slug would silently lose two of the three."""
-        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
+def test_a_hike_with_no_row_in_the_routes_file_is_dropped_rather_than_guessed(sandbox):
+    sandbox["write"]({"7": hike()}, {})
+    manifest = exporter.main()
+    assert published(sandbox) == []
+    assert manifest["dropped"] == ["7"]
 
-        exporter.main()
 
-        ids = [r["id"] for r in published(sandbox)["hikes"]]
-        assert ids == [f"{SOURCE_KEY}:hike-pine#long", f"{SOURCE_KEY}:hike-pine#short"]
-        assert len(set(ids)) == 2
+# --- what a shipped record says ------------------------------------------------
 
-    def test_the_variants_measure_differently(self, sandbox):
-        sandbox["reference"].write_text(json.dumps({"routes": self.rows()}))
 
-        exporter.main()
-        long, short = published(sandbox)["hikes"]
+def test_a_generated_route_ships_its_ends_and_says_it_was_generated(sandbox):
+    """The distinction the maintainer asked for, on the record a phone holds:
+    a screen that prints an inference in the voice of a survey is the failure
+    this field exists to prevent."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert record["id"] == f"{SOURCE_KEY}:7"
+    assert record["detail"]["routeProvenance"] == "generated"
+    assert record["detail"]["routeGrade"] == "strong"
 
-        assert short["miles"] < long["miles"]
 
-    def test_a_variant_carries_its_own_published_miles(self, sandbox):
-        """NYNJTC states a length per walk, not per page - the row says which
-        of the three this one is, and the parse's single stated_miles cannot."""
-        rows = self.rows()
-        rows["hike-pine#short"]["published_miles"] = 0.1
-        rows["hike-pine#long"]["published_miles"] = 0.2
-        sandbox["reference"].write_text(json.dumps({"routes": rows}))
+def test_a_closed_walk_repeats_its_first_end_so_the_phone_closes_it(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route(closed=True)})
+    exporter.main()
+    ends = published(sandbox)[0]["segments"][0]
+    assert ends[0]["coord"] == ends[-1]["coord"]
 
-        exporter.main()
-        long, short = published(sandbox)["hikes"]
 
-        assert (short["publishedMiles"], long["publishedMiles"]) == (0.1, 0.2)
+def test_an_open_walk_does_not(sandbox):
+    sandbox["write"]({"7": hike(route_type="Shuttle")}, {"7": route(closed=False)})
+    exporter.main()
+    ends = published(sandbox)[0]["segments"][0]
+    assert ends[0]["coord"] != ends[-1]["coord"]
 
-    def test_a_variant_with_no_name_of_its_own_is_refused(self, sandbox):
-        """Three cards reading identically is worse than a failed export: a
-        hiker choosing between 4.5 and 13 miles could not tell which is which."""
-        rows = self.rows()
-        rows["hike-pine#short"].pop("name")
-        sandbox["reference"].write_text(json.dumps({"routes": rows}))
 
-        with pytest.raises(SystemExit, match="carries no `name`"):
-            exporter.main()
+def test_the_publishers_tags_ride_through_to_the_record(sandbox):
+    """ "Especially the tags" - they are the facets the finder filters on."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert published(sandbox)[0]["detail"]["features"] == ["Views", "Waterfall"]
 
-    def test_a_plain_row_still_takes_its_name_from_nynjtcs_page(self, sandbox):
-        exporter.main()
 
-        assert published(sandbox)["hikes"][0]["name"] == "Pine Meadow Loop"
+def test_everything_the_export_said_is_carried_onto_the_detail(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    detail = published(sandbox)[0]["detail"]
+    assert detail["park"] == "Harriman State Park"
+    assert detail["routeType"] == "Circuit"
+    assert detail["dogs"] == "Allowed on leash"
+    assert detail["author"] == "Daniel Chazin"
+    assert detail["directions"] == ["Park at the gate."]
+    assert detail["publishedMiles"] == 0.3
+
+
+# --- difficulty is quoted, and one level does not fit --------------------------
+
+
+def test_the_publishers_difficulty_becomes_the_slug_the_client_holds(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert published(sandbox)[0]["difficulty"] == "easy-moderate"
+
+
+def test_very_strenuous_takes_the_hardest_slug_there_is_and_keeps_its_own_word(sandbox):
+    """The client holds five levels and the export publishes six. Mapping it
+    down UNDERSTATES the hike, which is the unsafe direction, so the
+    publisher's own label rides along and the card can print it."""
+    sandbox["write"]({"7": hike(difficulty="Very Strenuous")}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert record["difficulty"] == "strenuous"
+    assert record["detail"]["publishedDifficulty"] == "Very Strenuous"
+
+
+def test_a_difficulty_the_client_has_no_slot_for_is_absent_rather_than_guessed(sandbox):
+    sandbox["write"]({"7": hike(difficulty="Brutal")}, {"7": route()})
+    exporter.main()
+    assert published(sandbox)[0]["difficulty"] is None
+
+
+# --- a surveyed track has to survive the round trip ----------------------------
+
+
+def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorded(sandbox):
+    """The claim being made is "the phone walking these ends walks the
+    surveyed route", and it is only made after measuring it."""
+    ends = [[LON, LAT], [LON + STEP, LAT], [LON + 2 * STEP, LAT], [LON + 3 * STEP, LAT]]
+    miles = exporter.router.metres_to_miles(exporter.router.metres_between((LON, LAT), (LON + 3 * STEP, LAT)))
+    sandbox["write"](
+        {"7": hike(has_published_route=True, route_type="Shuttle")},
+        {"7": route(provenance="published", ends=ends, closed=False, miles=miles, stated_miles=miles)},
+    )
+    manifest = exporter.main()
+    record = published(sandbox)[0]
+    assert record["detail"]["routeProvenance"] == "published"
+    assert "trackReproduction" in record["detail"]
+    assert manifest["by_provenance"] == {"published": 1}
+
+
+def test_a_track_that_leaves_this_builds_lines_is_dropped_rather_than_re_drawn(sandbox):
+    """49 of the export's 113 tracks do this. Snapping them onto whatever
+    happens to be nearest would publish a line the surveyor never walked."""
+    ends = [[LON + 1.0, LAT + 1.0], [LON + 1.01, LAT + 1.0]]
+    sandbox["write"](
+        {"7": hike(has_published_route=True, route_type="Shuttle")},
+        {"7": route(provenance="published", ends=ends, closed=False, miles=0.6, stated_miles=0.6)},
+    )
+    manifest = exporter.main()
+    assert published(sandbox) == []
+    assert manifest["dropped"] == ["7"]
+
+
+# --- the manifest --------------------------------------------------------------
+
+
+def test_the_manifest_counts_the_two_provenances_apart(sandbox):
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    manifest = exporter.main()
+    assert manifest["count"] == 1
+    assert manifest["by_provenance"] == {"generated": 1}
+    assert manifest["with_tags"] == 1

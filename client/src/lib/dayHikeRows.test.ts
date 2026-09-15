@@ -350,6 +350,54 @@ describe('no two rows a reader cannot tell apart (#1433)', () => {
     expect(status.legs).toHaveLength(2)
     expect(status.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 2 }])
   })
+
+  // AND THE ROW THAT MAKES THE TWO LEGIBLE. Two rows naming one trail are
+  // only readable if the thing dividing them is on the screen between them,
+  // which is why the taps moved into this list rather than staying beside it.
+  it('puts the hiker\u2019s tap between the two rows it divides', () => {
+    const status = withAPointInTheMiddle()
+    const rows = routeRows(status.legs, [], status.gaps, status.turns)
+
+    expect(rows.map((row) => row.kind)).toEqual(['turn', 'leg', 'turn', 'leg', 'turn'])
+  })
+
+  it('gives the tap the mile of the boundary it makes', () => {
+    // The arithmetic that was impossible before the squash stopped at a tap:
+    // the middle tap sits at the end of row 1, and the last at the end of the
+    // walk. Nothing here is re-routed to find them.
+    const status = withAPointInTheMiddle()
+    const rows = routeRows(status.legs, [], status.gaps, status.turns)
+    const turns = rows.filter((row) => row.kind === 'turn')
+    const legs = rows.filter((row) => row.kind === 'leg')
+
+    expect(turns.map((row) => row.mile)).toEqual([0, legs[0].toMile, legs[1].toMile])
+    expect(turns[2].mile).toBeCloseTo(status.miles, 6)
+  })
+
+  it('numbers a tap as the map numbers it, and deletes by ordinal', () => {
+    // The label a hiker matches against the mark on the map, and the ordinal
+    // `removeTap` indexes `draftPoints` with. They differ by one, and a row
+    // that confused them would delete somebody else's point.
+    const status = withAPointInTheMiddle()
+    const turns = routeRows(status.legs, [], status.gaps, status.turns).filter(
+      (row) => row.kind === 'turn',
+    )
+
+    expect(turns.map((row) => row.label)).toEqual([1, 2, 3])
+    expect(turns.map((row) => row.ordinal)).toEqual([0, 1, 2])
+  })
+
+  it('lists every tap, so none of them is undeletable', () => {
+    // The first and the last included. They divide nothing - they bracket the
+    // walk - but the list carries the only delete control there is, so a tap
+    // missing from it is a tap a hiker cannot take back.
+    const status = withAPointInTheMiddle()
+    const turns = routeRows(status.legs, [], status.gaps, status.turns).filter(
+      (row) => row.kind === 'turn',
+    )
+
+    expect(turns).toHaveLength(3)
+  })
 })
 
 describe('the turns', () => {

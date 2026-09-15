@@ -561,6 +561,35 @@ export interface DraftGap {
   miles: number
 }
 
+/**
+ * One of the hiker's own taps, placed in the walk rather than only counted.
+ *
+ * The counterpart of {@link DraftGap}, and here for the same reason: the
+ * surfaces that list a walk in order walk the flat concatenation of every
+ * stretch's legs and have no segment or tapped pair to count against, so the
+ * translation is done once, here, where the stretches are still in hand.
+ *
+ * IT IS A ROW NOW BECAUSE IT HAS A MILE NOW. Until 2026-09-15 `routeThrough`
+ * merged legs across a tap, so a tap in the middle of a leg had no mile the
+ * walk could name without re-routing every pair on every render, and
+ * lib/dayHikeRows.ts said so as its reason for listing taps apart. A tap is a
+ * leg boundary since - the maintainer's rule that a point a hiker placed is
+ * not a seam a publisher drew - so its mile is exactly the end of the leg
+ * before it, which the list is computing anyway.
+ */
+export interface DraftTurn {
+  /** How many legs of the walk come before this tap. */
+  afterLegs: number
+  /** Index into `draftPoints(draft)` - what `removeTap` takes. */
+  ordinal: number
+  /** 1-based, matching the numbered mark this tap wears on the map. */
+  label: number
+  /** Whether a gap starts after this tap (it ends a stretch that is not the
+   *  last). The row says so, because crossing one is the next thing that
+   *  happens and it is ground nobody maintains. */
+  endsStretch: boolean
+}
+
 export type DraftStatus =
   | { kind: 'empty' }
   | { kind: 'started' }
@@ -594,6 +623,16 @@ export type DraftStatus =
        * it. Empty for a single-stretch walk, and `gapMiles` is exactly its sum.
        */
       gaps: DraftGap[]
+      /**
+       * Every tap of the walk, each placed against the legs before it - what
+       * the route order interleaves so that two rows naming one trail say
+       * which of the hiker's points divides them.
+       *
+       * Every tap, including the first and the last: the list carries the
+       * delete control now, so a tap missing from here is a tap a hiker
+       * cannot remove.
+       */
+      turns: DraftTurn[]
     }
   | { kind: 'unroutable' }
 
@@ -626,6 +665,10 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
   // in legs, so this is the translation between the two - kept here because
   // this is the only place that knows which segments became stretches at all.
   const legsBySegment = new Map<number, number>()
+  // Which segment each stretch came from, in stretch order - `turnsAcross`
+  // needs it to number a tap the way the map's marks do, and a segment that
+  // held nothing to route leaves no stretch behind.
+  const segmentOf: number[] = []
   for (let at = 0; at < draft.segments.length; at += 1) {
     const points = draft.segments[at]
     // A stretch with one tap is the one being built. It is not an error and
@@ -638,6 +681,7 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
     const route = stretchRoute(index, points, draft.looped, draft.outAndBack)
     if (route === null) return { kind: 'unroutable' }
     stretches.push({ points, route })
+    segmentOf.push(at)
     legsBySegment.set(at, route.legs.length)
   }
   if (stretches.length === 0) return { kind: 'started' }
@@ -655,6 +699,7 @@ export function draftStatus(index: TrailGraphIndex, draft: DayHikeDraft): DraftS
     // are the same arithmetic and cannot disagree about one walk.
     gapMiles: gaps.reduce((total, gap) => total + gap.miles, 0),
     gaps,
+    turns: turnsAcross(draft, stretches, segmentOf),
   }
 }
 
@@ -722,6 +767,77 @@ function climbAcrossStretches(stretches: readonly DraftStretch[]): RouteClimb | 
  * The pairs visited are exactly the ones this measured before it also placed
  * them, so summing the result reproduces the old `gapMilesAcross` figure.
  */
+/**
+ * Which tap of a stretch a tapped pair ends at.
+ *
+ * Plain: pair `i` runs from point `i` to point `i + 1`, so it ends at
+ * `i + 1` and the walk's own shape needs no arithmetic at all.
+ *
+ * The two synthesised shapes are where this earns its place, because the
+ * points ROUTED are not the points TAPPED:
+ *
+ *   out and back  `thereAndBack` walks p0..pn-1 then pn-2..p0, so the pairs
+ *                 past the turnaround come home through taps the hiker
+ *                 already passed - `2n - 3 - i` is that index counting back.
+ *                 A tap passed twice lists twice, which is what an
+ *                 out-and-back IS, and both rows delete the one tap.
+ *   loop          `closeTheLoop` appends p0, so the final pair ends where the
+ *                 walk began: tap 0, again.
+ *
+ * Either way the row is about a place the hiker chose, which is the whole
+ * test the route order applies.
+ */
+function tapEndingPair(pair: number, taps: number, shape: DayHikeDraft): number {
+  if (shape.looped) return pair === taps - 1 ? 0 : pair + 1
+  if (shape.outAndBack) return pair <= taps - 2 ? pair + 1 : 2 * taps - 3 - pair
+  return pair + 1
+}
+
+/**
+ * Every tap of the walk, placed against the legs before it.
+ *
+ * Built here rather than in the list because this is the only place that
+ * still holds both halves: which segments became stretches, and how many legs
+ * each of a stretch's tapped pairs contributed (`GraphRoute.legsPerPair`).
+ * The list receives the answer and interleaves it, exactly as it does gaps.
+ */
+function turnsAcross(
+  draft: DayHikeDraft,
+  stretches: readonly DraftStretch[],
+  segmentOf: readonly number[],
+): DraftTurn[] {
+  // Flat ordinals, because `removeTap` indexes `draftPoints(draft)` and the
+  // map's marks are numbered the same way - a hiker reading "3" on the map
+  // and "3" in the panel has to be looking at one tap.
+  const firstOrdinal: number[] = []
+  let running = 0
+  for (const segment of draft.segments) {
+    firstOrdinal.push(running)
+    running += segment.length
+  }
+
+  const turns: DraftTurn[] = []
+  let afterLegs = 0
+  stretches.forEach((stretch, at) => {
+    const base = firstOrdinal[segmentOf[at]] ?? 0
+    const taps = stretch.points.length
+    const lastStretch = at === stretches.length - 1
+    const add = (tap: number, endsStretch: boolean) => {
+      turns.push({ afterLegs, ordinal: base + tap, label: base + tap + 1, endsStretch })
+    }
+    // Where the walk starts. It is not a turn and it is a tap, which is the
+    // distinction this list makes and the turn CARD list does not.
+    add(0, false)
+    stretch.route.legsPerPair.forEach((legs, pair) => {
+      afterLegs += legs
+      const tap = tapEndingPair(pair, taps, draft)
+      const last = pair === stretch.route.legsPerPair.length - 1
+      add(tap, last && !lastStretch)
+    })
+  })
+  return turns
+}
+
 function gapsAcross(
   draft: DayHikeDraft,
   legsBySegment: ReadonlyMap<number, number>,

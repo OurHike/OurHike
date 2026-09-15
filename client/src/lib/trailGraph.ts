@@ -192,6 +192,20 @@ export interface GraphRoute {
   /** Legs per organization, which frame `1j` tallies while the hiker builds. */
   legsBySource: Array<{ source: string | null; legs: number }>
   /**
+   * How many legs each TAPPED PAIR contributed, in walking order - so
+   * `[2, 1, 3]` is a three-pair walk whose first pair became two rows.
+   *
+   * It exists because a tap is a leg boundary the squash does not cross (see
+   * {@link routeThrough}), and a surface listing the walk has to know WHICH
+   * boundaries are the hiker's own: the running sum names the leg each of
+   * their points falls after. `lib/dayHikeDraft.ts` turns that into the
+   * placed turns the route order interleaves, exactly as it does for gaps.
+   *
+   * One entry for a route with one pair, which is what `routeBetween`
+   * builds. `legs.length` is always its sum.
+   */
+  legsPerPair: number[]
+  /**
    * Ascent and descent over this walk, or null when this phone cannot price it
    * - no elevation artifact fetched, or an edge of the walk that nobody has
    * measured. See {@link routeClimb}; the null carries all the way to the
@@ -1437,6 +1451,8 @@ function assemble(
     // these across its taps and never merges them.
     sections: [section],
     legsBySource: tallyBySource(legs),
+    // One pair, which is what this builds.
+    legsPerPair: [legs.length],
     // Priced here rather than by the caller, off the SAME walkedMetres the
     // legs are priced from - a second opinion about how much of an edge was
     // walked is the drift #1002 was about.
@@ -1545,6 +1561,7 @@ export function routeThrough(
   const edgeIndices: number[] = []
   const sections: RouteSection[] = []
   const legs: RouteLeg[] = []
+  const legsPerPair: number[] = []
   const sectionClimbs: Array<RouteClimb | null> = []
   let metres = 0
   for (let step = 0; step + 1 < points.length; step += 1) {
@@ -1581,6 +1598,9 @@ export function routeThrough(
       }
       legs.push(copied)
     }
+    // What this pair contributed, so a surface listing the walk can find the
+    // hiker's own boundaries in a flat list of legs. See `legsPerPair`.
+    legsPerPair.push(section.legs.length)
   }
   return {
     legs,
@@ -1588,6 +1608,7 @@ export function routeThrough(
     edgeIndices,
     sections,
     legsBySource: tallyBySource(legs),
+    legsPerPair,
     // Sections ADD, exactly as their legs do above and for the same reason:
     // the edge shared across a join was deduplicated for DRAWING, but both
     // sections really walked their span of it and really climbed it. One

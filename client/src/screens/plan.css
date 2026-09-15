@@ -3491,6 +3491,33 @@
   color: var(--fg-3);
 }
 
+/* THE HIKER'S OWN POINT, and it has to read as a different KIND of thing from
+   the trail rows around it - that is the whole job, because since 2026-09-15
+   two rows naming one trail are separated by nothing else. Quieter than a leg
+   (it is not ground walked) and not sunken like a stop (it is not a place), so
+   it reads as a divider that happens to carry a control. */
+.day-hike-panel__row--turn {
+  color: var(--fg-3);
+}
+
+.day-hike-panel__row--turn .day-hike-panel__row-name {
+  font-weight: 500;
+  color: var(--fg-3);
+}
+
+/* The number a hiker matches against the mark on the map. Ringed rather than
+   bare so it reads as the same object the map draws. */
+.day-hike-panel__turn-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 1.4rem;
+  height: 1.4rem;
+  border: 1px solid var(--border-1);
+  border-radius: 999px;
+  background: var(--bg-surface);
+}
+
 .day-hike-panel__row-index {
   flex: 0 0 1.4rem;
   font-variant-numeric: tabular-nums;
@@ -3543,36 +3570,6 @@
   border: 1px solid var(--border-1);
   border-radius: 10px;
   cursor: pointer;
-}
-
-.day-hike-panel__turn-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.day-hike-panel__turn {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-height: var(--min-touch-target);
-  padding: 0 0.7rem;
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--fg-2);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-1);
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.day-hike-panel__turn-x {
-  color: var(--fg-3);
 }
 
 /* OUTSIDE the collapsible body, so a hiker can change what the map labels

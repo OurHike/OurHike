@@ -134,10 +134,17 @@
 // used to end where the publisher's line ended - `trail_id` is one id per
 // source FEATURE - so one trail drawn as three lines printed three rows all
 // reading the same name and the same blaze, each holding a third of the
-// miles. Legs group on the name and the blaze now, so the
-// list in this frame carries no consecutive pair a reader cannot tell apart,
-// and the "N legs" in the panel's summary and in the bar below it counts the
-// rows the hiker can actually see.
+// miles. Legs group on the name and the blaze now, so the seams between a
+// publisher's lines are gone from the list, and the "N legs" in the panel's
+// summary and in the bar below it counts the rows the hiker can actually see.
+//
+// TWO ROWS OF ONE TRAIL ARE STILL LEGAL, AND THIS FRAME MAY HOLD A PAIR. The
+// same day's second rule: the squash stops at a point the hiker placed, so
+// consecutive rows naming one trail mean a tap divides them - and the tap is
+// a row of its own between them, which is what makes the pair readable. If
+// this frame shows two rows of the A.T. with a numbered tap row between them,
+// that is the rule working rather than the defect returning. What would be
+// the defect is two such rows with NOTHING between them.
 //
 // The frame is evidence for the rows and NOT for the defect, and that is
 // measured rather than hedged - three times, on three different rules.
@@ -187,6 +194,41 @@ const ZOOM_STEPS = 2
 const RING_RADIUS_PX = 64
 const RING_TAPS = 16
 
+/**
+ * How many taps the ring keeps once they start landing.
+ *
+ * THE RING IS A SEARCH, NOT A PLAN. It exists because a headless drive cannot
+ * see where the trail runs, so it fires taps around the pin until some of them
+ * hit; every one that lands becomes a point of the walk. That was invisible
+ * while `routeThrough` merged legs across taps - the whole ring collapsed into
+ * two or three rows - and since 2026-09-15 it is not: a tap is a leg boundary,
+ * so sixteen landed taps photograph as sixteen rows of one trail, most of them
+ * 0.0 mi apart. Measured on `e416f4f6`: eight landed and the frame showed four
+ * consecutive "Appalachian National Sceni…" rows at mile 0.2-0.3.
+ *
+ * That is a robot's tapping, not a hiker's, and a screenshot of it says
+ * something false about what the builder does with a plan. So the ring stops
+ * as soon as it has a walk. Three, because two is the fewest that routes at
+ * all and a third proves the list carries more than one row - which is the
+ * thing this frame is evidence for.
+ */
+const TAPS_WANTED = 3
+
+/**
+ * How many ring positions to skip after one lands.
+ *
+ * Neighbouring positions are 23 px apart, so two that both land make a leg of
+ * a few hundred feet - measured before this existed: "Hurst, 0.0 mi, mile
+ * 0.0-0.0". True, and a poor thing to photograph, because the frame is meant
+ * to show what a plan looks like rather than what a tolerance is. Three
+ * positions on is 69 px, which at this zoom (1.8 m per pixel, the header) is
+ * about 125 m of walking between the hiker's points.
+ *
+ * It also reaches the ring's SECOND crossing of the trail, which is what
+ * makes the walk cross the shelter rather than stop short of it.
+ */
+const SKIP_AFTER_LANDING = 3
+
 /** MapLibre's keyboard handler zooms on `=` / `+` while the canvas has focus;
  *  the ease is about 300 ms a step, and nothing in the DOM says when it has
  *  settled, so this is the one clock in the drive. */
@@ -223,8 +265,14 @@ export async function walkInHarriman(page) {
   if (box === null) return false
   const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
 
+  // How many points the walk holds, read off the panel's own rows rather than
+  // counted here: a tap that lands on nothing places no point, and only the
+  // app knows which did.
+  const placedTaps = () => page.locator('.day-hike-panel__row--turn').count()
+
   const ring = async () => {
     for (let i = 0; i < RING_TAPS; i += 1) {
+      const before = await placedTaps()
       const angle = (i / RING_TAPS) * 2 * Math.PI
       await page.mouse.click(
         centre.x + RING_RADIUS_PX * Math.cos(angle),
@@ -233,6 +281,10 @@ export async function walkInHarriman(page) {
       // Spaced so two neighbours never read as a double-click, which MapLibre
       // would answer with a zoom rather than a tap.
       await page.waitForTimeout(200)
+      const after = await placedTaps()
+      // Enough walk to photograph - stop, for the reason TAPS_WANTED gives.
+      if (after >= TAPS_WANTED) return
+      if (after > before) i += SKIP_AFTER_LANDING
     }
   }
 

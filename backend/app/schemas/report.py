@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.time import UtcDatetime
 from app.models.profile import MODERATOR_ROLES, Profile
@@ -92,7 +92,45 @@ class ReportCreate(BaseModel):
 
     reporter_type: ReporterType
     note: NoteText | None = None
-    photo_url: str | None = None
+
+    # ACCEPTED AND IGNORED, WHICH IS NOT THE SAME AS SUPPORTED (#1447 review).
+    #
+    # A caller could name an object it had never uploaded, and `create_report`
+    # stored the string - which made `photo_count`'s invariant
+    # ("`photo_url` is photo 1's key exactly when `photo_count >= 1`",
+    # app/routers/reports.py) false on any row that used it. Nothing was
+    # reachable through it, because the read path derives the key and gates on
+    # the count; what it produced was a column that decided nothing and
+    # contradicted the column beside it.
+    #
+    # `PUT /reports/{id}/photos/{n}` is the only writer now, so the pair cannot
+    # come apart. tests/test_report_photo_set.py holds both halves: sending
+    # this is still a 201, and the value is not stored.
+    #
+    # STILL DECLARED, because removing it is a contract break and this is not
+    # the place to take one. Six retained baselines carry the field
+    # (openapi_baselines/), and tests/test_openapi_compat.py refuses a request
+    # field's removal on the grounds that an old client may still send it. The
+    # field is therefore deprecated rather than deleted, exactly the way the
+    # `photo_url` COLUMN is kept written through a rollout under
+    # RELEASING.md §8c - same discipline, same reason, and a later release
+    # contracts both together.
+    photo_url: str | None = Field(default=None, deprecated=True)
+
+    # WHERE THE HIKER SAYS IT WAS, when the phone cannot say (#1439, D16).
+    #
+    # Sent only with no `lat`/`lon` and no `poi_id` - a report filed by a
+    # phone that never got a fix, about a place it can name no other way.
+    # **Never geocoded, here or anywhere.** A typed name resolved to
+    # coordinates would be a confident wrong dot on every phone that
+    # downloads the report, which is the same failure the omitted-not-zeroed
+    # rule on `lat`/`lon`/`mile` exists to prevent. A moderator places it.
+    #
+    # `NoteText` rather than a bare `str`, so it is bounded and stripped the
+    # way the note beside it is - it is prose a hiker typed, from the same
+    # keyboard, on the same screen.
+    place_words: NoteText | None = None
+
     authored_at: datetime | None = None
 
     # Only meaningful for `thanks`; both optional, both may be absent.
@@ -190,6 +228,20 @@ class ReportOut(BaseModel):
     timestamp: UtcDatetime
     note: str | None
     photo_url: str | None
+
+    # How many photos this report holds (#1439). Public for `photo_url`'s own
+    # reason: it says how many objects to ask for, and each one is fetched
+    # through `GET /reports/{id}/photos/{n}`, which runs the same visibility
+    # check the report itself did. Knowing there are three is not being shown
+    # three.
+    photo_count: int = 0
+
+    # The hiker's own words for where this was, on a report with no
+    # coordinates (#1439). Public alongside `note`, which is the same thing:
+    # prose a hiker typed about what they found, on a report whose audience
+    # `visibility` already decides.
+    place_words: str | None = None
+
     follow_up: Any | None
     status: ReportStatus
     visibility: Visibility
@@ -264,6 +316,8 @@ class ReportOut(BaseModel):
             timestamp=report.timestamp,
             note=report.note,
             photo_url=report.photo_url,
+            photo_count=report.photo_count,
+            place_words=report.place_words,
             follow_up=report.follow_up,
             status=report.status,
             visibility=report.visibility,

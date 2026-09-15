@@ -113,7 +113,7 @@ import {
   type ReportWindowAnchor,
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
-import { FIT_PADDING } from './map/MapView'
+import { FIT_PADDING } from './map/fitPadding'
 import { trailIdForSource } from './map/trailBadges'
 import { chosenSystemSources } from './map/nearbyTrails'
 import type { TappedLine } from './map/lineTaps'
@@ -261,6 +261,7 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
+import { ReportPickBar } from './chrome/ReportPickBar'
 import { SectionPlanner } from './chrome/SectionPlanner'
 import { nearestStop } from './lib/cascade'
 import { mileMarker, stopLabel } from './lib/planDisplay'
@@ -4185,6 +4186,45 @@ function App() {
    * describe the same day differently - the alert sentences' own rule, at a
    * different grain.
    */
+  /**
+   * THE STRETCH THE CREWS SECTION MEASURES AGAINST (#1440, D18).
+   *
+   * On a long hike this is the miles STILL TO WALK, and never past the hike's
+   * own end - a crew beyond Katahdin is not on this hike. Start is the
+   * hiker's fix when there is one, because the miles behind them are not
+   * miles they will walk; with no fix it is the end they set off from, which
+   * is the whole hike and is honest rather than optimistic.
+   *
+   * NULL IN DAY-HIKE MODE, AND THAT IS A NAMED SHORTFALL rather than a
+   * decision. Frame 14k's headline case is a day hiker reading "mile 4.1 of
+   * your walk", and the number is not available here: a `DayHike` stores
+   * segments and cached figures (lib/dayHikes.ts), not a span on the trail's
+   * mile axis, and crews are placed on that axis and nowhere else. A route
+   * that is genuinely off the corridor - a loop in Harriman - has no such
+   * span at all and must not be given one.
+   *
+   * What would settle it is locating a day hike's own route on the trail
+   * index the way `handleHikePointMapTap` locates a single tap, and keeping
+   * the answer null where too few of its points resolve. That is a piece of
+   * derivation this shell does not do yet, so rather than guess, the section
+   * renders nothing in day-hike mode and the crews stay one tap away in
+   * volunteer mode and on the map.
+   */
+  const crewWalk = useMemo(() => {
+    if (hikerMode !== 'long' || activeHike === null) return null
+    const ends = hikeEnds(activeHike, pois)
+    if (ends.low === null || ends.high === null) return null
+    const south = heading === 'SOBO'
+    const finish = south ? ends.low.mile : ends.high.mile
+    const from = south ? ends.high.mile : ends.low.mile
+    // Clamped into the hike rather than trusted: a fix off the corridor's
+    // ends would otherwise widen the stretch past what anybody is walking.
+    const at = fix?.mile
+    const start =
+      at === undefined ? from : Math.min(Math.max(at, ends.low.mile), ends.high.mile)
+    return { start, end: finish }
+  }, [hikerMode, activeHike, pois, heading, fix?.mile])
+
   const longHikeToday = useMemo((): LongHikeToday | null => {
     if (activeHike === null || hikerMode !== 'long') return null
     const today = localDay(now)
@@ -7199,6 +7239,91 @@ function App() {
   )
 
   /**
+   * THE REPORT'S CROSSHAIR (#1439, D16), in three pieces.
+   *
+   * `reportPointOnMap` - the hiker took "Change" on the form's location line
+   * and is aiming at the map. `reportAiming` - the point they have tapped,
+   * not yet kept, which is what lets the bar NAME THE MILE BEFORE IT IS KEPT
+   * rather than committing on the first touch. `reportPlacedAt` - the answer,
+   * which overrides whatever the form would otherwise have said.
+   *
+   * THE SAME SHAPE AS THE HIKE SET-UP'S MAP PICK (#1329), and for the same
+   * reason: the form is holding a typed note and attached photos, so it
+   * stands aside rather than unmounting to take one tap. What is different is
+   * that this pick CANNOT BE REFUSED. A route stop off the corridor is
+   * meaningless and `RouteMapPickBar` says so; a report off the corridor is
+   * ordinary - describeLocation's second state is exactly that - so every tap
+   * is placeable and lib/placement.ts names which of the three answers it got.
+   */
+  const [reportPointOnMap, setReportPointOnMap] = useState(false)
+  const [reportAiming, setReportAiming] = useState<{ lat: number; lon: number } | null>(
+    null,
+  )
+  const [reportPlacedAt, setReportPlacedAt] = useState<ReportAnchor | null>(null)
+
+  const handleReportChangeLocation = useCallback(() => {
+    setReportPointOnMap(true)
+    setReportAiming(null)
+    // The map is drawn where nothing else has taken the screen, so a "tap the
+    // trail" bar over a held map would be the dead door #1329 found. The
+    // hiker asked to choose on the map, so the map is what they get.
+    setActiveTab('map')
+  }, [setActiveTab])
+
+  const handleCancelReportPoint = useCallback(() => {
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [])
+
+  /** Kept: the aimed point becomes the report's location, and the form comes
+   *  back with its note and its photos exactly as they were. */
+  const handleKeepReportPoint = useCallback(() => {
+    if (reportAiming === null) return
+    setReportPlacedAt(pressAnchor(reportAiming, trailIndex))
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [reportAiming, trailIndex])
+
+  /**
+   * THE PICK DIES WITH THE FORM IT BELONGS TO.
+   *
+   * `reportCrosshairOut` below makes the bar underivable without a form, which
+   * is what stops it being drawn over nothing. It does NOT stop the FLAG
+   * outliving the form, and that difference stranded the whole flow: aim, then
+   * leave by a tab rather than by Keep or Cancel, and `reportPointOnMap` stayed
+   * true for the rest of the session - so every later form opened stood aside,
+   * hidden behind a crosshair on a tab the hiker was not looking at. Found by
+   * review, and asserted now in App.reportPlace.test.tsx.
+   *
+   * Keyed on the form alone and deliberately NOT on the tab. `handleReportChangeLocation`
+   * sets this flag and selects the map in one handler, so both land in one
+   * render - but keying the reset on the tab as well would still be one
+   * ordering assumption away from disarming the pick the hiker just asked for.
+   * The tab belongs in the derivation, which is a render and cannot race.
+   */
+  useEffect(() => {
+    if (reporting?.step === 'form') return
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [reporting?.step])
+
+  /**
+   * Open the six-tile report window (#1438, D15).
+   *
+   * `useCallback` rather than the inline arrow the other two doors use, and
+   * the reason is the map: map/MapView.tsx re-attaches the whole chrome when
+   * this identity changes, so a handler minted per render would tear down and
+   * rebuild compass, locate, report and the scale bar on every one.
+   *
+   * The window is where BOTH doors land, deliberately. The type is what the
+   * app asks first, and the location rides along - the fix for Today's row and
+   * for this one, the pressed point for the long press, a place's id when the
+   * report started from a card. A door that asked "where?" before "what?"
+   * would be a new step in front of a flow that already has the answer.
+   */
+  const handleStartReport = useCallback(() => setReporting({ step: 'window' }), [])
+
+  /**
    * Ask who is reporting, at most once a session and never twice over.
    *
    * Called from both paths that reach the step: straight after a report when
@@ -7216,13 +7341,18 @@ function App() {
   }, [preferences.reporter_type])
 
   const handleSubmitReport = useCallback(
-    async ({ authoredAt, photo, ...draft }: ReportFormSubmission) => {
+    async ({ authoredAt, photos, ...draft }: ReportFormSubmission) => {
       // Saved first, always, and before authentication is so much as
       // mentioned. Everything below this line can fail without costing the
-      // hiker what they just wrote - the photo included, which is why it is
-      // pulled out of the draft here and stored as bytes beside it (#234).
-      await beginContribution(draft, authoredAt, photo)
+      // hiker what they just wrote - the photos included, which is why they
+      // are pulled out of the draft here and stored as bytes beside it
+      // (#234, and #1439 for why there is more than one).
+      await beginContribution(draft, authoredAt, photos)
       setReporting(null)
+      // The crosshair's answer belongs to the report that has just been
+      // filed, so it goes with it. Left standing, the NEXT report opened
+      // without a fix would start life pinned where the last one was.
+      setReportPlacedAt(null)
 
       const next = stepAfterSaving({
         hasAccount: account !== null,
@@ -8339,6 +8469,9 @@ function App() {
   // typing or deciding - and while one is up the downloads window is not
   // rendered, which is the behaviour the early returns gave it.
   let flowScreen: ReactNode = null
+  /** The long report form, rendered as an overlay at the foot of this
+   *  component rather than in `flowScreen` - see where it is assigned. */
+  let reportFormNode: ReactNode = null
   if (authFlow !== null) {
     flowScreen =
       authFlow.screen === 'email' ? (
@@ -8404,7 +8537,21 @@ function App() {
     // only by `bad_hikers` and `thanks`, both of which are long forms with
     // things to type, and neither of which files on a tap.
     if (reporting.step === 'form') {
-      flowScreen = (
+      // AN OVERLAY, NOT A `flowScreen`, SINCE #1439, and the reason is one
+      // tap. The form's "Change" drops a crosshair on the map, and a
+      // `flowScreen` takes the map subtree out of flow - so there would be
+      // nothing behind it to aim at. Worse, moving the form between the two
+      // slots to take the tap would REMOUNT it, costing the hiker the note
+      // they typed and the photos they attached.
+      //
+      // This is #1329's call on the hike set-up window, arrived at again for
+      // the same reason and stated there: "an overlay that leaves what is
+      // behind it mounted belongs down there, not in `flowScreen`". On a
+      // phone nothing moves - `.reporting-window` fills the viewport the way
+      // the flow slot did - and `--stood-aside` hides it by visibility alone
+      // while the tap is taken, keeping its scroll position and its focus
+      // history.
+      reportFormNode = (
         <ReportForm
           type={reporting.type}
           trailName={preferences.trail_name}
@@ -8421,22 +8568,41 @@ function App() {
           // location. The mile is separately unknown when the fix is off the
           // centerline or the trail index has not been downloaded yet.
           location={
-            reporting.anchor !== undefined
+            // THE CROSSHAIR'S ANSWER OUTRANKS BOTH (#1439): a hiker who took
+            // "Change" and kept a point has said where this is, and neither
+            // the card it started from nor the fix underneath them is a
+            // better answer than the one they just gave.
+            reportPlacedAt !== null
               ? {
-                  lat: reporting.anchor.lat,
-                  lon: reporting.anchor.lon,
-                  ...(reporting.anchor.mile !== undefined
-                    ? { mile: reporting.anchor.mile }
+                  lat: reportPlacedAt.lat,
+                  lon: reportPlacedAt.lon,
+                  ...(reportPlacedAt.mile !== undefined
+                    ? { mile: reportPlacedAt.mile }
                     : {}),
                 }
-              : gps.status === 'located'
-                ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
-                : null
+              : reporting.anchor !== undefined
+                ? {
+                    lat: reporting.anchor.lat,
+                    lon: reporting.anchor.lon,
+                    ...(reporting.anchor.mile !== undefined
+                      ? { mile: reporting.anchor.mile }
+                      : {}),
+                  }
+                : gps.status === 'located'
+                  ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
+                  : null
           }
           poiId={reporting.anchor?.poiId}
           online={online}
+          // The crosshair (#1439, D16). Offered whatever the location line
+          // currently says: a mile can be the wrong mile, and a hiker who
+          // walked on before filing is the case this exists for.
+          onChangeLocation={handleReportChangeLocation}
           onSubmit={(submission) => void handleSubmitReport(submission)}
-          onCancel={() => setReporting(null)}
+          onCancel={() => {
+            setReporting(null)
+            setReportPlacedAt(null)
+          }}
         />
       )
     }
@@ -8678,6 +8844,44 @@ function App() {
    *   - both at once, which is the ordinary desktop case for placing a point.
    */
   const hikeWindowHidesMap = hikeWindowOpen && !hikePointOnMap && !isDesktop
+
+  /**
+   * The report form's half of the same pair (#1439), and the same two
+   * questions #1329 separated.
+   *
+   * HELD is about `visibility`: right under a phone's full-bleed form, wrong
+   * while the crosshair is out, because then the map is the screen. REACHABLE
+   * is about the accessibility tree: never while the form is up and covering
+   * the map, always while the pick is in flight, because then the map is what
+   * the hiker is aiming at.
+   */
+  const reportFormOpen = reportFormNode !== null
+  /**
+   * The crosshair is out, there is a form for it to come back to, AND the map
+   * is the screen it would be drawn on.
+   *
+   * Derived rather than reset, which is the same argument the photo tiles
+   * make one file over: `reportPointOnMap` left true with no form behind it
+   * would draw a pick bar over the map that keeps nothing and answers to
+   * nobody, and the way to make that impossible is to make it underivable
+   * rather than to remember to clear a flag on every path that closes the
+   * form.
+   *
+   * **THE TAB IS THE THIRD TERM BECAUSE THE FIRST TWO WERE NOT ENOUGH**, and
+   * the gap is worth keeping written down: the bar lives in the map screen's
+   * own sheet slot, so on any other tab it is in the tree and on nobody's
+   * screen - while the form, standing aside for it, is `inert` and
+   * `aria-hidden`. A hiker who aimed and then tapped Today got a Today with
+   * no form, no bar and no way back to either. Both premises held; the
+   * hiker just could not see the thing either of them was about.
+   *
+   * So the rule the two of them were reaching for, stated properly: the
+   * crosshair exists only where a hiker can both see it and answer it. The
+   * effect beside `handleKeepReportPoint` is the other half - this keeps the
+   * render honest, that keeps the flag from outliving its form.
+   */
+  const reportCrosshairOut = reportPointOnMap && reportFormOpen && activeTab === 'map'
+  const reportFormHidesMap = reportFormOpen && !reportCrosshairOut
 
   const hikeWindow = hikeWindowOpen ? (
     <>
@@ -8965,10 +9169,16 @@ function App() {
       pace={pace}
       opportunities={workProjects}
       opportunitiesAsOf={workProjectsGeneratedAt}
+      gpsMile={fix?.mile ?? null}
+      todayWalk={crewWalk}
+      // The map "view" frame 14i draws is the Map tab (#1440): one MapLibre
+      // instance in this app, and the workday layer, the in-view list and its
+      // "3 of 4" count are already there.
+      onSeeCrewsOnMap={showMap}
       onOpenVolunteer={() => setMorePage('volunteer')}
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
-      onStartReport={() => setReporting({ step: 'window' })}
+      onStartReport={handleStartReport}
       // A thanks goes straight to its form rather than through the window: it
       // is not a problem, and the window is a list of problems
       // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
@@ -9356,7 +9566,7 @@ function App() {
                   onStepAwayFromHike={() => setStepAwayOpen(true)}
                   onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
                   onEditHike={() => setPickingHike(true)}
-                  onStartReport={() => setReporting({ step: 'window' })}
+                  onStartReport={handleStartReport}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   // The registry gets the gate moderation has (#1373, D4):
@@ -9382,10 +9592,6 @@ function App() {
                       passedToday={passedPlacesToday}
                       onOpenPlace={handleOpenPassedPlace}
                       units={units}
-                      opportunities={workProjects}
-                      opportunitiesAsOf={workProjectsGeneratedAt}
-                      gpsMile={fix?.mile ?? null}
-                      now={now}
                     >
                       <VolunteerHours
                         records={hoursRecords}
@@ -9758,11 +9964,21 @@ function App() {
           // always, while a map pick is in flight, because then the map is
           // what the hiker is aiming at.
           className={
-            screenOver !== null || hikeWindowHidesMap ? 'app__map-held' : undefined
+            screenOver !== null || hikeWindowHidesMap || reportFormHidesMap
+              ? 'app__map-held'
+              : undefined
           }
-          inert={screenOver !== null || (hikeWindowOpen && !hikePointOnMap) || undefined}
+          inert={
+            screenOver !== null ||
+            (hikeWindowOpen && !hikePointOnMap) ||
+            reportFormHidesMap ||
+            undefined
+          }
           aria-hidden={
-            screenOver !== null || (hikeWindowOpen && !hikePointOnMap) || undefined
+            screenOver !== null ||
+            (hikeWindowOpen && !hikePointOnMap) ||
+            reportFormHidesMap ||
+            undefined
           }
         >
           <ErrorBoundary
@@ -9922,6 +10138,10 @@ function App() {
               // attaching it regardless was a second high-accuracy watch and a
               // permission prompt behind this preference's back.
               locationEnabled={locationAllowed}
+              // THE MAP'S NAMED DOOR (#1438, frame 9c). Handed to the shared
+              // chrome rather than drawn on this screen, so it is the same
+              // control in the same place on every surface that mounts a map.
+              onReport={handleStartReport}
               closureAhead={closureAhead}
               advisoryAhead={advisoryAhead}
               warningsAhead={warningsAhead}
@@ -10046,13 +10266,20 @@ function App() {
                 // day-hike draft is. Stated as precedence rather than left
                 // to that, because "cannot happen" is how two interpreters
                 // end up on one touch - map/routeLayers.ts's rule.
-                hikePointOnMap
-                  ? handleHikePointMapTap
-                  : targetRequest !== null ||
-                      (dayHike === null &&
-                        routeBuilder.mapScreen.onRouteTap === undefined)
-                    ? undefined
-                    : handleMapTap
+                // THE REPORT'S CROSSHAIR OUTRANKS EVERYTHING (#1439), for
+                // the reason a hike point outranks the builders: it is armed
+                // from a form standing over the whole app, so nothing else
+                // can be mid-gesture underneath it. Aiming only - the tap
+                // names a point, and the bar's Keep is what commits it.
+                reportCrosshairOut
+                  ? setReportAiming
+                  : hikePointOnMap
+                    ? handleHikePointMapTap
+                    : targetRequest !== null ||
+                        (dayHike === null &&
+                          routeBuilder.mapScreen.onRouteTap === undefined)
+                      ? undefined
+                      : handleMapTap
               }
               // Draw mode replaces the tap handler rather than joining it -
               // one interpreter per touch, which is routeLayers.ts's rule for
@@ -10102,7 +10329,27 @@ function App() {
                 )
               }
               routeSheet={
-                hikePointOnMap ? (
+                reportCrosshairOut ? (
+                  // The report's crosshair bar (#1439, frame 9f). It NAMES
+                  // THE MILE BEFORE IT IS KEPT, which is the whole difference
+                  // from the hike pick below: that one commits on the tap
+                  // because a refused tap is the only thing it has to say,
+                  // while here every tap is placeable and what a hiker needs
+                  // to see is WHICH of the three answers they got before they
+                  // agree to it.
+                  <ReportPickBar
+                    aiming={reportAiming}
+                    mile={
+                      reportAiming === null || trailIndex === null
+                        ? null
+                        : mileOnTrail(trailIndex, reportAiming)
+                    }
+                    knowsTrail={trailIndex !== null}
+                    units={units}
+                    onKeep={handleKeepReportPoint}
+                    onCancel={handleCancelReportPoint}
+                  />
+                ) : hikePointOnMap ? (
                   // The picker's map door, open: the same slim bar the route
                   // builder shows, saying what a tap will do while the map
                   // underneath is the whole screen. Its refusal is the same
@@ -10445,6 +10692,34 @@ function App() {
           onClear={handleClearDefaultPlace}
           onClose={() => setPlaceSheetOpen(false)}
         />
+      )}
+      {/* THE LONG REPORT FORM, over whatever screen the hiker was on (#1439).
+          Stood aside rather than unmounted while its crosshair is out, for
+          the reason screens/plan.css gives about the set-up window: it is
+          holding a note somebody typed and photos somebody attached, and
+          re-mounting it to take one tap is how that gets lost. */}
+      {reportFormNode !== null && (
+        <div
+          className={
+            reportCrosshairOut
+              ? 'reporting-window reporting-window--stood-aside'
+              : 'reporting-window'
+          }
+          // THE DIALOG ITSELF IS THE FORM, not this wrapper (see
+          // screens/ReportForm.tsx). This div only positions it, and a
+          // second `role="dialog"` around one would be two dialogs where
+          // there is one screen. What stays here is the pair that hides the
+          // whole layer while the crosshair is out.
+          // Out of reach as well as out of sight, which the hike window gets
+          // from `visibility: hidden` alone. Said explicitly here because
+          // this form has a Cancel and so does the pick bar in front of it,
+          // and two controls of the same name - one of them the wrong one -
+          // is a worse thing to hand a screen reader than a hidden subtree.
+          inert={reportCrosshairOut || undefined}
+          aria-hidden={reportCrosshairOut || undefined}
+        >
+          {reportFormNode}
+        </div>
       )}
       {flowScreen === null && !hikeWindowOpen && downloadsWindow}
 

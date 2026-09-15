@@ -9,6 +9,7 @@ import { preloadScreens } from './deferred'
 // the App harness loads every deferred screen before a test.
 beforeAll(() => preloadScreens())
 import { STANDARD_PACE } from '../lib/pace'
+import type { WorkProjectSummary } from '../lib/workProjects'
 
 // The Today screen's honesty contract, asserted where it renders: the mode
 // switch never collapses, "AHEAD" is only claimed with a direction, the
@@ -231,33 +232,39 @@ describe('the journal column', () => {
 })
 
 describe('the volunteer card', () => {
-  it('renders in the two modes that keep it - the deal the tab removal was made on, less one', () => {
-    // The deal (#1054) was every mode. The day-hike home gave its card up on
-    // the maintainer's read of the frame (2026-09-10): one more section at
-    // the foot of a page about today's walk, with More's volunteer row still
-    // the day hiker's door. The other two modes hold the deal as it was.
-    for (const mode of ['long', 'volunteer'] as const) {
-      const { unmount } = render(<Today {...props({ mode })} />)
-      expect(
-        screen.getByText('Volunteer', { selector: '.today__volunteer-eyebrow' }),
-      ).toBeInTheDocument()
-      unmount()
-    }
+  it('renders on the long hike, which is the mode that still gets a card', () => {
+    // The deal (#1054) was every mode, and it has been narrowed twice on the
+    // same argument - a card whose job is to name one workday and send you
+    // elsewhere. The day-hike home gave it up on the maintainer's read of the
+    // frame (2026-09-10); volunteer mode gave it up to #1440's crews screen,
+    // which is the card's content on the screen where it is the subject. A
+    // long hike keeps it: months of living beside a crew, on a screen that is
+    // about the hike rather than about the crew.
+    render(<Today {...props({ mode: 'long' })} />)
+
+    expect(
+      screen.getByText('Volunteer', { selector: '.today__volunteer-eyebrow' }),
+    ).toBeInTheDocument()
   })
 
-  it('leads the column in volunteer mode', () => {
+  it('is replaced by the crews screen in volunteer mode, and leads the column', () => {
+    // D22: in volunteer mode Today IS the crews screen. Not a card linking to
+    // one - this is the recruitment moment the whole feature exists for, and
+    // it happens on a screen the hiker already opens.
     render(<Today {...props({ mode: 'volunteer' })} />)
+
+    expect(document.querySelector('.today__card--volunteer')).toBeNull()
 
     const paper = document.querySelector('.today__paper')!
     const sections = [...paper.querySelectorAll('.today__section')]
-    const volunteerAt = sections.findIndex(
-      (section) => section.querySelector('.today__card--volunteer') !== null,
+    const crewsAt = sections.findIndex(
+      (section) => section.querySelector('.today__crews') !== null,
     )
     const journalAt = sections.findIndex(
       (section) => section.textContent?.includes('Sartain Spring') ?? false,
     )
-    expect(volunteerAt).toBeGreaterThanOrEqual(0)
-    expect(volunteerAt).toBeLessThan(journalAt)
+    expect(crewsAt).toBeGreaterThanOrEqual(0)
+    expect(crewsAt).toBeLessThan(journalAt)
   })
 
   it('says "could not check" differently from "no club has asked"', () => {
@@ -340,62 +347,6 @@ describe('the rest of the column', () => {
     )
     expect(hikesAt).toBeGreaterThanOrEqual(0)
     expect(hikesAt).toBeLessThan(journalAt)
-  })
-
-  it('offers both halves of the crew relationship, at equal weight', async () => {
-    // THIS USED TO BE ONE BUTTON (#1133), reading "Note something for the
-    // crew", and saying thanks was the seventh row inside the problem picker
-    // under a list of hazards. Reporting a problem and thanking a maintainer
-    // are two sides of the same relationship - the volunteer card is directly
-    // above this row - and burying one under the other was costing it.
-    const onStartReport = vi.fn()
-    const onSayThanks = vi.fn()
-    const user = userEvent.setup()
-    render(<Today {...props({ onStartReport, onSayThanks })} />)
-
-    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
-    expect(onStartReport).toHaveBeenCalled()
-
-    await user.click(screen.getByRole('button', { name: 'Say thanks' }))
-    expect(onSayThanks).toHaveBeenCalled()
-  })
-
-  it('keeps the crew card and its two doors off the day-hike home', () => {
-    // The maintainer's read of the day-hike frame (2026-09-10): the card and
-    // the pair under it were two more sections to get mixed up in, on a page
-    // about today's walk. A day hiker reports from the map's press plate or
-    // from More; the other two modes keep both, and the outbox line stays
-    // everywhere because what is waiting to send is true whatever the day is
-    // for.
-    const { rerender } = render(
-      <Today {...props({ mode: 'day', queuedReportCount: 2 })} />,
-    )
-
-    expect(screen.queryByRole('button', { name: 'Report a problem' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Say thanks' })).toBeNull()
-    expect(screen.queryByText('The trail crew')).toBeNull()
-    expect(screen.getByTestId('today-outbox')).toHaveTextContent('2 waiting to send')
-
-    rerender(<Today {...props({ mode: 'long', queuedReportCount: 2 })} />)
-    expect(screen.getByRole('button', { name: 'Report a problem' })).toBeInTheDocument()
-    expect(screen.getByText('The trail crew')).toBeInTheDocument()
-  })
-
-  it('gives the two buttons the same width to share', () => {
-    // The design handoff's own implementation note asked for this to be
-    // CHECKED rather than assumed: `flex: 1` did nothing in its prototype,
-    // because the Button copy there swallowed the style prop, and the two came
-    // out 176px against 129px. This app's Button spreads `style` last, so it
-    // lands - and this is the assertion that says so, because jsdom does no
-    // layout and a rendered-width check is not available here.
-    //
-    // Equal weight is the design intent; equal WIDTH is how a row of two
-    // solid fills actually delivers it.
-    render(<Today {...props()} />)
-
-    for (const name of ['Report a problem', 'Say thanks']) {
-      expect(screen.getByRole('button', { name })).toHaveStyle({ flex: '1' })
-    }
   })
 
   it('says what is waiting, and gives it somewhere to go', () => {
@@ -1115,5 +1066,395 @@ describe('a walk left open (#1373, frame 6d)', () => {
     cleanup()
     render(<Today {...props({ mode: 'day' })} />)
     expect(screen.queryByRole('region', { name: 'A walk is still open' })).toBeNull()
+  })
+})
+
+// --- The named door for reporting (#1438, frame 9b, D15) -------------------
+
+describe("Today's report door", () => {
+  // D15: reporting was a seventh encounter-only surface - a long press nobody
+  // is told about, or two taps into More -> Contribute. Today gets a named
+  // door because Today is the screen a hiker already has open when something
+  // is wrong in front of them, and the one screen in the app that is about
+  // right now.
+
+  function door(name: string): HTMLElement {
+    return screen.getByRole('button', { name: new RegExp(`^${name}`) })
+  }
+
+  it('is present in every mode, which is what makes it a door', async () => {
+    // The pair #1133 added was deliberately off the day-hike home (maintainer,
+    // 2026-09-10) - and that left a day hiker with the gesture and the errand
+    // and nothing named, which is the defect D15 is about. The maintainer's
+    // call was about the screen accumulating CREW sections; it is kept for the
+    // thanks half below, which is the half it was protecting.
+    for (const mode of ['day', 'long', 'volunteer'] as const) {
+      const onStartReport = vi.fn()
+      const user = userEvent.setup()
+      render(<Today {...props({ mode, onStartReport })} />)
+
+      await user.click(door('Report a problem'))
+      expect(onStartReport, `the report door under ${mode} mode`).toHaveBeenCalled()
+      cleanup()
+    }
+  })
+
+  it('says what a report is for, and that it works with no signal', () => {
+    // Verbatim from frame 9b. The second sentence is the one worth keeping:
+    // the commonest reason not to file from a ridge is believing it will fail.
+    render(<Today {...props()} />)
+
+    expect(door('Report a problem')).toHaveTextContent(
+      'A dry spring, a blowdown, a trail that is shut. Works with no signal.',
+    )
+    expect(screen.getByText('found something out here?')).toBeInTheDocument()
+  })
+
+  it('sits under the day rather than over it', () => {
+    // "Somebody on this screen is usually reading what is next, not filing,
+    // and a report row above the walk would be the app asking for work before
+    // it gives any." Asserted as DOM order against the journal, because jsdom
+    // does no layout and this is the fact the layout would express.
+    const { container } = render(<Today {...props()} />)
+
+    const journal = container.querySelector('.today__rule')
+    const reportDoor = door('Report a problem')
+    expect(journal).not.toBeNull()
+    expect(
+      journal!.compareDocumentPosition(reportDoor) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('scrolls with the column instead of floating over it', () => {
+    // "Never a floating button: it would cover the next-waypoint row it sits
+    // on, which is the row a walking hiker is reading." The door being inside
+    // the scrolling paper - rather than a sibling of it - is what says so.
+    const { container } = render(<Today {...props()} />)
+
+    expect(container.querySelector('.today__paper')).toContainElement(
+      door('Report a problem'),
+    )
+  })
+
+  it('keeps saying thanks at the same width and the same weight', () => {
+    // features/SAYING_THANKS.md: "beside 'Report a problem' at the same width
+    // and the same weight. The pair is the point ... an outline button beside
+    // a filled one would say, in the only language a button has, which of the
+    // two is the afterthought." Giving report a sub-line and an eyebrow is
+    // exactly the kind of change that could have broken that silently, so the
+    // two are the same component and this is what says so.
+    const { container } = render(<Today {...props({ mode: 'long' })} />)
+
+    const doors = Array.from(container.querySelectorAll('.today__door'))
+    expect(doors.map((d) => d.querySelector('.today__door-title')?.textContent)).toEqual([
+      'Report a problem',
+      'Say thanks',
+    ])
+  })
+
+  it('opens the thanks form from its own door', async () => {
+    const onSayThanks = vi.fn()
+    const user = userEvent.setup()
+    render(<Today {...props({ mode: 'long', onSayThanks })} />)
+
+    await user.click(door('Say thanks'))
+
+    expect(onSayThanks).toHaveBeenCalled()
+  })
+
+  it('keeps the thanks door off the day-hike home, and not the report door', () => {
+    // The 2026-09-10 call, narrowed to what it was actually protecting: a day
+    // hiker's home not accumulating crew sections. Thanking a crew is that;
+    // reporting a blowdown you are standing in front of is not.
+    render(<Today {...props({ mode: 'day', queuedReportCount: 2 })} />)
+
+    expect(screen.queryByRole('button', { name: /^Say thanks/ })).toBeNull()
+    expect(screen.queryByText('The trail crew')).toBeNull()
+    expect(door('Report a problem')).toBeInTheDocument()
+    expect(screen.getByTestId('today-outbox')).toHaveTextContent('2 waiting to send')
+  })
+})
+
+// --- Crews (#1440, D18–D22, frames 14g–14k) --------------------------------
+
+const CREW_DAY = new Date(2026, 8, 12, 7, 0)
+
+function crew(over: Partial<WorkProjectSummary> = {}): WorkProjectSummary {
+  return {
+    id: 'c1',
+    club_name: 'NY-NJ Trail Conference',
+    title: 'Sidehill and drainage, Wawayanda',
+    description: 'Rebuilding tread above the boardwalk.',
+    lat: 41.2,
+    lon: -74.4,
+    mile: 1351.0,
+    starts_on: '2026-09-12',
+    ends_on: '2026-09-12',
+    status: 'upcoming',
+    capacity: 12,
+    signup_mode: 'contact',
+    signup_contact: 'https://nynjtc.example/join',
+    ...over,
+  }
+}
+
+/** Today's props with a crew-shaped clock, since every date in this section
+ *  is read against `now` rather than against the file. */
+function crewProps(over: Partial<TodayProps> = {}): TodayProps {
+  return props({
+    now: CREW_DAY,
+    opportunitiesAsOf: CREW_DAY,
+    gpsMile: 1347.0,
+    ...over,
+  })
+}
+
+describe('Today in volunteer mode is the crews screen', () => {
+  it('leads with the crews out today, which is the only urgent part', () => {
+    render(<Today {...crewProps({ mode: 'volunteer', opportunities: [crew()] })} />)
+
+    expect(screen.getByText('Crews out today')).toBeInTheDocument()
+    // Twice, and deliberately: frame 14g's own note is that "everything
+    // upcoming is the same screen, further down". The block at the top
+    // answers "is anyone out RIGHT NOW"; the list below answers "what is
+    // coming", and a crew out today is both.
+    const out = document.querySelector('.today__crews')!
+    expect(
+      within(out as HTMLElement).getAllByText('Sidehill and drainage, Wawayanda'),
+    ).toHaveLength(2)
+    // The club's own channel, an introduction rather than an enrolment.
+    expect(
+      screen.getAllByRole('link', { name: 'Ask the crew about joining' })[0],
+    ).toHaveAttribute('href', 'https://nynjtc.example/join')
+  })
+
+  it('carries the switch and the window filter under it', () => {
+    render(<Today {...crewProps({ mode: 'volunteer', opportunities: [crew()] })} />)
+
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
+    expect(screen.getByRole('button', { name: 'Calendar' })).toBeInTheDocument()
+    for (const label of ['This weekend', 'Next 14 days', 'Next 30 days']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+  })
+
+  it('renders no kind-of-work chips at all, rather than guessing from titles', () => {
+    // D20. `WorkProjectSummary` has no `work_type`, and keyword-sniffing a
+    // club's own wording would file crews under labels nobody chose and hide
+    // them behind a chip that looks authoritative. Not greyed - absent.
+    render(<Today {...crewProps({ mode: 'volunteer', opportunities: [crew()] })} />)
+
+    for (const label of ['Maintenance', 'Clean-up', 'Monitoring', 'Education', 'Other']) {
+      expect(screen.queryByRole('button', { name: label })).toBeNull()
+    }
+  })
+
+  it('says which chip emptied the list rather than that nobody has asked', () => {
+    // Two absences that must never wear each other's words: a narrowed window
+    // is the hiker's own doing, and the honest-absence copy here would let
+    // them conclude no club has posted anything.
+    const user = userEvent.setup()
+    render(
+      <Today
+        {...crewProps({
+          mode: 'volunteer',
+          // Three weeks out: inside "Next 30 days" and outside the fortnight.
+          opportunities: [crew({ starts_on: '2026-10-05', ends_on: '2026-10-05' })],
+        })}
+      />,
+    )
+
+    expect(screen.getByText(/Nothing in “Next 14 days”/)).toBeInTheDocument()
+    expect(screen.queryByText(/No workdays are posted here yet/)).toBeNull()
+
+    return user.click(screen.getByRole('button', { name: 'Next 30 days' })).then(() => {
+      expect(screen.getByText('Sidehill and drainage, Wawayanda')).toBeInTheDocument()
+    })
+  })
+
+  it('replaces every view when the list could not be checked', () => {
+    // Never hedged row by row, and never only in the list: an empty calendar
+    // that means "no signal" and one that means "no club has asked" are
+    // opposite statements about the trail's people.
+    render(<Today {...crewProps({ mode: 'volunteer', opportunities: null })} />)
+
+    expect(screen.getByText(/needs signal to load/)).toBeInTheDocument()
+    expect(document.querySelector('.workday-calendar')).toBeNull()
+  })
+
+  it('replaces every view when the list is out of date', () => {
+    render(
+      <Today
+        {...crewProps({
+          mode: 'volunteer',
+          opportunities: [crew()],
+          // Four days before the bake's own clock - well past the ceiling.
+          opportunitiesAsOf: new Date(2026, 8, 8, 7, 0),
+        })}
+      />,
+    )
+
+    expect(screen.getByText(/out of date/)).toBeInTheDocument()
+    expect(screen.queryByText('Sidehill and drainage, Wawayanda')).toBeNull()
+  })
+
+  it('draws the month, and lists a tapped day beneath it', async () => {
+    const user = userEvent.setup()
+    render(<Today {...crewProps({ mode: 'volunteer', opportunities: [crew()] })} />)
+
+    await user.click(screen.getByRole('button', { name: 'Calendar' }))
+    expect(
+      screen.getByRole('grid', { name: /Crews in September 2026/ }),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '12, 1 crew' }))
+
+    expect(screen.getByText('Saturday 12 September')).toBeInTheDocument()
+    expect(
+      screen.getAllByText('Sidehill and drainage, Wawayanda').length,
+    ).toBeGreaterThan(0)
+  })
+
+  it('offers the map as a door that says where it goes', () => {
+    // Frame 14i draws a third VIEW; this app has one MapLibre instance, so
+    // what ships is the Map tab and a row that reads as a row. A third
+    // segment that navigated away would be a control lying about being a view.
+    const onSeeCrewsOnMap = vi.fn()
+    render(
+      <Today
+        {...crewProps({ mode: 'volunteer', opportunities: [crew()], onSeeCrewsOnMap })}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: /See the crews on the map/ }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Map' })).toBeNull()
+  })
+
+  it('keeps a door to the hiker\u2019s own half, which the card used to be', () => {
+    // D22 splits the two - Today answers "what is happening", the volunteer
+    // page answers "what have I done, and what can I hand back" - and the
+    // card this section replaced was the door to the second. Dropping both
+    // would have left a volunteer's own work reachable only from the More
+    // tab, and "summonable" is the review's own word for anything holding it.
+    const onOpenVolunteer = vi.fn()
+    render(
+      <Today
+        {...crewProps({ mode: 'volunteer', opportunities: [crew()], onOpenVolunteer })}
+      />,
+    )
+
+    screen.getByRole('button', { name: /^Your hours, and the places/ }).click()
+
+    expect(onOpenVolunteer).toHaveBeenCalled()
+  })
+})
+
+describe('crews while you are walking', () => {
+  const WALK = { start: 1347, end: 1357 }
+
+  it('places a crew as a mile of the walk, and names what a hiker will meet', () => {
+    render(
+      <Today
+        {...crewProps({
+          mode: 'day',
+          todayWalk: WALK,
+          opportunities: [crew({ mile: 1351.1 })],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('A crew on your walk today')).toBeInTheDocument()
+    expect(screen.getByText(/mile 4.1 of your walk/)).toBeInTheDocument()
+    // Trail information before it is an invitation.
+    expect(
+      screen.getByText(/Expect tools out and a possible short hold-up/),
+    ).toBeInTheDocument()
+  })
+
+  it('asks the long hike\u2019s question instead - the miles ahead, not the day', () => {
+    // A day hiker wants to know who they will meet on THIS walk; somebody
+    // three weeks into a thru-hike can time a crew they will reach on
+    // Thursday. Two questions, one section, and the mode decides which is
+    // being asked - so the long hike's rows carry dates where the day's say
+    // "today", and no sentence promises a hold-up on a walk nobody is on yet.
+    render(
+      <Today
+        {...crewProps({
+          mode: 'long',
+          todayWalk: WALK,
+          opportunities: [
+            crew({ mile: 1351.1, starts_on: '2026-09-17', ends_on: '2026-09-17' }),
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('Crews on the miles ahead')).toBeInTheDocument()
+    // Scoped to the section: the volunteer card above it names the same
+    // workday, which is the card doing its own job rather than a duplicate.
+    const crews = document.querySelector('.today__crews') as HTMLElement
+    expect(within(crews).getByText(/Sep 17/)).toBeInTheDocument()
+    expect(screen.queryByText(/Expect tools out/)).toBeNull()
+  })
+
+  it('separates the ones near the walk from the ones on it', () => {
+    render(
+      <Today
+        {...crewProps({
+          mode: 'day',
+          todayWalk: WALK,
+          opportunities: [
+            crew({ id: 'on', mile: 1351 }),
+            crew({ id: 'near', title: 'Litter sweep, Tiorati Circle', mile: 1360.2 }),
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByText('A crew on your walk today')).toBeInTheDocument()
+    expect(screen.getByText('Nearby, not on your route')).toBeInTheDocument()
+    expect(screen.getByText(/3.2 trail mi off your walk/)).toBeInTheDocument()
+  })
+
+  it('renders nothing at all when no crew is out', () => {
+    // No empty heading: an absence announced every morning is the app talking
+    // about itself.
+    render(<Today {...crewProps({ mode: 'long', todayWalk: WALK, opportunities: [] })} />)
+
+    expect(screen.queryByText('A crew on your walk today')).toBeNull()
+    expect(screen.queryByText('Nearby, not on your route')).toBeNull()
+  })
+
+  it('leaves a crew the file never placed out of both headings', () => {
+    // With no mile there is no way to say it is on the route. It keeps its
+    // place in the volunteer list, which is the only surface that can hold it
+    // honestly.
+    render(
+      <Today
+        {...crewProps({
+          mode: 'long',
+          todayWalk: WALK,
+          opportunities: [crew({ mile: null })],
+        })}
+      />,
+    )
+
+    expect(screen.queryByText('A crew on your walk today')).toBeNull()
+    expect(screen.queryByText('Nearby, not on your route')).toBeNull()
+  })
+
+  it('says nothing with no walk to measure against', () => {
+    render(
+      <Today
+        {...crewProps({ mode: 'long', todayWalk: null, opportunities: [crew()] })}
+      />,
+    )
+
+    expect(screen.queryByText('A crew on your walk today')).toBeNull()
   })
 })

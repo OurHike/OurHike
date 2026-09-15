@@ -83,6 +83,24 @@ export const PHOTO_QUALITIES = [0.75, 0.6, 0.45]
 export const PHOTO_CONTENT_TYPE = 'image/jpeg'
 
 /**
+ * How many photos one report may carry (#1439, D17).
+ *
+ * @unvalidated, and the same number as the server's - `MAX_REPORT_PHOTOS` in
+ * `backend/app/core/photos.py`, which carries the reasoning and is the one
+ * that actually enforces it. The server refuses past its own cap whatever
+ * this says; this copy exists only so the form can say so on the ridge rather
+ * than a hiker discovering it when their phone next finds signal.
+ *
+ * Two homes for one number is a cost, and the alternative is worse: the
+ * client cannot import a Python constant, and a form with no cap at all would
+ * let somebody attach nine photos and learn on the walk home that three of
+ * them were refused. What keeps them honest is the flush, which treats the
+ * server's refusal as permanent and closes the gap rather than queueing the
+ * report forever (lib/api.ts).
+ */
+export const MAX_REPORT_PHOTOS = 6
+
+/**
  * A photo that cannot be made sendable.
  *
  * The message is shown to a hiker verbatim, so it reads like a sentence and

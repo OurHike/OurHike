@@ -638,6 +638,9 @@ describe('sending a report that has a photo', () => {
   })
 
   const PHOTO = { size: 1234, type: 'image/jpeg' } as Blob
+  /** An item written by a build BEFORE #1439, still sitting in somebody's
+   *  IndexedDB with the single `photo` field. It is the only copy of what
+   *  they photographed, so the flush still reads it - see `reportPhotos`. */
   const WITH_PHOTO: OutboxItem = { ...ITEM, photo: PHOTO }
 
   /** Answers the POST, then the PUT, with the statuses given in order. */
@@ -672,7 +675,9 @@ describe('sending a report that has a photo', () => {
     // Order matters and is the reason this is a sequence rather than two
     // independent assertions: the endpoint 404s if the row is not there yet.
     expect(spy.mock.calls[0][0]).toBe('https://api.example.org/reports')
-    expect(spy.mock.calls[1][0]).toBe('https://api.example.org/reports/outbox-1/photo')
+    // Numbered, since #1439: a report holds a set, and the index is what
+    // makes a retry land on the object it landed on last time.
+    expect(spy.mock.calls[1][0]).toBe('https://api.example.org/reports/outbox-1/photos/1')
 
     const put = spy.mock.calls[1][1] as RequestInit
     expect(put.method).toBe('PUT')
@@ -682,6 +687,42 @@ describe('sending a report that has a photo', () => {
     // refuses anything that is not this, so it cannot be left to chance.
     expect(headers['Content-Type']).toBe('image/jpeg')
     expect(headers.Authorization).toBe('Bearer a-real-token')
+  })
+
+  it('sends each photo of a set, in order, one request each (#1439)', async () => {
+    const api = await configuredApi()
+    const SECOND = new Blob([new Uint8Array([7, 7])], { type: 'image/jpeg' })
+    const spy = mockSequence(201, 200, 200)
+
+    await api.sendReport({ ...ITEM, photos: [PHOTO, SECOND] })
+
+    expect(spy.mock.calls.map((call) => call[0])).toEqual([
+      'https://api.example.org/reports',
+      'https://api.example.org/reports/outbox-1/photos/1',
+      'https://api.example.org/reports/outbox-1/photos/2',
+    ])
+    expect((spy.mock.calls[2][1] as RequestInit).body).toBe(SECOND)
+  })
+
+  it('closes the gap over a photo the server will never take (#1439)', async () => {
+    // THE SUBTLE HALF. A permanently refused photo is skipped rather than
+    // retried forever - and if the numbering advanced past it anyway, the
+    // NEXT photo would ask for an index one beyond the end of the set, be
+    // refused as out of sequence, and leave the item queued for good. So the
+    // third photo goes up as number 2.
+    const api = await configuredApi()
+    const SECOND = new Blob([new Uint8Array([7, 7])], { type: 'image/jpeg' })
+    const THIRD = new Blob([new Uint8Array([8, 8])], { type: 'image/jpeg' })
+    const spy = mockSequence(201, 415, 200, 200)
+
+    await api.sendReport({ ...ITEM, photos: [PHOTO, SECOND, THIRD] })
+
+    expect(spy.mock.calls.map((call) => call[0])).toEqual([
+      'https://api.example.org/reports',
+      'https://api.example.org/reports/outbox-1/photos/1',
+      'https://api.example.org/reports/outbox-1/photos/1',
+      'https://api.example.org/reports/outbox-1/photos/2',
+    ])
   })
 
   it('does not attempt the photo when the report itself failed', async () => {
@@ -836,7 +877,9 @@ describe('the moderation calls', () => {
 
     const link = await api.fetchReportPhotoLink('r-1')
 
-    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/reports/r-1/photo/link')
+    // Indexed since #1439 - a report holds a set, and the moderator asks for
+    // one photo at a time against the same check each time.
+    expect(spy.mock.calls[0][0]).toBe('https://api.example.org/reports/r-1/photos/1/link')
     const headers = (spy.mock.calls[0][1] as RequestInit).headers as Record<
       string,
       string

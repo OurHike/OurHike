@@ -32,7 +32,7 @@ export type ContributionStep = 'sign-in' | 'identity' | 'send'
 export async function beginContribution(
   draft: ReportDraft,
   authoredAt: Date,
-  photo?: Blob,
+  photos?: readonly Blob[],
   /**
    * Hold it back until this moment, for the report window's Undo (#1133).
    *
@@ -48,10 +48,10 @@ export async function beginContribution(
    */
   holdUntil?: Date,
 ): Promise<OutboxItem> {
-  // The photo is saved here with everything else, for the reason above: it is
-  // part of what the hiker wrote down, and it must not depend on the sign-in
-  // round trip that has not been asked for yet.
-  return enqueue(draft, authoredAt, photo, holdUntil)
+  // The photos are saved here with everything else, for the reason above:
+  // they are part of what the hiker wrote down, and must not depend on the
+  // sign-in round trip that has not been asked for yet.
+  return enqueue(draft, authoredAt, photos, holdUntil)
 }
 
 export function stepAfterSaving({

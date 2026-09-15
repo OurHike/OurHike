@@ -88,11 +88,31 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import settings
 
-# One photo per report in v1 (REPORT_A_PROBLEM.md: "a note and an optional
-# photo"). The key is numbered anyway, because the alternative - `photo.jpg` -
+# Where a report's numbering starts. It was numbered from the beginning
+# against the day a second photo was allowed - "the alternative, `photo.jpg`,
 # would have to be renamed the day a second one is allowed, and every stored
-# key with it.
+# key with it" - and #1439 is that day.
 FIRST_PHOTO_INDEX = 1
+
+# How many photos one report may hold.
+#
+# @unvalidated. Picked, and nothing measures it. The design's own example is
+# "a blowdown is three trunks and one photo rarely shows it", so this is
+# double the case it was argued from - which is a reason to think it is not
+# too small, and no reason at all to think six is the right number.
+#
+# It exists because the alternative is unbounded: every photo is a write and
+# up to MAX_PHOTO_BYTES of storage against a report nobody has moderated yet,
+# and a cap the server does not hold is a cap a client can choose not to have.
+#
+# What would settle it is what moderators actually look at - whether a report
+# with six photos gets read differently from one with three, and whether
+# anybody ever hits the ceiling in the field. Neither is answerable from here.
+#
+# THE REFUSAL IS A SENTENCE, NOT A DEAD CONTROL. Past this the form drops the
+# `+` tile and says why (D10); this constant is the server's half of the same
+# rule, and it answers 409 with a reason rather than silently keeping five.
+MAX_REPORT_PHOTOS = 6
 
 # JPEG only, and it is the client that makes that true: #234 has it downscale
 # and strip EXIF before upload, which means re-encoding anyway. Accepting
@@ -239,8 +259,8 @@ def _client():
     )
 
 
-def store_photo(report_id: str, body: bytes) -> str:
-    """Write a report's photo and return the key that was written.
+def store_photo(report_id: str, body: bytes, index: int = FIRST_PHOTO_INDEX) -> str:
+    """Write one of a report's photos and return the key that was written.
 
     Returns the KEY, never a URL: a full URL bakes today's bucket domain into
     every row permanently, and the domain is the part most likely to change
@@ -248,9 +268,11 @@ def store_photo(report_id: str, body: bytes) -> str:
 
     Overwrites by design. The key is derived, so a retry of an upload that
     already succeeded rewrites the same object rather than leaving a second
-    one nobody can find.
+    one nobody can find - which is why `index` is the caller's and not a
+    counter here: the outbox re-sends photo 2 as photo 2, and it lands on the
+    object it landed on last time.
     """
-    return store_photo_object(photo_key(report_id), body)
+    return store_photo_object(photo_key(report_id, index), body)
 
 
 def store_photo_object(key: str, body: bytes) -> str:
@@ -291,7 +313,11 @@ def delete_photo_object(key: str) -> None:
         raise PhotoStorageUnavailable(str(error)) from error
 
 
-def presigned_photo_url(report_id: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> str:
+def presigned_photo_url(
+    report_id: str,
+    index: int = FIRST_PHOTO_INDEX,
+    expires_in: int = PHOTO_URL_TTL_SECONDS,
+) -> str:
     """A short-lived URL that fetches a report's photo straight from R2.
 
     **Derived from the report id, never from a stored string**, and that is a
@@ -308,7 +334,7 @@ def presigned_photo_url(report_id: str, expires_in: int = PHOTO_URL_TTL_SECONDS)
     which is the same "no photo" the caller would show anyway, one HEAD request
     cheaper on a connection that is the scarce thing here.
     """
-    return presigned_object_url(photo_key(report_id), expires_in=expires_in)
+    return presigned_object_url(photo_key(report_id, index), expires_in=expires_in)
 
 
 def presigned_object_url(key: str, expires_in: int = PHOTO_URL_TTL_SECONDS) -> str:

@@ -42,7 +42,10 @@ export default async function drive(page) {
   // By its accessible name rather than a test id: this is the control a hiker
   // reads, and if its label ever stops saying what it does, a recipe that
   // could not find it is the right kind of failure.
-  await page.getByRole('button', { name: 'Report a problem' }).click()
+  // A PREFIX since #1438: the door is a row now, and its accessible name
+  // carries the line under the title ("A dry spring, a blowdown, a trail that
+  // is shut. Works with no signal.") the way More's rows do.
+  await page.getByRole('button', { name: /^Report a problem/ }).click()
 
   // Waited on rather than assumed - the window is an overlay in the same
   // fragment as the downloads window, and "is it up" is a real question the

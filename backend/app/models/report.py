@@ -30,7 +30,7 @@ column here follows, and the open question about it.
 import enum
 import uuid
 
-from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, String, Text
+from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -161,6 +161,46 @@ class Report(Base):
 
     note = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)
+
+    # HOW MANY PHOTOS THIS REPORT HOLDS (#1439).
+    #
+    # The objects are `reports/{id}/1.jpg` ... `reports/{id}/{photo_count}.jpg`
+    # and their keys stay derived, which is app/core/photos.py's whole design:
+    # "which objects belong to this report" is answerable from the id alone,
+    # and reconciliation is a set difference rather than a join. This column
+    # supplies the only part of that the id cannot - how far the numbering
+    # runs. It is the authoritative half; the objects are derived and
+    # disposable, in that direction and never the reverse.
+    #
+    # Not a `report_photos` table, and the reason is that a table would carry
+    # nothing a row does not already say. Every field such a table would hold
+    # - the report, the index, the key - is derivable, so it would be a join
+    # whose only content is a count.
+    #
+    # `photo_url` IS STILL WRITTEN, and is deliberately not replaced in this
+    # revision. tests/test_migration_expand_contract.py enforces RELEASING.md
+    # §8c: a column dropped in the same release that stops writing it breaks
+    # the previous release, which is still running during the rollout. So the
+    # invariant for now is stated once, here, and kept in one function
+    # (`_record_photo` in routers/reports.py): `photo_url` is `photo_key(id, 1)`
+    # exactly when `photo_count >= 1`, and null otherwise. Dropping it is a
+    # later revision's work.
+    photo_count = Column(Integer, nullable=False, default=0, server_default="0")
+
+    # WHERE THIS WAS, IN THE HIKER'S OWN WORDS (#1439, D16).
+    #
+    # Only ever set for a report with no coordinates and no `poi_id` - a phone
+    # that never got a fix, filing about a place it cannot name any other way.
+    # "The brook crossing about half a mile north of Fitzgerald Falls."
+    #
+    # **NEVER GEOCODED, and that is the point of storing prose rather than
+    # resolving it.** A typed name turned into coordinates is a confident wrong
+    # dot on every phone that downloads the report, which is the exact failure
+    # the omitted-not-zeroed rule on `lat`/`lon`/`mile` exists to prevent -
+    # 0,0 is the Atlantic off West Africa and mi 0 is Springer Mountain. So
+    # `lat`, `lon` and `mile` stay null beside this: a moderator reads the
+    # words and places it, and the app does not guess.
+    place_words = Column(Text, nullable=True)
 
     # Structured, type-specific follow-up fields (species/count for
     # animals, depth for flooding, etc.) - always empty in v1 (see

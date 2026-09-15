@@ -331,8 +331,57 @@ describe('the photo the decision turns on', () => {
     expect(photo).toHaveAttribute('src', 'https://photos.example/signed')
     expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith(
       'report-1',
+      1,
       expect.anything(),
     )
+  })
+
+  it('shows every photo of a set, each asked for on its own (#1439)', async () => {
+    // A blowdown is three trunks. A queue that showed the first one would be
+    // a moderator deciding on a third of the evidence - and a link is good
+    // for minutes, so they are minted per photo rather than once per report.
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY, photo_count: 3 })] })
+
+    expect(await screen.findAllByRole('img')).toHaveLength(3)
+    expect(mocked.fetchReportPhotoLink.mock.calls.map((call) => call[1])).toEqual([
+      1, 2, 3,
+    ])
+  })
+
+  it('reads one photo off a server that predates the count', async () => {
+    // A rollout runs both releases at once, and the old one sends no
+    // `photo_count`. A row with a `photo_url` has exactly one object - the
+    // same thing the migration's backfill says about the same row - and
+    // nothing beyond that is inferred.
+    await shown({ reports: [aReport({ photo_url: PHOTO_KEY })] })
+
+    expect(await screen.findAllByRole('img')).toHaveLength(1)
+  })
+
+  it('shows the hiker\u2019s own words where nothing else can say where (#1439)', async () => {
+    // The one report a moderator cannot place any other way: no fix, no
+    // waypoint, and a sentence. Dropping it would leave the queue saying "no
+    // location" about a report that named one - and placing it is the
+    // moderator's act, which is exactly why the words arrive unresolved.
+    await shown({
+      reports: [
+        aReport({
+          lat: null,
+          lon: null,
+          place_words: 'The brook crossing north of Fitzgerald Falls',
+        }),
+      ],
+    })
+
+    expect(
+      await screen.findByText(/The brook crossing north of Fitzgerald Falls/),
+    ).toBeInTheDocument()
+  })
+
+  it('still says "no location" when there are no words either', async () => {
+    await shown({ reports: [aReport({ lat: null, lon: null })] })
+
+    expect(await screen.findByText(/no location/)).toBeInTheDocument()
   })
 
   it('draws nothing at all about photos for a report that has none', async () => {
@@ -488,7 +537,13 @@ describe('a photo of a person', () => {
       'src',
       'https://photos.example/signed',
     )
-    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith('bad-1', expect.anything())
+    // The index came in with the photo SET (#1439): a moderator deciding on a
+    // blowdown with three trunks sees all three, each asked for on its own.
+    expect(mocked.fetchReportPhotoLink).toHaveBeenCalledWith(
+      'bad-1',
+      1,
+      expect.anything(),
+    )
   })
 
   it('says a photo is there while it is still waiting to be asked for', async () => {

@@ -62,6 +62,7 @@ import {
   workProjectDates,
   type WorkProjectSummary,
 } from '../lib/workProjects'
+import type { WalkSpan } from '../lib/crews'
 import type { PassedPlace } from './Volunteer'
 import type { DayHike } from '../lib/dayHikes'
 import type { LonLat } from '../lib/trailGraph'
@@ -77,10 +78,9 @@ import { Notice } from '../chrome/Notice'
 import { PinnedBar } from '../chrome/PinnedBar'
 import { PoiRow } from '../chrome/PoiRow'
 import type { FieldNoteContext } from '../chrome/FieldNoteSection'
-import { FieldNoteSection } from './deferred'
+import { CrewsSection, FieldNoteSection } from './deferred'
 import { isNoteScopedType } from '../lib/fieldNotes'
 import type { NightBehind } from '../lib/nightsBehind'
-import { Button } from '../design-system/components'
 import '../chrome/chrome.css'
 import './today.css'
 
@@ -163,6 +163,27 @@ export interface TodayProps {
   opportunities: readonly WorkProjectSummary[] | null
   opportunitiesAsOf: Date | null
   onOpenVolunteer: () => void
+  /** The hiker's own trail mile, for "8.4 trail mi away". Null prints no
+   *  distance rather than one measured from a position nobody has. */
+  gpsMile?: number | null
+  /**
+   * The stretch being walked today, in walking order (#1440, D18) - which is
+   * what makes "mile 4.1 of your walk" computable and what decides whether a
+   * crew is ON the route or merely near it.
+   *
+   * Null in every state that has no walk to measure against: no hike, no
+   * plan for today, or a route that is not on the same mile axis the crews
+   * are placed on. The two hiking-mode headings then render nothing, which is
+   * the honest answer - printing a crew under "on your walk today" without a
+   * walk would claim a relationship nobody established.
+   */
+  todayWalk?: WalkSpan | null
+  /**
+   * Open the Map tab with the workday layer on (#1440). Frame 14i draws the
+   * map as a third VIEW inside this column; see the crews section for why it
+   * is a door instead, and what would make it a view.
+   */
+  onSeeCrewsOnMap?: () => void
 
   /** Today's walked-past places (lib/passedToday.ts) - names and miles, tap
    *  to open. Never a count, never a scold. */
@@ -245,6 +266,40 @@ export interface TodayProps {
    *  `1g` is designed - the cards render as things to read rather than as
    *  buttons that go nowhere (chrome/SuggestedHikeCard.tsx). */
   onOpenSuggestedHike?: (id: string) => void
+}
+
+/**
+ * One door at the foot of the column: a title, a line saying what is behind
+ * it, and a chevron (#1438, frame 9b).
+ *
+ * Local to this screen rather than in `chrome/`, and that is a deliberate
+ * hold rather than an oversight: **#1380 - After #1374: the seven refactors
+ * its review left, steps 2 and 3 on the navigator stack, a Door component,
+ * DraftShape, and four smaller shapes** already owns promoting this shape,
+ * and More's `.more__row` is the other half of the pair it would unify.
+ * Building half of that refactor here would leave two Doors to reconcile
+ * instead of one row to lift.
+ */
+function Door({
+  title,
+  sub,
+  onOpen,
+}: {
+  title: string
+  sub: string
+  onOpen: () => void
+}) {
+  return (
+    <button type="button" className="today__door" onClick={onOpen}>
+      <span className="today__door-text">
+        <span className="today__door-title">{title}</span>
+        <span className="today__door-sub">{sub}</span>
+      </span>
+      <span className="today__door-chevron" aria-hidden="true">
+        ›
+      </span>
+    </button>
+  )
 }
 
 /** The section rule's word for the entries, sized to what is known - "ahead"
@@ -368,6 +423,9 @@ export function Today({
   opportunities,
   opportunitiesAsOf,
   onOpenVolunteer,
+  gpsMile = null,
+  todayWalk = null,
+  onSeeCrewsOnMap,
   passedPlaces,
   queuedReportCount,
   onStartReport,
@@ -543,6 +601,19 @@ export function Today({
         : upcoming !== null && upcoming.length > 0
           ? `${upcoming[0].title} · ${upcoming[0].club_name} · ${workProjectDates(upcoming[0])}`
           : 'No workdays are posted here yet. Clubs add them as they schedule crews.'
+  const crewsSection = (
+    <CrewsSection
+      mode={mode}
+      now={now}
+      opportunities={opportunities}
+      opportunitiesAsOf={opportunitiesAsOf}
+      gpsMile={gpsMile}
+      todayWalk={todayWalk}
+      onSeeCrewsOnMap={onSeeCrewsOnMap}
+      onOpenVolunteer={onOpenVolunteer}
+    />
+  )
+
   const volunteer = (
     <button
       type="button"
@@ -1022,7 +1093,19 @@ export function Today({
     conditions,
     walkingToo,
     alerts,
-    volunteer,
+    // IN VOLUNTEER MODE THIS SLOT IS THE CREWS SCREEN (#1440, D22), and the
+    // card is what it replaces: a card whose only job was to name the first
+    // workday and send you elsewhere, on the one screen where the crews are
+    // the subject. In the two hiking modes the card stays exactly as it was,
+    // and `crews` below is the separate, conditional section frame 14k draws.
+    // ONE ELEMENT, TWO SLOTS (#1440). `CrewsSection` renders the crews
+    // screen in volunteer mode and the two walking headings in the others,
+    // and draws nothing in whichever it is not - so the slot it does not
+    // fill collapses. Deferred (screens/deferred.ts) because this screen is
+    // the first frame and the section is a calendar and six helpers behind
+    // it; chrome/FieldNoteSection.tsx is the same call for the same budget.
+    volunteer: mode === 'volunteer' ? crewsSection : volunteer,
+    crews: mode === 'volunteer' ? null : crewsSection,
     soFar,
     journal: journal ?? noJournal,
     climb,
@@ -1051,6 +1134,10 @@ export function Today({
         ? [
             'setup',
             'walk',
+            // Trail information before it is an invitation (#1440, D18), so
+            // it sits with the day rather than at the foot with the doors:
+            // tools out and a possible hold-up is a fact about the walk.
+            'crews',
             'download',
             'alerts',
             'suggested',
@@ -1077,6 +1164,7 @@ export function Today({
             // for what happened while they were gone.
             'resume',
             'hikeDay',
+            'crews',
             'alerts',
             'journal',
             'conditions',
@@ -1221,53 +1309,58 @@ export function Today({
             </section>
           )}
         {sections}
-        {/* TWO BUTTONS, EQUAL WIDTH AND EQUAL WEIGHT (#1133).
+        {/* THE NAMED DOOR (#1438, frame 9b, D15), AND ITS PAIR (#1133).
 
-            This was one primary button reading "Note something for the crew",
-            and saying thanks was the seventh row inside the problem picker,
-            under a list of hazards. Both halves were wrong. Reporting a
-            problem and thanking a maintainer are two sides of one
-            relationship with the crew - the volunteer card sits directly
-            above this row - and burying one of them under the other was
-            costing it.
+            WHAT WAS HERE, and why it changed. #1133 put two equal-weight
+            buttons at the foot of this column - "Report a problem" and "Say
+            thanks" - and the maintainer's read of the day-hike frame
+            (2026-09-10) took the pair, and the crew card above it, off the
+            day-hike home. That left a day hiker with two ways to report and
+            neither of them named: the map's long press, which is a gesture
+            nobody is told about, and More -> Volunteer & report, which is two
+            taps and a word nobody standing at a dry spring goes looking for.
+            The review's reachability audit counts that as no door at all.
 
-            Equal WEIGHT is the part worth defending. An outline "Say thanks"
-            beside a filled "Report a problem" would say, in the only language
-            a button has, that thanking is the afterthought. So both are solid
-            fills, at the same size, in the app's two brand colours.
+            So the report half is in EVERY mode now, and the thanks half keeps
+            the day-hike exception. That is not half-applying the maintainer's
+            call - it is applying it to what it was protecting. A day hiker's
+            home not accumulating crew sections is the argument, and thanking
+            a crew is a crew section; reporting the blowdown you are standing
+            in front of is about the walk.
 
-            Both of those fills were failing contrast until #1132 - the
-            secondary variant read a base palette token that cannot follow a
-            theme, and both hardcoded a label colour that does not flip. This
-            row is why that got measured.
+            EQUAL WEIGHT SURVIVED THE CHANGE, which is the part that needed
+            care. features/SAYING_THANKS.md commits this screen to the two
+            sitting "at the same width and the same weight", because "an
+            outline button beside a filled one would say, in the only language
+            a button has, which of the two is the afterthought". Giving report
+            an eyebrow and a sub-line could have broken that quietly, so both
+            are the same row, drawn by the same function below.
 
-            NOT ON THE DAY-HIKE HOME, since the maintainer's read of the frame
-            (2026-09-10): the pair went with the crew card above it, and a day
-            hiker still has both doors where a problem is found - the map's
-            press plate (chrome/PressPlate.tsx) and the waypoint sheet's own
-            "Report a problem here too" - and More's Contribute group for the
-            rest. The outbox line below stays in every mode: what is waiting
-            to send is true whatever the day is for. */}
-        {mode !== 'day' && (
-          <div className="today__crew">
-            <Button
-              variant="secondary"
-              size="s"
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={onStartReport}
-            >
-              Report a problem
-            </Button>
-            <Button
-              variant="primary"
-              size="s"
-              style={{ flex: 1, justifyContent: 'center' }}
-              onClick={onSayThanks}
-            >
-              Say thanks
-            </Button>
-          </div>
-        )}
+            UNDER THE DAY, NOT OVER IT, and never floating. Somebody on this
+            screen is usually reading what is next rather than filing, so a
+            report row above the walk would be the app asking for work before
+            it gives any - and a floating button would cover the next-waypoint
+            row, which is the row a walking hiker is reading. */}
+        <p className="today__door-eyebrow">found something out here?</p>
+        <div className="today__doors">
+          <Door
+            title="Report a problem"
+            sub="A dry spring, a blowdown, a trail that is shut. Works with no signal."
+            onOpen={onStartReport}
+          />
+          {mode !== 'day' && (
+            <Door
+              title="Say thanks"
+              // features/SAYING_THANKS.md's own wording for this affordance,
+              // reused rather than rewritten: "No entry point claims who
+              // maintains the place... Naming a maintainer on the entry would
+              // be the card asserting, in warm words, a fact it has not
+              // looked up." The app does not know until the form asks.
+              sub="Say thanks to whoever keeps it up. It reaches the crew, never a scoreboard."
+              onOpen={onSayThanks}
+            />
+          )}
+        </div>
 
         {/* WAITING, AND NOW SOMEWHERE TO GO. This line already existed - it
             hid at zero and pluralised - but it sat up in "Today so far", a

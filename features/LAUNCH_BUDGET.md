@@ -128,6 +128,64 @@ a phone's storage, and its thermal state, and none of that has an instrument tod
 Until it does, "six seconds" is the only measurement of the thing being complained
 about, and it is one nobody can reproduce. §4.1 is the repair.
 
+### 1.2 A laptop, which none of the above measures
+
+Measured 2026-09-15 after a report of "the first page is loading blank for like 5
+seconds" with a screenshot of a sidebar and an empty pane. Chromium at 1728×1080,
+returning hiker — onboarding done, the 2026-09-14 release on the machine — reloaded
+with the service worker, cache storage and HTTP cache cleared, which is the state a
+deploy leaves every returning hiker in because it re-hashes every asset. The cold
+column is the report's own case; the warm column is the same launch with the
+precache intact.
+
+| | warm precache | cold, 1× CPU | cold, 4× CPU |
+|---|---:|---:|---:|
+| sidebar on screen | 136 ms | 682 ms | 812 ms |
+| Today's journal has text | 585 ms | 1,310 ms | **2,725 ms** |
+| map canvas sized | 638 ms | 2,229 ms | 2,970 ms |
+| **the pane beside the sidebar is empty for** | 449 ms | 628 ms | **1,913 ms** |
+
+The frame in between is not a slow render. It is `App.tsx`'s `nothingWouldRender`
+branch — a tab bar and nothing else — which above the breakpoint is the sidebar, its
+"Today I'm" switch and the wordmark, and nothing else at all. It holds for as long as
+`mapMounted` is false, and on a laptop `mapMounted` is the only thing that can put
+Today on screen: the Today branch is guarded `activeTab === 'today' && !isDesktop`,
+and above the breakpoint the journal is `MapScreen`'s `journal` prop instead.
+
+**Attributed** on the same profile at 4× CPU against a local build of `main` carrying
+production's public build values, with `performance.mark` at each phase boundary
+(the marks were temporary and are not in the tree):
+
+| | at |
+|---|---:|
+| sidebar on screen | 212 ms |
+| the preferences record read | 374 ms |
+| the waypoints ready (`ourhike:today`) | 965 ms |
+| MapScreen's deferred chunk landed | 1,662 ms |
+| **`archivesRead` — the last gate to open** | **2,009 ms** |
+| Today's journal has text | 2,230 ms |
+| the map engine's chunk landed | 2,394 ms |
+
+Two things that table settles and one it does not. It settles that the journal waits
+on `archivesRead` alone on this run: MapScreen's chunk landed 347 ms before the gate
+opened and the engine landed 164 ms *after* the journal already had text, so neither
+was on the journal's critical path. It settles that the data Today draws was ready at
+965 ms and sat unrendered for 1,265 ms behind a gate about which background the map
+is built around — a decision Today does not participate in.
+
+**What it does not settle is why `archivesRead` is late, and that is `@unvalidated`.**
+The sweep is one IndexedDB read per package and the package set grows to the coverage
+cells (62 basemap and 681 network, as published on 2026-09-15), which is a plausible
+cause and is not evidence: the same window holds the release read and the index build
+(`ourhike:index` at 2,345 ms), so "the sweep is slow" and "the thread was busy when
+its callbacks came due" are not separated by anything measured here. What would settle
+it is a mark at the sweep's own first and last read, which nothing has yet taken.
+
+One measurement nearby, for whoever picks this up: the map engine ships as
+`mapWorker-*.js` at 991 KB raw and 257 KB compressed. It is correctly outside the
+eager closure — `scripts/check-build-output.mjs` holds that — and on a laptop it is
+in front of Today anyway, because Today is the map's child.
+
 ## 2. Where the time goes
 
 ### 2.1 Bytes before the first frame
@@ -470,5 +528,16 @@ release's effect on the launch is a row in an issue rather than a feeling.
 - **The Capacitor shells.** Both serve the same bundle from the binary with no
   service worker (`client/capacitor.config.ts`); the parse and the gate cost the same
   and the network costs differ. The stopwatch has no mode for them.
-- **Desktop.** `isDesktop` mounts the map at launch by design (`App.tsx:1024`); the
-  budget above is the phone's, and a desktop budget is not decided here.
+- **Desktop.** This used to read "`isDesktop` mounts the map at launch by design; the
+  budget above is the phone's, and a desktop budget is not decided here", and it is
+  worth keeping what was wrong with it rather than replacing it quietly. The sentence
+  is true and the inference everybody drew from it is not: it reads as "a laptop pays
+  extra for a map, and a laptop can afford one", and what it actually excluded was
+  **Today**, because above the breakpoint Today is the map's `journal` prop and not a
+  screen of its own. So the one form factor where the front door renders behind the
+  map is the one form factor with no budget on the front door. §1.2 is what that cost,
+  measured; `App.loadBudget.test.tsx`'s desktop block is the tripwire. What is still
+  not decided here is the budget itself — §3's rows are the phone's and a laptop's
+  numbers are not them — and the line reference this bullet used to carry
+  (`App.tsx:1024`) had drifted off the symbol it named, which is its own small lesson
+  about citing a line rather than a name.

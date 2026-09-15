@@ -52,7 +52,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { get, getMany } from 'idb-keyval'
 import App from './App'
-import { appHarness, openMapTab } from './test/appHarness'
+import { appHarness, openMapTab, stubDesktop } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { MockMap } from './test/mocks/maplibre-gl'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
@@ -510,5 +510,106 @@ describe('what a launch does once, and must not do twice', () => {
     await renderedMap()
 
     expect(vi.mocked(buildPoiIcons).mock.calls.length).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('what a desktop launch paints before the store has answered', () => {
+  // THE FOURTH BUDGET, and the form factor the other three do not cover.
+  //
+  // features/LAUNCH_BUDGET.md §6 excludes desktop in one sentence - "the
+  // budget above is the phone's, and a desktop budget is not decided here" -
+  // written on the reading that what a laptop pays extra for is the MAP, which
+  // `isDesktop` mounts at launch by design. That reading is incomplete, and
+  // this block is the incompleteness written down as counts.
+  //
+  // Today is not its own screen above the breakpoint. `App.tsx`'s Today branch
+  // is guarded `activeTab === 'today' && !isDesktop`, and the journal is handed
+  // to `MapScreen` as its `journal` prop instead - so on a laptop the front
+  // door renders only once the map's own gate (`preferencesLoaded &&
+  // archivesRead`) has opened AND MapScreen's deferred chunk has landed.
+  // Excluding desktop from the budget therefore excluded Today from it, on the
+  // one form factor where Today is behind the map.
+  //
+  // Measured 2026-09-15, cold cache, returning hiker with the 2026-09-14
+  // release on the machine, Chromium at 1728x1080 against a local build of
+  // `main` carrying production's public build values, 4x CPU: the sidebar is
+  // on screen at 212 ms and the journal has text at 2,230 ms. The whole
+  // 2,018 ms between them is the frame the report that prompted this shows -
+  // a sidebar and an empty pane. `archivesRead` is the last gate to open, at
+  // 2,009 ms; MapScreen's chunk landed at 1,662 ms and the engine at 2,394 ms,
+  // so on that run neither was on the journal's critical path. WHAT MAKES
+  // `archivesRead` LATE IS NOT ESTABLISHED and is @unvalidated: the sweep is
+  // one IndexedDB read per package and the package set grows to the coverage
+  // cells (62 basemap + 681 network as published on 2026-09-15), but the same
+  // window holds the release read and the index build, so "the sweep is slow"
+  // and "the thread was busy" are not separated by anything measured. What
+  // would settle it is a mark at the sweep's own first and last read.
+  //
+  // These are counts rather than milliseconds, like every other budget here.
+
+  it('puts the sidebar on screen before any IndexedDB read has resolved', async () => {
+    // The half that already holds above the breakpoint, and must keep holding:
+    // the launch mirror answers what the first frame needs synchronously, so
+    // the spine paints from the first commit on a laptop exactly as the tab bar
+    // does on a phone. Proven the strong way, like its phone twin - every read
+    // hangs forever and the navigation is there anyway.
+    stubDesktop()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    vi.mocked(get).mockImplementation(() => new Promise(() => {}))
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
+    )
+
+    render(<App />)
+
+    const today = await screen.findByRole('tab', { name: 'Today' })
+    expect(today).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('tab', { name: 'Map' })).toBeInTheDocument()
+  })
+
+  it('leaves the pane beside it empty until the store answers, which is the defect', async () => {
+    // CHARACTERISATION, NOT APPROVAL. This asserts what a desktop launch does
+    // today so that changing it is visible: the moment Today renders beside a
+    // held-up map, this test fails and whoever fixed it inverts it.
+    //
+    // The phone's equivalent - `puts the tab bar and the Today header on
+    // screen before any IndexedDB read has resolved` above - passes on the
+    // same stalled store, which is the whole asymmetry: identical launches,
+    // and only one of them has a front door.
+    stubDesktop()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    vi.mocked(get).mockImplementation(() => new Promise(() => {}))
+    vi.mocked(getMany).mockImplementation((keys) =>
+      Promise.all(keys.map((key) => vi.mocked(get)(key))),
+    )
+
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+
+    // Nothing of Today's own is on screen - not the journal, not the map it is
+    // docked against. The sidebar's mode switch is NOT evidence either way: it
+    // is the tab bar's, and it renders on this frame by design.
+    expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+    expect(MockMap.instances).toHaveLength(0)
+    expect(screen.queryByText(/nothing planned today/i)).toBe(null)
+  })
+
+  it('builds no more than one map for a launch that lands on Today', async () => {
+    // What the §6 sentence DOES say, held: a laptop mounts the map at launch
+    // deliberately, so one is allowed here where the phone's budget allows
+    // none. One, though - the archive sweep re-answers as the coverage cells
+    // register, and `mapKept` exists so that growth cannot rebuild the map
+    // underneath a hiker.
+    stubDesktop()
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+
+    render(<App />)
+    await renderedMap()
+    await indexLanded()
+
+    expect(MockMap.instances).toHaveLength(1)
   })
 })

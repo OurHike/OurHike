@@ -277,6 +277,98 @@ Two rules govern what it says, and the first is inherited rather than invented:
   looks like a rendering fault unless it is named. The mock-ups draw it dashed and labelled
   ("edge of what you downloaded") for exactly this reason.
 
+### The sentence above was wrong, and it took a second shape of cell to show it (#1458)
+
+> A cell's bounds are computable from its own identity — that is what a lat/lon grid buys —
+> so "is here covered" is a point-in-set test over the cells on the phone, not a geometry
+> read out of every archive.
+
+**A cell's bounds are computable from its identity. What a cell *covers* is not**, and the
+two were the same number only while every published cell was a corridor cell, where the
+uncovered part really was a margin.
+
+Measured 2026-09-15 against the live production bucket, cell `n40w074` — the one holding
+New York City:
+
+| | |
+| --- | --- |
+| `bounds` in `at_basemap_cells.json` | `[-74, 40, -73, 41]` — the whole square |
+| the archive header's real extent | `-74.1797, 40.7140` → `-73.1250, 41.2448` |
+| tiles | 290, z10–z14, 4,460,971 bytes |
+
+The tiles stop at **40.714** because the source they were cut from is clipped to the A.T.
+corridor, and the corridor clips only the top of that square. Probed point by point: Van
+Cortlandt Park in the Bronx has a z14 tile and is genuinely covered; Central Park has a z12
+tile and no z14, so it draws zoomed out and goes blank at hiking zoom; **Prospect Park,
+Forest Park and the Staten Island Greenbelt have no tile at any zoom.**
+
+On the point-in-set test that sentence describes, a phone holding that cell answered
+`'covered'` in all three places — and `outsideDownload` is true only for `'outside'`, so the
+status strip showed **nothing at all** over the blank paper. The inverse of
+[#352](https://github.com/OurHike/OurHike/issues/352), which this project already shipped
+once in the other direction: there a hiker past the edge of their package was told their
+download was damaged; here a hiker past the edge of their cell was told nothing.
+
+`archiveCoverage.ts` had anticipated the shape of it and accepted it — *"Inside a footprint
+but off the thin band its tiles actually cover, this says nothing — the same silence the app
+kept before cells existed."* That is a fair description of a margin and not of 71% of a cell
+with eight million people living in it.
+
+**What changed.** `cut_cells.py` now publishes `covered` beside `bounds` on every cell: the
+part of the square the cut actually put tiles in, clipped to the square and rounded outward.
+Two understatements, both deliberate — clipped, so the seam margin stays generosity in the
+bytes and never a promise in the metadata; a bounding box, so that *within the square* every
+tile the cell holds is inside it, which is what makes narrowing a claim onto it safe in the
+one direction that matters. `App.tsx`'s `heldFootprints` reads `covered`; everything that
+routes a tile to a cell still reads `bounds`, because routing is a question about the grid.
+`verify_release.py`'s check 20 refuses a published index whose `covered` escapes its square.
+
+**What did not change, and is the residue.** `seamEdges` still draws the dashed boundary at
+the square. Its neighbour test is a lattice walk — a cell's neighbour is the square one cell
+over — and `covered` boxes do not tile, so running it on them would draw a dashed line
+through the middle of continuous coverage. So on a cell carrying less than its square the
+banner now says "outside" while the nearest drawn seam may be miles away. The banner is the
+half that matters; drawing the seam around what is really held needs the outline of a union
+of rectangles, which is a different function and was not attempted here.
+
+**And none of it puts map under New York City** — that is the other half of #1458, and it is
+built and now run. `export_basemap.py` takes `--regions`, `pipeline/lib/build_regions.py` holds
+the named shapes, and `build-basemap.yml` cuts the coverage cells from a package covering the
+whole build rather than from the A.T.'s share of it. So `regions: at nyc` produces cells over
+the city that carry what they claim, while the A.T. package — whose advertised size is a
+published promise — is still cut against the corridor alone and does not move.
+
+### What New York costs, measured
+
+Run [34961028812](https://github.com/OurHike/OurHike/actions/runs/34961028812), 2026-09-15,
+`regions: at nyc`, `publish: false`, against the 07:17 build of `main` the same morning as the
+control. Both are the whole pipeline end to end on a free runner:
+
+| | `at` alone | `at nyc` | added |
+| --- | ---: | ---: | ---: |
+| source build + shapes (`basemap-archives`) | 350,964,052 B | 361,836,062 B | **+10.9 MB** |
+| packages, cells, context, indexes (`basemap-package`) | 1,002,773,163 B | 1,017,065,996 B | **+14.3 MB (+1.4%)** |
+| whole run, wall clock | 12.5 min (BASEMAP.md) | **11 min 36 s** | none |
+| runner disk left afterwards | ~80 GB | 77 GB | ~3 GB |
+
+**The city costs 1.4% of the published set and no wall clock at all.** That was not the
+expected answer — the city's OSM density is nothing like the corridor's — and the reason it is
+so small is that the region is a 3 km buffer around the city's own trail lines rather than a
+box around the city, so it is a ribbon through the boroughs and not the boroughs.
+
+**The A.T. package did not move**, which is the promise the publish guard rests on: z14 =
+62,097 tiles, z13 = 15,899, z12 = 4,172, the same three numbers BASEMAP.md recorded on
+2026-08-27.
+
+**The cell COUNT did not move either, and that is the subtle part.** Still 62. New York's two
+graticule cells — `n40w074` and `n40w075` — were always in the set, because the A.T.
+corridor's own bounding box reaches into them; what they held was a band across one corner.
+What this build changes is their *contents*, not their existence. So the finding above and
+this fix meet in the same two cells: `covered` said how little was there, and the region says
+what fills it. *(Reasoned from the coverage region rather than read off the index: the cells'
+own `covered` values become visible in `at_basemap_cells.json` at the next publish, and this
+paragraph should gain that number when they do.)*
+
 **What stops at a seam, and what does not**, is §8.
 
 ## 8. Does a piece carry its POIs? — the constraint the screens turned up

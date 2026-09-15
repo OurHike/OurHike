@@ -76,7 +76,9 @@ not fail an A.T. publish, and a receipt restored without its outputs reads
 as drift on the gate in front of publish - a false alarm in the worst place.
 """
 
+import argparse
 import json
+import sys
 from pathlib import Path
 
 from lib.arcgis import fetch_layer_to_file, get_layer_edit_date, get_layer_max_field, get_service_etag
@@ -218,12 +220,48 @@ def source_location(src: dict) -> str:
     return src["url"]
 
 
-def main():
+def select(sources: list[dict], only: list[str] | None) -> list[dict]:
+    """The sources to fetch this run: all of them, or the named few (#1458).
+
+    A key that matches nothing is a hard error rather than an empty run. The
+    caller that needs this is build-basemap.yml, which builds a region from
+    two named layers - and a typo there would fetch nothing, build a region
+    from no lines, and hand the build a clip shape missing a city. Loud is
+    the only safe answer to a name nobody recognises.
+    """
+    if not only:
+        return sources
+    known = {src["key"] for src in sources}
+    unknown = [key for key in only if key not in known]
+    if unknown:
+        raise SystemExit(f"unknown external source(s): {', '.join(sorted(unknown))}")
+    return [src for src in sources if src["key"] in set(only)]
+
+
+def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        metavar="KEY",
+        help="Registry keys to fetch instead of every external source. The rest keep their existing manifest entries.",
+    )
+    # [] rather than None when nothing is passed: argparse reads sys.argv for
+    # None, and the tests call main() directly under pytest, whose own command
+    # line would then be parsed as this script's. The same trap
+    # export_basemap.py parses outside main() to avoid.
+    args = parser.parse_args([] if argv is None else argv)
+
     registry = load_registry(SOURCES_PATH)
-    sources = external_sources(registry)
+    every = external_sources(registry)
+    sources = select(every, args.only)
     prior_manifest = json.loads(MANIFEST_PATH.read_text()) if MANIFEST_PATH.exists() else {}
 
-    results = {}
+    # A partial run must not shorten the manifest. Its entries are what tells
+    # the NEXT run which layers are unchanged, so dropping the ones this run
+    # did not look at would make the following full fetch re-download all of
+    # them - and would quietly lose the only record of when they last moved.
+    results = {key: entry for key, entry in prior_manifest.items() if key not in {src["key"] for src in sources}}
     skipped = 0
     for src in sources:
         key = src["key"]
@@ -259,6 +297,8 @@ def main():
     # because for a temporary-closures layer zero is a fact about the parks
     # rather than a broken fetch. A source missing entirely (never attempted,
     # or caught by the except above) still fails regardless of the flag.
+    # Over the sources THIS run was asked for: a layer nobody fetched cannot
+    # be incomplete, and failing on one would make --only unusable.
     counts = {src["key"]: results.get(src["key"], {}).get("feature_count", 0) for src in sources}
     minimums = {src["key"]: 0 for src in sources if src.get("may_be_empty") and src["key"] in results}
     fail_if_incomplete(count_problems(counts, minimums=minimums), label="Incomplete fetch")
@@ -267,8 +307,9 @@ def main():
     MANIFEST_PATH.write_text(json.dumps(results, indent=2))
     # Counted, because "all up to date" used to be printed whether or not a
     # single layer had been skipped (#1311) - the number is the finding.
-    print(f"\n{len(sources)} external layers: {len(sources) - skipped} fetched, {skipped} unchanged. Manifest -> {MANIFEST_PATH}")
+    scope = "external layers" if len(sources) == len(every) else f"of {len(every)} external layers"
+    print(f"\n{len(sources)} {scope}: {len(sources) - skipped} fetched, {skipped} unchanged. Manifest -> {MANIFEST_PATH}")
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv[1:])

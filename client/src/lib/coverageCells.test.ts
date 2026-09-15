@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { get, set } from 'idb-keyval'
 import {
   BASEMAP_CELLS,
+  boundsContain,
   CELL_INDEX_STORE_KEY,
   cellDownloadRequests,
   cellPackageKey,
@@ -145,6 +146,57 @@ describe('parseCellIndex', () => {
       cells: [{ name: 'n34w085', key: '', bounds: [-85, 34, -84, 35] }],
     }
     expect(parseCellIndex(noKey)).toBeNull()
+  })
+
+  it('falls back to the square when an index carries no covered bounds', () => {
+    // Every index published before #1458 - and the right answer for them:
+    // "no better claim than the square" is what the phone has always read,
+    // so an older release keeps exactly the coverage it had.
+    expect(N34W085.covered).toEqual(N34W085.bounds)
+  })
+
+  it('reads covered bounds where the cut says less than the square', () => {
+    // The measured New York City cell (2026-09-15, against the published
+    // at_basemap_cell_n40w074.pmtiles): it declares 40.0 to 41.0 and its 290
+    // tiles stop at 40.714, because the source it was cut from is clipped to
+    // the A.T. corridor and the corridor only clips the top of that square.
+    const withCovered = {
+      ...PUBLISHED,
+      cells: [
+        {
+          name: 'n40w074',
+          key: 'at_basemap_cell_n40w074.pmtiles',
+          bounds: [-74, 40, -73, 41],
+          covered: [-74, 40.714, -73.125, 41],
+        },
+      ],
+    }
+    const cell = (parseCellIndex(withCovered) as CellIndex).cells[0] as CoverageCell
+
+    expect(cell.bounds).toEqual([-74, 40, -73, 41])
+    expect(cell.covered).toEqual([-74, 40.714, -73.125, 41])
+    // Brooklyn is inside the square and outside what the cell draws. That
+    // gap is the whole of #1458: on `bounds` the phone called itself covered
+    // and drew blank paper.
+    expect(boundsContain(cell.bounds, -73.969, 40.66)).toBe(true)
+    expect(boundsContain(cell.covered, -73.969, 40.66)).toBe(false)
+  })
+
+  it('refuses the whole index over a covered box it cannot read', () => {
+    // Present and malformed is a corrupt row, not an absent key. A coverage
+    // claim that parsed half-way is what this function exists to not make.
+    const broken = {
+      ...PUBLISHED,
+      cells: [
+        {
+          name: 'n40w074',
+          key: 'at_basemap_cell_n40w074.pmtiles',
+          bounds: [-74, 40, -73, 41],
+          covered: [-73, 40.714, -74, 41],
+        },
+      ],
+    }
+    expect(parseCellIndex(broken)).toBeNull()
   })
 
   it('refuses anything that is not an index at all', () => {

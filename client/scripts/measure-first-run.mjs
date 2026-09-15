@@ -215,16 +215,98 @@ await cdp.send('Network.emulateNetworkConditions', {
 
 const ENTRY_TITLE = '.onboarding__title'
 
-/** The step's way past itself. Two of the three steps say Skip; the map-size
- *  step says "Decide this later" (#1054), and clicking Skip three times used
- *  to stall on it. */
-const SKIP = /^(Skip|Decide this later)$/
+/**
+ * The card's own way past itself, named by what it IS rather than by what it
+ * says.
+ *
+ * Every card carries exactly one decline control: `src/screens/Onboarding.tsx`
+ * gives `what-ourhike-is`, `hiker-mode`, `default-place` and `map-size` an
+ * `onboarding__skip`, and `location-permission` an `onboarding__secondary`
+ * (both of ITS buttons call `finish()`, so it has no `next`). Measured against
+ * the live bundle 2026-09-15 - `curl
+ * https://ourhike.org/app/assets/main-Bx2gadkk.js` carries 5
+ * `onboarding__title`, 4 `onboarding__skip` and 1 `onboarding__secondary`,
+ * matching the checkout exactly.
+ *
+ * WHY NOT THE BUTTON'S NAME, WHICH IS WHAT THIS USED TO READ (#1376). It was
+ * `/^(Skip|Decide this later)$/`, clicked exactly three times, and PR #1374 -
+ * One pathway from first run to a walk finished: the front-end rebuild from
+ * the ClaudeDesign flow review (merged 2026-09-14 17:55) broke both halves at
+ * once. `Skip` became `Skip - take me to the map`, which is what crashed the
+ * launch check the next morning - run 34975488353 spent three of its four
+ * minutes inside one 180-second timeout and never started the stopwatch.
+ *
+ * AND THE COUNT WAS NEVER A CONSTANT. It is not five now and it was not three
+ * before: the first card's decline says "straight to the map, with every
+ * default" and finishes the flow outright, so DECLINING walks one card, while
+ * the other four are only reached by accepting `Get set up`. Measured here
+ * against a build of main on 2026-09-15: one card ("A map that works where
+ * there is no signal."), then no heading at all. So the old loop, even with
+ * the name fixed, would click once and then wait out two more 180-second
+ * timeouts for a button that is not on screen. Ending on "is the flow still
+ * showing" is the only form that survives the next rewording of it.
+ *
+ * Copy is the thing that moved twice in one week; the role each button plays
+ * in the flow has not. `check-deployed-app.mjs` keeps a name-based matcher for
+ * a reason that does not apply here - it asserts against a DEPLOYED build that
+ * may be older than this checkout, where a class is no safer than a name. This
+ * one drives a build to a stopwatch reading, and the bundle measurement above
+ * is what says today's deployment carries these classes rather than an
+ * assumption that it does.
+ */
+const PAST_THE_CARD = '.onboarding__skip, .onboarding__secondary'
+
+/** A runaway guard on the loop below, not a count of the cards - the count is
+ *  what got this wrong twice. One card is walked today and five is the most
+ *  the flow could ask for; reaching ten means something is looping. It raises
+ *  rather than returning, because a run that quietly gave up here goes on to
+ *  time the onboarding screen and call it a launch. */
+const MAX_CARDS = 10
+
+/** The card on screen, by its heading, or null once onboarding is done. */
+const currentCard = () =>
+  page.evaluate(
+    (selector) => document.querySelector(selector)?.textContent ?? null,
+    ENTRY_TITLE,
+  )
 
 async function clickThrough() {
   await page.waitForSelector(ENTRY_TITLE, { timeout: 180_000 })
-  for (let step = 0; step < 3; step += 1) {
-    await page.getByRole('button', { name: SKIP }).first().click({ timeout: 180_000 })
+  for (let card = 0; card < MAX_CARDS; card += 1) {
+    const before = await currentCard()
+    if (before === null) return
+    await page.locator(PAST_THE_CARD).first().click({ timeout: 180_000 })
+    // Wait for the card to actually change before looking for the next one.
+    // Without this the loop can click the same still-mounted button twice and
+    // land two cards short with no error - the silent half of #1376.
+    await page.waitForFunction(
+      ([selector, previous]) =>
+        (document.querySelector(selector)?.textContent ?? null) !== previous,
+      [ENTRY_TITLE, before],
+      { timeout: 180_000 },
+    )
   }
+  await refuseToMeasureOnboarding()
+}
+
+/**
+ * Raise if onboarding is STILL up after `MAX_CARDS`, and say nothing if it is
+ * not.
+ *
+ * The null check is the whole point and is not defensive: a flow of exactly
+ * `MAX_CARDS` cards is walked to its end by the loops above and then falls out
+ * of them, so a bare throw here would fail a run that had in fact finished -
+ * and print `still showing "null"` while doing it, which is a message asserting
+ * the opposite of what happened.
+ */
+async function refuseToMeasureOnboarding() {
+  const stuck = await currentCard()
+  if (stuck === null) return
+  throw new Error(
+    `onboarding still showing "${stuck}" after ${MAX_CARDS} cards - ` +
+      'the flow grew, or a card has no .onboarding__skip / .onboarding__secondary. ' +
+      'Measuring past this point would time the wrong screen (#1376).',
+  )
 }
 
 /** The release is on the phone: the waypoints are stored and the partial
@@ -372,22 +454,26 @@ if (returning) {
   console.log(`first entry step reachable      ${Date.now() - started} ms`)
 }
 
+// The first-run walk, timed card by card. `clickThrough` above is the same
+// walk untimed, for the warming pass whose numbers nobody reads.
+//
+// Bounded by the cards on screen rather than by a count (#1376): the loop
+// stops when a card's own click takes the heading away, which is the flow
+// telling it there is nothing left. The previous version ran exactly three
+// times and special-cased the third as the end - a shape that only ever fit
+// one version of the flow, and does not fit the one card declining walks now.
 const stepChanges = []
-for (let step = 0; step < (returning ? 0 : 3); step += 1) {
+for (let step = 0; !returning && step < MAX_CARDS; step += 1) {
   await page.waitForTimeout(pauseMs)
-  const before = await page.evaluate(
-    (selector) => document.querySelector(selector)?.textContent ?? null,
-    ENTRY_TITLE,
-  )
+  const before = await currentCard()
+  if (before === null) break
   const asked = Date.now()
-  await page.getByRole('button', { name: SKIP }).first().click({ timeout: 180_000 })
+  await page.locator(PAST_THE_CARD).first().click({ timeout: 180_000 })
   const clicked = Date.now()
   await page.waitForFunction(
-    ([selector, previous]) => {
-      const now = document.querySelector(selector)?.textContent ?? null
-      return previous === null ? now === null : now !== previous
-    },
-    [ENTRY_TITLE, step === 2 ? null : before],
+    ([selector, previous]) =>
+      (document.querySelector(selector)?.textContent ?? null) !== previous,
+    [ENTRY_TITLE, before],
     { timeout: 180_000 },
   )
   stepChanges.push({
@@ -395,6 +481,10 @@ for (let step = 0; step < (returning ? 0 : 3); step += 1) {
     changed: Date.now() - clicked,
   })
 }
+// Same refusal as the warming walk, and for the same reason: everything below
+// this line times what is on screen, so a walk that ran out of attempts with a
+// card still up must not reach it.
+if (!returning) await refuseToMeasureOnboarding()
 
 // Long enough for whatever the last tap started to finish, so the timeline
 // covers the hand-over into the map screen as well as the steps themselves.
@@ -446,7 +536,7 @@ if (returning) {
   }
 }
 
-if (!returning) console.log('\ntaps on Skip')
+if (!returning) console.log('\ntaps past each card')
 stepChanges.forEach((change, index) => {
   const tap = perf.taps[index]
   const timing =

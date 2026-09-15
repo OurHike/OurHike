@@ -128,6 +128,7 @@ from lib import trail_graph_route as router
 #: never blur: PUBLISHED is a GPX track whoever wrote the hike up recorded,
 #: GENERATED is this module's inference from their prose.
 METRES_PER_MILE = 1609.344
+FEET_PER_METRE = 3.280839895
 
 PUBLISHED = "published"
 GENERATED = "generated"
@@ -149,9 +150,20 @@ GRADE_REJECTED = "rejected"
 START_MAX_OFF_M = 500.0
 
 #: Beyond this, the start is kept but the route can never grade `strong`.
-#: @unvalidated - 150 m is `MAX_OFF_NETWORK_FEET` in metres, the radius the
-#: phone itself will resolve a stored end within, so a start further off than
-#: this is one the phone would refuse if it were not snapped first.
+#: @unvalidated, and the justification that stood here was WRONG and is worth
+#: recording as such: it read "150 m is MAX_OFF_NETWORK_FEET in metres", but
+#: that constant is 150 FEET - `trail_graph_route.MAX_OFF_NETWORK_M` converts
+#: it to 45.72 m, the same figure START_MAX_OFF_M's own comment quotes two
+#: lines above. The number was therefore 3.28x looser than the reasoning
+#: printed beside it.
+#:
+#: It stays at 150 m rather than moving to 45.7 m, because the measurement
+#: says so: over the ground-truth set a start 50-150 m off matched the
+#: surveyed track 50% of the time against 65% under 50 m, which is a real
+#: difference but not the cliff a hard cap implies, and tightening to 45.7 m
+#: would cap dozens of routes at `fair` on the strength of a number nobody
+#: measured either. What would settle it: whether a parking pin that far out
+#: is a lot with an unmapped connector or a snap onto the wrong trail.
 START_GOOD_OFF_M = 150.0
 
 #: How many of the description's opening steps may name the trail the walk
@@ -500,6 +512,11 @@ class FormedRoute:
     start_offset_m: float | None = None
     closed: bool = False
     retrace_ratio: float | None = None
+    #: Feet gained and lost, or None when nothing could price it. ABSENT MEANS
+    #: NEVER MEASURED, never flat - a walk with one unpriced edge reported as
+    #: zero is a flat-ground claim about real ground, and it fails SHORT, which
+    #: is the direction that gets somebody caught by the dark.
+    climb: tuple[float, float] | None = None
     named_trails: list[str] = field(default_factory=list)
     walked_trails: list[str] = field(default_factory=list)
     problems: list[str] = field(default_factory=list)
@@ -539,6 +556,7 @@ class FormedRoute:
             "length_error": round(self.length_error, 4) if self.length_error is not None else None,
             "start_offset_m": round(self.start_offset_m, 1) if self.start_offset_m is not None else None,
             "retrace_ratio": round(self.retrace_ratio, 3) if self.retrace_ratio is not None else None,
+            "climb": [round(self.climb[0]), round(self.climb[1])] if self.climb else None,
             "named_trails": list(self.named_trails),
             "walked_trails": list(self.walked_trails),
             "problems": list(self.problems),
@@ -1091,6 +1109,7 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
     result.miles = route.miles
     result.ends = [(point.at[0], point.at[1]) for point in points]
     result.retrace_ratio = retrace_ratio(route)
+    result.climb = route.climb
     walked_names = {normalise_name(leg.name) for leg in route.legs if leg.name}
     walked_blazes = {leg.blaze_color for leg in route.legs if leg.blaze_color}
     result.walked_trails = [
@@ -1110,6 +1129,48 @@ def form_route(graph: router.Graph, hike: dict) -> FormedRoute:
         result.route = None
         result.ends = []
     return result
+
+
+#: How much a track has to rise before the rise is counted. @unvalidated -
+#: a recorded elevation wanders by a metre or two at rest, and summing every
+#: wobble over a 900-point track inflates the gain badly. 3 m is the smallest
+#: step that reads as a step rather than as noise.
+#:
+#: THE DIRECTION THIS ERRS IN IS WORTH STATING. A threshold can only ever
+#: REMOVE gain, so the figure it produces can understate a climb - and
+#: understating is the unsafe direction for a hiker deciding whether they beat
+#: the dark. It is used anyway because the unthresholded figure is not a
+#: smaller error in the other direction, it is noise; what would settle the
+#: number is comparing these tracks against a surveyed profile for the same
+#: ground.
+TRACK_CLIMB_STEP_M = 3.0
+
+
+def track_climb(track) -> tuple[float, float] | None:
+    """Feet gained and lost along a published track, from its own elevations.
+
+    From the SURVEYOR'S recording rather than from this build's elevation
+    sidecar, for the reason the whole `published` path exists: they were there.
+    Returns None when the track carries no elevation at all, because absent has
+    to stay distinguishable from flat.
+    """
+    if track is None:
+        return None
+    measured = [point.ele_m for point in track.points if point.ele_m is not None]
+    if len(measured) < 2:
+        return None
+    gain = loss = 0.0
+    anchor = measured[0]
+    for value in measured[1:]:
+        step = value - anchor
+        if abs(step) < TRACK_CLIMB_STEP_M:
+            continue
+        if step > 0:
+            gain += step
+        else:
+            loss -= step
+        anchor = value
+    return gain * FEET_PER_METRE, loss * FEET_PER_METRE
 
 
 def published_route(hike: dict, track) -> FormedRoute:
@@ -1133,6 +1194,7 @@ def published_route(hike: dict, track) -> FormedRoute:
         return result
 
     result.miles = track.length_miles
+    result.climb = track_climb(track)
     result.ends = [(point.lon, point.lat) for point in track.points]
     first, last = track.points[0], track.points[-1]
     gap_m = router.metres_between((first.lon, first.lat), (last.lon, last.lat))

@@ -205,7 +205,22 @@ def segments_for(coords: list[list[float]], closed: bool) -> list[list[dict]]:
 
 
 def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str, reproduced: str | None) -> dict:
+    """One hike as the client reads it.
+
+    THE DETAIL FIELDS ARE FLAT, NOT NESTED, and that is not a style choice.
+    `lib/suggestedHikesData.ts`'s `validDetail` is handed the WHOLE record and
+    reads `raw.url`, `raw.publishedMiles`, `raw.description` off the top level;
+    its own test pins the mistake by name - "reads nothing out of a nested
+    `detail`, which is not the wire shape". An earlier version of this file
+    nested them, which dropped every one of them on the phone while both test
+    suites stayed green, because the pipeline suite asserted the nested shape
+    and the client suite asserted the flat one and the two never met.
+    `test_the_record_is_flat_because_the_client_reads_it_flat` is the guard
+    against that happening again.
+    """
     start = hike.get("start") or {}
+    summary = hike.get("summary")
+    author = hike.get("author")
     record = {
         "id": f"{SOURCE_KEY}:{hike['id']}",
         "name": hike["name"],
@@ -213,45 +228,58 @@ def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str,
         "difficulty": difficulty_slug(hike.get("difficulty")),
         "author": {"kind": AUTHOR_KIND, "name": steward},
         "segments": segments_for(coords, bool(route.get("closed"))),
-        # Everything below is the detail screen's; the shelf and the finder
-        # ignore it, so a document carrying only the fields above is complete.
-        "detail": {
-            "url": hike["source_url"],
-            "summary": hike.get("summary"),
-            "publishedMiles": hike.get("stated_miles"),
-            # The publisher's own word, because the five-slug mapping above
-            # cannot spell "Very Strenuous" and a card should be able to.
-            "publishedDifficulty": hike.get("difficulty"),
-            "routeType": hike.get("route_type"),
-            "estimatedHours": hike.get("estimated_hours"),
-            "dogs": hike.get("dogs"),
-            "park": hike.get("park"),
-            "region": hike.get("region"),
-            # The maintainer's "especially the tags": the export's Features
-            # badges, as published, in page order.
-            "features": list(hike.get("features") or []),
-            "publishedOn": hike.get("published_on"),
-            "updatedOn": hike.get("updated_on"),
-            "directions": list(hike.get("directions") or []),
-            "description": list(hike.get("description") or []),
-            "publicTransport": list(hike.get("public_transport") or []),
-            "author": hike.get("author"),
-            "licence": CONTENT_LICENCE,
-            # THE WHOLE POINT OF #1427's grading, on the record a hiker's phone
-            # holds: `published` is a track somebody surveyed, `generated` is a
-            # line this pipeline inferred from their prose. A screen that
-            # prints one in the voice of the other is the failure this field
-            # exists to prevent.
-            "routeProvenance": route["provenance"],
-            "routeGrade": route["grade"],
-            "routeNotes": list(route.get("problems") or []),
-        },
+        # --- everything below is read by validDetail, off the top level ---
+        "url": hike["source_url"],
+        "publishedMiles": hike.get("stated_miles"),
+        "overview": [summary] if summary else [],
+        "description": list(hike.get("description") or []),
+        "routeType": hike.get("route_type"),
+        "park": hike.get("park"),
+        "trails": list(route.get("walked_trails") or []),
         "start": {"lat": start.get("lat"), "lon": start.get("lon"), "basis": start.get("label")} if start else None,
+        # THE WHOLE POINT OF #1427, on the record a hiker's phone holds:
+        # `published` is a track somebody surveyed, `generated` is a line this
+        # pipeline inferred from their prose. A screen that prints one in the
+        # voice of the other is the failure these fields exist to prevent.
+        "routeProvenance": route["provenance"],
+        "routeGrade": route["grade"],
+        "routeNotes": list(route.get("problems") or []),
+        # NO `hikerNote`. That field's contract is that a PERSON wrote it -
+        # "it says what somebody checked" - and nobody has checked these 385.
+        # Putting the machine's own account of itself there would be exactly
+        # the display outrunning its source that routeProvenance exists to stop.
+        # --- kept for the finder and for screens that do not exist yet ---
+        "publishedDifficulty": hike.get("difficulty"),
+        "estimatedHours": hike.get("estimated_hours"),
+        "dogs": hike.get("dogs"),
+        "region": hike.get("region"),
+        # The maintainer's "especially the tags": the export's Features
+        # badges, as published, in page order.
+        "features": list(hike.get("features") or []),
+        "publishedOn": hike.get("published_on"),
+        "updatedOn": hike.get("updated_on"),
+        "directions": list(hike.get("directions") or []),
+        "publicTransport": list(hike.get("public_transport") or []),
+        "licence": CONTENT_LICENCE,
         "closed": bool(route.get("closed")),
         "measured": {"miles": round(route["miles"], 2), "note": router.SAME_TREAD_NOTE},
     }
+    if author:
+        # validPublication refuses a block with no submittedBy, so a hike whose
+        # page names nobody ships no publication rather than an empty one.
+        record["publication"] = {
+            "submittedBy": author,
+            "submittedOn": hike.get("published_on"),
+            "verifiedOn": hike.get("updated_on"),
+        }
+    climb = route.get("climb")
+    if climb:
+        # Absent means never priced, which the client reads as unknown. Never
+        # 0 as a stand-in: a walk with one unmeasured edge reported as flat
+        # fails SHORT, and short is what gets somebody caught by the dark.
+        record["climb"] = {"gainFt": round(climb[0]), "lossFt": round(climb[1])}
     if reproduced is not None:
-        record["detail"]["trackReproduction"] = reproduced
+        record["trackReproduction"] = reproduced
     return record
 
 
@@ -316,18 +344,29 @@ def main() -> dict | None:
     generated_at = datetime.now(timezone.utc)
     document, dropped = build_document(graph, cache, routes, steward, generated_at)
 
+    if not document["hikes"]:
+        # NOT a failure, and NOT an empty artifact. "Nothing passed grading"
+        # and "there are no suggested hikes" are different claims, and an
+        # empty document would make the client read the second - the Today
+        # shelf silently emptying on every phone that downloads it, over an
+        # artifact that was fine. publish.py collects whatever manifest exists
+        # with no count of its own, so this is the only place that can refuse.
+        print(f"No hike of {len(cache)} has a route that passed grading, so nothing is published.", file=sys.stderr)
+        return None
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     by_provenance: dict[str, int] = {}
     for hike in document["hikes"]:
-        kind = hike["detail"]["routeProvenance"]
+        kind = hike["routeProvenance"]
         by_provenance[kind] = by_provenance.get(kind, 0) + 1
     manifest = {
         "path": to_manifest_path(OUT_PATH),
         "sha256": sha256_file(OUT_PATH),
         "count": len(document["hikes"]),
         "by_provenance": by_provenance,
-        "with_tags": sum(1 for hike in document["hikes"] if hike["detail"]["features"]),
+        "with_tags": sum(1 for hike in document["hikes"] if hike["features"]),
+        "with_climb": sum(1 for hike in document["hikes"] if "climb" in hike),
         "dropped": [key for key, _ in dropped],
         "generated_at": document["generated_at"],
     }

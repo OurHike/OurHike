@@ -180,6 +180,40 @@ describe('the detail block a route carries', () => {
     expect(read?.detail?.publishedMiles).toBe(6.8)
   })
 
+  it('reads where the line came from, which is the point of carrying it', () => {
+    // #1427: `published` is a track somebody surveyed, `generated` is one the
+    // pipeline inferred from their prose. A card may not draw the second in
+    // the voice of the first, and it cannot tell them apart unless this is
+    // read off the wire.
+    const read = validateSuggestedHike({
+      ...SOUND,
+      routeProvenance: 'generated',
+      routeGrade: 'fair',
+      routeNotes: ['walks 2 of the 4 trails the description names'],
+    })
+
+    expect(read?.detail?.routeProvenance).toBe('generated')
+    expect(read?.detail?.routeGrade).toBe('fair')
+    expect(read?.detail?.routeNotes).toEqual([
+      'walks 2 of the 4 trails the description names',
+    ])
+  })
+
+  it('refuses a provenance it does not know, rather than passing it through', () => {
+    // Absent has to stay distinguishable from `published`: a card that treats
+    // an unreadable value as "somebody walked it" is the display outrunning
+    // its source on the one field that exists to stop exactly that.
+    const read = validateSuggestedHike({
+      ...SOUND,
+      routeProvenance: 'surveyed-ish',
+      routeGrade: 'rejected',
+    })
+
+    expect(read?.detail?.routeProvenance).toBeUndefined()
+    // `rejected` ships no line at all, so it can never arrive on a record.
+    expect(read?.detail?.routeGrade).toBeUndefined()
+  })
+
   it('reads nothing out of a nested `detail`, which is not the wire shape', () => {
     // The exact mistake the fixture made. Asserted rather than left implicit
     // so that anyone who moves the wire format has to move this test too.

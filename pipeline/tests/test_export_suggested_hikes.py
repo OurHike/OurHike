@@ -17,6 +17,8 @@ end, and the publisher's own tags carried through.
 from __future__ import annotations
 
 import json
+import pathlib
+import re
 
 import pytest
 
@@ -24,6 +26,7 @@ import export_suggested_hikes as exporter
 from lib.hikefinder import SOURCE_KEY
 from tests.test_lib_trail_graph_route import LAT, LON, STEP, graph_files
 
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 STEWARD = "New York-New Jersey Trail Conference"
 
 
@@ -64,6 +67,7 @@ def route(**overrides) -> dict:
         "miles": 0.3,
         "stated_miles": 0.3,
         "problems": [],
+        "climb": None,
     }
     base.update(overrides)
     return base
@@ -112,16 +116,22 @@ def test_an_entry_that_does_not_reach_hikers_publishes_nothing(sandbox, capsys):
 
 
 def test_a_rejected_route_ships_nothing_and_is_named_in_the_manifest(sandbox):
-    sandbox["write"]({"7": hike()}, {"7": route(grade="rejected", ends=[], problems=["too far apart"])})
+    """Paired with a hike that DOES ship, because a run where nothing passes
+    now writes no artifact at all - see
+    test_a_run_where_nothing_passes_writes_no_artifact_at_all."""
+    sandbox["write"](
+        {"7": hike(), "8": hike(id=8, name="Ridge Walk")},
+        {"7": route(grade="rejected", ends=[], problems=["too far apart"]), "8": route(hike_id=8)},
+    )
     manifest = exporter.main()
-    assert published(sandbox) == []
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:8"]
     assert manifest["dropped"] == ["7"]
 
 
 def test_a_hike_with_no_row_in_the_routes_file_is_dropped_rather_than_guessed(sandbox):
-    sandbox["write"]({"7": hike()}, {})
+    sandbox["write"]({"7": hike(), "8": hike(id=8, name="Ridge Walk")}, {"8": route(hike_id=8)})
     manifest = exporter.main()
-    assert published(sandbox) == []
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:8"]
     assert manifest["dropped"] == ["7"]
 
 
@@ -136,8 +146,8 @@ def test_a_generated_route_ships_its_ends_and_says_it_was_generated(sandbox):
     exporter.main()
     record = published(sandbox)[0]
     assert record["id"] == f"{SOURCE_KEY}:7"
-    assert record["detail"]["routeProvenance"] == "generated"
-    assert record["detail"]["routeGrade"] == "strong"
+    assert record["routeProvenance"] == "generated"
+    assert record["routeGrade"] == "strong"
 
 
 def test_a_closed_walk_repeats_its_first_end_so_the_phone_closes_it(sandbox):
@@ -158,19 +168,42 @@ def test_the_publishers_tags_ride_through_to_the_record(sandbox):
     """ "Especially the tags" - they are the facets the finder filters on."""
     sandbox["write"]({"7": hike()}, {"7": route()})
     exporter.main()
-    assert published(sandbox)[0]["detail"]["features"] == ["Views", "Waterfall"]
+    assert published(sandbox)[0]["features"] == ["Views", "Waterfall"]
 
 
-def test_everything_the_export_said_is_carried_onto_the_detail(sandbox):
+def test_everything_the_export_said_is_carried_onto_the_record(sandbox):
     sandbox["write"]({"7": hike()}, {"7": route()})
     exporter.main()
-    detail = published(sandbox)[0]["detail"]
-    assert detail["park"] == "Harriman State Park"
-    assert detail["routeType"] == "Circuit"
-    assert detail["dogs"] == "Allowed on leash"
-    assert detail["author"] == "Daniel Chazin"
-    assert detail["directions"] == ["Park at the gate."]
-    assert detail["publishedMiles"] == 0.3
+    record = published(sandbox)[0]
+    assert record["park"] == "Harriman State Park"
+    assert record["routeType"] == "Circuit"
+    assert record["dogs"] == "Allowed on leash"
+    assert record["directions"] == ["Park at the gate."]
+    assert record["publishedMiles"] == 0.3
+    assert record["overview"] == ["A short loop."]
+
+
+def test_the_two_authors_are_kept_apart(sandbox):
+    """A collision flattening the record exposed. `author` at the top level is
+    the client's own field and means the PUBLISHING ORGANIZATION - it is what
+    the card's "by" line names, and features/SUGGESTED_HIKES.md makes naming
+    that organization the premise of showing a route at all. The person who
+    wrote this particular hike up is a different fact, and it goes where the
+    client reads it: `publication.submittedBy`."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert record["author"] == {"kind": "club", "name": STEWARD}
+    assert record["publication"]["submittedBy"] == "Daniel Chazin"
+
+
+def test_a_hike_naming_no_author_ships_no_publication_block(sandbox):
+    """validPublication refuses a block with no submittedBy, so an empty one
+    would be a field the client drops anyway - and a card printing "written by"
+    with nobody after it is worse than one printing nothing."""
+    sandbox["write"]({"7": hike(author=None)}, {"7": route()})
+    exporter.main()
+    assert "publication" not in published(sandbox)[0]
 
 
 # --- difficulty is quoted, and one level does not fit --------------------------
@@ -190,7 +223,7 @@ def test_very_strenuous_takes_the_hardest_slug_there_is_and_keeps_its_own_word(s
     exporter.main()
     record = published(sandbox)[0]
     assert record["difficulty"] == "strenuous"
-    assert record["detail"]["publishedDifficulty"] == "Very Strenuous"
+    assert record["publishedDifficulty"] == "Very Strenuous"
 
 
 def test_a_difficulty_the_client_has_no_slot_for_is_absent_rather_than_guessed(sandbox):
@@ -213,8 +246,8 @@ def test_a_track_that_re_walks_on_this_builds_lines_ships_with_its_drift_recorde
     )
     manifest = exporter.main()
     record = published(sandbox)[0]
-    assert record["detail"]["routeProvenance"] == "published"
-    assert "trackReproduction" in record["detail"]
+    assert record["routeProvenance"] == "published"
+    assert "trackReproduction" in record
     assert manifest["by_provenance"] == {"published": 1}
 
 
@@ -223,11 +256,14 @@ def test_a_track_that_leaves_this_builds_lines_is_dropped_rather_than_re_drawn(s
     happens to be nearest would publish a line the surveyor never walked."""
     ends = [[LON + 1.0, LAT + 1.0], [LON + 1.01, LAT + 1.0]]
     sandbox["write"](
-        {"7": hike(has_published_route=True, route_type="Shuttle")},
-        {"7": route(provenance="published", ends=ends, closed=False, miles=0.6, stated_miles=0.6)},
+        {"7": hike(has_published_route=True, route_type="Shuttle"), "8": hike(id=8, name="Ridge Walk")},
+        {
+            "7": route(provenance="published", ends=ends, closed=False, miles=0.6, stated_miles=0.6),
+            "8": route(hike_id=8),
+        },
     )
     manifest = exporter.main()
-    assert published(sandbox) == []
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:8"]
     assert manifest["dropped"] == ["7"]
 
 
@@ -240,3 +276,91 @@ def test_the_manifest_counts_the_two_provenances_apart(sandbox):
     assert manifest["count"] == 1
     assert manifest["by_provenance"] == {"generated": 1}
     assert manifest["with_tags"] == 1
+
+
+# --- the wire shape, guarded across the two suites -----------------------------
+
+CLIENT_VALIDATOR = ROOT.parent / "client" / "src" / "lib" / "suggestedHikesData.ts"
+
+
+def _fields_the_client_reads() -> set[str]:
+    """Every `raw.<name>` inside the client's `validDetail`, read from the
+    client's own source rather than copied here.
+
+    Copying the list would be a second place for it to be wrong, which is the
+    whole defect this guards against.
+    """
+    source = CLIENT_VALIDATOR.read_text(encoding="utf-8")
+    body = source[source.index("function validDetail(") :]
+    body = body[: body.index("\n}\n")]
+    return set(re.findall(r"raw\.(\w+)", body))
+
+
+def test_the_record_is_flat_because_the_client_reads_it_flat(sandbox):
+    """THE BUG THIS EXISTS FOR, and it shipped green.
+
+    `validDetail` is handed the WHOLE record and reads `raw.url`,
+    `raw.publishedMiles`, `raw.description` off the top level - its own test
+    pins it as "reads nothing out of a nested `detail`, which is not the wire
+    shape". An earlier version of the exporter nested them under a `detail`
+    key, which dropped every one on the phone while BOTH suites stayed green:
+    this one asserted the nested shape, the client's asserted the flat one,
+    and they never met.
+
+    So this test reads the client's own validator and checks the exporter
+    against it. It fails if either side moves without the other.
+    """
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+
+    assert "detail" not in record, "the detail fields are flat on the wire - validDetail reads the whole record"
+    wanted = _fields_the_client_reads()
+    missing = {name for name in wanted if name not in record}
+    # `hikerNote` is deliberately never written: its contract is that a person
+    # reviewed the route, and nobody has reviewed these.
+    assert missing <= {"hikerNote"}, f"the client reads {sorted(missing)} and this record does not carry them"
+
+
+def test_the_provenance_fields_are_spelled_the_way_the_client_reads_them(sandbox):
+    """The point of #1427 reaching a phone at all. These three were added to
+    `validDetail` in the same pull request; if either side is renamed, an
+    inferred line arrives indistinguishable from a surveyed one."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    record = published(sandbox)[0]
+    assert _fields_the_client_reads() >= {"routeProvenance", "routeGrade", "routeNotes"}
+    assert record["routeProvenance"] == "generated"
+    assert record["routeGrade"] == "strong"
+
+
+def test_no_hiker_note_is_written_because_nobody_reviewed_these(sandbox):
+    """`hikerNote` says what a PERSON checked. The machine's account of itself
+    is `routeProvenance`, and the two must not be confused."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+    exporter.main()
+    assert "hikerNote" not in published(sandbox)[0]
+
+
+def test_climb_ships_when_the_route_was_priced_and_is_absent_when_it_was_not(sandbox):
+    """Absent means never measured, which the client reads as unknown. Never 0:
+    a walk with one unpriced edge reported as flat fails SHORT, and short is
+    the direction that gets somebody caught by the dark."""
+    sandbox["write"]({"7": hike()}, {"7": route(climb=[420, 380])})
+    exporter.main()
+    assert published(sandbox)[0]["climb"] == {"gainFt": 420, "lossFt": 380}
+
+    sandbox["write"]({"7": hike()}, {"7": route(climb=None)})
+    exporter.main()
+    assert "climb" not in published(sandbox)[0]
+
+
+def test_a_run_where_nothing_passes_writes_no_artifact_at_all(sandbox):
+    """ "Nothing passed grading" and "there are no suggested hikes" are
+    different claims. Writing an empty document makes the client read the
+    second, and publish.py uploads whatever manifest exists with no count of
+    its own - so refusing here is the only thing standing between a bad run
+    and every phone's Today shelf emptying."""
+    sandbox["write"]({"7": hike()}, {"7": route(grade="rejected", ends=[], problems=["too far apart"])})
+    assert exporter.main() is None
+    assert not sandbox["out"].exists()

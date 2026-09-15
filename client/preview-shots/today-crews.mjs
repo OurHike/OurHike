@@ -17,6 +17,11 @@
 // there is nothing to show, and they are the parts #249's rule is about -
 // "could not check" must never read as "no club has asked".
 //
+// THE TWO DOORS AT THE FOOT are the section's own: the map, and the hiker's
+// own half - hours, places passed, the private record. The second is the one
+// the volunteer card used to be, kept rather than dropped with it, because
+// one tab away from the screen somebody lives on is not the same as on it.
+//
 // TWO THINGS DELIBERATELY ABSENT FROM THE PICTURE. There is no kind-of-work
 // chip row: `WorkProjectSummary` has no `work_type`, and until the field is in
 // the bake the row renders nothing rather than being inferred from a club's
@@ -29,7 +34,7 @@
 export const caption =
   'Today in volunteer mode — the crews screen, with nothing published to fill it yet (#1440, and #1402 for why it is empty)'
 export const alt =
-  'The Today screen in volunteer mode: a heading “Upcoming crews” above a two-segment List / Calendar switch with List selected, a row of three window chips reading “This weekend”, “Next 14 days” (selected) and “Next 30 days”, then the line “The workday list needs signal to load, and hasn’t yet.”, and beneath it a link reading “See the crews on the map ›”.'
+  'The Today screen in volunteer mode: a heading “Upcoming crews” above a two-segment List / Calendar switch with List selected, a row of three window chips reading “This weekend”, “Next 14 days” (selected) and “Next 30 days”, then the line “The workday list needs signal to load, and hasn’t yet.”, and beneath it two links — “See the crews on the map ›” and “Your hours, and the places you passed ›”.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Today' }).click()

@@ -139,12 +139,16 @@
 // and the "N legs" in the panel's summary and in the bar below it counts the
 // rows the hiker can actually see.
 //
-// The frame is evidence for the rows and NOT for the defect: whether the walk
-// this drive happens to build crosses a seam between two of one publisher's
-// lines is not something a ring of taps in Harriman can promise. What pins
-// the behaviour is lib/trailGraph.test.ts and lib/dayHikeRows.test.ts, both
-// red on the old predicate. What this shot answers is the question a unit
-// test cannot: that the list still reads as a walk.
+// The frame is evidence for the rows and NOT for the defect, and that is
+// measured rather than hedged: run against client/scripts/data-proxy.mjs on
+// 2026-09-15, once from a build carrying the old predicate and once from the
+// new, this drive produced byte-identical frames - 147,896 bytes, the same
+// three rows (Fingerboard Shelter, the A.T., Ramapo-Dunderberg). The walk a
+// ring of taps happens to build in Harriman crosses no seam between two of
+// one publisher's lines, and no camera can promise it will. What pins the
+// behaviour is lib/trailGraph.test.ts and lib/dayHikeRows.test.ts, both red
+// on the old predicate. What this shot answers is the question a unit test
+// cannot: that the list still reads as a walk.
 export const caption =
   'Step 2 — the day-hike builder with a walk in it: the rail, the route order, a stop row, the shape control and the foot (#1194, #1212, #1373 frame 4a)'
 export const alt =
@@ -299,6 +303,19 @@ export default async function drive(page) {
     await page.getByText('Route order · tap the map to add').waitFor()
   }
 
+  // AND THE ROUTE ORDER PUT IN FRAME (#1433). The panel opens on its stats and
+  // its climb block, so an expanded body alone photographs the numbers above
+  // the list rather than the list - and the list is the thing a change to what
+  // a leg IS moves. Scrolled to, the way about-this-build.mjs anchors on the
+  // last thing in its section rather than on the heading above it.
+  //
+  // Guarded, and the shot survives losing it: with no walk there is no list to
+  // scroll to, and the empty prompt waited on above is already the frame.
+  await page
+    .locator('.day-hike-panel__list')
+    .scrollIntoViewIfNeeded({ timeout: 5000 })
+    .catch(() => {})
+
   // AND THEN THE BAR IS PUSHED DOWN, which is the frame worth having since
   // 2026-09-14. The bar carries a grip (client/src/chrome/SheetGrip.tsx) and
   // the hiker sets how much map there is; a still of the default tells a
@@ -311,11 +328,35 @@ export default async function drive(page) {
   // sheet's own read-out rather than by a clock: `data-snap` is what the hook
   // writes when a gesture settles, so waiting for it proves the settle
   // happened rather than hoping 300ms was enough.
-  const grip = page.locator('[data-sheet-grip]').first()
-  if ((await grip.count()) > 0) {
+  //
+  // THE BAR'S GRIP, AND `.first()` WAS NOT IT (#1433). Two sheets on this
+  // screen carry `[data-sheet-grip]` - the bar, and since the same day this
+  // block was written chrome/DayHikePanel.tsx's own lower edge - and on a
+  // phone the panel is the earlier of the two in the DOM. So `.first()`
+  // snapped the PANEL while the line below waited on the BAR's `data-snap`,
+  // which never moved. Nothing said so until now because a recipe is only
+  // photographed when a pull request touches it, and the first run that
+  // touched this one was also the first whose preview opened the door at all:
+  // the drive had always returned at the withheld door, above this block.
+  // Reproduced in the sandbox against client/scripts/data-proxy.mjs
+  // (2026-09-15) - the same TimeoutError on the same locator - and green
+  // there after this line.
+  const grip = page.locator('.day-hike-bar [data-sheet-grip]').first()
+
+  /** Press the grip and wait for the bar to report `snap`; false if it did
+   *  not settle there. Guarded because losing the pushed-down state should
+   *  cost that state and not the whole frame - the caption promises the
+   *  builder with a walk in it, which is already on screen by here. */
+  const snapTo = async (snap) => {
     await grip.click()
-    await page.locator('.day-hike-bar[data-snap="full"]').waitFor({ timeout: 5000 })
-    await grip.click()
-    await page.locator('.day-hike-bar[data-snap="peek"]').waitFor({ timeout: 5000 })
+    return page
+      .locator(`.day-hike-bar[data-snap="${snap}"]`)
+      .waitFor({ timeout: 5000 })
+      .then(
+        () => true,
+        () => false,
+      )
   }
+
+  if ((await grip.count()) > 0 && (await snapTo('full'))) await snapTo('peek')
 }

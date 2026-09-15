@@ -74,6 +74,8 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent | absent |
 | **USFS** | *unsuitable* 815 | **ships 4,605** | absent | absent | absent | **ships 636** | absent | absent | **ships 7,358** |
 | **NH GRANIT** | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
+| **NYC Parks** | absent | absent | ***unsuitable*** 3,849 | absent | absent | absent | absent | *available* 1,066 | absent |
+| **NYC DOT** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 
 **The trailhead column is new with [#1197](https://github.com/OurHike/OurHike/issues/1197)**,
 which gave `POI_TYPES` the ninth category §7c said it lacked. Three of its cells are worth
@@ -629,3 +631,88 @@ server intermittently drops connections mid-request, and answered `urllib` with
 failure to retry through, not a layer that is down. Agency layers move slowly but the
 free-text type columns accumulate dirt, so re-read the unmapped list rather than assuming
 the buckets still catch everything.*
+
+## 10. New York City — two cells of nine, and the water cell is a refusal (#1452)
+
+Added 2026-09-15, after [#1432](https://github.com/OurHike/OurHike/issues/1432) registered
+the city's two walking-path layers and left every POI question at `unprobed` because its
+scope was lines. Probed against `data.cityofnewyork.us`, the Socrata portal NYC publishes
+on — so unlike every other org in this survey, the probe is a catalogue search rather than
+a walk of an ArcGIS org's service list.
+
+**Seven of the nine types are `absent`, and that is a real answer about a city rather than
+a gap in the probing.** New York has no backcountry: no lean-tos, no dispersed campsites,
+no trailhead parking lots, no surveyed viewpoints, no stream crossings to ford. The two
+cells that are not absent are the two a city *would* have.
+
+### Water — 3,849 drinking fountains, and `unsuitable`
+
+`NYC Parks Drinking Fountains` (`qnv7-p7a2`), 3,849 rows, attributed to NYC Parks. This is
+the second refusal in this survey and it is a different shape from DEC's. **DEC's was a
+refusal about what the data IS** (§3: `WATER SUPPLY SYSTEM`, 23 features, none flagged for
+public use). **This one is a refusal about what the data does not SAY.** Three measurements,
+all 2026-09-15:
+
+- **`featuresta` reads `Active` on all 3,849 rows.** Zero variance. A status column that
+  says the same thing about every row carries nothing about whether a fountain works, while
+  looking exactly like a column that does — which is worse than no column at all, because a
+  reader assumes it means something. NYC Parks shuts fountains off over winter and nothing
+  here records it.
+- **`fountainty` mixes things nobody can drink from outdoors:** 292 `Indoor Drinking
+  Fountain`, 120 `Food Prep Sink`. The rest are undecoded letters — `A` 981, `C` 630, `E`
+  385, `D` 377, `B` 140 — plus 118 `Bottle Filler High Low`. An outdoor-drinking-water
+  allowlist needs those codes, and the codes are not published with the column.
+- **It is fourteen months stale**: `rowsUpdatedAt` 2024-07-15, against the trails layer's
+  monthly automation.
+
+Any one of those would be survivable. Together they mean a pin drawn from this layer would
+assert *there is drinking water here, and it works* on the strength of a column that says
+`Active` about a food-prep sink someone capped in 2024. FEATURES.md's line — *a confidently
+wrong prediction is more dangerous than an honest unknown* — is the whole of the argument,
+and it is the same one §3 used to refuse DEC.
+
+**What would change it**, and it is cheap: NYC Parks publishing the `fountainty` domain, or
+any column with variance in it. The fountains are plainly real and mostly usable; what is
+missing is a way to tell which. `nyc_water_holdback` in `sources.json` carries this so the
+refusal is greppable beside `dec_water_holdback`, which it deliberately echoes.
+
+### Privy — 1,066 restrooms, and `available`
+
+`Public Restrooms` (`i7jb-7jku`), 1,066 rows, refreshed 2025-06-27. **The contrast that
+proves the bar above is clearable rather than impossible**: `status` splits Operational 975
+/ Not Operational 73 / Closed for Construction 17 / Closed 1 — a column with real variance,
+which is exactly what the fountains lack — alongside `accessibility`, `hours_of_operation`
+and `open`.
+
+`available` rather than `shipping` because registering it is a separate decision with a
+real question inside it: the dataset is multi-agency (DPR, DOT, DCP, DCAS, NYPL, BPL, QPL,
+MTA), so somebody has to say whether a library or subway toilet belongs on a hiking map, or
+whether only the DPR rows do.
+
+### The seven absent cells, said individually so nobody re-finds them
+
+- **shelter** — `absent`, **and the word collides**. A catalogue search returns `Shelter
+  Repair Scorecard` (`dvaj-b7yx`), which is DHS's homeless-shelter buildings attributed to
+  DOB/FDNY/HPD/DOHMH. It is not a backcountry shelter and must never be read as one; it is
+  named here so the next probe recognises it immediately.
+- **campsite** — `absent`. No camping dataset of any kind on the portal.
+- **trailhead**, **viewpoint**, **crossing** — `absent`. Nothing returned for any spelling.
+- **parking** — `absent` in the sense this survey means. The portal has `Parking Meters
+  Locations and Status` and `Open Parking and Camera Violations`, both street-parking
+  regulation, and neither is a trailhead lot.
+- **resupply** — `absent`. `FRESH Food Stores Zoning Boundaries` and `Recognized Shop
+  Healthy Stores` exist and are zoning and public-health instruments, not a shop directory.
+
+### NYC DOT — nine absent cells, and briefly
+
+DOT's registered dataset is a line network of bicycle facilities with no point layer in it.
+Nothing else of DOT's on the portal is POI-shaped for a hiker. All nine `absent`.
+
+### Two datasets seen and not probed
+
+Named so the next pass starts here rather than at the catalogue: `NYC Parks Active and
+Passive Recreation` (`kcqe-vnci`, 2,936 rows, refreshed 2026-07-01) is open-space areas with
+active/passive recreation percentages — land use rather than points, and read as not a POI
+layer on its description and column list alone. `Directory of Hiking Trails` (`i8f4-bu5r`)
+and `New York City Water Trail` (`hxay-3qcw`) are catalogue entries of type `href` rather
+than datasets, so there is nothing to query; both are links out to nyc.gov pages.

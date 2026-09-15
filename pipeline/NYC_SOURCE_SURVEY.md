@@ -336,6 +336,7 @@ rule) will have to be argued rather than assumed:
 | Catskill Forest Preserve | DEC (`UNIT: CFP`) | Long Path (NYNJTC), NYNJTC's Catskill programs, 314-lean-to layer statewide |
 | NJ Highlands / Ramapos | NJDEP + the statewide compilation | Highlands Trail (NYNJTC), NYNJTC maintains |
 | The AT corridor through NY/NJ | ATC/NPS (already shipping) | crosses OPRHP, PIPC and NJDEP ground registered above |
+| **New York City's parks** | **NYC Parks** (7,059 trail segments) | **NYC DOT's greenways** (3,030 off-street), 1,828 of them on NYC Parks land by DOT's own `gwyjuris` — and **measured 2026-09-15, this row is the only one in the table with a number**: §13 |
 
 The steward-versus-owner distinction matters for outreach too: OPRHP's answer covers the
 *data*; NYNJTC's covers the *stewardship* and the network — one does not substitute for the
@@ -638,10 +639,11 @@ Two riders travel with it:
 
 ### 12e. What is still open
 
-- **(a) The two city layers overlap, and nobody has measured it.** 2,095 current greenway
-  segments carry `gwyjuris: DPR` — NYC Parks' own ground, which the trails layer also
-  covers. The same tread is plausibly drawn twice from two city agencies. This is §8's
-  overlap table gaining a row it has no measurement for.
+- **(a) ~~The two city layers overlap, and nobody has measured it.~~** **Measured
+  2026-09-15 (#1453) — §13.** It is real, it is systematic, and it is a quarter of the
+  ground: 23.6% of the mileage DOT records on NYC Parks land runs within 25 m of a NYC
+  Parks trail, against 0.9% for the greenways elsewhere. What to *do* about it is still
+  open, and §13 says why the mechanism that already exists declines to.
 - **(b) The version-and-modifications rider**, above. An ask to OTI settles it.
 - **(c) Walkability on the greenways is inferred**, not declared — 12c.
 - **(d) The blaze colours in `trail_name` are unparsed** and 1,494 segments carry one. A
@@ -660,3 +662,78 @@ Two riders travel with it:
   maintainer can actually stand on, which is the whole reason it exists — Van Cortlandt and
   Pelham Bay are a subway ride, and a single afternoon would settle (c), (d) and the 2013
   survey dates in 12b better than any amount of further probing.
+
+## 13. The two city agencies do draw the same tread — a quarter of it (#1453)
+
+§8's table has always been a list of places where *"per-field precedence will have to be
+argued rather than assumed"*, and every row of it was an assertion with no number behind
+it. New York City is the first row that can be measured, because it is the first where one
+city's **two agencies** catalogue the same path and one of them says so in a column: NYC
+DOT's `gwyjuris` records which greenway segments sit on NYC Parks land.
+
+`spike_nyc_overlap.py` is the measurement and is re-runnable. Run 2026-09-15 against the
+two fetched layers, asking what fraction of each greenway segment's length has **both**
+endpoints within a radius of any NYC Parks trail vertex:
+
+| radius | `gwyjuris: DPR` (1,828 segments, 124.1 mi) | control — every other jurisdiction (1,211 segments, 56.6 mi) | ratio |
+|---|---|---|---:|
+| 10 m | **17.7 mi shared (14.3%)**, 269 segments at least half covered | 0.1 mi (0.2%), 4 segments | **67×** |
+| 25 m | **29.3 mi shared (23.6%)**, 423 segments at least half covered | 0.5 mi (0.9%), 16 segments | **25×** |
+
+**The control is what makes this a finding rather than an observation about a dense city.**
+New York will put *something* near everything, so an overlap figure alone proves nothing.
+The greenways DOT records on its own, NYSDOT's, NPS's, RIOC's and MTA's share the city's
+density and none of its land-management overlap — and they sit at 0.9%. The DPR figure is
+twenty-five times that. The duplication tracks jurisdiction, exactly as it would if two
+agencies were independently digitising one path.
+
+Where it concentrates, at 25 m: **Bronx Waterfront 84.8%** of its 3.9 mi, Harlem
+River-Putnam 58.1%, Mosholu-Pelham 56.7% of 11.8 mi, Central Queens 38.0%, Hutchinson
+River 30.1%, New Springville 29.2%, Historic Brooklyn 22.2%. Manhattan Waterfront, the
+longest system at 26.6 mi, is among the *least* duplicated at 10.9% — its esplanade is
+DOT's and NYC Parks does not separately record it.
+
+**A correction to §12e(a)'s own number while we are here.** That paragraph said 2,095
+greenway segments carry `gwyjuris: DPR`. True of the 5,361 *current* greenway rows, and
+not of what ships: after the `onoffst='OFF'` clause, **1,828** do. The larger number was
+counted before the filter it is quoted alongside.
+
+### Why the mechanism that exists declines to help
+
+`lib/concurrency.py`'s `find_shared_ground` is precisely the machinery for two stewards on
+one tread, and running it over both NYC layers emits **zero pairs**. Measured the same day,
+and the reasons are worth reading in order because only the smallest one is the obvious
+one:
+
+| | dropped | why |
+|---|---:|---|
+| `nameless_skipped` | **3,777** | it pairs *trails*, and a trail is a name. #1432's `name_placeholders` rule reads `Unnamed Official Trail` and its siblings as absent, so over half the parks layer cannot be a party to a pair |
+| `dropped_short` | 947 | shared stretches under `SHARED_GROUND_MIN_LENGTH_M` (50 m) |
+| `dropped_unpainted` | 83 | the blaze gate: the feature it feeds is a **two-tone** treatment, and neither NYC layer has a blaze to paint |
+
+So the blaze gate is the *last* filter and the smallest, which is the opposite of what a
+quick look suggests. Even given blazes, most of this overlap would still be invisible to
+the pairing, because the parks layer mostly has no names to pair on.
+
+**None of this is a defect in `find_shared_ground`.** It exists to draw two blazed routes
+side by side where they run together, and it is right to decline a pair it cannot paint.
+The finding is that New York City's overlap is a *different* shape — unnamed, unblazed, and
+in short pieces — and nothing in the build currently addresses it.
+
+### What is still open, and it is a product decision
+
+Three options, and the measurement does not pick between them:
+
+1. **Leave both.** Defensible: both agencies genuinely maintain these paths, and 76% of the
+   DPR greenway mileage is *not* duplicated, so suppressing the source wholesale would cost
+   real ground to fix a quarter of it.
+2. **Suppress one source's copy on overlapping ground**, the way `owns_route_names` already
+   suppresses a route owner's duplicates — but that rule works on a name, and these rows
+   mostly have none.
+3. **Pair them as concurrent sources** and let the map say two stewards record this path,
+   which is what §8 anticipates — and which needs `find_shared_ground` to grow a case for
+   unnamed, unblazed tread, rather than a caller.
+
+Recorded here rather than decided: what a hiker should see when two city agencies both
+claim a path is a question about the map, and `@unvalidated` besides — nobody has stood on
+one of the 423 doubled segments to see whether it is one path or two.

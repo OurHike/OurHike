@@ -608,37 +608,33 @@ describe('what a desktop launch paints before the store has answered', () => {
     expect(vi.mocked(get).mock.calls.length).toBeGreaterThan(0)
   })
 
-  it('leaves the pane beside it empty until the store answers, which is the defect', async () => {
-    // CHARACTERISATION, NOT APPROVAL. This asserts what a desktop launch does
-    // today so that changing it is visible: the moment Today renders beside a
-    // held-up map, this test fails and whoever fixed it inverts it.
+  it('puts Today beside the sidebar before the store answers, and without a map', async () => {
+    // THE INVERSION THIS TEST WAS BUILT FOR (#1429). It stood as
+    // characterisation - "leaves the pane beside it empty until the store
+    // answers, which is the defect" - and said in as many words that whoever
+    // fixed the defect should invert it rather than delete it. This is that.
     //
-    // The phone's equivalent - `puts the tab bar and the Today header on
-    // screen before any IndexedDB read has resolved` above - passes on the
-    // same stalled store, which is the whole asymmetry: identical launches,
-    // and only one of them has a front door.
+    // What it now holds is the fix's whole claim: Today draws on a laptop
+    // while the archive store is still being asked, because the wait belongs
+    // to the map's background decision and Today does not participate in it.
+    // Its phone twin above asserts the same thing for the phone's layout, so
+    // the two layouts now make one promise instead of two.
     stallEveryRead()
 
     render(<App />)
     await screen.findByRole('tab', { name: 'Today' })
-    // A tripwire that samples one frame is a tripwire a fix can step over: the
-    // prototype on #1429 renders the journal synchronously, but a fix that
-    // lands it from an effect or a resolved chunk a tick later would satisfy
-    // an assertion taken the instant the tab bar appeared.
+    // Sampled after a beat rather than on the frame the tab bar appeared, for
+    // the reason the characterisation version needed it: a journal that only
+    // arrives a commit later would satisfy an assertion taken immediately, and
+    // "before the store answers" is a claim about the whole window.
     await settle()
 
-    // Nothing of Today's own is on screen - not the journal, not the map it is
-    // docked against. The sidebar's mode switch is NOT evidence either way: it
-    // is the tab bar's, and it renders on this frame by design.
+    // Today is here, and the map it used to wait for is not - which is the
+    // pairing that makes this the fix rather than a slower map. The store has
+    // answered nothing: every read is still hanging.
+    expect(document.querySelector('.today')).not.toBe(null)
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
     expect(MockMap.instances).toHaveLength(0)
-    // Today's own root element rather than anything it says. screens/Today.tsx
-    // contributes no landmark of its own, and the copy inside it is somebody's
-    // to reword: anchored on "Nothing planned today" this assertion would go
-    // quietly vacuous the day that string changes, leaving the block green
-    // whether or not the defect is still there - which is the one thing it
-    // exists to notice.
-    expect(document.querySelector('.today')).toBe(null)
   })
 
   it('builds no more than one map for a launch that lands on Today', async () => {

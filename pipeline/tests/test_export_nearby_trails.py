@@ -1764,3 +1764,42 @@ def test_no_declared_pairs_leaves_every_record_alone():
 
     assert kept == records
     assert stats == []
+
+
+def test_a_merged_record_ships_whose_copy_it_swallowed():
+    """#1459 claimed the loser "is kept on the survivor rather than
+    discarded" - features/POI_DEDUPLICATION.md §3's line in the identity
+    ledger - and the field was set on 271 records and then dropped by the
+    property whitelist, so the claim was true of the pipeline and false of
+    the artifact. Verified against UA release 4bf46523: nyc_dot_greenways
+    published 2,603 of the 3,030 it fetched, exactly the 427 removed, and
+    `duplicate_of` appeared nowhere in 242 MB of it.
+
+    `closure_source` was this same finding once (#1142): set on every area
+    record since #964 and never shipped. A merge nobody can see from the
+    artifact is a merge nobody can check."""
+    geojson = ex.records_to_geojson(
+        [
+            {
+                "id": "p1",
+                "source": "nyc_parks_trails",
+                "name": "Park Loop",
+                "blaze_color": "Unknown",
+                "wkt": "LINESTRING (-73.97 40.66, -73.96 40.67)",
+                "duplicate_of": "nyc_dot_greenways",
+            },
+            {
+                "id": "p2",
+                "source": "nyc_parks_trails",
+                "name": "Untouched",
+                "blaze_color": "Unknown",
+                "wkt": "LINESTRING (-73.5 40.1, -73.4 40.2)",
+            },
+        ]
+    )
+
+    merged, plain = (f["properties"] for f in geojson["features"])
+    assert merged["duplicate_of"] == "nyc_dot_greenways"
+    # Omitted rather than null on a record that swallowed nothing - the rule
+    # every optional property in this writer follows.
+    assert "duplicate_of" not in plain

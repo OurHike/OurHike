@@ -986,6 +986,21 @@ def records_to_geojson(records: list[dict]) -> dict:
                     **({"closure_kind": record["closure_kind"]} if record.get("closure_kind") else {}),
                     **({"closure_reason": record["closure_reason"]} if record.get("closure_reason") else {}),
                     **({"closure_source": record["closure_source"]} if record.get("closure_source") else {}),
+                    # Only on a record that swallowed another organization's
+                    # copy of the same path (#1459): whose copy it was.
+                    #
+                    # SHIPPED THOUGH NOTHING READS IT YET, and that is the
+                    # correction rather than an oversight. lib/duplicates.py
+                    # says the loser "is kept on the survivor rather than
+                    # discarded", features/POI_DEDUPLICATION.md §3's "a line
+                    # in the identity ledger, not a new file" - and the field
+                    # was set on 271 records and dropped here, so the claim
+                    # was true of the pipeline and false of everything a
+                    # reader could see. `closure_source` was the same finding
+                    # (#1142): set on every area record since #964 and never
+                    # shipped. A merge that cannot be seen from the artifact
+                    # is a merge nobody can check.
+                    **({"duplicate_of": record["duplicate_of"]} if record.get("duplicate_of") else {}),
                     # Only on a shared-ground pair (#1384): the other trail's
                     # name and source, and which side of the chord this half is.
                     **({"concurrent_with": record["concurrent_with"]} if record.get("concurrent_with") else {}),

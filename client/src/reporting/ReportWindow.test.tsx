@@ -11,10 +11,10 @@ afterEach(() => {
 // The report window (#1133). The load-bearing behaviours, in the order they
 // would hurt somebody if they broke:
 //
-//   - the two that must never file on a tap, never file on a tap
-//   - the 911 line is readable BEFORE the tap, and is the shipped words
-//   - a tap really does file, and Undo really does take it back
-//   - the undo window is shorter than the outbox's own ceiling on holds
+//   - closure and unsafe-encounter rows call their own handler, never onFile
+//   - the 911 notice renders EMERGENCY_NOTICE verbatim, before any tap
+//   - a tap calls onFile, and Undo calls onUndo with the id it returned
+//   - UNDO_WINDOW_MS stays under lib/outbox.ts's MAX_UNDO_HOLD_MS
 //
 // Everything else here is ordinary UI.
 
@@ -37,7 +37,7 @@ function setup(overrides: Partial<ReportWindowProps> = {}) {
 }
 
 describe('what the window offers', () => {
-  it('draws the six that file on a tap, under the corrected constants', () => {
+  it('draws all six filing tiles, including invasive_species and shelter_repair', () => {
     setup()
     // `invasive_species`, not the handoff's `invasive`. `shelter_repair` keeps
     // its constant while its label broadens.
@@ -56,7 +56,7 @@ describe('what the window offers', () => {
     )
   })
 
-  it('gives every tile a description, not just the two that used to have one', () => {
+  it('gives every tile a description, trash and blowdown included', () => {
     setup()
     // "Trash" is the one that gives the old inconsistency away: litter a hiker
     // can pack out, or a bin that needs a crew with a truck?
@@ -70,7 +70,7 @@ describe('what the window offers', () => {
 })
 
 describe('the two that must never file on a tap', () => {
-  it('sends a closure out of this flow entirely, filing nothing', () => {
+  it('calls onReportClosure for a closure, and never onFile', () => {
     // #832: a closure is a stretch with two ends and its own table, not an
     // eighth report type. It is not even in the union - categories.ts gives
     // CLOSURE_ROW no `id` - so there is nothing here that COULD be filed.
@@ -82,7 +82,7 @@ describe('the two that must never file on a tap', () => {
     expect(props.onFile).not.toHaveBeenCalled()
   })
 
-  it('sends an unsafe encounter to the long form, filing nothing', () => {
+  it('calls onReportUnsafe for an unsafe encounter, and never onFile', () => {
     // Private to club moderators, never a public pin, and never something that
     // lands in a queue because a thumb brushed a tile.
     const { props } = setup()
@@ -93,7 +93,7 @@ describe('the two that must never file on a tap', () => {
     expect(props.onFile).not.toHaveBeenCalled()
   })
 
-  it('says how to get real help before the tap, in the words that shipped', () => {
+  it('renders EMERGENCY_NOTICE verbatim, before any tile is tapped', () => {
     // Before, not after: somebody in trouble right now needs to know this is
     // the wrong tool while they can still act on that, rather than once they
     // are already in a form. The copy came over unchanged from the retired
@@ -110,7 +110,7 @@ describe('the two that must never file on a tap', () => {
     expect(EMERGENCY_NOTICE).toBe(notice.textContent)
   })
 
-  it('puts the 911 line OUTSIDE the region that scrolls, and above it', () => {
+  it('keeps the 911 note outside .report-window__body, and before it', () => {
     // #1480, and the assertion this file was missing when the maintainer
     // photographed the defect. "Before the tap" was tested as document order
     // within the body, which the notice satisfied while sitting 39 px below
@@ -136,7 +136,7 @@ describe('the two that must never file on a tap', () => {
     )
   })
 
-  it('keeps the 911 line off the receipt, where the decision has been taken', async () => {
+  it('removes the 911 note once a report is filed', async () => {
     // Unchanged by #1480 and worth holding down now that it could drift.
     // While the tiles are up the line is guidance about a choice somebody is
     // ABOUT to make; after a tap the body is a receipt for a report that is
@@ -156,7 +156,7 @@ describe('the two that must never file on a tap', () => {
 })
 
 describe('filing on the tap', () => {
-  it('writes the report immediately and shows what it wrote', async () => {
+  it('calls onFile on the tap and shows "Filed — blow down at mi 628.4"', async () => {
     const { props } = setup()
 
     await act(async () => {
@@ -175,7 +175,7 @@ describe('filing on the tap', () => {
     expect(screen.queryByTestId('report-tile-flooding')).toBeNull()
   })
 
-  it('does not say “at here”', async () => {
+  it('says "Filed — blow down here" for a here anchor, never "at here"', async () => {
     // THE FIRST PHOTOGRAPH OF THIS SCREEN CAUGHT THIS, and no test had.
     // Every case above uses a mile anchor, where composing `at ${label}` reads
     // perfectly - and a build with no GPS fix anchors to "here", where it
@@ -192,7 +192,7 @@ describe('filing on the tap', () => {
     expect(screen.getByRole('status')).not.toHaveTextContent('at here')
   })
 
-  it('holds it back for less than the outbox is willing to hold anything', () => {
+  it('keeps UNDO_WINDOW_MS under the outbox MAX_UNDO_HOLD_MS ceiling', () => {
     // The two constants live in different files and have to agree: a window
     // longer than lib/outbox.ts's ceiling would produce a countdown still
     // running over a report that has already gone. This is the assertion that
@@ -200,7 +200,7 @@ describe('filing on the tap', () => {
     expect(UNDO_WINDOW_MS).toBeLessThan(MAX_UNDO_HOLD_MS)
   })
 
-  it('carries a note typed before the tap', async () => {
+  it('clears the note when "Note something else" starts a second report', async () => {
     // Not the ordinary path - the note lives under the receipt - but the state
     // is shared, and a note that silently failed to travel would be somebody's
     // words dropped.
@@ -233,7 +233,7 @@ describe('undo', () => {
     vi.useRealTimers()
   })
 
-  it('takes the report back out of the queue by its own id', async () => {
+  it('calls onUndo with the id onFile returned', async () => {
     const { props } = setup()
 
     await act(async () => {
@@ -250,7 +250,7 @@ describe('undo', () => {
     expect(screen.getByTestId('report-tile-blowdown')).toBeTruthy()
   })
 
-  it('stops offering itself once the window has run out', async () => {
+  it('removes the Undo control after UNDO_WINDOW_MS, rather than disabling it', async () => {
     setup()
 
     await act(async () => {
@@ -269,7 +269,7 @@ describe('undo', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Filed —')
   })
 
-  it('counts down in whole seconds', async () => {
+  it('counts the Undo label down in whole seconds', async () => {
     setup()
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-blowdown'))
@@ -284,7 +284,7 @@ describe('undo', () => {
 })
 
 describe('getting out', () => {
-  it('tells the caller nothing was filed, so nothing is asked of the hiker', () => {
+  it('calls onClose(false) when the window closes with nothing filed', () => {
     // Somebody who opened the window, read it and closed it has not
     // contributed anything, and must not be asked to sign in for it. The old
     // two-screen flow could not get this wrong - reaching its save path meant
@@ -297,7 +297,7 @@ describe('getting out', () => {
     expect(onClose).toHaveBeenCalledWith(false)
   })
 
-  it('tells the caller when something IS standing', async () => {
+  it('calls onClose(true) when a filed report stands', async () => {
     const onClose = vi.fn()
     setup({ onClose })
 
@@ -309,7 +309,7 @@ describe('getting out', () => {
     expect(onClose).toHaveBeenCalledWith(true)
   })
 
-  it('counts an undone report as nothing filed', async () => {
+  it('calls onClose(false) after a report is filed then undone', async () => {
     // The case a boolean flag would get wrong. Filed then taken back is not a
     // contribution, and there is nothing in the queue to sign for.
     const onClose = vi.fn()
@@ -349,7 +349,7 @@ describe('getting out', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('is a modal dialog that names itself', () => {
+  it('is aria-modal, named by its own heading', () => {
     setup()
     const dialog = screen.getByRole('dialog')
     expect(dialog).toHaveAttribute('aria-modal', 'true')
@@ -399,7 +399,7 @@ describe('changing where the report lands', () => {
     { id: 'p-mid', name: 'Craig Creek', mile: 624.0, lat: 37.35, lon: -80.35 },
   ]
 
-  it('does not offer Change when there is nowhere to change to', () => {
+  it('hides Change when passedPlaces is empty', () => {
     // An early start has walked past nothing yet. The control is WITHHELD
     // rather than shown disabled: a picker that opens onto an empty list
     // teaches a hiker that this window's labels are decorative.
@@ -407,7 +407,7 @@ describe('changing where the report lands', () => {
     expect(screen.queryByTestId('report-change-anchor')).toBeNull()
   })
 
-  it('does not offer Change without a fix, even with places to offer', () => {
+  it('hides Change without fixMile, even with places to offer', () => {
     // The list's whole ordering is "how far back", and a phone with no fix
     // cannot compute it. Offering the places in some other order would be
     // answering a question nobody asked with a list nobody can scan.
@@ -472,7 +472,7 @@ describe('changing where the report lands', () => {
     expect(picker.textContent).not.toMatch(/\b(others?|all|total|showing)\b/i)
   })
 
-  it('hands back the place with its coordinates, and closes the picker', () => {
+  it('calls onPickAnchor with the lat and lon of the picked place, and closes it', () => {
     // The coordinates are the point: an anchor needs a lat and a lon, and the
     // alternative to carrying them is inventing them at pick time.
     const onPickAnchor = vi.fn()
@@ -490,7 +490,7 @@ describe('changing where the report lands', () => {
     expect(screen.queryByTestId('report-places')).toBeNull()
   })
 
-  it('withholds the filter until scanning is slower than typing', () => {
+  it('shows the place filter at seven places, hides it at six', () => {
     // Six rows is the line. Below it the input is a control in the way; above
     // it, three letters of a name beats a scroll.
     const many = Array.from({ length: 7 }, (_, index) => ({

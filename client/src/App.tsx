@@ -2402,7 +2402,7 @@ function App() {
   // Where the download ends, for the canvas: the outer edge of what is held,
   // which is nothing at all on a phone holding no cells (lib/coverageCells.ts).
   const coverageSeams = useMemo(
-    () => (cellIndex === null ? [] : seamEdges(heldCells, cellIndex.cellDegrees)),
+    () => (cellIndex === null ? [] : seamEdges(heldCells)),
     [cellIndex, heldCells],
   )
 

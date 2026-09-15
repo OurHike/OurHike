@@ -464,71 +464,123 @@ export function priceStretches(
 /** One straight edge of the downloaded area, as the two ends of a line. */
 export type SeamEdge = readonly [readonly [number, number], readonly [number, number]]
 
-function corner(west: number, south: number): string {
-  return `${west.toFixed(4)}|${south.toFixed(4)}`
+/**
+ * The OUTER boundary of the held cells: every edge of the covered ground with
+ * nothing covered on the other side of it. Two neighbouring held cells share
+ * an edge that is not a seam - the map is continuous across it - and drawing
+ * it would put a dashed line through the middle of somebody's coverage.
+ *
+ * A hiker crossing a seam sees a dead-straight edge that reads as a rendering
+ * fault unless it is named (OFFLINE_COVERAGE.md §7). map/coverageLayers.ts
+ * draws these dashed and labelled for exactly that reason.
+ *
+ * `covered`, NOT CORE BOUNDS, AND THIS IS THE SECOND HALF OF #1458. The first
+ * half made the BANNER honest - App.tsx narrows its footprints onto `covered`
+ * - and left this drawing the square, so on a cell carrying less than its
+ * square the two disagreed: "outside the downloaded area" over blank paper,
+ * with the nearest dashed line miles away. The banner was the half that
+ * mattered and this is the half that finishes it.
+ *
+ * WHY A SWEEP AND NOT THE LATTICE WALK IT REPLACES. The old version found a
+ * cell's neighbour by its south-west corner one cell over, which works only
+ * while every box is a whole graticule square. `covered` boxes do not tile,
+ * so that walk would have found no neighbours and drawn a dashed line down
+ * the middle of continuous coverage - a worse failure than the one it fixes,
+ * which is why the first half of #1458 left it alone rather than changing it
+ * carelessly. The sweep below asks the question the walk was a shortcut for:
+ * is the ground on the other side of this edge covered by ANY held cell.
+ *
+ * It is exact rather than sampled, and cheap: every box edge contributes a
+ * line to a lattice, between two consecutive lines the answer cannot change,
+ * so at most n×n tiles are each wholly in or wholly out. `held` is the cells
+ * on one phone - a handful for a stretch, 62 for the whole published sheet -
+ * so the grid is small enough that the quadratic costs nothing.
+ *
+ * Note that a full-square cell gives exactly the old answer, because
+ * `covered` falls back to `bounds` for an index that does not carry it
+ * (`parseCellIndex`) and a square IS its own covered box. Every release
+ * already on a phone therefore draws the seams it always drew.
+ */
+export function seamEdges(held: readonly CoverageCell[]): SeamEdge[] {
+  const boxes = held.map((cell) => cell.covered)
+  if (boxes.length === 0) return []
+
+  // The lattice the boxes induce. Every edge of every box contributes a line,
+  // and between two consecutive lines the answer to "is this covered" cannot
+  // change - so the whole plane reduces to a grid of at most n x n tiles that
+  // are each wholly in or wholly out. That is what makes the sweep below
+  // exact rather than sampled.
+  const xs = [...new Set(boxes.flatMap(([w, , e]) => [w, e]))].sort((a, b) => a - b)
+  const ys = [...new Set(boxes.flatMap(([, s0, , n]) => [s0, n]))].sort((a, b) => a - b)
+
+  const inside = (col: number, row: number): boolean => {
+    if (col < 0 || row < 0 || col >= xs.length - 1 || row >= ys.length - 1) return false
+    // The MIDPOINT, so a shared edge belongs to neither tile and no
+    // comparison lands on a boundary coordinate.
+    const x = (xs[col]! + xs[col + 1]!) / 2
+    const y = (ys[row]! + ys[row + 1]!) / 2
+    return boxes.some(([w, s0, e, n]) => x > w && x < e && y > s0 && y < n)
+  }
+
+  // A tile's side is on the outer boundary when the tile is covered and its
+  // neighbour is not. Two held cells that meet exactly therefore emit nothing
+  // along their join - the rule this function has always had, arrived at by
+  // the geometry rather than by a lattice walk over cell corners.
+  const vertical: [number, number, number][] = [] // x, south, north
+  const horizontal: [number, number, number][] = [] // y, west, east
+  for (let col = 0; col < xs.length - 1; col += 1) {
+    for (let row = 0; row < ys.length - 1; row += 1) {
+      if (!inside(col, row)) continue
+      if (!inside(col - 1, row)) vertical.push([xs[col]!, ys[row]!, ys[row + 1]!])
+      if (!inside(col + 1, row)) vertical.push([xs[col + 1]!, ys[row]!, ys[row + 1]!])
+      if (!inside(col, row - 1)) horizontal.push([ys[row]!, xs[col]!, xs[col + 1]!])
+      if (!inside(col, row + 1)) horizontal.push([ys[row + 1]!, xs[col]!, xs[col + 1]!])
+    }
+  }
+
+  return [
+    ...runs(vertical).map(([x, from, to]): SeamEdge => [
+      [x, from],
+      [x, to],
+    ]),
+    ...runs(horizontal).map(([y, from, to]): SeamEdge => [
+      [from, y],
+      [to, y],
+    ]),
+  ]
 }
 
 /**
- * The OUTER boundary of the held cells: every cell edge with no held cell on
- * the other side of it. Two neighbouring held cells share an edge that is not
- * a seam - the map is continuous across it - and drawing it would put a
- * dashed line through the middle of somebody's coverage.
+ * Collinear pieces joined back into one segment.
  *
- * 1° cells make every seam a meridian or a parallel, and a hiker crossing one
- * sees a dead-straight edge that reads as a rendering fault unless it is
- * named (OFFLINE_COVERAGE.md §7). map/coverageLayers.ts draws these dashed
- * and labelled for exactly that reason.
- *
- * CORE BOUNDS, NOT `covered`, AND THIS IS THE ONE PLACE THE TWO DISAGREE ON
- * SCREEN (#1458). The algorithm is a lattice walk - a cell's neighbour is
- * found by its south-west corner one cell over - and `covered` boxes do not
- * tile, so running this on them would find no neighbours and draw a dashed
- * line down the middle of continuous coverage. That is a worse failure than
- * the one it would fix.
- *
- * So on a cell that carries less than its square, the banner says "outside"
- * (App.tsx reads `covered`) while the nearest seam is still drawn at the
- * square, possibly miles away. Stated rather than left to be found: the
- * banner is the half that matters, and this is the residue. Drawing the seam
- * around what is really held needs the outline of a union of rectangles
- * rather than a lattice walk, which is a different function and not one this
- * change attempts.
+ * The sweep above emits a piece per lattice tile, so one edge of one cell can
+ * come out in four parts where four other boxes happen to share its span. A
+ * dashed line drawn in parts is not the same picture as a dashed line - the
+ * dash pattern restarts at every join - and the label map/coverageLayers.ts
+ * puts on a seam would repeat once per piece.
  */
-export function seamEdges(
-  held: readonly CoverageCell[],
-  cellDegrees: number,
-): SeamEdge[] {
-  const corners = new Set(held.map((cell) => corner(cell.bounds[0], cell.bounds[1])))
-  const edges: SeamEdge[] = []
-  for (const {
-    bounds: [west, south, east, north],
-  } of held) {
-    if (!corners.has(corner(west - cellDegrees, south))) {
-      edges.push([
-        [west, south],
-        [west, north],
-      ])
-    }
-    if (!corners.has(corner(east, south))) {
-      edges.push([
-        [east, south],
-        [east, north],
-      ])
-    }
-    if (!corners.has(corner(west, south - cellDegrees))) {
-      edges.push([
-        [west, south],
-        [east, south],
-      ])
-    }
-    if (!corners.has(corner(west, north))) {
-      edges.push([
-        [west, north],
-        [east, north],
-      ])
-    }
+function runs(pieces: [number, number, number][]): [number, number, number][] {
+  const byLine = new Map<number, [number, number][]>()
+  for (const [line, from, to] of pieces) {
+    const spans = byLine.get(line)
+    if (spans) spans.push([from, to])
+    else byLine.set(line, [[from, to]])
   }
-  return edges
+
+  const merged: [number, number, number][] = []
+  for (const [line, spans] of byLine) {
+    spans.sort((a, b) => a[0] - b[0])
+    let [start, end] = spans[0]!
+    for (const [from, to] of spans.slice(1)) {
+      if (from <= end) end = Math.max(end, to)
+      else {
+        merged.push([line, start, end])
+        ;[start, end] = [from, to]
+      }
+    }
+    merged.push([line, start, end])
+  }
+  return merged
 }
 
 /** The basemap family's index record, under its old name. */

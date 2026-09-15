@@ -323,13 +323,39 @@ one direction that matters. `App.tsx`'s `heldFootprints` reads `covered`; everyt
 routes a tile to a cell still reads `bounds`, because routing is a question about the grid.
 `verify_release.py`'s check 20 refuses a published index whose `covered` escapes its square.
 
-**What did not change, and is the residue.** `seamEdges` still draws the dashed boundary at
-the square. Its neighbour test is a lattice walk — a cell's neighbour is the square one cell
-over — and `covered` boxes do not tile, so running it on them would draw a dashed line
-through the middle of continuous coverage. So on a cell carrying less than its square the
-banner now says "outside" while the nearest drawn seam may be miles away. The banner is the
-half that matters; drawing the seam around what is really held needs the outline of a union
-of rectangles, which is a different function and was not attempted here.
+**The seam followed.** `seamEdges` drew the dashed boundary at the square for one release,
+because its neighbour test was a lattice walk — a cell's neighbour is the square one cell
+over — and `covered` boxes do not tile. It is now a sweep over the lattice the boxes induce:
+every box edge contributes a line, between two consecutive lines the answer cannot change,
+so at most n×n tiles are each wholly in or wholly out and the boundary is exact rather than
+sampled. Collinear pieces are merged back into one segment, because a dashed line drawn in
+parts restarts its dash pattern at every join and repeats its label. A full-square cell
+gives exactly the old answer, so every release already on a phone draws the seams it drew.
+
+### Published, and the numbers are bigger than New York
+
+UA, 2026-09-15, runs [34967491651](https://github.com/OurHike/OurHike/actions/runs/34967491651)
+(basemap, `regions: at nyc`) and 34967505144 (DEM). Read back off the bucket rather than
+inferred from the build:
+
+**`n40w074`, the cell holding the five boroughs**, before and after:
+
+| | before | after |
+| --- | --- | --- |
+| `covered` | *(key did not exist)* | **`[-74, 40.4469, -73.125, 41]`** |
+| the archive's real southern edge | 40.714 | **40.4469** |
+| tiles | 290 | **687** |
+| bytes | 4,460,971 | **12,298,750** |
+
+Probed again, the five places that produced the finding: Central Park, **Prospect Park**,
+**Forest Park**, Van Cortlandt Park and **Rockaway Beach** now every one has a z14 tile,
+where three had nothing at any zoom and one had z12 only. `n40w075` covers south to 40.1789.
+
+**And this was never only New York.** Every cell of both families now carries the key, and
+of the DEM's 62, **42 are narrower than their own square**. The sharpest is `n36w085`, which
+declares a whole degree and covers `[-84.375, 36, -84, 36.0313]` — a sliver in one corner.
+A phone holding that cell was told it was covered anywhere in the other 97% of it. The New
+York case was the one somebody noticed, not the only one there was.
 
 **And none of it puts map under New York City** — that is the other half of #1458, and it is
 built and now run. `export_basemap.py` takes `--regions`, `pipeline/lib/build_regions.py` holds

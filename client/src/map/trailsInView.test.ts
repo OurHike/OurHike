@@ -5,6 +5,8 @@ import {
   attachTrailsInView,
   badgeFeatures,
   badgePlateWidth,
+  badgeTextSize,
+  indexObstacles,
   trailsInView,
 } from './trailsInView'
 import {
@@ -700,5 +702,140 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(badgePlateWidth('A.T.')).toBeLessThan(badgePlateWidth('Long Path'))
     // The mark alone: the mark and its paper, whatever the name.
     expect(badgePlateWidth('Appalachian National Scenic Trail', 'mark')).toBe(32)
+  })
+})
+
+// THE OBSTACLE GRID (#1415)
+//
+// `anchorWithRoom` is `fits x candidates x anchors x obstacles`. It returns
+// on the first position that fits, so the ordinary frame is cheap - but the
+// case it cannot return early from is the one the "always finds a place"
+// fallback exists for: when NOTHING fits, every candidate is tried at every
+// anchor in both fits, and each of those must look at every obstacle to
+// conclude there is no room.
+//
+// These tests hold the index to its contract (a superset, never a subset)
+// and then COUNT the work it removes over the issue's own numbers. The count
+// is not a frame time and is not offered as one - nobody has profiled this
+// on a phone and #1415's `@unvalidated` note stands. It is the arithmetic
+// that decides how much there is to profile.
+describe('indexObstacles', () => {
+  const box = (x: number, y: number, width = 48, height = 48) => ({
+    x1: x,
+    y1: y,
+    x2: x + width,
+    y2: y + height,
+  })
+
+  const overlaps = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) =>
+    a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1
+
+  /** A pin every 40 px over a 390x844 phone screen - 200 of them, the order
+   *  #1415 describes as "a few hundred on a shelter-and-spring-lined
+   *  screen". */
+  function pinnedScreen() {
+    const pins = []
+    for (let x = 0; x < 390; x += 40) {
+      for (let y = 0; y < 844; y += 40) pins.push(box(x - 24, y - 24))
+    }
+    return pins
+  }
+
+  it('never loses an overlap - the property the whole thing rests on', () => {
+    const pins = pinnedScreen()
+    const index = indexObstacles(pins)
+
+    // Every query the sweep below makes, checked against the honest answer.
+    let checked = 0
+    for (let x = -60; x < 450; x += 7) {
+      for (let y = -60; y < 900; y += 11) {
+        const query = box(x, y, 225, 32)
+        const truth = pins.some((pin) => overlaps(query, pin))
+        const viaIndex = index.near(query).some((pin) => overlaps(query, pin))
+        expect(viaIndex).toBe(truth)
+        checked += 1
+      }
+    }
+    expect(checked).toBeGreaterThan(5000)
+  })
+
+  it('holds the superset direction for a box projected far off screen', () => {
+    // Coordinates outside the grid's addressable range clamp into the edge
+    // bucket rather than wrapping, so a pin MapLibre projected a long way
+    // off screen is still found rather than silently skipped.
+    const far = box(9_000_000, 9_000_000)
+    const index = indexObstacles([far])
+
+    expect(index.near(box(9_000_000, 9_000_000, 10, 10)).length).toBeGreaterThan(0)
+  })
+
+  it('is empty rather than undefined where nothing was indexed', () => {
+    const index = indexObstacles([])
+
+    expect(index.size).toBe(0)
+    expect(index.near(box(10, 10))).toEqual([])
+  })
+
+  // THE COUNT. CANDIDATE_LIMIT is 600 and TRAIL_BADGE_ANCHORS has 8 entries,
+  // in two fits - 9,600 positions per named trail on the frame where nothing
+  // fits. Half of that (one fit) is swept below, twice, at two pin densities,
+  // because the saving is a ratio between the plate's footprint and the pin
+  // spacing rather than a constant.
+  function examinations(spacingPx: number) {
+    const pins = []
+    for (let x = 0; x < 390; x += spacingPx) {
+      for (let y = 0; y < 844; y += spacingPx) pins.push(box(x - 24, y - 24))
+    }
+    const index = indexObstacles(pins)
+    const plate = badgeTextSize('Appalachian National Scenic Trail', 'full')
+
+    let examined = 0
+    let positions = 0
+    for (let candidate = 0; candidate < 600; candidate += 1) {
+      const at = { x: (candidate * 13) % 390, y: (candidate * 29) % 844 }
+      for (let anchor = 0; anchor < 8; anchor += 1) {
+        examined += index.near(box(at.x, at.y, plate.width, plate.height)).length
+        positions += 1
+      }
+    }
+    return { pins: pins.length, positions, before: positions * pins.length, examined }
+  }
+
+  it('cuts what a nothing-fits frame examines, most where the pins are thinnest', () => {
+    // A pin every 40 px is denser than the 64 px bucket, so each plate's
+    // buckets hold two or three and the saving is at its smallest.
+    const dense = examinations(40)
+    expect(dense.positions).toBe(4800)
+    expect(dense.pins).toBe(220)
+    expect(dense.before).toBe(1_056_000)
+    // MEASURED 2026-09-15: 1,056,000 -> 147,360, a factor of 7.2.
+    // Stated as a factor rather than an order: #1415 guessed the saving was
+    // the whole product, and it is not - the plate's own footprint is a real
+    // floor and the grid cannot go under it.
+    expect(dense.examined).toBeLessThan(dense.before / 5)
+
+    // A pin every 80 px - still "a few hundred" by #1415's description, and
+    // the shape of an ordinary shelter-and-spring screen rather than a wall.
+    const ordinary = examinations(80)
+    expect(ordinary.pins).toBe(55)
+    // MEASURED the same day: 264,000 -> 33,504, a factor of 7.9.
+    expect(ordinary.examined).toBeLessThan(ordinary.before / 6)
+
+    // The ratio improves as the field thins, which is the property worth
+    // pinning: the grid's cost tracks what the plate actually covers, where
+    // the scan's tracked how many pins were on the screen at all.
+    expect(ordinary.examined / ordinary.before).toBeLessThan(
+      dense.examined / dense.before,
+    )
+  })
+
+  it('leaves the floor where it belongs - what the plate itself covers', () => {
+    // Not zero, and it should not be. A 225 px name lies across four 64 px
+    // buckets and a pin box reaches 48 px, so the pins in those buckets are
+    // genuinely candidates for overlapping it. The index removes the pins
+    // elsewhere on the screen, which is all it claims to do.
+    const { examined, positions } = examinations(40)
+
+    expect(examined).toBeGreaterThan(positions)
   })
 })

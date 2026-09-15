@@ -246,12 +246,20 @@ describe('the follow card s water rows, against a hand-built graph', () => {
     const course = buildCourse(STRETCHED, resolved.segments)
     const rows = waterOnCourse(course, [poi('spring', 'water', -74.09, 41.25)])
 
-    const atTheSpring = followDayHike({ index, resolved, at: { lon: -74.09, lat: 41.25 } })
+    const atTheSpring = followDayHike({
+      index,
+      resolved,
+      at: { lon: -74.09, lat: 41.25 },
+    })
     expect(atTheSpring?.kind).toBe('on-route')
     if (atTheSpring?.kind !== 'on-route') return
     expect(rows[0].alongMi > atTheSpring.walkedMi).toBe(false)
 
-    const shortOfIt = followDayHike({ index, resolved, at: { lon: -74.0905, lat: 41.25 } })
+    const shortOfIt = followDayHike({
+      index,
+      resolved,
+      at: { lon: -74.0905, lat: 41.25 },
+    })
     expect(shortOfIt?.kind).toBe('on-route')
     if (shortOfIt?.kind !== 'on-route') return
     expect(rows[0].alongMi > shortOfIt.walkedMi).toBe(true)

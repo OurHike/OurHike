@@ -224,7 +224,7 @@ jobs:
       # publish.py hashes archives from PROCESSED_DIR at publish time rather
       # than reading a baked manifest, so nothing depends on this being the
       # runner that produced them - and the build job never holds a secret.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dem-archive-${{ inputs.variant }}
           path: pipeline/data/processed/

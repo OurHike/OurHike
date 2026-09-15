@@ -159,7 +159,7 @@ def test_load_track_reads_the_cached_file_and_returns_none_when_there_is_not_one
 
 
 def test_the_sketch_draws_a_track_and_a_formed_walk_with_the_same_code():
-    """So a surveyed line and an inferred one can be compared by eye without
+    """So a published line and an inferred one can be compared by eye without
     one of them flattering itself."""
     line = [[LON, LAT], [LON + STEP, LAT], [LON + STEP, LAT + STEP]]
     svg = script.sketch_svg([line], [], [(LON, LAT)])

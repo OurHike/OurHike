@@ -41,7 +41,7 @@ changing anything here.
   NOT pretend otherwise. What it does is sample the track, snap each sample to
   the network, and then CHECK that re-routing between those samples reproduces
   the track's own length within TRACK_REPRODUCTION_TOLERANCE. If it does, the
-  phone walking those ends walks the surveyed route, and that is a claim this
+  phone walking those ends walks the published route, and that is a claim this
   file can make with a measurement behind it. If it does not - the track goes
   somewhere this build draws no line - the hike ships no route rather than a
   re-drawn one.
@@ -49,7 +49,7 @@ changing anything here.
   MEASURED 2026-09-15: of the 113 tracks, 64 have every 400 m sample within
   the phone's own 45.7 m of a line drawn here, and among those the re-route
   comes back within 2.4% of the track's length at the median - so where the
-  ground IS drawn, this reproduces the survey closely. The other 49 leave the
+  ground IS drawn, this reproduces the published line closely. The other 49 leave the
   trails in the layers registered here (14 of them by more than a kilometre),
   and no tolerance recovers them: it is missing lines, not a loose threshold.
   47 tracks pass both gates and ship.
@@ -58,7 +58,7 @@ changing anything here.
   Their full geometry, every point and every elevation, is in
   data/processed/hikefinder_routes.json and data/raw/hikefinder_gpx/. What
   would let them reach a hiker is a `track` field on SuggestedHike, so a
-  surveyed line ships as a line and nothing is re-derived - and that cannot be
+  published line ships as a line and nothing is re-derived - and that cannot be
   added here without also splitting this artifact, because it is already
   1.68 MB for 201 records (most of it the export's prose) against the
   client's 2 MB cache ceiling (conditionsCache.ts, itself @unvalidated), and
@@ -238,9 +238,10 @@ def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str,
         "trails": list(route.get("walked_trails") or []),
         "start": {"lat": start.get("lat"), "lon": start.get("lon"), "basis": start.get("label")} if start else None,
         # THE WHOLE POINT OF #1427, on the record a hiker's phone holds:
-        # `published` is a track somebody surveyed, `generated` is a line this
-        # pipeline inferred from their prose. A screen that prints one in the
-        # voice of the other is the failure these fields exist to prevent.
+        # `published` is a track the publisher DREW, `generated` is a line
+        # this pipeline inferred from their prose. Neither is a recording of
+        # anybody's walk (#1451). A screen that prints one in the voice of the
+        # other is the failure these fields exist to prevent.
         "routeProvenance": route["provenance"],
         "routeGrade": route["grade"],
         "routeNotes": list(route.get("problems") or []),

@@ -9,9 +9,11 @@ honestly, and say for each which kind of route it got (#1427).
 TWO ROADS, AND THE WHOLE POINT IS THAT THEY STAY APART.
 
   PUBLISHED. 113 of the export's 385 hikes carry a GPX track the publisher
-  recorded. That track IS the route. It is not snapped to this build's trail
-  lines, not re-routed, not smoothed: it is somebody's survey of ground they
-  walked, and where it disagrees with this build's lines it is not the one
+  DREW - drawn in a route editor, not recorded on a walk (#1451: 110 of 113
+  are gpx.studio files and 2 carry any timestamp at all). That track IS the
+  route. It is not snapped to this build's trail lines, not re-routed, not
+  smoothed: it is the publisher's own statement of where the hike goes, and
+  where it disagrees with this build's lines it is not automatically the one
   that is wrong. What is checked is the FILE - that it holds enough points to
   be a route, that its own measured length is recognisably the walk the page
   states, and that a page calling itself a Circuit has a track whose ends meet.
@@ -29,8 +31,8 @@ WHAT THIS RUN MEASURED, 2026-09-15, against the 2026-09-14 production graph
 (631,915 edges): of 272 formable hikes, 43 graded `strong`, 111 `fair` and 118
 `rejected`. The grade is CALIBRATED rather than chosen - see
 `lib/hike_route_builder.py`'s `_grade`, which was fitted against the 113 hikes
-that publish both a description and the track somebody walked, and selects
-routes matching the surveyed line 92% of the time.
+that publish both a description and a drawn track, and selects routes matching
+the publisher's own drawn line 92% of the time.
 
 The rejections are honest rather than tunable: 44 walks cannot be fitted to the
 length the publisher states within 40%; 31 trailheads sit more than 500 m from
@@ -331,7 +333,7 @@ svg{{display:block;width:100%;max-width:100%;height:auto;border:1px solid #e4ddc
 </style></head><body>
 <h1>NYNJTC Hike Finder — the route each hike got, and what it rests on</h1>
 <div class="intro"><p>{summary}. Measured {today} on this build's trail lines by the pipeline's twin of the phone's router.</p>
-<p><strong>PUBLISHED</strong> is the track the publisher recorded, drawn from its own points and not snapped to anything here. <strong>GENERATED</strong> was formed from the trailhead and the turn-by-turn description over this build's junction graph — it is an inference, and the grade says how much of one. A card saying <em>no route ships</em> is the honest answer for that hike — and today it also means the hike does not reach the shelf, because the client drops a record with fewer than two ends. Its facts are all kept here.</p>
+<p><strong>PUBLISHED</strong> is the track the publisher drew, rendered from its own points and not snapped to anything here. <strong>GENERATED</strong> was formed from the trailhead and the turn-by-turn description over this build's junction graph — it is an inference, and the grade says how much of one. A card saying <em>no route ships</em> is the honest answer for that hike — and today it also means the hike does not reach the shelf, because the client drops a record with fewer than two ends. Its facts are all kept here.</p>
 <p class="muted">{html.escape(graph.climb_note or "Climb priced from trail_graph_elevation.json.")}</p></div>
 {"".join(cards)}
 </body></html>"""

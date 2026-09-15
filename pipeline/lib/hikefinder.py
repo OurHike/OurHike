@@ -52,7 +52,7 @@ THE TWO KINDS OF PAGE, and the whole reason `route_hikefinder.py` exists:
   the first 160 pages sampled were routed.
 
   AN UNROUTED PAGE publishes one coordinate - the parking - and a
-  turn-by-turn description somebody walked. Nothing on it places a line.
+  turn-by-turn description of a walk. Nothing on it places a line.
   `lib/hike_route_builder.py` is the attempt to form one; this module's job
   stops at saying, in `has_published_route`, which kind of page this was.
 
@@ -197,9 +197,18 @@ class TrackPoint:
 class Track:
     """A published GPX track: the route as whoever drew it drew it.
 
+    DRAWN, NOT WALKED (#1451). 110 of the 113 carry
+    `creator="https://gpx.studio"`, 2 of 113 carry any `<time>` element and
+    none carries a heart-rate, cadence or speed extension - measured over the
+    whole corpus 2026-09-15. A recorded GPS track timestamps essentially every
+    point; these do not. The elevations are DEM samples rather than
+    measurements, quantised to exact 0.25 m multiples.
+
     This build does not re-derive it, smooth it, or snap it to its own trail
-    lines. It is somebody's survey and the most authoritative thing in this
-    whole import.
+    lines. It remains the most authoritative thing in this whole import - not
+    because somebody was there, but because it is the publisher's own
+    statement of where their hike goes, which outranks any inference from
+    their prose.
     """
 
     name: str | None

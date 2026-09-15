@@ -262,15 +262,49 @@ corridor did not narrow. **A per-zoom mean bytes/tile is not transferable
 across a change of footprint**, and the total agreeing is not evidence that it
 is.
 
-Other schedules, still **reasoned** on the same method and therefore carrying
-the caveat above:
+Other schedules. **The table this replaces was optimistic, and one of its own
+rows later proved it** — it projected 20/6/3 at ~159 MB, and when that schedule
+was actually built as Light it weighed **182.2 MB**, 14.6% more. The cause is
+the caveat two paragraphs up, applied to itself: those rows priced a narrowed
+footprint at the *pre-taper* per-zoom mean bytes/tile, and a narrower corridor
+keeps the ridgeline tiles, which carry more relief and compress worse.
+
+Re-derived 2026-09-15 (#1486) from the **built** canonical bands instead —
+`tiles_intersecting` over the real ANST centerline at each width, priced at
+that band's own measured KB/tile (z11 42.3, z12 33.2, z13 25.6):
 
 | schedule z11/z12/z13 | DEM MB | off DEM | sheet MB | off sheet |
 |---|---|---|---|---|
 | shipped, uniform 30 | 607.3 | — | 789.9 | — |
-| **30/15/6 (built)** | **275.6** | **54.6%** | **458.1** | **42.0%** |
-| 30/10/6 | ~229 | ~62% | ~411 | ~48% |
-| 20/6/3 | ~159 | ~74% | ~342 | ~57% |
+| **30/15/6 (built, shipped)** | **275.6** | **54.6%** | **435.6** | — |
+| 30/10/6 | 254.6 | 7.6% | 414.6 | 4.8% |
+| 30/5/6 | 233.0 | 15.4% | 393.0 | 9.8% |
+| 20/6/3 (built as Light) | **182.2** | 33.9% | 250.2 | 42.6% |
+
+The off-DEM and off-sheet columns are now against the **shipped 30/15/6**, not
+against the withdrawn uniform-30 archive, because 30/15/6 is what a change
+would actually be traded against.
+
+**The method is checked rather than asserted.** Projecting the Light taper this
+way gives 142.0 MB across z11–z13 against the 144.9 MB that build actually
+weighed — **2.0% low**, per band (z11 −1.7%, z12 −2.4%, z13 −1.8%), and low is
+the expected direction for exactly the ridgeline-compression reason above. So
+every row here understates the archive by roughly 2%, which means it slightly
+**overstates** the saving; treat the savings as upper bounds with a ~2% margin
+rather than as exact.
+
+**Only z12 moves between the first three rows**, and it is worth being explicit
+about what that width feeds, because it is not what it looks like. The
+hillshade reads the DEM at the camera's own zoom, but contours read **one zoom
+out** — `contours.ts` passes `overzoom: 1`, and maplibre-contour resolves
+`min(z - overzoom, maxzoom)`. So z12's width feeds the hillshade at camera z12
+and the **contours at camera z13**; contours at camera z12 read z11, which the
+taper leaves at 30 miles. Narrowing z12 therefore changes nothing a hiker sees
+panned out, and nothing goes blank in the band it gives up either:
+`demTiles.ts` walks up to `MAX_ANCESTOR_STEPS = 3` to the nearest ancestor the
+archive holds, so past the edge the 40 ft lines and the relief are generated
+from upscaled z11 rather than absent. What is lost there is resolution, not the
+layer.
 
 **And the shallow zooms stop being clipped at all.** `extract_package.py` has
 kept the vector sheet's *entire* footprint through z9 since #189 — "panning out

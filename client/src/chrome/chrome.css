@@ -2859,8 +2859,9 @@
    slot on a DPR-2 phone. Below it, filling would upscale a file past what it
    holds and then crop what somebody framed; the crop falls hardest on the
    images least able to afford it. The NYNJTC archive corpus recovered in
-   #1450 is 396 of 403 images between 150 and 300px wide, so this is most of
-   that corpus rather than an edge case.
+   #1450 is 396 of 403 images under 640px - measured over the whole corpus on
+   2026-09-15, min 100, median 250, max 4000 - so this is most of that corpus
+   rather than an edge case.
 
    There is deliberately no `--hero` rule: filling the box is what the base
    class above already does, and an empty ruleset restating it would be one

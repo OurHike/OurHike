@@ -770,7 +770,8 @@ describe('the community rung (#578, from #576)', () => {
 //
 // The card used to stretch every photograph to fill a 16:10 box, which was
 // right while every source was a 640px rendering and stopped being right when
-// #1450 recovered 403 NYNJTC photographs of which 396 are 150-300px wide.
+// #1450 recovered 403 NYNJTC photographs of which 396 are under 640px wide
+// (measured over the whole corpus 2026-09-15: min 100, median 250, max 4000).
 //
 // These assert on `data-frame` rather than on layout, and that is a real
 // limitation worth stating: jsdom has no layout, so nothing here proves a

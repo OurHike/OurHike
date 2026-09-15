@@ -250,11 +250,14 @@ describe('photoFrame', () => {
   })
 
   it('insets the width the NYNJTC archive corpus actually is', () => {
-    // 396 of 403 recovered images are 150-300px wide, measured 2026-09-15.
+    // 396 of 403 recovered images are under 640px, measured over the whole
+    // corpus 2026-09-15: min 100, median 250, max 4000. The two widths below
+    // are the measured minimum and the measured median, so this asserts the
+    // real distribution rather than two round numbers near it.
     // This is the case the whole rule exists for, so it is asserted with the
     // real numbers rather than a token small one.
-    expect(photoFrame(150)).toBe('inset')
-    expect(photoFrame(300)).toBe('inset')
+    expect(photoFrame(100)).toBe('inset')
+    expect(photoFrame(250)).toBe('inset')
   })
 
   it('fills the box for every source the card was built for', () => {

@@ -270,7 +270,10 @@ jobs:
       # automatic bar there was. A review sheet nobody can see the pictures in
       # is not a review sheet.
       #
-      # 403 images at 20-40 KB is 10-15 MB, an ordinary artifact. The paths
+      # MEASURED, run 35026550773 on 2026-09-15: 403 images, 46.1 MB. The
+      # first draft of this comment guessed "20-40 KB each, so 10-15 MB" and
+      # was out by a factor of three - the real average is ~114 KB. Still an
+      # ordinary artifact, and now a number somebody can check. The paths
       # keep their pipeline/data/ shape so the sheet's relative src resolves
       # when the zip is unpacked. CONTRIBUTING.md's "data does not go in
       # commits" is about the repository and is untouched by this: an artifact

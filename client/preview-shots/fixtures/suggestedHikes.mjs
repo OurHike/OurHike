@@ -232,18 +232,52 @@ export const WAPITI_DETAIL = {
     'The turnaround sits where their description puts it rather than at a junction, so this line runs shorter than the length on their page.',
 }
 
-/** Seed the kept copy, then reload so the app wakes up owning it - the
- *  same move day-hike-list.mjs makes for its store.
+/**
+ * Make these routes what the app reads, then reload so it wakes up owning
+ * them - the same move day-hike-list.mjs makes for its store.
  *
- *  Both objects, because since #1473 a hike IS two objects. Seeding only the
- *  shelf would photograph a detail screen with no prose, which is a real
- *  state (a publisher who said nothing more) but not the one these recipes
- *  are about. */
+ * BOTH OBJECTS, because since #1473 a hike IS two objects. Seeding only the
+ * shelf would photograph a detail screen with no prose, which is a real
+ * state (a publisher who said nothing more) but not the one these recipes
+ * are about.
+ *
+ * AND THE BUCKET IS ANSWERED, not just the cache, because seeding alone is a
+ * RACE THIS RECIPE LOSES IN CI. `useSuggestedHikes` reads the kept copy and
+ * then fetches, and `setHikes(fresh)` replaces the shelf outright - so a
+ * seeded fixture stands only until the real `suggested_hikes.json` lands.
+ * The preview is built against production's data (pr-preview.yml), where
+ * that artifact answers 200 with nine real hikes and no Wapiti; the drive
+ * then waits 30 s for a card that has already been replaced. Measured
+ * 2026-09-15: the camera could not take `hike-detail` or `hike-detail-saved`
+ * on d9a6ccfd, both `locator.click: Timeout 30000ms exceeded` on
+ * `getByRole('button', { name: /Wapiti to Docs Knob/ })`, while the same
+ * recipes passed locally - where the fetch resolves before `ready` flips and
+ * the drive wins.
+ *
+ * Intercepting settles it rather than making the window bigger, and it is
+ * the more honest shot besides: the detail now ARRIVES OVER THE NETWORK, the
+ * way a phone gets it, instead of being pre-placed in the cache the phone
+ * would only read with no signal.
+ */
 export async function seedSuggestedHikes(
   page,
   document = SUGGESTED_HIKES_DOCUMENT,
   detail = WAPITI_DETAIL,
 ) {
+  const json = (body) => ({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  })
+  // Registered before the reload, and they outlive it. The patterns are the
+  // key names rather than a full URL, because `dataUrl` puts the release
+  // folder in front of them and that prefix is not this fixture's business.
+  await page.route(/\/suggested_hikes\.json(\?|$)/, (route) =>
+    route.fulfill(json(document)),
+  )
+  await page.route(/\/suggested_hikes_detail_\d+\.json(\?|$)/, (route) =>
+    route.fulfill(json(detail)),
+  )
   await page.evaluate(
     ({ document, detail }) =>
       new Promise((done, fail) => {

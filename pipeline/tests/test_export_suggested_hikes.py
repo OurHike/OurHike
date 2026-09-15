@@ -382,3 +382,28 @@ def test_a_published_hikes_climb_is_priced_from_this_builds_graph(sandbox):
     # The synthetic graph carries an elevation sidecar that fits it, so the
     # re-walk prices the climb even though the routes artifact carried none.
     assert record["climb"]["gainFt"] > 0
+
+
+def test_a_missing_fetch_or_route_pass_publishes_nothing_rather_than_failing(sandbox, monkeypatch, capsys):
+    """#1462. The exporter is the second of the two scripts that used to treat
+    a skipped hike fetch as fatal, and between them they threw away a whole
+    A.T. publish (run 114 of publish-vector-data.yml) because one website
+    timed out. Both now return "nothing to publish", which is what the
+    workflow's `continue-on-error` on that fetch always meant."""
+    monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: {})
+    assert exporter.main() is None
+    assert "No fetch cache" in capsys.readouterr().err
+
+    monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: {"7": {"id": 7}})
+    assert not exporter.ROUTES_PATH.exists()
+    assert exporter.main() is None
+    assert "No routes artifact" in capsys.readouterr().err
+
+
+def test_a_routes_artifact_that_will_not_parse_still_fails_loudly(sandbox):
+    """The other half, and the reason the one above is safe: absence is a fact
+    about this run, corruption is a defect, and softening both together would
+    turn a loud failure into a silent one."""
+    exporter.ROUTES_PATH.write_text("{ not json at all")
+    with pytest.raises(SystemExit, match="unreadable"):
+        exporter.load_routes()

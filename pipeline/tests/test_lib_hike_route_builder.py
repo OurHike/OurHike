@@ -323,9 +323,12 @@ def test_the_score_prefers_the_walk_that_matches_the_publishers_mileage(graph):
 def test_a_published_track_takes_no_climb_from_its_own_elevations():
     """#1451: the maintainer's call, and it corrects a claim this module
     shipped. The GPX files are DRAWN, not recorded - 110 of 113 come from
-    gpx.studio, 2 carry a `<time>` element, and their elevations sit on exact
-    0.25 m multiples, which is a DEM sampled along a line. That is the same
-    KIND of estimate this build's own sidecar produces, so preferring it would
+    gpx.studio, 2 carry a `<time>` element, and their elevations are a surface
+    sampled along the drawn line - on an exact 0.25 m grid in 55 of the 113,
+    stepping by hundredths of a metre in the other 53, an altimeter in none.
+    That is the same KIND of estimate this build's own sidecar produces, and
+    it is measured rather than assumed (see the module docstring), so
+    preferring it would
     mean two sources for one figure, one of which is absent whenever a hike has
     no track. Climb comes from the sidecar or it is absent."""
     with_elevation = track([(41.0, -74.0), (41.01, -74.0), (41.02, -74.0)])

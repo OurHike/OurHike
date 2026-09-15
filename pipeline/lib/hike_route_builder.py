@@ -47,9 +47,18 @@ WHAT A PUBLISHED TRACK ACTUALLY IS, because the first version of this module
 got it wrong and said so in shipped code (#1451). These files are DRAWN, not
 recorded: 110 of the 113 carry `creator="https://gpx.studio"`, a route drawing
 tool; only 2 carry a `<time>` element at all, where a recorded GPS track
-timestamps essentially every point; none carry the heart-rate or cadence
-extensions a recording device writes; and their elevations land on exact 0.25 m
-multiples, which is a DEM being sampled along a line rather than an altimeter.
+timestamps essentially every point; and none carry the heart-rate or cadence
+extensions a recording device writes.
+
+Their ELEVATIONS are not measurements either, though the corpus is split about
+how obviously - measured over all 113 files, so state it that way rather than
+the flatter sentence an earlier draft of this paragraph carried. 55 of the 113
+have more than 90% of their elevation steps on an exact 0.25 m grid (the
+commonest small steps are precisely 0.25, 0.50, 0.75, 1.00 m), which is a
+raster sampled along a line. The other 53 have under 20% on that grid and step
+instead by hundredths of a metre, which is an interpolation. Neither half is an
+altimeter, and that is the part this module depends on: NOTHING HERE WANDERS BY
+THE METRE OR TWO the old `TRACK_CLIMB_STEP_M = 3.0` was written to absorb.
 
 So a published route is the publisher's own STATEMENT OF WHERE THE HIKE GOES,
 traced along the trails they were describing. That is still the best evidence
@@ -534,9 +543,11 @@ class FormedRoute:
     #: A PUBLISHED TRACK'S OWN `<ele>` VALUES ARE NOT USED, and that is the
     #: maintainer's call (#1451) rather than an oversight. They are not
     #: measurements: 110 of the 113 files are drawn in gpx.studio, only 2 carry
-    #: a `<time>` element at all, and their elevations land on exact 0.25 m
-    #: multiples - a DEM sampled along a drawn line, which is the same KIND of
-    #: estimate this build's own sidecar produces. Preferring them would mean
+    #: a `<time>` element at all, and their elevations are a surface sampled
+    #: along a drawn line - snapped to an exact 0.25 m grid in 55 of the 113,
+    #: stepping by hundredths of a metre in the rest, an altimeter in none.
+    #: That is the same KIND of estimate this build's own sidecar produces.
+    #: Preferring them would mean
     #: two sources for one figure, one of which is absent whenever a hike has
     #: no track, for no gain in what the number actually rests on.
     climb: tuple[float, float] | None = None

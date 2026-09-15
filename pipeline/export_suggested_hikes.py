@@ -49,8 +49,8 @@ changing anything here.
   MEASURED 2026-09-15: of the 113 tracks, 64 have every 400 m sample within
   the phone's own 45.7 m of a line drawn here, and among those the re-route
   comes back within 2.4% of the track's length at the median - so where the
-  ground IS drawn, this reproduces the survey closely. The other 49 leave the
-  trails in the layers registered here (14 of them by more than a kilometre),
+  ground IS drawn, this reproduces the publisher's line closely. The other 49
+  leave the trails in the layers registered here (14 by more than a kilometre),
   and no tolerance recovers them: it is missing lines, not a loose threshold.
   47 tracks pass both gates and ship.
 
@@ -135,10 +135,21 @@ CONTENT_LICENCE = "By permission of the New York-New Jersey Trail Conference"
 
 
 def load_routes(path: Path | None = None) -> dict:
+    """What route_hikefinder.py decided, or {} when it wrote nothing.
+
+    The same split load_cache makes (#1462): a missing artifact means that
+    script had no hikes to route this run, which a publish forgives, while an
+    artifact that is there and will not parse is a defect and raises.
+    """
     path = ROUTES_PATH if path is None else path
     if not path.exists():
-        raise SystemExit(f"{path} is missing - run route_hikefinder.py first; it is what decides which hikes have a route")
-    return json.loads(path.read_text(encoding="utf-8")).get("routes") or {}
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("routes") or {}
+    except (OSError, ValueError) as error:
+        raise SystemExit(
+            f"{path} is present but unreadable, which is a defect rather than a skipped route pass: {error}"
+        ) from error
 
 
 def difficulty_slug(label: str | None) -> str | None:
@@ -339,9 +350,17 @@ def main() -> dict | None:
         )
 
     cache = load_cache()
-    if not cache:
-        raise SystemExit("No fetch cache to build from - run fetch_hikefinder.py first")
     routes = load_routes()
+    if not cache or not routes:
+        # NOT a failure, for the same reason as route_hikefinder.py's own
+        # guard (#1462): a publish whose hike fetch could not reach the export
+        # ships no hikes and keeps everything else. Saying which of the two is
+        # missing matters, because "the fetch did not land" and "the route
+        # pass wrote nothing" are different things to go and look at.
+        missing = "No fetch cache" if not cache else "No routes artifact"
+        print(f"{missing}, so nothing is published.", file=sys.stderr)
+        print("Run fetch_hikefinder.py and route_hikefinder.py to build one.", file=sys.stderr)
+        return None
 
     starts = [(hike["start"]["lon"], hike["start"]["lat"]) for hike in cache.values() if hike.get("start")]
     graph = load_graph(PROCESSED_DIR, starts)

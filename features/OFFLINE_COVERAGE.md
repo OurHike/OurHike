@@ -332,15 +332,42 @@ half that matters; drawing the seam around what is really held needs the outline
 of rectangles, which is a different function and was not attempted here.
 
 **And none of it puts map under New York City** — that is the other half of #1458, and it is
-now built though not yet run. `export_basemap.py` takes `--regions`, `pipeline/lib/build_regions.py`
-holds the named shapes, and `build-basemap.yml` cuts the coverage cells from a package covering
-the whole build rather than from the A.T.'s share of it. So a dispatch with `regions: at nyc`
-produces cells over the city that carry what they claim, while the A.T. package — whose
-advertised size is a published promise — is still cut against the corridor alone and does not
-move. **What no run has yet measured is what New York costs**: the city's OSM density is
-nothing like the corridor's, and BASEMAP.md's table prices regions by PBF size rather than by
-area. Until a build has run, the size of that addition is unknown, and this paragraph should
-be replaced by the number.
+built and now run. `export_basemap.py` takes `--regions`, `pipeline/lib/build_regions.py` holds
+the named shapes, and `build-basemap.yml` cuts the coverage cells from a package covering the
+whole build rather than from the A.T.'s share of it. So `regions: at nyc` produces cells over
+the city that carry what they claim, while the A.T. package — whose advertised size is a
+published promise — is still cut against the corridor alone and does not move.
+
+### What New York costs, measured
+
+Run [34961028812](https://github.com/OurHike/OurHike/actions/runs/34961028812), 2026-09-15,
+`regions: at nyc`, `publish: false`, against the 07:17 build of `main` the same morning as the
+control. Both are the whole pipeline end to end on a free runner:
+
+| | `at` alone | `at nyc` | added |
+| --- | ---: | ---: | ---: |
+| source build + shapes (`basemap-archives`) | 350,964,052 B | 361,836,062 B | **+10.9 MB** |
+| packages, cells, context, indexes (`basemap-package`) | 1,002,773,163 B | 1,017,065,996 B | **+14.3 MB (+1.4%)** |
+| whole run, wall clock | 12.5 min (BASEMAP.md) | **11 min 36 s** | none |
+| runner disk left afterwards | ~80 GB | 77 GB | ~3 GB |
+
+**The city costs 1.4% of the published set and no wall clock at all.** That was not the
+expected answer — the city's OSM density is nothing like the corridor's — and the reason it is
+so small is that the region is a 3 km buffer around the city's own trail lines rather than a
+box around the city, so it is a ribbon through the boroughs and not the boroughs.
+
+**The A.T. package did not move**, which is the promise the publish guard rests on: z14 =
+62,097 tiles, z13 = 15,899, z12 = 4,172, the same three numbers BASEMAP.md recorded on
+2026-08-27.
+
+**The cell COUNT did not move either, and that is the subtle part.** Still 62. New York's two
+graticule cells — `n40w074` and `n40w075` — were always in the set, because the A.T.
+corridor's own bounding box reaches into them; what they held was a band across one corner.
+What this build changes is their *contents*, not their existence. So the finding above and
+this fix meet in the same two cells: `covered` said how little was there, and the region says
+what fills it. *(Reasoned from the coverage region rather than read off the index: the cells'
+own `covered` values become visible in `at_basemap_cells.json` at the next publish, and this
+paragraph should gain that number when they do.)*
 
 **What stops at a seam, and what does not**, is §8.
 

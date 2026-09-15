@@ -90,7 +90,14 @@ now cuts from a separate coverage package covering the whole build. That is why
 `states` makes an existing promise false, a wider `regions` does not.
 
 **Regions are added one at a time, each with its cost measured by the run that
-builds it.** Nothing here tries to reach the 525 cells the trail lines occupy —
+builds it.** New York City's, measured 2026-09-15 on run 34961028812 against the
+same morning's `at`-only build of `main`: **+10.9 MB** of source build and
+**+14.3 MB (+1.4%)** of published packages-and-cells, in **11 min 36 s** end to
+end against the 12.5 min the corridor alone took — so no wall clock, and 77 GB
+of the runner's disk still free. Small because a region is a 3 km ribbon around
+the city's own trail lines rather than a box around the city. The A.T. package
+was byte-for-byte the same shape through it (z14 62,097 / z13 15,899 / z12
+4,172, the counts recorded below). Nothing here tries to reach the 525 cells the trail lines occupy —
 the measured table below marks the whole US *marginal* against a free runner and
 North America *does not fit*, so a region set reaching them would be a promise
 this document has already measured itself unable to keep.

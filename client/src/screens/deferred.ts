@@ -147,6 +147,22 @@ export const HikeFinish = screen(
 // Imported statically from Today it rode into the eager bundle with its
 // note roll-up, photo and dispute readers behind it - measured 2026-09-10
 // at 254,104 of the 256,000-byte budget with it eager (#1374 review).
+// The crews section (#1440), deferred for FieldNoteSection's reason and by
+// the same measurement: Today is the first frame and is eager, and this
+// section carries a month calendar, a row component and six selection
+// helpers. Imported statically from Today it put the budget 1,641 bytes over
+// (measured 2026-09-15, features/LAUNCH_BUDGET.md §3) - and moving it here,
+// with the crew-against-a-walk helpers split into lib/crews.ts so they stop
+// riding on the eager lib/workProjects.ts, brought it back to 255,844.
+//
+// chrome/ReportPickBar.tsx was tried here too and is deliberately NOT: it is
+// small enough that the registry entry and the import stub cost 21 bytes MORE
+// than the module weighed. A lazy boundary that makes the bundle bigger is a
+// boundary bought for its own sake.
+export const CrewsSection = screen(
+  () => import('../chrome/CrewsSection').then((m) => m.CrewsSection),
+  'CrewsSection',
+)
 export const FieldNoteSection = screen(
   () => import('../chrome/FieldNoteSection').then((m) => m.FieldNoteSection),
   'FieldNoteSection',

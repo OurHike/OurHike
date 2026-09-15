@@ -452,7 +452,49 @@ export async function sendReport(item: OutboxItem): Promise<void> {
     body: JSON.stringify({ ...item.payload, id: item.id, authored_at: item.authoredAt }),
   })
 
-  if (item.photo !== undefined) await sendReportPhoto(item.id, item.photo)
+  // ONE REQUEST EACH, NUMBERED BY POSITION (#1439), and strictly in order.
+  //
+  // Sequential rather than `Promise.all`, and the reason is the endpoint's
+  // own contract: it refuses an index past the end of the set, so that a
+  // report can never claim photos the bucket does not hold. Three parallel
+  // PUTs would arrive in whatever order the connection gave them and two of
+  // the three would be refused - on a trail where the connection is the
+  // unreliable part.
+  //
+  // THE COUNTER ADVANCES ON WHAT LANDED, NOT ON WHAT WAS TRIED, and that is
+  // the subtle half. A photo the server will never accept is skipped rather
+  // than retried forever (see `sendReportPhoto`), and if the counter had
+  // advanced past it anyway the NEXT photo would ask for an index one beyond
+  // the end - refused as out of sequence, on every flush, leaving the item
+  // queued for good. So a skip closes the gap, and the set the server ends
+  // up holding is the photos that could be stored, densely numbered.
+  //
+  // A throw stops the loop and keeps the whole item queued, exactly as the
+  // single photo did: the next flush re-POSTs the report (idempotent since
+  // #243) and re-PUTs the photos, each landing on the object it landed on
+  // last time because the key is derived from its index.
+  let index = 1
+  for (const photo of reportPhotos(item)) {
+    if (await sendReportPhoto(item.id, photo, index)) index += 1
+  }
+}
+
+/**
+ * A report's photos, whichever field this item keeps them in.
+ *
+ * **`photo` is still read, and this is the whole reason the reading is a
+ * function.** #1439 moved a report's photos to `photos`, and the moment it
+ * shipped there were reports already queued in somebody's IndexedDB with the
+ * old single field - written offline, days from signal, and the only copy of
+ * what they photographed. An upgrade that silently stopped sending those
+ * would lose exactly the pictures this outbox exists to protect.
+ *
+ * Both, not either: an item cannot hold both fields (nothing writes `photo`
+ * for a report any more), and if one somehow did, sending both is the
+ * outcome that loses nothing.
+ */
+function reportPhotos(item: OutboxItem): Blob[] {
+  return [...(item.photo === undefined ? [] : [item.photo]), ...(item.photos ?? [])]
 }
 
 /**
@@ -479,20 +521,33 @@ export async function sendReport(item: OutboxItem): Promise<void> {
  * an empty body, which an encoded canvas is not. It is a valve for a bug in
  * this app's own preparation step, not a path a working client takes.
  */
-async function sendReportPhoto(reportId: string, photo: Blob): Promise<void> {
+async function sendReportPhoto(
+  reportId: string,
+  photo: Blob,
+  index: number,
+): Promise<boolean> {
   try {
-    await authedFetchBytes(`/reports/${reportId}/photo`, photo)
+    await authedFetchBytes(`/reports/${reportId}/photos/${index}`, photo)
+    return true
   } catch (error) {
+    // False rather than a throw: the caller uses it to keep the numbering
+    // dense over a photo that will never be stored - see the loop above.
     if (error instanceof ApiError && PERMANENTLY_UNACCEPTABLE_PHOTO.has(error.status))
-      return
+      return false
     throw error
   }
 }
 
 /** The statuses that mean this photo will never be accepted, however often it
  *  is offered. NOT 503 - that is "no bucket on this deployment yet", which is
- *  precisely the case worth waiting out. */
-const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 413, 415])
+ *  precisely the case worth waiting out.
+ *
+ *  409 joined them with the photo set (#1439): it is the server saying the
+ *  index is out of sequence or past `MAX_REPORT_PHOTOS`, and neither becomes
+ *  true by asking again. It is also the one that must not block the photos
+ *  behind it - a client capped higher than the server would otherwise queue a
+ *  report forever over its seventh picture. */
+const PERMANENTLY_UNACCEPTABLE_PHOTO = new Set([400, 409, 413, 415])
 
 /**
  * Sends one queued app-failure report (#848).
@@ -821,6 +876,30 @@ export async function fetchMyProfile(signal?: AbortSignal): Promise<ProfileSumma
 export interface QueuedReport extends ReportSummary {
   visibility: 'public' | 'internal_only' | 'club_only'
   photo_url: string | null
+  /**
+   * How many photos this report holds (#1439) - the whole set, fetched one
+   * index at a time through `fetchReportPhotoLink`.
+   *
+   * `| null` AS WELL AS OPTIONAL, and the null is what carries the meaning
+   * here: a server running the previous release does not send this field at
+   * all, and backend/tests/test_client_response_contract.py reads nullability
+   * rather than TypeScript's `?`, on the grounds that a client type which
+   * says always-present about a field that can be absent is a type that lies.
+   *
+   * The reader's fallback is the one inference the data supports: a row with
+   * a `photo_url` has exactly one object, which is also what the migration's
+   * own backfill says about the same row.
+   */
+  photo_count?: number | null
+  /**
+   * Where the hiker said this was, in their own words (#1439, D16), or null.
+   *
+   * Present only on a report with no coordinates and no `poi_id` - which is
+   * exactly the report a moderator cannot place any other way, so the queue
+   * is the one surface that must not drop it. Never geocoded: a moderator
+   * reads the words and places it, and the app does not guess.
+   */
+  place_words?: string | null
   reporter_id: string | null
 }
 
@@ -905,9 +984,11 @@ export async function dismissReport(reportId: string): Promise<void> {
  */
 export async function fetchReportPhotoLink(
   reportId: string,
+  /** Which of the report's photos (#1439). One-based, as the keys are. */
+  index = 1,
   signal?: AbortSignal,
 ): Promise<{ url: string; expiresIn: number }> {
-  const response = await readFetch(`/reports/${reportId}/photo/link`, signal)
+  const response = await readFetch(`/reports/${reportId}/photos/${index}/link`, signal)
   const body = (await response.json()) as { url: string; expires_in: number }
   return { url: body.url, expiresIn: body.expires_in }
 }

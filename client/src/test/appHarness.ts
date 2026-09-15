@@ -24,6 +24,7 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { del, get, getMany, set, update } from 'idb-keyval'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { resetMapLibreMock } from './mocks/maplibre-gl'
+import { forgetVerifiedCompanions } from '../lib/trailGraphData'
 import { PREFERENCES_KEY } from '../lib/preferences'
 import { forgetLaunchMirror, writeLaunchMirror } from '../lib/launchMirror'
 import { TAKEN_TRAIL_KEY } from '../lib/takenTrail'
@@ -170,6 +171,14 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     // The mirror lives in localStorage, which jsdom keeps across the tests in
     // a file; a test that did not onboard must not inherit one.
     forgetLaunchMirror()
+    // Same shape, one module over (#1275). The companion-cell cache is
+    // module-level - it lives as long as the tab does, which is right in
+    // production and wrong in a suite, where every test in a file shares it
+    // and a later one can be served bytes an earlier one fetched. Three tests
+    // in App.dayHike.test.tsx found that immediately: they count fetches, or
+    // assert the refusal a MISSING geometry raises, and a warm cache makes
+    // both read as the opposite of what happened.
+    forgetVerifiedCompanions()
     resetMapLibreMock()
 
     // Primes the deferred map engine (#722) before anything renders.

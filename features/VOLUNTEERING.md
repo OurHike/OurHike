@@ -56,7 +56,13 @@ Everything queues through the existing offline outbox ([`client/src/lib/outbox.t
 
 The v1 doc's "more important half," now with the in-app signup [PRICING_MODEL.md](PRICING_MODEL.md) has been waiting on.
 
-**The read path.** Upcoming `WorkProject`s render as map pins, filterable to the next fourteen days, and list in the Volunteer tab sorted by distance from the hiker. They fit the existing ~8-category waypoint icon spec rather than inventing a visual language. No account needed to look — same as every other layer.
+**The read path.** Upcoming `WorkProject`s render as map pins, filterable to the next fourteen days, and list sorted by distance from the hiker. They fit the existing ~8-category waypoint icon spec rather than inventing a visual language. No account needed to look — same as every other layer. Each pin carries its date (`Sat 12`, `Sun 13–14`) since #1440: the one thing a hiker needs before travelling is which day, and a bare mark makes them tap every pin to find out.
+
+**Where the list lives moved in #1440 (review decision D22), and the split is the point.** In **volunteer mode Today is the crews screen** — the crews out today at the top, then a List / Calendar switch, then the window filter, then the view — because this is the recruitment moment the feature exists for and it happens on a screen a hiker already opens. The **Volunteer page keeps the hiker's own half**: the conditions toggle, the places they passed, their hours, the private record. Today answers "what is happening"; the page answers "what have I done, and what can I hand back", which is why it still opens on the smallest possible act rather than on a calendar.
+
+**The hiking modes carry the same crews on a different test** — a crew whose mile falls on today's walk, printed as a mile *of the walk*, then the ones near it but not on it. There it is **trail information before it is an invitation**: tools out and a possible short hold-up is a fact about the walk, and the invitation rides along. A crew the reviewed file never placed on the mile axis appears in neither hiking heading, because with no mile there is no way to claim it is on the route.
+
+**The calendar draws the published window's edge.** A month grid shows days the file was never asked about, and an empty cell out there reads as "no crew that day" when the truth is "nobody has said" — so those days are hatched, days already gone are greyed (the past is over, not unknown), and a dot is never a count: past four it stops adding them rather than turning a day into a score.
 
 **The fourteen-day window forces a thing v1 never had to handle: this data expires.** Every other layer in the app is durable — a shelter is where it was last month. A workday nine days out is wrong the moment it is cancelled, and a downloaded map cannot know that. So:
 

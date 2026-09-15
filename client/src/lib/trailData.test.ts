@@ -75,6 +75,7 @@ function publishing(
   version: string | null = 'v1',
 ) {
   mockedPublishedSnapshot.mockResolvedValue({
+    readable: true,
     version,
     previousVersion: null,
     lookup,

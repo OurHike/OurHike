@@ -118,20 +118,47 @@ WEEKLY_POLYGONS = "weekly_polygons"
 # a schedule, and fetch_all.py skips it like everything not ArcGIS.
 GUIDE_PAGES = "guide_pages"
 
-# Day hikes an organization writes up for people to walk - NYNJTC's Favorite
-# Hikes first (#1290): a name, an overview, a dated turn-by-turn, a credited
-# photograph, and the trailhead as a pin on a map, published as WordPress
-# posts of a custom type behind the REST API. Fetched by fetch_nynjtc_hikes.py
-# into data/raw/nynjtc_hikes.json and parsed by lib/nynjtc_hikes.py into
-# facts; the ROUTE each one walks is not published anywhere and is built here
-# from the description, reviewed row by row in reference/nynjtc_hike_routes
-# .json, and shipped by export_suggested_hikes.py behind the entry's own
-# `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
+# Day hikes an organization writes up for people to walk - NYNJTC's, through
+# the Hike Finder export (#1427, and #1290 before it): a name, a summary, a
+# turn-by-turn description, the publisher's own categorisation and tags, and
+# the parking as a pin. Fetched by fetch_hikefinder.py into
+# data/raw/hikefinder.json and parsed by lib/hikefinder.py into facts. THE
+# ROUTE ARRIVES TWO WAYS and the difference is carried all the way to the
+# card: 113 of the 385 publish a GPX track the writer surveyed, and 272
+# publish no line at all, so route_hikefinder.py forms one from the
+# description over the junction graph and grades it. export_suggested_hikes.py
+# ships what passes, behind the entry's own `reaches_hikers` gate. Its own kind rather than GUIDE_PAGES because the
 # thing a reader gets is a hike, not a waypoint, and the exporter that reads
 # it is a different one; and rather than PUBLISHED_NOTICES because these are
 # fetched on a schedule, not reviewed by hand into git. fetch_all.py skips it
 # like everything not ArcGIS.
 PUBLISHED_HIKES = "published_hikes"
+
+# A dataset on a Socrata open-data portal, fetched as GeoJSON - New York
+# City's own walking paths first (#1432): NYC Parks' trails across 73 parks,
+# and the off-street greenway subset of NYC DOT's bike network.
+#
+# ITS OWN KIND BECAUSE THE TRANSPORT IS DIFFERENT, NOT BECAUSE THE DATA IS.
+# These carry trail lines exactly as EXTERNAL_ARCGIS_LAYER's occupants do,
+# and `network_line_sources()` picks both up off the same blaze marker. What
+# differs is everything about getting the bytes: SoQL `$where` rather than an
+# ArcGIS `where`, `$limit`/`$offset` rather than `resultOffset`, and
+# `rowsUpdatedAt` in epoch SECONDS rather than `editingInfo.dataLastEditDate`
+# in milliseconds. lib/socrata.py owns that half.
+#
+# WHY NOT JUST REGISTER NYC's ARCGIS MIRROR. Because it is dead. NYC DCP's
+# copy of DOT's bike network reports dataLastEditDate 2017-03-08, carries
+# 13,953 rows against the portal's 29,695, and has no `grnwy` column at all
+# (all measured live 2026-09-15) - so the ArcGIS route cannot express the
+# filter that keeps on-street bike lanes from being drawn as walking paths.
+# NYC Parks has no ArcGIS org publishing trails at all. The portal is the
+# publication of record, so the portal is what this fetches.
+#
+# fetch_external_layers.py fetches these alongside the ArcGIS ones - the same
+# script, because the boundary that mattered for that script was "another
+# organization's layer, outside the A.T. build", and that is what these are.
+# fetch_all.py skips it like everything not ArcGIS.
+SOCRATA_GEOJSON_LAYER = "socrata_geojson_layer"
 
 KNOWN_KINDS = frozenset(
     {
@@ -144,6 +171,7 @@ KNOWN_KINDS = frozenset(
         EXTERNAL_ARCGIS_LAYER,
         GUIDE_PAGES,
         PUBLISHED_HIKES,
+        SOCRATA_GEOJSON_LAYER,
     }
 )
 
@@ -188,8 +216,48 @@ def club_pdf_sources(registry: dict) -> list[dict]:
 
 
 def external_arcgis_sources(registry: dict) -> list[dict]:
-    """The entries `fetch_external_layers.py` may fetch, in registry order."""
+    """The ArcGIS half of what `fetch_external_layers.py` fetches, in registry order."""
     return [entry for entry in registry.get("sources", []) if is_external_arcgis_layer(entry)]
+
+
+def is_socrata_layer(entry: dict) -> bool:
+    return source_kind(entry) == SOCRATA_GEOJSON_LAYER
+
+
+def socrata_sources(registry: dict) -> list[dict]:
+    """The Socrata half of what `fetch_external_layers.py` fetches, in registry order."""
+    return [entry for entry in registry.get("sources", []) if is_socrata_layer(entry)]
+
+
+def is_external_source(entry: dict) -> bool:
+    """Whether this entry is another organization's layer, outside the A.T. build.
+
+    THE NEGATIVE IS THE LOAD-BEARING USE (#1432). export_trails.py asks this
+    to keep somebody else's layers OUT of the A.T. corridor export, and that
+    question is about whose data it is, never about what it is served from -
+    so a second external transport must answer it the same way the first
+    does. Asked as `not is_external_arcgis_layer(...)`, the Socrata entries
+    would have read as A.T. sources and been clipped into the corridor
+    artifact, which is the silent-partial-keep failure export_trails.py's own
+    docstring warns about, arriving through the door that docstring did not
+    know existed yet.
+    """
+    return is_external_arcgis_layer(entry) or is_socrata_layer(entry)
+
+
+def external_sources(registry: dict) -> list[dict]:
+    """Every other organization's layer, whatever it is published on (#1432).
+
+    ONE LIST, IN REGISTRY ORDER, because the thing these entries have in
+    common is who they belong to and not how the bytes arrive: they are
+    somebody else's data, outside the A.T. build, fetched by
+    fetch_external_layers.py into data/raw/external/ and gated on their own
+    `reaches_hikers`. Kind decides which fetcher gets called and nothing
+    else, which is why this is the function the exports and the completeness
+    gate ask - a third transport later should not have to be added to five
+    call sites to be counted.
+    """
+    return [entry for entry in registry.get("sources", []) if is_external_source(entry)]
 
 
 def guide_page_sources(registry: dict) -> list[dict]:

@@ -412,8 +412,9 @@ describe('a transient failure', () => {
 
 // --- Carrying the photo, not a link to one (#234) -------------------------
 
-describe('a report queued with a photo', () => {
+describe('a report queued with photos', () => {
   const BYTES = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+  const SECOND = new Blob([new Uint8Array([4, 5, 6])], { type: 'image/jpeg' })
 
   // Its own empty store per test. The global `beforeEach` clears calls but
   // not implementations, so without this the queue is whatever the previous
@@ -426,42 +427,47 @@ describe('a report queued with a photo', () => {
     // Not `payload.photo_url`, which is the shape for a photo already
     // uploaded. Out here the report is usually written with no signal at all
     // and flushes days later, so the image has to survive in IndexedDB.
-    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), BYTES)
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [BYTES, SECOND])
 
     const [item] = await listQueued()
-    expect(item.photo).toBe(BYTES)
+    // In pick order, which is the order lib/api.ts numbers them in - a
+    // blowdown is three trunks and the first photo is the one the note is
+    // usually written about (#1439).
+    expect(item.photos).toEqual([BYTES, SECOND])
   })
 
-  it('leaves the key off entirely when there is no photo', async () => {
-    // An explicit `photo: undefined` is a difference that reads as one to
-    // every comparison and rewrite the queue goes through.
+  it('leaves the key off entirely when there are no photos', async () => {
+    // An explicit `photos: undefined` is a difference that reads as one to
+    // every comparison and rewrite the queue goes through - and so is an
+    // empty array, which is why both are dropped.
     await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [])
 
-    const [item] = await listQueued()
-    expect('photo' in item).toBe(false)
+    const queued = await listQueued()
+    expect(queued.map((item) => 'photos' in item)).toEqual([false, false])
   })
 
   it('hands the photo to the sender along with the report', async () => {
     // The send is what turns bytes into an upload; the outbox's only job is
     // that they are still there when it runs.
-    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), BYTES)
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [BYTES])
     const send = vi.fn().mockResolvedValue(undefined)
 
     await flushOutbox(send)
 
-    expect(send.mock.calls[0][0].photo).toBe(BYTES)
+    expect(send.mock.calls[0][0].photos).toEqual([BYTES])
   })
 
   it('keeps the photo when the send fails and the item stays queued', async () => {
     // The retry has to carry the same bytes; losing them on the first failed
     // flush would mean the photo only ever survived a first-try success,
     // which on this trail is the uncommon case.
-    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), BYTES)
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'), [BYTES, SECOND])
 
     await flushOutbox(vi.fn().mockRejectedValue(new Error('no signal')))
 
     const [item] = await listQueued()
-    expect(item.photo).toBe(BYTES)
+    expect(item.photos).toEqual([BYTES, SECOND])
   })
 })
 

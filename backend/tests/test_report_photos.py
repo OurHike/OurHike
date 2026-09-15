@@ -612,6 +612,13 @@ def test_the_key_is_derived_from_the_report_not_read_out_of_the_row(client, db_s
         status=ReportStatus.verified,
         photo_url=photo_key(victim.id),
     )
+    # The read path gates on `photo_count` since #1439, which is server-only -
+    # so a hand-set `photo_url` no longer even opens it, and this row has to
+    # claim a photo to get as far as the derivation being the thing under
+    # test. That is a tightening rather than a change of subject: the value a
+    # client can set now decides nothing at all on the way out.
+    attacker.photo_count = 1
+    db_session.commit()
 
     location = _photo(client, attacker.id, reporter.id).headers["location"]
 

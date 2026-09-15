@@ -795,6 +795,27 @@ export function More({
           // for a test.
           'Report problems, or lend a hand'
 
+  /**
+   * THE FIVE ROWS, AND THEY TAKE NO MODE INPUT (D23, #1437).
+   *
+   * Today, Map and Plan change with the mode switch. More does not, and the
+   * reason is what the screen is for: More is where somebody goes looking
+   * for a SPECIFIC thing, and a list that rearranges itself depending on a
+   * switch on another screen is a list you have to re-learn every visit. The
+   * volunteering row in particular stays put in all three - the way into
+   * volunteering cannot be behind the mode you are already in.
+   *
+   * It already worked this way; what was missing was anything that would
+   * fail the day a `mode === 'volunteer' &&` appeared in this array.
+   * screens/More.modeInvariance.test.tsx is that, and it compares all three
+   * renders rather than checking for a named row, so a row dropped, reworded
+   * or reordered for one mode fails too.
+   *
+   * ONE ROW READS THE MODE, deliberately: `youSummary` names it, because
+   * More -> You is where the mode switch itself lives. A control summarising
+   * its own current value is not a list rearranging itself. The test pins
+   * that exception to this row alone.
+   */
   const destinations: ReadonlyArray<{
     page: Exclude<MorePage, 'home'>
     title: string

@@ -282,6 +282,15 @@ def test_the_scalar_types_agree_where_they_are_inferable(document, interface, pa
         types |= {option.get("type") for option in property_schema.get("anyOf", [])}
         types.discard("null")
         types.discard(None)
+        # OpenAPI's `integer` is TypeScript's `number`, because TypeScript has
+        # no other spelling for it (#1439, where `photo_count: int` was the
+        # first integer to cross one of these seams). Narrowing `number`
+        # further is not something a client CAN do, so refusing it here would
+        # be asking for a type that does not exist rather than catching a
+        # disagreement.
+        if "integer" in types:
+            types.discard("integer")
+            types.add("number")
 
         # An empty set is a `$ref` - an enum, which is a string on the wire
         # and is compared by value in the enum tests below.
@@ -383,6 +392,30 @@ def test_the_parser_is_actually_reading_the_client(document):
     assert "visibility" in queued
 
     assert len(_client_union(_read(CLOSURE_BANNER), "ClosureReason")) >= 5
+
+    # The integer widening above, asserted rather than assumed. A field the
+    # server types `int` is `number` on the client because TypeScript has no
+    # other spelling, and `photo_count` (#1439) is the first one to cross
+    # here - so the day it stops being declared, this line says so.
+    assert queued["photo_count"].scalar == "number"
+    assert queued["photo_count"].nullable, (
+        "a server on the previous release sends no photo_count at all, and the client type has to admit that"
+    )
+
+
+def test_an_integer_field_is_satisfied_by_the_client_saying_number(document):
+    """The widening in `test_the_scalar_types_agree_where_they_are_inferable`,
+    checked against the real document rather than trusted.
+
+    It would be an easy thing to write so loosely that it stopped catching a
+    genuine disagreement, so what is asserted is both halves: the response
+    really does type this field `integer`, and the client really does say
+    `number` - which is the pair the widening exists to reconcile.
+    """
+    schema = response_schema(document, "/moderation/queue", unwrap="reports")
+
+    assert schema["properties"]["photo_count"]["type"] == "integer"
+    assert interface_fields(_read(API), "QueuedReport")["photo_count"].scalar == "number"
 
 
 def test_the_document_really_describes_this_build(document):

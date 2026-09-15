@@ -113,7 +113,7 @@ import {
   type ReportWindowAnchor,
 } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
-import { FIT_PADDING } from './map/MapView'
+import { FIT_PADDING } from './map/fitPadding'
 import { trailIdForSource } from './map/trailBadges'
 import { chosenSystemSources } from './map/nearbyTrails'
 import type { TappedLine } from './map/lineTaps'
@@ -261,6 +261,7 @@ import { type ViaStop } from './lib/dayPlanner'
 import type { ChartStretch } from './chrome/ElevationChart'
 import { RouteStopPicker, type RouteStopChoice } from './chrome/RouteStopPicker'
 import { RouteMapPickBar } from './chrome/RouteMapPickBar'
+import { ReportPickBar } from './chrome/ReportPickBar'
 import { SectionPlanner } from './chrome/SectionPlanner'
 import { nearestStop } from './lib/cascade'
 import { mileMarker, stopLabel } from './lib/planDisplay'
@@ -351,7 +352,7 @@ import {
   NETWORK_STILL_ARRIVING,
 } from './lib/dayHikeDraft'
 import { routeLines, type TrailGraphIndex } from './lib/trailGraph'
-import { buildCourse, mileTicks } from './lib/dayHikeCourse'
+import { buildCourse, lonLatBounds, mileTicks } from './lib/dayHikeCourse'
 import { isStoppable, orderStops, toggleStop } from './lib/dayHikeStops'
 import { waterOnCourse } from './lib/dayHikeWater'
 import { poiIdAt } from './map/poiTaps'
@@ -4185,6 +4186,45 @@ function App() {
    * describe the same day differently - the alert sentences' own rule, at a
    * different grain.
    */
+  /**
+   * THE STRETCH THE CREWS SECTION MEASURES AGAINST (#1440, D18).
+   *
+   * On a long hike this is the miles STILL TO WALK, and never past the hike's
+   * own end - a crew beyond Katahdin is not on this hike. Start is the
+   * hiker's fix when there is one, because the miles behind them are not
+   * miles they will walk; with no fix it is the end they set off from, which
+   * is the whole hike and is honest rather than optimistic.
+   *
+   * NULL IN DAY-HIKE MODE, AND THAT IS A NAMED SHORTFALL rather than a
+   * decision. Frame 14k's headline case is a day hiker reading "mile 4.1 of
+   * your walk", and the number is not available here: a `DayHike` stores
+   * segments and cached figures (lib/dayHikes.ts), not a span on the trail's
+   * mile axis, and crews are placed on that axis and nowhere else. A route
+   * that is genuinely off the corridor - a loop in Harriman - has no such
+   * span at all and must not be given one.
+   *
+   * What would settle it is locating a day hike's own route on the trail
+   * index the way `handleHikePointMapTap` locates a single tap, and keeping
+   * the answer null where too few of its points resolve. That is a piece of
+   * derivation this shell does not do yet, so rather than guess, the section
+   * renders nothing in day-hike mode and the crews stay one tap away in
+   * volunteer mode and on the map.
+   */
+  const crewWalk = useMemo(() => {
+    if (hikerMode !== 'long' || activeHike === null) return null
+    const ends = hikeEnds(activeHike, pois)
+    if (ends.low === null || ends.high === null) return null
+    const south = heading === 'SOBO'
+    const finish = south ? ends.low.mile : ends.high.mile
+    const from = south ? ends.high.mile : ends.low.mile
+    // Clamped into the hike rather than trusted: a fix off the corridor's
+    // ends would otherwise widen the stretch past what anybody is walking.
+    const at = fix?.mile
+    const start =
+      at === undefined ? from : Math.min(Math.max(at, ends.low.mile), ends.high.mile)
+    return { start, end: finish }
+  }, [hikerMode, activeHike, pois, heading, fix?.mile])
+
   const longHikeToday = useMemo((): LongHikeToday | null => {
     if (activeHike === null || hikerMode !== 'long') return null
     const today = localDay(now)
@@ -4420,7 +4460,7 @@ function App() {
    * is what `openPlanKind` does - is the kinder behaviour and a different
    * decision; #997 records it.
    */
-  const sweepForBuilder = useCallback(() => {
+  const sweepForBuilderNow = useCallback(() => {
     setActiveTab('map')
     setSelectedPoiId(null)
     setLegendOpen(false)
@@ -4455,6 +4495,100 @@ function App() {
     // - and that button reaches this same sweep, discarding the route.
     applyHikerMode('long')
   }, [applyHikerMode, setActiveTab])
+
+  /**
+   * A sweep parked behind the bail sheet, and the one door that runs it
+   * (#1378).
+   *
+   * THE EXIT THE NAVIGATOR'S GUARD CANNOT SEE. D8 says every exit from a
+   * half-built route shows the bail sheet, and `nav.setGuard` above delivers
+   * that for the moves the navigator makes - a tab tap that takes the map,
+   * and the builder on it, off screen. `sweepForBuilderNow` is not one of
+   * those. It is a plain callback, so this chain drops a draft with nothing
+   * asked, and every link in it is a control on screen:
+   *
+   *   1. build part of a day hike on the map - the draft is live;
+   *   2. "< Hike" back to step 1, which pushes the step with the draft still
+   *      live behind it (the rail's promise, R3);
+   *   3. flip the sidebar's mode switch to Long hike - `handleChangeMode` ->
+   *      `enterTripsRoom` -> `applyHikerMode('long')`, none of which clears
+   *      `dayHike`, and none of which is destructive;
+   *   4. step 1's "Pick on the map" opens the A.T. builder, whose opener
+   *      sweeps - and the draft is gone.
+   *
+   * Step 4 is the destructive one, so step 4 is what asks. A tab tap from
+   * step 1 with a draft live is NOT this defect: nothing in the tab branch
+   * clears the draft, and `openPlanKind` routes a live draft back to its own
+   * builder, so "Keep it for later" there genuinely keeps it.
+   *
+   * THE WHOLE ACTION IS PARKED, not the sweep alone. `handlePlanChartStretch`
+   * sweeps and then opens the builder from the chart's own miles; parking
+   * only the first line would open a builder over a draft the sweep never
+   * cleared, which is the state #997 exists to prevent.
+   *
+   * NARROW ON PURPOSE. The deeper fix is steps 2 and 3 on the navigator's
+   * stack, so the guard reads what a move LEAVES rather than pattern-matching
+   * on tabs - that is item 1 of #1380, whose own instruction is to take those
+   * one at a time on their own branches because every one touches this file.
+   * Doing it here would close that item sideways without the review it asks
+   * for.
+   */
+  const [pendingSweep, setPendingSweep] = useState<{ run: () => void } | null>(null)
+  // THROUGH A REF, SO THE CALLBACK STAYS STABLE. `tapAt` returns a new draft
+  // object on every tap - a refused one included, which is #1093's whole
+  // finding - so a `[dayHike]` dependency would give `askBeforeSweeping` a
+  // new identity per tap, and with it `openRouteBuilderFrom` and every door
+  // built on it. That is exactly the memoisation `routeBuilder`'s return
+  // value is destructured to protect (see the note at the destructure). What
+  // this reads is "is a draft live", which the ref answers as well as the
+  // value does and without the identity.
+  const dayHikeRef = useRef(dayHike)
+  dayHikeRef.current = dayHike
+  const askBeforeSweeping = useCallback((run: () => void) => {
+    if (dayHikeRef.current === null) {
+      run()
+      return
+    }
+    setPendingSweep({ run })
+  }, [])
+  /**
+   * The route builder's doors, asked about before the sweep they depend on.
+   *
+   * Takes the door's own remaining work rather than running the sweep and
+   * returning (#1378). `openRouteBuilderFrom` used to call the sweep and then
+   * set the route draft in the same batch, so a parked sweep put the A.T.
+   * builder on screen BEHIND the sheet asking whether to drop the day hike -
+   * and "Stay here" left both drafts live, which is the #997 state the sweep
+   * exists to prevent. Three of the four doors reach it that way; only
+   * `handlePlanChartStretch` was parked whole in the first cut.
+   */
+  // A PARKED SWEEP MUST NOT OUTLIVE THE DRAFT IT IS ASKING ABOUT. `pendingSweep`
+  // was only ever cleared by the sheet's own two buttons, and the sheet is
+  // hidden (not unmounted) whenever the navigator parks a move of its own -
+  // `nav.pending === null` gates it. So: draft live, a builder door parks the
+  // sweep, the hiker instead takes a tab, answers the NAVIGATOR's sheet with
+  // "Discard it", and `discardBuilder` clears the draft. `pendingSweep` is
+  // still set, so the sweep's sheet reappears on the new tab asking whether to
+  // drop a half-built route that no longer exists - with no figures, because
+  // there is nothing to price - and "Discard it" there runs a sweep the hiker
+  // never asked for, yanking them back to the map with the A.T. builder open.
+  //
+  // The draft going away IS the answer to the question, so the question goes
+  // with it. Keyed on `dayHike` rather than on the discard path, because every
+  // route to null - Cancel on the bar, the navigator's sheet, a save - has to
+  // count, and only the value says so.
+  useEffect(() => {
+    if (dayHike === null) setPendingSweep(null)
+  }, [dayHike])
+
+  const openBuilderAfterSweep = useCallback(
+    (proceed: () => void) =>
+      askBeforeSweeping(() => {
+        sweepForBuilderNow()
+        proceed()
+      }),
+    [askBeforeSweeping, sweepForBuilderNow],
+  )
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
 
   // The route builder (#991), the fourth of these. Its state, its twenty-odd
@@ -4477,7 +4611,7 @@ function App() {
     targetOpen: targetRequest !== null,
     setTargetRequest,
     onRecordWalked: handleRecordWalked,
-    onOpenBuilder: sweepForBuilder,
+    onOpenBuilder: openBuilderAfterSweep,
     clearFreeChartStretch,
   })
   // Destructured, and the reason is memoisation rather than brevity: the
@@ -4502,10 +4636,17 @@ function App() {
    *  the panel. Declared here rather than beside its siblings above because
    *  `routeBuilder` is built on the line before it, and a dependency array is
    *  evaluated where it is written. */
+  // INSIDE THE CONTINUATION, NOT BEFORE IT (#1378's review). `openRouteBuilder`
+  // may now park behind the bail sheet, and work done on the way in does not
+  // park with it - so "Stay here" used to leave the section draft discarded
+  // for a move the hiker had just cancelled. Same argument as
+  // `handlePlanChartStretch` and `openRouteBuilderFrom`, applied to the three
+  // doors that were missed.
   const handleSectionOnMap = useCallback(() => {
-    setSectionDraft(null)
-    setSectionPointAt(null)
-    routeBuilder.openRouteBuilder()
+    routeBuilder.openRouteBuilder(() => {
+      setSectionDraft(null)
+      setSectionPointAt(null)
+    })
   }, [routeBuilder])
   /**
    * Toggle a shelter or campsite as a stop, and say whether the tap was
@@ -5269,10 +5410,49 @@ function App() {
       // the route as it was. The pointer only: the edit is recorded when it
       // is saved, not when it starts.
       void saveDayHikeOpenId(null).then(setDayHikeStore)
+
+      // AND THE CAMERA COMES TO THE ROUTE (#1404). This door loaded the legs
+      // and drew the line and left the camera wherever the map already was -
+      // which, for a hiker arriving from the Plan tab, is the whole corridor.
+      // Measured 2026-09-11 against release 2026-09-10 on the fixture walk
+      // Ramapo-Dunderberg to Timp-Torne (2.85 mi): a 1,974-point sweep of
+      // the 1280x800 map box on the camera this opened on raised the route's
+      // hover plate ZERO times. There was nothing under the frame to find.
+      // R2 - "the map never leaves" - is why the builder sits beside the map
+      // on a laptop at all, and step 2's whole job is judging a route by
+      // looking at it.
+      //
+      // FIT ONCE, ON ENTRY, which is the conservative of the two shapes
+      // #1404 names and is chosen rather than defaulted: re-fitting on every
+      // change would fight a hiker who has deliberately panned away to look
+      // at where they might extend to, which is a real thing to do here.
+      // Only where the replay produced a route with geometry - a walk this
+      // phone's graph cannot place opens on the refusal, and there is
+      // nothing to frame.
+      //
+      // The phone is UNMEASURED. The sweep above is the laptop project's;
+      // the phone's builder covers the map at step 2 anyway (measured 8% of
+      // it reachable), so this may be invisible there rather than absent.
+      if (map !== null && replayed !== null) {
+        const status = draftStatus(dayHikeIndex, replayed)
+        if (status.kind === 'routed') {
+          const bounds = lonLatBounds(
+            buildCourse(dayHikeIndex.graph, status.stretches).points.map(
+              (point) => [point.lon, point.lat] as const,
+            ),
+          )
+          // No animation: the tab is changing under it, and a flight the
+          // hiker never sees the start of is a flight they wait for.
+          if (bounds !== null) {
+            map.fitBounds(bounds, { padding: FOLLOW_FIT_PADDING, duration: 0 })
+          }
+        }
+      }
     },
     [
       dayHikeStore.hikes,
       dayHikeIndex,
+      map,
       openDayHike,
       setDayHikeStopIds,
       followingId,
@@ -5647,25 +5827,12 @@ function App() {
    *  can honestly offer somebody standing off their route. */
   const showWholeRoute = useCallback(() => {
     if (map === null || followDrawing === null) return
-    const points = followDrawing.lines.flat()
-    if (points.length === 0) return
-    let west = points[0][0]
-    let south = points[0][1]
-    let east = points[0][0]
-    let north = points[0][1]
-    for (const [lon, lat] of points) {
-      west = Math.min(west, lon)
-      east = Math.max(east, lon)
-      south = Math.min(south, lat)
-      north = Math.max(north, lat)
-    }
-    map.fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      { padding: FOLLOW_FIT_PADDING },
-    )
+    // lib/dayHikeCourse.ts's `lonLatBounds`, shared with the builder's own
+    // entry fit (#1404) rather than a second copy of the same four running
+    // minima.
+    const bounds = lonLatBounds(followDrawing.lines.flat())
+    if (bounds === null) return
+    map.fitBounds(bounds, { padding: FOLLOW_FIT_PADDING })
   }, [map, followDrawing])
 
   const followHeaderText = followHeader({
@@ -6042,14 +6209,45 @@ function App() {
       fetchTrailGraphElevationCells(graphMerged, controller.signal, online),
     ]).then(([geometry, elevation]) => {
       if (!wanted) return
+      // NOTHING LEARNED, NOTHING UNLEARNED (#1274). `undecided` is the
+      // network refusing to answer - a dropped connection, a 5xx, an origin
+      // that would not talk - and it is not a claim about what this phone
+      // holds. It was read as one: the batch is all-or-nothing across every
+      // merged cell, so a hiker being followed whose GPS drifted into a
+      // brand-new cell re-fetched the whole set, the new cell's request
+      // failed on exactly the weak signal this cell-loading feature exists
+      // for, and the correct attachment for every mile already walked was
+      // replaced by null. Nothing then retried: `dayHikeIndex` settles at
+      // null and nothing else in the dependency list changes on its own.
+      //
+      // So a non-answer leaves what is on screen where it is. What it keeps
+      // is not a guess - it is the index built from the cells the hiker has
+      // been walking through, still right about every one of them.
+      //
+      // WHAT IT KEEPS IS A STALE INDEX, THOUGH, AND NOTHING RE-ASKS. Said
+      // precisely because the trade is real and the comment below describes
+      // its other side: an index built before the graph grew draws a
+      // highlight that stops at the old cells' edge without saying so. On a
+      // transient failure this now keeps that rather than nulling - the
+      // right call for #1274's case, where the hiker is walking and the old
+      // cells are the ground under them - but nothing in this effect's
+      // dependency list changes on its own, so the only re-ask is another
+      // cell merging. A hiker who stops moving with a card open holds a
+      // short highlight until they move again. A bounded retry is what
+      // closes that, it is not smuggled into an effect with this dependency
+      // list at this size, and it is filed rather than left here.
+      if (geometry.kind === 'undecided' || elevation.kind === 'undecided') return
+
       let next = graphIndex
-      if (geometry !== null) next = attachTrailGraphGeometry(next, geometry)
-      if (elevation !== null) next = attachTrailGraphElevation(next, elevation)
+      if (geometry.kind === 'loaded') next = attachTrailGraphGeometry(next, geometry.data)
+      if (elevation.kind === 'loaded')
+        next = attachTrailGraphElevation(next, elevation.data)
       // Unchanged means neither half is on this phone for some merged cell -
       // leave dayHikeIndex null so the builder keeps routing on the graph it
       // already has. An index built before the graph grew goes too: a
       // highlight drawn from it would stop at the old cells' edge without
       // saying so, and null is the state every surface below already says.
+      // Reachable now only from a decided absence, which is the point.
       if (next !== graphIndex) setDayHikeIndex(next)
       else if (dayHikeIndexStale) setDayHikeIndex(null)
     })
@@ -6101,9 +6299,14 @@ function App() {
     void fetchTrailGraphProfileCells(graphMerged, controller.signal, online).then(
       (profile) => {
         if (!wanted) return
-        // Null is ordinary and its consequence is #1041's: no ribbon on this
-        // walk, which is the honest state rather than a missing feature.
-        if (profile !== null) setGraphProfile(profile)
+        // Same rule as the geometry effect above (#1274): a network that
+        // would not answer is not an answer, so the ribbon keeps drawing
+        // what it has rather than blanking on a dropped request.
+        if (profile.kind === 'undecided') return
+        // An absence is ordinary and its consequence is #1041's: no ribbon
+        // on this walk, which is the honest state rather than a missing
+        // feature.
+        if (profile.kind === 'loaded') setGraphProfile(profile.data)
         else if (graphProfileStale) setGraphProfile(null)
       },
     )
@@ -6361,10 +6564,21 @@ function App() {
     // repeat - setActiveTab('map') - is a no-op on this path rather than a
     // difference: the chart is a MapScreen prop, and App returns early for
     // every other tab, so nothing reaches here from anywhere else.
-    sweepForBuilder()
-    setFreeChartStretch(null)
-    openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
-  }, [freeChartStretch, freeChartSouth, openFromMiles, sweepForBuilder])
+    // Parked whole (#1378), not just its first line: a sweep asked about and
+    // declined must not leave the two lines after it to open a builder over
+    // the draft that was kept.
+    askBeforeSweeping(() => {
+      sweepForBuilderNow()
+      setFreeChartStretch(null)
+      openFromMiles(freeChartStretch.startMile, freeChartStretch.endMile, freeChartSouth)
+    })
+  }, [
+    askBeforeSweeping,
+    freeChartStretch,
+    freeChartSouth,
+    openFromMiles,
+    sweepForBuilderNow,
+  ])
 
   // The desktop's full elevation chart (#135). Unlike the ribbon it needs no
   // fix - a desk has none - only the published profile; the fix, when one
@@ -7199,6 +7413,91 @@ function App() {
   )
 
   /**
+   * THE REPORT'S CROSSHAIR (#1439, D16), in three pieces.
+   *
+   * `reportPointOnMap` - the hiker took "Change" on the form's location line
+   * and is aiming at the map. `reportAiming` - the point they have tapped,
+   * not yet kept, which is what lets the bar NAME THE MILE BEFORE IT IS KEPT
+   * rather than committing on the first touch. `reportPlacedAt` - the answer,
+   * which overrides whatever the form would otherwise have said.
+   *
+   * THE SAME SHAPE AS THE HIKE SET-UP'S MAP PICK (#1329), and for the same
+   * reason: the form is holding a typed note and attached photos, so it
+   * stands aside rather than unmounting to take one tap. What is different is
+   * that this pick CANNOT BE REFUSED. A route stop off the corridor is
+   * meaningless and `RouteMapPickBar` says so; a report off the corridor is
+   * ordinary - describeLocation's second state is exactly that - so every tap
+   * is placeable and lib/placement.ts names which of the three answers it got.
+   */
+  const [reportPointOnMap, setReportPointOnMap] = useState(false)
+  const [reportAiming, setReportAiming] = useState<{ lat: number; lon: number } | null>(
+    null,
+  )
+  const [reportPlacedAt, setReportPlacedAt] = useState<ReportAnchor | null>(null)
+
+  const handleReportChangeLocation = useCallback(() => {
+    setReportPointOnMap(true)
+    setReportAiming(null)
+    // The map is drawn where nothing else has taken the screen, so a "tap the
+    // trail" bar over a held map would be the dead door #1329 found. The
+    // hiker asked to choose on the map, so the map is what they get.
+    setActiveTab('map')
+  }, [setActiveTab])
+
+  const handleCancelReportPoint = useCallback(() => {
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [])
+
+  /** Kept: the aimed point becomes the report's location, and the form comes
+   *  back with its note and its photos exactly as they were. */
+  const handleKeepReportPoint = useCallback(() => {
+    if (reportAiming === null) return
+    setReportPlacedAt(pressAnchor(reportAiming, trailIndex))
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [reportAiming, trailIndex])
+
+  /**
+   * THE PICK DIES WITH THE FORM IT BELONGS TO.
+   *
+   * `reportCrosshairOut` below makes the bar underivable without a form, which
+   * is what stops it being drawn over nothing. It does NOT stop the FLAG
+   * outliving the form, and that difference stranded the whole flow: aim, then
+   * leave by a tab rather than by Keep or Cancel, and `reportPointOnMap` stayed
+   * true for the rest of the session - so every later form opened stood aside,
+   * hidden behind a crosshair on a tab the hiker was not looking at. Found by
+   * review, and asserted now in App.reportPlace.test.tsx.
+   *
+   * Keyed on the form alone and deliberately NOT on the tab. `handleReportChangeLocation`
+   * sets this flag and selects the map in one handler, so both land in one
+   * render - but keying the reset on the tab as well would still be one
+   * ordering assumption away from disarming the pick the hiker just asked for.
+   * The tab belongs in the derivation, which is a render and cannot race.
+   */
+  useEffect(() => {
+    if (reporting?.step === 'form') return
+    setReportPointOnMap(false)
+    setReportAiming(null)
+  }, [reporting?.step])
+
+  /**
+   * Open the six-tile report window (#1438, D15).
+   *
+   * `useCallback` rather than the inline arrow the other two doors use, and
+   * the reason is the map: map/MapView.tsx re-attaches the whole chrome when
+   * this identity changes, so a handler minted per render would tear down and
+   * rebuild compass, locate, report and the scale bar on every one.
+   *
+   * The window is where BOTH doors land, deliberately. The type is what the
+   * app asks first, and the location rides along - the fix for Today's row and
+   * for this one, the pressed point for the long press, a place's id when the
+   * report started from a card. A door that asked "where?" before "what?"
+   * would be a new step in front of a flow that already has the answer.
+   */
+  const handleStartReport = useCallback(() => setReporting({ step: 'window' }), [])
+
+  /**
    * Ask who is reporting, at most once a session and never twice over.
    *
    * Called from both paths that reach the step: straight after a report when
@@ -7216,13 +7515,18 @@ function App() {
   }, [preferences.reporter_type])
 
   const handleSubmitReport = useCallback(
-    async ({ authoredAt, photo, ...draft }: ReportFormSubmission) => {
+    async ({ authoredAt, photos, ...draft }: ReportFormSubmission) => {
       // Saved first, always, and before authentication is so much as
       // mentioned. Everything below this line can fail without costing the
-      // hiker what they just wrote - the photo included, which is why it is
-      // pulled out of the draft here and stored as bytes beside it (#234).
-      await beginContribution(draft, authoredAt, photo)
+      // hiker what they just wrote - the photos included, which is why they
+      // are pulled out of the draft here and stored as bytes beside it
+      // (#234, and #1439 for why there is more than one).
+      await beginContribution(draft, authoredAt, photos)
       setReporting(null)
+      // The crosshair's answer belongs to the report that has just been
+      // filed, so it goes with it. Left standing, the NEXT report opened
+      // without a fix would start life pinned where the last one was.
+      setReportPlacedAt(null)
 
       const next = stepAfterSaving({
         hasAccount: account !== null,
@@ -8339,6 +8643,9 @@ function App() {
   // typing or deciding - and while one is up the downloads window is not
   // rendered, which is the behaviour the early returns gave it.
   let flowScreen: ReactNode = null
+  /** The long report form, rendered as an overlay at the foot of this
+   *  component rather than in `flowScreen` - see where it is assigned. */
+  let reportFormNode: ReactNode = null
   if (authFlow !== null) {
     flowScreen =
       authFlow.screen === 'email' ? (
@@ -8404,7 +8711,21 @@ function App() {
     // only by `bad_hikers` and `thanks`, both of which are long forms with
     // things to type, and neither of which files on a tap.
     if (reporting.step === 'form') {
-      flowScreen = (
+      // AN OVERLAY, NOT A `flowScreen`, SINCE #1439, and the reason is one
+      // tap. The form's "Change" drops a crosshair on the map, and a
+      // `flowScreen` takes the map subtree out of flow - so there would be
+      // nothing behind it to aim at. Worse, moving the form between the two
+      // slots to take the tap would REMOUNT it, costing the hiker the note
+      // they typed and the photos they attached.
+      //
+      // This is #1329's call on the hike set-up window, arrived at again for
+      // the same reason and stated there: "an overlay that leaves what is
+      // behind it mounted belongs down there, not in `flowScreen`". On a
+      // phone nothing moves - `.reporting-window` fills the viewport the way
+      // the flow slot did - and `--stood-aside` hides it by visibility alone
+      // while the tap is taken, keeping its scroll position and its focus
+      // history.
+      reportFormNode = (
         <ReportForm
           type={reporting.type}
           trailName={preferences.trail_name}
@@ -8421,22 +8742,41 @@ function App() {
           // location. The mile is separately unknown when the fix is off the
           // centerline or the trail index has not been downloaded yet.
           location={
-            reporting.anchor !== undefined
+            // THE CROSSHAIR'S ANSWER OUTRANKS BOTH (#1439): a hiker who took
+            // "Change" and kept a point has said where this is, and neither
+            // the card it started from nor the fix underneath them is a
+            // better answer than the one they just gave.
+            reportPlacedAt !== null
               ? {
-                  lat: reporting.anchor.lat,
-                  lon: reporting.anchor.lon,
-                  ...(reporting.anchor.mile !== undefined
-                    ? { mile: reporting.anchor.mile }
+                  lat: reportPlacedAt.lat,
+                  lon: reportPlacedAt.lon,
+                  ...(reportPlacedAt.mile !== undefined
+                    ? { mile: reportPlacedAt.mile }
                     : {}),
                 }
-              : gps.status === 'located'
-                ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
-                : null
+              : reporting.anchor !== undefined
+                ? {
+                    lat: reporting.anchor.lat,
+                    lon: reporting.anchor.lon,
+                    ...(reporting.anchor.mile !== undefined
+                      ? { mile: reporting.anchor.mile }
+                      : {}),
+                  }
+                : gps.status === 'located'
+                  ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
+                  : null
           }
           poiId={reporting.anchor?.poiId}
           online={online}
+          // The crosshair (#1439, D16). Offered whatever the location line
+          // currently says: a mile can be the wrong mile, and a hiker who
+          // walked on before filing is the case this exists for.
+          onChangeLocation={handleReportChangeLocation}
           onSubmit={(submission) => void handleSubmitReport(submission)}
-          onCancel={() => setReporting(null)}
+          onCancel={() => {
+            setReporting(null)
+            setReportPlacedAt(null)
+          }}
         />
       )
     }
@@ -8678,6 +9018,44 @@ function App() {
    *   - both at once, which is the ordinary desktop case for placing a point.
    */
   const hikeWindowHidesMap = hikeWindowOpen && !hikePointOnMap && !isDesktop
+
+  /**
+   * The report form's half of the same pair (#1439), and the same two
+   * questions #1329 separated.
+   *
+   * HELD is about `visibility`: right under a phone's full-bleed form, wrong
+   * while the crosshair is out, because then the map is the screen. REACHABLE
+   * is about the accessibility tree: never while the form is up and covering
+   * the map, always while the pick is in flight, because then the map is what
+   * the hiker is aiming at.
+   */
+  const reportFormOpen = reportFormNode !== null
+  /**
+   * The crosshair is out, there is a form for it to come back to, AND the map
+   * is the screen it would be drawn on.
+   *
+   * Derived rather than reset, which is the same argument the photo tiles
+   * make one file over: `reportPointOnMap` left true with no form behind it
+   * would draw a pick bar over the map that keeps nothing and answers to
+   * nobody, and the way to make that impossible is to make it underivable
+   * rather than to remember to clear a flag on every path that closes the
+   * form.
+   *
+   * **THE TAB IS THE THIRD TERM BECAUSE THE FIRST TWO WERE NOT ENOUGH**, and
+   * the gap is worth keeping written down: the bar lives in the map screen's
+   * own sheet slot, so on any other tab it is in the tree and on nobody's
+   * screen - while the form, standing aside for it, is `inert` and
+   * `aria-hidden`. A hiker who aimed and then tapped Today got a Today with
+   * no form, no bar and no way back to either. Both premises held; the
+   * hiker just could not see the thing either of them was about.
+   *
+   * So the rule the two of them were reaching for, stated properly: the
+   * crosshair exists only where a hiker can both see it and answer it. The
+   * effect beside `handleKeepReportPoint` is the other half - this keeps the
+   * render honest, that keeps the flag from outliving its form.
+   */
+  const reportCrosshairOut = reportPointOnMap && reportFormOpen && activeTab === 'map'
+  const reportFormHidesMap = reportFormOpen && !reportCrosshairOut
 
   const hikeWindow = hikeWindowOpen ? (
     <>
@@ -8965,10 +9343,16 @@ function App() {
       pace={pace}
       opportunities={workProjects}
       opportunitiesAsOf={workProjectsGeneratedAt}
+      gpsMile={fix?.mile ?? null}
+      todayWalk={crewWalk}
+      // The map "view" frame 14i draws is the Map tab (#1440): one MapLibre
+      // instance in this app, and the workday layer, the in-view list and its
+      // "3 of 4" count are already there.
+      onSeeCrewsOnMap={showMap}
       onOpenVolunteer={() => setMorePage('volunteer')}
       passedPlaces={passedPlacesToday}
       queuedReportCount={queuedCount}
-      onStartReport={() => setReporting({ step: 'window' })}
+      onStartReport={handleStartReport}
       // A thanks goes straight to its form rather than through the window: it
       // is not a problem, and the window is a list of problems
       // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
@@ -9057,6 +9441,30 @@ function App() {
       : todayPage === 'find'
         ? findHikeScreen
         : todayScreen
+
+  /**
+   * Today as a laptop reads it: the journal, and the card a tapped row opens
+   * docked in the same column (#1054).
+   *
+   * ONE DEFINITION, TWO PLACES THAT RENDER IT (#1429). Above the breakpoint
+   * Today is not a screen of its own - the branch below is guarded
+   * `!isDesktop` - so this is what a laptop's front door actually is. It goes
+   * to `MapScreen`'s `journal` slot once there is a map, and to the pre-map
+   * branch at the return below until there is. Written once so the two
+   * cannot drift into rendering different Todays.
+   */
+  const desktopJournal =
+    !entering && isDesktop && activeTab === 'today' ? (
+      <>
+        {todayPane}
+        {/* The same card the phone's Today docks, in the column the row was
+            tapped in rather than over the map beside it - the map's own sheet
+            slot belongs to the builders and the trailhead door, and a shelf
+            tap must not outrank a walk in progress there. desktop.css makes
+            the column its containing block. */}
+        {savedDayHikeCardNode}
+      </>
+    ) : null
 
   // The sidebar's "today I'm…" block (#1054): only the desktop bar has room
   // for it, and only the desktop needs it there - the phone carries the same
@@ -9332,7 +9740,7 @@ function App() {
                   onStepAwayFromHike={() => setStepAwayOpen(true)}
                   onSwitchHike={tripStore.hikes.length > 0 ? handleSwitchHike : undefined}
                   onEditHike={() => setPickingHike(true)}
-                  onStartReport={() => setReporting({ step: 'window' })}
+                  onStartReport={handleStartReport}
                   onReportFailure={() => setReportingFailure(true)}
                   onOpenModeration={isModerator ? () => setModerating(true) : undefined}
                   // The registry gets the gate moderation has (#1373, D4):
@@ -9358,10 +9766,6 @@ function App() {
                       passedToday={passedPlacesToday}
                       onOpenPlace={handleOpenPassedPlace}
                       units={units}
-                      opportunities={workProjects}
-                      opportunitiesAsOf={workProjectsGeneratedAt}
-                      gpsMile={fix?.mile ?? null}
-                      now={now}
                     >
                       <VolunteerHours
                         records={hoursRecords}
@@ -9567,9 +9971,10 @@ function App() {
                             onOpen={handleOpenTrip}
                             onRename={handleRenameTrip}
                             onRemove={handleRemoveTrip}
+                            // Closing the sheet rides the continuation, so a
+                            // declined sweep leaves it open (#1378's review).
                             onNew={() => {
-                              setTripsOpen(false)
-                              routeBuilder.openRouteBuilder()
+                              routeBuilder.openRouteBuilder(() => setTripsOpen(false))
                             }}
                             onGroupIntoHike={handleGroupIntoHike}
                             groups={tripStore.groups}
@@ -9675,6 +10080,44 @@ function App() {
     <>
       {nothingWouldRender && (
         <div className="app__screen">
+          {/* THE FRONT DOOR, WHILE THE MAP IS STILL COMING (#1429).
+              
+              A laptop landing on Today used to get this branch's tab bar and
+              nothing beside it - measured 2026-09-15 at 1,913 ms of sidebar
+              against an empty pane on a cold cache at 4x CPU, which is the
+              frame the report that opened #1429 shows. Today's own data was
+              ready 1,265 ms before it drew.
+
+              WHY IT WAS WAITING ON THE MAP AT ALL. `mapNeededNow` holds the
+              map until `archivesRead`, so it is built around the background
+              this phone actually has rather than drawing the live sheet for a
+              beat and throwing itself away (the note at the render gate has
+              the history, and ~2 MB of somebody's data). That is a decision
+              about the MAP. Today does not participate in it - it draws
+              waypoints, a journal and a download notice, none of which care
+              which sheet the canvas ends up on - and above the breakpoint
+              Today is the map's `journal` prop, so it inherited the wait
+              anyway. This renders it in its own column until the map arrives
+              to take it.
+
+              THE COLUMN IS `.map-screen__journal` BECAUSE IT IS THE SAME
+              COLUMN. desktop.css sizes it, inks Today's chrome for it and
+              makes it the containing block for the docked card; `.app__screen`
+              is already `flex-direction: row` up here and the tab bar takes
+              `order: -1`, so this lands to the sidebar's right exactly where
+              MapScreen will put it.
+
+              WHAT THIS COSTS, said out loud: when the map arrives this branch
+              unmounts and MapScreen's slot mounts the same journal, so the
+              column is rebuilt once. Everything a hiker can have changed by
+              then is the shell's state and survives it - which page Today is
+              on, the mode, an open day-hike card - because Today holds none of
+              it. What does not survive is scroll position inside the column,
+              in the second or two before the map lands. Rendering nothing for
+              that second was the alternative. */}
+          {desktopJournal !== null && (
+            <div className="map-screen__journal">{desktopJournal}</div>
+          )}
           <TabBar
             active={activeTab}
             onSelect={selectTab}
@@ -9696,11 +10139,21 @@ function App() {
           // always, while a map pick is in flight, because then the map is
           // what the hiker is aiming at.
           className={
-            screenOver !== null || hikeWindowHidesMap ? 'app__map-held' : undefined
+            screenOver !== null || hikeWindowHidesMap || reportFormHidesMap
+              ? 'app__map-held'
+              : undefined
           }
-          inert={screenOver !== null || (hikeWindowOpen && !hikePointOnMap) || undefined}
+          inert={
+            screenOver !== null ||
+            (hikeWindowOpen && !hikePointOnMap) ||
+            reportFormHidesMap ||
+            undefined
+          }
           aria-hidden={
-            screenOver !== null || (hikeWindowOpen && !hikePointOnMap) || undefined
+            screenOver !== null ||
+            (hikeWindowOpen && !hikePointOnMap) ||
+            reportFormHidesMap ||
+            undefined
           }
         >
           <ErrorBoundary
@@ -9722,20 +10175,7 @@ function App() {
               // breakpoint, this branch is the one rendering - the Today branch
               // stands aside - and the journal reads beside the map. Never during
               // first run, whose backdrop must stay bare down to the canvas.
-              journal={
-                !entering && isDesktop && activeTab === 'today' ? (
-                  <>
-                    {todayPane}
-                    {/* The same card the phone's Today docks, in the column
-                        the row was tapped in rather than over the map beside
-                        it - the map's own sheet slot belongs to the builders
-                        and the trailhead door, and a shelf tap must not
-                        outrank a walk in progress there. desktop.css makes
-                        the column its containing block. */}
-                    {savedDayHikeCardNode}
-                  </>
-                ) : undefined
-              }
+              journal={desktopJournal ?? undefined}
               modeSwitch={sidebarModeSwitch}
               hikeSwitch={sidebarHikeSwitch}
               // The ask before this phone's map is replaced (#919). Undefined
@@ -9873,6 +10313,10 @@ function App() {
               // attaching it regardless was a second high-accuracy watch and a
               // permission prompt behind this preference's back.
               locationEnabled={locationAllowed}
+              // THE MAP'S NAMED DOOR (#1438, frame 9c). Handed to the shared
+              // chrome rather than drawn on this screen, so it is the same
+              // control in the same place on every surface that mounts a map.
+              onReport={handleStartReport}
               closureAhead={closureAhead}
               advisoryAhead={advisoryAhead}
               warningsAhead={warningsAhead}
@@ -9997,13 +10441,20 @@ function App() {
                 // day-hike draft is. Stated as precedence rather than left
                 // to that, because "cannot happen" is how two interpreters
                 // end up on one touch - map/routeLayers.ts's rule.
-                hikePointOnMap
-                  ? handleHikePointMapTap
-                  : targetRequest !== null ||
-                      (dayHike === null &&
-                        routeBuilder.mapScreen.onRouteTap === undefined)
-                    ? undefined
-                    : handleMapTap
+                // THE REPORT'S CROSSHAIR OUTRANKS EVERYTHING (#1439), for
+                // the reason a hike point outranks the builders: it is armed
+                // from a form standing over the whole app, so nothing else
+                // can be mid-gesture underneath it. Aiming only - the tap
+                // names a point, and the bar's Keep is what commits it.
+                reportCrosshairOut
+                  ? setReportAiming
+                  : hikePointOnMap
+                    ? handleHikePointMapTap
+                    : targetRequest !== null ||
+                        (dayHike === null &&
+                          routeBuilder.mapScreen.onRouteTap === undefined)
+                      ? undefined
+                      : handleMapTap
               }
               // Draw mode replaces the tap handler rather than joining it -
               // one interpreter per touch, which is routeLayers.ts's rule for
@@ -10053,7 +10504,27 @@ function App() {
                 )
               }
               routeSheet={
-                hikePointOnMap ? (
+                reportCrosshairOut ? (
+                  // The report's crosshair bar (#1439, frame 9f). It NAMES
+                  // THE MILE BEFORE IT IS KEPT, which is the whole difference
+                  // from the hike pick below: that one commits on the tap
+                  // because a refused tap is the only thing it has to say,
+                  // while here every tap is placeable and what a hiker needs
+                  // to see is WHICH of the three answers they got before they
+                  // agree to it.
+                  <ReportPickBar
+                    aiming={reportAiming}
+                    mile={
+                      reportAiming === null || trailIndex === null
+                        ? null
+                        : mileOnTrail(trailIndex, reportAiming)
+                    }
+                    knowsTrail={trailIndex !== null}
+                    units={units}
+                    onKeep={handleKeepReportPoint}
+                    onCancel={handleCancelReportPoint}
+                  />
+                ) : hikePointOnMap ? (
                   // The picker's map door, open: the same slim bar the route
                   // builder shows, saying what a tap will do while the map
                   // underneath is the whole screen. Its refusal is the same
@@ -10360,9 +10831,15 @@ function App() {
             else openDayHike()
           }}
           onMapPick={() => {
+            // The long branch may park (#1378's review), so closing the picker
+            // rides its continuation; the day branch does not park and closes
+            // as it always did.
+            if (hikerMode === 'long') {
+              routeBuilder.openRouteBuilder(() => setStepPickerOpen(false))
+              return
+            }
             setStepPickerOpen(false)
-            if (hikerMode === 'long') routeBuilder.openRouteBuilder()
-            else openDayHike()
+            openDayHike()
           }}
           onRemove={() => setStepPickerOpen(false)}
           onClose={() => setStepPickerOpen(false)}
@@ -10382,6 +10859,24 @@ function App() {
           onStay={nav.stay}
         />
       )}
+      {/* The same sheet for the exit the navigator cannot see (#1378): a
+          sweep, which opens the other kind of plan and drops the day-hike
+          draft on its way. No "Keep it for later" — only one route can be
+          live (#997), so the sweep IS the discard and offering to keep would
+          be the sheet lying about what the button does. `nav.pending` and
+          this cannot both be up: a navigator move parks before anything
+          runs, and a sweep is not a navigator move. */}
+      {nav.pending === null && pendingSweep !== null && (
+        <BailSheet
+          figures={bailFigures}
+          onDiscard={() => {
+            const { run } = pendingSweep
+            setPendingSweep(null)
+            run()
+          }}
+          onStay={() => setPendingSweep(null)}
+        />
+      )}
       {/* Where you hike (#1373), from More → You: a sheet over whichever
           screen is up, docked to the viewport's foot (chrome/placeField.css)
           so it needs no positioned ancestor at this level. */}
@@ -10396,6 +10891,34 @@ function App() {
           onClear={handleClearDefaultPlace}
           onClose={() => setPlaceSheetOpen(false)}
         />
+      )}
+      {/* THE LONG REPORT FORM, over whatever screen the hiker was on (#1439).
+          Stood aside rather than unmounted while its crosshair is out, for
+          the reason screens/plan.css gives about the set-up window: it is
+          holding a note somebody typed and photos somebody attached, and
+          re-mounting it to take one tap is how that gets lost. */}
+      {reportFormNode !== null && (
+        <div
+          className={
+            reportCrosshairOut
+              ? 'reporting-window reporting-window--stood-aside'
+              : 'reporting-window'
+          }
+          // THE DIALOG ITSELF IS THE FORM, not this wrapper (see
+          // screens/ReportForm.tsx). This div only positions it, and a
+          // second `role="dialog"` around one would be two dialogs where
+          // there is one screen. What stays here is the pair that hides the
+          // whole layer while the crosshair is out.
+          // Out of reach as well as out of sight, which the hike window gets
+          // from `visibility: hidden` alone. Said explicitly here because
+          // this form has a Cancel and so does the pick bar in front of it,
+          // and two controls of the same name - one of them the wrong one -
+          // is a worse thing to hand a screen reader than a hidden subtree.
+          inert={reportCrosshairOut || undefined}
+          aria-hidden={reportCrosshairOut || undefined}
+        >
+          {reportFormNode}
+        </div>
       )}
       {flowScreen === null && !hikeWindowOpen && downloadsWindow}
 

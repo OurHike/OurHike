@@ -44,6 +44,7 @@ import { trailPointAtMile, type TrailIndex } from '../lib/trailPosition'
 import { closureFeatureCollection, type ClosureBand } from './closureLayers'
 import { whenStyleReady } from './styleReady'
 import { closureIdAt } from './closureLayers'
+import { poiPinAt } from './poiPinProbe'
 import { warningIdAt } from './warningLayers'
 
 export const ATC_UPDATE_SOURCE_ID = 'atc-updates'
@@ -216,9 +217,18 @@ export function attachAtcUpdateTaps(
   onSelect: (bandId: string) => void,
 ): () => void {
   const onClick = (event: MapMouseEvent) => {
-    // The two safety marks win a touch (closureLayers.ts's order): a
-    // notice band under barrier tape is a tap on the tape.
+    // The marks above this one win a touch, in closureLayers.ts's order:
+    // the warning pin, then a waypoint PIN, then the closure tape, then
+    // this band. A notice band under barrier tape is a tap on the tape.
+    //
+    // THE WAYPOINT PIN JOINED THAT LIST IN #1419 and this handler had to
+    // join it with them. Since the pin stopped yielding to the tape, a
+    // shelter standing on a notice band with no closure under the same point
+    // resolved to the card AND to this sheet - two sheets on one touch,
+    // which the "ONE TOUCH, ONE INTERPRETER" note records as the first
+    // version's bug. The probe is the one poiTaps and closureLayers share.
     if (warningIdAt(map, event.point) !== null) return
+    if (poiPinAt(map, event.point) !== undefined) return
     if (closureIdAt(map, event.point) !== null) return
     const id = atcBandIdAt(map, event.point)
     if (id !== null) onSelect(id)

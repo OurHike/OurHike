@@ -1060,6 +1060,19 @@ describe('the day-hike builder, end to end', () => {
     )
     await user.click(await screen.findByRole('button', { name: 'Plan this stretch' }))
 
+    // AND THE SWEEP ASKS FIRST NOW (#1378). This door drops a live day-hike
+    // draft on its way to the A.T. builder, which is exactly the exit D8 says
+    // always shows the bail sheet and which the navigator's guard cannot see -
+    // it guards moves the navigator makes, and this is a plain callback. The
+    // sheet has no "Keep it for later" here and should not: a sweep runs
+    // because the hiker is starting the other kind of plan, and only one route
+    // can be live (#997, which is this test's own subject).
+    expect(
+      await screen.findByRole('dialog', { name: 'Drop this half-built route?' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Keep it for later' })).toBeNull()
+    await user.click(await screen.findByRole('button', { name: 'Discard it' }))
+
     // THE FIRST ASSERTION IS THE ONE THAT CATCHES IT, verified by reverting
     // the fix: `routeSheet` renders the day-hike bar OR the builder, never
     // both, so with the day hike still live the draft exists in state and

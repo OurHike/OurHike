@@ -19,8 +19,10 @@ from app.core.auth import get_current_user, get_current_user_optional
 from app.core.orm import commit_and_refresh, get_or_404
 from app.core.photos import (
     ALLOWED_CONTENT_TYPE,
+    FIRST_PHOTO_INDEX,
     JPEG_MAGIC,
     MAX_PHOTO_BYTES,
+    MAX_REPORT_PHOTOS,
     PHOTO_URL_TTL_SECONDS,
     PhotoStorageUnavailable,
     photo_storage_configured,
@@ -288,7 +290,10 @@ def create_report(
         mile=payload.mile,
         reporter_type=payload.reporter_type,
         note=payload.note,
-        photo_url=payload.photo_url,
+        # Stored as prose and resolved to nothing (#1439). A report that
+        # carries this carries no coordinates either, deliberately - see
+        # ReportCreate.place_words and the model's column.
+        place_words=payload.place_words,
         visibility=_visibility_for(payload.type),
         maintainer_id=credited_maintainer,
         club_id=credited_club,
@@ -533,6 +538,62 @@ async def read_capped_body(request: Request, limit: int) -> bytes:
 
 
 @router.put(
+    "/{report_id}/photos/{index}",
+    response_model=ReportOut,
+    summary="Attach one of a report's photos, by its place in the set",
+    responses={
+        404: {"description": "No such report, or not one you filed."},
+        409: {"description": "That index is out of sequence, or past the cap."},
+        413: {"description": "Photo is larger than the cap."},
+        415: {"description": "Not a JPEG, by header or by magic bytes."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+async def upload_report_photo_at(
+    report_id: str,
+    index: int,
+    request: Request,
+    current_user: Profile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ReportOut:
+    """Store photo `index` of a report and record how far the set now runs.
+
+    ONE PHOTO PER REQUEST, NUMBERED BY THE CALLER (#1439). A blowdown is three
+    trunks and one photo rarely shows it, so a report holds several - and the
+    keys stay derived (`reports/{id}/{n}.jpg`), which is what keeps "which
+    objects belong to this report" answerable from the id alone. The caller
+    names the index because the outbox does: it re-sends photo 2 as photo 2,
+    so a retry lands on the object it landed on last time instead of appending
+    a duplicate. That is the same property the single-photo endpoint had, kept
+    now that there is more than one.
+
+    **The sequence is dense, and refusing a gap is what keeps it so.** An
+    index may be one past the end (append) or anywhere inside it (a retry, or
+    a replacement). It may not skip: a report claiming four photos with
+    nothing at index 3 would have `photo_count` describing a set the bucket
+    does not hold, and the count is the only thing that says how far to read.
+
+    Everything else - owner only, JPEG by header AND by magic bytes, the size
+    cap enforced as the body arrives, the row written last - is unchanged from
+    the single-photo endpoint below, and is shared with it rather than copied.
+    """
+    report = _report_this_caller_may_upload_to(db, report_id, current_user)
+
+    if index < FIRST_PHOTO_INDEX or index > MAX_REPORT_PHOTOS:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A report holds photos {FIRST_PHOTO_INDEX} to {MAX_REPORT_PHOTOS}.",
+        )
+    if index > report.photo_count + 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"This report has {report.photo_count} photos; the next one is {report.photo_count + 1}.",
+        )
+
+    return await _store_report_photo(report, index, request, db, current_user)
+
+
+@router.put(
     "/{report_id}/photo",
     response_model=ReportOut,
     summary="Attach a photo to a report you filed",
@@ -568,6 +629,31 @@ async def upload_report_photo(
     `GET /reports/{id}/photo` below, which checks the report's own visibility
     and status first. Nothing here makes a photo reachable.
     """
+    return await _store_report_photo(
+        _report_this_caller_may_upload_to(db, report_id, current_user),
+        FIRST_PHOTO_INDEX,
+        request,
+        db,
+        current_user,
+    )
+
+
+def _report_this_caller_may_upload_to(db: Session, report_id: str, current_user: Profile) -> Report:
+    """The report, if there is a bucket to store into and this caller filed it.
+
+    BOTH CHECKS, WHICH IS WHY THE NAME IS NOT `_owned_report_or_404`. It was,
+    and the name described half of what the body did - the 503 below was
+    folded in when the two upload endpoints were merged, and a reader had no
+    way to know from the call site that ownership was not the whole of it
+    (#1439 review). Two gates in one function is right here: they are the
+    pair every upload passes before a byte is read, and splitting them would
+    invite an endpoint to take one and not the other.
+
+    404, not 403: a report that is not yours is one you have no business
+    knowing exists, and distinguishing "wrong owner" from "no such id" turns a
+    guessed UUID into a way to confirm one - the same reasoning create_report
+    applies to a resend under someone else's id.
+    """
     if not photo_uploads_enabled():
         # 503 rather than 500: nothing is broken, this deployment simply has
         # no bucket - which is true of every developer machine. The client
@@ -579,12 +665,19 @@ async def upload_report_photo(
 
     report = get_or_404(db, Report, report_id, detail="Report not found")
     if report.reporter_id != current_user.id:
-        # 404, not 403: a report that is not yours is one you have no business
-        # knowing exists, and distinguishing "wrong owner" from "no such id"
-        # turns a guessed UUID into a way to confirm one - the same reasoning
-        # create_report applies to a resend under someone else's id.
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+    return report
 
+
+async def _store_report_photo(
+    report: Report,
+    index: int,
+    request: Request,
+    db: Session,
+    current_user: Profile,
+) -> ReportOut:
+    """Read, check and store one photo, then record it. One code path for both
+    endpoints above, because the checks are the part worth not copying."""
     content_type = (request.headers.get("content-type") or "").split(";")[0].strip()
     if content_type != ALLOWED_CONTENT_TYPE:
         raise HTTPException(
@@ -606,18 +699,54 @@ async def upload_report_photo(
         )
 
     try:
-        key = store_photo(report.id, body)
+        key = store_photo(report.id, body, index)
     except PhotoStorageUnavailable as error:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
 
-    # The row last, and only once the object is really there: the report is
-    # the authoritative half, so a `photo_url` pointing at nothing would be
-    # the one direction of drift this design refuses (app/core/photos.py).
-    report.photo_url = key
+    _record_photo(report, index, key)
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
 
 
-def _authorised_photo_url(report_id: str, db: Session, viewer: Profile | None) -> str:
+def _record_photo(report: Report, index: int, key: str) -> None:
+    """The row, last, and only once the object is really there.
+
+    The report is the authoritative half, so a count describing objects that
+    are not in the bucket is the one direction of drift this design refuses
+    (app/core/photos.py).
+
+    **THE ONE PLACE `photo_url` AND `photo_count` ARE WRITTEN AT ALL**, which
+    is what makes two columns about one fact safe for as long as they both
+    exist. The invariant, stated once: `photo_url` is photo 1's key exactly
+    when `photo_count >= 1`.
+
+    That sentence is true because this is the only writer. It was NOT true
+    when it was first written - `create_report` stored a `photo_url` a caller
+    could set without uploading anything, so a report could hold a key for an
+    object that did not exist and a `photo_count` of nought. The field is
+    still DECLARED, because removing it would break six retained baselines,
+    and is no longer STORED (app/schemas/report.py): that is what turned the
+    claim from plausible into checkable, and
+    tests/test_report_photo_set.py holds it.
+
+    `photo_count` is the authoritative half of the pair - it is what says how
+    far `reports/{id}/{n}.jpg` runs - and `photo_url` is kept written because
+    the previous release still reads it during a rollout (RELEASING.md §8c).
+    A later revision drops it, and this function is the only line that has to
+    change.
+    """
+    if index == FIRST_PHOTO_INDEX:
+        report.photo_url = key
+    # max(), not +1: an index inside the set is a retry or a replacement, and
+    # re-sending photo 2 must not claim a third.
+    report.photo_count = max(report.photo_count, index)
+
+
+def _authorised_photo_url(
+    report_id: str,
+    db: Session,
+    viewer: Profile | None,
+    index: int = FIRST_PHOTO_INDEX,
+) -> str:
     """A signed URL for a report's photo, or the HTTPException that refuses it.
 
     **The whole check, in one place, because two endpoints hand out the same
@@ -644,11 +773,15 @@ def _authorised_photo_url(report_id: str, db: Session, viewer: Profile | None) -
         )
 
     report = db.get(Report, report_id)
-    if report is None or not _visible_to(report, viewer) or report.photo_url is None:
+    # `photo_count` rather than `photo_url`, and for photo 1 the two say the
+    # same thing (see `_record_photo`'s invariant). An index past the end is
+    # refused the same way everything else here is: a 404 that does not say
+    # which of the four reasons it was.
+    if report is None or not _visible_to(report, viewer) or not FIRST_PHOTO_INDEX <= index <= report.photo_count:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report photo not found")
 
     try:
-        return presigned_photo_url(report.id)
+        return presigned_photo_url(report.id, index)
     except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
 
@@ -764,5 +897,67 @@ def get_report_photo(
     # dismissed or made private an hour from now would still be reachable from
     # whatever cached the hop. Re-asking is cheap; the check has to run every
     # time for the answer to mean anything.
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return response
+
+
+@router.get(
+    "/{report_id}/photos/{index}/link",
+    response_model=ReportPhotoLink,
+    summary="Ask for one of a report's photo URLs, if you may see the report",
+    responses={
+        404: {"description": "No such report, no photo at that index, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_report_photo_link_at(
+    report_id: str,
+    index: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(get_current_user_optional),
+) -> ReportPhotoLink:
+    """Photo `index`, as a URL rather than a redirect (#1439).
+
+    The indexed twin of the link endpoint above, and everything that one says
+    holds here: it exists because an `<img>` cannot carry a token, the body IS
+    a bearer capability, and the TTL is deliberately unchanged. The only
+    difference is which of the report's photos is asked for - a moderation
+    screen showing three of them asks three times, against the same check each
+    time, which is the property that made the single-photo form re-askable in
+    the first place.
+    """
+    url = _authorised_photo_url(report_id, db, current_user, index)
+    response.headers["Cache-Control"] = "private, no-store, max-age=0"
+    return ReportPhotoLink(url=url, expires_in=PHOTO_URL_TTL_SECONDS)
+
+
+@router.get(
+    "/{report_id}/photos/{index}",
+    response_class=RedirectResponse,
+    status_code=status.HTTP_302_FOUND,
+    summary="Fetch one of a report's photos, if you may see the report",
+    responses={
+        302: {"description": "Redirect to a short-lived signed URL for the image."},
+        404: {"description": "No such report, no photo at that index, or not one you may see."},
+        503: {"description": "This deployment has no photo bucket configured."},
+    },
+)
+def get_report_photo_at(
+    report_id: str,
+    index: int,
+    db: Session = Depends(get_db),
+    current_user: Profile | None = Depends(get_current_user_optional),
+) -> RedirectResponse:
+    """Photo `index` of a report, behind the report's own visibility (#1439).
+
+    The indexed twin of the redirect above, sharing its check rather than
+    repeating it. A photo inherits the report's audience whichever of the set
+    it is: the fourth photo on a `bad_hikers` report is as much a photo of a
+    person as the first.
+    """
+    signed = _authorised_photo_url(report_id, db, current_user, index)
+
+    response = RedirectResponse(signed, status_code=status.HTTP_302_FOUND)
     response.headers["Cache-Control"] = "private, no-store, max-age=0"
     return response

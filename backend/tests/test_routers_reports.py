@@ -347,18 +347,28 @@ def test_invasive_species_can_be_verified_unlike_a_thanks(client, db_session):
     assert response.json()["status"] == ReportStatus.verified.value
 
 
-def test_invasive_species_still_carries_a_photo_and_an_authored_time(client):
-    """The user-facing ask was description + photos + location + when."""
+def test_invasive_species_still_carries_an_authored_time(client):
+    """The user-facing ask was description + photos + location + when.
+
+    THE PHOTO HALF OF THAT ASK MOVED, and this test moved with it rather than
+    being deleted. It used to send `photo_url` in the create payload and read
+    it back, which proved only that the server stored a string the client
+    chose - and #1439's review took that field out, because a caller could
+    name an object nobody had uploaded and leave `photo_count` contradicting
+    it. Photos are attached through `PUT /reports/{id}/photos/{n}` now, and
+    that they work for any type is tests/test_report_photo_set.py's.
+
+    What is left here is the half this file is the right home for: a report
+    written two days ago keeps the time it was WRITTEN.
+    """
     authored = datetime.now(timezone.utc) - timedelta(days=2)
-    payload = dict(
-        _INVASIVE,
-        photo_url="https://example.org/knotweed.jpg",
-        authored_at=authored.isoformat(),
-    )
+    payload = dict(_INVASIVE, authored_at=authored.isoformat())
 
     body = client.post("/reports", json=payload, headers=auth_headers(str(uuid.uuid4()))).json()
 
-    assert body["photo_url"] == "https://example.org/knotweed.jpg"
+    assert body["type"] == "invasive_species"
+    # And the field a client may no longer set is not set by having been sent.
+    assert body["photo_url"] is None
     stored = datetime.fromisoformat(body["timestamp"])
     assert abs((stored - authored).total_seconds()) < 5
 
@@ -862,14 +872,52 @@ def _report_emitting_routes():
             else:
                 yield route
 
+    def with_local_helpers(endpoint) -> str:
+        """The handler's source, plus that of any module-local function it calls.
+
+        ONE LEVEL, DELIBERATELY. #1439 split the photo upload's checks into a
+        shared `_store_report_photo` so the indexed endpoint and the original
+        could not drift, and the handlers went from calling `for_viewer`
+        themselves to delegating - which read to this guard as two new leaks.
+        The guard was right to notice and wrong about what it saw, so it
+        follows the call now rather than the handlers being written back into
+        two copies to satisfy it.
+
+        Not transitively, because a guard that chases an arbitrary call graph
+        starts finding `for_viewer` down paths the handler cannot actually
+        reach, and a guard that passes for the wrong reason is worse than one
+        that fails for the right one. One level is what the refactor above
+        needs; a second would be a decision to take when something needs it.
+        """
+        source = inspect.getsource(endpoint)
+        module = inspect.getmodule(endpoint)
+        if module is None:
+            return source
+        for name, helper in vars(module).items():
+            if not inspect.isfunction(helper) or helper is endpoint:
+                continue
+            if inspect.getmodule(helper) is not module:
+                continue
+            if f"{name}(" in source:
+                source += "\n" + inspect.getsource(helper)
+        return source
+
     for route in walk(app.routes):
         endpoint = getattr(route, "endpoint", None)
         if endpoint is None:
             continue
         source = inspect.getsource(endpoint)
+        deep = with_local_helpers(endpoint)
         declared = str(getattr(route, "response_model", "") or "")
-        if "ReportOut" in declared or "ReportOut" in source:
-            yield route, source
+        if "ReportOut" in declared or "ReportOut" in deep:
+            # Two sources, because the two guards below want different
+            # scopes. Whether the response goes through `for_viewer` is a
+            # question about everything the handler reaches; whether a BARE
+            # ORM ROW is returned on the wire is a question about the handler
+            # alone - a helper returning a `Report` for the handler to work
+            # with is exactly what `_report_this_caller_may_upload_to` is
+            # for, and is not a leak.
+            yield route, source, deep
 
 
 def test_every_route_that_can_emit_a_report_goes_through_for_viewer():
@@ -893,8 +941,8 @@ def test_every_route_that_can_emit_a_report_goes_through_for_viewer():
     """
     offenders = [
         f"{sorted(route.methods)} {route.path} -> {route.endpoint.__name__}"
-        for route, source in _report_emitting_routes()
-        if "for_viewer" not in source
+        for route, _, deep in _report_emitting_routes()
+        if "for_viewer" not in deep
     ]
 
     assert offenders == [], (
@@ -908,7 +956,7 @@ def test_that_guard_is_actually_looking_at_something():
     """Guards the guard. A walk that failed to reach the routers - which is
     exactly what `app.routes` alone does here - would make the test above
     pass vacuously and for ever."""
-    found = {route.path for route, _ in _report_emitting_routes()}
+    found = {route.path for route, _, _ in _report_emitting_routes()}
 
     assert "/reports" in found
     assert "/reports/{report_id}" in found
@@ -1101,7 +1149,7 @@ def test_no_emitting_handler_returns_a_bare_orm_row(client):
     import re
 
     offenders = []
-    for route, source in _report_emitting_routes():
+    for route, source, _ in _report_emitting_routes():
         for line in source.splitlines():
             if re.match(r"\s*return [a-z_][a-z0-9_]*\s*(#.*)?$", line):
                 offenders.append(f"{route.path} -> {line.strip()}")

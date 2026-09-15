@@ -1,0 +1,50 @@
+/* One crew, as every surface that lists them draws it (#1440). See
+   chrome/WorkdayRow.tsx for why the row is a component at all. */
+.workday-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3, 12px) 0;
+  border-bottom: 1px solid var(--border-1);
+  list-style: none;
+}
+
+.workday-row:last-child {
+  border-bottom: 0;
+}
+
+.workday-row__title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--fg-1);
+}
+
+/* Mono for the figures it carries - a mile, a date, a count. This app's type
+   argument in one line: mono means the app measured it. */
+.workday-row__meta {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
+.workday-row__lead {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-1);
+}
+
+.workday-row__description {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.workday-row__contact {
+  margin-top: 4px;
+  align-self: flex-start;
+  font-size: 13px;
+  color: var(--brand-primary);
+}

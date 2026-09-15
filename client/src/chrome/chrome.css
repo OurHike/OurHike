@@ -325,6 +325,28 @@
   height: var(--map-control-size);
 }
 
+/* THE REPORT DOOR (#1438, frame 9c, D15).
+ *
+ * Everything that makes it look like its neighbours is inherited rather than
+ * restated: the chip, the radius and the shadow come from
+ * `.maplibregl-ctrl-group`, and the 42px comes from the rule above, which
+ * matches on any button inside a `.maplibregl-ctrl`. What is left here is the
+ * one thing this control owns - the glyph's colour - plus the flex needed to
+ * centre an inline SVG where the neighbours centre a background image.
+ *
+ * `--danger` rather than a literal `--blaze-orange-dark`: the token IS
+ * blaze-orange-dark under the light theme, which is what the handoff names,
+ * and flips to `--blaze-orange-light` under the dark one. The chip flips too
+ * (`--surface-over-map`, white to `--ink-700`), so a fixed hex would be a
+ * 1.9:1 glyph on an ink map - the same failure #336 found on these controls
+ * and the reason `--danger-on-chrome` exists at all. */
+.map-view .map-report__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger);
+}
+
 /* The same controls under the dark theme.
  *
  * maplibre-gl.css hardcodes a white group with dark glyphs, and nothing in it
@@ -2355,6 +2377,33 @@
   color: var(--fg-1);
   font-size: 14px;
   cursor: pointer;
+}
+
+.route-map-pick__keep {
+  flex: none;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* THE REPORT'S CROSSHAIR IS NOT THE ROUTE'S (#1439).
+ *
+ * It shares the bar, which is the point - one slot over the map, one shape -
+ * and it differs in the one place that matters. `role="status"` in the route
+ * bar carries a REFUSAL ("no honest mile to give it"), so the rule above
+ * paints it `--danger`. Here it carries the ANSWER: a mile, "This spot", or a
+ * distance off the trail, none of which is a refusal and none of which should
+ * arrive in alert orange. Mono because it is a figure, which is this app's
+ * whole type argument for the face - mono means the app measured it. */
+.route-map-pick--report .route-map-pick__hint [role='status'] {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--fg-1);
 }
 
 /* ---------- Every ATC notice (AtcNoticeList.tsx) ---------- */

@@ -226,7 +226,19 @@ export interface RouteBuilderInput {
    *  and knowing what a draft is is not. */
   onRecordWalked: (stops: readonly ViaStopLike[]) => void
   /** The one-thing-open-at-a-time sweep the shell owns. */
-  onOpenBuilder: () => void
+  /**
+   * Clear whatever owns the map, then run `proceed`.
+   *
+   * TAKES THE CONTINUATION rather than returning (#1378). The shell's sweep
+   * may now ASK before it runs - a live day-hike draft is dropped by it, and
+   * that is the exit D8 says always shows the bail sheet. A plain
+   * `onOpenBuilder()` followed by "and then open the draft" put the A.T.
+   * builder on screen behind the sheet asking whether to drop the day hike,
+   * and "Stay here" left both live at once, which is the #997 state this
+   * whole sweep exists to prevent. So the door hands over the rest of its
+   * work and the shell decides when it happens.
+   */
+  onOpenBuilder: (proceed: () => void) => void
   /** Clear the chart's free measurement when a draft takes over. */
   clearFreeChartStretch: () => void
 }
@@ -244,7 +256,16 @@ export interface RouteBuilderPanel {
   draftStretch: ChartStretch | null
   draftLive: boolean
   draftSouth: boolean | null
-  openRouteBuilder: () => void
+  /**
+   * Open the builder, optionally running `first` on the way in.
+   *
+   * `first` exists because this may now PARK behind the bail sheet (#1378),
+   * and work a door does before calling this does not park with it - a door
+   * that closed its own sheet first left it closed for a move the hiker then
+   * declined. Anything a door wants done only if the builder actually opens
+   * goes here.
+   */
+  openRouteBuilder: (first?: () => void) => void
   handlePlanGap: (gap: Extract<HikePiece, { kind: 'gap' }>) => void
   handlePlanFrom: (from: PlaceRef, toward: PlaceRef) => void
   /** The draft is spent - a plan was laid out of it (#758's re-target door
@@ -620,38 +641,48 @@ export function useRouteBuilderPanel({
   // A draft already in progress reopens where it stood - the entrance is
   // for starting, never a toll gate on the way back to your own route.
   const openRouteBuilderFrom = useCallback(
-    (start: RouteDraftStop | null, south?: boolean) => {
-      onOpenBuilder()
-      // The chart's selection now mirrors the draft; a measurement left
-      // behind here would resurface the moment the builder closed.
-      clearFreeChartStretch()
-      setRouteDraft((draft) => {
-        if (draft === null) {
-          return {
-            phase: 'entrance',
-            start,
-            fixedEnd: null,
-            // The mockup's own opening answers - a mid-length section,
-            // walked the way most of this trail is walked. Both are one
-            // drag from anything else.
-            ask: 'far',
-            miles: 45,
-            days: 3,
-            south: south ?? false,
+    (start: RouteDraftStop | null, south?: boolean, first?: () => void) => {
+      // Everything this door does, handed over as one act (#1378): the shell
+      // either runs it now or parks it behind the bail sheet, and nothing
+      // below happens until the sweep it depends on has.
+      onOpenBuilder(() => {
+        // The caller's own way-in work, where it has any - run here so a
+        // declined sweep leaves it undone rather than half-done (#1378).
+        // Guarded on being callable: every caller passes a function or
+        // nothing, and the guard is what keeps a future `onClick={open...}`
+        // from handing this a React event to invoke.
+        if (typeof first === 'function') first()
+        // The chart's selection now mirrors the draft; a measurement left
+        // behind here would resurface the moment the builder closed.
+        clearFreeChartStretch()
+        setRouteDraft((draft) => {
+          if (draft === null) {
+            return {
+              phase: 'entrance',
+              start,
+              fixedEnd: null,
+              // The mockup's own opening answers - a mid-length section,
+              // walked the way most of this trail is walked. Both are one
+              // drag from anything else.
+              ask: 'far',
+              miles: 45,
+              days: 3,
+              south: south ?? false,
+            }
           }
-        }
-        // A suggested start fills an entrance that has none yet, and never
-        // overwrites a route the hiker is already editing: their own draft
-        // outranks a starting point this app proposed.
-        if (start === null || draft.phase !== 'entrance') return draft
-        return { ...draft, start, ...(south === undefined ? {} : { south }) }
+          // A suggested start fills an entrance that has none yet, and never
+          // overwrites a route the hiker is already editing: their own draft
+          // outranks a starting point this app proposed.
+          if (start === null || draft.phase !== 'entrance') return draft
+          return { ...draft, start, ...(south === undefined ? {} : { south }) }
+        })
       })
     },
     [onOpenBuilder, clearFreeChartStretch],
   )
 
   const openRouteBuilder = useCallback(
-    () => openRouteBuilderFrom(null),
+    (first?: () => void) => openRouteBuilderFrom(null, undefined, first),
     [openRouteBuilderFrom],
   )
 

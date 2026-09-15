@@ -23,13 +23,7 @@
 // The one seeded thing is the camera — support/seed.ts's `seedCamera` carries
 // why that is a state and not a route.
 
-import {
-  test,
-  expect,
-  type APIRequestContext,
-  type Page,
-  type Locator,
-} from '@playwright/test'
+import { test, expect, type Page, type Locator } from '@playwright/test'
 import {
   seedPreferences,
   seedCamera,
@@ -38,7 +32,7 @@ import {
   ABOVE_THE_SEAM_ZOOM,
   BELOW_THE_SEAM_ZOOM,
 } from '../support/seed'
-import { conditionsArtifactUrl } from '../support/dataPreflight'
+import { freshenNewestNotice } from '../support/freshNotice'
 
 /**
  * HOW LONG THE TRAIL SKETCHES ARE ALLOWED TO TAKE, and why this is not the
@@ -150,43 +144,6 @@ async function frameOf(page: Page): Promise<{
  * That is the badge working, not the door moving — so the anchor is what both
  * spellings share.
  */
-/**
- * The newest edit across every notice the app would count, or null when the
- * bucket serves none with a readable date.
- *
- * Read from the two artifacts `lib/publishedConditions.ts` reads —
- * `conditions/atc_updates.json` and `conditions/nynjtc_alerts.json` — rather
- * than written down, because a date in a spec is a date that goes stale, which
- * is the whole of #1443. A 404 is not an error here: the pipeline publishes
- * nothing rather than an empty document when it has not looked, and "we have
- * not looked" is a state this suite has to survive.
- */
-async function newestNoticeEdit(request: APIRequestContext): Promise<Date | null> {
-  const sources: Array<[string, string]> = [
-    ['atc_updates.json', 'atc_updates'],
-    ['nynjtc_alerts.json', 'nynjtc_alerts'],
-  ]
-  let newest: Date | null = null
-  for (const [file, key] of sources) {
-    const url = conditionsArtifactUrl(file)
-    if (url === null) continue
-    const response = await request.get(url).catch(() => null)
-    if (response === null || !response.ok()) continue
-    const body = (await response.json().catch(() => null)) as Record<
-      string,
-      unknown
-    > | null
-    const rows = body?.[key]
-    if (!Array.isArray(rows)) continue
-    for (const row of rows) {
-      const at = new Date(String((row as { updated_at?: unknown }).updated_at ?? ''))
-      if (Number.isNaN(at.getTime())) continue
-      if (newest === null || at.getTime() > newest.getTime()) newest = at
-    }
-  }
-  return newest
-}
-
 async function openLegend(page: Page): Promise<Locator> {
   await page.getByRole('button', { name: /^Legend\b/ }).click()
   const legend = page.getByRole('dialog', { name: 'Legend' })
@@ -525,7 +482,6 @@ test.describe('every trail notice the app holds', () => {
 
   test('states: the “new” mark is spent by reading the list, and stays spent across a restart', async ({
     page,
-    request,
   }) => {
     // A BADGE THAT CAME BACK WOULD BE WORSE THAN NO BADGE, because a hiker
     // learns within a week to stop reading it. The watermark is per
@@ -534,30 +490,16 @@ test.describe('every trail notice the app holds', () => {
     // and the boot is a sibling page for the reload trap support/seed.ts
     // documents.
     //
-    // THE CLOCK IS PINNED TO THE DATA, WHICH IS WHAT #1443 COST US. The badge
-    // lights only for `NEW_NOTICE_WINDOW_MS` — 72 hours — after a notice was
-    // edited, and `conditions/` is NOT under the pinned release: it is
-    // rewritable by design, so it keeps ageing whatever this suite pins.
-    // Asserting the badge against the wall clock therefore passed for three
-    // days after each publish and failed afterwards, on `main` as much as on
-    // any branch. Measured 2026-09-15: the bucket's newest edit was
-    // 2026-09-11T20:52:53Z, so the badge went dark at 20:52 on the 14th and
-    // the first red run was at 22:50 — two hours later.
-    //
-    // So the run decides its own "now" from the data it is about to read.
-    // Nothing is stubbed but the clock, the badge is lit for the reason the
-    // app says it should be, and the assertion below is about the app rather
-    // than about the calendar.
-    const newest = await newestNoticeEdit(request)
-    test.skip(
-      newest === null,
-      'the bucket serves no notice with a readable date, so there is no badge to spend',
-    )
-    // A minute after the newest edit: inside the window by every definition,
-    // and still a real instant rather than the epoch.
-    const pinnedNow = new Date((newest as Date).getTime() + 60_000)
-    await page.clock.setFixedTime(pinnedNow)
-
+    // THE ONE TEST IN THIS FILE THAT CONTROLS ITS OWN BYTES (#1426). Every
+    // other assertion here is about a shape the release is free to change;
+    // this one is about an AGE, and the age it depended on was ATC's own
+    // posting cadence — median seven days between edits, against a 72-hour
+    // window — so it asserted that a third party had published this week and
+    // went red the moment they had not. `freshenNewestNotice` moves exactly
+    // one field of the real artifact and leaves every other byte published;
+    // its header carries the measurement and why the other three fixes do
+    // not work.
+    await freshenNewestNotice(page)
     await openMap(page)
     const legendDoor = page.getByRole('button', { name: /^Legend/ })
     await expect(legendDoor).toHaveText(/new trail notice/)
@@ -572,13 +514,7 @@ test.describe('every trail notice the app holds', () => {
       page.getByRole('button', { name: /Read all \d+ trail notices/ }),
     ).not.toHaveText(/new/)
 
-    // The restart carries the same pinned now, which is what makes the
-    // assertion below mean anything: on the wall clock the badge would be dark
-    // because the notice had aged out, and the test would pass without the
-    // watermark doing any work at all.
-    const fresh = await bootFreshPage(page, (second) =>
-      second.clock.setFixedTime(pinnedNow),
-    )
+    const fresh = await bootFreshPage(page)
     await fresh.getByRole('tab', { name: 'Map' }).click()
     await expect(fresh.getByRole('region', { name: 'Trail map' })).toBeVisible()
     // Waits on the door's text rather than on a timer: the notices load after

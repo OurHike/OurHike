@@ -1,56 +1,77 @@
-"""Publish the routes somebody wrote up - NYNJTC's reviewed Favorite Hikes
-first - as `suggested_hikes.json` (#1290, features/SUGGESTED_HIKES.md).
+"""Publish the hikes somebody wrote up - the NYNJTC Hike Finder export - as
+`suggested_hikes.json` (#1427, features/SUGGESTED_HIKES.md).
 
     python export_suggested_hikes.py
 
-The client half landed first (#1284): a Today shelf and a Find-a-hike
-screen reading an optional artifact that nothing wrote. This writes it.
+WHAT CHANGED, AND WHAT DID NOT. This exporter used to read nynjtc.org's twenty
+public write-ups through `fetch_nynjtc_hikes.py`, and shipped a hike only once
+a person had signed its ends off by hand in `reference/nynjtc_hike_routes.json`
+(#1290). The maintainer supplied the full list as an export on 2026-09-15 and
+asked for the scrape to stop, so the input is now `fetch_hikefinder.py`'s cache
+of 385 hikes and `route_hikefinder.py`'s routes. THE CLIENT CONTRACT IS
+UNTOUCHED: `lib/suggestedHikesData.ts` validates exactly what it validated
+before, and a field it reads is spelled exactly as that module spells it.
 
-WHAT A RECORD IS. The contract lib/suggestedHikesData.ts validates - an id,
-a name, its miles, a NAMED publisher, and its ENDS as segments of
-`{coord, poiId}` points the phone routes between when the card opens - plus
-everything the detail screen prints and the shelf ignores: NYNJTC's own
-prose, their photograph with its credit, their categorisation, the
-publication line, the page URL, and the figures this build measured beside
-theirs. A field the shipped client does not read costs it nothing; a field
-it does read is spelled exactly as that module spells it.
+WHAT A RECORD IS. An id, a name, its miles, a NAMED publisher, and its ENDS as
+segments of `{coord, poiId}` points the phone routes between when the card
+opens - plus everything the detail screen prints and the shelf ignores: the
+export's prose, its categorisation, its tags, the page URL, and the figures
+this build measured beside the publisher's own.
 
-THREE GATES, AND EVERY ONE IS SOMEBODY'S DECISION RATHER THAN THIS SCRIPT'S:
+THE GATE IS THE ROUTE'S GRADE, and it replaces a person's signature with a
+published rule. That is a real loss and worth naming: #1290's 20 hikes were
+each read by the maintainer before they shipped, and 385 cannot be. What
+stands in its place is `lib/hike_route_builder.py`'s grading, which refuses a
+route that disagrees with the publisher's own stated mileage, walks trails the
+description does not name, or closes a "Circuit" by doubling back - and
+`route_hikefinder.py` renders the sheet a person reads to disagree with any of
+it. A `rejected` route ships nothing.
 
-  1. sources.json's `reaches_hikers` on the entry. False writes nothing -
-     the same gate every other organization's data ships behind.
-  2. reference/nynjtc_hike_routes.json's `status`. Only `reviewed` rows
-     ship: a person has read the sign-off sheet route_nynjtc_hikes.py
-     renders and stands behind these ends. `proposed` is not close enough
-     (the maintainer: "let me see the edits and approve first"), and
-     `held` says in its own words why there is no route.
-  3. The graph. A reviewed row whose ends no longer route on THIS build's
-     lines is dropped with a line on stderr and its slug in the manifest's
-     `dropped` list - never published as a route with a hole in it, and
-     never silent, for export_highlights.py's reason: "a curated list
-     quietly shrinking is the failure nobody notices".
+THE TWO PROVENANCES SHIP DIFFERENTLY, and this is the part to read before
+changing anything here.
 
-THE FIGURES, AND WHICH IS WHOSE. `miles` is lib/trail_graph_route.py's -
-the pipeline's twin of the phone's router - measured over this graph's
-lines between the reviewed ends; the phone redoes the same arithmetic when
-the card opens, so this is the number it will agree with. `publishedMiles`
-is NYNJTC's own figure from their overview. They differ, by the
-digitisation of somebody's survey and by the side trips no line carries
-(each row's `hikerNote` says which), and both ship so the screen can print
-them side by side rather than one dressed as the other. `climb` ships only
-when the elevation sidecar fits this graph and every edge on the walk is
-measured; otherwise it is ABSENT, which the client reads as "never priced"
-and never as flat.
+  A GENERATED route already stores what the client wants: ends on the network,
+  snapped, which the phone re-routes between exactly as this build measured
+  them.
 
-THE PHOTOGRAPH is a bucket key, `photos/<digest>.jpg`, the same
-content-addressed store the POI cards draw from; publish.py uploads the
-bytes and verify_photo_promises() refuses to publish a key it cannot back.
-The credit line is the licence's condition (nynjtc_hikes_licence) and a
-hike whose photo has none ships with no photo.
+  A PUBLISHED route does not. It is a GPX track - 943 points on some hikes -
+  and `SuggestedHike.segments` is "the ends, never the route" (dayHikes.ts):
+  the phone will re-route between whatever points it is given, over the trail
+  graph. So a track cannot be handed over as a line, and this exporter does
+  NOT pretend otherwise. What it does is sample the track, snap each sample to
+  the network, and then CHECK that re-routing between those samples reproduces
+  the track's own length within TRACK_REPRODUCTION_TOLERANCE. If it does, the
+  phone walking those ends walks the surveyed route, and that is a claim this
+  file can make with a measurement behind it. If it does not - the track goes
+  somewhere this build draws no line - the hike ships no route rather than a
+  re-drawn one.
 
-Runs AFTER build_trail_graph.py and, where the run has it,
-export_network_elevation.py: it needs the graph to measure and the sidecar
-to price. NO NETWORK.
+  MEASURED 2026-09-15: of the 113 tracks, 64 have every 400 m sample within
+  the phone's own 45.7 m of a line drawn here, and among those the re-route
+  comes back within 2.4% of the track's length at the median - so where the
+  ground IS drawn, this reproduces the survey closely. The other 49 leave the
+  trails in the layers registered here (14 of them by more than a kilometre),
+  and no tolerance recovers them: it is missing lines, not a loose threshold.
+  47 tracks pass both gates and ship.
+
+  THE 66 THAT DO NOT SHIP ARE NOT LOST, and are not shipped half-drawn either.
+  Their full geometry, every point and every elevation, is in
+  data/processed/hikefinder_routes.json and data/raw/hikefinder_gpx/. What
+  would let them reach a hiker is a `track` field on SuggestedHike, so a
+  surveyed line ships as a line and nothing is re-derived - and that cannot be
+  added here without also splitting this artifact, because it is already
+  1.68 MB for 201 records (most of it the export's prose) against the
+  client's 2 MB cache ceiling (conditionsCache.ts, itself @unvalidated), and
+  113 tracks would go straight through it. Both are #1428.
+
+DIFFICULTY IS QUOTED, AND ONE LEVEL DOES NOT FIT. The client's `DIFFICULTIES`
+holds five slugs; the export publishes SIX labels, the extra one being "Very
+Strenuous" (one hike). It is mapped to `strenuous`, which UNDERSTATES it, so
+the publisher's own label rides along in `detail.publishedDifficulty` and the
+card can print the word the publisher used. Rounding a difficulty downward is
+the unsafe direction and is not done silently.
+
+Runs AFTER fetch_hikefinder.py and route_hikefinder.py. NO NETWORK.
 """
 
 from __future__ import annotations
@@ -62,24 +83,17 @@ from pathlib import Path
 
 from lib import trail_graph_route as router
 from lib.hashing import sha256_file
+from lib.hike_route_builder import PUBLISHED
+from lib.hikefinder import SOURCE_KEY
 from lib.manifest_paths import to_manifest_path
-from lib.nynjtc_hikes import SOURCE_KEY
 from lib.source_registry import find_source, load_registry
 from lib.stamps import utc_stamp
-from route_nynjtc_hikes import (
-    STATUS_REVIEWED,
-    base_slug,
-    load_cache,
-    load_graph,
-    load_routes,
-    measure,
-    published_miles,
-    row_name,
-)
+from route_hikefinder import load_cache, load_graph
 
 ROOT = Path(__file__).resolve().parent
 SOURCES_PATH = ROOT / "sources.json"
 PROCESSED_DIR = ROOT / "data" / "processed"
+ROUTES_PATH = PROCESSED_DIR / "hikefinder_routes.json"
 OUT_PATH = PROCESSED_DIR / "suggested_hikes.json"
 MANIFEST_PATH = PROCESSED_DIR / "suggested_hikes_manifest.json"
 
@@ -87,117 +101,218 @@ MANIFEST_PATH = PROCESSED_DIR / "suggested_hikes_manifest.json"
 #: (lib/suggestedHikes.ts). A route a club wrote up is the club's.
 AUTHOR_KIND = "club"
 
-#: The licence line a card prints under the credit. The weaker true
-#: sentence: the permission reached this repository through the maintainer
-#: (nynjtc_hikes_licence records the words), so it names who gave it and
-#: not a licence NYNJTC never wrote.
-PHOTO_LICENCE = "By permission of the New York-New Jersey Trail Conference"
+#: The export's difficulty labels onto the five slugs the client holds
+#: (lib/suggestedHikes.ts DIFFICULTIES). "Very Strenuous" has no slot and
+#: takes the hardest one there is; see this module's docstring for why that is
+#: said out loud rather than done quietly.
+DIFFICULTY_SLUGS = {
+    "easy": "easy",
+    "easy to moderate": "easy-moderate",
+    "moderate": "moderate",
+    "moderate to strenuous": "moderate-strenuous",
+    "strenuous": "strenuous",
+    "very strenuous": "strenuous",
+}
+
+#: How far apart the samples taken along a published track are. @unvalidated -
+#: 400 m is short enough that the shortest path between two consecutive
+#: samples has no room to take a different trail, and long enough that a
+#: 10-mile track becomes about 40 ends rather than 900 points.
+TRACK_SAMPLE_M = 400.0
+
+#: How far the phone's re-route between a track's samples may sit from the
+#: track's own measured length before the track is judged not reproducible on
+#: this build's lines. @unvalidated - 0.10 is tighter than any grading band in
+#: hike_route_builder.py on purpose: this is not "is this roughly the right
+#: walk", it is "does re-routing give back the line we already have".
+TRACK_REPRODUCTION_TOLERANCE = 0.10
+
+#: The licence line a card prints under the credit. The weaker true sentence:
+#: the permission reached this repository through the maintainer
+#: (nynjtc_hikes_licence records the words), so it names who gave it and not a
+#: licence NYNJTC never wrote.
+CONTENT_LICENCE = "By permission of the New York-New Jersey Trail Conference"
 
 
-def _term_names(hike: dict, taxonomy: str) -> list[str]:
-    return [term["name"] for term in (hike.get("terms") or {}).get(taxonomy, []) if isinstance(term, dict) and term.get("name")]
+def load_routes(path: Path | None = None) -> dict:
+    path = ROUTES_PATH if path is None else path
+    if not path.exists():
+        raise SystemExit(f"{path} is missing - run route_hikefinder.py first; it is what decides which hikes have a route")
+    return json.loads(path.read_text(encoding="utf-8")).get("routes") or {}
 
 
-def _first(names: list[str]) -> str | None:
-    return names[0] if names else None
+def difficulty_slug(label: str | None) -> str | None:
+    """The client's slug for the export's label, or None when it has no slot
+    for it - absent means the card prints no badge, never a guessed one."""
+    return DIFFICULTY_SLUGS.get((label or "").strip().lower())
 
 
-def segments_for(row: dict, points: list[router.GraphPoint]) -> list[list[dict]]:
-    """The ends as the client stores a day hike's: one segment of
-    `{coord, poiId}` points in walking order, the first repeated at the end
-    of a closed walk so that routeThrough closes it exactly as closeTheLoop
-    would. Coordinates are the SNAPPED points, so the phone finds each one
-    at zero offset from the line."""
-    coords = [[round(point.at[0], 6), round(point.at[1], 6)] for point in points]
-    if row.get("closed") and coords:
-        coords.append(coords[0])
-    return [[{"coord": coord, "poiId": None} for coord in coords]]
+def sample_track(points: list[tuple[float, float]], spacing_m: float = TRACK_SAMPLE_M) -> list[tuple[float, float]]:
+    """A track thinned to points about `spacing_m` apart, ends always kept."""
+    if len(points) < 2:
+        return list(points)
+    kept = [points[0]]
+    since = 0.0
+    for previous, point in zip(points, points[1:]):
+        since += router.metres_between(previous, point)
+        if since >= spacing_m:
+            kept.append(point)
+            since = 0.0
+    if kept[-1] != points[-1]:
+        kept.append(points[-1])
+    return kept
 
 
-def photo_for(hike: dict) -> dict | None:
-    """The client's photo block, or None when there is nothing publishable:
-    no photograph, no stored bytes, or no credit to carry."""
-    photo = hike.get("photo") or {}
-    key, credit = photo.get("key"), photo.get("credit")
-    if not key or not credit:
+def track_ends(
+    graph: router.Graph, points: list[tuple[float, float]], track_miles: float
+) -> tuple[list[list[float]], str] | None:
+    """A published track as ends the phone can re-walk, or None with a reason.
+
+    Two gates, and the second is the one that matters. Every sample must snap
+    onto a line this build draws, and then the walk the phone would make
+    between those snapped ends must come back the same length as the track. A
+    track that passes both is one the phone reproduces; a track that passes
+    only the first has snapped onto lines that go somewhere else.
+    """
+    samples = sample_track(points)
+    snapped: list[router.GraphPoint] = []
+    for lon, lat in samples:
+        found = router.nearest_point(graph, lon, lat, max_off_m=router.MAX_OFF_NETWORK_M)
+        if found is None:
+            return None
+        snapped.append(found)
+    if len(snapped) < 2:
         return None
-    return {"url": key, "credit": f"Photo by {credit}", "licence": PHOTO_LICENCE}
+    route = router.route_through(graph, snapped)
+    if route is None:
+        return None
+    if not track_miles:
+        return None
+    drift = abs(route.miles - track_miles) / track_miles
+    if drift > TRACK_REPRODUCTION_TOLERANCE:
+        return None
+    return [[round(point.at[0], 6), round(point.at[1], 6)] for point in snapped], f"{drift * 100:.1f}%"
 
 
-def record_for(slug: str, row: dict, hike: dict, route: router.Route, points: list[router.GraphPoint], steward: str) -> dict:
-    publication = hike.get("publication") or {}
+def segments_for(coords: list[list[float]], closed: bool) -> list[list[dict]]:
+    """The ends as the client stores a day hike's: one segment of
+    `{coord, poiId}` points in walking order, the first repeated at the end of
+    a closed walk so routeThrough closes it exactly as closeTheLoop would."""
+    walking = list(coords)
+    if closed and walking and walking[0] != walking[-1]:
+        walking.append(walking[0])
+    return [[{"coord": coord, "poiId": None} for coord in walking]]
+
+
+def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str, reproduced: str | None) -> dict:
+    """One hike as the client reads it.
+
+    THE DETAIL FIELDS ARE FLAT, NOT NESTED, and that is not a style choice.
+    `lib/suggestedHikesData.ts`'s `validDetail` is handed the WHOLE record and
+    reads `raw.url`, `raw.publishedMiles`, `raw.description` off the top level;
+    its own test pins the mistake by name - "reads nothing out of a nested
+    `detail`, which is not the wire shape". An earlier version of this file
+    nested them, which dropped every one of them on the phone while both test
+    suites stayed green, because the pipeline suite asserted the nested shape
+    and the client suite asserted the flat one and the two never met.
+    `test_the_record_is_flat_because_the_client_reads_it_flat` is the guard
+    against that happening again.
+    """
     start = hike.get("start") or {}
+    summary = hike.get("summary")
+    author = hike.get("author")
     record = {
-        # The FULL key, variant and all: three walks share one NYNJTC page
-        # and would otherwise share one id, which the client dedupes on -
-        # two of the three would silently never reach a shelf.
-        "id": f"{SOURCE_KEY}:{slug}",
-        "name": row_name(slug, row, hike),
-        "miles": round(route.miles, 2),
-        "difficulty": hike.get("difficulty"),
+        "id": f"{SOURCE_KEY}:{hike['id']}",
+        "name": hike["name"],
+        "miles": round(route["miles"], 2),
+        "difficulty": difficulty_slug(hike.get("difficulty")),
         "author": {"kind": AUTHOR_KIND, "name": steward},
-        "segments": segments_for(row, points),
-        # Everything below is the detail screen's (features/SUGGESTED_HIKES.md
-        # frame 1g); the shelf and the finder ignore it.
+        "segments": segments_for(coords, bool(route.get("closed"))),
+        # --- everything below is read by validDetail, off the top level ---
         "url": hike["source_url"],
-        "publishedMiles": published_miles(row, hike),
-        "routeType": _first(_term_names(hike, "route-type")),
-        "timeCommitment": _first(_term_names(hike, "time-commitment")),
-        "distanceBucket": _first(_term_names(hike, "distance")),
-        "park": _first(_term_names(hike, "park")),
-        "region": _first(_term_names(hike, "region")),
-        "state": _first(_term_names(hike, "state")),
-        "county": _first(_term_names(hike, "county")),
-        "trails": _term_names(hike, "trail"),
-        "accessibility": _term_names(hike, "accessibility"),
-        "overview": list(hike.get("overview") or []),
+        "publishedMiles": hike.get("stated_miles"),
+        "overview": [summary] if summary else [],
         "description": list(hike.get("description") or []),
-        "publication": {
-            "submittedBy": publication.get("submitted_by"),
-            "submittedOn": publication.get("submitted_on"),
-            "verifiedOn": publication.get("verified_on"),
-        }
-        if publication
-        else None,
-        "start": {"lat": start.get("lat"), "lon": start.get("lon"), "basis": start.get("basis")} if start else None,
-        "closed": bool(row.get("closed")),
-        "reviewed": row.get("reviewed"),
-        "hikerNote": row.get("hiker_note"),
-        "measured": {
-            "miles": round(route.miles, 2),
-            "legs": [leg.to_dict() | {"miles": round(leg.miles, 2)} for leg in route.legs],
-            "note": router.SAME_TREAD_NOTE,
-        },
+        "routeType": hike.get("route_type"),
+        "park": hike.get("park"),
+        "trails": list(route.get("walked_trails") or []),
+        "start": {"lat": start.get("lat"), "lon": start.get("lon"), "basis": start.get("label")} if start else None,
+        # THE WHOLE POINT OF #1427, on the record a hiker's phone holds:
+        # `published` is a track somebody surveyed, `generated` is a line this
+        # pipeline inferred from their prose. A screen that prints one in the
+        # voice of the other is the failure these fields exist to prevent.
+        "routeProvenance": route["provenance"],
+        "routeGrade": route["grade"],
+        "routeNotes": list(route.get("problems") or []),
+        # NO `hikerNote`. That field's contract is that a PERSON wrote it -
+        # "it says what somebody checked" - and nobody has checked these 385.
+        # Putting the machine's own account of itself there would be exactly
+        # the display outrunning its source that routeProvenance exists to stop.
+        # --- kept for the finder and for screens that do not exist yet ---
+        "publishedDifficulty": hike.get("difficulty"),
+        "estimatedHours": hike.get("estimated_hours"),
+        "dogs": hike.get("dogs"),
+        "region": hike.get("region"),
+        # The maintainer's "especially the tags": the export's Features
+        # badges, as published, in page order.
+        "features": list(hike.get("features") or []),
+        "publishedOn": hike.get("published_on"),
+        "updatedOn": hike.get("updated_on"),
+        "directions": list(hike.get("directions") or []),
+        "publicTransport": list(hike.get("public_transport") or []),
+        "licence": CONTENT_LICENCE,
+        "closed": bool(route.get("closed")),
+        "measured": {"miles": round(route["miles"], 2), "note": router.SAME_TREAD_NOTE},
     }
-    if route.climb is not None:
-        record["climb"] = {"gainFt": round(route.climb[0]), "lossFt": round(route.climb[1])}
-    photo = photo_for(hike)
-    if photo is not None:
-        record["photo"] = photo
+    if author:
+        # validPublication refuses a block with no submittedBy, so a hike whose
+        # page names nobody ships no publication rather than an empty one.
+        record["publication"] = {
+            "submittedBy": author,
+            "submittedOn": hike.get("published_on"),
+            "verifiedOn": hike.get("updated_on"),
+        }
+    climb = route.get("climb")
+    if climb:
+        # Absent means never priced, which the client reads as unknown. Never
+        # 0 as a stand-in: a walk with one unmeasured edge reported as flat
+        # fails SHORT, and short is what gets somebody caught by the dark.
+        record["climb"] = {"gainFt": round(climb[0]), "lossFt": round(climb[1])}
+    if reproduced is not None:
+        record["trackReproduction"] = reproduced
     return record
 
 
-def build_document(
-    graph: router.Graph, routes: dict, cache: dict, steward: str, generated_at: datetime
-) -> tuple[dict, list[tuple[str, str]]]:
-    """The artifact and what was dropped, in slug order."""
+def build_document(graph: router.Graph, cache: dict, routes: dict, steward: str, generated_at: datetime) -> tuple[dict, list]:
     hikes: list[dict] = []
     dropped: list[tuple[str, str]] = []
-    for slug in sorted(routes):
-        row = routes[slug]
-        if row.get("status") != STATUS_REVIEWED:
+    for key in sorted(cache, key=lambda k: int(k)):
+        hike, route = cache[key], routes.get(key)
+        if route is None:
+            dropped.append((key, "no row in hikefinder_routes.json - re-run route_hikefinder.py"))
             continue
-        hike = cache.get(base_slug(slug))
-        if hike is None:
-            dropped.append(
-                (slug, "reviewed in reference/nynjtc_hike_routes.json but not in the fetch cache - run fetch_nynjtc_hikes.py")
-            )
+        if route["grade"] == "rejected" or not route.get("ends"):
+            dropped.append((key, "; ".join(route.get("problems") or ["no route"])))
             continue
-        measured = measure(graph, row)
-        if measured["route"] is None:
-            dropped.append((slug, "; ".join(measured["problems"])))
-            continue
-        hikes.append(record_for(slug, row, hike, measured["route"], measured["points"], steward))
+
+        reproduced = None
+        if route["provenance"] == PUBLISHED:
+            found = track_ends(graph, [tuple(end) for end in route["ends"]], route["miles"] or 0.0)
+            if found is None:
+                dropped.append(
+                    (
+                        key,
+                        "the published track does not re-walk on this build's lines - it leaves the trails drawn here, "
+                        "so the phone cannot be given ends that reproduce it",
+                    )
+                )
+                continue
+            coords, reproduced = found
+        else:
+            coords = [[round(end[0], 6), round(end[1], 6)] for end in route["ends"]]
+
+        hikes.append(record_for(hike, route, coords, steward, reproduced))
+
     document = {"generated_at": utc_stamp(generated_at), "source": SOURCE_KEY, "hikes": hikes}
     return document, dropped
 
@@ -216,51 +331,58 @@ def main() -> dict | None:
             f"{SOURCE_KEY} names no steward, and a route with no named publisher is not shown at all (features/SUGGESTED_HIKES.md)"
         )
 
-    routes = load_routes()
     cache = load_cache()
-    reviewed = [slug for slug, row in routes.items() if row.get("status") == STATUS_REVIEWED]
-    if not reviewed:
-        # Not a failure and not an empty artifact. "Nobody has signed one
-        # off yet" and "there are no suggested hikes" are different claims,
-        # and an empty document would make the client read the second.
-        proposed = sum(1 for row in routes.values() if row.get("status") == "proposed")
-        print(
-            f"No reviewed rows in reference/nynjtc_hike_routes.json ({proposed} proposed, waiting for sign-off), so nothing is published."
-        )
-        return None
     if not cache:
-        raise SystemExit(
-            f"{len(reviewed)} reviewed row(s) and no fetch cache to build them from - run fetch_nynjtc_hikes.py first"
-        )
+        raise SystemExit("No fetch cache to build from - run fetch_hikefinder.py first")
+    routes = load_routes()
 
-    graph = load_graph(PROCESSED_DIR, routes)
+    starts = [(hike["start"]["lon"], hike["start"]["lat"]) for hike in cache.values() if hike.get("start")]
+    graph = load_graph(PROCESSED_DIR, starts)
     if graph.climb_note:
         print(f"climb: {graph.climb_note}")
+
     generated_at = datetime.now(timezone.utc)
-    document, dropped = build_document(graph, routes, cache, steward, generated_at)
+    document, dropped = build_document(graph, cache, routes, steward, generated_at)
+
+    if not document["hikes"]:
+        # NOT a failure, and NOT an empty artifact. "Nothing passed grading"
+        # and "there are no suggested hikes" are different claims, and an
+        # empty document would make the client read the second - the Today
+        # shelf silently emptying on every phone that downloads it, over an
+        # artifact that was fine. publish.py collects whatever manifest exists
+        # with no count of its own, so this is the only place that can refuse.
+        print(f"No hike of {len(cache)} has a route that passed grading, so nothing is published.", file=sys.stderr)
+        return None
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    by_provenance: dict[str, int] = {}
+    for hike in document["hikes"]:
+        kind = hike["routeProvenance"]
+        by_provenance[kind] = by_provenance.get(kind, 0) + 1
     manifest = {
         "path": to_manifest_path(OUT_PATH),
         "sha256": sha256_file(OUT_PATH),
         "count": len(document["hikes"]),
+        "by_provenance": by_provenance,
+        "with_tags": sum(1 for hike in document["hikes"] if hike["features"]),
         "with_climb": sum(1 for hike in document["hikes"] if "climb" in hike),
-        "with_photo": sum(1 for hike in document["hikes"] if "photo" in hike),
-        "dropped": [slug for slug, _ in dropped],
+        "dropped": [key for key, _ in dropped],
         "generated_at": document["generated_at"],
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-    print(f"{len(document['hikes'])} suggested hike(s) -> {OUT_PATH}")
-    for hike in document["hikes"]:
-        climb = f"+{hike['climb']['gainFt']} ft" if "climb" in hike else "climb unknown"
-        photo = "photo" if "photo" in hike else "no photo"
-        print(f"  {hike['id'].split(':', 1)[1][:52]:52} {hike['miles']:5.2f} mi  {climb:14} {photo}")
+    print(f"{len(document['hikes'])} suggested hike(s) of {len(cache)} -> {OUT_PATH}")
+    for kind, count in sorted(by_provenance.items()):
+        print(f"  {count:4}  {kind}")
     if dropped:
-        print(f"\n{len(dropped)} reviewed row(s) did not publish:", file=sys.stderr)
-        for slug, why in dropped:
-            print(f"  {slug}: {why}", file=sys.stderr)
+        print(f"\n{len(dropped)} hike(s) ship no route:", file=sys.stderr)
+        reasons: dict[str, int] = {}
+        for _, why in dropped:
+            head = why.split(" - ")[0][:78]
+            reasons[head] = reasons.get(head, 0) + 1
+        for why, count in sorted(reasons.items(), key=lambda pair: -pair[1]):
+            print(f"  {count:4}  {why}", file=sys.stderr)
     return manifest
 
 

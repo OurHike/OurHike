@@ -101,8 +101,13 @@ export function useWorkdayPanel({
       }),
     [upcoming, gpsPlanMile],
   )
+  /** The pins, each carrying the day it runs (#1440, frame 14i): the one
+   *  thing a hiker needs before travelling, put on the mark rather than
+   *  behind the tap. `dates` is `workProjectDates`' own wording, taken off
+   *  the row rather than re-derived, so the pin and the list beneath it
+   *  cannot come to spell the same weekend two ways. */
   const pins = useMemo<readonly WorkdayPoint[]>(
-    () => rows.map(({ id, lat, lon }) => ({ id, lat, lon })),
+    () => rows.map(({ id, lat, lon, dates }) => ({ id, lat, lon, dates })),
     [rows],
   )
   /** How many the widest window holds - the list is offered while any

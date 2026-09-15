@@ -19,6 +19,18 @@
 // on it - all three at once. The Today tab is the selected one in the
 // sidebar. That is the whole change.
 //
+// THIS IS THE SETTLED SCREEN, AND SINCE #1429 THAT IS WORTH SAYING. The
+// journal used to exist only as MapScreen's `journal` prop, so it could not
+// draw until the map did - 2,302 ms of sidebar against an empty pane on a
+// cold cache at 4x CPU. It now renders in this same `.map-screen__journal`
+// column before the map arrives, and MapScreen takes it over when the map
+// lands. The frame below is AFTER that hand-over and is unchanged by it,
+// deliberately: what #1429 moved is when the column appears, not what it
+// looks like once everything is up. So this recipe is evidence that the
+// hand-over leaves the settled layout alone - the column in its place, a row
+// still tappable, the card still opening over the map beside it - and it is
+// not evidence about the timing, which only numbers can carry.
+//
 // THE FIX IS A FIXTURE. The journal has rows only where the phone is - it
 // lists what a hiker will meet from where they stand - so the browser
 // answers with a made-up point on public trail geometry (Bear Mountain's

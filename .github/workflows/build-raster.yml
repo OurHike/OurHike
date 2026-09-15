@@ -239,7 +239,7 @@ jobs:
       - name: Warm the DuckDB spatial extension
         run: python -c "import duckdb; duckdb.connect().execute('INSTALL spatial; LOAD spatial;')"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: corridor-inputs
           path: pipeline/data/raw/
@@ -302,12 +302,12 @@ jobs:
       # it is the same corridor the 51 cells were cut against, and re-running
       # fetch_all.py here could pick up an ArcGIS update mid-run and verify
       # against a centerline the tiles never saw.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: corridor-inputs
           path: pipeline/data/raw/
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: raster-cell-*
           merge-multiple: true
@@ -369,7 +369,7 @@ jobs:
       # PROCESSED_DIR at publish time rather than reading a baked manifest, so
       # nothing depends on this being the runner that produced them. It needs
       # ~1.6 GB rather than assemble's ~7 GB.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: pmtiles-archives
           path: pipeline/data/processed/

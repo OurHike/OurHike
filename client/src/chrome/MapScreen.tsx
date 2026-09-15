@@ -151,6 +151,13 @@ export interface MapScreenProps {
   /** Whether location is switched on, which decides whether the map offers
    *  its locate control at all (map/mapChrome.ts, #312). */
   locationEnabled?: boolean
+  /**
+   * Opens the report window (#1438, D15). Handed to the canvas rather than
+   * drawn here: the door belongs to the shared chrome, so every surface that
+   * mounts a map gets the same control in the same place - see
+   * map/mapChrome.ts. Undefined leaves it off.
+   */
+  onReport?: (() => void) | undefined
 
   time: Date
   online: boolean
@@ -941,6 +948,7 @@ export function MapScreen({
   hikerMile,
   position,
   locationEnabled = false,
+  onReport,
   showZoomButtons = false,
   units = 'imperial',
   theme = 'light',
@@ -1636,6 +1644,7 @@ export function MapScreen({
               showZoomButtons={showZoomButtons}
               units={units}
               locationEnabled={locationEnabled}
+              onReport={onReport}
               theme={theme}
               themeChoice={themeChoice}
               mapStyle={mapStyle}

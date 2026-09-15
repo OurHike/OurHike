@@ -1,0 +1,144 @@
+/* The crews calendar (#1440, frame 14j). See chrome/WorkdayCalendar.tsx for
+   why the grid has three kinds of empty cell rather than one. */
+.workday-calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.workday-calendar__month {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 15px;
+  color: var(--fg-1);
+}
+
+.workday-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.workday-calendar__column {
+  padding-bottom: 2px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  text-align: center;
+  color: var(--fg-3);
+}
+
+.workday-calendar__blank {
+  aspect-ratio: 1;
+}
+
+.workday-calendar__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  aspect-ratio: 1;
+  padding: 0;
+  font: inherit;
+  color: var(--fg-1);
+  background: var(--surface-card);
+  border: 1px solid var(--border-1);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* The first thing a hiker scans for, so it is a tint and not an outline. */
+.workday-calendar__day--weekend {
+  background: var(--bg-sunken);
+}
+
+/* ALREADY GONE: over, not unknown. Dimmed, and still legible - a hiker
+   looking back at last Saturday is asking a real question. */
+.workday-calendar__day--past {
+  color: var(--fg-3);
+  opacity: 0.55;
+}
+
+/* BEYOND THE PUBLISHED WINDOW: nobody has said. Hatched rather than blank,
+   because a blank cell out here is the claim this treatment exists to
+   refuse - "no crew that day", from a file that was never asked. */
+.workday-calendar__day--beyond {
+  color: var(--fg-3);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-sunken),
+    var(--bg-sunken) 3px,
+    var(--surface-card) 3px,
+    var(--surface-card) 6px
+  );
+}
+
+.workday-calendar__day--open {
+  border-color: var(--brand-primary);
+  border-width: 2px;
+}
+
+.workday-calendar__number {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+}
+
+.workday-calendar__dots {
+  display: flex;
+  gap: 2px;
+  min-height: 5px;
+}
+
+.workday-calendar__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+}
+
+.workday-calendar__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--fg-3);
+  list-style: none;
+}
+
+.workday-calendar__legend li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.workday-calendar__key {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-1);
+  border-radius: 3px;
+}
+
+.workday-calendar__key--dot {
+  width: 6px;
+  height: 6px;
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+}
+
+.workday-calendar__key--beyond {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-sunken),
+    var(--bg-sunken) 3px,
+    var(--surface-card) 3px,
+    var(--surface-card) 6px
+  );
+}
+
+.workday-calendar__key--past {
+  background: var(--bg-sunken);
+  opacity: 0.55;
+}

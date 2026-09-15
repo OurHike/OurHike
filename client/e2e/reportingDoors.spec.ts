@@ -261,7 +261,11 @@ test.describe('the form for the kinds you have to write', () => {
     await seedPreferences(page)
     await seedHikerMode(page, 'long')
     await page.goto('/')
-    await page.getByRole('button', { name: 'Say thanks' }).click()
+    // A PREFIX since #1438: Today's doors are rows now, and a row's
+    // accessible name carries the line under its title ("Say thanks to
+    // whoever keeps it up…") the way More's rows do. The heading inside the
+    // form is still the exact words, which is what the next line checks.
+    await page.getByRole('button', { name: /^Say thanks/ }).click()
     await expect(page.getByRole('heading', { name: 'Say thanks' })).toBeVisible()
   }
 
@@ -293,8 +297,14 @@ test.describe('the form for the kinds you have to write', () => {
 
     // The field exists (#234 wired it; #89 had deliberately left it visible
     // and disabled rather than removing it), and says nothing about a photo
-    // until there is one — no "0 photos", no placeholder thumbnail.
-    await expect(page.getByText('Photo', { exact: true })).toBeVisible()
+    // until there is one — no "0 photos", no placeholder thumbnail. Since
+    // #1439 it is a row of tiles rather than one input, so what is here with
+    // nothing picked is the `+` tile and nothing else: no count, and no
+    // summary line, because both are claims about attachments there are none
+    // of.
+    await expect(page.getByText('Photos', { exact: true })).toBeVisible()
+    await expect(page.getByLabel(/add a photo/i)).toBeAttached()
+    await expect(page.getByText(/photos? · \d+ KB so far/)).toHaveCount(0)
     await expect(page.getByText(/Photo attached —/)).toHaveCount(0)
     await expect(page.getByText(/Shrinking the photo/)).toHaveCount(0)
   })

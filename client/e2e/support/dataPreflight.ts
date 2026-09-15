@@ -39,27 +39,6 @@ export function releaseArtifactUrl(name: string): string | null {
   return `${base.replace(/\/+$/, '')}/releases/${DATA_RELEASE}/${name}`
 }
 
-/**
- * Where a CONDITIONS artifact is, which is not under the release at all.
- *
- * `lib/config.ts`'s header carries the split: a release artifact resolves
- * under `releases/<id>/`, immutable and pinned, while `conditions/`, `photos/`
- * and `latest.json` stay at the root - "safety data has to be rewritable".
- * So a spec reading a notice is reading whatever the bucket holds NOW, and
- * the pin says nothing about it. #1443 is what that cost: a test asserting a
- * badge that only lights for three days after an edit, against data that goes
- * on ageing whatever release is pinned.
- */
-export function conditionsArtifactUrl(name: string): string | null {
-  const origin = process.env.FLOW_DATA_ORIGIN ?? ''
-  if (origin !== '') {
-    return `${origin.replace(/\/+$/, '')}/data/environments/ua/conditions/${name}`
-  }
-  const base = process.env.VITE_DATA_BASE_URL ?? ''
-  if (base === '') return null
-  return `${base.replace(/\/+$/, '')}/conditions/${name}`
-}
-
 function manifestUrl(): string | null {
   return releaseArtifactUrl('manifest.json')
 }

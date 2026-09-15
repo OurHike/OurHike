@@ -47,8 +47,17 @@ describe('useWorkdayPanel', () => {
   it('pins an upcoming workday that the reviewed file placed', () => {
     const { result } = panel([project()])
 
+    // With its date on it (#1440, frame 14i): the one thing a hiker needs
+    // before travelling, put on the mark rather than behind the tap. Taken
+    // off the row's own `dates` rather than re-derived, so the pin and the
+    // list under the map cannot spell the same weekend two ways.
     expect(result.current.mapScreen.workdays).toEqual([
-      { id: 'nynjtc-bear-mountain-2026-08-15', lat: 41.312, lon: -73.988 },
+      {
+        id: 'nynjtc-bear-mountain-2026-08-15',
+        lat: 41.312,
+        lon: -73.988,
+        dates: 'Aug 15',
+      },
     ])
   })
 

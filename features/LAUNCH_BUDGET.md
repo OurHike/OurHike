@@ -128,6 +128,111 @@ a phone's storage, and its thermal state, and none of that has an instrument tod
 Until it does, "six seconds" is the only measurement of the thing being complained
 about, and it is one nobody can reproduce. §4.1 is the repair.
 
+### 1.2 A laptop, which none of the above measures
+
+Measured 2026-09-15 after a report of "the first page is loading blank for like 5
+seconds" with a screenshot of a sidebar and an empty pane.
+
+**Against production**: `https://ourhike.org/app/`, serving `main-Bx2gadkk.js`,
+whose inlined version reads 1.3.0. Chromium at 1728×1080, returning hiker —
+onboarding done, the 2026-09-14 release on the machine — reloaded with the service
+worker, cache storage and HTTP cache cleared, which is the state a deploy leaves
+every returning hiker in because it re-hashes every asset. The cold column is the
+report's own case; the warm column is the same launch with the precache intact.
+
+| | warm precache | cold, 1× CPU | cold, 4× CPU |
+|---|---:|---:|---:|
+| sidebar on screen | 136 ms | 682 ms | 812 ms |
+| Today's journal has text | 585 ms | 1,310 ms | **2,725 ms** |
+| map canvas sized | 638 ms | 2,229 ms | 2,970 ms |
+| **the pane beside the sidebar is empty for** | 449 ms | 628 ms | **1,913 ms** |
+
+The frame in between is not a slow render. It is `App.tsx`'s `nothingWouldRender`
+branch — a tab bar and nothing else — which above the breakpoint is the sidebar, its
+"Today I'm" switch and the wordmark, and nothing else at all. It holds for as long as
+`mapMounted` is false, and on a laptop `mapMounted` is the only thing that can put
+Today on screen: the Today branch is guarded `activeTab === 'today' && !isDesktop`,
+and above the breakpoint the journal is `MapScreen`'s `journal` prop instead.
+
+**Attributed** on the same profile at 4× CPU against a local build of `main` carrying
+production's public build values, with `performance.mark` at each phase boundary
+(the marks were temporary and are not in the tree):
+
+| | at |
+|---|---:|
+| sidebar on screen | 212 ms |
+| the preferences record read | 374 ms |
+| the waypoints ready (`ourhike:today`) | 965 ms |
+| MapScreen's deferred chunk landed | 1,662 ms |
+| **`archivesRead` — the last gate to open** | **2,009 ms** |
+| Today's journal has text | 2,230 ms |
+| the map engine's chunk landed | 2,394 ms |
+
+**These two tables are not comparable to each other**, for the reason §1 states in
+bold about its own pair: one is production with its own release, the other a local
+build on this sandbox's network. The 2,725 ms above and the 2,230 ms here are two
+launches, not a before and an after. Each is comparable only to another run of the
+same kind.
+
+Two things that table settles and one it does not. It settles that the journal waits
+on `archivesRead` alone on this run: MapScreen's chunk landed 347 ms before the gate
+opened and the engine landed 164 ms *after* the journal already had text, so neither
+was on the journal's critical path. It settles that the data Today draws was ready at
+965 ms and sat unrendered for 1,265 ms behind a gate about which background the map
+is built around — a decision Today does not participate in.
+
+**What it did not settle was why `archivesRead` is late.** That mark has since been
+taken — #1429, same profile, a probe on the archive sweep's own first read:
+
+| | at |
+|---|---:|
+| the sweep issues its first read | 337 ms |
+| **that read answers** | **663 ms** |
+| `archivesRead` — every package finally answered | 2,327 ms |
+
+**So it was never one slow read.** The sweep's first IndexedDB round trip costs 326 ms
+on a 4× core and is done at 663 ms; the gate then takes a further 1,664 ms. What is
+left to explain is an accumulation rather than a latency — many packages, a thread busy
+with the release read and the index build (`ourhike:today` at 1,141 ms,
+`ourhike:index` at 2,704 ms), or both. **Which of those, and in what proportion, is
+still `@unvalidated`**: separating them wants a per-read timing and a package count at
+the moment the gate opens, and nothing has taken those. It stopped being the front
+door's problem in #1429 — Today no longer waits on this gate — so what remains is a
+question about when the MAP arrives, which is a laptop's to answer and not a hiker's
+first screen.
+
+### 1.3 After #1429: the front door stops waiting for the map
+
+Today above the breakpoint was `MapScreen`'s `journal` prop and nothing else, so it
+could not draw until the map did. It renders in its own `.map-screen__journal` column
+before the map arrives now, and MapScreen takes the same node over when the map lands.
+Same profile as §1.2's attributed table — cold cache, returning hiker, 1728×1080, 4×
+CPU, local build carrying production's public build values:
+
+| | before | after |
+|---|---:|---:|
+| sidebar on screen | 263 ms | 255 ms |
+| **Today's journal has text** | **2,565 ms** | **255 ms** |
+| map canvas sized | 2,870 ms | 2,665 ms |
+| **the pane beside the sidebar is empty for** | **2,302 ms** | **0 ms** |
+
+The journal now arrives on the same frame as the sidebar, which is what "0 ms" means:
+there is no frame in which a laptop shows navigation and nothing else. **The map is
+unmoved** — 2,870 → 2,665 ms is this profile's run-to-run spread, not a saving, and no
+part of this change was aimed at it. Eager JavaScript is unchanged at 254,816 bytes:
+the column reuses what the shell already imports.
+
+What did not change, and is the honest cost: when the map lands, the pre-map branch
+unmounts and MapScreen mounts the same journal, so the column is rebuilt once. Every
+piece of state a hiker can have touched by then is the shell's and survives — which
+page Today is on, the mode, an open day-hike card. Scroll position inside the column
+does not. Drawing nothing for those two seconds was the alternative.
+
+One measurement nearby, for whoever picks this up: the map engine ships as
+`mapWorker-*.js` at 991 KB raw and 257 KB compressed. It is correctly outside the
+eager closure — `scripts/check-build-output.mjs` holds that — and on a laptop it is
+in front of Today anyway, because Today is the map's child.
+
 ## 2. Where the time goes
 
 ### 2.1 Bytes before the first frame
@@ -335,6 +440,23 @@ update check run after the shell frame, on idle, in that order of usefulness to 
 hiker. The head preload of `trails_overview.geojson` is emitted only for a first run,
 which is the only launch that reads it.
 
+**And a constant read out of a screen brings the screen with it.** A static value
+import puts the exporting module in the importer's chunk, whole — Rollup cannot take
+the number and leave the file — so `App.tsx`'s `import { FIT_PADDING } from
+'./map/MapView'`, one integer used twice, held the map view in the eager closure along
+with everything it statically reaches. **Measured** 2026-09-15, by attributing a
+production-configured build's `main-*.js` to its sources through the sourcemap:
+14,808 raw bytes came out when the constant moved to `map/fitPadding.ts` —
+`map/MapView.tsx` 5,931, `map/trailsInView.ts` 4,762, `map/lineTaps.ts` 1,826,
+`map/closureTape.ts` 849, `map/longPress.ts` 715, `map/mapDetail.ts` 351,
+`map/labelVisibility.ts` 231, `map/mapEngineLoader.ts` 207 — taking the eager total
+from 256,159 to 251,098 compressed, on a Today screen that mounts no map. This is
+§4.2's shape without §4.2's marker: `check-build-output.mjs` finds MapLibre by name
+and had nothing to find here, so the only thing that reported it was the budget going
+red and the attribution being read afterwards. The rule it generalises to: **a
+constant the shell reads out of a screen-sized module belongs in a module of its
+own**, and the screen imports it too.
+
 ### 4.5 Waypoints are the worker's, not the render's
 
 The waypoint list is read and shaped off the launch thread — either stored packed
@@ -409,7 +531,12 @@ engine back fails its own build before CI sees it.
 operations rather than milliseconds: the tab bar is on screen before any IndexedDB
 read resolves; the launch thread performs no full pass over the waypoint list before
 it; the archive sweep never unmounts a rendered tree. Each is a count, so it fails on
-any machine.
+any machine. Its desktop block (§1.2, §6's bullet) counts the same way above the
+breakpoint — the sidebar paints before any read resolves, one map is built for a
+launch that lands on Today, and Today itself is on screen before the store answers.
+That last one stood as characterisation until #1429: it asserted the pane WAS empty,
+said the fix would turn it red, and named inverting it as the repair. #1429 inverted
+it, which is the shape to copy the next time a defect is pinned before it is fixed.
 
 **In review, by hand** — a pull request touching the launch path pastes the
 stopwatch's `--returning` and first-run output into its body, the way #857 — *Skip on the first-run steps feels like a broken button* —
@@ -444,8 +571,12 @@ release's effect on the launch is a row in an issue rather than a feeling.
   is the launch #857 fixed and only happens when the stored preferences do not say
   onboarding is done. The other two runs, and both local runs, launched normally from
   the same warm-up. Whether a phone can hit it — a preferences read that rejects falls
-  back to defaults, and defaults mean first run (`App.tsx:1165–1188`) — is not known,
-  and it is the kind of thing §4.1's readout would catch on a real device.
+  back to defaults, and defaults mean first run, which is the mirror-seeded
+  `preferences` state beside `readLaunchMirror` and the `setPreferencesLoaded(true)`
+  that a rejected read still runs — is not known, and it is the kind of thing §4.1's
+  readout would catch on a real device. (This bullet used to cite `App.tsx:1165–1188`
+  for that fallback; those lines are day-hike chart state today. The same drift §6's
+  desktop bullet below records, found while editing the section around it.)
 - **Whether a hiker ever notices the map arriving cold.** #1324 stopped building the
   map behind the entry steps and warms it on an idle callback once they are done, so a
   hiker who reaches the Map tab before that callback runs pays the build then. On the
@@ -470,5 +601,20 @@ release's effect on the launch is a row in an issue rather than a feeling.
 - **The Capacitor shells.** Both serve the same bundle from the binary with no
   service worker (`client/capacitor.config.ts`); the parse and the gate cost the same
   and the network costs differ. The stopwatch has no mode for them.
-- **Desktop.** `isDesktop` mounts the map at launch by design (`App.tsx:1024`); the
-  budget above is the phone's, and a desktop budget is not decided here.
+- **Desktop.** This used to read "`isDesktop` mounts the map at launch by design; the
+  budget above is the phone's, and a desktop budget is not decided here", and it is
+  worth keeping what was wrong with it rather than replacing it quietly. The sentence
+  is true and the inference everybody drew from it is not: it reads as "a laptop pays
+  extra for a map, and a laptop can afford one", and what it actually excluded was
+  **Today**, because above the breakpoint Today is the map's `journal` prop and not a
+  screen of its own. So the one form factor where the front door renders behind the
+  map is the one form factor with no budget on the front door. §1.2 is what that cost,
+  measured, and §1.3 is #1429 removing it — Today draws in its own column before the
+  map arrives now, so a laptop's front door is on screen at 255 ms rather than
+  2,565 ms. §5 names the counts `App.loadBudget.test.tsx` holds above the breakpoint,
+  including the one that was characterisation until #1429 inverted it. **What is still not decided here is the budget itself** — §3's rows are
+  the phone's, a laptop's are not them, and what they should be wants §4.1's on-device
+  readout rather than a number picked here. The line reference this bullet used to
+  carry (`App.tsx:1024`) had drifted off the symbol it named; so had
+  `App.tsx:1165-1188` three bullets above, and citing a name rather than a line is the
+  repair for both.

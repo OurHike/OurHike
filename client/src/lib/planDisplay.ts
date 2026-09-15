@@ -58,6 +58,22 @@ export function dayDateLabel(isoDate: string): string {
  * UTC throughout, for dayDateLabel's reason: the label must not shift a day
  * as a phone crosses a timezone.
  */
+/**
+ * "Saturday 12 September" - a whole date, written out (#1440, frame 14j).
+ *
+ * The calendar's day heading, and its own function rather than a
+ * `toLocaleDateString` call at the call site for this file's standing reason:
+ * a date has one spelling per role, and `en-US`'s own long form is
+ * "Saturday, September 12", which is not what the design writes. Composed
+ * from the parts, in UTC, so it reads the same on both ends of the trail.
+ */
+export function longDayLabel(isoDate: string): string {
+  const date = new Date(`${isoDate}T00:00:00Z`)
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })
+  const month = date.toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })
+  return `${weekday} ${date.getUTCDate()} ${month}`
+}
+
 export function dayLongDateLabel(isoDate: string): string {
   const date = new Date(`${isoDate}T00:00:00Z`)
   const weekday = date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })
@@ -149,4 +165,34 @@ export function tripDateRange(dates: readonly (string | null)[]): string | null 
     return `${first.getUTCDate()} ${month(first)} – ${last.getUTCDate()} ${month(last)} ${last.getUTCFullYear()}`
   }
   return `${first.getUTCDate()} ${month(first)} ${first.getUTCFullYear()} – ${last.getUTCDate()} ${month(last)} ${last.getUTCFullYear()}`
+}
+
+/**
+ * A leg's one-line name, for the three surfaces that print one: the
+ * builder's route order, the day-hike card and the walked-hike record.
+ *
+ * Its whole job is that the two flavours of "nothing" read the same. The
+ * artifact carries both - measured over `trail_graph.json` as
+ * data.ourhike.org served it 2026-09-15 (release `2026-09-14`, manifest
+ * `fed93aac-b45c-492c-9df2-fc668ac35010`), of 631,915 edges 10,967 (1.74%)
+ * publish `null` and 12,510 (1.98%) publish a name that is only whitespace,
+ * almost all of them `nh_granit_trails` (#1435). A `?? 'Unnamed trail'`
+ * catches the first and prints the second as a gap where the trail's name
+ * goes, so two pieces of tread the app knows nothing about read differently
+ * on one screen depending on which flavour the publisher happened to write.
+ *
+ * Both say `Unnamed trail`, because the distinction is not one a hiker can
+ * act on and every other absence in this app says the same thing. It is
+ * `stopLabel`'s rule one type down: a name is a name when it has a
+ * character in it.
+ *
+ * Trimmed for display only. The stored name is left exactly as published -
+ * `sameTrail` in lib/trailGraph.ts decides grouping on its own reading, and
+ * a display function that rewrote the data would put two answers in the
+ * tree.
+ */
+export function legLabel(name: string | null | undefined): string {
+  if (name === null || name === undefined) return 'Unnamed trail'
+  const trimmed = name.trim()
+  return trimmed.length === 0 ? 'Unnamed trail' : trimmed
 }

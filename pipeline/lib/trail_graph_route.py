@@ -230,6 +230,54 @@ def same_trail(name_a, blaze_a, name_b, blaze_b) -> bool:
     return _trail_name(name_a) == _trail_name(name_b) and blaze_a == blaze_b
 
 
+#: The cell size the `keep_near` pre-filter bins on, in degrees. 0.05 deg is
+#: about 5.5 km of latitude, so a 15 km radius reaches three cells and the
+#: rectangle each point marks stays small.
+_KEEP_CELL_DEG = 0.05
+
+
+def _edges_within(nodes: list, edges: list, points: list[tuple[float, float]], radius_m: float) -> set[int]:
+    """Every edge with a node within `radius_m` of any of `points`.
+
+    Two passes, and the second is the one that decides: the first bins the
+    points into cells and keeps only edges whose node lands in a marked one,
+    the second measures those candidates exactly. So the answer is identical
+    to testing every edge against every point - which is what this replaced -
+    and the cells only decide what is worth measuring.
+
+    The pre-filter earns its place at this build's scale. The naive form is
+    O(edges x points): 631,915 edges against the 385 trailheads the Hike
+    Finder export publishes is 486 million great-circle calls, which had not
+    finished after ten minutes when route_hikefinder.py first ran (measured
+    2026-09-15). It was fine for the 22 rows that came before it, which is why
+    it was written that way and why this is a fix rather than a rewrite.
+    """
+    marked: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    for lon, lat in points:
+        # A degree of longitude shortens towards the poles, so the rectangle a
+        # point marks is computed at ITS OWN latitude rather than from one
+        # global constant - too narrow a box would silently drop edges.
+        lat_cells = int(math.ceil((radius_m / 111_320) / _KEEP_CELL_DEG))
+        lon_metres_per_degree = max(1_000.0, 111_320 * math.cos(math.radians(lat)))
+        lon_cells = int(math.ceil((radius_m / lon_metres_per_degree) / _KEEP_CELL_DEG))
+        cx, cy = int(math.floor(lon / _KEEP_CELL_DEG)), int(math.floor(lat / _KEEP_CELL_DEG))
+        for dx in range(-lon_cells - 1, lon_cells + 2):
+            for dy in range(-lat_cells - 1, lat_cells + 2):
+                marked.setdefault((cx + dx, cy + dy), []).append((lon, lat))
+
+    keep: set[int] = set()
+    for index, edge in enumerate(edges):
+        for node in (nodes[edge["from"]], nodes[edge["to"]]):
+            cell = (int(math.floor(node[0] / _KEEP_CELL_DEG)), int(math.floor(node[1] / _KEEP_CELL_DEG)))
+            nearby = marked.get(cell)
+            if not nearby:
+                continue
+            if any(metres_between((node[0], node[1]), point) <= radius_m for point in nearby):
+                keep.add(index)
+                break
+    return keep
+
+
 def load_graph(
     graph_path: Path,
     geometry_path: Path | None = None,
@@ -260,12 +308,7 @@ def load_graph(
 
     keep: set[int] | None = None
     if keep_near is not None:
-        keep = set()
-        for index, edge in enumerate(edges):
-            for node in (nodes[edge["from"]], nodes[edge["to"]]):
-                if any(metres_between(tuple(node), point) <= keep_radius_m for point in keep_near):
-                    keep.add(index)
-                    break
+        keep = _edges_within(nodes, edges, keep_near, keep_radius_m)
 
     if geometry_path is not None and Path(geometry_path).exists():
         geometry = json.loads(Path(geometry_path).read_text(encoding="utf-8"))

@@ -28,6 +28,7 @@ const stored = (
 
 function snapshot(overrides: Partial<PublishedSnapshot> = {}): PublishedSnapshot {
   return {
+    readable: true,
     version: 'v2',
     previousVersion: 'v1',
     lookup: () => null,

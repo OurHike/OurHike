@@ -60,6 +60,19 @@
 // route passes and the stops it was saved with list as waypoint rows above
 // the legs. The REVIEW card (the same component at step 3, under the rail)
 // is photographed by day-hike-step-3.mjs.
+// Touched by #1435, whose subject is this card's leg list. A leg's name
+// printed as `leg.name ?? 'Unnamed trail'`, which caught `null` and left a
+// whitespace-only name — 1.98% of the published artifact's 631,915 edges,
+// against 1.74% null — drawing as a blaze chip, a distance and a gap. Both
+// absences now read "Unnamed trail" through lib/planDisplay.ts's `legLabel`.
+//
+// WHAT THIS FRAME CAN AND CANNOT SHOW IT, said rather than implied: the
+// fixture's leg is named, and the blank-named lines are almost all
+// nh_granit_trails — New Hampshire, which no camera aimed at Harriman
+// reaches. So this shot proves the list still reads correctly, and
+// planDisplay.test.ts is where the blank itself is pinned. The recipe is
+// touched so the list is re-photographed, not because the frame carries the
+// defect.
 export const caption =
   'The saved day hike’s card, after step 3: Walk this first, the plain-text card one row under it (#1373, frame 5c)'
 export const alt =

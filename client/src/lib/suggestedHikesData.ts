@@ -30,8 +30,12 @@ import { validClimb, validSegments } from './dayHikes'
 import {
   AUTHOR_KINDS,
   DIFFICULTIES,
+  ROUTE_GRADES,
+  ROUTE_PROVENANCES,
   type AuthorKind,
   type Difficulty,
+  type RouteGrade,
+  type RouteProvenance,
   type SuggestedHike,
   type SuggestedHikeDetail,
   type SuggestedHikePhoto,
@@ -126,6 +130,18 @@ function validPublication(candidate: unknown): SuggestedHikePublication | undefi
 /** The start, or undefined. Both numbers or neither: half a coordinate
  *  points at the Atlantic, and a screen offering directions to it would be
  *  worse than one offering none. */
+function validProvenance(candidate: unknown): RouteProvenance | undefined {
+  return (ROUTE_PROVENANCES as readonly unknown[]).includes(candidate)
+    ? (candidate as RouteProvenance)
+    : undefined
+}
+
+function validRouteGrade(candidate: unknown): RouteGrade | undefined {
+  return (ROUTE_GRADES as readonly unknown[]).includes(candidate)
+    ? (candidate as RouteGrade)
+    : undefined
+}
+
 function validStart(candidate: unknown): SuggestedHikeStart | undefined {
   if (typeof candidate !== 'object' || candidate === null) return undefined
   const start = candidate as Partial<SuggestedHikeStart>
@@ -170,6 +186,20 @@ function validDetail(candidate: unknown): SuggestedHikeDetail | undefined {
     ...(stringList(raw.trails) !== undefined ? { trails: stringList(raw.trails) } : {}),
     ...(nonEmptyString(raw.hikerNote) !== null
       ? { hikerNote: nonEmptyString(raw.hikerNote)! }
+      : {}),
+    // WHERE THE LINE CAME FROM (#1427). Read like every other field here -
+    // junk costs the field and never the route - but unlike the others its
+    // absence is load-bearing: a card may not draw an inferred route in the
+    // voice of a surveyed one, and "the document did not say" has to stay
+    // distinguishable from "the publisher walked it".
+    ...(validProvenance(raw.routeProvenance) !== undefined
+      ? { routeProvenance: validProvenance(raw.routeProvenance) }
+      : {}),
+    ...(validRouteGrade(raw.routeGrade) !== undefined
+      ? { routeGrade: validRouteGrade(raw.routeGrade) }
+      : {}),
+    ...(stringList(raw.routeNotes) !== undefined
+      ? { routeNotes: stringList(raw.routeNotes) }
       : {}),
   }
   return Object.keys(detail).length > 0 ? detail : undefined

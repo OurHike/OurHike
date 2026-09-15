@@ -18,7 +18,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { buildCourse, mileTicks, projectOnCourse } from './dayHikeCourse'
+import { buildCourse, mileTicks, projectOnCourse, lonLatBounds } from './dayHikeCourse'
 import { orderStops } from './dayHikeStops'
 import { routeRows } from './dayHikeRows'
 import type { StoredPoi } from './trailData'
@@ -328,5 +328,55 @@ describe('one axis, so a stop and a leg can be compared (#1194 fallout)', () => 
     // standing on a boundary onto the wrong side of it.
     expect(stops[0].mile).toBeCloseTo(status.legs[0].miles, 10)
     expect(course.miles).toBeCloseTo(status.miles, 10)
+  })
+})
+
+describe('lonLatBounds (#1404)', () => {
+  it('boxes every point, in the order fitBounds takes', () => {
+    expect(
+      lonLatBounds([
+        [-74.1, 41.25],
+        [-74.05, 41.3],
+        [-74.2, 41.2],
+      ]),
+    ).toEqual([
+      [-74.2, 41.2],
+      [-74.05, 41.3],
+    ])
+  })
+
+  it('boxes a single point as a point, which fitBounds reads as a zoom', () => {
+    expect(lonLatBounds([[-74.1, 41.25]])).toEqual([
+      [-74.1, 41.25],
+      [-74.1, 41.25],
+    ])
+  })
+
+  it('is null for nothing, never the Gulf of Guinea', () => {
+    // [[0,0],[0,0]] would be a camera flight to open ocean off West Africa,
+    // which is the shape of wrong that looks like a feature until somebody
+    // opens an empty route.
+    expect(lonLatBounds([])).toBeNull()
+  })
+
+  it('boxes a course, which is what the builder frames on entry', () => {
+    const status = pineMeadow()
+    const course = buildCourse(PUBLISHED, status.stretches)
+
+    const bounds = lonLatBounds(
+      course.points.map((point) => [point.lon, point.lat] as const),
+    )
+
+    expect(bounds).not.toBeNull()
+    if (bounds === null) return
+    const [[west, south], [east, north]] = bounds
+    expect(west).toBeLessThanOrEqual(east)
+    expect(south).toBeLessThanOrEqual(north)
+    for (const point of course.points) {
+      expect(point.lon).toBeGreaterThanOrEqual(west)
+      expect(point.lon).toBeLessThanOrEqual(east)
+      expect(point.lat).toBeGreaterThanOrEqual(south)
+      expect(point.lat).toBeLessThanOrEqual(north)
+    }
   })
 })

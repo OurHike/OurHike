@@ -304,6 +304,40 @@ def test_a_floor_this_does_not_recognise_is_refused(floor):
         export_nearby_poi.build_records(source, [feature(objectid=1, fountainty="A")])
 
 
+def test_the_low_confidence_line_names_the_floor_not_a_field_the_source_lacks():
+    """The line that killed the UA publish after #1474.
+
+    It read source['public_field'] unconditionally - fine while a per-row flag
+    was the only way to be low, a KeyError the moment confidence_floor shipped
+    a layer that is low without one. 17 minutes in, with all 3,195 fountains
+    and 975 restrooms already exported correctly. The export was right; the
+    sentence describing it was not.
+
+    Asserted on the REASON and not just on not-raising, because the crash was
+    the smaller half: "ParksApp says not in the org's own app" is a claim
+    about New York's fountains that no NYC column makes, and printing it
+    would have been a quieter kind of wrong."""
+    reason = export_nearby_poi.low_confidence_reason(NYC_FOUNTAINS)
+
+    assert "confidence_floor" in reason
+    assert "ParksApp" not in reason and "public" not in reason
+
+
+def test_the_low_confidence_line_still_names_the_flag_where_that_is_the_reason():
+    """OPRHP's 1,193 lean-tos and the rest: a per-ROW flag from an org that
+    does distinguish, which is a different sentence and has to stay one."""
+    assert export_nearby_poi.low_confidence_reason(OPRHP) == "ParksApp says not in the org's own app"
+
+
+def test_the_low_confidence_line_never_raises_on_a_source_it_cannot_explain():
+    """A progress line is not worth a pipeline. The floor's real guarantee is
+    in confidence_for, which DOES raise; this one only has to not be the
+    reason a 17-minute publish is lost."""
+    unexplained = {"key": "whatever", "provider": "X", "id_field": "objectid"}
+
+    assert "not recorded" in export_nearby_poi.low_confidence_reason(unexplained)
+
+
 def test_a_layer_with_no_floor_is_untouched():
     """The floor only ever lowers, and a source that declares none keeps the
     per-row answer it had - otherwise adding the key would have changed every

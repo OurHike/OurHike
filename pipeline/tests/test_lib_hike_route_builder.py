@@ -203,7 +203,7 @@ def test_a_published_track_is_marked_published_and_measured_on_its_own_points():
 def test_a_track_whose_length_disagrees_with_the_page_is_reported_not_rejected():
     """THE ASYMMETRY THAT MATTERS. A generated route disagreeing with the
     stated mileage is rejected, because the inference is the weaker claim. A
-    surveyed track disagreeing is not: what is established is that one of the
+    published line disagreeing is not: what is established is that one of the
     publisher's own two figures is wrong, and the recorded line is not the
     likelier candidate."""
     result = published_route({"id": 1, "stated_miles": 9.0, "route_type": "Shuttle"}, track([(41.0, -74.0), (41.02, -74.0)]))
@@ -239,7 +239,7 @@ def test_a_closed_track_is_recognised_as_closed():
 def test_a_published_track_ships_on_its_ends_although_it_has_no_graph_route():
     """The two roads fill different fields: a generated route carries a
     `route` measured over the graph, a published one only the track's own
-    points. Testing `route` graded every surveyed track as not shipping."""
+    points. Testing `route` graded every published line as not shipping."""
     result = published_route({"id": 1, "stated_miles": 1.38, "route_type": "Shuttle"}, track([(41.0, -74.0), (41.02, -74.0)]))
     assert result.route is None
     assert result.ships is True
@@ -300,7 +300,7 @@ def test_a_blaze_only_matches_a_line_of_that_colour_and_a_name_does_not_have_to(
 
 def test_the_search_may_drop_a_step_the_description_only_mentions(graph):
     """THE REASON THE SEARCH EXISTS. Measured over the 113 ground-truth hikes,
-    a surveyed track walks a median of 3 distinct trails while the parser finds
+    a published line walks a median of 3 distinct trails while the parser finds
     6 steps in the same description - a write-up names the trails you cross and
     decline as readily as the ones you walk. A greedy walk has to take all six;
     this one may take the subset that fits the publisher's own mileage."""
@@ -318,3 +318,27 @@ def test_the_score_prefers_the_walk_that_matches_the_publishers_mileage(graph):
     short, long = router.route_between(graph, start, near), router.route_between(graph, start, far)
     stated = long.miles
     assert _route_score(long, stated, 1, False, 1.0) > _route_score(short, stated, 1, False, 1.0)
+
+
+def test_a_published_track_takes_no_climb_from_its_own_elevations():
+    """#1451: the maintainer's call, and it corrects a claim this module
+    shipped. The GPX files are DRAWN, not recorded - 110 of 113 come from
+    gpx.studio, 2 carry a `<time>` element, and their elevations are a surface
+    sampled along the drawn line - on an exact 0.25 m grid in 55 of the 113,
+    stepping by hundredths of a metre in the other 53, an altimeter in none.
+    That is the same KIND of estimate this build's own sidecar produces, and
+    it is measured rather than assumed (see the module docstring), so
+    preferring it would
+    mean two sources for one figure, one of which is absent whenever a hike has
+    no track. Climb comes from the sidecar or it is absent."""
+    with_elevation = track([(41.0, -74.0), (41.01, -74.0), (41.02, -74.0)])
+    assert all(point.ele_m is not None for point in with_elevation.points)
+    assert published_route({"id": 1, "stated_miles": 1.38, "route_type": "Shuttle"}, with_elevation).climb is None
+
+
+def test_a_generated_route_takes_its_climb_from_the_graph(graph):
+    """The one source there is. Absent means never priced, never flat."""
+    result = form_route(graph, hike(route_type="Shuttle", stated_miles=0.2))
+    if result.route is None:
+        pytest.skip("no route formed on this synthetic graph")
+    assert result.climb == result.route.climb

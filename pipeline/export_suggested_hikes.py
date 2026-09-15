@@ -41,7 +41,7 @@ changing anything here.
   NOT pretend otherwise. What it does is sample the track, snap each sample to
   the network, and then CHECK that re-routing between those samples reproduces
   the track's own length within TRACK_REPRODUCTION_TOLERANCE. If it does, the
-  phone walking those ends walks the surveyed route, and that is a claim this
+  phone walking those ends walks the publisher's own route, and that is a claim this
   file can make with a measurement behind it. If it does not - the track goes
   somewhere this build draws no line - the hike ships no route rather than a
   re-drawn one.
@@ -49,8 +49,8 @@ changing anything here.
   MEASURED 2026-09-15: of the 113 tracks, 64 have every 400 m sample within
   the phone's own 45.7 m of a line drawn here, and among those the re-route
   comes back within 2.4% of the track's length at the median - so where the
-  ground IS drawn, this reproduces the survey closely. The other 49 leave the
-  trails in the layers registered here (14 of them by more than a kilometre),
+  ground IS drawn, this reproduces the publisher's line closely. The other 49
+  leave the trails in the layers registered here (14 by more than a kilometre),
   and no tolerance recovers them: it is missing lines, not a loose threshold.
   47 tracks pass both gates and ship.
 
@@ -58,7 +58,7 @@ changing anything here.
   Their full geometry, every point and every elevation, is in
   data/processed/hikefinder_routes.json and data/raw/hikefinder_gpx/. What
   would let them reach a hiker is a `track` field on SuggestedHike, so a
-  surveyed line ships as a line and nothing is re-derived - and that cannot be
+  published line ships as a line and nothing is re-derived - and that cannot be
   added here without also splitting this artifact, because it is already
   1.68 MB for 201 records (most of it the export's prose) against the
   client's 2 MB cache ceiling (conditionsCache.ts, itself @unvalidated), and
@@ -135,10 +135,21 @@ CONTENT_LICENCE = "By permission of the New York-New Jersey Trail Conference"
 
 
 def load_routes(path: Path | None = None) -> dict:
+    """What route_hikefinder.py decided, or {} when it wrote nothing.
+
+    The same split load_cache makes (#1462): a missing artifact means that
+    script had no hikes to route this run, which a publish forgives, while an
+    artifact that is there and will not parse is a defect and raises.
+    """
     path = ROUTES_PATH if path is None else path
     if not path.exists():
-        raise SystemExit(f"{path} is missing - run route_hikefinder.py first; it is what decides which hikes have a route")
-    return json.loads(path.read_text(encoding="utf-8")).get("routes") or {}
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("routes") or {}
+    except (OSError, ValueError) as error:
+        raise SystemExit(
+            f"{path} is present but unreadable, which is a defect rather than a skipped route pass: {error}"
+        ) from error
 
 
 def difficulty_slug(label: str | None) -> str | None:
@@ -191,7 +202,12 @@ def track_ends(
     drift = abs(route.miles - track_miles) / track_miles
     if drift > TRACK_REPRODUCTION_TOLERANCE:
         return None
-    return [[round(point.at[0], 6), round(point.at[1], 6)] for point in snapped], f"{drift * 100:.1f}%"
+    # The route is handed back as well as the ends, because it is the only
+    # place a published hike's CLIMB can come from: the track's own `<ele>`
+    # values are a DEM sampled along a drawn line (#1451) and are not used, so
+    # the figure comes from this build's sidecar over this walk - the same
+    # source, and the same arithmetic, as a generated route's.
+    return [[round(point.at[0], 6), round(point.at[1], 6)] for point in snapped], f"{drift * 100:.1f}%", route
 
 
 def segments_for(coords: list[list[float]], closed: bool) -> list[list[dict]]:
@@ -238,7 +254,7 @@ def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str,
         "trails": list(route.get("walked_trails") or []),
         "start": {"lat": start.get("lat"), "lon": start.get("lon"), "basis": start.get("label")} if start else None,
         # THE WHOLE POINT OF #1427, on the record a hiker's phone holds:
-        # `published` is a track somebody surveyed, `generated` is a line this
+        # `published` is a line the publisher drew, `generated` is a line this
         # pipeline inferred from their prose. A screen that prints one in the
         # voice of the other is the failure these fields exist to prevent.
         "routeProvenance": route["provenance"],
@@ -307,7 +323,9 @@ def build_document(graph: router.Graph, cache: dict, routes: dict, steward: str,
                     )
                 )
                 continue
-            coords, reproduced = found
+            coords, reproduced, rewalk = found
+            if rewalk.climb is not None:
+                route = {**route, "climb": [round(rewalk.climb[0]), round(rewalk.climb[1])]}
         else:
             coords = [[round(end[0], 6), round(end[1], 6)] for end in route["ends"]]
 
@@ -332,9 +350,17 @@ def main() -> dict | None:
         )
 
     cache = load_cache()
-    if not cache:
-        raise SystemExit("No fetch cache to build from - run fetch_hikefinder.py first")
     routes = load_routes()
+    if not cache or not routes:
+        # NOT a failure, for the same reason as route_hikefinder.py's own
+        # guard (#1462): a publish whose hike fetch could not reach the export
+        # ships no hikes and keeps everything else. Saying which of the two is
+        # missing matters, because "the fetch did not land" and "the route
+        # pass wrote nothing" are different things to go and look at.
+        missing = "No fetch cache" if not cache else "No routes artifact"
+        print(f"{missing}, so nothing is published.", file=sys.stderr)
+        print("Run fetch_hikefinder.py and route_hikefinder.py to build one.", file=sys.stderr)
+        return None
 
     starts = [(hike["start"]["lon"], hike["start"]["lat"]) for hike in cache.values() if hike.get("start")]
     graph = load_graph(PROCESSED_DIR, starts)

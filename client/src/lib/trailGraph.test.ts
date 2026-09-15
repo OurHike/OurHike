@@ -276,6 +276,89 @@ describe('legs, which is what the hiker reads', () => {
   })
 })
 
+describe('what makes two pieces of tread one trail (#1433)', () => {
+  // `trail_id` is `f"{key}:{feature_id}"` - one per source FEATURE, never one
+  // per trail - so this fixture is ONE trail its publisher happened to draw as
+  // two lines. Grouping on the id ended a leg at that seam, and the route
+  // order printed two rows a reader could not tell apart.
+  const SPLIT: TrailGraph = {
+    nodes: GRAPH.nodes,
+    edges: GRAPH.edges.map((edge, at) =>
+      at === 1 ? { ...edge, trail_id: 'oprhp_trails:2' } : edge,
+    ),
+  }
+
+  it('is the name, the blaze and the organization - not the publisher’s line', () => {
+    expect(sameTrail(SPLIT.edges[0], SPLIT.edges[1])).toBe(true)
+  })
+
+  it('still ends a leg where the name changes', () => {
+    expect(sameTrail(GRAPH.edges[0], GRAPH.edges[2])).toBe(false)
+  })
+
+  it('still ends a leg where the blaze changes, on one name', () => {
+    // The maintainer's rule is name OR blaze: a trail re-blazed under the same
+    // name is a different thing to follow, and the row has to say so.
+    expect(sameTrail(SPLIT.edges[0], { ...SPLIT.edges[1], blaze_color: 'red' })).toBe(
+      false,
+    )
+  })
+
+  it('ends a leg where the steward changes, so neither loses its credit', () => {
+    // No row prints the organization, so this one is not about what a hiker
+    // reads: `tallyBySource` counts stewards one per leg (#1115), and a leg
+    // folding two organizations' ground together would drop one of them from
+    // the tally printed beside the list.
+    expect(sameTrail(SPLIT.edges[0], { ...SPLIT.edges[1], source: 'nynjtc' })).toBe(false)
+  })
+
+  it('keeps two unnamed pieces apart rather than merging what nobody named', () => {
+    const one = { ...GRAPH.edges[0], name: null, trail_id: 'oprhp_trails:7' }
+    const two = { ...GRAPH.edges[1], name: null, trail_id: 'oprhp_trails:8' }
+
+    expect(sameTrail(one, two)).toBe(false)
+  })
+
+  it('reads a blank name as no name at all', () => {
+    // Not a nicety: 12,510 edges on the 2026-09-15 graph carry a name that is
+    // only whitespace, almost all of them nh_granit_trails' - 10,352 distinct
+    // trail ids between them. Treating ' ' as a name would merge every
+    // adjacent pair of those per blaze, which is the collapse the null case
+    // below refuses, done to the pieces least able to survive it.
+    const one = { ...GRAPH.edges[0], name: ' ', trail_id: 'nh_granit_trails:7' }
+    const two = { ...GRAPH.edges[1], name: ' ', trail_id: 'nh_granit_trails:8' }
+
+    expect(sameTrail(one, two)).toBe(false)
+  })
+
+  it('keeps ONE unnamed published line together across a junction', () => {
+    // The conservative fallback still has to hold the case the id really does
+    // settle: one drawn line, cut in two where another trail meets it.
+    const one = { ...GRAPH.edges[0], name: null }
+    const two = { ...GRAPH.edges[1], name: null }
+
+    expect(sameTrail(one, two)).toBe(true)
+  })
+
+  it('lists the trail once, not once per line it was drawn as', () => {
+    const legs = legsFromEdges(SPLIT, [0, 1])
+
+    expect(legs).toHaveLength(1)
+    expect(legs[0].name).toBe('Pine Meadow Trail')
+    expect(legs[0].miles).toBeCloseTo(metresToMiles(1672), 4)
+  })
+
+  it('counts the legs a hiker can see, so the org tally agrees with the list', () => {
+    // chrome/DayHikePickBar.tsx prints `N legs` and one `org · N legs` row off
+    // this tally, beside the route order on the same screen.
+    const split = buildGraphIndex(published(SPLIT))
+    const route = routeBetween(split, pointOn(0, 0), pointOn(1, 1))
+
+    expect(route?.legs).toHaveLength(1)
+    expect(route?.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 1 }])
+  })
+})
+
 describe('walking through several taps', () => {
   it('routes each pair in order and sums them', () => {
     const route = routeThrough(index, [pointOn(0, 0), pointOn(1, 1), pointOn(2, 1)])

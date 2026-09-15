@@ -29,6 +29,16 @@
 // segment has two turns in it, and the header's "leg 2 of 3" and this list
 // cannot disagree about where Pine Meadow becomes Seven Hills.
 //
+// WHICH IS WHY #1433 REACHED THIS FILE WITHOUT EDITING IT. That predicate used
+// to compare `trail_id`, which is one id per SOURCE FEATURE rather than one per
+// trail, so a publisher's line ending mid-trail was a leg boundary and
+// therefore a turn: a card at a degree-2 node - no fork, no other arm, the
+// same name and the same blaze on both sides of it - telling a hiker to turn
+// onto the trail they were already walking. It is grouped on the name, the
+// blaze and the organization now, so those stop being turns. Turns nobody can
+// act on are what a hiker learns to ignore the card for, which is the
+// cry-wolf failure HIKER_SAFETY.md's posture is about.
+//
 // WHAT IS NOT HERE, AND WHY
 //
 // Frame `D10` also writes "The next blaze is about 80 ft along, on the left."

@@ -243,30 +243,98 @@ export function metresToMiles(metres: number): number {
   return metres / METRES_PER_MILE
 }
 
-/** The two fields that decide whether two pieces of tread are one trail. */
+/** The fields that decide whether two pieces of tread are one trail. */
 export interface TrailIdentity {
   trail_id: string | null
   name: string | null
+  blaze_color: string | null
+  source: string | null
 }
 
 /**
  * Whether two pieces of tread belong to the same trail.
  *
- * Extracted rather than written out a fourth time, because FOUR things read
- * this rule and one of them is new: where a leg ends ({@link legsFromEdges},
- * `legsFromWalk`, {@link routeThrough}'s merge across a join) and where a TURN
- * happens (lib/dayHikeTurns.ts). A turn list that disagreed with the leg list
+ * Extracted rather than written out five times over, because FIVE things read
+ * this rule: where a leg ends ({@link legsFromEdges}, `legsFromWalk`,
+ * {@link routeThrough}'s merge across a join), where a TURN happens
+ * (lib/dayHikeTurns.ts), which leg a hiker is on (lib/dayHikeFollow.ts's
+ * "leg 2 of 3") and whether a designation hop is worth re-picking
+ * ({@link holdDesignation}). A turn list that disagreed with the leg list
  * about where Pine Meadow becomes Seven Hills would print "leg 2 of 3" over a
  * card naming the wrong trail - one predicate makes them agree by
- * construction rather than by three call sites staying in step.
+ * construction rather than by five call sites staying in step.
  *
- * BOTH fields, and `trail_id` alone will not do: the artifact carries a null
- * id for every piece no source numbered, and comparing ids alone would
- * collapse all of those into one leg spanning four trails. Comparing NAMES
- * alone has the mirror fault where two sources both publish "Blue Trail".
+ * A NAMED PIECE IS COMPARED ON WHAT A HIKER CAN READ - the name, the blaze
+ * and the organization - AND NOT ON `trail_id`.
+ *
+ * `trail_id` is not a trail's id. `export_trails.build_trail_records` writes
+ * `f"{key}:{feature_id}"`, one per source FEATURE, so a publisher that draws
+ * one trail as five lines gives that trail five of them. Comparing ids ends a
+ * leg wherever the publisher happened to end a line, which is how the route
+ * order came to print three rows a reader could not tell apart on one walk
+ * down Pine Meadow (#1433 - the maintainer's rule is that the path carries no
+ * duplicate consecutive row where neither the name nor the blaze changed).
+ *
+ * The rule is not a new one. {@link askableIdentity} settled the same question
+ * for "which trail did you mean" against the published network: grouping on
+ * `trail_id` made 68.5% of sampled Harriman points ambiguous
+ * (data.ourhike.org, 2026-08-27), and grouping on name + blaze + organization
+ * is what features/HIKE_PLANNING.md measures against instead. Two readers of
+ * one question, now one answer.
+ *
+ * HOW MUCH OF THE NETWORK THIS MOVES, measured over `trail_graph.json` as
+ * data.ourhike.org served it on 2026-09-15 (manifest
+ * fed93aac-b45c-492c-9df2-fc668ac35010, release 2026-09-14, sha256
+ * 222306f1eac1ad8c7372d466f0ccba6a107613b5a68fe18a2122e22af4d299ee; 400,800
+ * nodes, 631,915 edges). Of the 1,274,337 places two edges meet end to end,
+ * **103,885 (8.2%) are one trail under this rule and two under the old one**,
+ * and **29,869 of those sit at a node with no other arm at all** - a
+ * publisher's line ending mid-trail, where the old rule both started a new row
+ * and had lib/dayHikeTurns.ts print a turn onto the trail the hiker was
+ * already walking. **13,113 of the network's 51,166 named trails (25.6%) are
+ * drawn as more than one line.**
+ *
+ * THE ORGANIZATION IS IN THE RULE, though no row prints it, for two reasons.
+ * {@link tallyBySource} counts stewards one per leg, so a leg folding two
+ * organizations' ground together would drop one of them - the
+ * silently-dropped steward #1115 exists to prevent. And
+ * {@link holdDesignation} reads this predicate to decide whether a walk has
+ * hopped designation and should be re-picked onto a twin; a rule blind to the
+ * organization would call that hop "the same trail" and leave the walk
+ * alternating between two publishers' tracings of one piece of ground.
+ *
+ * The cost is that one name and one blaze carried end to end by two
+ * organizations still reads as two legs, and on the same artifact that is
+ * 105,489 of those joins. It is not the spread across the network it looks
+ * like: **105,011 of them (99.5%) are `nj_statewide_trails` meeting
+ * `njdep_park_trails`**, two datasets covering the same New Jersey ground
+ * rather than one trail changing hands. So what remains is mostly duplicate
+ * coverage, which is `holdDesignation`'s problem rather than this predicate's.
+ *
+ * AN UNNAMED PIECE KEEPS THE ID RULE, the conservative direction and the one
+ * `askableIdentity` also takes: two unnamed trails stay two trails rather than
+ * collapsing into one answer that would be wrong about at least one of them.
+ * Comparing NAMES alone would have that fault everywhere, since the artifact
+ * carries no name at all for one edge in twenty-seven.
+ *
+ * AND A BLANK NAME IS NO NAME, which is a fact about the artifact rather than
+ * a nicety. On the same 2026-09-15 graph, 10,967 edges (1.74%) carry `null`
+ * and a further 12,510 (1.98%) carry a name that is only whitespace - almost
+ * all of them `nh_granit_trails`, whose blank-named lines are 10,352 distinct
+ * trail ids. Treating `" "` as a name would merge those into one leg per
+ * blaze per organization, which is the collapse the paragraph above refuses,
+ * done to the pieces least able to survive it.
  */
 export function sameTrail(a: TrailIdentity, b: TrailIdentity): boolean {
-  return a.trail_id === b.trail_id && a.name === b.name
+  if (!isNamed(a.name) || !isNamed(b.name)) {
+    return a.trail_id === b.trail_id && a.name === b.name
+  }
+  return a.name === b.name && a.blaze_color === b.blaze_color && a.source === b.source
+}
+
+/** Whether a source gave this piece of tread a name a hiker could read. */
+function isNamed(name: string | null): boolean {
+  return name !== null && name.trim() !== ''
 }
 
 /**
@@ -878,16 +946,22 @@ function snapCandidates(
  * What makes two pieces of tread the SAME ANSWER to "which trail did you
  * mean" - which is not the same question {@link sameTrail} answers.
  *
- * `sameTrail` compares `trail_id` and `name`, and it is right to: it decides
- * where one LEG ends and the next begins, and a leg is a run of one published
- * line. But a publisher routinely splits one trail into many lines with
- * different ids, and asking a hiker to choose between four candidates all
- * labelled "Pine Meadow Trail" is a question about the artifact rather than
- * about the ground. Measured on the published network (data.ourhike.org,
- * 2026-08-27): grouping on `trail_id` made 68.5% of sampled Harriman points
- * ambiguous; grouping on what a hiker can read - the name, the blaze and the
- * organization - is what the figure recorded in features/HIKE_PLANNING.md
- * measures instead.
+ * A publisher routinely splits one trail into many lines with different ids,
+ * and asking a hiker to choose between four candidates all labelled "Pine
+ * Meadow Trail" is a question about the artifact rather than about the ground.
+ * Measured on the published network (data.ourhike.org, 2026-08-27): grouping
+ * on `trail_id` made 68.5% of sampled Harriman points ambiguous; grouping on
+ * what a hiker can read - the name, the blaze and the organization - is what
+ * the figure recorded in features/HIKE_PLANNING.md measures instead.
+ *
+ * THAT MEASUREMENT NOW ANSWERS BOTH QUESTIONS. This docstring used to open
+ * "`sameTrail` compares `trail_id` and `name`, and it is right to: a leg is a
+ * run of one published line" - and #1433 was the bill for that sentence, a
+ * route order printing one trail as three rows nobody could tell apart. A leg
+ * groups on the same name + blaze + organization this does. What still differs
+ * is the UNNAMED fallback below: `sameTrail` keeps two unnamed pieces of ONE
+ * published line together, because there the id really does say they are one
+ * line; here every unnamed piece stays its own candidate.
  *
  * An UNNAMED piece falls back to its own edge, which is the conservative
  * direction: two unnamed trails stay two candidates rather than collapsing

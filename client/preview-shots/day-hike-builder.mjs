@@ -129,6 +129,22 @@
 // so what this frame is evidence for is the map having three quarters of the
 // screen with the panel and the bar both still legible and the way on still
 // pinned where a thumb reaches it.
+// RE-PHOTOGRAPHED FOR THE ROUTE ORDER ITSELF (2026-09-15, #1433). What the
+// rows in this frame say has changed, and nothing about the layout has. A leg
+// used to end where the publisher's line ended - `trail_id` is one id per
+// source FEATURE - so one trail drawn as three lines printed three rows all
+// reading the same name and the same blaze, each holding a third of the
+// miles. Legs group on the name, the blaze and the organization now, so the
+// list in this frame carries no consecutive pair a reader cannot tell apart,
+// and the "N legs" in the panel's summary and in the bar below it counts the
+// rows the hiker can actually see.
+//
+// The frame is evidence for the rows and NOT for the defect: whether the walk
+// this drive happens to build crosses a seam between two of one publisher's
+// lines is not something a ring of taps in Harriman can promise. What pins
+// the behaviour is lib/trailGraph.test.ts and lib/dayHikeRows.test.ts, both
+// red on the old predicate. What this shot answers is the question a unit
+// test cannot: that the list still reads as a walk.
 export const caption =
   'Step 2 — the day-hike builder with a walk in it: the rail, the route order, a stop row, the shape control and the foot (#1194, #1212, #1373 frame 4a)'
 export const alt =

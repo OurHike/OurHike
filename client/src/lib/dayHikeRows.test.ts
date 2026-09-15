@@ -21,8 +21,13 @@ import { describe, expect, it } from 'vitest'
 
 import { routeRows, turnCount, turnMarks } from './dayHikeRows'
 import type { DayHikeStop } from './dayHikeStops'
-import type { DayHikeDraft } from './dayHikeDraft'
-import type { GraphPoint, RouteLeg } from './trailGraph'
+import { draftStatus, tapAt, EMPTY_DRAFT, type DayHikeDraft } from './dayHikeDraft'
+import {
+  buildGraphIndex,
+  type GraphPoint,
+  type RouteLeg,
+  type TrailGraph,
+} from './trailGraph'
 
 function leg(name: string, miles: number, blaze: string | null = 'blue'): RouteLeg {
   return {
@@ -195,6 +200,88 @@ describe('the gap rows', () => {
     // The default, and the shape every caller had before gaps were threaded
     // through at all.
     expect(routeRows([leg('A', 1)], []).map((row) => row.kind)).toEqual(['leg'])
+  })
+})
+
+describe('no two rows a reader cannot tell apart (#1433)', () => {
+  // The maintainer's rule: the path carries no duplicate consecutive row where
+  // neither the trail name nor the blaze changed.
+  //
+  // What produced them: `trail_id` is `f"{key}:{feature_id}"` - one per source
+  // FEATURE - so the trail below is ONE trail its publisher drew as two lines,
+  // and a leg used to end at the seam. The route order printed "Pine Meadow
+  // Trail, blue" twice for one walk down one trail, each row holding half the
+  // miles. The grouping rule now lives in `sameTrail`; this walks the whole
+  // builder to prove the rows a hiker actually reads come out of it right.
+  const SPLIT: TrailGraph = {
+    nodes: [
+      [-74.1, 41.25],
+      [-74.09, 41.25],
+      [-74.08, 41.25],
+    ],
+    edges: [
+      {
+        from: 0,
+        to: 1,
+        length_m: 836,
+        trail_id: 'oprhp_trails:1',
+        source: 'oprhp_trails',
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+        geometry: [
+          [-74.1, 41.25],
+          [-74.09, 41.25],
+        ],
+      },
+      {
+        // The next line the publisher drew of the same trail.
+        from: 1,
+        to: 2,
+        length_m: 836,
+        trail_id: 'oprhp_trails:2',
+        source: 'oprhp_trails',
+        name: 'Pine Meadow Trail',
+        blaze_color: 'blue',
+        geometry: [
+          [-74.09, 41.25],
+          [-74.08, 41.25],
+        ],
+      },
+    ],
+  }
+
+  /** The whole trail, tapped end to end - two taps, two published lines. */
+  function theWholeTrail() {
+    const index = buildGraphIndex(SPLIT)
+    const draft = tapAt(index, tapAt(index, EMPTY_DRAFT, { lon: -74.1, lat: 41.25 }), {
+      lon: -74.08,
+      lat: 41.25,
+    })
+    const status = draftStatus(index, draft)
+    if (status.kind !== 'routed') throw new Error('fixture should route')
+    return status
+  }
+
+  it('lists the trail once, with the whole walk on it', () => {
+    const status = theWholeTrail()
+    const rows = routeRows(status.legs, [], status.gaps)
+    const legs = rows.filter((row) => row.kind === 'leg')
+
+    expect(legs).toHaveLength(1)
+    expect(legs[0].name).toBe('Pine Meadow Trail')
+    // And the row carries both lines' miles. One row holding half the walk
+    // would be a quieter version of the same defect.
+    expect(legs[0].fromMile).toBe(0)
+    expect(legs[0].miles).toBeCloseTo(status.miles, 6)
+  })
+
+  it('agrees with the leg count printed beside it', () => {
+    // chrome/DayHikePanel.tsx's summary and chrome/DayHikePickBar.tsx's `N
+    // legs · org · N legs` read this same list, on screen with the rows.
+    const status = theWholeTrail()
+
+    expect(status.legs).toHaveLength(1)
+    expect(status.legsBySource).toEqual([{ source: 'oprhp_trails', legs: 1 }])
   })
 })
 

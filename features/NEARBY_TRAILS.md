@@ -591,6 +591,65 @@ question. **That count is the real follow-up**, and it is worth being explicit t
 zero above does not stand in for it: this layer contributing no water is a fact about
 OPRHP's inventory, not a fact about how much water Harriman has.
 
+### The ring got a second exception, and this one is about ground rather than type
+
+**A city park is not a corridor, and the ring asks a corridor's question**
+([#1493](https://github.com/OurHike/OurHike/issues/1493)). "How far is this from a published
+line" is the right test along 2,190 miles of trail and the wrong one inside a park, where the
+park *is* the destination and the path through it is incidental.
+
+Measured 2026-09-15 against the UA release the day [#1474](https://github.com/OurHike/OurHike/issues/1474)
+published, with the 500 ft ring rebuilt in EPSG:5070 from the 698 published lines around
+Central Park — the reconstruction reproduces the published clip exactly, so these are the real
+gate rather than an estimate of it:
+
+| Central Park                 | source | published |
+| ---------------------------- | -----: | --------: |
+| NYC Parks drinking fountains |    180 |    **31** |
+| NYC public restrooms         |     41 |     **8** |
+
+**182 of 221 — 82% — and Central Park is the favourable case**, because NYC Parks actually
+mapped its paths. The losses fall on the Great Lawn, the Reservoir's outer edge, and
+playgrounds set back from a drive.
+
+**So a POI source may name a boundary layer** in `boundary_source`, and a point inside one of
+that layer's polygons is kept however far it sits from a line. This is the structure #1311
+already built — `keep_within_corridor` asks *"inside the polygon OR within `NETWORK_BUFFER_FEET`
+of a line"* — given a second kind of polygon rather than a new concept. NYC Parks Properties
+(`enfh-gkve`, 2,059 boundaries) is the first, and it carries `gispropnum`, the same property
+number the fountains already do.
+
+**It is an `OR`, never a replacement**: 34 fountains ship today from *outside* every boundary,
+near a line and off a property, and a rule that only asked the boundary question would drop
+them.
+
+| what the boundary admits  |   raw | ships today | inside a boundary |
+| ------------------------- | ----: | ----------: | ----------------: |
+| fountains                 | 3,195 |         982 |  **3,114 (97.5%)** |
+| restrooms                 |   975 |         249 |    **717 (73.5%)** |
+
+**Those two figures do different work, and saying so is the point.** For restrooms the boundary
+genuinely discriminates — it drops 258 libraries, privately owned public spaces and transit
+entries. For fountains it is close to a blanket exemption, because NYC Parks' fountains are in
+NYC parks. Calling that anything other than what it is would be dressing it up.
+
+**What this costs on screen, recorded rather than resolved.** Measured with
+`spike_oprhp_poi_density.py`'s own method over the published artifact, filtered to
+`DEFAULT_SHOWN_TYPES`:
+
+| worst z12 screen, default visibility | pins | where                        |
+| ------------------------------------ | ---: | ---------------------------- |
+| before the NYC POI layers            |   55 | −78.845, 42.003 (Allegany)   |
+| as #1474 published                   |  233 | −74.024, 40.649 (Brooklyn)   |
+| under this rule                      |  656 | −74.009, 40.649 (Brooklyn)   |
+
+The 233-pin window holds 190 fountains and 43 restrooms and nothing else. **The maintainer's
+call of 2026-09-15, with these numbers in front of them, is that this is normal for New York
+City** — §10's ~16-pin target and [#1105](https://github.com/OurHike/OurHike/issues/1105)'s
+"fifty is too many" were both derived for hiking zooms in wilderness, not for a borough with a
+fountain every few blocks. Density travels separately, and POI_SITES.md's co-location
+clustering is the mechanism that would actually answer it.
+
 ## 11. Water on every trail on screen, and what it is measured against
 
 The decisions table promises safety POIs on _every_ trail on screen, and §9 calls that

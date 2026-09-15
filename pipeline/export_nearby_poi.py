@@ -114,7 +114,13 @@ from pathlib import Path
 import duckdb
 
 from lib.completeness import count_problems, fail_if_incomplete
-from lib.corridor import NETWORK_BUFFER_FEET, load_network_lines, near_network_sql
+from lib.corridor import (
+    NETWORK_BUFFER_FEET,
+    inside_boundary_sql,
+    load_boundary_polygons,
+    load_network_lines,
+    near_network_sql,
+)
 from lib.hashing import sha256_file
 from lib.manifest_paths import to_manifest_path
 from lib.nynjtc_long_path_guide import LINE_SOURCE_KEY as GUIDE_LINE_KEY
@@ -366,6 +372,27 @@ def poi_sources(registry: dict) -> list[dict]:
     ]
 
 
+def boundary_paths_for(sources: list[dict]) -> dict[str, Path]:
+    """`{POI source key: the park-boundary layer it names}` (#1493).
+
+    A source opts in by naming a registered layer in `boundary_source`; the
+    path is where `fetch_external_layers.py` puts that layer, the same
+    `RAW_DIR / f"{key}.geojson"` every other external read here uses.
+
+    NOT VALIDATED AGAINST THE REGISTRY ON PURPOSE, and this is the direction
+    rather than an omission: a `boundary_source` naming a layer nobody
+    registered yields a path that does not exist, `clip_to_network` loads no
+    polygons for it, and the ring alone decides - which is the clip this file
+    had before #1493. A typo therefore costs coverage and cannot invent it.
+    `confidence_floor` raises on a value it does not recognise for the opposite
+    reason: getting that wrong ships a confident claim, where getting this
+    wrong ships fewer pins.
+    """
+    return {
+        source["key"]: RAW_DIR / f"{source['boundary_source']}.geojson" for source in sources if source.get("boundary_source")
+    }
+
+
 def public_verdict(source: dict, properties: dict) -> tuple[bool, str]:
     """Whether this row ships, and at what confidence, per its org's own flag.
 
@@ -606,7 +633,11 @@ def build_records(source: dict, features: list[dict]) -> tuple[list[dict], dict]
     }
 
 
-def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict], dict]:
+def clip_to_network(
+    records: list[dict],
+    network_path: Path,
+    boundary_paths: dict[str, Path] | None = None,
+) -> tuple[list[dict], dict]:
     """Drop amenity waypoints further than NETWORK_BUFFER_FEET from a published line.
 
     THE COLLISION THIS CLOSES (#1113). features/NEARBY_TRAILS.md's decisions
@@ -644,6 +675,21 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
     survive because they genuinely are trail-adjacent. #1105's "fifty is too
     many" is still open for that screen and this does not answer it.
 
+    A BOUNDARY IS THE SECOND WAY IN (#1493), and it is an OR rather than a
+    replacement. `boundary_paths` maps a POI source key to the park-boundary
+    layer its registry entry names in `boundary_source`; a candidate inside one
+    of those boundaries is kept however far it sits from a line. The ring asks
+    how far this point is from a path, which is the right question on a
+    corridor and the wrong one in a city - in a park the PARK is the
+    destination and the path through it is incidental. Measured 2026-09-15
+    against the UA release: the ring admits 982 of 3,195 NYC fountains and 249
+    of 975 restrooms, and in Central Park alone 182 of 221 points do not ship.
+
+    KEPT AS AN OR BECAUSE REPLACING IT WOULD LOSE 34 FOUNTAINS that ship today
+    from outside any boundary - near a line, outside a property. A rule that
+    only asked the boundary question would drop them, which is the direction
+    this whole function is built not to go.
+
     NOT CLIPPING IS THE FAILURE DIRECTION. A missing or empty network artifact
     returns every record untouched with `ran: False` rather than dropping
     everything - an empty artifact is an ordinary state (the licence gate
@@ -651,6 +697,7 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
     already gives it), and reading "no lines to measure against" as "nothing is
     near a line" would empty the map on a state that is not an error.
     """
+    boundary_paths = boundary_paths or {}
     stats = {
         "ran": False,
         "ring_feet": NETWORK_BUFFER_FEET,
@@ -658,6 +705,7 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
         "kept": len(records),
         "dropped": 0,
         "dropped_by_source_type": {},
+        "boundary_kept": {},
     }
     if not records:
         return records, stats
@@ -682,6 +730,33 @@ def clip_to_network(records: list[dict], network_path: Path) -> tuple[list[dict]
     )
 
     inside = {row[0] for row in con.execute(near_network_sql("candidate", "idx", "lon", "lat")).fetchall()}
+
+    # Then the boundaries, one layer at a time. Only the candidates the ring
+    # ALREADY REJECTED are asked, so the cost is proportional to what the ring
+    # dropped rather than to the layer, and a source whose boundary file is
+    # missing simply admits nobody - the same direction an absent network
+    # takes above.
+    # `boundary_paths` is keyed by POI SOURCE, so several sources may name one
+    # layer; group by the layer so its polygons are loaded once.
+    by_layer: dict[Path, set[str]] = {}
+    for source_key, path in boundary_paths.items():
+        by_layer.setdefault(path, set()).add(source_key)
+
+    for boundary_path, source_keys in sorted(by_layer.items()):
+        outstanding = [(at, r) for at, r in candidates if at not in inside and r["source"] in source_keys]
+        if not outstanding:
+            continue
+        if not load_boundary_polygons(con, boundary_path if boundary_path.exists() else None):
+            continue
+        con.execute("CREATE OR REPLACE TABLE boundary_candidate (idx INTEGER, lon DOUBLE, lat DOUBLE)")
+        con.executemany(
+            "INSERT INTO boundary_candidate VALUES (?, ?, ?)",
+            [(at, r["lon"], r["lat"]) for at, r in outstanding],
+        )
+        admitted = {row[0] for row in con.execute(inside_boundary_sql("boundary_candidate", "idx", "lon", "lat")).fetchall()}
+        if admitted:
+            stats["boundary_kept"][boundary_path.stem] = len(admitted)
+        inside |= admitted
 
     dropped_by: dict[str, int] = {}
     kept: list[dict] = []
@@ -886,13 +961,19 @@ def main() -> dict:
     # primitive tent sites), so clipping first would let a deliberate,
     # measured drop fail the run wearing a fetch failure's name.
     before = len(all_records)
-    all_records, ring = clip_to_network(all_records, OUT_DIR / NETWORK_ARTIFACT_NAME)
+    all_records, ring = clip_to_network(
+        all_records,
+        OUT_DIR / NETWORK_ARTIFACT_NAME,
+        boundary_paths_for(sources),
+    )
     if ring["ran"]:
         print(
             f"\n  ring: {ring['dropped']:,} of {before:,} dropped further than "
             f"{ring['ring_feet']} ft from a published line "
             f"({', '.join(ring['exempt_types'])} exempt - see NETWORK_RING_EXEMPT_TYPES)"
         )
+        for layer, admitted in sorted(ring.get("boundary_kept", {}).items()):
+            print(f"      {admitted:,} kept by {layer} that the ring alone would have dropped")
         for key, count in list(ring["dropped_by_source_type"].items())[:8]:
             print(f"      dropped {count:>6,}  {key}")
     else:

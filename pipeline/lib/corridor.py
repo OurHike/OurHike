@@ -127,6 +127,14 @@ def count_features(con: duckdb.DuckDBPyConnection, path: Path) -> int:
 NETWORK_TABLE = "network_lines"
 NETWORK_INDEX = "network_lines_rtree"
 
+#: Where `load_boundary_polygons` puts an organization's park boundaries, and
+#: the R-tree over them. Deliberately a SECOND table beside NETWORK_TABLE
+#: rather than more rows in it: a line and a boundary answer different
+#: questions - "how far is this from a path" against "is this inside the
+#: property" - and the union of two different questions is not a question.
+BOUNDARY_TABLE = "boundary_polygons"
+BOUNDARY_INDEX = "boundary_polygons_rtree"
+
 
 def load_network_lines(con: duckdb.DuckDBPyConnection, path: Path | None) -> int:
     """Load `path`'s lines into NETWORK_TABLE, projected to metres and
@@ -150,6 +158,59 @@ def load_network_lines(con: duckdb.DuckDBPyConnection, path: Path | None) -> int
     """)
     con.execute(f"CREATE INDEX {NETWORK_INDEX} ON {NETWORK_TABLE} USING RTREE (g)")
     return con.execute(f"SELECT count(*) FROM {NETWORK_TABLE}").fetchone()[0]
+
+
+def load_boundary_polygons(con: duckdb.DuckDBPyConnection, path: Path | None) -> int:
+    """Load `path`'s polygons into BOUNDARY_TABLE, projected to metres and
+    R-tree-indexed, and return how many.
+
+    THE SAME SHAPE AS `load_network_lines` AND FOR THE SAME REASONS: always
+    leaves the table in place so `inside_boundary_sql` can be joined
+    unconditionally, and an absent or empty layer reads as "no boundary
+    contains anything" rather than as a missing table. An org that failed to
+    fetch must never be able to widen a clip by accident, and the direction
+    here is that it cannot widen it at all.
+    """
+    con.execute(f"DROP INDEX IF EXISTS {BOUNDARY_INDEX}")
+    if path is None or not count_features(con, path):
+        con.execute(f"CREATE OR REPLACE TABLE {BOUNDARY_TABLE} (g GEOMETRY)")
+        return 0
+    con.execute(f"""
+        CREATE OR REPLACE TABLE {BOUNDARY_TABLE} AS
+        SELECT ST_Transform(geom, '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true) AS g
+        FROM ST_Read('{path.as_posix()}')
+        WHERE geom IS NOT NULL
+    """)
+    con.execute(f"CREATE INDEX {BOUNDARY_INDEX} ON {BOUNDARY_TABLE} USING RTREE (g)")
+    return con.execute(f"SELECT count(*) FROM {BOUNDARY_TABLE}").fetchone()[0]
+
+
+def inside_boundary_sql(table: str, id_col: str, lon_col: str, lat_col: str) -> str:
+    """One SELECT of `table`'s `id_col` for every row that falls inside a
+    BOUNDARY_TABLE polygon (#1493).
+
+    `ST_Covers` rather than `ST_Contains`, so a point exactly on the boundary
+    line is inside. That is the conservative direction for this question: the
+    rule exists to stop the clip deciding a POI is unreachable, and a fountain
+    surveyed onto the edge of its own park is not the case anybody wants it
+    deciding. GROUP BY so a point inside two overlapping properties - which
+    NYC's 2,059 do have, a playground inside a park - is one row.
+
+    Projected to metres to match BOUNDARY_TABLE, for the same reason
+    `near_network_sql` does: the table is stored projected so the R-tree is
+    over metres, and comparing a degrees point against it would not merely be
+    slow, it would be wrong.
+    """
+    return f"""
+        SELECT t.{id_col} AS id
+        FROM {table} t
+        JOIN {BOUNDARY_TABLE} b
+          ON ST_Covers(
+               b.g,
+               ST_Transform(ST_Point(t.{lon_col}, t.{lat_col}), '{GEOGRAPHIC_CRS}', '{PROJECTED_CRS}', always_xy := true)
+             )
+        GROUP BY t.{id_col}
+    """
 
 
 def build_corridor(

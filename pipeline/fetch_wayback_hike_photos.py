@@ -348,6 +348,55 @@ def recover(made: requests.Session, capture: Capture, raw_dir: Path) -> Recovere
     )
 
 
+def _write_manifest(recovered: list[Recovered], path: Path | None = None) -> None:
+    """The manifest, written whole. Called as the run goes rather than only at
+    the end, so an interruption costs the images since the last checkpoint
+    instead of all of them."""
+    path = path or OUT_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "source": "web.archive.org",
+                "prefix": ARCHIVE_PREFIX,
+                "one_time": True,
+                "photos": [asdict(r) for r in recovered],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def already_recovered(path: Path | None = None) -> dict[str, Recovered]:
+    """What a previous run got, keyed by the URL it came from.
+
+    RESUMING MATTERS HERE MORE THAN IT USUALLY WOULD. This is one job over 403
+    images against a public archive, and the first full run died in a proxy
+    retry at image ~375 - losing every byte because the manifest is only
+    written at the end. A one-time recovery that cannot be resumed is a
+    one-time recovery that gets run four times, which is exactly the cost this
+    was supposed to spend once.
+
+    Keyed on the source URL rather than the digest because the digest is not
+    knowable without downloading the bytes, which is the thing being skipped.
+    """
+    path = path or OUT_PATH
+    if not path.exists():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    found = {}
+    for row in document.get("photos", []):
+        try:
+            found[row["original_url"]] = Recovered(**row)
+        except (TypeError, KeyError):
+            continue  # a manifest this build cannot read costs a re-fetch, never a crash
+    return found
+
+
 def summarise(recovered: list[Recovered]) -> None:
     if not recovered:
         print("\nNothing recovered.")
@@ -391,28 +440,22 @@ def main(limit: int | None, listing_only: bool) -> int:
         return 0
 
     chosen = captures[:limit] if limit else captures
-    print(f"\nFetching {len(chosen)} ...")
-    recovered: list[Recovered] = []
-    for index, capture in enumerate(chosen, 1):
+    done = already_recovered()
+    todo = [c for c in chosen if c.original_url not in done]
+    recovered: list[Recovered] = [done[c.original_url] for c in chosen if c.original_url in done]
+    if recovered:
+        print(f"\n{len(recovered)} already recovered by an earlier run; {len(todo)} to go.")
+    print(f"\nFetching {len(todo)} ...")
+    for index, capture in enumerate(todo, 1):
         got = recover(made, capture, RAW_DIR)
         if got:
             recovered.append(got)
         if index % 25 == 0:
-            print(f"  {index}/{len(chosen)} ... {len(recovered)} recovered")
+            # Written as it goes, so an interrupted run keeps what it got.
+            _write_manifest(recovered)
+            print(f"  {index}/{len(todo)} ... {len(recovered)} recovered")
 
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(
-        json.dumps(
-            {
-                "source": "web.archive.org",
-                "prefix": ARCHIVE_PREFIX,
-                "one_time": True,
-                "photos": [asdict(r) for r in recovered],
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    _write_manifest(recovered)
     summarise(recovered)
     print(f"\n  written to {OUT_PATH}")
     print("  Nothing is matched to a hike yet - match_wayback_hike_photos.py does that,")

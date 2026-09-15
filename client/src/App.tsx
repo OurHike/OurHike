@@ -2577,18 +2577,31 @@ function App() {
   )
 
   /**
-   * Everything downloaded, as ground (#557): every held cell's core bounds
+   * Everything downloaded, as ground (#557): every held cell's covered bounds
    * and each whole-sheet archive's header rectangle. Null - which `coverageAt`
    * reads as unknown - until the store has answered for every package and
    * every header has been read: a phone that has not finished reading its own
    * markers must not be told it is outside a download it may well have.
+   *
+   * COVERED, NOT CORE (#1458), and the asymmetry with every other reader of a
+   * cell is the point: routing asks which cell owns a tile and must use the
+   * square, while this asks whether there is map here and must use what the
+   * cut actually put in. They were the same question only while every cell
+   * was a corridor cell. `at_basemap_cell_n40w074.pmtiles` declares the
+   * square over New York City and its tiles stop at 40.714, so on the core
+   * bounds a phone in Brooklyn was told it was covered and shown blank paper
+   * with no banner - the silence #352 fixed in the other direction.
+   *
+   * A whole-sheet archive already contributes its HEADER rectangle rather
+   * than anything declared, which is the same choice made once before: what
+   * is in the file, not what the file is about.
    */
   const heldFootprints = useMemo<Footprint[] | null>(() => {
     if (!archivesRead) return null
     if (hikingSheetDownloaded && basemapFootprint === null) return null
     if (archiveDownloaded && rasterFootprint === null) return null
     const footprints: Footprint[] = heldCells.map(
-      ({ bounds: [west, south, east, north] }) => ({ west, south, east, north }),
+      ({ covered: [west, south, east, north] }) => ({ west, south, east, north }),
     )
     if (basemapFootprint !== null) footprints.push(basemapFootprint)
     if (rasterFootprint !== null) footprints.push(rasterFootprint)

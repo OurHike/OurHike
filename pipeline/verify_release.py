@@ -1384,6 +1384,25 @@ def check_cell_coverage(base: str, manifest: dict, session=None) -> list[dict]:
         if duplicates:
             problems.append(f"{duplicates} duplicate cell name(s) in the index")
 
+        # `covered` is what the phone narrows its coverage claim onto
+        # (#1458), and it is only safe to narrow onto because the cutter
+        # guarantees it sits inside the square. A published index that broke
+        # that would have the app claim ground outside the cell that owns it
+        # - the margin turned into a promise, which cut_cells.py's index
+        # comment has refused since the family existed. Absent is ordinary:
+        # every index cut before #1458 carries none.
+        overreaching = [
+            entry["name"]
+            for entry in cells
+            if entry.get("covered")
+            and not (
+                entry["bounds"][0] <= entry["covered"][0] <= entry["covered"][2] <= entry["bounds"][2]
+                and entry["bounds"][1] <= entry["covered"][1] <= entry["covered"][3] <= entry["bounds"][3]
+            )
+        ]
+        if overreaching:
+            problems.append(f"{len(overreaching)} cell(s) claim coverage outside their own square: {', '.join(overreaching[:4])}")
+
         if problems:
             reports.append(_report(20, index_key, FAILED, "; ".join(problems)))
         else:

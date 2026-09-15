@@ -277,6 +277,64 @@ Two rules govern what it says, and the first is inherited rather than invented:
   looks like a rendering fault unless it is named. The mock-ups draw it dashed and labelled
   ("edge of what you downloaded") for exactly this reason.
 
+### The sentence above was wrong, and it took a second shape of cell to show it (#1458)
+
+> A cell's bounds are computable from its own identity — that is what a lat/lon grid buys —
+> so "is here covered" is a point-in-set test over the cells on the phone, not a geometry
+> read out of every archive.
+
+**A cell's bounds are computable from its identity. What a cell *covers* is not**, and the
+two were the same number only while every published cell was a corridor cell, where the
+uncovered part really was a margin.
+
+Measured 2026-09-15 against the live production bucket, cell `n40w074` — the one holding
+New York City:
+
+| | |
+| --- | --- |
+| `bounds` in `at_basemap_cells.json` | `[-74, 40, -73, 41]` — the whole square |
+| the archive header's real extent | `-74.1797, 40.7140` → `-73.1250, 41.2448` |
+| tiles | 290, z10–z14, 4,460,971 bytes |
+
+The tiles stop at **40.714** because the source they were cut from is clipped to the A.T.
+corridor, and the corridor clips only the top of that square. Probed point by point: Van
+Cortlandt Park in the Bronx has a z14 tile and is genuinely covered; Central Park has a z12
+tile and no z14, so it draws zoomed out and goes blank at hiking zoom; **Prospect Park,
+Forest Park and the Staten Island Greenbelt have no tile at any zoom.**
+
+On the point-in-set test that sentence describes, a phone holding that cell answered
+`'covered'` in all three places — and `outsideDownload` is true only for `'outside'`, so the
+status strip showed **nothing at all** over the blank paper. The inverse of
+[#352](https://github.com/OurHike/OurHike/issues/352), which this project already shipped
+once in the other direction: there a hiker past the edge of their package was told their
+download was damaged; here a hiker past the edge of their cell was told nothing.
+
+`archiveCoverage.ts` had anticipated the shape of it and accepted it — *"Inside a footprint
+but off the thin band its tiles actually cover, this says nothing — the same silence the app
+kept before cells existed."* That is a fair description of a margin and not of 71% of a cell
+with eight million people living in it.
+
+**What changed.** `cut_cells.py` now publishes `covered` beside `bounds` on every cell: the
+part of the square the cut actually put tiles in, clipped to the square and rounded outward.
+Two understatements, both deliberate — clipped, so the seam margin stays generosity in the
+bytes and never a promise in the metadata; a bounding box, so that *within the square* every
+tile the cell holds is inside it, which is what makes narrowing a claim onto it safe in the
+one direction that matters. `App.tsx`'s `heldFootprints` reads `covered`; everything that
+routes a tile to a cell still reads `bounds`, because routing is a question about the grid.
+`verify_release.py`'s check 20 refuses a published index whose `covered` escapes its square.
+
+**What did not change, and is the residue.** `seamEdges` still draws the dashed boundary at
+the square. Its neighbour test is a lattice walk — a cell's neighbour is the square one cell
+over — and `covered` boxes do not tile, so running it on them would draw a dashed line
+through the middle of continuous coverage. So on a cell carrying less than its square the
+banner now says "outside" while the nearest drawn seam may be miles away. The banner is the
+half that matters; drawing the seam around what is really held needs the outline of a union
+of rectangles, which is a different function and was not attempted here.
+
+**And none of it puts map under New York City.** This is the honest-answer half of #1458.
+The substantive half — giving the basemap build a shape that is not the A.T. corridor alone,
+so the cell holds what it claims — is still open on that issue.
+
 **What stops at a seam, and what does not**, is §8.
 
 ## 8. Does a piece carry its POIs? — the constraint the screens turned up

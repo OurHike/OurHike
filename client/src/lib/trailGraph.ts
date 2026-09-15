@@ -124,9 +124,9 @@ export interface RouteLeg {
   trail_id: string | null
   miles: number
   /**
-   * Other organizations whose designation shares this leg's tread (#1115),
-   * distinct and never containing `source` itself. Omitted - not `[]` - when
-   * there are none, so a leg predating the field round-trips unchanged.
+   * Other organizations whose ground this leg covers, distinct and never
+   * containing `source` itself. Omitted - not `[]` - when there are none, so a
+   * leg predating the field round-trips unchanged.
    *
    * Exists for the credit surfaces. Where the Long Path runs along the High
    * Point Trail, {@link holdDesignation} keeps the leg under one name, and
@@ -135,6 +135,15 @@ export interface RouteLeg {
    * #1115 warns the merge must not produce. Which of the two names the leg
    * WEARS is arbitrary (whichever the walk entered on); who gets credit is
    * not.
+   *
+   * TWO WAYS TO GET IN HERE SINCE #1433, and the field's wording widened to
+   * hold the second. One is the concurrency above - a second designation on
+   * the SAME tread, which is what #1115 was about. The other is a leg that
+   * ran from one steward's ground straight onto another's under one name and
+   * one blaze, which {@link sameTrail} now merges into a single row because a
+   * reader cannot tell the two rows apart. Both are "an organization this leg
+   * owes credit to"; neither is "an organization that would answer for every
+   * metre of it", so nothing may read this as a claim about WHERE.
    */
   concurrent_sources?: string[]
 }
@@ -182,6 +191,20 @@ export interface GraphRoute {
   sections: RouteSection[]
   /** Legs per organization, which frame `1j` tallies while the hiker builds. */
   legsBySource: Array<{ source: string | null; legs: number }>
+  /**
+   * How many legs each TAPPED PAIR contributed, in walking order - so
+   * `[2, 1, 3]` is a three-pair walk whose first pair became two rows.
+   *
+   * It exists because a tap is a leg boundary the squash does not cross (see
+   * {@link routeThrough}), and a surface listing the walk has to know WHICH
+   * boundaries are the hiker's own: the running sum names the leg each of
+   * their points falls after. `lib/dayHikeDraft.ts` turns that into the
+   * placed turns the route order interleaves, exactly as it does for gaps.
+   *
+   * One entry for a route with one pair, which is what `routeBetween`
+   * builds. `legs.length` is always its sum.
+   */
+  legsPerPair: number[]
   /**
    * Ascent and descent over this walk, or null when this phone cannot price it
    * - no elevation artifact fetched, or an edge of the walk that nobody has
@@ -243,30 +266,92 @@ export function metresToMiles(metres: number): number {
   return metres / METRES_PER_MILE
 }
 
-/** The two fields that decide whether two pieces of tread are one trail. */
+/** The fields that decide whether two pieces of tread are one trail. */
 export interface TrailIdentity {
   trail_id: string | null
   name: string | null
+  blaze_color: string | null
 }
 
 /**
- * Whether two pieces of tread belong to the same trail.
+ * Whether two pieces of tread are one trail TO SOMEBODY READING THE ROW.
  *
- * Extracted rather than written out a fourth time, because FOUR things read
- * this rule and one of them is new: where a leg ends ({@link legsFromEdges},
- * `legsFromWalk`, {@link routeThrough}'s merge across a join) and where a TURN
- * happens (lib/dayHikeTurns.ts). A turn list that disagreed with the leg list
- * about where Pine Meadow becomes Seven Hills would print "leg 2 of 3" over a
- * card naming the wrong trail - one predicate makes them agree by
- * construction rather than by three call sites staying in step.
+ * The name and the blaze, and nothing else, because the name and the blaze are
+ * what a row prints. The maintainer's rule (2026-09-15, #1433): the path
+ * carries no duplicate consecutive row where neither the trail name nor the
+ * blaze has changed. Two rows a reader cannot tell apart are one row, and this
+ * is that sentence as a predicate.
  *
- * BOTH fields, and `trail_id` alone will not do: the artifact carries a null
- * id for every piece no source numbered, and comparing ids alone would
- * collapse all of those into one leg spanning four trails. Comparing NAMES
- * alone has the mirror fault where two sources both publish "Blue Trail".
+ * `trail_id` IS NOT A TRAIL'S ID, which is why it is not here.
+ * `export_trails.build_trail_records` writes `f"{key}:{feature_id}"`, one per
+ * source FEATURE, so a publisher that draws one trail as five lines gives that
+ * trail five of them - and a leg keyed on it ended wherever a publisher's line
+ * ended. {@link askableIdentity} reached the same conclusion for "which trail
+ * did you mean" against the published network: grouping on `trail_id` made
+ * 68.5% of sampled Harriman points ambiguous (data.ourhike.org, 2026-08-27).
+ *
+ * MEASURED OVER `trail_graph.json` as data.ourhike.org served it 2026-09-15
+ * (manifest fed93aac-b45c-492c-9df2-fc668ac35010, release 2026-09-14, sha256
+ * 222306f1eac1ad8c7372d466f0ccba6a107613b5a68fe18a2122e22af4d299ee; 400,800
+ * nodes, 631,915 edges). Of the 1,274,337 places two edges meet end to end,
+ * **222,965 (17.5%) are one trail under this rule and two under the old one**,
+ * and 30,290 of those sit at a node with no other arm at all. 13,085 of the
+ * network's 50,494 named trails (25.9%) are drawn as more than one line; the
+ * A.T. itself is **461 lines over 2,151.7 miles**.
+ *
+ * THE ORGANIZATION IS NOT HERE EITHER, and that was a decision rather than an
+ * omission. An earlier cut of #1433 kept it, so that one name and one blaze
+ * carried end to end by two organizations still read as two rows; the
+ * maintainer's answer (2026-09-15) was that both such cases should merge,
+ * because no row prints the organization and a reader cannot tell the two
+ * apart. What that costs is credit, and credit is paid rather than dropped:
+ * every merge folds the organization it merged away into the leg's
+ * {@link RouteLeg.concurrent_sources}, which {@link tallyBySource} and
+ * `lib/dayHikes.ts`'s `distinctLegSources` already count - the
+ * silently-dropped steward #1115 exists to prevent.
+ *
+ * A BLANK NAME AND NO NAME ARE THE SAME THING, compared trimmed. On the same
+ * artifact: `null` for 10,967 edges (1.74%), whitespace for a further 12,510
+ * (1.98%), and 650 real names padded with a stray space - 12 joins are one
+ * trail split by nothing but that padding. A reader sees no difference between
+ * any of them, so neither does this.
+ *
+ * WHAT THIS PREDICATE IS NOT FOR. Three readers ask a different question and
+ * take {@link samePublishedLine} instead: lib/dayHikeTurns.ts (where must a
+ * hiker DECIDE), {@link holdDesignation} (has the router hopped between two
+ * publishers' tracings of one path) and `concurrentSourcesOf` (whose
+ * designation shares this tread). On the same artifact, 192,675 of the joins
+ * this rule calls one trail sit at a node with a third arm on it - a real fork
+ * - so a turn list following THIS predicate would go silent at every one of
+ * them. Being lost is the first of CLAUDE.md's four ways, and one predicate
+ * serving two questions was the price of that.
  */
 export function sameTrail(a: TrailIdentity, b: TrailIdentity): boolean {
+  return trailName(a.name) === trailName(b.name) && a.blaze_color === b.blaze_color
+}
+
+/**
+ * Whether two pieces of tread are the same PUBLISHED LINE.
+ *
+ * `sameTrail` until #1433, and still the right question for the three readers
+ * named above: it is about the artifact - one source feature, one id - rather
+ * than about what a hiker reads. A turn card at a fork where both arms are
+ * "Pine Meadow Trail, blue" is exactly the card a hiker needs; a row printing
+ * that trail twice is the one they do not.
+ */
+export function samePublishedLine(a: TrailIdentity, b: TrailIdentity): boolean {
   return a.trail_id === b.trail_id && a.name === b.name
+}
+
+/**
+ * A name as a reader sees it: absent, blank and padded are one thing.
+ *
+ * Exported because {@link sameTrail} is not the only place that rule has to
+ * hold - lib/dayHikeCard.ts keys the ways off on it too - and a rule with two
+ * spellings is a rule that will be changed in one of them.
+ */
+export function trailName(name: string | null): string {
+  return (name ?? '').trim()
 }
 
 /**
@@ -415,9 +500,9 @@ export function holdDesignation(index: TrailGraphIndex, edgeIndices: number[]): 
   const out = edgeIndices.slice()
   for (let at = 1; at + 1 < out.length; at += 1) {
     const previous = index.graph.edges[out[at - 1]]
-    if (sameTrail(previous, index.graph.edges[out[at]])) continue
+    if (samePublishedLine(previous, index.graph.edges[out[at]])) continue
     for (const candidate of parallelsOf(index, out[at])) {
-      if (!sameTrail(previous, index.graph.edges[candidate])) continue
+      if (!samePublishedLine(previous, index.graph.edges[candidate])) continue
       if (!sameTread(index.graph, out[at], candidate)) continue
       out[at] = candidate
       break
@@ -437,7 +522,16 @@ function concurrentSourcesOf(index: TrailGraphIndex, edgeIndex: number): string[
   for (const candidate of parallelsOf(index, edgeIndex)) {
     const other = index.graph.edges[candidate]
     if (other.source === null || other.source === edge.source) continue
-    if (sameTrail(edge, other)) continue
+    // A DIFFERING SOURCE USUALLY IMPLIES A DIFFERING ID, because
+    // `export_trails.build_trail_records` prefixes every id with the source
+    // key - so this guard is normally unreachable and is kept for the case
+    // that is not: `build_trail_graph.py` writes `properties.get("id")`, which
+    // is null for a feature its publisher never numbered, and two null ids
+    // with two null names would compare EQUAL and skip an organization that
+    // really does share this tread. Measured on the 2026-09-15 artifact: 0 of
+    // 631,915 edges carry a null id today, so this is a guard against the data
+    // changing rather than against the data as it is.
+    if (edge.trail_id !== null && samePublishedLine(edge, other)) continue
     if (!sameTread(index.graph, edgeIndex, candidate)) continue
     sources.add(other.source)
   }
@@ -878,16 +972,29 @@ function snapCandidates(
  * What makes two pieces of tread the SAME ANSWER to "which trail did you
  * mean" - which is not the same question {@link sameTrail} answers.
  *
- * `sameTrail` compares `trail_id` and `name`, and it is right to: it decides
- * where one LEG ends and the next begins, and a leg is a run of one published
- * line. But a publisher routinely splits one trail into many lines with
- * different ids, and asking a hiker to choose between four candidates all
- * labelled "Pine Meadow Trail" is a question about the artifact rather than
- * about the ground. Measured on the published network (data.ourhike.org,
- * 2026-08-27): grouping on `trail_id` made 68.5% of sampled Harriman points
- * ambiguous; grouping on what a hiker can read - the name, the blaze and the
- * organization - is what the figure recorded in features/HIKE_PLANNING.md
- * measures instead.
+ * A publisher routinely splits one trail into many lines with different ids,
+ * and asking a hiker to choose between four candidates all labelled "Pine
+ * Meadow Trail" is a question about the artifact rather than about the ground.
+ * Measured on the published network (data.ourhike.org, 2026-08-27): grouping
+ * on `trail_id` made 68.5% of sampled Harriman points ambiguous; grouping on
+ * what a hiker can read - the name, the blaze and the organization - is what
+ * the figure recorded in features/HIKE_PLANNING.md measures instead.
+ *
+ * THAT MEASUREMENT SETTLED THE LEG LIST TOO. This docstring used to open
+ * "`sameTrail` compares `trail_id` and `name`, and it is right to: a leg is a
+ * run of one published line" - and #1433 was the bill for that sentence, a
+ * route order printing one trail as three rows nobody could tell apart. A leg
+ * stopped grouping on the id there.
+ *
+ * THE TWO KEYS ARE STILL NOT THE SAME KEY, and the differences are worth
+ * naming because they are deliberate. This one carries the ORGANIZATION;
+ * {@link sameTrail} does not, on the maintainer's call (2026-09-15), because
+ * no ROW prints an organization while a CANDIDATE is offered with one. And
+ * this one keeps every unnamed piece apart, where `sameTrail` merges unnamed
+ * pieces that share a blaze: a duplicate unnamed row is a repeat, a second
+ * unnamed candidate is a choice the app would otherwise make for somebody.
+ * What they agree on is the part #1433 was about - that a publisher's line id
+ * is not a trail.
  *
  * An UNNAMED piece falls back to its own edge, which is the conservative
  * direction: two unnamed trails stay two candidates rather than collapsing
@@ -1227,10 +1334,12 @@ function walkBack(reached: Map<number, Reached>, node: number): number[] {
  * of the same TRAIL rather than of the same organization: walking the A.T. and
  * then the Long Path is two legs even where one steward maintains both.
  *
- * The plain merge, with no concurrency handling: it neither re-picks edges
- * ({@link holdDesignation}) nor carries `concurrent_sources` - the routed
- * paths get both via {@link routeBetween}. Callers handing this a raw edge
- * list get exactly the runs that list already has.
+ * The plain merge: it does not re-pick edges ({@link holdDesignation}) - the
+ * routed paths get that via {@link routeBetween}. Callers handing this a raw
+ * edge list get exactly the runs that list already has. It DOES carry the
+ * organizations its own merge folded away, because since #1433 a run is one
+ * name and one blaze and can cross between two stewards' ground; what it
+ * cannot know about is the concurrency a parallel edge carries.
  */
 export function legsFromEdges(graph: TrailGraph, edgeIndices: number[]): RouteLeg[] {
   const legs: RouteLeg[] = []
@@ -1239,6 +1348,11 @@ export function legsFromEdges(graph: TrailGraph, edgeIndices: number[]): RouteLe
     const last = legs[legs.length - 1]
     if (last !== undefined && sameTrail(last, edge)) {
       last.miles += metresToMiles(edge.length_m)
+      // The organization this run merged away, kept as credit (#1115): since
+      // #1433 a run is one NAME and one blaze, which two stewards can share
+      // end to end, and a leg wearing the first one's name still stands on
+      // the second one's ground.
+      addConcurrents(last, edge.source === null ? [] : [edge.source])
       continue
     }
     legs.push({
@@ -1299,6 +1413,11 @@ function legsFromWalk(
     if (last !== undefined && sameTrail(last, edge)) {
       last.miles += metresToMiles(walkedMetres[at])
       addConcurrents(last, concurrents[at] ?? [])
+      // And the organization the merge itself folded away (#1433), on the
+      // same rule as the concurrents beside it: one name and one blaze can
+      // cross from one steward's ground onto another's, and the tally counts
+      // stewards one per leg.
+      addConcurrents(last, edge.source === null ? [] : [edge.source])
       return
     }
     const leg: RouteLeg = {
@@ -1332,6 +1451,8 @@ function assemble(
     // these across its taps and never merges them.
     sections: [section],
     legsBySource: tallyBySource(legs),
+    // One pair, which is what this builds.
+    legsPerPair: [legs.length],
     // Priced here rather than by the caller, off the SAME walkedMetres the
     // legs are priced from - a second opinion about how much of an edge was
     // walked is the drift #1002 was about.
@@ -1414,6 +1535,22 @@ export function routeBetween(
  * Returns null if ANY leg of it cannot be routed, rather than a partial route
  * with a silent hole in it. A hiker handed four legs of a five-leg walk has
  * been told something false about the fifth.
+ *
+ * A TAP IS A LEG BOUNDARY, AND THE SQUASH STOPS AT IT. `legsFromWalk` merges
+ * the published lines inside one tapped pair, which is #1433 - a trail drawn
+ * as five geometry segments is one row, because five identical rows tell a
+ * reader nothing. This function does NOT carry that merge across the join
+ * between two pairs, and the difference is who put the boundary there. The
+ * lines are the publisher's accident of digitisation; the taps are the
+ * hiker's own structure, placed one by one, and squashing them away deletes
+ * the thing they were building (the maintainer's rule, 2026-09-15).
+ *
+ * So two consecutive rows naming one trail and one blaze mean exactly one
+ * thing here: the hiker put a point between them. That is the only way to
+ * get a pair of them, which is what makes them readable rather than
+ * duplicates - they are the two stretches either side of a place the hiker
+ * chose. It is also why an out-and-back on one trail lists its two halves
+ * rather than one doubled row: the turnaround is a tapped point.
  */
 export function routeThrough(
   index: TrailGraphIndex,
@@ -1424,6 +1561,7 @@ export function routeThrough(
   const edgeIndices: number[] = []
   const sections: RouteSection[] = []
   const legs: RouteLeg[] = []
+  const legsPerPair: number[] = []
   const sectionClimbs: Array<RouteClimb | null> = []
   let metres = 0
   for (let step = 0; step + 1 < points.length; step += 1) {
@@ -1440,26 +1578,29 @@ export function routeThrough(
       if (edgeIndices[edgeIndices.length - 1] === edgeIndex) continue
       edgeIndices.push(edgeIndex)
     }
-    // Each section's own priced legs, merged across the join. The shared edge
-    // was deduplicated above for DRAWING, but both sections' walked spans of
-    // it are real distance, so their legs ADD - the out-and-back half of
-    // #1002, where a leg priced off the deduplicated list undercounted every
-    // re-walked stretch.
+    // Each section's own priced legs, appended and never merged across the
+    // join - see this function's header for why a tap is a boundary the
+    // squash does not cross.
+    //
+    // #1002 IS STILL PAID, by the pricing rather than by a merge. The shared
+    // edge at the join was deduplicated above for DRAWING only; each section
+    // priced its own walked span of it in `walkedMetresPerEdge`, so both
+    // spans are already in `metres` and in these legs. What used to add two
+    // legs' miles together now lists them as the two rows they are, and the
+    // total is the same number either way - the undercount #1002 fixed was in
+    // the pricing, not here.
     for (const leg of section.legs) {
-      const last = legs[legs.length - 1]
-      if (last !== undefined && sameTrail(last, leg)) {
-        last.miles += leg.miles
-        addConcurrents(last, leg.concurrent_sources ?? [])
-        continue
-      }
       const copied: RouteLeg = { ...leg }
-      // A copy of the array too: addConcurrents mutates it when a later
-      // section merges in, and the section's own leg must not change under it.
+      // A copy of the array too, so nothing downstream that mutates a leg's
+      // credit can reach back into the section's own copy of it.
       if (leg.concurrent_sources !== undefined) {
         copied.concurrent_sources = [...leg.concurrent_sources]
       }
       legs.push(copied)
     }
+    // What this pair contributed, so a surface listing the walk can find the
+    // hiker's own boundaries in a flat list of legs. See `legsPerPair`.
+    legsPerPair.push(section.legs.length)
   }
   return {
     legs,
@@ -1467,6 +1608,7 @@ export function routeThrough(
     edgeIndices,
     sections,
     legsBySource: tallyBySource(legs),
+    legsPerPair,
     // Sections ADD, exactly as their legs do above and for the same reason:
     // the edge shared across a join was deduplicated for DRAWING, but both
     // sections really walked their span of it and really climbed it. One

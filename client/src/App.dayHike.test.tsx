@@ -450,7 +450,12 @@ describe('shelters and campsites as stops (#1194)', () => {
 
     await tap(map, -74.09, 41.255)
 
-    expect(await screen.findByText('2 legs')).toBeInTheDocument()
+    // Three, because the tap is a leg boundary of its own: Pine Meadow out to
+    // the second tap, back down it to the junction, then Seven Hills. It read
+    // two until 2026-09-15, when `routeThrough` stopped merging across a tap.
+    // What this test is about is unchanged - the tap reached the router
+    // rather than being swallowed by a pin - and the count is how that shows.
+    expect(await screen.findByText('3 legs')).toBeInTheDocument()
     expect(screen.queryByText(/shelter/)).toBeNull()
   })
 })
@@ -494,11 +499,23 @@ describe('the day-hike builder, end to end', () => {
     // Up Seven Hills: a second org joins the tally, live.
     await tap(map, -74.09, 41.255)
     // The bar's tally, and the `·` is what says so: since #1194 the rail's
-    // summary also counts legs ("2 legs · 1 shelter"), so a bare /2 legs/
+    // summary also counts legs ("3 legs · 1 shelter"), so a bare /3 legs/
     // finds two surfaces. The line above already reads /1 leg ·/ for the same
     // format - this just makes the pair consistent about which one it means.
-    expect(await screen.findByText(/2 legs ·/)).toBeInTheDocument()
+    //
+    // THREE, AND IT READ TWO UNTIL 2026-09-15. The third tap is up Seven
+    // Hills, which the router reaches by walking back down Pine Meadow to the
+    // junction first - so the walk is Pine Meadow out, Pine Meadow back, then
+    // Seven Hills. Those first two used to be one row: `routeThrough` merged
+    // across the tap, and the walk out and the walk back wore a single
+    // "Pine Meadow Trail". A tap is the hiker's own boundary now (the
+    // maintainer's rule), so the backtrack is a row of its own - which is
+    // also the more honest description of a walk that doubles back.
+    expect(await screen.findByText(/3 legs ·/)).toBeInTheDocument()
     expect(screen.getByText(/NY–NJ Trail Conference · 1 leg/)).toBeInTheDocument()
+    // And the org tally follows the rows a hiker can see rather than a count
+    // of its own: NYS Parks holds both Pine Meadow stretches.
+    expect(screen.getByText(/NYS Parks · 2 legs/)).toBeInTheDocument()
 
     // Loop, on the shape control, then "Use this route" - which exists only
     // now that a route does (#1373, step 2).

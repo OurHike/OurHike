@@ -362,15 +362,18 @@ function metresBetween(from: LonLat, to: LonLat): number {
 
 /**
  * Which leg one traversal falls in, counted the way lib/trailGraph.ts counts
- * them: consecutive traversals of one trail merge, INCLUDING across the join
- * between two tapped pairs (`routeThrough` merges there too), and never
- * across a segment boundary (`resolveDayHike` flat-maps its segments, so each
- * starts a leg of its own).
+ * them: consecutive traversals of one trail merge WITHIN a tapped pair, and
+ * never across the join between two of them - `routeThrough` stops its squash
+ * at a tap for the reason its header gives, and this has to stop at the same
+ * place or "leg 2 of 3" names a different leg from the one the card's list
+ * is showing. A segment boundary is a pair boundary too, by `WalkStep.pair`'s
+ * construction, so the one comparison covers both.
  *
  * Derived from the same walk rather than read off `resolved.legs`, because
  * that list has no positions in it - it says a hike has three legs and not
- * which traversal is in which. The rule is the shared `sameTrail` predicate,
- * so the count here and the count there are the same count.
+ * which traversal is in which. The rule is the shared `sameTrail` predicate
+ * plus the same tap boundary, so the count here and the count there are the
+ * same count.
  */
 function legAt(
   index: TrailGraphIndex,
@@ -385,7 +388,7 @@ function legAt(
     const previous = i === 0 ? null : steps[i - 1]
     const continues =
       previous !== null &&
-      previous.segment === steps[i].segment &&
+      previous.pair === steps[i].pair &&
       sameTrail(graph.edges[previous.edgeIndex], edge)
     if (!continues) count += 1
     if (i === position) at = count

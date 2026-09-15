@@ -719,6 +719,155 @@ def _nj_statewide_trails_layer():
     )
 
 
+def _nyc_parks_trails_layer():
+    """nyc_parks_trails' measured field list and value shapes, 2026-09-15.
+
+    THE POINT OF THIS FIXTURE IS THAT THE BLAZE IS IN THE NAME AND NOTHING
+    DECODES IT. This layer has no blaze column: `trailmarkersinstalled` is a
+    plain Yes/No (4,017/3,042 on the live 7,059 rows) saying only WHETHER a
+    marker exists, while the colour - where there is one - sits inside
+    `trail_name` as 'Blue Trail', 'Orange Trail' and so on (1,494 rows across
+    five colours). The entry registers `blaze_default: Unknown` rather than
+    parsing those strings, so the rows here carry both shapes and a staging
+    model that started inferring a colour from the name would have to do it
+    in the open.
+
+    HALF THE LAYER HAS NO NAME and that is the majority shape, so it is the
+    majority here too: 'Unnamed Official Trail' is 3,448 live rows, with
+    'Name TBD' and 'TBD' another 327 between them. A model that assumes
+    `trail_name` is a name would pass its tests on a tidier fixture.
+
+    `date_collected` SPANS TWELVE YEARS and the fixture says so, because the
+    dataset's own freshness and a segment's survey date are different facts:
+    68% of live rows were last surveyed in 2013-2015 while the file itself
+    refreshes monthly.
+    """
+    return _features(
+        [
+            {
+                "park_name": "Fixture Ridge Park",
+                "trail_name": "Blue Trail",
+                "class": "Class II : Simple/Minor Developed",
+                "surface": "Dirt",
+                "gen_topog": "Sloped",
+                "difficulty": "2: flat terrain, uneven treadway, slight elevation change",
+                "width_ft": "2 feet to less than 4 feet",
+                "parkid": "X001",
+                "trailmarkersinstalled": "Yes",
+                "date_collected": "2026-08-18T13:17:48.000",
+            },
+            # The majority shape: no name, and a marker nobody recorded a
+            # colour for. 'Unnamed Official Trail' is not a name.
+            {
+                "park_name": "Fixture Ridge Park",
+                "trail_name": "Unnamed Official Trail",
+                "class": "Class III : Developed/Improved",
+                "surface": "Wood Chips",
+                "gen_topog": "Level",
+                "difficulty": "1: flat and smooth",
+                "width_ft": "4 feet to less than 6 feet",
+                "parkid": "X001",
+                "trailmarkersinstalled": "No",
+                "date_collected": "2014-06-16T21:28:14.000",
+            },
+            # A paved city park path, surveyed twelve years ago - the pairing
+            # this layer is full of and the reason its age is worth carrying.
+            {
+                "park_name": "Fixture Central Park",
+                "trail_name": "Name TBD",
+                "class": "Class V : Fully Developed",
+                "surface": "Paved",
+                "gen_topog": "Level",
+                "difficulty": "1: flat and smooth",
+                "width_ft": "Over 8 feet",
+                "parkid": "X002",
+                "trailmarkersinstalled": "No",
+                "date_collected": "2013-10-17T17:47:05.000",
+            },
+            # A row with no difficulty at all (18 live) - the null branch.
+            {
+                "park_name": "Fixture Shore Park",
+                "trail_name": "Red Trail",
+                "class": "Class I : Minimal/Undeveloped",
+                "surface": "Sand",
+                "gen_topog": "Level",
+                "parkid": "X003",
+                "trailmarkersinstalled": "Yes",
+                "date_collected": "2021-11-16T21:58:49.000",
+            },
+        ],
+        _line,
+    )
+
+
+def _nyc_dot_greenways_layer():
+    """nyc_dot_greenways' measured field list, 2026-09-15.
+
+    EVERY ROW HERE ALREADY PASSES THE FILTER, and that is the fixture's whole
+    shape. The registry entry fetches with a SoQL `where` -
+    status='Current' AND grnwy='Greenway' AND onoffst='OFF' - applied at the
+    portal, so the 26,656 rows it excludes never reach disk and a fixture
+    carrying one would describe a file that cannot exist. The three columns
+    are still written on every row because they are in the fetched GeoJSON
+    and a staging model can read them.
+
+    `street` IS THE NAME COLUMN and on greenway rows it carries a path's name
+    rather than a road's ('BRONX RIVER GREENWAY'), which is why the entry
+    registers it as `name_field`. `gwsystem` is the coarser grouping and
+    `gwyjuris` the owner - DPR 2,095 of the live current greenway rows
+    against DOT's 3,667, so a tenth of this layer is somebody else's ground
+    and two of the rows here say so.
+    """
+    common = {"status": "Current", "grnwy": "Greenway", "onoffst": "OFF"}
+    return _features(
+        [
+            {
+                **common,
+                "street": "FIXTURE RIVER GREENWAY",
+                "gwsystem": "Fixture River",
+                "gwyjuris": "DPR",
+                "boro": "2",
+                "facilitycl": "I",
+                "segmentid": "100001",
+                "instdate": "2019-06-01T00:00:00.000",
+            },
+            {
+                **common,
+                "street": "FIXTURE WATERFRONT ESPLANADE",
+                "gwsystem": "Fixture Waterfront",
+                "gwyjuris": "DOT",
+                "boro": "1",
+                "facilitycl": "I",
+                "segmentid": "100002",
+                "instdate": "2022-09-14T00:00:00.000",
+            },
+            # Federal ground inside a city layer - Gateway NRA is the live
+            # case, 87 rows, and a model keying on "the city owns this"
+            # would be wrong about it.
+            {
+                **common,
+                "street": "FIXTURE BAY TRAIL",
+                "gwsystem": "Fixture Bay",
+                "gwyjuris": "NPS",
+                "boro": "4",
+                "facilitycl": "I",
+                "segmentid": "100003",
+            },
+            # No system name (the live layer has rows with none) - the null
+            # branch for the grouping a screen would most want to use.
+            {
+                **common,
+                "street": "FIXTURE CONNECTOR PATH",
+                "gwyjuris": "DOT",
+                "boro": "3",
+                "facilitycl": "I",
+                "segmentid": "100004",
+            },
+        ],
+        _line,
+    )
+
+
 def _dec_hiking_trails_layer():
     """dec_hiking_trails' measured field list, 2026-08-25.
 
@@ -920,6 +1069,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/nh_granit_trails.geojson": _nh_granit_trails_layer(),
         "external/njdep_park_trails.geojson": _njdep_park_trails_layer(),
         "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
+        "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),
+        "external/nyc_dot_greenways.geojson": _nyc_dot_greenways_layer(),
         "external/dec_hiking_trails.geojson": _dec_hiking_trails_layer(),
         "external/dec_lean_tos.geojson": _dec_lean_tos_layer(),
         "external/dec_primitive_campsites.geojson": _dec_asset_layer(

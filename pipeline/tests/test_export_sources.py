@@ -686,7 +686,7 @@ class TestTheRegistryTheConsoleReads:
     def test_lists_every_organization_once_with_its_id(self):
         orgs = self.real()["organizations"]
 
-        assert len(orgs) == 12
+        assert len(orgs) == 14
         assert {org["steward_id"] for org in orgs} == {
             "org:atc",
             "org:gatc",
@@ -694,6 +694,8 @@ class TestTheRegistryTheConsoleReads:
             "org:ndmc",
             "org:nhgranit",
             "org:njdep",
+            "org:nycdot",
+            "org:nycparks",
             "org:nynjtc",
             "org:nysdec",
             "org:nysoprhp",
@@ -725,3 +727,25 @@ class TestTheRegistryTheConsoleReads:
 
         assert out["sources"][0]["steward_id"] is None
         assert out["organizations"] == []
+
+
+def test_both_new_york_city_agencies_carry_the_statutory_terms():
+    """One licence block, two stewards, and the join that makes that work.
+
+    `nyc_licence`'s author is NYC Parks, so NYC DOT reaches it only through
+    `also_covers`. Before that field was read, NYC DOT shipped to hikers with
+    `licence: null` while the block sat in the registry looking correct - this
+    module's docstring records the same outcome for the U.S. Drought Monitor
+    and calls a gap documented in three places "not documented, it is
+    decorated". Asserted against build_output, the HIKER-FACING artifact,
+    because that is the card the terms have to reach; and asserted on the TEXT
+    rather than merely non-null, since a block joining the wrong steward would
+    also be non-null.
+    """
+    registry = json.loads((ROOT / "sources.json").read_text())
+    stewards = {s["provider"]: s for s in export_sources.build_output(registry)["stewards"]}
+    statute = "NYC Local Law 11 of 2012"
+
+    for provider in ("NYC Parks", "NYC DOT"):
+        assert provider in stewards, f"{provider} no longer ships (#1432)"
+        assert statute in (stewards[provider]["licence"] or ""), f"{provider} lost its terms"

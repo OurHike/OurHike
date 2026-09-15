@@ -96,6 +96,69 @@ PROCESSED_DIR = ROOT / "data" / "processed"
 ROUTES_PATH = PROCESSED_DIR / "hikefinder_routes.json"
 OUT_PATH = PROCESSED_DIR / "suggested_hikes.json"
 MANIFEST_PATH = PROCESSED_DIR / "suggested_hikes_manifest.json"
+DETAIL_DIR = PROCESSED_DIR / "suggested_hikes_detail"
+DETAIL_MANIFEST_PATH = PROCESSED_DIR / "suggested_hikes_detail_manifest.json"
+
+#: The key a hike's detail is published under, formatted with its numeric id.
+DETAIL_KEY = "suggested_hikes_detail/{id}.json"
+
+#: WHAT STAYS ON THE SHELF (#1473). Everything else in a record moves to that
+#: hike's own detail object, fetched when somebody opens it.
+#:
+#: The shelf was 1.70 MB of 2 MB and the ceiling is a CLIFF, not a slope:
+#: conditionsCache.ts deletes the copy it holds rather than trimming it, so
+#: the run the artifact crosses 2 MB is the run every phone loses the shelf
+#: offline. Measured over the 201 published records, `description` alone was
+#: 70% of the bytes and `directions` another 7.6% - prose the shelf and the
+#: finder never read.
+#:
+#: MEASURED, same 201 records:
+#:     what the client reads today          0.122 MB   7.1%
+#:     + the three provenance fields        0.143 MB   +106 B/record
+#:     + the finder fields and the tags     0.191 MB   +240 B/record
+#: 951 B a record leaves room for ~2,205 hikes under the ceiling, against 236
+#: on the old shape.
+#:
+#: THREE CHOICES IN THIS LIST ARE NOT OBVIOUS:
+#:
+#: - `routeProvenance`, `routeGrade` and `routeNotes` are detail fields in the
+#:   client's own type, and they are here anyway. App.tsx draws `segments` on
+#:   the map from the SHELF record, nowhere near the detail screen, so leaving
+#:   provenance in detail would let a generated line be drawn with its
+#:   provenance still in flight - a display outrunning its source, which is
+#:   the thing #1427 built the field to stop. 106 bytes is a cheap way to keep
+#:   the answer wherever the line is.
+#: - `features` and the finder fields ride along at 240 B/record because the
+#:   maintainer asked for the tags kept ("especially the tags", #1427) and
+#:   because a facet finder filters the SHELF - it cannot filter what it would
+#:   have to fetch 200 objects to see.
+#: - `directions`, `publicTransport`, `measured` and the rest are NOT here.
+#:   Nothing in the client reads them today; they are kept in full, in detail.
+SHELF_FIELDS = (
+    # What lib/suggestedHikesData.ts reads off a shelf record today.
+    "id",
+    "name",
+    "miles",
+    "climb",
+    "difficulty",
+    "author",
+    "transit",
+    "photo",
+    "segments",
+    # Where the drawn line came from - see the note above.
+    "routeProvenance",
+    "routeGrade",
+    "routeNotes",
+    # What a finder filters on, the publisher's tags among them.
+    "features",
+    "region",
+    "park",
+    "publishedDifficulty",
+    "estimatedHours",
+    "dogs",
+    "routeType",
+    "closed",
+)
 
 #: The client's AUTHOR_KINDS member for a maintaining organization
 #: (lib/suggestedHikes.ts). A route a club wrote up is the club's.
@@ -299,6 +362,64 @@ def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str,
     return record
 
 
+def write_details(details: list[dict]) -> dict[str, dict]:
+    """Each hike's detail as its own object, and the manifest publish.py reads.
+
+    ONE OBJECT PER HIKE rather than shards, because a hiker opens one walk. A
+    shard holding a region's prose would download dozens of descriptions for a
+    single tap, which is the cost this split exists to remove. The SHELF is
+    what gets cut into 1-degree cells later (#1473's follow-on) - that is the
+    artifact whose size scales with how much ground a phone has downloaded.
+
+    The directory is emptied first. A detail left behind by an earlier run is
+    a hike that has since been dropped or renumbered, and publishing it would
+    put prose in the bucket that no shelf record points at - harmless to a
+    phone, which never asks for it, and exactly the kind of thing that makes a
+    later reader mistrust the whole prefix.
+
+    The manifest shape is `_collect_cells`'s, deliberately: publish.py already
+    knows how to read `{"artifacts": {name: {path, sha256}}}` from a file an
+    exporter wrote, and a second shape would be a second thing to get wrong.
+    """
+    if DETAIL_DIR.exists():
+        for stale in DETAIL_DIR.glob("*.json"):
+            stale.unlink()
+    DETAIL_DIR.mkdir(parents=True, exist_ok=True)
+
+    artifacts: dict[str, dict] = {}
+    for detail in details:
+        # The record id is "<source>:<n>"; the key is the number alone, which
+        # is what the client has on the shelf record and can build a URL from
+        # without knowing this pipeline's naming.
+        number = detail["id"].split(":", 1)[-1]
+        path = DETAIL_DIR / f"{number}.json"
+        path.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+        artifacts[DETAIL_KEY.format(id=number)] = {
+            "path": to_manifest_path(path),
+            "sha256": sha256_file(path),
+        }
+    return artifacts
+
+
+def split_record(record: dict) -> tuple[dict, dict]:
+    """One full record as (shelf, detail) - SHELF_FIELDS and everything else.
+
+    Absent stays absent on both sides. A field the publisher never said is
+    left out rather than written as null, which is the rule the whole export
+    already follows and the reason the client reads absent as "they did not
+    say" rather than as a default.
+
+    The detail carries its own `id`, because an object fetched on its own has
+    to be able to say which hike it is - a phone that asked for one and was
+    handed another by a stale cache or a mis-keyed upload would render the
+    wrong prose under the right name, silently.
+    """
+    shelf = {key: record[key] for key in SHELF_FIELDS if key in record}
+    detail = {key: value for key, value in record.items() if key not in SHELF_FIELDS}
+    detail["id"] = record["id"]
+    return shelf, detail
+
+
 def build_document(graph: router.Graph, cache: dict, routes: dict, steward: str, generated_at: datetime) -> tuple[dict, list]:
     hikes: list[dict] = []
     dropped: list[tuple[str, str]] = []
@@ -380,8 +501,31 @@ def main() -> dict | None:
         print(f"No hike of {len(cache)} has a route that passed grading, so nothing is published.", file=sys.stderr)
         return None
 
+    # #1473: the shelf keeps SHELF_FIELDS, every hike's prose becomes its own
+    # object. Written before the shelf is, so a run that dies partway leaves
+    # the OLD shelf beside whatever details it managed - a stale-but-whole
+    # pair, rather than a new shelf pointing at prose that is not there yet.
+    full = document["hikes"]
+    details = []
+    document = {**document, "hikes": []}
+    for record in full:
+        shelf, detail = split_record(record)
+        document["hikes"].append(shelf)
+        details.append(detail)
+    detail_artifacts = write_details(details)
+
+    # COMPACT, like every other artifact a phone downloads (#1473):
+    # build_trail_graph.py, cut_trail_graph.py, export_nearby_poi.py and
+    # export_nearby_trails.py all write `separators=(",", ":")`, and this file
+    # was the outlier still paying for indentation. Measured on the 201
+    # records: whitespace was 51% of the shelf - 0.363 MB indented against
+    # 0.176 MB compact, which is the difference between room for 1,162 hikes
+    # under the client's cache ceiling and room for 2,391.
+    #
+    # The MANIFESTS below stay indented. They are read by people, they are
+    # small, and nothing downloads them to a phone.
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    OUT_PATH.write_text(json.dumps(document, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     by_provenance: dict[str, int] = {}
     for hike in document["hikes"]:
         kind = hike["routeProvenance"]
@@ -397,6 +541,10 @@ def main() -> dict | None:
         "generated_at": document["generated_at"],
     }
     MANIFEST_PATH.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    DETAIL_MANIFEST_PATH.write_text(
+        json.dumps({"artifacts": detail_artifacts, "generated_at": document["generated_at"]}, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     print(f"{len(document['hikes'])} suggested hike(s) of {len(cache)} -> {OUT_PATH}")
     for kind, count in sorted(by_provenance.items()):

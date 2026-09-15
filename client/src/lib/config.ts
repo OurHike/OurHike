@@ -542,17 +542,51 @@ export const RETIRED_POI_KEY = 'retired_poi.geojson'
 // works with no signal like everything else here.
 //
 // THE CLIENT HALF LANDED FIRST (#1284), and the pipeline half followed with
-// NYNJTC's Favorite Hikes (#1290): pipeline/export_suggested_hikes.py writes
-// this from the routes a person has signed off in
-// pipeline/reference/nynjtc_hike_routes.json, measured on the junction graph
-// by the twin of this app's own router. It is absent from a release for
-// three reasons the client reads alike - the source's reaches_hikers, no row
-// signed off yet, or a run that did not reach the exporter - and every one
-// is a phone with an empty shelf and no section, never a failed download.
+// NYNJTC's hikes (#1290, rebuilt on the Hike Finder export in #1427):
+// pipeline/export_suggested_hikes.py forms a route for every hike whose
+// description it can follow, grades it against what the publisher
+// independently stated, and ships the ones it can stand behind - measured on
+// the junction graph by the twin of this app's own router. It is absent from
+// a release for three reasons the client reads alike - the source's
+// reaches_hikers, no hike whose route passed grading, or a run that did not
+// reach the exporter - and every one is a phone with an empty shelf and no
+// section, never a failed download.
+//
+// (This paragraph named pipeline/reference/nynjtc_hike_routes.json until
+// 2026-09-15. That file was a per-hike sign-off sheet and #1427 deleted it
+// along with the scraper it served; the gate is now the grade.)
 //
 // @release optional - gated in publish.py on a manifest the exporter writes
-// only when a reviewed row exists; see the paragraph above.
+// only when a hike passed grading; see the paragraph above.
 export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
+
+/**
+ * One hike's prose, fetched when somebody opens it (#1473).
+ *
+ * THE SHELF STOPPED CARRYING THIS, and the reason is a cliff rather than
+ * tidiness. `suggested_hikes.json` had reached 1.70 MB of
+ * conditionsCache.ts's 2 MB ceiling, and that ceiling DELETES the copy a
+ * phone is holding rather than trimming it - so the publish that crossed it
+ * would have emptied the shelf offline on every phone, with no warning and
+ * no partial list. Measured over the 201 records published on 2026-09-15,
+ * `description` was 70% of the bytes and `directions` another 7.6%: prose the
+ * shelf and the finder never read.
+ *
+ * ONE OBJECT PER HIKE, not a shard, because a hiker opens one walk. The SHELF
+ * is what gets cut into 1-degree coverage cells, being the artifact that
+ * grows with how much ground somebody downloaded.
+ *
+ * `id` is the number off the shelf record's own id, which is
+ * `<source>:<number>` - see suggestedHikesData.ts's `detailKeyFor`.
+ *
+ * @release optional - and absent is ORDINARY here, not a failure. A hike
+ * whose detail has not arrived is a hike whose publisher said nothing more,
+ * which is the state the detail screen was built around long before this
+ * split: every field in SuggestedHikeDetail is optional and absent has always
+ * meant "they did not say".
+ */
+export const SUGGESTED_HIKE_DETAIL_KEY = (id: string): string =>
+  `suggested_hikes_detail/${id}.json`
 
 // The places a hiker can name before anything is downloaded - parks, towns,
 // trailheads, parking areas and the long trails - published by

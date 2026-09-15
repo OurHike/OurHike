@@ -61,6 +61,11 @@ function show(over: Partial<SuggestedHike> = {}, props: Record<string, unknown> 
       hike={hike(over)}
       pace={PACE}
       units="imperial"
+      // Offline, so useHikeDetail (#1473) reaches no network and hands back
+      // the fixture's own `detail` untouched. Everything below therefore
+      // still tests THIS screen rather than the fetch under it - the split
+      // moved where the prose comes from, not what the screen does with it.
+      online={false}
       onBack={vi.fn()}
       {...props}
     />,

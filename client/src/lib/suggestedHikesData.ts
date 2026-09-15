@@ -24,7 +24,12 @@
 // transit (absent means nothing published, never "none exists"), a climb the
 // document cannot spell is `undefined` - the app never knew - and never 0.
 
-import { DATA_CONFIGURED, SUGGESTED_HIKES_KEY, dataUrl } from './config'
+import {
+  DATA_CONFIGURED,
+  SUGGESTED_HIKES_KEY,
+  SUGGESTED_HIKE_DETAIL_KEY,
+  dataUrl,
+} from './config'
 import { recallPublished, rememberPublished } from './conditionsCache'
 import { validClimb, validSegments } from './dayHikes'
 import {
@@ -279,6 +284,67 @@ export function validateSuggestedHikes(document: unknown): SuggestedHike[] {
     hikes.push(hike)
   }
   return hikes
+}
+
+/**
+ * The number a hike's detail is published under, from its shelf id.
+ *
+ * A shelf id is `<source>:<number>` - "nynjtc_hike_finder:50". The published
+ * object is `50.json`, keyed on the number alone so the URL does not carry
+ * the pipeline's own naming, and so a colon never has to survive a path.
+ *
+ * Null for an id with no number after the colon, which no exporter writes -
+ * it is here so a malformed shelf record asks for nothing rather than
+ * fetching a URL built out of a broken string.
+ */
+export function detailKeyFor(id: string): string | null {
+  const number = id.slice(id.lastIndexOf(':') + 1).trim()
+  return number === '' || number === id.trim() ? null : number
+}
+
+/**
+ * One hike's prose, from the bucket, kept for next time (#1473).
+ *
+ * NULL IS ORDINARY AND MEANS "NOTHING MORE TO SHOW", not an error. The screen
+ * has always treated every detail field as optional - absent is what the
+ * publisher did not say - so a phone with no signal, a 404, or an object that
+ * will not parse all land on the state the screen was already built for. That
+ * property is what makes fetching prose on demand safe rather than a new way
+ * for the screen to break.
+ *
+ * Kept raw, like the shelf: the same validation runs on the way back out, and
+ * only after it has parsed, so a broken object never replaces a good one.
+ */
+export async function fetchHikeDetail(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SuggestedHikeDetail | null> {
+  if (!DATA_CONFIGURED) return null
+  const number = detailKeyFor(id)
+  if (number === null) return null
+  try {
+    const response = await fetch(dataUrl(SUGGESTED_HIKE_DETAIL_KEY(number)), { signal })
+    if (!response.ok) return null
+    const document: unknown = await response.json()
+    if (typeof document !== 'object' || document === null) return null
+    const detail = validDetail(document)
+    if (detail === undefined) return null
+    await rememberPublished(
+      SUGGESTED_HIKE_DETAIL_KEY(number),
+      document as Record<string, unknown>,
+    )
+    return detail
+  } catch {
+    return null
+  }
+}
+
+/** The last detail for this hike that reached the phone, validated again. */
+export async function recallHikeDetail(id: string): Promise<SuggestedHikeDetail | null> {
+  const number = detailKeyFor(id)
+  if (number === null) return null
+  const cached = await recallPublished(SUGGESTED_HIKE_DETAIL_KEY(number))
+  return cached === null ? null : (validDetail(cached.document) ?? null)
 }
 
 /** The last document that reached this phone, validated again, or null. */

@@ -47,6 +47,7 @@ import {
   type SuggestedHike,
 } from '../lib/suggestedHikes'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
+import { useHikeDetail } from '../lib/useHikeDetail'
 import './hikeDetail.css'
 
 /** How many paragraphs of the turn-by-turn show before the button. Two is
@@ -58,6 +59,10 @@ export interface HikeDetailProps {
   hike: SuggestedHike
   pace: PaceProfile
   units: UnitSystem
+  /** Whether to ask the bucket for this hike's prose (#1473). The shelf no
+   *  longer carries it; a phone with no signal shows whatever it kept, and
+   *  a hike it has never opened simply prints the figures. */
+  online: boolean
   onBack: () => void
   /** Saves the route into the hiker's own day hikes. Absent while the store
    *  is not ready, and then no button is drawn - a control that cannot do
@@ -129,13 +134,17 @@ export function HikeDetail({
   hike,
   pace,
   units,
+  online,
   onBack,
   onSave,
   savedWalks,
   onShowOnMap,
 }: HikeDetailProps) {
   const [wholeDescription, setWholeDescription] = useState(false)
-  const detail = hike.detail
+  // #1473: the shelf carries the figures, this fetches the prose for the one
+  // hike somebody opened. Undefined while it is on its way, and undefined is
+  // the state every field here was already written for.
+  const detail = useHikeDetail(hike, online)
   const description = detail?.description ?? []
   const shown = wholeDescription ? description : description.slice(0, DESCRIPTION_PREVIEW)
   const rest = description.length - DESCRIPTION_PREVIEW

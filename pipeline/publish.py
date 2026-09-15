@@ -1085,6 +1085,27 @@ def collect_artifacts() -> dict[str, dict]:
         manifest = json.loads(suggested_manifest.read_text())
         artifacts[SUGGESTED_HIKES_KEY] = {"path": manifest["path"], "sha256": manifest["sha256"]}
 
+        # Each hike's prose as its own object (#1473). The shelf above stopped
+        # carrying it because it was 78% of a file that had reached 85% of the
+        # client's cache ceiling - and that ceiling DELETES the copy a phone
+        # holds rather than trimming it, so crossing it would have emptied the
+        # shelf offline with no warning.
+        #
+        # INSIDE the shelf's own `if`, not beside it: a detail object is prose
+        # belonging to a shelf record, and publishing details for a shelf that
+        # did not build would put writing in the bucket that nothing points
+        # at. The same one-decision reasoning as the nearby_trails cells.
+        #
+        # Absent is ordinary rather than an error - an exporter from before
+        # this split, or a checkout where it did not run, simply has no detail
+        # manifest, and every phone reads a hike with no detail as a hike whose
+        # publisher said nothing more. That is the state the screen was already
+        # built for.
+        detail_manifest = PROCESSED_DIR / "suggested_hikes_detail_manifest.json"
+        if detail_manifest.exists():
+            for name, entry in json.loads(detail_manifest.read_text())["artifacts"].items():
+                artifacts[name] = {"path": entry["path"], "sha256": entry["sha256"]}
+
     # The places a hiker can name before anything is downloaded - parks,
     # towns, trailheads and the long trails - if export_places.py has run
     # (#1371). Same shape again, and absent for the same family of reasons:

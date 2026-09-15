@@ -676,6 +676,59 @@ any column with variance in it. The fountains are plainly real and mostly usable
 missing is a way to tell which. `nyc_water_holdback` in `sources.json` carries this so the
 refusal is greppable beside `dec_water_holdback`, which it deliberately echoes.
 
+#### Chased 2026-09-15 (#1461), and half of it came back
+
+The paragraph above named two blockers. **One is gone and one is not**, and the verdict stays
+`unsuitable` because of the one that is not.
+
+**The type blocker is gone.** The dataset's own Data Dictionary link — published in its
+description — is **dead**: Google Drive answers 404, so the domain is not merely unpublished
+beside the column, the document NYC Parks points readers at no longer exists. But the letters
+decode from a sibling dataset. `Parks Inspection Program – Element Tracking` (`2jvr-j6ne`)
+spells the same vocabulary out as element names:
+
+| PIP `element` | rows |
+| --- | ---: |
+| `"A" Drinking Fountain` | 28,577 |
+| `"C" Drinking Fountain` | 17,301 |
+| `"E" Drinking Fountain` | 13,611 |
+| `"D" Drinking Fountain` | 11,670 |
+| `"B" Drinking Fountain` | 5,080 |
+| `"F" Drinking Fountain` | 1,953 |
+
+A through F are drinking fountains in NYC Parks' own inspection language — **2,536 of the
+2,563 lettered rows**, leaving only `G` (7), `H` (12) and `J` (8) unplaced. An
+outdoor-drinking allowlist is therefore constructible, which it was not when this section was
+written. That rests on the two vocabularies matching rather than on NYC Parks saying so, and
+should be labelled that way wherever it is used.
+
+**The status blocker is not gone.** `featuresta` re-measured the same day still reads `Active`
+on all 3,849. What the PIP series adds is a condition signal that *joins*:
+`Parks Inspection Program – Inspections` (`yg3y-7juh`) keys `prop_id` in the same
+borough-letter convention as the fountains' `gispropnum`, and `inspection_id` reaches element
+rows carrying `damaged`, `outstanding`, free-text `comments` (a real one: *"button / bubbler
+missing"*) and `nowatercount`, documented as *"number of water features without water"*.
+
+| | |
+| --- | ---: |
+| park properties holding fountains | 988 |
+| of those, ever inspected by PIP | **876 (88.7%)** |
+| fountains on an ever-inspected property | **2,334 of 3,849 (60.6%)** |
+| fountains on a property inspected in 2026 | **2,064 (53.6%)** |
+| most recent inspection in the series | **2026-06-30** |
+
+Against a source layer fourteen months stale, that is a live signal over half the fountains —
+and **three limits decide what may be said from it**. It is *property-level*, never
+fountain-level. It is *negative-only*: across 97,596 drinking-fountain element rows
+`nowatercount` is populated 1,182 times and reads `0` exactly **three** times, so null means
+not-recorded, and there is no positive evidence of a working fountain anywhere in it. And it
+covers just over half.
+
+So what became available is a dated park-level **warning** — this park was inspected on *date*
+and *n* of its fountains had no water — and not a claim that any fountain works. Drawing that
+is a decision about a card on a safety path, so it is the maintainer's; #1461 holds the three
+options. The verdict in the matrix is unchanged.
+
 ### Privy — 1,066 restrooms, and `available`
 
 `Public Restrooms` (`i7jb-7jku`), 1,066 rows, refreshed 2025-06-27. **The contrast that

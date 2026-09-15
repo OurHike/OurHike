@@ -31,6 +31,16 @@ bytes actually originated in, taken from the previous manifest's own answer
 rather than set to the previous release id. An artifact unchanged for six
 weeks says so, instead of six folders each claiming to be where it came from.
 
+AND THE COPY DOES NOT READ FROM THERE (#1414). Recording where bytes were
+built and reading them from that folder are two different jobs that one field
+used to do. Retention (90 days from supersession, floor of the 3 most recent)
+is allowed to delete an origin folder while its bytes are still what every
+current release serves, so the copy reads from the PREVIOUS release - inside
+the floor - and the manifest goes on naming the origin. Landed before the
+prune job of #1282 rather than with it, because the ordering constraint runs
+one way and a fix already in place cannot be the thing forgotten on the day
+that job ships.
+
 THE MANIFEST LANDS LAST, and the keys are validated before the first write.
 Both are `_stage_release`'s properties and both are kept: a manifest written
 early describes bytes that may not arrive, and a name that breaks the layout
@@ -93,7 +103,29 @@ def plan_stage(artifacts: dict[str, dict], previous_id: str | None, previous: di
     """What each artifact needs: a copy from the previous folder, or an upload.
 
     Pure, so the decision is testable without a bucket. Returns one entry per
-    artifact with its `action`, `sha256`, `origin` and (for uploads) `path`.
+    artifact with its `action`, `sha256`, `origin`, `copy_from` and (for
+    uploads) `path`.
+
+    `origin` AND `copy_from` ARE TWO DIFFERENT ANSWERS, and #1414 is what
+    happens when one field tries to be both. `origin` is where the bytes were
+    BUILT - chased back through the manifests, so an artifact untouched for
+    six weeks names the week it was made. `copy_from` is where to READ them
+    now, which has to be the previous release and nothing older.
+
+    The bytes are identical either way, so reading from `origin` looked free.
+    It is not: DATA_RELEASES.md's retention rule (90 days from supersession,
+    floor of the 3 most recent) makes an old origin folder eligible for
+    deletion while its bytes are still exactly what every current release
+    serves. `highlights.json`, `poi_retired.geojson`, a stewards sidecar - the
+    artifacts most likely to sit unchanged for months are precisely the ones
+    naming the oldest folders. When the prune job of #1282 ships, copying from
+    `origin` raises `NoSuchKey` on a key the index advertises, or - if that
+    raise is ever softened - leaves a partial folder offered as somewhere to
+    roll back to.
+
+    `previous_id` is protected by that same rule's floor of three, so reading
+    from it cannot outrun retention. The provenance survives because it is
+    still recorded; only the READ moved.
     """
     prior = previous.get("artifacts", {}) if isinstance(previous.get("artifacts"), dict) else {}
     planned = {}
@@ -104,6 +136,7 @@ def plan_stage(artifacts: dict[str, dict], previous_id: str | None, previous: di
             "action": "copy" if unchanged else "upload",
             "sha256": entry["sha256"],
             "origin": origin_of(name, previous_id, before) if unchanged else None,
+            "copy_from": previous_id if unchanged else None,
             "path": entry.get("path"),
         }
     return planned
@@ -177,7 +210,10 @@ def stage(
     for name, step in planned.items():
         destination = data_env.scope_key(environment, releases.release_key(release_id, name))
         if step["action"] == "copy":
-            source = data_env.scope_key(environment, releases.release_key(step["origin"], name))
+            # `copy_from`, never `origin` (#1414) - the previous release holds
+            # the same bytes and is the one retention's floor of three
+            # protects. plan_stage's docstring has the argument.
+            source = data_env.scope_key(environment, releases.release_key(step["copy_from"], name))
             s3_client.copy_object(Bucket=bucket, CopySource={"Bucket": bucket, "Key": source}, Key=destination)
             origin = step["origin"]
         else:

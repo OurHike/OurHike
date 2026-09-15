@@ -171,6 +171,39 @@ class TestCopyForward:
         manifest = json.loads(body_at(s3_client, "releases/2026-09-09/manifest.json"))
         assert manifest["artifacts"]["spurs.json"]["origin"] == "2026-08-25"
 
+    def test_staging_survives_the_origin_folder_being_pruned(self, s3_client, artifacts):
+        """#1414, end to end against the bucket.
+
+        The failure this is written to catch is not reachable today - nothing
+        prunes yet - so the prune is performed here by hand: stage three
+        releases, delete the oldest folder the way DATA_RELEASES.md's
+        retention rule is allowed to (90 days from supersession, floor of the
+        3 most recent), then stage a fourth. Reading from `origin` raises
+        NoSuchKey on that fourth stage; reading from the previous release does
+        not, because the floor protects it.
+
+        The manifest still names the pruned release as the origin, which is
+        the half that must NOT change: where bytes were built stays true after
+        the folder holding the first copy of them is gone.
+        """
+        for release_id in ("2026-06-02", "2026-09-01", "2026-09-08"):
+            stage_release.stage(release_id, s3_client=s3_client, bucket=BUCKET, artifacts=artifacts, sidecars={})
+
+        for key in keys_in(s3_client, "releases/2026-06-02/"):
+            s3_client.delete_object(Bucket=BUCKET, Key=key)
+        assert keys_in(s3_client, "releases/2026-06-02/") == []
+
+        report = stage_release.stage("2026-09-15", s3_client=s3_client, bucket=BUCKET, artifacts=artifacts, sidecars={})
+
+        assert report["copied"] == ["spurs.json", "trails.geojson"]
+        manifest = json.loads(body_at(s3_client, "releases/2026-09-15/manifest.json"))
+        assert manifest["artifacts"]["spurs.json"]["origin"] == "2026-06-02"
+        assert keys_in(s3_client, "releases/2026-09-15/") == [
+            "releases/2026-09-15/manifest.json",
+            "releases/2026-09-15/spurs.json",
+            "releases/2026-09-15/trails.geojson",
+        ]
+
     def test_an_unreadable_previous_manifest_stages_everything_fresh(self, s3_client, artifacts, capsys):
         """The index knows about a folder whose contents nobody can describe,
         so nothing in it is safe to copy forward. Expensive and correct."""
@@ -213,6 +246,31 @@ class TestPlanStage:
         )
 
         assert planned["new.json"]["action"] == "upload"
+
+    def test_the_copy_reads_the_previous_release_while_naming_the_origin(self):
+        """#1414. Two answers, one of which retention is allowed to delete.
+
+        Reading from `origin` looked free because the bytes are identical
+        either way. DATA_RELEASES.md's retention rule - 90 days from
+        supersession, floor of the 3 most recent - makes an old origin folder
+        eligible for deletion while its bytes are still exactly what every
+        current release serves, so `copy_object` would raise NoSuchKey on a
+        key the index advertises as somewhere to roll back to. The previous
+        release is inside the floor.
+        """
+        planned = stage_release.plan_stage(
+            {"highlights.json": {"sha256": "aaa", "path": "p"}},
+            "2026-09-08",
+            {"artifacts": {"highlights.json": {"sha256": "aaa", "origin": "2026-06-02"}}},
+        )
+
+        step = planned["highlights.json"]
+        assert step["action"] == "copy"
+        # Where the bytes were built - months back, and still what the
+        # manifest should say.
+        assert step["origin"] == "2026-06-02"
+        # Where they are read from - the previous release, and never older.
+        assert step["copy_from"] == "2026-09-08"
 
 
 class TestWriteOrder:

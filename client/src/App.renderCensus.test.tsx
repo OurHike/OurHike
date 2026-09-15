@@ -14,7 +14,11 @@
 // drives it through 48 narrowly-keyed effects, so a React re-render does not
 // redraw the canvas - the cost could have been absorbed there.
 //
-// THE ANSWER, measured here at 3ce30bdd
+// THE ANSWER, measured here at 3ce30bdd and re-verified after merging main
+// in for #1426's fix, where every figure this file rests on is unmoved:
+// App.tsx 10,627 lines with 33 `useState` and 161 `useCallback`,
+// `MapScreenProps` 170 fields, and still zero `React.memo` and zero
+// `createContext` in the whole client.
 //
 // Opening the legend renders all six instrumented components exactly once
 // each, `MapView` and `MapAttribution` included. Neither has any part in the

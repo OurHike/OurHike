@@ -28,7 +28,7 @@
 
 import type { Map as MapLibreMap, MapGeoJSONFeature, PointLike } from 'maplibre-gl'
 import { POI_PIN_SIZE } from './poiIcons'
-import { POI_LAYER_ID } from './poiLayers'
+import { POI_ID_PROPERTY, POI_LAYER_ID } from './poiLayers'
 
 /** `--min-touch-target` (chrome/chrome.css), which every other control on the
  *  map screen already meets. */
@@ -56,13 +56,22 @@ export function poiTapBox(point: { x: number; y: number }): [PointLike, PointLik
 }
 
 /**
- * The waypoint pin under `point`, or undefined for none.
+ * The waypoint pin under `point` that a card could actually be opened for,
+ * or undefined for none.
  *
- * The FEATURE rather than its id, because the two callers want different
- * things from it and turning it into an id here would lose the difference:
- * poiTaps.ts reads the id off it and returns that (a pin whose properties
- * carry no id resolves to null, which is not the same as no pin at all),
- * while closureLayers.ts only needs to know whether one is there.
+ * THE ID IS PART OF "IS THERE A PIN", not a separate question, and an
+ * earlier cut of this had it as one. `poiTaps.ts` resolves a touch to
+ * `idOf(pin)`, which is null when the feature carries no usable
+ * POI_ID_PROPERTY; `closureLayers.ts` yielded on the FEATURE being present.
+ * Those two predicates disagree for exactly one population - a published pin
+ * whose id did not survive - and where they disagree the touch does nothing
+ * at all: the tape yields to a pin that then opens no card, and lineTaps.ts
+ * still yields to the tape, so a hiker gets silence where before #1419 they
+ * got the closure sheet. So the probe answers the question the yield is
+ * actually asking, and a pin that cannot be opened is not one.
+ *
+ * The FEATURE rather than the id, because poiTaps.ts reads other properties
+ * off it; that it has a usable id is guaranteed by the time it is returned.
  *
  * Guarded on the layer existing, for poiTaps.ts's reason: before the style
  * has parsed, querying a layer it does not hold fires an error event rather
@@ -80,5 +89,7 @@ export function poiPinAt(
 ): MapGeoJSONFeature | undefined {
   if (map.getLayer(POI_LAYER_ID) === undefined) return undefined
   const [pin] = map.queryRenderedFeatures(poiTapBox(point), { layers: [POI_LAYER_ID] })
-  return pin
+  if (pin === undefined) return undefined
+  const id = pin.properties?.[POI_ID_PROPERTY]
+  return typeof id === 'string' && id !== '' ? pin : undefined
 }

@@ -947,6 +947,51 @@ describe('what the network refusing to answer is NOT (#1274)', () => {
     expect(await fetchTrailGraphGeometryCells(merged())).toEqual({ kind: 'undecided' })
   })
 
+  it('says undecided when the MANIFEST could not be read, not absent', async () => {
+    // THE TRAP THE FIRST CUT OF THIS FIX WALKED INTO, caught in review.
+    // `readSnapshot` never rejects: an unreachable bucket, a refused origin
+    // and its own 20-second timeout all resolve to a snapshot with empty
+    // `hashes`. So "the manifest names no hash for this key" and "there was
+    // no manifest" arrive identically, and reading the first as a fact about
+    // the data turns a network failure into exactly the verdict that wipes a
+    // followed hiker's figures - the defect #1274 exists to remove, wearing
+    // the fix's own clothes.
+    //
+    // `readable` is what separates them, and this is the test that would
+    // have failed on the first cut. Note the difference from the test below:
+    // there the manifest ANSWERS and the artifact 404s.
+    vi.mocked(readStoredGraph).mockResolvedValue(null)
+    serve({ failing: true })
+
+    expect(await fetchTrailGraphGeometryCells(merged())).toEqual({ kind: 'undecided' })
+  })
+
+  it('consults the store before calling a 404 an absence', async () => {
+    // A hash-verified copy in IndexedDB is a sound answer during a
+    // mid-publish window where latest.json still advertises a key the object
+    // store has not caught up with. The old code reached `stored()` for every
+    // non-ok response; splitting 404 from 5xx must not quietly drop that.
+    const files = {
+      [WEST_KEYS.geometry]: WEST_GEOMETRY,
+      [EAST_KEYS.geometry]: EAST_GEOMETRY,
+    }
+    serve({ files: {}, manifest: await hashed(files) })
+    vi.mocked(readStoredGraph).mockImplementation(async (storeKey: string) => {
+      const body =
+        storeKey === graphCellStoreKey(WEST.name, 'geometry')
+          ? WEST_GEOMETRY
+          : storeKey === graphCellStoreKey(EAST.name, 'geometry')
+            ? EAST_GEOMETRY
+            : undefined
+      if (body === undefined) return null
+      return { bytes: new Blob([body]), hash: 'whatever', version: 'r', fetchedAt: 1 }
+    })
+
+    const outcome = await fetchTrailGraphGeometryCells(merged())
+
+    expect(outcome.kind).toBe('loaded')
+  })
+
   it('still says absent when the bucket answers that there is no such file', async () => {
     // A 404 is the bucket ANSWERING. That is a fact about the data, and the
     // honest-unknown state downstream is the right response to it - which is

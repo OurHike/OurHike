@@ -370,7 +370,8 @@ opening a second client branch.
 
 ### What it is, measured
 
-At `2f4843ed` (2026-09-15), re-runnable from `client/`:
+At `2f4843ed` (2026-09-15) — this section's own base, **not** the branch that
+added it — re-runnable from `client/`:
 
 |                                           |                                                         | how to re-measure                                                            |
 | ----------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -378,11 +379,11 @@ At `2f4843ed` (2026-09-15), re-runnable from `client/`:
 | `React.memo` / `memo(`                    | **0**                                                   | `grep -rn 'React\.memo\|= memo(' src --include=*.tsx \| grep -v .test.`      |
 | external state library                    | **none**                                                | no `zustand`/`redux`/`jotai`/`mobx` in `package.json`                        |
 | React Compiler                            | **not installed**                                       | no `babel-plugin-react-compiler`; `vite.config.ts` calls bare `react()`      |
-| `App.tsx`                                 | **10,650 lines** (5,586 code, 4,654 comment, 411 blank) | `wc -l src/App.tsx`                                                          |
+| `App.tsx`                                 | **10,627 lines** (5,583 code, 4,635 comment, 409 blank) | `wc -l src/App.tsx`                                                          |
 | `useState` in the root                    | **33**                                                  | `grep -c 'useState(' src/App.tsx`                                            |
 | `useCallback` / `useMemo` in the root     | **161 / 93**                                            | same                                                                         |
 | `MapScreenProps` fields                   | **170**                                                 | `sed -n '/^export interface MapScreenProps/,/^}/p' src/chrome/MapScreen.tsx` |
-| the `<MapScreen>` call site               | **539 lines**, 111 named props, 9 spread bundles        | `src/App.tsx:9738`                                                           |
+| the `<MapScreen>` call site               | **539 lines**, 111 named props, 9 spread bundles        | `src/App.tsx:9715`                                                           |
 | `lib/` modules, and how many import React | **209 / 33**                                            | `ls src/lib/*.ts* \| grep -v test \| wc -l`                                  |
 | `MapView`'s effects                       | **48**                                                  | `grep -c 'useEffect(' src/map/MapView.tsx`                                   |
 

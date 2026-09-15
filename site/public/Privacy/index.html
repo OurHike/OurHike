@@ -314,9 +314,12 @@
         not reminders, not marketing, not "come back and use the app" —
         and not alerts either. Nothing this app does puts anything on
         your lock screen. That is a rule in the code rather than a
-        promise here: an automated check reads the whole codebase and
-        fails the build if any part of it reaches for the browser's
-        notification or push machinery.
+        promise here: an automated check reads every module the web app
+        ships and fails the build if any of them reaches for the browser's
+        notification or push machinery. It does not read the iOS and Android
+        wrappers, which are not written in the same language — so that is
+        the one place this page is telling you what we intend rather than
+        what a test proves.
       </p>
       <p>
         This page used to say something weaker — that there was exactly

@@ -4494,18 +4494,40 @@ function App() {
    * for.
    */
   const [pendingSweep, setPendingSweep] = useState<{ run: () => void } | null>(null)
-  const askBeforeSweeping = useCallback(
-    (run: () => void) => {
-      if (dayHike === null) {
-        run()
-        return
-      }
-      setPendingSweep({ run })
-    },
-    [dayHike],
-  )
-  const sweepForBuilder = useCallback(
-    () => askBeforeSweeping(sweepForBuilderNow),
+  // THROUGH A REF, SO THE CALLBACK STAYS STABLE. `tapAt` returns a new draft
+  // object on every tap - a refused one included, which is #1093's whole
+  // finding - so a `[dayHike]` dependency would give `askBeforeSweeping` a
+  // new identity per tap, and with it `openRouteBuilderFrom` and every door
+  // built on it. That is exactly the memoisation `routeBuilder`'s return
+  // value is destructured to protect (see the note at the destructure). What
+  // this reads is "is a draft live", which the ref answers as well as the
+  // value does and without the identity.
+  const dayHikeRef = useRef(dayHike)
+  dayHikeRef.current = dayHike
+  const askBeforeSweeping = useCallback((run: () => void) => {
+    if (dayHikeRef.current === null) {
+      run()
+      return
+    }
+    setPendingSweep({ run })
+  }, [])
+  /**
+   * The route builder's doors, asked about before the sweep they depend on.
+   *
+   * Takes the door's own remaining work rather than running the sweep and
+   * returning (#1378). `openRouteBuilderFrom` used to call the sweep and then
+   * set the route draft in the same batch, so a parked sweep put the A.T.
+   * builder on screen BEHIND the sheet asking whether to drop the day hike -
+   * and "Stay here" left both drafts live, which is the #997 state the sweep
+   * exists to prevent. Three of the four doors reach it that way; only
+   * `handlePlanChartStretch` was parked whole in the first cut.
+   */
+  const openBuilderAfterSweep = useCallback(
+    (proceed: () => void) =>
+      askBeforeSweeping(() => {
+        sweepForBuilderNow()
+        proceed()
+      }),
     [askBeforeSweeping, sweepForBuilderNow],
   )
   const clearFreeChartStretch = useCallback(() => setFreeChartStretch(null), [])
@@ -4530,7 +4552,7 @@ function App() {
     targetOpen: targetRequest !== null,
     setTargetRequest,
     onRecordWalked: handleRecordWalked,
-    onOpenBuilder: sweepForBuilder,
+    onOpenBuilder: openBuilderAfterSweep,
     clearFreeChartStretch,
   })
   // Destructured, and the reason is memoisation rather than brevity: the
@@ -6135,6 +6157,19 @@ function App() {
       // So a non-answer leaves what is on screen where it is. What it keeps
       // is not a guess - it is the index built from the cells the hiker has
       // been walking through, still right about every one of them.
+      //
+      // WHAT IT KEEPS IS A STALE INDEX, THOUGH, AND NOTHING RE-ASKS. Said
+      // precisely because the trade is real and the comment below describes
+      // its other side: an index built before the graph grew draws a
+      // highlight that stops at the old cells' edge without saying so. On a
+      // transient failure this now keeps that rather than nulling - the
+      // right call for #1274's case, where the hiker is walking and the old
+      // cells are the ground under them - but nothing in this effect's
+      // dependency list changes on its own, so the only re-ask is another
+      // cell merging. A hiker who stops moving with a card open holds a
+      // short highlight until they move again. A bounded retry is what
+      // closes that, it is not smuggled into an effect with this dependency
+      // list at this size, and it is filed rather than left here.
       if (geometry.kind === 'undecided' || elevation.kind === 'undecided') return
 
       let next = graphIndex

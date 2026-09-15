@@ -43,6 +43,16 @@ import { join, relative, resolve } from 'node:path'
 // would settle it is the same scan over the two shells' own sources, which
 // nobody has written because neither has ever carried a plugin.
 
+// A FOURTH COPY OF THE TREE WALK, and that is a known cost rather than an
+// oversight. `unitDisplay.test.ts`, `themeTokens.test.ts` and
+// `mapChromeContrast.test.ts` each carry the same recursive readdir with the
+// same `.tsx?` filter and the same exclusions, so the next change to what
+// counts as shipped source - a new top-level directory, `.mts`, a generated
+// file to skip - has to be found in four places, and a copy that drifts
+// silently NARROWS a guard rather than failing. Worth extracting; not worth
+// extracting here, where it would mean editing three test files this change
+// has no other reason to touch. `test/repoFile.ts` is not the home either -
+// it reads files OUTSIDE the client tree, which is a different job.
 const ROOT = resolve(process.cwd(), 'src')
 
 /** Every TypeScript module the app ships, tests and this directory aside. */

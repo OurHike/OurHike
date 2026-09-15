@@ -226,7 +226,19 @@ export interface RouteBuilderInput {
    *  and knowing what a draft is is not. */
   onRecordWalked: (stops: readonly ViaStopLike[]) => void
   /** The one-thing-open-at-a-time sweep the shell owns. */
-  onOpenBuilder: () => void
+  /**
+   * Clear whatever owns the map, then run `proceed`.
+   *
+   * TAKES THE CONTINUATION rather than returning (#1378). The shell's sweep
+   * may now ASK before it runs - a live day-hike draft is dropped by it, and
+   * that is the exit D8 says always shows the bail sheet. A plain
+   * `onOpenBuilder()` followed by "and then open the draft" put the A.T.
+   * builder on screen behind the sheet asking whether to drop the day hike,
+   * and "Stay here" left both live at once, which is the #997 state this
+   * whole sweep exists to prevent. So the door hands over the rest of its
+   * work and the shell decides when it happens.
+   */
+  onOpenBuilder: (proceed: () => void) => void
   /** Clear the chart's free measurement when a draft takes over. */
   clearFreeChartStretch: () => void
 }
@@ -621,30 +633,34 @@ export function useRouteBuilderPanel({
   // for starting, never a toll gate on the way back to your own route.
   const openRouteBuilderFrom = useCallback(
     (start: RouteDraftStop | null, south?: boolean) => {
-      onOpenBuilder()
-      // The chart's selection now mirrors the draft; a measurement left
-      // behind here would resurface the moment the builder closed.
-      clearFreeChartStretch()
-      setRouteDraft((draft) => {
-        if (draft === null) {
-          return {
-            phase: 'entrance',
-            start,
-            fixedEnd: null,
-            // The mockup's own opening answers - a mid-length section,
-            // walked the way most of this trail is walked. Both are one
-            // drag from anything else.
-            ask: 'far',
-            miles: 45,
-            days: 3,
-            south: south ?? false,
+      // Everything this door does, handed over as one act (#1378): the shell
+      // either runs it now or parks it behind the bail sheet, and nothing
+      // below happens until the sweep it depends on has.
+      onOpenBuilder(() => {
+        // The chart's selection now mirrors the draft; a measurement left
+        // behind here would resurface the moment the builder closed.
+        clearFreeChartStretch()
+        setRouteDraft((draft) => {
+          if (draft === null) {
+            return {
+              phase: 'entrance',
+              start,
+              fixedEnd: null,
+              // The mockup's own opening answers - a mid-length section,
+              // walked the way most of this trail is walked. Both are one
+              // drag from anything else.
+              ask: 'far',
+              miles: 45,
+              days: 3,
+              south: south ?? false,
+            }
           }
-        }
-        // A suggested start fills an entrance that has none yet, and never
-        // overwrites a route the hiker is already editing: their own draft
-        // outranks a starting point this app proposed.
-        if (start === null || draft.phase !== 'entrance') return draft
-        return { ...draft, start, ...(south === undefined ? {} : { south }) }
+          // A suggested start fills an entrance that has none yet, and never
+          // overwrites a route the hiker is already editing: their own draft
+          // outranks a starting point this app proposed.
+          if (start === null || draft.phase !== 'entrance') return draft
+          return { ...draft, start, ...(south === undefined ? {} : { south }) }
+        })
       })
     },
     [onOpenBuilder, clearFreeChartStretch],

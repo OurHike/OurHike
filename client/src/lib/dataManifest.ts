@@ -82,6 +82,22 @@ export const CONSEQUENTIAL = 'consequential'
  * kept because eight callers want exactly that and nothing more.
  */
 export interface PublishedSnapshot {
+  /**
+   * Whether the manifest was READ, as opposed to describing nothing.
+   *
+   * Every other field answers "what does the manifest say"; this answers
+   * "was there one". They look the same from a caller's side and are not:
+   * `readSnapshot` never rejects, so an unreachable bucket, a 20-second
+   * timeout and a manifest that genuinely lists no artifacts all arrive here
+   * as empty `hashes`. A caller that treats an absent hash as a fact about
+   * the data then turns a network failure into a claim, which is exactly the
+   * defect #1274 is about one layer up - lib/trailGraphData.ts reads this
+   * before deciding that a missing hash means the artifact is not published.
+   *
+   * False is the honest reading of a snapshot nothing filled in; it does not
+   * mean the bucket is broken, only that this attempt learned nothing.
+   */
+  readable: boolean
   /** The published version, or null where nothing could be read. */
   version: string | null
   /**
@@ -166,6 +182,7 @@ function lookupInto(manifest: DataManifest): PublishedHashLookup {
 
 /** Nothing readable - the snapshot equivalent of NOTHING_PUBLISHED. */
 const NOTHING_READABLE: PublishedSnapshot = {
+  readable: false,
   version: null,
   previousVersion: null,
   lookup: NOTHING_PUBLISHED,
@@ -234,6 +251,7 @@ function snapshotInto(manifest: DataManifest): PublishedSnapshot {
   const version = manifest?.version
   const previous = manifest?.previous_version
   return {
+    readable: true,
     version: typeof version === 'string' && version !== '' ? version : null,
     previousVersion: typeof previous === 'string' && previous !== '' ? previous : null,
     lookup,

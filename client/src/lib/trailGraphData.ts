@@ -224,12 +224,21 @@ export function isSettledAbsence(because: TrailNetworkAbsence): boolean {
 async function published(
   key: string,
   signal?: AbortSignal,
-): Promise<{ hash: string | null; decodedBytes: number | null; version: string | null }> {
+): Promise<{
+  hash: string | null
+  decodedBytes: number | null
+  version: string | null
+  /** Whether there WAS a manifest, as opposed to one that names nothing.
+   *  `readSnapshot` never rejects, so the two arrive identically without
+   *  this - see PublishedSnapshot.readable, and #1274. */
+  readable: boolean
+}> {
   const snapshot = await publishedSnapshot({ signal })
   return {
     hash: snapshot.hashes[key] ?? null,
     decodedBytes: snapshot.decodedSizes[key] ?? null,
     version: snapshot.version,
+    readable: snapshot.readable,
   }
 }
 
@@ -598,7 +607,20 @@ async function fetchCompanionCell<E>(
     // Weighed at the manifest before the fetch and at the response after it,
     // exactly as the shard is (#1254); absent is what this half already means
     // by "not on this phone".
-    const { hash: expected, decodedBytes, version } = await published(key, signal)
+    const {
+      hash: expected,
+      decodedBytes,
+      version,
+      readable,
+    } = await published(key, signal)
+    // AN UNREAD MANIFEST DECIDES NOTHING, and this is the trap the first cut
+    // of #1274 walked straight into. `readSnapshot` never rejects: an
+    // unreachable bucket, a refused origin and its own 20-second timeout all
+    // resolve to a snapshot with empty `hashes`. So a missing hash is only a
+    // fact about the data when there was a manifest to be missing FROM -
+    // otherwise this is the weak signal the whole issue is about, wearing the
+    // one verdict that wipes a followed hiker's figures.
+    if (!readable) return await stored(UNDECIDED)
     if (oversized(decodedBytes)) {
       warnOversized(key, decodedBytes, 'manifest')
       return ABSENT
@@ -622,9 +644,16 @@ async function fetchCompanionCell<E>(
     // A 404 is the bucket answering: there is no such artifact. Any other
     // refusal - 500, 502, a gateway timeout - is the bucket failing to
     // answer, which decides nothing (#1274).
+    // A 404 is the bucket answering: there is no such artifact. Any other
+    // refusal - 500, 502, a gateway timeout - is the bucket failing to
+    // answer, which decides nothing (#1274). Either way the STORE is asked
+    // first, which the old `return await stored()` did for both and this
+    // must not quietly drop: a hash-verified copy in IndexedDB is a sound
+    // answer during a mid-publish window where latest.json still advertises
+    // a key the object store has not caught up with, and throwing it away
+    // blanks a walk the phone could have drawn entirely offline.
     if (!response.ok) {
-      if (response.status === 404) return ABSENT
-      return await stored(UNDECIDED)
+      return await stored(response.status === 404 ? ABSENT : UNDECIDED)
     }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
@@ -689,6 +718,23 @@ async function fetchCompanionCells<E>(
     if (outcome.kind !== 'loaded') return outcome
     halves.push(outcome.data)
   }
+  // BOUNDED TO THE CELLS STILL MERGED. The cache would otherwise be a
+  // module-level Map with no eviction, holding every parsed half ever
+  // fetched for the life of the tab - and the workload #1275 cites is the
+  // adversarial one for that, since `mergeGraphShard` is append-only over a
+  // multi-day walk and the densest single cell is 12.7 MB. Pruning to the
+  // merged set keeps the cache the same size as the thing it is caching,
+  // which is the bound that needs no number picked.
+  const live = new Set(merged.cells.map((cell) => graphCellStoreKey(cell.name, half)))
+  // `graphCellStoreKey('', half)` IS this half's key prefix, which is why the
+  // prefix is derived from the key builder rather than written out: the two
+  // cannot disagree the day the key's shape moves. Only this half is pruned
+  // here; the others are pruned by their own runs.
+  const halfPrefix = graphCellStoreKey('', half)
+  for (const key of [...verifiedThisSession.keys()]) {
+    if (key.startsWith(halfPrefix) && !live.has(key)) verifiedThisSession.delete(key)
+  }
+
   const aligned: Array<E | undefined> = new Array<E | undefined>(
     merged.edgeIds.length,
   ).fill(undefined)

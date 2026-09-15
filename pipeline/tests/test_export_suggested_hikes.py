@@ -24,6 +24,7 @@ import pytest
 
 import export_suggested_hikes as exporter
 from lib.hikefinder import SOURCE_KEY
+from lib.r2_keys import assert_valid_keys
 from tests.test_lib_trail_graph_route import LAT, LON, STEP, graph_files
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -378,11 +379,37 @@ def test_the_shelf_and_the_detail_share_no_field(sandbox):
     assert detail["id"] == record["id"], "a detail fetched on its own has to say which hike it is"
 
 
+def test_every_detail_key_is_one_the_bucket_will_accept(sandbox):
+    """The check that would have caught this split breaking the whole publish.
+
+    publish.py calls `assert_valid_keys` over every artifact BEFORE it opens a
+    connection, and that call RAISES - so one illegal name among the details
+    does not skip those objects, it aborts the vector-data publish entirely
+    and the bucket goes on serving the release before it. The first version of
+    #1473 keyed these `suggested_hikes_detail/<n>.json`, which is a top-level
+    prefix nobody declared in lib/r2_keys.py, and CI was green on it: no suite
+    ran a real key through the validator.
+
+    This runs the manifest publish.py actually reads, rather than a key built
+    by hand here, so a template changed in one place and not the other fails
+    here instead of in the bucket.
+    """
+    sandbox["write"](
+        {"7": hike(), "1234": hike(id=1234, name="Another Walk")},
+        {"7": route(), "1234": route(hike_id=1234)},
+    )
+    exporter.main()
+
+    keys = list(json.loads(exporter.DETAIL_MANIFEST_PATH.read_text())["artifacts"])
+    assert keys, "the manifest is what publish.py uploads from; an empty one publishes no prose at all"
+    assert_valid_keys(keys)
+
+
 def test_a_stale_detail_from_an_earlier_run_is_not_left_behind(sandbox):
     """A hike dropped or renumbered between runs leaves prose in the bucket
     that no shelf record points at. Harmless to a phone, which never asks for
     it - and exactly the kind of debris that makes a later reader mistrust the
-    whole prefix."""
+    whole family."""
     sandbox["write"]({"7": hike()}, {"7": route()})
     exporter.main()
     orphan = exporter.DETAIL_DIR / "999.json"

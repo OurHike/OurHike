@@ -291,6 +291,14 @@ describe('the key a detail is published under', () => {
     expect(detailKeyFor('nynjtc_hike_finder:')).toBeNull()
     expect(detailKeyFor('')).toBeNull()
   })
+
+  it('is null for an id this bucket could not have published, rather than a name it refuses', () => {
+    // The retired scraper's shape (#1427 replaced it). `hike-vista-loop-trail`
+    // would build `suggested_hikes_detail_hike-vista-loop-trail.json`, and
+    // pipeline/lib/r2_keys.py's NAME_PATTERN allows no hyphens - so no such
+    // object can exist and asking for one is a request that could only 404.
+    expect(detailKeyFor('nynjtc_favorite_hikes:hike-vista-loop-trail')).toBeNull()
+  })
 })
 
 describe('recalling a detail this phone already has', () => {
@@ -313,6 +321,37 @@ describe('recalling a detail this phone already has', () => {
   it('answers null for a hike it has never opened, which is not a failure', async () => {
     // The screen reads this exactly as "the publisher said nothing more" -
     // the state it was built around long before the split.
-    expect(await recallHikeDetail('nynjtc_hike_finder:does-not-exist')).toBeNull()
+    expect(await recallHikeDetail('nynjtc_hike_finder:31337')).toBeNull()
+  })
+
+  it('refuses prose that names a different walk', async () => {
+    // WHY THE EXPORTER PUTS `id` ON EVERY DETAIL. A mis-keyed upload or a
+    // cache entry left by an earlier numbering hands back another hike's
+    // turn-by-turn under this hike's name, and nothing else on the object
+    // would look wrong. The prose is directions; acting on the wrong walk's
+    // is the failure this check exists to prevent.
+    await set(conditionsCacheKey(suggestedHikeDetailKey('88')), {
+      document: {
+        id: 'nynjtc_hike_finder:41',
+        description: ['Turn left at the second stream crossing.'],
+      },
+      storedAt: new Date().toISOString(),
+    })
+
+    expect(await recallHikeDetail('nynjtc_hike_finder:88')).toBeNull()
+  })
+
+  it('accepts prose that names no walk at all, because absent has never meant wrong', async () => {
+    // Nothing published is missing an id. But absent means "they did not say"
+    // everywhere else in this file, and discarding prose over a field that is
+    // not itself evidence of a mix-up would cost a hiker their directions to
+    // enforce a convention.
+    await set(conditionsCacheKey(suggestedHikeDetailKey('89')), {
+      document: { description: ['Follow the white blazes.'] },
+      storedAt: new Date().toISOString(),
+    })
+
+    const detail = await recallHikeDetail('nynjtc_hike_finder:89')
+    expect(detail?.description).toEqual(['Follow the white blazes.'])
   })
 })

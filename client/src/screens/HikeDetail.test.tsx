@@ -7,9 +7,13 @@
 // the record already there rather than a second one made.
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import 'fake-indexeddb/auto'
+import { set } from 'idb-keyval'
 import { HikeDetail } from './HikeDetail'
+import { conditionsCacheKey } from '../lib/conditionsCache'
+import { suggestedHikeDetailKey } from '../lib/config'
 import type { SuggestedHike } from '../lib/suggestedHikes'
 import { STANDARD_PACE } from '../lib/pace'
 
@@ -87,6 +91,33 @@ describe('the two figures, which are allowed to disagree', () => {
 
     const line = screen.getByText(/measured on the trail lines this phone holds/)
     expect(line).not.toHaveTextContent('says')
+  })
+
+  it('gains the publisher’s length when the prose lands, having printed without it', async () => {
+    // THE ONE THAT CAUGHT IT (#1473). `publishedMiles` is not a SHELF_FIELD,
+    // so after the split it arrives with the prose - and this line was still
+    // reading it off the shelf record, where it now never is. Every fixture
+    // above puts it on `hike.detail` by hand and so passed either way; this
+    // is the only one that puts it where a real phone finds it.
+    await set(conditionsCacheKey(suggestedHikeDetailKey('50')), {
+      document: { id: 'nynjtc_hike_finder:50', publishedMiles: 4.5 },
+      storedAt: new Date().toISOString(),
+    })
+    // No `detail` on the shelf record, which is the post-split shape: the
+    // figures are there, the publisher's own number is not.
+    show({ id: 'nynjtc_hike_finder:50', detail: undefined })
+
+    // Printed before the read comes back - the phone's own half never waits
+    // on the publisher's.
+    expect(
+      screen.getByText(/measured on the trail lines this phone holds/),
+    ).not.toHaveTextContent('says')
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(/measured on the trail lines this phone holds/),
+      ).toHaveTextContent('New York-New Jersey Trail Conference says 4.5 mi'),
+    )
   })
 
   it('refuses a time rather than pricing an unmeasured climb as flat ground', () => {

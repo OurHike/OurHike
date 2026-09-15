@@ -100,7 +100,21 @@ DETAIL_DIR = PROCESSED_DIR / "suggested_hikes_detail"
 DETAIL_MANIFEST_PATH = PROCESSED_DIR / "suggested_hikes_detail_manifest.json"
 
 #: The key a hike's detail is published under, formatted with its numeric id.
-DETAIL_KEY = "suggested_hikes_detail/{id}.json"
+#:
+#: A FLAT ROOT NAME, NOT A DIRECTORY, and that is the bucket's rule rather
+#: than a preference. `suggested_hikes_detail/50.json` is illegal:
+#: lib/r2_keys.py's TOP_LEVEL_PREFIXES declares five prefixes and this is not
+#: one of them, so `assert_valid_keys` - which publish.py calls before it
+#: opens a connection - raises on all 201 keys at once and uploads NOTHING,
+#: taking the whole vector-data publish down with it. Adding a prefix is a
+#: design decision with a retention rule attached (R2_LAYOUT.md), not a side
+#: effect of this split.
+#:
+#: The flat name is also what every other runtime-named family here already
+#: does: cut_cells.py writes `at_basemap_cell_n40w074.pmtiles`, and
+#: config.ts's trailGraphCellKey writes `trail_graph_cell_<name>.json`. One
+#: shape for "many objects, named at runtime, indexed by something else".
+DETAIL_KEY = "suggested_hikes_detail_{id}.json"
 
 #: WHAT STAYS ON THE SHELF (#1473). Everything else in a record moves to that
 #: hike's own detail object, fetched when somebody opens it.
@@ -375,11 +389,17 @@ def write_details(details: list[dict]) -> dict[str, dict]:
     a hike that has since been dropped or renumbered, and publishing it would
     put prose in the bucket that no shelf record points at - harmless to a
     phone, which never asks for it, and exactly the kind of thing that makes a
-    later reader mistrust the whole prefix.
+    later reader mistrust the whole family.
 
     The manifest shape is `_collect_cells`'s, deliberately: publish.py already
     knows how to read `{"artifacts": {name: {path, sha256}}}` from a file an
     exporter wrote, and a second shape would be a second thing to get wrong.
+
+    RAISES on an id this scheme cannot address, rather than writing the key
+    and letting publish.py find out. `assert_valid_keys` fails the whole
+    vector-data publish on one bad name, so a source whose ids are not numbers
+    would take the trails down with it - and it would do so a run later, in a
+    workflow log, rather than here beside the reason.
     """
     if DETAIL_DIR.exists():
         for stale in DETAIL_DIR.glob("*.json"):
@@ -390,8 +410,15 @@ def write_details(details: list[dict]) -> dict[str, dict]:
     for detail in details:
         # The record id is "<source>:<n>"; the key is the number alone, which
         # is what the client has on the shelf record and can build a URL from
-        # without knowing this pipeline's naming.
+        # without knowing this pipeline's naming. Digits only, the same gate
+        # lib/suggestedHikesData.ts's `detailKeyFor` keeps: a hyphenated id -
+        # the retired scraper's shape - builds a name NAME_PATTERN rejects.
         number = detail["id"].split(":", 1)[-1]
+        if not number.isdigit():
+            raise ValueError(
+                f"{detail['id']!r} has no numeric id after the colon, so its detail cannot be named "
+                f"{DETAIL_KEY.format(id=number)!r} - see lib/r2_keys.py's NAME_PATTERN"
+            )
         path = DETAIL_DIR / f"{number}.json"
         path.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
         artifacts[DETAIL_KEY.format(id=number)] = {

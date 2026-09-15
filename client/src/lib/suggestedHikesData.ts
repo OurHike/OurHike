@@ -296,10 +296,20 @@ export function validateSuggestedHikes(document: unknown): SuggestedHike[] {
  * Null for an id with no number after the colon, which no exporter writes -
  * it is here so a malformed shelf record asks for nothing rather than
  * fetching a URL built out of a broken string.
+ *
+ * DIGITS, NOT MERELY "SOMETHING AFTER THE COLON", because this string becomes
+ * an object name in the bucket and lib/r2_keys.py's NAME_PATTERN allows no
+ * hyphens. The retired scraper's ids looked like
+ * `nynjtc_favorite_hikes:hike-vista-loop-trail`; one of those would build
+ * `suggested_hikes_detail_hike-vista-loop-trail.json`, a name that could
+ * never have been published under it. Null is the honest answer for an id
+ * this scheme cannot address, and the screen already reads null as "nothing
+ * more to show".
  */
 export function detailKeyFor(id: string): string | null {
   const number = id.slice(id.lastIndexOf(':') + 1).trim()
-  return number === '' || number === id.trim() ? null : number
+  if (number === '' || number === id.trim()) return null
+  return /^[0-9]+$/.test(number) ? number : null
 }
 
 /**
@@ -327,6 +337,7 @@ export async function fetchHikeDetail(
     if (!response.ok) return null
     const document: unknown = await response.json()
     if (typeof document !== 'object' || document === null) return null
+    if (!saysItIs(document as Record<string, unknown>, id)) return null
     const detail = validDetail(document)
     if (detail === undefined) return null
     await rememberPublished(
@@ -344,7 +355,33 @@ export async function recallHikeDetail(id: string): Promise<SuggestedHikeDetail 
   const number = detailKeyFor(id)
   if (number === null) return null
   const cached = await recallPublished(suggestedHikeDetailKey(number))
-  return cached === null ? null : (validDetail(cached.document) ?? null)
+  if (cached === null || !saysItIs(cached.document, id)) return null
+  return validDetail(cached.document) ?? null
+}
+
+/**
+ * Whether this document admits to being the hike that was asked for.
+ *
+ * export_suggested_hikes.py writes `id` onto every detail object for exactly
+ * this check - "a phone that asked for one and was handed another by a stale
+ * cache or a mis-keyed upload would render the wrong prose under the right
+ * name, silently". That sentence is only true if somebody reads the field,
+ * and this is where it is read.
+ *
+ * WHAT THE WRONG ANSWER COSTS, and why this is not paranoia about a rename:
+ * the prose is turn-by-turn directions. A hiker acting on another walk's
+ * directions under this walk's name is the confidently-wrong answer
+ * CLAUDE.md's safety section exists to prevent, and no field on the object
+ * would look wrong while they did it.
+ *
+ * A document carrying NO id passes. Nothing this exporter has ever published
+ * is missing one, but absent has always meant "the publisher did not say"
+ * here, and refusing on absence would discard prose over a field that is not
+ * itself evidence of a mix-up. Only a DISAGREEING id is a mix-up.
+ */
+function saysItIs(document: Record<string, unknown>, id: string): boolean {
+  const said = document.id
+  return typeof said !== 'string' || said === id
 }
 
 /** The last document that reached this phone, validated again, or null. */

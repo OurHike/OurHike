@@ -45,6 +45,7 @@ import {
   difficultyLabel,
   hikeEstimate,
   type SuggestedHike,
+  type SuggestedHikeDetail,
 } from '../lib/suggestedHikes'
 import { formatDistance, formatElevation, type UnitSystem } from '../lib/units'
 import { useHikeDetail } from '../lib/useHikeDetail'
@@ -98,12 +99,24 @@ function figures(hike: SuggestedHike, pace: PaceProfile, units: UnitSystem): str
 
 /** The line under the figures naming whose number is whose. Never printed
  *  without the phone's own half, because "NYNJTC says 3.8 mi" alone would
- *  read as the app's measurement. */
-function measurementLine(hike: SuggestedHike, units: UnitSystem): string {
+ *  read as the app's measurement.
+ *
+ *  THE MERGED DETAIL, NOT `hike.detail` - `publishedMiles` is not in
+ *  export_suggested_hikes.py's SHELF_FIELDS, so since #1473 it arrives with
+ *  the prose rather than on the shelf record. Reading it off the shelf
+ *  returns undefined for every hike and silently drops the publisher's own
+ *  mileage, which is the half of this line a hiker uses to judge the other
+ *  half. So the line grows a second state: it prints ours alone while the
+ *  detail is still on its way, and gains theirs when it lands. */
+function measurementLine(
+  detail: SuggestedHikeDetail | undefined,
+  author: string,
+  units: UnitSystem,
+): string {
   const ours = 'measured on the trail lines this phone holds'
-  const theirs = hike.detail?.publishedMiles
+  const theirs = detail?.publishedMiles
   if (theirs === undefined) return ours
-  return `${ours} · ${hike.author.name} says ${formatDistance(theirs, units)}`
+  return `${ours} · ${author} says ${formatDistance(theirs, units)}`
 }
 
 /** "Walked 12 Mar, and twice before" - the dates on the hiker's own record,
@@ -185,7 +198,9 @@ export function HikeDetail({
         )}
 
         <p className="hike-detail__figures">{figures(hike, pace, units)}</p>
-        <p className="hike-detail__measurement">{measurementLine(hike, units)}</p>
+        <p className="hike-detail__measurement">
+          {measurementLine(detail, hike.author.name, units)}
+        </p>
 
         {(hike.difficulty !== null || facets.length > 0) && (
           <p className="hike-detail__facets">

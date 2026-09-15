@@ -591,6 +591,13 @@ export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
  * per-cell objects carry no tag of their own. Here the SHELF is the index -
  * every record's id names its detail - so nothing extra needs declaring.
  *
+ * A FLAT NAME RATHER THAN A `suggested_hikes_detail/` DIRECTORY, and that is
+ * the bucket's rule, not a preference. pipeline/lib/r2_keys.py declares five
+ * top-level prefixes and this is not one of them, so a slash here makes every
+ * one of these keys illegal and `assert_valid_keys` fails the whole publish
+ * before a byte is uploaded. `at_basemap_cell_n40w074.pmtiles` and
+ * `trail_graph_cell_<name>.json` are the same shape for the same reason.
+ *
  * WHERE THIS DIFFERS FROM A CELL, and why nothing verifies these the way
  * check 20 verifies cells: a promised cell that is missing is blank map, so
  * its absence is a defect. A missing detail is a hike whose publisher said
@@ -599,7 +606,7 @@ export const SUGGESTED_HIKES_KEY = 'suggested_hikes.json'
  * always meant "they did not say". There is no failure here to detect.
  */
 export const suggestedHikeDetailKey = (id: string): string =>
-  `suggested_hikes_detail/${id}.json`
+  `suggested_hikes_detail_${id}.json`
 
 // The places a hiker can name before anything is downloaded - parks, towns,
 // trailheads, parking areas and the long trails - published by

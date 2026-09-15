@@ -6042,14 +6042,32 @@ function App() {
       fetchTrailGraphElevationCells(graphMerged, controller.signal, online),
     ]).then(([geometry, elevation]) => {
       if (!wanted) return
+      // NOTHING LEARNED, NOTHING UNLEARNED (#1274). `undecided` is the
+      // network refusing to answer - a dropped connection, a 5xx, an origin
+      // that would not talk - and it is not a claim about what this phone
+      // holds. It was read as one: the batch is all-or-nothing across every
+      // merged cell, so a hiker being followed whose GPS drifted into a
+      // brand-new cell re-fetched the whole set, the new cell's request
+      // failed on exactly the weak signal this cell-loading feature exists
+      // for, and the correct attachment for every mile already walked was
+      // replaced by null. Nothing then retried: `dayHikeIndex` settles at
+      // null and nothing else in the dependency list changes on its own.
+      //
+      // So a non-answer leaves what is on screen where it is. What it keeps
+      // is not a guess - it is the index built from the cells the hiker has
+      // been walking through, still right about every one of them.
+      if (geometry.kind === 'undecided' || elevation.kind === 'undecided') return
+
       let next = graphIndex
-      if (geometry !== null) next = attachTrailGraphGeometry(next, geometry)
-      if (elevation !== null) next = attachTrailGraphElevation(next, elevation)
+      if (geometry.kind === 'loaded') next = attachTrailGraphGeometry(next, geometry.data)
+      if (elevation.kind === 'loaded')
+        next = attachTrailGraphElevation(next, elevation.data)
       // Unchanged means neither half is on this phone for some merged cell -
       // leave dayHikeIndex null so the builder keeps routing on the graph it
       // already has. An index built before the graph grew goes too: a
       // highlight drawn from it would stop at the old cells' edge without
       // saying so, and null is the state every surface below already says.
+      // Reachable now only from a decided absence, which is the point.
       if (next !== graphIndex) setDayHikeIndex(next)
       else if (dayHikeIndexStale) setDayHikeIndex(null)
     })
@@ -6101,9 +6119,14 @@ function App() {
     void fetchTrailGraphProfileCells(graphMerged, controller.signal, online).then(
       (profile) => {
         if (!wanted) return
-        // Null is ordinary and its consequence is #1041's: no ribbon on this
-        // walk, which is the honest state rather than a missing feature.
-        if (profile !== null) setGraphProfile(profile)
+        // Same rule as the geometry effect above (#1274): a network that
+        // would not answer is not an answer, so the ribbon keeps drawing
+        // what it has rather than blanking on a dropped request.
+        if (profile.kind === 'undecided') return
+        // An absence is ordinary and its consequence is #1041's: no ribbon
+        // on this walk, which is the honest state rather than a missing
+        // feature.
+        if (profile.kind === 'loaded') setGraphProfile(profile.data)
         else if (graphProfileStale) setGraphProfile(null)
       },
     )

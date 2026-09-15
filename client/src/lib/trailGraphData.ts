@@ -492,14 +492,84 @@ function isGraphProfile(value: unknown): value is Array<Array<number | null> | n
 }
 
 /**
+ * What a companion half turned out to be: something, nothing, or nothing yet.
+ *
+ * WHY THE THIRD ONE EXISTS (#1274). This used to be `E[] | null`, and the
+ * caller could not tell "this cell's data is not published" from "the fetch
+ * failed". Those are different claims and they deserve different answers. The
+ * first is a real, honest absence, and the app already has a good state for
+ * it - no highlight, no climb, "no figures for this hike". The second is not
+ * an answer at all, and turning it into one is what let a hiker being
+ * followed lose a correct attachment: GPS drifts into a brand-new cell, the
+ * graph merges it, the all-or-nothing batch re-fetches every merged cell, the
+ * new cell's request fails on the weak signal this whole cell-loading feature
+ * targets - and `null` came back for the lot, blanking figures that were
+ * right for every mile the hiker had already walked.
+ *
+ * `undecided` is the caller's cue to keep what it has.
+ */
+export type CompanionOutcome<E> =
+  | { kind: 'loaded'; data: E[] }
+  /** Decided: this phone is not going to have it. Published without it, a
+   *  404, bytes that do not match the manifest, a shape that is not the
+   *  shape. */
+  | { kind: 'absent' }
+  /** Not decided: the network refused, dropped or timed out. Nothing was
+   *  learned, so nothing should be unlearned either. */
+  | { kind: 'undecided' }
+
+const LOADED = <E>(data: E[]): CompanionOutcome<E> => ({ kind: 'loaded', data })
+const ABSENT: CompanionOutcome<never> = { kind: 'absent' }
+const UNDECIDED: CompanionOutcome<never> = { kind: 'undecided' }
+
+/**
+ * What this session has already fetched and verified, by store key.
+ *
+ * WHY (#1275). `fetchCompanionCells` iterates every cell in `merged.cells`
+ * and calls {@link fetchCompanionCell} for each one, every time it runs - and
+ * the effect that calls it re-runs on every `graphMerged` change, which is
+ * every time one more cell merges while a day hike, card or followed walk is
+ * open. `mergeGraphShard` is append-only and cells are never unloaded, so on
+ * a multi-day walk that is O(n^2) network fetches and SHA-256 verifications
+ * over the hike: real mobile data and real CPU spent re-verifying megabytes
+ * that have not changed, on ground the hiker already has good data for.
+ *
+ * INVALIDATED ON THE MANIFEST'S HASH, not on time and not on the cell name
+ * alone, which is the part #1275 asks for thought about. The key says WHICH
+ * artifact; the hash says WHICH VERSION of it, and it is the same figure the
+ * fetch would have verified the bytes against. So an entry whose hash no
+ * longer matches what the current manifest advertises is a different artifact
+ * by construction and is re-fetched and re-hashed in full. A publish
+ * invalidates this cache without anything having to remember to clear it.
+ *
+ * The edge count is held too, for {@link fetchCompanionCell}'s own reason:
+ * the halves are index-aligned per cell, so a cached half must still match
+ * the cell it is being handed to.
+ *
+ * NOT THE PERSISTENT STORE. `keepVerified`/`readStoredCompanion` answer the
+ * NEXT launch and are untouched; this answers the same session, which is
+ * where the repetition is.
+ */
+const verifiedThisSession = new Map<
+  string,
+  { hash: string; edgeCount: number; data: unknown[] }
+>()
+
+/** Drops the session cache. Tests only - a running app has no reason to, and
+ *  the hash check above is what keeps it honest in one. */
+export function forgetVerifiedCompanions(): void {
+  verifiedThisSession.clear()
+}
+
+/**
  * One cell's companion half, held to its published hash and to ITS CELL'S
- * edge count - null on every way of not having one.
+ * edge count - and saying which kind of nothing it is when there is none.
  *
  * The count check against the cell's shard is the point: the halves are
  * index-aligned per cell, and edge 40 drawn from edge 41's vertices is a route
  * on the wrong trail. A mismatch means the pair on this phone came from two
- * different publishes, and null - no highlight, chords refused - beats drawing
- * the wrong one.
+ * different publishes, and `absent` - no highlight, chords refused - beats
+ * drawing the wrong one.
  */
 async function fetchCompanionCell<E>(
   cell: LoadedGraphCell,
@@ -507,56 +577,104 @@ async function fetchCompanionCell<E>(
   isShape: (value: unknown) => value is E[],
   signal?: AbortSignal,
   online = true,
-): Promise<E[] | null> {
-  if (!DATA_CONFIGURED) return null
+): Promise<CompanionOutcome<E>> {
+  if (!DATA_CONFIGURED) return ABSENT
   const key = trailGraphCellKey(cell.name, half)
   const storeKey = graphCellStoreKey(cell.name, half)
-  const stored = () => readStoredCompanion(storeKey, isShape, cell.edgeIds.length)
+  const stored = async (whenMissing: CompanionOutcome<never>) => {
+    const held = await readStoredCompanion(storeKey, isShape, cell.edgeIds.length)
+    return held === null ? whenMissing : LOADED(held)
+  }
 
-  if (!online) return await stored()
+  // OFFLINE IS A DECISION, not a non-answer, and the distinction is the whole
+  // of #1274. Offline the store IS the source: the phone has looked at
+  // everything it holds and found nothing usable, which is a fact about the
+  // data and the honest-unknown state every surface downstream already says.
+  // `undecided` is reserved for the network being ASKED and refusing to
+  // answer, below - which is the case that was wiping correct attachments.
+  if (!online) return await stored(ABSENT)
 
   try {
     // Weighed at the manifest before the fetch and at the response after it,
-    // exactly as the shard is (#1254); null is what this half already means
+    // exactly as the shard is (#1254); absent is what this half already means
     // by "not on this phone".
     const { hash: expected, decodedBytes, version } = await published(key, signal)
     if (oversized(decodedBytes)) {
       warnOversized(key, decodedBytes, 'manifest')
-      return null
+      return ABSENT
+    }
+    if (expected === null) return ABSENT
+
+    // #1275. The manifest's hash is the version, so an entry recorded under
+    // it is byte-identical to what the fetch below would download and
+    // re-hash. Checked AFTER the manifest read rather than before, because
+    // the hash is what makes the entry safe to trust.
+    const remembered = verifiedThisSession.get(storeKey)
+    if (
+      remembered !== undefined &&
+      remembered.hash === expected &&
+      remembered.edgeCount === cell.edgeIds.length
+    ) {
+      return LOADED(remembered.data as E[])
     }
 
     const response = await fetch(dataUrl(key), { signal })
-    if (!response.ok) return await stored()
+    // A 404 is the bucket answering: there is no such artifact. Any other
+    // refusal - 500, 502, a gateway timeout - is the bucket failing to
+    // answer, which decides nothing (#1274).
+    if (!response.ok) {
+      if (response.status === 404) return ABSENT
+      return await stored(UNDECIDED)
+    }
 
     const bytes = new Uint8Array(await response.arrayBuffer())
     if (oversized(bytes.byteLength)) {
       warnOversized(key, bytes.byteLength, 'response')
-      return null
+      return ABSENT
     }
-    if (expected === null) return null
-    if ((await sha256Of(bytes)) !== expected) return null
+    if ((await sha256Of(bytes)) !== expected) return ABSENT
 
     const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes))
-    if (!isShape(parsed)) return null
-    if (parsed.length !== cell.edgeIds.length) return null
+    if (!isShape(parsed)) return ABSENT
+    if (parsed.length !== cell.edgeIds.length) return ABSENT
 
     void keepVerified(storeKey, bytes, expected, version, response)
-    return parsed
+    verifiedThisSession.set(storeKey, {
+      hash: expected,
+      edgeCount: cell.edgeIds.length,
+      data: parsed,
+    })
+    return LOADED(parsed)
   } catch {
     // A refused origin, a dropped connection, a signal that turned out not to
     // be one. The stored copy answers where there is one - the same fallback
-    // the offline branch above takes, arrived at from the other direction.
-    return await stored()
+    // the offline branch above takes, arrived at from the other direction -
+    // and where there is not, nothing was learned.
+    return await stored(UNDECIDED)
   }
 }
 
 /**
  * One companion for the whole merged graph: every merged cell's half, placed
- * at the merged edge positions - or null when any cell's is missing, on the
- * all-or-nothing rule the whole artifact already followed (a walk crossing an
- * edge nobody measured has no total at all rather than a total missing one
- * edge; a highlight missing one edge's vertices is a chord across a
- * switchback).
+ * at the merged edge positions - or nothing when any cell's is missing, on
+ * the all-or-nothing rule the whole artifact already followed (a walk
+ * crossing an edge nobody measured has no total at all rather than a total
+ * missing one edge; a highlight missing one edge's vertices is a chord across
+ * a switchback).
+ *
+ * THE FIRST NON-ANSWER DECIDES, and it is allowed to be `undecided` (#1274).
+ * All-or-nothing is unchanged: one cell without its half still means the
+ * whole companion is unavailable. What changed is that the caller is told
+ * whether that is a fact about the data or a fact about the network, so a
+ * transient failure on one brand-new cell no longer reads as "this walk has
+ * no elevation" and wipe an attachment that was right for every cell the
+ * hiker had already walked through.
+ *
+ * Returning on the first non-answer rather than scanning every cell to see
+ * whether a later one is definitively absent is deliberate: `undecided` is
+ * the conservative verdict - it changes nothing on screen - so erring
+ * towards it costs a stale-but-correct attachment rather than a wrong one,
+ * and the next merge re-asks.
  */
 async function fetchCompanionCells<E>(
   merged: MergedGraph,
@@ -564,12 +682,12 @@ async function fetchCompanionCells<E>(
   isShape: (value: unknown) => value is E[],
   signal?: AbortSignal,
   online = true,
-): Promise<E[] | null> {
+): Promise<CompanionOutcome<E>> {
   const halves: E[][] = []
   for (const cell of merged.cells) {
-    const data = await fetchCompanionCell(cell, half, isShape, signal, online)
-    if (data === null) return null
-    halves.push(data)
+    const outcome = await fetchCompanionCell(cell, half, isShape, signal, online)
+    if (outcome.kind !== 'loaded') return outcome
+    halves.push(outcome.data)
   }
   const aligned: Array<E | undefined> = new Array<E | undefined>(
     merged.edgeIds.length,
@@ -582,7 +700,7 @@ async function fetchCompanionCells<E>(
     })
   })
   // Every merged edge came from some merged cell, whose half covered it.
-  return aligned as E[]
+  return LOADED(aligned as E[])
 }
 
 /**
@@ -594,7 +712,7 @@ export async function fetchTrailGraphGeometryCells(
   merged: MergedGraph,
   signal?: AbortSignal,
   online = true,
-): Promise<Array<Array<[number, number]>> | null> {
+): Promise<CompanionOutcome<Array<[number, number]>>> {
   return fetchCompanionCells(merged, 'geometry', isGraphGeometry, signal, online)
 }
 
@@ -608,7 +726,7 @@ export async function fetchTrailGraphElevationCells(
   merged: MergedGraph,
   signal?: AbortSignal,
   online = true,
-): Promise<Array<[number, number] | null> | null> {
+): Promise<CompanionOutcome<[number, number] | null>> {
   return fetchCompanionCells(merged, 'elevation', isGraphElevation, signal, online)
 }
 
@@ -625,7 +743,7 @@ export async function fetchTrailGraphProfileCells(
   merged: MergedGraph,
   signal?: AbortSignal,
   online = true,
-): Promise<Array<Array<number | null> | null> | null> {
+): Promise<CompanionOutcome<Array<number | null> | null>> {
   return fetchCompanionCells(merged, 'profile', isGraphProfile, signal, online)
 }
 

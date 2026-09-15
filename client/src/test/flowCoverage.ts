@@ -376,21 +376,40 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/builder.spec.ts' },
   },
-  // NOT A NEEDLE — NO NEEDLE. Measured 2026-09-11 against the UA environment:
+  // NOT A NEEDLE — NO NEEDLE, and #1400's option 3 is what got past it.
+  // Measured 2026-09-11 against UA and re-checked 2026-09-15:
   // `conditions/closures.json` carries 0 closures and `conditions/reports.json`
   // 0 reports, and the serious warnings ARE escalated reports. So
-  // alertSheetsPanel has nothing to place, the marks never draw, and a camera
-  // derived from a mile would find nothing at it. The three ways
-  // out are in #1400 — "Two safety sheets have no published data to open them, so
-  // the map's alert taps go untested". This is the safety path CLAUDE.md names
-  // third of four, so the gap is worth more than its line count.
-  'chrome/ClosureSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
-  'chrome/SeriousWarningSheet.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  // alertSheetsPanel had nothing to place, the marks never drew, and a camera
+  // derived from a mile would have found nothing at it.
+  //
+  // `e2e/data/alertSheets.spec.ts` replaces those two artifacts with
+  // `page.route` and drives the sheets against fixtures placed at the camera
+  // this suite already seeds — so what is `covered` here is THE SHEET AND THE
+  // TAP, and explicitly not the data or the pipeline that bakes it. The spec's
+  // own header says so at length, because a coverage row that quietly meant
+  // something weaker than it looks is worse than a `planned` one. Option 1 —
+  // wait for a real closure — is still the right answer for the MARKS, and
+  // #1400 keeps that half.
+  //
+  // This is the safety path CLAUDE.md names third of four, which is why it was
+  // worth more than its line count and why the tap is now driven end to end.
+  'chrome/ClosureSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/alertSheets.spec.ts' },
+  },
+  'chrome/SeriousWarningSheet.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/alertSheets.spec.ts' },
+  },
   'chrome/OrgNoticeSheet.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },
   },
-  'chrome/alertSheetsPanel.tsx': { step: 'F12 the map', flow: { status: 'planned' } },
+  'chrome/alertSheetsPanel.tsx': {
+    step: 'F12 the map',
+    flow: { status: 'covered', spec: 'e2e/data/alertSheets.spec.ts' },
+  },
   'chrome/noticesPanel.tsx': {
     step: 'F12 the map',
     flow: { status: 'covered', spec: 'e2e/data/mapSheets.spec.ts' },

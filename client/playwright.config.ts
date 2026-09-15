@@ -201,6 +201,67 @@ export default defineConfig({
         deviceScaleFactor: DESKTOP.deviceScaleFactor,
       },
     },
+    /**
+     * WEBKIT AT PHONE WIDTH, WHICH IS THE WHOLE OF THE iOS QUESTION (#1392).
+     *
+     * One bundle, two WebViews: the Android shell is Chromium and the iOS
+     * shell is WebKit, so for a Capacitor app this project is not "another
+     * browser" but the other half of what ships. TESTING.md's strategy item 3
+     * has promised "real Chromium and WebKit" since before any of this
+     * existed.
+     *
+     * PHONE WIDTH ONLY, deliberately. `desktop` exists because
+     * `lib/useDesktop.ts`'s breakpoint is a behaviour fork this app has to
+     * get right; there is no iOS device in the desktop layout, so a
+     * `desktop-webkit` would assert a combination nothing ships and pay a
+     * third of the suite's time for it. If a WebKit laptop browser ever
+     * becomes a target, that is the reason to add it and it is not this one.
+     *
+     * IT RUNS THE SAME SPECS AS `phone` RATHER THAN A TAGGED SUBSET, and that
+     * is a choice against this issue's own suggestion of scoping by tag. The
+     * argument is that an engine difference is not knowable in advance the
+     * way a layout fork is: a `@webkit` tag can only carry the differences
+     * somebody already found, which is precisely the set that needs no test.
+     * Measured on the run that introduced this project (2026-09-15, WebKit
+     * 26.6): the whole hermetic phone suite under WebKit is 146 passed, 3
+     * skipped, NOTHING FAILED, in 3.6 minutes. The engine difference turned
+     * up nothing to fix, which is a result rather than a formality - it is
+     * what this issue asked somebody to find out before CI did.
+     *
+     * THE LAUNCH OPTIONS ABOVE ARE CHROMIUM'S AND MUST NOT REACH IT.
+     * `chromiumExecutable()` points at the sandbox's Chromium and
+     * `--no-sandbox` is a Chromium flag, so both are cleared here rather than
+     * inherited - a WebKit told to exec a Chromium binary fails at launch
+     * with an error that names neither.
+     */
+    // THE HERMETIC HALF ONLY, and this is a finding rather than a preference.
+    // Run against `e2e/data/` in this sandbox, WebKit reaches 150 seconds still
+    // reporting "No trail line" on a camera where Chromium has the line, the
+    // waypoints and the closure tape within 30 - so every spec that taps
+    // something drawn on the trail fails, while one that taps a mark placed at
+    // its own coordinate passes. Measured 2026-09-15, with screenshots either
+    // side. Nobody has established whether that is WebKit, or this sandbox's
+    // data proxy under WebKit, and #1392 is explicit that a project is turned
+    // on by somebody who has fixed what the engine turned up - not by somebody
+    // who found something they could not explain. So the data half stays on
+    // Chromium until that is understood, and the gap is filed as #1467 rather
+    // than silently shipped.
+    ...(DATA_MODE
+      ? []
+      : [
+          {
+            name: 'phone-webkit',
+            grepInvert: /@desktop/,
+            use: {
+              browserName: 'webkit' as const,
+              launchOptions: {},
+              viewport: { width: PHONE.width, height: PHONE.height },
+              isMobile: PHONE.isMobile,
+              hasTouch: PHONE.hasTouch,
+              deviceScaleFactor: PHONE.deviceScaleFactor,
+            },
+          },
+        ]),
   ],
   // None where the caller brought their own (the sandbox's proxy above);
   // otherwise the same build-and-serve as the hermetic half, carrying

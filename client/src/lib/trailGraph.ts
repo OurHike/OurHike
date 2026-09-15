@@ -969,6 +969,31 @@ function snapCandidates(
  * the nearest point on it - so a caller that takes one can use it directly.
  */
 /**
+ * The name a hiker could be asked about, or null where the artifact gives
+ * none. Whitespace is none.
+ *
+ * `null` IS NOT THE ONLY WAY THIS ARTIFACT SAYS "UNNAMED", which is #1444.
+ * Measured over `trail_graph.json` as data.ourhike.org served it 2026-09-15
+ * (release `2026-09-14`, manifest `fed93aac-b45c-492c-9df2-fc668ac35010`,
+ * sha256 `222306f1eac1ad8c7372d466f0ccba6a107613b5a68fe18a2122e22af4d299ee`):
+ * **12,510 edges of 631,915 carry a name that is only whitespace**, and on
+ * `nh_granit_trails` those blank-named lines are **10,352 distinct trail
+ * ids**. `" "` is not `null`, so a null-only guard keyed every one of them
+ * onto the single string `nh_granit_trails\0 \0None` - a whole state's worth
+ * of unnamed tread standing as one candidate, which made
+ * {@link trailChoice} answer `{kind: 'one'}` and the app pick instead of ask.
+ *
+ * Trimming rather than only testing is deliberate: two names differing only
+ * in surrounding whitespace read identically to a hiker, so they are the same
+ * answer to "which trail did you mean" and keying them apart would ask a
+ * question with no visible difference between its options.
+ */
+export function askableName(name: string | null): string | null {
+  const trimmed = name?.trim()
+  return trimmed ? trimmed : null
+}
+
+/**
  * What makes two pieces of tread the SAME ANSWER to "which trail did you
  * mean" - which is not the same question {@link sameTrail} answers.
  *
@@ -1001,10 +1026,17 @@ function snapCandidates(
  * into one answer that would be wrong for at least one of them. The cost is a
  * choice a hiker cannot make well, and it is the lesser cost - the app never
  * pretends to know which unnamed line somebody meant.
+ *
+ * EXPORTED because lib/strokeMatch.ts asks the same question of a drawn
+ * stroke and reimplemented this rule line for line until #1444. Two copies of
+ * "which trail did you mean" is two places for the answer to drift, and it
+ * had: both guarded on `null` alone, and the blank-name defect below reached
+ * the tap path and the stroke path identically.
  */
-function askableIdentity(edge: GraphEdge, edgeIndex: number): string {
-  if (edge.name === null) return `edge:${edgeIndex}`
-  return `${edge.source ?? ''}\u0000${edge.name}\u0000${edge.blaze_color ?? ''}`
+export function askableIdentity(edge: GraphEdge, edgeIndex: number): string {
+  const name = askableName(edge.name)
+  if (name === null) return `edge:${edgeIndex}`
+  return `${edge.source ?? ''}\u0000${name}\u0000${edge.blaze_color ?? ''}`
 }
 
 export function trailsNear(

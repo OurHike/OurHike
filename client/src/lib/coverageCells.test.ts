@@ -23,6 +23,7 @@ import {
   tileBounds,
   useCellIndexState,
   widen,
+  type Bounds,
   type CellIndex,
   type CoverageCell,
 } from './coverageCells'
@@ -389,22 +390,42 @@ describe('priceStretch', () => {
   })
 })
 
+/** The seams' total drawn length, in degrees - the property that must not
+ *  change when `runs()` merges collinear pieces into fewer segments. */
+function totalLength(
+  edges: readonly (readonly [readonly [number, number], readonly [number, number]])[],
+): number {
+  return edges.reduce(
+    (sum, [from, to]) => sum + Math.abs(to[0] - from[0]) + Math.abs(to[1] - from[1]),
+    0,
+  )
+}
+
 describe('seamEdges', () => {
   it('draws all four edges of a lone cell', () => {
-    expect(seamEdges([N34W085], 1)).toHaveLength(4)
+    expect(seamEdges([N34W085])).toHaveLength(4)
   })
 
   it('leaves out the edge two held cells share - the map is continuous across it', () => {
-    const edges = seamEdges([N34W085, N34W084], 1)
-    expect(edges).toHaveLength(6)
+    const edges = seamEdges([N34W085, N34W084])
+    // FOUR, not six, and the difference is `runs()` rather than a change of
+    // shape: the two cells' southern edges are collinear and adjacent, so
+    // they come back as one segment from -85 to -83 instead of two meeting at
+    // -84. Same picture, and a better one - a dashed line drawn in two pieces
+    // restarts its dash pattern at the join and repeats the label
+    // map/coverageLayers.ts puts on a seam.
+    expect(edges).toHaveLength(4)
+    expect(totalLength(edges)).toBe(6) // two 1°×1° squares: 2 wide + 4 tall
     const onTheSeam = edges.filter(([from, to]) => from[0] === -84 && to[0] === -84)
     expect(onTheSeam).toEqual([])
   })
 
   it('leaves out the shared edge when the two held cells are stacked north-south', () => {
-    const edges = seamEdges([N34W085, N35W085], 1)
-    // Stacked north-south: the shared parallel at 35° N goes, the rest stay.
-    expect(edges).toHaveLength(6)
+    const edges = seamEdges([N34W085, N35W085])
+    // Stacked north-south: the shared parallel at 35° N goes, the rest stay -
+    // and the two west edges merge into one, as above.
+    expect(edges).toHaveLength(4)
+    expect(totalLength(edges)).toBe(6)
     // The seam runs west-east along 35° N, so both its endpoints sit at that
     // latitude and its longitudes differ. Filtering on a constant longitude
     // instead - which this assertion used to do - can only ever select a
@@ -418,7 +439,7 @@ describe('seamEdges', () => {
     // downloaded area rather than an internal join, and has to be drawn. This
     // is the direction the assertion above cannot check, and the case the
     // test that now sits above it was named for while checking the other one.
-    const edges = seamEdges([N34W085], 1)
+    const edges = seamEdges([N34W085])
     const onTheSeam = edges.filter(([from, to]) => from[1] === 35 && to[1] === 35)
     expect(onTheSeam).toEqual([
       [
@@ -428,8 +449,128 @@ describe('seamEdges', () => {
     ])
   })
 
+  it('draws the seam around what a partial cell carries, not around its square', () => {
+    // The n40w074 shape (#1458): the cell declares 40..41 and its tiles stop
+    // at 40.714, so the southern edge of the downloaded area runs along
+    // 40.714 - which is where a hiker walking south out of coverage actually
+    // crosses it. Drawn at 40.0 it was miles from the ground it described,
+    // and disagreed with the banner App.tsx raises off the same box.
+    const partial = {
+      name: 'n40w074',
+      key: 'at_basemap_cell_n40w074.pmtiles',
+      bounds: [-74, 40, -73, 41],
+      covered: [-74, 40.714, -73.125, 41],
+    } as const
+
+    const edges = seamEdges([partial])
+
+    expect(edges).toHaveLength(4)
+    const south = edges.filter(([from, to]) => from[1] === to[1] && from[1] === 40.714)
+    expect(south).toEqual([
+      [
+        [-74, 40.714],
+        [-73.125, 40.714],
+      ],
+    ])
+    expect(edges.some(([from, to]) => from[1] === 40 || to[1] === 40)).toBe(false)
+  })
+
+  it('draws a seam between two held cells whose covered ground does not meet', () => {
+    // Two whole squares side by side are continuous, but two PARTIAL cells
+    // can be held and still have a gap between them - and a hiker walking
+    // into that gap is leaving the downloaded area, so it is a real seam.
+    // This is the case the lattice walk could not see at all: it found the
+    // cells adjacent by their corners and drew nothing.
+    const west = {
+      name: 'a',
+      key: 'a.pmtiles',
+      bounds: [-75, 40, -74, 41],
+      covered: [-75, 40, -74.5, 41],
+    } as const
+    const east = {
+      name: 'b',
+      key: 'b.pmtiles',
+      bounds: [-74, 40, -73, 41],
+      covered: [-74, 40, -73, 41],
+    } as const
+
+    const edges = seamEdges([west, east])
+    const meridians = edges
+      .filter(([from, to]) => from[0] === to[0])
+      .map(([from]) => from[0])
+
+    expect(meridians.sort((a, b) => a - b)).toEqual([-75, -74.5, -74, -73])
+  })
+
   it('draws nothing for nothing', () => {
-    expect(seamEdges([], 1)).toEqual([])
+    expect(seamEdges([])).toEqual([])
+  })
+
+  // Every case above is one somebody thought of, which is the weakness they
+  // share: the sweep replaced a lattice walk, and the walk passed its own
+  // hand-written cases too. This one is written against an oracle instead.
+  //
+  // The oracle rasterises the union on a grid finer than any edge in the
+  // arrangement and counts the cell sides where covered meets uncovered.
+  // That is O(area) and far too slow to ship, but it shares no code, no
+  // lattice and no reasoning with the function under test - so the two
+  // agreeing on an arrangement neither was written for is evidence the
+  // hand-written cases cannot give. Boxes are generated on halves so the
+  // 0.5 grid lands exactly on every edge.
+  it('agrees with an independent rasteriser on 200 random arrangements', () => {
+    const covers = (boxes: Bounds[], x: number, y: number) =>
+      boxes.some(([w, s, e, n]) => x > w && x < e && y > s && y < n)
+
+    const rasterisedPerimeter = (boxes: Bounds[]) => {
+      const step = 0.5
+      let total = 0
+      for (let x = -12; x < 12; x += step) {
+        for (let y = -12; y < 12; y += step) {
+          const here = covers(boxes, x + step / 2, y + step / 2)
+          if (here !== covers(boxes, x - step / 2, y + step / 2)) total += step
+          if (here !== covers(boxes, x + step / 2, y - step / 2)) total += step
+        }
+      }
+      return total
+    }
+
+    // Seeded, so a failure is reproducible rather than a story about a
+    // machine that saw it once.
+    let seed = 20260915
+    const rand = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff
+    const half = (span: number) => Math.round(rand() * span * 2) / 2
+
+    const disagreed: string[] = []
+    for (let trial = 0; trial < 200; trial += 1) {
+      const boxes: Bounds[] = []
+      for (let i = 0; i <= Math.floor(rand() * 4); i += 1) {
+        const west = half(8) - 4
+        const south = half(8) - 4
+        boxes.push([west, south, west + half(3) + 0.5, south + half(3) + 0.5])
+      }
+      const swept = totalLength(
+        // `bounds` is deliberately poisoned rather than set to the same box:
+        // reading it instead of `covered` IS the #1458 defect, and an oracle
+        // that passed either way would be checking the geometry while leaving
+        // the field the whole issue is about untested.
+        seamEdges(
+          boxes.map((b, i) => ({
+            name: `c${i}`,
+            key: `k${i}`,
+            bounds: [-99, -99, 99, 99] as Bounds,
+            covered: b,
+          })),
+        ),
+      )
+      const rasterised = rasterisedPerimeter(boxes)
+      if (Math.abs(swept - rasterised) > 1e-9) {
+        disagreed.push(
+          `${JSON.stringify(boxes)} swept ${swept}, rasterised ${rasterised}`,
+        )
+      }
+    }
+
+    expect(disagreed).toEqual([])
   })
 })
 

@@ -171,6 +171,7 @@ TRAIL_IDS = {
     "NYS DEC": "NYSDEC",
     "NYS OPRHP": "NYSOPRHP",
     "USFS": "USFS",
+    "NYC Parks": "NYCPARKS",
 }
 
 # DEC's ASSET values, for the two POI types DEC publishes no per-type service
@@ -381,6 +382,55 @@ def public_verdict(source: dict, properties: dict) -> tuple[bool, str]:
     return flagged, CONFIDENCE_HIGH
 
 
+def confidence_for(source: dict, verdict: str) -> str:
+    """`verdict` unless the whole layer is registered as low confidence.
+
+    A FLOOR, NOT A FLAG, and the difference is the reason it exists (#1461).
+    `public_field` above answers a per-ROW question - this org says this one
+    is not for the public - and there was no way to say the LAYER cannot
+    support a confident claim about any of its rows. New York City's drinking
+    fountains are exactly that: `featuresta` reads `Active` on all 3,849, so
+    the column carries nothing about whether any given fountain works, and
+    shipping them at CONFIDENCE_HIGH would assert of every one of them the
+    thing the source cannot say about a single one.
+
+    It only ever lowers. A source that declares the floor and also has a
+    public flag keeps the flag's LOW answers - there is nowhere lower to go -
+    and cannot be raised back to HIGH by it.
+
+    AN UNRECOGNISED VALUE RAISES RATHER THAN BEING IGNORED, which is the half
+    of this that review added and the half worth reading. The floor is read
+    here and nowhere else, by string equality, against a key sources.json has
+    no schema for - lib/source_registry.py's header records that
+    `discover_sources.py` carries unknown fields through, so nothing rejects a
+    key or a value it does not know. A floor written "Low", "lower", or as
+    anything else somebody reasonably invents would have compared False and
+    shipped all 3,195 of New York City's drinking fountains at
+    CONFIDENCE_HIGH - asserting working water at every one of them from a
+    source whose `featuresta` says nothing about any of them. Silently, with
+    CI green, on `out of water`.
+
+    sources.json's own comment called that "one careless edit from being
+    undone". It was right, and a comment is not a guard; this is.
+
+    WHAT THIS STILL DOES NOT CATCH, stated because the gap is invisible from
+    here: a misspelled KEY. `confidence_flor` reads as absent and the layer
+    ships at whatever the row said. Closing that needs an allowed-key schema
+    over the whole registry, which is a change to every source rather than to
+    this one and is not attempted here.
+    """
+    declared = source.get("confidence_floor")
+    if declared is None:
+        return verdict
+    if declared != CONFIDENCE_LOW:
+        raise ValueError(
+            f"{source.get('key', '?')}: confidence_floor must be {CONFIDENCE_LOW!r}, got {declared!r}. "
+            f"The floor only ever lowers, so {CONFIDENCE_LOW!r} is the only value it can mean - "
+            "and a value this does not recognise would silently ship the layer at full confidence."
+        )
+    return CONFIDENCE_LOW
+
+
 def classify(source: dict, properties: dict) -> str | None:
     """This feature's poi_type, or None if the layer does not publish one for it."""
     declared = source.get("poi_type")
@@ -497,6 +547,7 @@ def build_records(source: dict, features: list[dict]) -> tuple[list[dict], dict]
             dropped[f"{source['public_field']} says not public"] = dropped.get(f"{source['public_field']} says not public", 0) + 1
             continue
 
+        confidence = confidence_for(source, confidence)
         record = unify_poi(feature, poi_type, key, trail_id, {**field_map, "confidence": confidence})
         # export_poi.py attaches a mile by projecting onto ATC's centerline.
         # These points are not on it, so the key is removed rather than

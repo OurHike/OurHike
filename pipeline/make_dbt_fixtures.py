@@ -868,6 +868,90 @@ def _nyc_dot_greenways_layer():
     )
 
 
+def _nyc_public_restrooms_layer():
+    """nyc_public_restrooms' measured field list, 2026-09-15.
+
+    EVERY ROW IS OPERATIONAL, because the registry entry filters at the portal
+    (status='Operational', 975 of 1,066) and the 91 it excludes never reach
+    disk. The column is still written on every row: it is in the fetched
+    GeoJSON, a staging model can read it, and it is the column that makes this
+    layer shippable at all - the contrast POI_COVERAGE_SURVEY.md §10 draws
+    against the drinking fountains, whose status column says the same thing
+    about every row.
+
+    `operator` and `location_type` VARY ON PURPOSE. The maintainer's call of
+    2026-09-15 was to ship every operator, so a fixture carrying only NYC
+    Parks would describe a narrower file than the one that exists - live:
+    NYC Parks 728, NYPL 91, Parks Concessionaire 71, QPL 63, BPL 62, and a
+    tail of conservancies and business improvement districts.
+    """
+    return _features(
+        [
+            {
+                "facility_name": "Fixture Park Comfort Station",
+                "location_type": "Park",
+                "operator": "NYC Parks",
+                "status": "Operational",
+                "changing_stations": "Yes",
+                "latitude": "40.704410",
+                "longitude": "-74.015900",
+            },
+            {
+                "facility_name": "Fixture Branch Library",
+                "location_type": "Library",
+                "operator": "NYPL",
+                "status": "Operational",
+                "changing_stations": "No",
+                "latitude": "40.752700",
+                "longitude": "-73.982300",
+            },
+        ],
+        _point,
+    )
+
+
+def _nyc_drinking_fountains_layer():
+    """nyc_drinking_fountains' measured field list, 2026-09-15.
+
+    EVERY ROW PASSES THE ALLOWLIST, for the reason the greenway fixture gives:
+    the `where` is applied at the portal, so the 654 excluded rows never reach
+    disk and a fixture carrying an `Indoor Drinking Fountain` would describe a
+    file that cannot exist.
+
+    `featuresta` READS `Active` ON BOTH ROWS, and that is the fixture being
+    accurate rather than lazy. It reads Active on all 3,849 live rows - zero
+    variance - which is the whole reason nyc_drinking_fountains carries
+    `confidence_floor: low`. A fixture that invented a second value would
+    describe a column this source does not have and would make the floor look
+    unnecessary to whoever read it next.
+
+    `fountainty` carries a decoded letter on one row and a spelled-out type on
+    the other, because the live column mixes both and the allowlist has to
+    hold both kinds.
+    """
+    return _features(
+        [
+            {
+                "fountainty": "A",
+                "featuresta": "Active",
+                "propertyna": "Fixture Park",
+                "gispropnum": "B999",
+                "borough": "B",
+                "fountainco": "1",
+            },
+            {
+                "fountainty": "Bottle Filler High Low",
+                "featuresta": "Active",
+                "propertyna": "Fixture Waterfront Park",
+                "gispropnum": "M999",
+                "borough": "M",
+                "fountainco": "2",
+            },
+        ],
+        _point,
+    )
+
+
 def _dec_hiking_trails_layer():
     """dec_hiking_trails' measured field list, 2026-08-25.
 
@@ -1071,6 +1155,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/nj_statewide_trails.geojson": _nj_statewide_trails_layer(),
         "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),
         "external/nyc_dot_greenways.geojson": _nyc_dot_greenways_layer(),
+        "external/nyc_public_restrooms.geojson": _nyc_public_restrooms_layer(),
+        "external/nyc_drinking_fountains.geojson": _nyc_drinking_fountains_layer(),
         "external/dec_hiking_trails.geojson": _dec_hiking_trails_layer(),
         "external/dec_lean_tos.geojson": _dec_lean_tos_layer(),
         "external/dec_primitive_campsites.geojson": _dec_asset_layer(

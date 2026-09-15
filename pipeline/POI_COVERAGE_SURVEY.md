@@ -74,7 +74,7 @@ probed and there is nothing; **unprobed** is an admission, not a finding.
 | **USGS** | absent | absent | absent | absent | shipping | absent | absent | absent | absent |
 | **USFS** | *unsuitable* 815 | **ships 4,605** | absent | absent | absent | **ships 636** | absent | absent | **ships 7,358** |
 | **NH GRANIT** | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed | unprobed |
-| **NYC Parks** | absent | absent | ***unsuitable*** 3,849 | absent | absent | absent | absent | *available* 1,066 | absent |
+| **NYC Parks** | absent | absent | **shipping** 3,195 | absent | absent | absent | absent | **shipping** 975 | absent |
 | **NYC DOT** | absent | absent | absent | absent | absent | absent | absent | absent | absent |
 
 **The trailhead column is new with [#1197](https://github.com/OurHike/OurHike/issues/1197)**,
@@ -725,9 +725,42 @@ not-recorded, and there is no positive evidence of a working fountain anywhere i
 covers just over half.
 
 So what became available is a dated park-level **warning** — this park was inspected on *date*
-and *n* of its fountains had no water — and not a claim that any fountain works. Drawing that
-is a decision about a card on a safety path, so it is the maintainer's; #1461 holds the three
-options. The verdict in the matrix is unchanged.
+and *n* of its fountains had no water — and not a claim that any fountain works.
+
+#### Decided 2026-09-15: both cells ship (#1461)
+
+The maintainer took the third option — fountains as unknown-status points, plus the warning —
+over leaving the refusal settled or drawing the warning alone. Both cells moved to
+**shipping**, and the shape of each is the argument:
+
+| | ships | of | how the unknown is carried |
+| --- | ---: | ---: | --- |
+| **water** | **3,195** | 3,849 | an **allowlist** on `fountainty`, and `confidence_floor: low` on every row |
+| **privy** | **975** | 1,066 | `status='Operational'` at the portal |
+
+**The water cell is the one to read carefully, because its verdict moved and only half its
+reasoning did.** The type blocker is gone: the allowlist keeps 27 decoded values and drops the
+292 indoor fountains, the three sink types, troughs, coolers, `Other`, and the 27 rows of `G`,
+`H` and `J` that PIP's vocabulary does not place. **The status blocker has not moved at all** —
+`featuresta` still says `Active` about all 3,849 — so every surviving row ships at
+`CONFIDENCE_LOW`. That is a *floor on the layer*, not a per-row flag: OPRHP's
+`public_flag_sets_confidence` answers "this org says this one is not for the public", and
+there was no way to say "this source cannot support a confident claim about **any** of its
+rows" until #1461 added one.
+
+**An allowlist rather than a denylist, and the direction is the whole point:** a `fountainty`
+value NYC Parks adds tomorrow is excluded until somebody looks at it, where a denylist would
+ship it on the assumption that it is drinkable.
+
+**The privy filter is a status call, not a scope one.** Every operator ships — NYC Parks 728,
+NYPL 91, Parks Concessionaire 71, QPL 63, BPL 62, and a tail of conservancies and business
+improvement districts — because in a city the nearest toilet is the one that counts. What is
+excluded is the 91 that are not operational, because a privy pin is read as *there is one
+here* and a boarded-up one is the same shape of wrong answer as a dry spring.
+
+**What keeps both honest at the far end** is `export_nearby_poi.clip_to_network`, which drops
+any amenity further than `NETWORK_BUFFER_FEET` from a published line — so a library toilet
+ships only where somebody walking a trail could actually reach it.
 
 ### Privy — 1,066 restrooms, and `available`
 

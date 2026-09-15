@@ -97,7 +97,11 @@ end against the 12.5 min the corridor alone took — so no wall clock, and 77 GB
 of the runner's disk still free. Small because a region is a 3 km ribbon around
 the city's own trail lines rather than a box around the city. The A.T. package
 was byte-for-byte the same shape through it (z14 62,097 / z13 15,899 / z12
-4,172, the counts recorded below). Nothing here tries to reach the 525 cells the trail lines occupy —
+4,172, the counts recorded below). Published to UA on 2026-09-15, run
+34967491651: `n40w074` went from 290 tiles and 4,460,971 bytes to **687 and
+12,298,750**, its real southern edge moving from 40.714 to **40.4469** — which
+is Brooklyn, Queens and Rockaway gaining a z14 tile where they had none at any
+zoom. Nothing here tries to reach the 525 cells the trail lines occupy —
 the measured table below marks the whole US *marginal* against a free runner and
 North America *does not fit*, so a region set reaching them would be a promise
 this document has already measured itself unable to keep.

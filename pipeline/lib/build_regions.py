@@ -8,10 +8,20 @@ straight to the clip, so there was no way to ask for a different shape
 without editing the module. This is that parameter, made real.
 
 WHAT IT IS FOR, MEASURED. The trail lines were cut into 1-degree coverage
-cells nationwide by #1257 - 525 cells hold a tile. The sheet UNDER them was
-not: 62 cells, because the basemap is built corridor-shaped around one trail.
-So the phone can hold other organizations' lines over most of the country and
-the ground to draw them on over a thin band of it.
+cells nationwide by #1257. The sheet UNDER them was not, because the basemap is
+built corridor-shaped around one trail. So the phone can hold other
+organizations' lines over most of the country and the ground to draw them on
+over a thin band of it.
+
+    cells holding trail lines   681   (`nearby_trails_cell_*`)
+    cells holding a sheet        62   (`at_basemap_cell_*`, `dem_cell_*`)
+
+Re-counted from the bucket 2026-09-16 (release 2026-09-14). This said 525
+against 62 when it was written; the 62 held and the trail network grew, which
+is the direction it will keep moving as organizations register. NATIONAL_SCALE.md
+prices closing that gap and reads both halves back from `latest.json` rather
+than from here - a scoping number nobody re-checks is how a document starts
+lying quietly, and this one had a 30% error in it before anybody looked.
 
 New York City is the first case anybody can walk into, and it is the reason
 this landed now: 7,059 NYC Parks trail segments and 3,030 NYC DOT greenway
@@ -37,7 +47,7 @@ walks, once there is behaviour to measure. Stated in kilometres rather than
 degrees for the reason that constant is: a degree of longitude is 111 km at
 the equator and 85 km at New York, while the thing being promised is ground.
 
-WHAT THIS DELIBERATELY DOES NOT DO. It does not try to cover the 525. The
+WHAT THIS DELIBERATELY DOES NOT DO. It does not try to cover them all. The
 whole US is marked "marginal" against a free runner's 88 GB and North America
 "does not fit" (BASEMAP.md's measured table), so a region set that reached
 them would be a promise this repository has already measured itself unable to

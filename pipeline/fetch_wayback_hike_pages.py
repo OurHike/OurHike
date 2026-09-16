@@ -51,7 +51,7 @@ from pathlib import Path
 import requests
 
 from lib.user_agent import CONTACTABLE_USER_AGENT as USER_AGENT
-from lib.wayback_rate import ARCHIVE, MAX_REQUESTS_PER_MINUTE
+from lib.wayback_rate import ARCHIVE, MAX_REQUESTS_PER_MINUTE, REFUSALS, ArchiveRefusing
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
@@ -91,6 +91,11 @@ INDEX_URL = "nynjtc.org/view/hike"
 #: Backoff when it does push back, in seconds. Long, and long on purpose: the
 #: archive's own Retry-After ran to 47s during that incident, and a retry that
 #: returns before the host is ready just spends another refusal.
+#: How often the partial cache is written, in write-ups. Small because the
+#: file is tens of KB and the alternative is losing the run: a job killed at
+#: its timeout keeps whatever the last save banked, and nothing else (#1522).
+SAVE_EVERY = 10
+
 RETRY_BACKOFF_SECONDS = (30, 120, 300)
 RETRYABLE_STATUSES = (429, 500, 502, 503, 504)
 TIMEOUT = 120
@@ -262,6 +267,17 @@ def get(made: requests.Session, url: str, params: dict | None = None) -> request
     constraint, so one page the archive will not serve today is a page to come
     back for, not a reason to throw away everything already recovered. The
     caller records it as missing and moves on.
+
+    THAT HOLDS FOR ONE PAGE AND NOT FOR A HUNDRED (#1522), which is what
+    REFUSALS is for: a give-up here feeds the shared tripwire, and once
+    enough of them arrive in a row this raises ArchiveRefusing through the
+    caller's `continue` instead. Run 35092759225 is the case - every request
+    refused for five and a half hours, the loop patiently moving on each
+    time, 42 of 444 write-ups attempted and nothing written.
+
+    A 404 is NOT a refusal. The archive answered; what it said is that it
+    holds no capture. See lib/wayback_rate.Refusals for why that distinction
+    decides whether the tripwire is honest.
     """
     for attempt, delay in enumerate((*RETRY_BACKOFF_SECONDS, None)):
         # Inside the loop, so a RETRY is counted too - see lib/wayback_rate.py.
@@ -271,6 +287,7 @@ def get(made: requests.Session, url: str, params: dict | None = None) -> request
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as error:
             if delay is None:
                 print(f"    gave up on {url[:70]}: {type(error).__name__}", file=sys.stderr)
+                REFUSALS.refused(f"{url[:70]}: {type(error).__name__}")
                 return None
             print(f"    {type(error).__name__}; waiting {delay}s", file=sys.stderr)
             time.sleep(delay)
@@ -278,6 +295,7 @@ def get(made: requests.Session, url: str, params: dict | None = None) -> request
         if response.status_code in RETRYABLE_STATUSES:
             if delay is None:
                 print(f"    gave up on {url[:70]}: {response.status_code}", file=sys.stderr)
+                REFUSALS.refused(f"{url[:70]}: {response.status_code}")
                 return None
             wait = delay
             header = response.headers.get("Retry-After")
@@ -286,6 +304,8 @@ def get(made: requests.Session, url: str, params: dict | None = None) -> request
             print(f"    {response.status_code}; waiting {wait}s", file=sys.stderr)
             time.sleep(wait)
             continue
+        # Final either way, so the host is answering us - a 404 included.
+        REFUSALS.served()
         if response.status_code >= 400:
             return None
         return response
@@ -719,6 +739,31 @@ def probe(made, url: str) -> int:
     return 0
 
 
+def recover_page(made: requests.Session, link: str) -> tuple[HikePage | None, bool]:
+    """One write-up, and whether the archive gave us anything to parse.
+
+    TWO ANSWERS RATHER THAN ONE, because the summary tells them apart and a
+    reader of it should be able to: `archive refused` counts captures the
+    archive would not serve, while a page that arrived and did not parse is a
+    fact about the page. Folded together they would report a corpus problem
+    as a host problem, which is the confusion this whole module is careful
+    about everywhere else.
+
+    Extracted for #1522. The `continue`s this replaces sat above main()'s
+    periodic `write_cache`, so the save was reachable only on an iteration
+    that recovered something - and a run where every page failed wrote
+    nothing at all before its job timeout killed it.
+    """
+    found = latest_capture(made, link.replace("https://", "").replace("http://", ""))
+    if found is None:
+        return None, False
+    page_url, page_ts = found
+    page_response = get(made, archived(page_url, page_ts))
+    if page_response is None:
+        return None, False
+    return parse_page(page_response.text, link, page_ts), True
+
+
 def main(limit: int | None, index_only: bool) -> int:
     made = session()
 
@@ -752,20 +797,22 @@ def main(limit: int | None, index_only: bool) -> int:
 
     print(f"\nFetching {len(todo)} write-ups, capped at {MAX_REQUESTS_PER_MINUTE}/min - slow on purpose.")
     missed = 0
+    refusing: ArchiveRefusing | None = None
     for index, link in enumerate(todo, 1):
-        found = latest_capture(made, link.replace("https://", "").replace("http://", ""))
-        if found is None:
-            missed += 1
-            continue
-        page_url, page_ts = found
-        page_response = get(made, archived(page_url, page_ts))
-        if page_response is None:
-            missed += 1
-            continue
-        parsed = parse_page(page_response.text, link, page_ts)
+        try:
+            parsed, served = recover_page(made, link)
+        except ArchiveRefusing as trip:
+            # Not an error to swallow and not one to escape: the rows already
+            # recovered are written below, and THEN this is reported.
+            refusing = trip
+            break
         if parsed:
             pages.append(parsed)
-        if index % 10 == 0:
+        if not served:
+            missed += 1
+        # EVERY iteration reaches this, which is the #1522 fix. It used to sit
+        # under two `continue`s and so ran only when a page came back.
+        if index % SAVE_EVERY == 0:
             write_cache(pages, links)
             with_photo = sum(1 for p in pages if p.photos)
             print(f"  {index}/{len(todo)} ... {len(pages)} parsed, {with_photo} carry a photo")
@@ -805,6 +852,17 @@ def main(limit: int | None, index_only: bool) -> int:
         print("  NOT ONE of those photographs carries a credit this parser can see.")
         print("  That is either the corpus or _PHOTO_BY missing the Drupal spelling;")
         print("  run --probe on one of these URLs before believing either.")
+
+    # LAST, and after the cache is on disk, so the rows survive the report
+    # (#1522). The exit code is what stops the workflow's later stages asking
+    # the same host the same question for another five hours.
+    if refusing is not None:
+        print()
+        print(f"  STOPPED EARLY: {refusing}")
+        print(f"  {len(pages)} write-ups are written and a later run resumes onto them.")
+        print("  Re-dispatch rather than retrying in a loop: a fresh runner is a fresh")
+        print("  address, and the archive is donation-funded and owes us nothing.")
+        return 1
     return 0
 
 

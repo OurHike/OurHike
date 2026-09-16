@@ -32,6 +32,17 @@ What this does NOT check, and deliberately:
   clock into the payload they cache, so the bytes move hourly and the hash
   moves with them. That is a defect in those scripts, recorded where it lives
   (the save steps' comments), and not something a workflow parser can see.
+
+ONE OTHER FACT ABOUT A SAVE STEP LIVES HERE (#1522), because this is where
+`_saves_a_cache()` already is and a second file would split the subject: a
+save must not be skipped on a failed run. The argument is the one
+`_saves_a_cache` already makes below about the bundled action's post step -
+a cache exists to rescue the run that did not finish, so conditioning the
+save on success discards the work on exactly those runs. It went from
+reasoned to measured on 2026-09-16: nynjtc-archive-recovery.yml's save was
+the one step in this directory without `always()`, and run 35092759225 spent
+330 minutes being refused by web.archive.org and handed the next dispatch
+nothing.
 """
 
 from __future__ import annotations
@@ -316,3 +327,30 @@ def test_there_are_publishing_workflows_to_check():
     for the same reason: five writers today, and a move of the publish step
     out of `run:` would otherwise make the test above pass over nothing."""
     assert len(publishing_workflows()) >= 5
+
+
+def test_a_cache_save_is_not_skipped_on_the_run_it_exists_to_rescue():
+    """A save conditioned on success throws the work away when it is needed.
+
+    `if:` on a step implies `success()` unless the expression says otherwise,
+    so `if: hashFiles(...) != ''` means "save only if every earlier step
+    passed". That is backwards for a cache whose job is to hand a partial
+    fetch to the next run: a run that failed halfway is precisely the one
+    whose bytes should survive, and a run that succeeded needs its cache
+    least.
+
+    A save with NO `if:` at all is fine and is not flagged - it is
+    unconditional, which is what this rule wants. What is flagged is a
+    condition that forgot to say so.
+    """
+    offenders = []
+    for name, job_id, step in cache_saves():
+        condition = step.get("if")
+        if condition is None:
+            continue
+        if "always()" not in str(condition):
+            offenders.append(f"{name}:{job_id} - {step.get('name') or step.get('uses')}")
+    assert not offenders, (
+        "These cache saves run only when every earlier step passed, so an interrupted or refused run hands the "
+        "next one nothing. Prefix the condition with `always() && `:\n  " + "\n  ".join(offenders)
+    )

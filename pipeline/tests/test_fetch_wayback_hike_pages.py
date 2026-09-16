@@ -19,6 +19,7 @@ Two groups here are load-bearing:
 """
 
 import json
+import re
 
 import pytest
 import requests
@@ -48,6 +49,22 @@ def _unthrottled(monkeypatch):
         "ARCHIVE",
         wayback_rate.RateLimit(max_requests=10_000, clock=lambda: 0.0, sleep=lambda _s: None),
     )
+
+
+@pytest.fixture(autouse=True)
+def _fresh_tripwire(monkeypatch):
+    """Give every test its own refusal counter (#1522).
+
+    `lib.wayback_rate.REFUSALS` is process-wide on purpose - two fetchers
+    sharing an egress address share the refusal - and process-wide state in a
+    suite leaks. Without this, the three tests that deliberately let a request
+    exhaust its ladder would add up across the file and trip the wire inside
+    whichever unrelated test happened to run next.
+
+    Same argument as `_unthrottled` above, and autouse for the same reason:
+    forgetting it would break a test somewhere else.
+    """
+    monkeypatch.setattr(pages, "REFUSALS", wayback_rate.Refusals())
 
 
 def _session():
@@ -717,3 +734,149 @@ class TestTheCreditIsTheLicencesCondition:
         read = pages.load_done(cache)["https://www.nynjtc.org/hike/x"]
 
         assert read.photos == [pages.PagePhoto(filename="a.jpg", credit="Daniel Chazin", credit_basis="img")]
+
+
+# --- a run the archive refuses (#1522) -----------------------------------------
+
+# Run 35092759225 is what this group is about: every CDX request refused, the
+# loop patiently moving to the next write-up each time, and after 330 minutes
+# a job killed at its timeout having attempted 42 of 444 and written nothing
+# at all. Two separate defects had to line up for that, so they are tested
+# separately.
+
+INDEX_MARKUP = "".join(f'<a href="/hike/h{n}">hike {n}</a>' for n in range(1, 31))
+INDEX_CAPTURE = "20230924170506"
+
+#: Any archived write-up, so a test can serve one body for all of them. The
+#: index page is registered by its exact URL first and wins over this.
+ARCHIVED_PAGE = re.compile(r"^https://web\.archive\.org/web/\d+id_/https://www\.nynjtc\.org/hike/")
+
+
+def _index(requests_mock, markup=INDEX_MARKUP):
+    """The index CDX lookup and the index page itself, which every run reads
+    before it reaches the write-ups."""
+    requests_mock.get(
+        pages.archived(f"https://{pages.INDEX_URL}", INDEX_CAPTURE),
+        text=markup,
+    )
+    return f"https://{pages.INDEX_URL}"
+
+
+def _cdx_serving_index_then(requests_mock, *, then_status, hike_capture="20190419182814"):
+    """CDX that answers the index and then does one thing for every write-up.
+
+    One callable rather than a URL per hike, because every CDX lookup in this
+    module goes to the same endpoint and differs only by query string - so
+    what the test needs to vary is the ANSWER, not the address.
+    """
+    asked = []
+
+    def respond(request, context):
+        wanted = request.qs.get("url", [""])[0]
+        asked.append(wanted)
+        if wanted == pages.INDEX_URL:
+            return _cdx((f"https://{pages.INDEX_URL}", INDEX_CAPTURE))
+        context.status_code = then_status
+        if then_status >= 400:
+            return []
+        return _cdx((f"https://{wanted}", hike_capture))
+
+    requests_mock.get(CDX, json=respond)
+    return asked
+
+
+def test_the_partial_cache_is_written_even_on_a_stretch_that_recovers_nothing(monkeypatch, requests_mock, tmp_path):
+    """THE FIRST DEFECT. `write_cache` used to sit below two `continue`s, so
+    the every-tenth save ran only on an iteration that recovered a page - and
+    a run being refused reached it never. The job then died at its timeout
+    with nothing on disk.
+
+    Asserted as "saved more than once" rather than "the file exists", because
+    the file exists either way: the post-loop write runs when the loop is
+    allowed to finish. What the killed run needed was the save DURING it."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(pages, "OUT_PATH", tmp_path / "pages.json")
+    monkeypatch.setattr(pages, "REFUSALS", wayback_rate.Refusals(ceiling=10_000))
+    _index(requests_mock)
+    _cdx_serving_index_then(requests_mock, then_status=503)
+
+    saves = []
+    real_write = pages.write_cache
+    monkeypatch.setattr(
+        pages,
+        "write_cache",
+        lambda recovered, links: saves.append(len(recovered)) or real_write(recovered, links),
+    )
+
+    pages.main(limit=None, index_only=False)
+
+    assert len(saves) > 1, "a run recovering nothing saved only at the end, so a killed job kept nothing"
+
+
+def test_a_run_stops_once_the_archive_is_refusing_everything(monkeypatch, requests_mock, tmp_path, capsys):
+    """THE SECOND DEFECT. One refused write-up is a page to come back for and
+    the loop is right to carry on. Thirty in a row is a host refusing this
+    client, and carrying on costs 450s of backoff apiece - 55 hours over the
+    full 444, against a 330-minute job."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(pages, "OUT_PATH", tmp_path / "pages.json")
+    _index(requests_mock)
+    asked = _cdx_serving_index_then(requests_mock, then_status=503)
+
+    exit_code = pages.main(limit=None, index_only=False)
+
+    hikes_attempted = {url for url in asked if url != pages.INDEX_URL}
+    assert exit_code == 1
+    assert len(hikes_attempted) == wayback_rate.MAX_CONSECUTIVE_REFUSALS
+    assert "STOPPED EARLY" in capsys.readouterr().out
+
+
+def test_what_was_recovered_before_the_archive_refused_is_on_disk(monkeypatch, requests_mock, tmp_path):
+    """The trip writes BEFORE it reports, so stopping early and losing the
+    rows are not the same event. Losing them to the thing that stopped the
+    fetch is the whole defect."""
+    _no_sleep(monkeypatch)
+    out = tmp_path / "pages.json"
+    monkeypatch.setattr(pages, "OUT_PATH", out)
+    _index(requests_mock)
+
+    served = {"left": 1}
+
+    def respond(request, context):
+        wanted = request.qs.get("url", [""])[0]
+        if wanted == pages.INDEX_URL:
+            return _cdx((f"https://{pages.INDEX_URL}", INDEX_CAPTURE))
+        if served["left"] > 0:
+            served["left"] -= 1
+            return _cdx((f"https://{wanted}", "20190419182814"))
+        context.status_code = 503
+        return []
+
+    requests_mock.get(CDX, json=respond)
+    requests_mock.get(
+        ARCHIVED_PAGE,
+        text="<title>Bearfort Ridge Loop | New York-New Jersey Trail Conference</title>",
+    )
+
+    exit_code = pages.main(limit=None, index_only=False)
+
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert exit_code == 1
+    assert [page["name"] for page in written["pages"]] == ["Bearfort Ridge Loop"]
+
+
+def test_a_page_that_arrives_and_does_not_parse_is_not_the_archive_refusing(monkeypatch, requests_mock, tmp_path, capsys):
+    """The summary tells the two apart and a reader of it should be able to.
+    A write-up the archive served that carries no title is a fact about the
+    page; counting it under `archive refused` would report a corpus problem as
+    a host problem, and this build has spent two days distinguishing those."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(pages, "OUT_PATH", tmp_path / "pages.json")
+    _index(requests_mock, markup='<a href="/hike/h1">one</a>')
+    _cdx_serving_index_then(requests_mock, then_status=200)
+    requests_mock.get(ARCHIVED_PAGE, text="<html><body>no title here</body></html>")
+
+    exit_code = pages.main(limit=None, index_only=False)
+
+    assert exit_code == 0
+    assert "archive refused     0" in capsys.readouterr().out

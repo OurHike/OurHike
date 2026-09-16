@@ -755,3 +755,14 @@ def test_the_sheet_says_the_refusal_is_the_licence_and_not_the_matcher(tmp_path,
     assert "nynjtc_hikes_licence" in sheet
     assert "condition rather than a courtesy" in sheet
     assert "1504" in sheet
+
+
+def test_the_sheet_renders_from_the_store_the_fetcher_actually_writes_to():
+    """Two modules name that directory and they must not drift. If they do,
+    the sheet is a page of broken image icons - and a review sheet nobody can
+    see the pictures in cannot settle the one question (#1450) that only a
+    person looking at the photograph can settle."""
+    import fetch_wayback_hike_photos as fetcher
+
+    assert match.ARCHIVE_STORE_DIRNAME == fetcher.ARCHIVE_STORE_DIRNAME
+    assert match.ARCHIVE_STORE_DIRNAME != "poi_photos", "the published store is the one place these must never be"

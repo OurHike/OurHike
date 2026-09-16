@@ -554,6 +554,77 @@ def collect_sidecars() -> dict[str, dict]:
     return found
 
 
+#: The Internet Archive recovery's own manifest, and the human-reviewed file
+#: that clears rows out of it (#1504). Named as file NAMES rather than whole
+#: paths so they follow RAW_DIR, which the tests below redirect at a tmp_path
+#: - a constant baked at import time would have read the real tree from
+#: inside a test and reported a gate that was never exercised. Named here
+#: rather than imported from match_wayback_hike_photos, so publishing does
+#: not depend on a matcher.
+ARCHIVE_PHOTOS_NAME = "wayback_hike_photos.json"
+ARCHIVE_PHOTOS_CLEARED_NAME = "nynjtc_hike_photos.json"
+
+
+def archive_photos_awaiting_review(recovered_path: Path | None = None, cleared_path: Path | None = None) -> tuple[set[str], int]:
+    """Digests the archive recovery fetched that nobody has cleared to publish,
+    and how many it did clear.
+
+    WHY THIS EXISTS (#1504). `fetch_wayback_hike_photos.py` recovers NYNJTC's
+    Drupal-era photographs by DIRECTORY PREFIX - `u26` is a site-wide upload
+    folder, wider than the Favorite Hikes `sources.json`'s
+    `nynjtc_hikes_licence` covers - and it writes them into the same
+    content-addressed store every other photo source uses. `collect_photos()`
+    below uploads that store WHOLE. So without this, a publish pushes several
+    hundred photographs to a public bucket on a permission that does not
+    reach them, and nothing in the run says a word about it.
+
+    THE SAME ARGUMENT AS THE FACE GATE, which `unpublishable_digests` already
+    makes: unreferenced is not private, because `photos/<digest>.jpg` is a
+    public URL the moment anything leaks the digest and the digests travel in
+    published sidecars. The matcher's own gate stops an uncredited photograph
+    reaching a CARD; only this one stops it reaching the BUCKET, and the
+    bucket is what distribution means.
+
+    HELD UNTIL CONFIRMED, not until credited. A credit is what makes a
+    photograph publishable in principle; `reference/nynjtc_hike_photos.json`
+    is a person saying this photograph is of this hike, which is the standard
+    #1450 set and which `match_wayback_hike_photos.py` prints as "NOTHING
+    SHIPS FROM THIS FILE". This makes that sentence true of the bucket too.
+
+    WHAT WOULD BREAK IT: a tree whose store holds recovered bytes that the
+    manifest does not list. The two are written by the same run and travel in
+    the same cache entry, so that does not arise in CI - but a hand-assembled
+    tree could manage it, and the digests it held back would publish silently.
+    A stronger version would upload only what an artifact references, which is
+    a change to how every photo source publishes and is not this issue's.
+    """
+    recovered_path = recovered_path or RAW_DIR / ARCHIVE_PHOTOS_NAME
+    cleared_path = cleared_path or ROOT / "reference" / ARCHIVE_PHOTOS_CLEARED_NAME
+    if not recovered_path.exists():
+        return set(), 0
+    try:
+        recovered = json.loads(recovered_path.read_text(encoding="utf-8")).get("photos", [])
+    except ValueError:
+        # An unreadable manifest cannot say which digests are safe, so it
+        # clears none of them. The recovery re-runs; a wrong publish does not.
+        return set(), 0
+
+    cleared: set[str] = set()
+    if cleared_path.exists():
+        try:
+            confirmed = json.loads(cleared_path.read_text(encoding="utf-8"))
+        except ValueError:
+            confirmed = {}
+        rows = confirmed.get("photos", confirmed) if isinstance(confirmed, dict) else confirmed
+        for row in rows.values() if isinstance(rows, dict) else rows:
+            digest = row.get("digest") if isinstance(row, dict) else None
+            if digest:
+                cleared.add(digest)
+
+    held = {row["digest"] for row in recovered if isinstance(row, dict) and row.get("digest")} - cleared
+    return held, len(cleared)
+
+
 def collect_photos() -> dict[str, str]:
     """Every cached POI photo, as {bucket key: local path}.
 
@@ -571,7 +642,11 @@ def collect_photos() -> dict[str, str]:
     Minus what the face gate holds (#836): a flagged-undecided or refused
     photo must not reach the bucket at all, because "unreferenced" is not
     "private" - the digest that names it travels in the published outcome
-    sidecars. If a held digest is somehow still referenced by an exported
+    sidecars. And minus what the archive review gate holds (#1504): NYNJTC's
+    recovered Drupal photographs ride this same store and arrive by a
+    directory prefix wider than the permission covering them, so they are
+    held until a person confirms each one - see
+    `archive_photos_awaiting_review`. If a held digest is somehow still referenced by an exported
     artifact (the same bytes reaching the export another way),
     verify_photo_promises() fails the publish loudly rather than letting
     this exclusion silently break a card.
@@ -582,6 +657,13 @@ def collect_photos() -> dict[str, str]:
     held = unpublishable_digests(RAW_DIR / "poi_images.json", load_decisions())
     if held:
         print(f"{len(held)} photo(s) held from the bucket by the face gate (#836 - review_flagged_photos.py).")
+    awaiting, cleared = archive_photos_awaiting_review()
+    if awaiting:
+        print(
+            f"{len(awaiting)} photo(s) held from the bucket by the archive review gate "
+            f"(#1504 - {cleared} cleared in reference/nynjtc_hike_photos.json)."
+        )
+    held = held | awaiting
     return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
 
 

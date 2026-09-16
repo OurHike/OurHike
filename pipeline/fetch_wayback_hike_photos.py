@@ -66,9 +66,24 @@ honours neither half of that:
 So the corpus this module produces is a SUPERSET of what may be used, and
 nothing downstream may treat its membership as permission. The bounded set is
 photographs displayed on a recovered hike write-up carrying that page's credit
-line, which `fetch_wayback_hike_pages.py` is where it comes from - #1504 is
-the work, and until it lands the right reading of this store is "recovered,
-not cleared".
+line; `fetch_wayback_hike_pages.py` is where that line comes from.
+
+THREE THINGS HOLD THAT BOUNDARY NOW, and they are deliberately not one thing:
+
+  - This fetcher writes to a store of its own rather than the shared
+    `poi_photos/` - see ARCHIVE_STORE_DIRNAME. `publish.py` uploads that
+    shared store WHOLE, so writing here was one publish away from putting the
+    superset in a public bucket.
+  - `publish.py`'s `archive_photos_awaiting_review` holds every recovered
+    digest until a person confirms it, for a tree that still has bytes in the
+    old place.
+  - `match_wayback_hike_photos.py` will not offer a photograph nothing
+    credits, so an uncredited one cannot reach a card even if it reached the
+    bucket.
+
+The right reading of this store remains "recovered, not cleared". What
+changed with #1504 is that nothing downstream now takes it for anything else
+on its own.
 
 READING THE ARCHIVE IS NOT READING NYNJTC.ORG. #1450 closes the road to
 scraping nynjtc.org and this does not reopen it: every request here goes to
@@ -97,13 +112,35 @@ from pathlib import Path
 
 import requests
 
-from lib.photo_store import local_photo_path, photo_digest
+from lib.photo_store import photo_digest
 from lib.user_agent import CONTACTABLE_USER_AGENT as USER_AGENT
 from lib.wayback_rate import ARCHIVE
 
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = RAW_DIR / "wayback_hike_photos.json"
+
+#: A STORE OF ITS OWN, and not the shared one (#1504).
+#:
+#: These bytes used to land in `data/raw/poi_photos/`, the content-addressed
+#: store every other photo source writes to - which reads as the tidy choice
+#: and is the dangerous one, because `publish.py`'s `collect_photos()` uploads
+#: that directory WHOLE. Nothing there asks whose photograph it is. So a
+#: recovery by directory prefix, which is wider than the permission
+#: `sources.json`'s `nynjtc_hikes_licence` grants, was one `publish.py` run
+#: away from putting several hundred uncredited photographs in a public
+#: bucket - an outcome no review, gate or matcher downstream could have
+#: undone, because distribution is not a thing you take back.
+#:
+#: The separate directory is the version of that gate that cannot be
+#: forgotten: a photograph is not in the published store until something
+#: deliberately copies it there, and what earns that copy is a person
+#: confirming the row into reference/nynjtc_hike_photos.json.
+#:
+#: `publish.py`'s `archive_photos_awaiting_review` holds the same digests a
+#: second time, for a tree that still has bytes in the old place.
+ARCHIVE_STORE_DIRNAME = "wayback_photos"
+ARCHIVE_STORE_DIR = RAW_DIR / ARCHIVE_STORE_DIRNAME
 
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 
@@ -341,6 +378,17 @@ def credit_from(filename: str) -> str | None:
     return found.group(1).strip(" .").strip() or None
 
 
+def archive_photo_path(raw_dir: Path, digest: str) -> Path:
+    """Where one recovered image is cached.
+
+    `lib.photo_store.local_photo_path`'s shape - flat, content-addressed, the
+    digest as the name - under a DIFFERENT directory, for the reason
+    ARCHIVE_STORE_DIRNAME records. Same bytes, same key, not the published
+    store.
+    """
+    return raw_dir / ARCHIVE_STORE_DIRNAME / f"{digest}.jpg"
+
+
 def recover(made: requests.Session, capture: Capture, raw_dir: Path) -> Recovered | None:
     """One image's bytes into the content-addressed store, or None.
 
@@ -360,7 +408,7 @@ def recover(made: requests.Session, capture: Capture, raw_dir: Path) -> Recovere
         return None
 
     digest = photo_digest(data)
-    target = local_photo_path(raw_dir, digest)
+    target = archive_photo_path(raw_dir, digest)
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         temporary = target.with_suffix(".part")

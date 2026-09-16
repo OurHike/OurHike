@@ -253,9 +253,38 @@ test.describe('the builder with a route already in it', () => {
     // one's ≈. Instead it prints neither, and says which of the two reasons
     // it is — the download, or the trail.
     //
-    // Reachable because release 2026-09-10 publishes no elevation cell over
-    // this walk (e2e/data/followMode.spec.ts's header carries that
-    // measurement), so this is the first branch rather than a contrived one.
+    // THE ABSENCE IS CONSTRUCTED HERE RATHER THAN BORROWED FROM THE RELEASE,
+    // and that is a repair rather than a preference. This test used to say it
+    // was "reachable because release 2026-09-10 publishes no elevation cell
+    // over this walk ... so this is the first branch rather than a contrived
+    // one". That made a claim about a RELEASE the shape of a claim about the
+    // APP, which this file's own header forbids: "the published data is real
+    // and it moves when somebody bumps the pin, so nothing here pins a figure
+    // off it". The pin moved to 2026-09-16-4 for v1.3.1, UA's copy of that
+    // release carries 505 elevation cells where 2026-09-14 carried none, the
+    // walk could suddenly be priced, and the test went red having caught
+    // nothing. The branch it guards is still real and still a safety path, so
+    // it keeps its coverage and stops depending on an accident.
+    //
+    // A 404 RATHER THAN AN ABORT, which is the difference between
+    // reconstructing the state and inventing a worse one. longSpine.spec.ts
+    // and newerData.spec.ts abort, and that is right for what they test - a
+    // network that fails. This test is about a RELEASE that carries no
+    // elevation cell, and the bucket's answer for an absent key is 404. The
+    // app cannot tell those apart from the message it prints, but the test
+    // should still model the state it names.
+    //
+    // NEITHER FORM WAS VERIFIED LOCALLY, and saying so is the honest grade.
+    // An agent sandbox times out inside `editTheSavedRoute` waiting for "Use
+    // this route" - on the UNMODIFIED test as well, checked against a clean
+    // tree - so nothing here distinguishes a fix from a break before CI runs
+    // it. What IS checked is that `trailGraphData.ts` fetches these cells
+    // with a plain `fetch` on the main thread rather than from a worker, so
+    // `page.route` is able to see them at all.
+    await page.route('**/trail_graph_elevation_cell_*.json', (route) =>
+      route.fulfill({ status: 404, body: '' }),
+    )
+
     await editTheSavedRoute(page)
 
     await expect(page.getByText(/can’t price the climb on this walk/)).toBeVisible()

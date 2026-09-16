@@ -157,7 +157,7 @@ def test_a_write_up_yields_name_park_location_photo_and_prose():
     assert page.park == "Wawayanda State Park"
     assert page.region == "North Jersey"
     assert page.lat == pytest.approx(41.1604)
-    assert page.photos == ["Beaver Lodge in swamp on Terrace Pond South Trail 250.jpg"]
+    assert [photo.filename for photo in page.photos] == ["Beaver Lodge in swamp on Terrace Pond South Trail 250.jpg"]
     assert "beaver lodge" in page.description.lower()
 
 
@@ -167,8 +167,8 @@ def test_the_photo_filename_matches_what_the_photo_fetcher_stores():
     without any scoring at all."""
     page = pages.parse_page(REAL_SHAPED_PAGE, "https://www.nynjtc.org/hike/x", "20190419182814")
 
-    assert page.photos[0].startswith("Beaver Lodge in swamp on Terrace Pond South Trail")
-    assert "%20" not in page.photos[0]
+    assert page.photos[0].filename.startswith("Beaver Lodge in swamp on Terrace Pond South Trail")
+    assert "%20" not in page.photos[0].filename
 
 
 def test_the_site_name_is_taken_off_the_title():
@@ -519,3 +519,127 @@ def test_the_bare_pattern_is_last_in_the_list():
     before the labelled pattern ever ran."""
     assert pages._LATLON_RES[-1].pattern.startswith("(-?")
     assert "data-lat" in pages._LATLON_RES[1].pattern
+
+
+class TestTheCreditIsTheLicencesCondition:
+    """#1504. `sources.json`'s `nynjtc_hikes_licence` does not ask for a credit,
+    it CONDITIONS the permission on one: "the attribution is a condition rather
+    than a courtesy ... a photograph the page does not credit is not fetched at
+    all". The recovery this parser feeds selects by directory prefix, which is
+    wider than the permission, so whether a credit can be read off the page is
+    the thing that decides what may ever ship.
+
+    Every test here is about the DIRECTION of a wrong answer as much as the
+    answer: a credit this parser misses withholds a photograph, and no case
+    below may invent one or move one between photographs.
+    """
+
+    def test_a_credit_in_the_images_own_alt_text_is_read(self):
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Sunfish Pond. Photo by Daniel Chazin">')
+
+        assert [(p.filename, p.credit, p.credit_basis) for p in found] == [("a.jpg", "Daniel Chazin", "img")]
+
+    def test_the_title_attribute_counts_too(self):
+        found = pages.page_photos('<img title="Photo: Jane Daniels" src="/u26/a.jpg">')
+
+        assert found[0].credit == "Jane Daniels"
+
+    def test_a_credit_in_the_caption_under_the_image_is_read(self):
+        """The shape that actually carried the credit on six of NYNJTC's twenty
+        WordPress write-ups (measured 2026-09-09, lib/nynjtc_hikes.py at
+        c3be84f8^): a paragraph under the figure, not an attribute on it."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><div class="caption"><p>Looking north. Photo: Jane Daniels</p></div>')
+
+        assert (found[0].credit, found[0].credit_basis) == ("Jane Daniels", "caption")
+
+    def test_a_credit_anywhere_counts_when_the_page_shows_ONE_photograph(self):
+        """Then "the credit line the page carries" is unambiguous, because
+        there is no other photograph it could be about."""
+        markup = "<p>Photo credit: Daniela Wagstaff</p>" + ("<p>prose</p>" * 60) + '<img src="/u26/a.jpg">'
+
+        found = pages.page_photos(markup)
+
+        assert (found[0].credit, found[0].credit_basis) == ("Daniela Wagstaff", "page, sole photograph")
+
+    def test_that_fallback_does_NOT_run_when_the_page_shows_several(self):
+        """The case the fallback must refuse. One credit and three photographs
+        cannot say WHICH photograph is credited, and guessing would put a real
+        photographer's name on somebody else's picture - a worse failure than
+        publishing nothing, which is why both images come back uncredited."""
+        markup = "<p>Photo by Daniel Chazin</p>" + ("<p>prose</p>" * 60) + '<img src="/u26/a.jpg"><img src="/u26/b.jpg">'
+
+        found = pages.page_photos(markup)
+
+        assert [p.credit for p in found] == [None, None]
+
+    def test_a_gallery_cannot_hand_one_photographs_credit_to_the_one_before_it(self):
+        """The caption window stops at the NEXT u26 image, so a credit written
+        under the second picture belongs to the second picture."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><img src="/u26/b.jpg"><p>Photo by Daniel Chazin</p>')
+
+        assert [(p.filename, p.credit) for p in found] == [("a.jpg", None), ("b.jpg", "Daniel Chazin")]
+
+    def test_an_uncredited_photograph_says_so_rather_than_guessing(self):
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Bear Mountain from the south">')
+
+        assert (found[0].credit, found[0].credit_basis) == (None, None)
+
+    def test_a_name_that_runs_past_its_punctuation_is_refused_not_truncated(self):
+        """_PHOTO_BY ends its capture at punctuation, so a credit in a sentence
+        with none runs on into the body text. A capture that long is evidence
+        the pattern never found the end of the name, and under a licence
+        conditioned on the credit the honest answer is no credit at all."""
+        markup = "<p>Photo credit: Daniela Wagstaff " + ("word " * 40) + '</p><img src="/u26/a.jpg">'
+
+        assert pages.page_photos(markup)[0].credit is None
+
+    def test_the_photographers_name_survives_an_html_entity(self):
+        """Unescaped BEFORE matching: _PHOTO_BY stops at `;`, so matching the
+        raw attribute returned a surname-less "Jos&eacute"."""
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Photo by Jos&eacute; Ramos">')
+
+        assert found[0].credit == "Jos\u00e9 Ramos"
+
+    def test_the_credit_is_a_name_and_not_the_end_of_the_tag(self):
+        """The regression the first version of this shipped: running _PHOTO_BY
+        over raw tag markup captured `Daniel Chazin" />`, because the pattern
+        stops at punctuation and a tag ends in none of it. Attributes are read
+        as VALUES for this reason."""
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Photo by Daniel Chazin" />')
+
+        assert found[0].credit == "Daniel Chazin"
+
+    def test_one_photograph_shown_twice_keeps_the_credited_reading(self):
+        """A thumbnail and the full image are one photograph. The thumbnail
+        comes first and carries nothing; dropping the credit with the duplicate
+        would withhold a photograph the page does credit."""
+        found = pages.page_photos('<img src="/u26/styles/thumbnail/a.jpg"><img src="/u26/a.jpg" alt="Photo by Daniel Chazin">')
+
+        assert [(p.filename, p.credit) for p in found] == [("a.jpg", "Daniel Chazin")]
+
+    def test_a_credit_split_across_a_tag_withholds_rather_than_mis_attributes(self):
+        """A KNOWN MISS, asserted so it stays deliberate. Joining the text
+        either side of the <a> would catch this AND would join two unrelated
+        paragraphs elsewhere, which can name the wrong photographer. Withheld
+        is the direction to fail in; `--probe` is what says whether these pages
+        write it this way at all."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><p>Photo by <a href="/bio">Daniel Chazin</a></p>')
+
+        assert found[0].credit is None
+
+    def test_a_resumed_run_rebuilds_the_records_rather_than_dicts(self, tmp_path):
+        """asdict() flattens PagePhoto on the way out. A resumed run that left
+        them as dicts would carry pages whose credits nothing downstream could
+        read - and the gate would then refuse photographs the page does credit.
+        """
+        cache = tmp_path / "pages.json"
+        written = pages.parse_page(
+            '<title>X</title><img src="/u26/a.jpg" alt="Photo by Daniel Chazin">',
+            "https://www.nynjtc.org/hike/x",
+            "20190419182814",
+        )
+        pages.write_cache([written], ["https://www.nynjtc.org/hike/x"], cache)
+
+        read = pages.load_done(cache)["https://www.nynjtc.org/hike/x"]
+
+        assert read.photos == [pages.PagePhoto(filename="a.jpg", credit="Daniel Chazin", credit_basis="img")]

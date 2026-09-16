@@ -109,6 +109,12 @@ ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 PROCESSED_DIR = ROOT / "data" / "processed"
 PHOTOS_PATH = RAW_DIR / "wayback_hike_photos.json"
+
+#: Where the recovered bytes are, which is NOT the published photo store -
+#: see fetch_wayback_hike_photos.ARCHIVE_STORE_DIRNAME for why. The sheet
+#: renders from here, so a reviewer sees the photograph without it ever
+#: having been somewhere `publish.py` would sweep it up.
+ARCHIVE_STORE_DIRNAME = "wayback_photos"
 PAGES_PATH = RAW_DIR / "wayback_hike_pages.json"
 HIKES_PATH = RAW_DIR / "hikefinder.json"
 SHEET_PATH = PROCESSED_DIR / "wayback_photo_review.html"
@@ -299,6 +305,21 @@ class Hike:
 
 
 @dataclass
+class PagePhoto:
+    """One photograph a write-up showed, as that fetcher recorded it.
+
+    Mirrors `fetch_wayback_hike_pages.PagePhoto` rather than importing it,
+    the same way `Photo` and `Hike` mirror their producers: this module reads
+    a cache file, and a shape it reconstructs from JSON is the shape it can
+    actually rely on.
+    """
+
+    filename: str
+    credit: str | None
+    credit_basis: str | None
+
+
+@dataclass
 class Page:
     """One archived NYNJTC write-up, as `fetch_wayback_hike_pages.py` cached it.
 
@@ -316,7 +337,7 @@ class Page:
     lat: float | None
     lon: float | None
     description: str
-    photos: list[str]
+    photos: list[PagePhoto]
 
     @property
     def where(self) -> tuple[float, float] | None:
@@ -342,6 +363,9 @@ class Pairing:
     basis: str = BASIS_SUBJECT
     #: The archived write-up this photograph appeared on, when there was one.
     page: Page | None = None
+    #: ...and that page's record OF THIS PHOTOGRAPH, which is where the
+    #: licence's required credit lives.
+    shown_as: PagePhoto | None = None
     #: Metres between that write-up's coordinate and the hike's start, when
     #: both had one. Reported, never thresholded on its own.
     metres: float | None = None
@@ -362,6 +386,51 @@ class Pairing:
         """...and that write-up was matched to a hike the export has. The
         only rows that can ever ship."""
         return self.basis in BASIS_PLACED
+
+    @property
+    def credit(self) -> str | None:
+        """The photographer this photograph may be published under, or None.
+
+        Two places name one: the write-up that printed it, and the filename
+        NYNJTC gave it. The page wins when it has one, because
+        `nynjtc_hikes_licence` asks for "the credit line the page carries"
+        and that is literally it.
+        """
+        if self.shown_as is not None and self.shown_as.credit:
+            return self.shown_as.credit
+        return self.photo.credit
+
+    @property
+    def credit_basis(self) -> str | None:
+        """Where that name was read, or None when there is no name.
+
+        Carried separately because the two are not equally strong. A page
+        credit is the licence's own wording. A FILENAME credit is a judgement
+        this build is making and should be visible as one: NYNJTC wrote the
+        photographer into the file name and the page published that name in
+        its `src`, so the page does credit the photograph - but only just, and
+        a reviewer who reads the condition more strictly should be able to see
+        which rows rest on it and refuse them. Nine of 403 recovered
+        photographs are in that position (measured, fetch_wayback_hike_photos).
+        """
+        if self.shown_as is not None and self.shown_as.credit:
+            return f"page, {self.shown_as.credit_basis}"
+        return "filename" if self.photo.credit else None
+
+    @property
+    def publishable(self) -> bool:
+        """THE LICENCE GATE (#1504), and the only bar here that is not about
+        whether the pairing is RIGHT.
+
+        `sources.json`'s `nynjtc_hikes_licence` makes attribution "a condition
+        rather than a courtesy ... a photograph the page does not credit is
+        not fetched at all". The recovery this feeds selected by directory
+        prefix and so has photographs the permission does not cover; this is
+        where they stop. A row that fails here is still shown on the sheet -
+        so the size of the gap is visible rather than quietly subtracted - but
+        it cannot lead the sheet and cannot reach the proposed file.
+        """
+        return self.credit is not None
 
     @property
     def carried_by_park_alone(self) -> bool:
@@ -549,18 +618,23 @@ def resolve_page(page: Page, hikes: list[Hike]) -> tuple[Hike, str, float | None
     return chosen, BASIS_PAGE_NEAR, gap
 
 
-def pages_by_photo(pages: list[Page]) -> dict[str, Page]:
-    """Which write-up showed each photograph.
+def pages_by_photo(pages: list[Page]) -> dict[str, tuple[Page, PagePhoto]]:
+    """Which write-up showed each photograph, and how that page credited it.
 
     A file cited by more than one write-up keeps the FIRST, and the collision
     is not silent - `main()` counts them, because a photograph NYNJTC reused
     across two walks is a row a person must decide rather than a tie a sort
     order should settle.
+
+    THE CREDIT COMES BACK WITH THE PAGE (#1504) because there is nowhere else
+    it can come from. The photograph cache knows only what the filename says;
+    the page is where NYNJTC wrote the photographer's name, and the licence
+    conditions publication on it.
     """
-    found: dict[str, Page] = {}
+    found: dict[str, tuple[Page, PagePhoto]] = {}
     for page in pages:
-        for filename in page.photos:
-            found.setdefault(photo_key(filename), page)
+        for photo in page.photos:
+            found.setdefault(photo_key(photo.filename), (page, photo))
     return found
 
 
@@ -585,14 +659,15 @@ def best_pairings(photos: list[Photo], hikes: list[Hike], pages: list[Page] | No
         by_text = [p for p in (score_pair(photo, hike) for hike in hikes) if p is not None]
         by_text.sort(key=lambda p: -p.score)
 
-        page = showed.get(photo_key(photo.filename))
+        found_on = showed.get(photo_key(photo.filename))
+        page, shown_as = found_on if found_on else (None, None)
         from_page: Pairing | None = None
         if page is not None:
             if page.url not in placed:
                 placed[page.url] = resolve_page(page, hikes)
             resolved = placed[page.url]
             if resolved is None:
-                from_page = Pairing(photo, hike_from_page(page), 0.0, basis=BASIS_PAGE_ONLY, page=page)
+                from_page = Pairing(photo, hike_from_page(page), 0.0, basis=BASIS_PAGE_ONLY, page=page, shown_as=shown_as)
             else:
                 hike, basis, gap = resolved
                 # The text route's own verdict on the SAME hike, carried over
@@ -610,8 +685,12 @@ def best_pairings(photos: list[Photo], hikes: list[Hike], pages: list[Page] | No
                     phrases=agreed.phrases if agreed else set(),
                     basis=basis,
                     page=page,
+                    shown_as=shown_as,
                     metres=gap,
                 )
+
+        for candidate in by_text:
+            candidate.shown_as = shown_as
 
         found = [from_page] if from_page else []
         found.extend(p for p in by_text if from_page is None or p.hike.hike_id != from_page.hike.hike_id)
@@ -638,6 +717,31 @@ def load_photos(path: Path | None = None) -> list[Photo]:
         )
         for row in document.get("photos", [])
     ]
+
+
+def page_photos_of(row: dict) -> list[PagePhoto]:
+    """One cached page's photographs, from either shape of the cache.
+
+    A cache written before #1504 holds bare filenames, and a string there
+    means "nobody looked for a credit" rather than "there is none" - but the
+    two have to resolve to the same thing here, because this module cannot
+    tell them apart and the licence will not let it guess. So an old row
+    yields `credit=None` and is refused by the gate, which is the correct
+    answer for a photograph whose credit nobody has read.
+    """
+    found = []
+    for photo in row.get("photos") or []:
+        if isinstance(photo, str):
+            found.append(PagePhoto(filename=photo, credit=None, credit_basis=None))
+        elif isinstance(photo, dict) and photo.get("filename"):
+            found.append(
+                PagePhoto(
+                    filename=photo["filename"],
+                    credit=photo.get("credit"),
+                    credit_basis=photo.get("credit_basis"),
+                )
+            )
+    return found
 
 
 def load_pages(path: Path | None = None) -> list[Page]:
@@ -669,7 +773,7 @@ def load_pages(path: Path | None = None) -> list[Page]:
                     lat=row.get("lat"),
                     lon=row.get("lon"),
                     description=row.get("description") or "",
-                    photos=list(row.get("photos") or []),
+                    photos=page_photos_of(row),
                 )
             )
         except (TypeError, KeyError):
@@ -718,8 +822,16 @@ def above_the_fold(pairing: Pairing, minimum: float) -> bool:
     A page-only row does not qualify. It is certain about a write-up and empty
     about the export, and leading with it would be leading with work that
     cannot end in a photograph.
+
+    NEITHER DOES AN UNCREDITED ONE, whatever route reached it (#1504). The
+    credit is the licence's condition, so a row without one cannot end in a
+    published photograph either - the difference is that a page-only row is
+    missing a HIKE and this one is missing PERMISSION, and only the second of
+    those can be fixed by a person reading the sheet. It stays visible below
+    the line for the reason every other refused row does: a count of what was
+    withheld is a fact about this corpus worth seeing.
     """
-    return pairing.placed_by_page or pairing.score >= minimum
+    return pairing.publishable and (pairing.placed_by_page or pairing.score >= minimum)
 
 
 def disagrees(candidates: list[Pairing], minimum: float) -> bool:
@@ -768,7 +880,7 @@ def write_sheet(ranked: dict[str, list[Pairing]], photos: list[Photo], minimum: 
     path.parent.mkdir(parents=True, exist_ok=True)
     by_digest = {p.digest: p for p in photos}
     rows = []
-    strong = weak = unmatched = joined = clashes = 0
+    strong = weak = unmatched = joined = clashes = uncredited = 0
 
     def order(item: tuple[str, list[Pairing]]) -> tuple[int, int, float]:
         _, candidates = item
@@ -798,18 +910,31 @@ def write_sheet(ranked: dict[str, list[Pairing]], photos: list[Photo], minimum: 
             f"<span class=w>{html.escape(_reasons(c))}</span></li>"
             for c in candidates[1:]
         )
+        if top.publishable:
+            credit_class = "credit"
+            credit_line = f"Photo: {html.escape(top.credit)} ({html.escape(top.credit_basis or '')})"
+        else:
+            uncredited += 1
+            credit_class = "warn"
+            credit_line = "no credit &mdash; outside the permission, cannot ship"
         classes = " ".join(
-            part for part in (("strong" if above_the_fold(top, minimum) else "weak"), ("clash" if clash else "")) if part
+            part
+            for part in (
+                ("strong" if above_the_fold(top, minimum) else "weak"),
+                ("clash" if clash else ""),
+                ("" if top.publishable else "uncredited"),
+            )
+            if part
         )
         unplaced = ' <span class="warn">not in the export</span>' if not top.hike.hike_id else ""
         rows.append(
             f"""<tr class="{classes}">
-  <td><img src="../raw/poi_photos/{html.escape(digest)}.jpg" alt=""
+  <td><img src="../raw/{ARCHIVE_STORE_DIRNAME}/{html.escape(digest)}.jpg" alt=""
            title="{html.escape(photo.filename)}"></td>
   <td><div class=subj>{html.escape(photo.subject)}</div>
       <div class=w>{html.escape(photo.filename)}</div>
-      <div class=w>{photo.width}&times;{photo.height} &middot; {html.escape(photo.frame)} frame
-      &middot; {"credit: " + html.escape(photo.credit) if photo.credit else "no credit in filename"}</div></td>
+      <div class=w>{photo.width}&times;{photo.height} &middot; {html.escape(photo.frame)} frame</div>
+      <div class="{credit_class}">{credit_line}</div></td>
   <td><div class=hike>{html.escape(top.hike.name)}{unplaced}</div>
       <div class=w>{html.escape(top.hike.park)} &middot; {html.escape(top.hike.region)}</div>
       <div class=score><span class=basis>{html.escape(top.basis)}</span> &middot; text {top.score:.2f}</div>
@@ -833,6 +958,8 @@ def write_sheet(ranked: dict[str, list[Pairing]], photos: list[Photo], minimum: 
  .weak{{background:#fff8f0}}
  .clash{{background:#fdf2f8}} .clash td{{border-top:2px solid #be185d}}
  .warn{{color:#9d174d;font-size:12px;font-weight:600}}
+ .credit{{color:#14532d;font-size:12px}}
+ .uncredited{{opacity:.55}} .uncredited .subj,.uncredited .hike{{text-decoration:line-through}}
  .basis{{background:#e8f0e8;border-radius:4px;padding:1px 6px;font-size:12px;color:#14532d}}
  .note{{background:#fff;border:1px solid #ddd;border-radius:8px;padding:14px;margin-bottom:18px}}
 </style>
@@ -853,6 +980,21 @@ against any confirmed set, because there is no confirmed set until this sheet is
 Nothing here ships until a row is confirmed into <code>reference/nynjtc_hike_photos.json</code>
 by hand &mdash; a photograph that passes every automatic bar can still be of the wrong place,
 which is exactly what the Asiatic dayflower on Gravel Springs Hut Shelter was.</p>
+<p><strong>{uncredited}</strong> rows are struck through, and they are not a matching
+problem. <code>sources.json</code>&rsquo;s <code>nynjtc_hikes_licence</code> makes attribution
+&ldquo;a condition rather than a courtesy &hellip; a photograph the page does not credit is
+not fetched at all&rdquo;, and the recovery that produced these selected by DIRECTORY PREFIX
+&mdash; <code>u26</code> is a site-wide upload folder, wider than the hikes the permission
+covers. So a row with no photographer&rsquo;s name is outside the permission whether or not
+the hike beside it is right, and no amount of reviewing can put it inside. Confirming one
+would publish somebody&rsquo;s photograph without their credit; the sheet will not offer it
+and the proposed file does not carry it. They are shown so the SIZE of that gap is visible
+rather than quietly subtracted &mdash; see
+<a href="https://github.com/OurHike/OurHike/issues/1504">#1504</a>.</p>
+<p>A credit reading <code>(filename)</code> rests on NYNJTC having written the
+photographer&rsquo;s name into the file name rather than into the page text. That is this
+build&rsquo;s reading of the condition and not the licence&rsquo;s own words &mdash; if you
+read it more strictly, refuse those rows.</p>
 <p><strong>{clashes}</strong> rows are outlined: the page says one hike and the words prefer
 another. They are first on purpose. Shaded rows fall below the line and are shown anyway,
 because a low score on a correct pairing is a fact about this matcher and not about the
@@ -894,6 +1036,10 @@ def main(minimum: float) -> int:
 
     tops = [c[0] for c in ranked.values() if c]
     strong = [p for p in tops if above_the_fold(p, minimum)]
+    # THE LICENCE GATE, applied where the file is written rather than where
+    # the rows are scored (#1504): every one of these is still counted, shown
+    # and explained, and none of them reaches the proposed file.
+    withheld = [p for p in tops if not p.publishable]
     unmatched = sum(1 for c in ranked.values() if not c)
     by_basis = {basis: sum(1 for p in tops if p.basis == basis) for basis in BASIS_ORDER}
     clashing = sum(1 for c in ranked.values() if disagrees(c, minimum))
@@ -904,8 +1050,14 @@ def main(minimum: float) -> int:
             {
                 "min_score": minimum,
                 "note": "Proposed, not confirmed. reference/nynjtc_hike_photos.json is the confirmed join.",
+                "licence": (
+                    "sources.json nynjtc_hikes_licence makes the photographer's credit a "
+                    "condition of the permission, so a photograph nothing credits is not "
+                    "here - however good its pairing. See #1504."
+                ),
                 "basis_order": list(BASIS_ORDER),
                 "write_ups": len(pages),
+                "withheld_uncredited": len(withheld),
                 "matches": [
                     {
                         "digest": p.photo.digest,
@@ -920,11 +1072,17 @@ def main(minimum: float) -> int:
                         "page_title": p.page.name if p.page else None,
                         "page_url": p.page.url if p.page else None,
                         "subject": p.photo.subject,
-                        "credit": p.photo.credit,
+                        "credit": p.credit,
+                        # WHERE the credit was read, carried beside it for the
+                        # same reason `basis` is: a row copied out of this file
+                        # must not lose the difference between NYNJTC naming
+                        # the photographer in their prose and this build
+                        # reading a name out of a file name.
+                        "credit_basis": p.credit_basis,
                         "frame": p.photo.frame,
                         "reasons": _reasons(p),
                     }
-                    for p in sorted(tops, key=lambda p: p.rank)
+                    for p in sorted([p for p in tops if p.publishable], key=lambda p: p.rank)
                 ],
             },
             indent=2,
@@ -940,6 +1098,7 @@ def main(minimum: float) -> int:
     print()
     print(f"  leading the sheet       {len(strong)}")
     print(f"  below the line          {len(tops) - len(strong)}")
+    print(f"  no credit, cannot ship  {len(withheld)}  <- the licence, not the matcher (#1504)")
     if clashing:
         print(f"  page vs words disagree  {clashing}  <- read these first")
     # Only a row with an export hike behind it can ever ship: a page-only row
@@ -952,6 +1111,12 @@ def main(minimum: float) -> int:
     print()
     print("  NOTHING SHIPS FROM THIS FILE. A confirmed row lives in")
     print(f"  {REFERENCE_PATH.relative_to(ROOT)}, written by a person working the sheet.")
+    if withheld and len(withheld) == len(tops):
+        print()
+        print("  NOT ONE matched photograph carries a credit. Before reading that as a fact")
+        print("  about the corpus, check that the write-ups were recovered by a build that")
+        print("  looks for one: a cache written before #1504 holds bare filenames, and this")
+        print("  refuses those by design. fetch_wayback_hike_pages.py --probe settles it.")
     return 0
 
 

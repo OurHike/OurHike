@@ -392,10 +392,18 @@ def floor_blue(rgb: np.ndarray, unit: int) -> np.ndarray:
 # same mistake is available to the next person pricing a lever from this table:
 # check the denominator against an actual run.)
 #
-# The knee is `quality` alone: 1.1% of the archive for +4.6 minutes, which
-# roughly doubles the build's encode share and leaves the job well inside its
-# timeout. That is the trade, stated at its real size rather than against an
-# invented one.
+# The knee is `quality` alone, and its cost is now MEASURED rather than
+# projected. The first canonical build after #1506 (run 54, 2026-09-16) against
+# the last one before it (run 52), same 8,658 tiles, same workflow:
+#
+#     "Build the DEM archive" step    m4 q80 -> 3 min 08 s
+#                                       q100 -> 8 min 59 s   (+5 min 51 s, 2.9x)
+#
+# So the projection above under-read the real cost by 27% (+4.6 against +5.9),
+# and "roughly doubles" was optimistic - it nearly triples the step. The trade
+# still holds comfortably: the build job runs ~10 min against a 120-minute cap.
+# Recorded because a projection that survives contact with a real run is worth
+# replacing with the run, and this one did not survive it intact.
 #
 # `method` is deliberately left at Pillow's default rather than pinned here.
 # Naming it would suggest somebody chose it; nobody did, and the measurement

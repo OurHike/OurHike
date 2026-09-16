@@ -801,11 +801,19 @@ for nothing** made.
 > was invented.** The DEM build is not six hours: run 52 (canonical, 8,658
 > tiles) took **5 min 21 s** end to end, and `build-dem.yml` caps the job at
 > `timeout-minutes: 120`. So +66 minutes is about **thirteen times the whole
-> run**, not a fifth of it, and +4.6 minutes roughly doubles the encode rather
-> than disappearing into a long job. The conclusion is unchanged and in fact
-> stronger; the arithmetic supporting it was fiction, and it sat under a
-> *measured* heading, which is how it went unchallenged. Corrected 2026-09-16
-> against the Actions API.
+> run**, not a fifth of it. The conclusion is unchanged and in fact stronger;
+> the arithmetic supporting it was fiction, and it sat under a *measured*
+> heading, which is how it went unchallenged. Corrected 2026-09-16 against the
+> Actions API.
+>
+> **And the accepted cost is now measured too, which the projection did not
+> survive.** The first canonical build after #1506 (run 54) against the last
+> before it (run 52), same 8,658 tiles: the "Build the DEM archive" step went
+> **3 min 08 s → 8 min 59 s**, so **+5 min 51 s (2.9×)** rather than the
+> projected +4.6 minutes — 27% more, and nearly tripling the step where this
+> file said "roughly doubles". Still comfortable against a 120-minute cap, and
+> still the right trade; but a projection that a real run contradicts is worth
+> replacing with the run rather than defending.
 
 So "every lever that makes the terrain cheaper per unit area fails the project's
 own acceptance test" is true of every lever that changes the *pixels* and false

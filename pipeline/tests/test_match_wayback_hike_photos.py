@@ -440,9 +440,16 @@ def test_a_page_only_row_never_leads_the_sheet():
     answer - which it is, and it is certain about a write-up rather than about
     a photograph anyone can ship. Ranking certainty above usefulness buries
     every correct text match under work that cannot end in a photograph."""
-    unplaceable = match.Pairing(_photo("x"), _hike("Gone"), 0.0, basis=match.BASIS_PAGE_ONLY)
+    # CREDITED, so this pins the page-only rule rather than the licence gate.
+    # Without it `publishable` is False and the assertion below holds whatever
+    # `above_the_fold` does with `placed_by_page` - which review caught.
+    credited = match.PagePhoto("x.jpg", "Daniel Chazin", "img")
+    unplaceable = match.Pairing(
+        _photo("x"), _hike("Gone"), 0.0, basis=match.BASIS_PAGE_ONLY, page=_page("Gone", []), shown_as=credited
+    )
     weak_text = match.Pairing(_photo("y"), _hike("Real"), 0.01, basis=match.BASIS_SUBJECT)
 
+    assert unplaceable.publishable, "or this proves the credit gate, not the page-only rule"
     assert weak_text.rank < unplaceable.rank
     assert not match.above_the_fold(unplaceable, minimum=2.5)
 
@@ -714,13 +721,49 @@ def test_the_page_credit_beats_the_one_in_the_filename():
 
 def test_a_credit_in_the_filename_alone_is_accepted_and_labelled_as_such():
     """A judgement this build is making, not the licence's own words: NYNJTC
-    wrote the photographer into the file name and the page published that name
-    in its `src`. Labelled `filename` so a reviewer reading the condition more
-    strictly can find those rows and refuse them."""
-    pairing = match.Pairing(_photo("DSC00417", credit="Daniel Chazin"), _hike("Real"), 0.0)
+    wrote the photographer into the file name and a write-up published that
+    name in its `src`. Labelled `filename` so a reviewer reading the condition
+    more strictly can find those rows and refuse them."""
+    pairing = match.Pairing(
+        _photo("DSC00417", credit="Daniel Chazin"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        page=_page("Real", ["DSC00417.jpg"], credit=None),
+        shown_as=match.PagePhoto("DSC00417.jpg", None, None),
+    )
 
     assert pairing.publishable
     assert pairing.credit_basis == "filename"
+
+
+def test_a_filename_credit_with_no_write_up_behind_it_is_not_a_credit():
+    """The filename route's whole justification is that a write-up published
+    that name in its `src`. With no recovered write-up there is no page
+    carrying anything, so the justification is an empty sentence - and the
+    licence's words are "the credit line the PAGE carries". The first version
+    accepted it anyway, which review caught."""
+    pairing = match.Pairing(_photo("DSC00417", credit="Daniel Chazin"), _hike("Real"), 4.0)
+
+    assert pairing.page is None
+    assert not pairing.publishable
+    assert pairing.credit_basis is None
+    assert not match.above_the_fold(pairing, minimum=2.5)
+
+
+def test_the_credit_basis_names_the_route_once():
+    """It is printed in the sheet and written into the proposed file, so it is
+    the provenance string a reviewer is told to read. An earlier version
+    prefixed "page, " onto a basis that already began "page,"."""
+    pairing = match.Pairing(
+        _photo("DSC00417"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        shown_as=match.PagePhoto("DSC00417.jpg", "Jane Daniels", "caption"),
+    )
+
+    assert pairing.credit_basis == "page, caption"
 
 
 def test_a_cache_written_before_the_gate_existed_is_refused_rather_than_trusted():

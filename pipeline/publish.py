@@ -603,26 +603,50 @@ def archive_photos_awaiting_review(recovered_path: Path | None = None, cleared_p
     if not recovered_path.exists():
         return set(), 0
     try:
-        recovered = json.loads(recovered_path.read_text(encoding="utf-8")).get("photos", [])
+        document = json.loads(recovered_path.read_text(encoding="utf-8"))
     except ValueError:
         # An unreadable manifest cannot say which digests are safe, so it
         # clears none of them. The recovery re-runs; a wrong publish does not.
         return set(), 0
+    # isinstance rather than a bare `.get`: a manifest whose root is a list
+    # raised AttributeError here, which the except above does not catch, so
+    # an oddly-shaped file crashed the publish instead of taking the safe
+    # branch written directly above it.
+    recovered = document.get("photos", []) if isinstance(document, dict) else []
 
-    cleared: set[str] = set()
-    if cleared_path.exists():
-        try:
-            confirmed = json.loads(cleared_path.read_text(encoding="utf-8"))
-        except ValueError:
-            confirmed = {}
-        rows = confirmed.get("photos", confirmed) if isinstance(confirmed, dict) else confirmed
-        for row in rows.values() if isinstance(rows, dict) else rows:
-            digest = row.get("digest") if isinstance(row, dict) else None
-            if digest:
-                cleared.add(digest)
-
+    cleared = _digests_in(cleared_path)
     held = {row["digest"] for row in recovered if isinstance(row, dict) and row.get("digest")} - cleared
     return held, len(cleared)
+
+
+def _digests_in(path: Path) -> set[str]:
+    """Every photo digest a confirm file names, whatever shape it is written in.
+
+    THREE SHAPES, because there is no schema and the obvious mistake is
+    expensive. `reference/nynjtc_hike_photos.json` does not exist yet - a
+    person will write it by hand from `wayback_photo_matches.json`, whose
+    rows live under `matches`. A reader accepting only `photos` would take a
+    file keyed `matches` as empty and hold every photograph for ever, and
+    the log would say "0 cleared", which is exactly what nobody having
+    confirmed anything also says. So both keys are read, and a bare list too.
+
+    The failure direction stays the safe one: a shape none of these matches
+    clears nothing, which withholds.
+    """
+    if not path.exists():
+        return set()
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return set()
+    rows = document
+    if isinstance(document, dict):
+        rows = document.get("photos") or document.get("matches") or []
+        if isinstance(rows, dict):
+            rows = list(rows.values())
+    if not isinstance(rows, list):
+        return set()
+    return {row["digest"] for row in rows if isinstance(row, dict) and row.get("digest")}
 
 
 def collect_photos() -> dict[str, str]:

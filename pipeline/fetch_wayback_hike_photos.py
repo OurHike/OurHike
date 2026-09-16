@@ -140,7 +140,6 @@ OUT_PATH = RAW_DIR / "wayback_hike_photos.json"
 #: `publish.py`'s `archive_photos_awaiting_review` holds the same digests a
 #: second time, for a tree that still has bytes in the old place.
 ARCHIVE_STORE_DIRNAME = "wayback_photos"
-ARCHIVE_STORE_DIR = RAW_DIR / ARCHIVE_STORE_DIRNAME
 
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 

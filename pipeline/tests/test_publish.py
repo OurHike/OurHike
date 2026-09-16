@@ -2080,3 +2080,43 @@ def test_nothing_collected_without_writes_is_still_an_ordinary_empty_run(monkeyp
     assert result["version_written"] is False
     assert result["uploaded"] == []
     assert "No exported artifacts found" in capsys.readouterr().out
+
+
+class TestTheConfirmFileHasNoSchema:
+    """#1504's other half of the archive gate. `reference/nynjtc_hike_photos.json`
+    does not exist yet - a person will write it by hand, most likely from
+    `wayback_photo_matches.json`, whose rows sit under `matches` rather than
+    `photos`. A reader accepting only one key would take the other file as
+    EMPTY and hold every photograph for ever, logging "0 cleared" - which is
+    indistinguishable from nobody having confirmed anything.
+    """
+
+    def test_rows_under_matches_clear_as_readily_as_rows_under_photos(self, tmp_path):
+        for key in ("photos", "matches"):
+            path = tmp_path / f"{key}.json"
+            path.write_text(json.dumps({key: [{"digest": "a" * 64, "hike_id": "1"}]}), encoding="utf-8")
+
+            assert publish._digests_in(path) == {"a" * 64}, key
+
+    def test_a_bare_list_works_too(self, tmp_path):
+        path = tmp_path / "bare.json"
+        path.write_text(json.dumps([{"digest": "a" * 64}]), encoding="utf-8")
+
+        assert publish._digests_in(path) == {"a" * 64}
+
+    def test_a_shape_it_cannot_read_clears_nothing_rather_than_crashing(self, tmp_path):
+        """The safe direction: an unreadable confirm file withholds."""
+        for content in ("{ truncated", json.dumps({"photos": "not a list"}), json.dumps(42)):
+            path = tmp_path / "odd.json"
+            path.write_text(content, encoding="utf-8")
+
+            assert publish._digests_in(path) == set(), content[:20]
+
+    def test_a_recovered_manifest_whose_root_is_a_list_takes_the_safe_branch(self, tmp_path, monkeypatch):
+        """It raised AttributeError, which the adjacent `except ValueError` does
+        not catch - so an oddly-shaped file crashed the publish rather than
+        holding everything, which is the opposite of what that branch is for."""
+        (tmp_path / "wayback_hike_photos.json").write_text(json.dumps([{"digest": "a" * 64}]), encoding="utf-8")
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        assert publish.archive_photos_awaiting_review(cleared_path=tmp_path / "absent.json") == (set(), 0)

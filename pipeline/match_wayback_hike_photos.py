@@ -395,10 +395,19 @@ class Pairing:
         NYNJTC gave it. The page wins when it has one, because
         `nynjtc_hikes_licence` asks for "the credit line the page carries"
         and that is literally it.
+
+        AND BOTH NEED A PAGE. The filename route's whole justification is
+        that NYNJTC wrote the photographer into the file name and a write-up
+        published that name in its `src` - so with no recovered write-up
+        behind the photograph there is no page carrying anything, and the
+        justification is an empty sentence. The first version accepted it
+        anyway, which review caught: a photograph no write-up showed could
+        reach the proposed file on a licence worded "the credit line the page
+        carries". It cannot now.
         """
         if self.shown_as is not None and self.shown_as.credit:
             return self.shown_as.credit
-        return self.photo.credit
+        return self.photo.credit if self.page is not None else None
 
     @property
     def credit_basis(self) -> str | None:
@@ -415,7 +424,7 @@ class Pairing:
         """
         if self.shown_as is not None and self.shown_as.credit:
             return f"page, {self.shown_as.credit_basis}"
-        return "filename" if self.photo.credit else None
+        return "filename" if self.credit else None
 
     @property
     def publishable(self) -> bool:
@@ -966,9 +975,12 @@ def write_sheet(ranked: dict[str, list[Pairing]], photos: list[Photo], minimum: 
 <h1>NYNJTC archive photographs, matched to hikes</h1>
 <div class=note>
 <p><strong>{joined}</strong> photographs were read off the write-up that published them;
-<strong>{strong}</strong> rows lead the sheet (every joined row, plus text-only rows at or
-above {minimum:.2f}); <strong>{weak}</strong> fall below that line;
+<strong>{strong}</strong> rows lead the sheet; <strong>{weak}</strong> fall below that line;
 <strong>{unmatched}</strong> match nothing at all.</p>
+<p><strong>A row leads the sheet when it is credited AND either joined or scored at or above
+{minimum:.2f}.</strong> The credit is first because it is the only one of those that no
+amount of reviewing can supply &mdash; a joined row used to lead on the join alone, and on
+this corpus that printed a lead count beside hundreds of struck-through joined rows.</p>
 <p><strong>Read the basis before the number.</strong> <span class=basis>page + title</span>
 means NYNJTC printed this photograph on that hike's own page and both call the walk the same
 thing &mdash; that is a fact recovered from the archive, not a string match, and the

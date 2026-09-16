@@ -283,6 +283,7 @@ def test_a_previous_runs_pages_are_carried_forward(tmp_path):
     path.write_text(
         json.dumps(
             {
+                "format": pages.CACHE_FORMAT,
                 "pages": [
                     {
                         "url": "https://www.nynjtc.org/hike/a",
@@ -295,7 +296,7 @@ def test_a_previous_runs_pages_are_carried_forward(tmp_path):
                         "description": "x",
                         "photos": [],
                     }
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -552,25 +553,98 @@ class TestTheCreditIsTheLicencesCondition:
 
         assert (found[0].credit, found[0].credit_basis) == ("Jane Daniels", "caption")
 
-    def test_a_credit_anywhere_counts_when_the_page_shows_ONE_photograph(self):
-        """Then "the credit line the page carries" is unambiguous, because
-        there is no other photograph it could be about."""
-        markup = "<p>Photo credit: Daniela Wagstaff</p>" + ("<p>prose</p>" * 60) + '<img src="/u26/a.jpg">'
+    def test_a_credit_elsewhere_on_the_page_is_not_this_photographs_credit(self):
+        """THE ROUTE THAT WAS REMOVED, kept as the case that must stay refused.
+
+        A third route once read a credit from anywhere in the document when
+        the page showed exactly one u26 image, on the argument that there was
+        nothing else it could be about. There was: "sole" counted only u26
+        images, so a news teaser elsewhere on the page handed ITS
+        photographer's name to the article's photograph. Nothing measured
+        supported the route, and attaching a real person's name to somebody
+        else's picture is the worst thing this parser can do.
+        """
+        markup = (
+            '<div class="teaser"><img src="/sites/default/files/news/bear.jpg">'
+            "<p>Bears return to Harriman. Photo by Jane Daniels</p></div>"
+            '<img src="/sites/default/files/u26/DSC00417.jpg">'
+        )
 
         found = pages.page_photos(markup)
 
-        assert (found[0].credit, found[0].credit_basis) == ("Daniela Wagstaff", "page, sole photograph")
+        assert [(p.filename, p.credit) for p in found] == [("DSC00417.jpg", None)]
 
-    def test_that_fallback_does_NOT_run_when_the_page_shows_several(self):
-        """The case the fallback must refuse. One credit and three photographs
-        cannot say WHICH photograph is credited, and guessing would put a real
-        photographer's name on somebody else's picture - a worse failure than
-        publishing nothing, which is why both images come back uncredited."""
-        markup = "<p>Photo by Daniel Chazin</p>" + ("<p>prose</p>" * 60) + '<img src="/u26/a.jpg"><img src="/u26/b.jpg">'
+    def test_a_credit_in_the_footer_is_not_the_last_photographs_caption(self):
+        """The bound that two weaker ones missed. Stopping at the next u26
+        image does nothing for the LAST image on a page, and counting text
+        runs does not either - `</p></div><div id=footer><p>` yields no text
+        at all, so the footer's credit is still the next run. What separates a
+        caption from a footer is structure, so `enclosing_caption` stops at
+        the first closing tag that leaves the image's own element."""
+        markup = (
+            '<div class="content"><img src="/u26/a.jpg"><p>A view north.</p></div>'
+            '<div id="footer"><p>Photo by Daniel Chazin</p></div>'
+        )
 
         found = pages.page_photos(markup)
 
-        assert [p.credit for p in found] == [None, None]
+        assert (found[0].credit, found[0].credit_basis) == (None, None)
+
+    def test_an_image_inline_in_a_paragraph_still_gets_that_paragraphs_credit(self):
+        """The other direction, because a bound that refuses everything is not
+        a bound. Text already written before the closing tag is kept, so a
+        picture set inside a paragraph reads its own paragraph."""
+        markup = '<p>The view north <img src="/u26/a.jpg"> Photo by Daniel Chazin</p><div id="footer">x</div>'
+
+        found = pages.page_photos(markup)
+
+        assert (found[0].credit, found[0].credit_basis) == ("Daniel Chazin", "caption")
+
+    def test_an_ampersand_in_a_name_survives_exactly_once(self):
+        """`photo_credit` must not unescape what its callers already
+        unescaped. `Photo by Smith &amp; Co` is a page that says "Smith & Co";
+        unescaping twice would turn a page that says `Smith &amp;amp; Co` into
+        one that does not, and inventing a credit is the one thing a licence
+        conditioned on the credit cannot tolerate."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><p>Photo by Smith &amp; Co</p>')
+
+        assert found[0].credit == "Smith & Co"
+
+    def test_a_cache_an_older_parser_wrote_is_re_read_rather_than_resumed_onto(self, tmp_path):
+        """A resumed run SKIPS every URL already cached, so a row an older
+        parser wrote is never revisited - it is silently missing whatever the
+        parser learned since. Two changes have done that (#1502's coordinate,
+        #1504's credit). The cache declares its format so the run re-reads
+        rather than reporting a corpus with no coordinates and no credits,
+        which looks exactly like a corpus that has none."""
+        path = tmp_path / "pages.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "pages": [
+                        {
+                            "url": "https://www.nynjtc.org/hike/a",
+                            "timestamp": "20190419182814",
+                            "name": "A Loop",
+                            "park": None,
+                            "region": None,
+                            "lat": None,
+                            "lon": None,
+                            "description": "x",
+                            "photos": ["a.jpg"],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        assert pages.load_done(path) == {}
+
+    def test_the_cache_this_parser_writes_is_one_it_will_resume_onto(self):
+        """...and the version it writes is the version it accepts, or every
+        run re-reads 439 write-ups for ever."""
+        assert pages.CACHE_FORMAT == 2
 
     def test_a_gallery_cannot_hand_one_photographs_credit_to_the_one_before_it(self):
         """The caption window stops at the NEXT u26 image, so a credit written

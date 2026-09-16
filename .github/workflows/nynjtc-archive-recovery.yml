@@ -137,6 +137,32 @@ jobs:
       # A RESTORE may use the run-id idiom, and does: it stores nothing, and
       # `key` + `restore-keys` is the documented way to say "never hit
       # exactly, take the most recent match by prefix".
+      # TWO RESTORES, AND THE FIRST ONE IS NOT REDUNDANT (#1504).
+      #
+      # actions/cache derives a hidden "version" from the PATH LIST, and only
+      # matches entries saved under the same one. Every entry earlier runs
+      # saved names `poi_photos`, so the new list below misses all of them -
+      # the restore comes back empty, the move finds nothing to move, and the
+      # stage re-fetches 403 images and 439 write-ups from the host that
+      # refused this client on 2026-09-15. Caught in review before a dispatch
+      # spent it.
+      #
+      # So this step keeps the OLD list, unchanged, purely so those entries
+      # still match. It can be deleted once a run has saved under the new
+      # one and the maintainer is content to lose the legacy entry.
+      - name: What earlier stages fetched, before the store moved
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            pipeline/data/raw/wayback_hike_pages.json
+            pipeline/data/raw/wayback_hike_photos.json
+            pipeline/data/raw/poi_photos
+          key: nynjtc-archive-recovery-data-${{ github.run_id }}
+          restore-keys: |
+            nynjtc-archive-recovery-data-
+
+      # ...and this one takes the current shape. Second, so its manifests win
+      # where both entries exist: it is the newer of the two by construction.
       - name: What earlier stages already fetched
         uses: actions/cache/restore@v4
         with:

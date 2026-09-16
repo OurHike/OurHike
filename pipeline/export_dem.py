@@ -122,6 +122,14 @@ QUANTIZE_STEP_M = 0.5
 # off the Standard hiking sheet. Per band: z0-9 29.4, z10 11.8, z11 49.3,
 # z12 78.8, z13 106.2.
 #
+# MEASURED BEFORE #1506's encoder change, and every band above is now high by
+# it - about 3.1 MB across z11-13 (0.65/1.16/1.76%), the rest unmeasured. They
+# are left as they were built rather than adjusted on paper, because a figure
+# from a real run is worth more than a corrected estimate of one; the first
+# build after that change replaces them with measurements. Anyone pricing a
+# lever off these bands in the meantime - the taper, the quantize step, a
+# national cut - is working from pre-#1506 numbers and should say so.
+#
 # @unvalidated AS NUMBERS. 30/15/6 is the maintainer's opening schedule
 # (2026-08-27), not a finding - the SHAPE is measured and the SIZE is now
 # measured, but the three values are still picked. 6 is 2x
@@ -352,22 +360,50 @@ def floor_blue(rgb: np.ndarray, unit: int) -> np.ndarray:
 # input array at 100. That check is worth running again before this number
 # moves, because a 1-LSB error in terrarium's red channel is 256 m.
 #
-# MEASURED 2026-09-16 on 4 cores - the free runner's shape - over those tiles,
-# priced against the published per-zoom bands and timed at 8 workers for the
-# canonical build's 8,658 tiles:
+# Sampled 2026-09-16 on 4 cores - the free runner's shape - over those tiles.
+# The per-zoom PERCENTAGES are measured; the two right-hand columns are
+# REASONED from them, and the grades are split because one of them was wrong:
 #
-#     setting          off dem.pmtiles   encode
-#     m4 q80 (Pillow)              —      1.8 min
-#     q100                     3.1 MB     6.4 min   <- here
-#     m6 q100                  6.5 MB    72.5 min
-#     m6 q90                   0.6 MB     3.2 min
-#     m2 q100                  larger     1.1 min
+#     setting          per-zoom %   off dem.pmtiles   encode
+#                       measured         reasoned    reasoned
+#     m4 q80 (Pillow)         —                 —     1.8 min
+#     q100        -0.65/-1.16/-1.76      3.1 MB      6.4 min   <- here
+#     m6 q100     -0.74/-1.98/-4.26      6.5 MB     72.5 min
+#     m6 q90      -0.08/-0.16/-0.43      0.6 MB      3.2 min
+#     m2 q100     +1.78/+0.57/+0.58      larger      1.1 min
+#
+# "off dem.pmtiles" is those ratios applied to the published per-zoom bands,
+# and it covers z11-13 ONLY - the sample stops there, so z0-9 (29.4 MB) and
+# z10 (11.8 MB) are credited nothing rather than measured at nothing. The real
+# saving is therefore a little larger than 3.1 MB by an amount nobody has
+# measured, which is the safe direction to be wrong in.
 #
 # WHY NOT method=6, which is where the bytes are. It buys another 3.4 MB for
-# +66 minutes of encode, on a 6-hour job that also fetches 8,658 tiles over
-# somebody else's network - and it would land on the light build and every
-# cell cut too. The deep end of `method` is a trap on a free runner, and the
-# knee is at `quality` alone: 1.1% of the archive for +4.6 minutes.
+# +66 minutes of encode - and it would land on the light build and every cell
+# cut too. To see how bad that is, note what this build actually costs: run 52
+# (canonical, 8,658 tiles) took 5 min 21 s END TO END, and build-dem.yml caps
+# the job at `timeout-minutes: 120`. So +66 minutes is not an add-on to a long
+# job, it is roughly THIRTEEN TIMES the whole run and over half the timeout.
+#
+# (The first version of this comment said "a 6-hour job" and was wrong by two
+# orders of magnitude - a projected minute-count nobody had checked against a
+# real run, sitting under a MEASURED heading. The conclusion survives and is
+# strengthened; the reasoning was fiction. Worth leaving visible, because the
+# same mistake is available to the next person pricing a lever from this table:
+# check the denominator against an actual run.)
+#
+# The knee is `quality` alone, and its cost is now MEASURED rather than
+# projected. The first canonical build after #1506 (run 54, 2026-09-16) against
+# the last one before it (run 52), same 8,658 tiles, same workflow:
+#
+#     "Build the DEM archive" step    m4 q80 -> 3 min 08 s
+#                                       q100 -> 8 min 59 s   (+5 min 51 s, 2.9x)
+#
+# So the projection above under-read the real cost by 27% (+4.6 against +5.9),
+# and "roughly doubles" was optimistic - it nearly triples the step. The trade
+# still holds comfortably: the build job runs ~10 min against a 120-minute cap.
+# Recorded because a projection that survives contact with a real run is worth
+# replacing with the run, and this one did not survive it intact.
 #
 # `method` is deliberately left at Pillow's default rather than pinned here.
 # Naming it would suggest somebody chose it; nobody did, and the measurement

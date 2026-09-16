@@ -545,6 +545,28 @@ describe('what the sheet says about climb (#1476)', () => {
     )
   }
 
+  it('shows an unverified climb with the extent it was summed over (#1516)', () => {
+    // The figure is not withheld - it is real for the distance it covers, and
+    // dropping it would lose the climb on every line published before the
+    // exporter carried a length. What changes is the sentence under it: a
+    // scope, not a hedge. "Measured" is the word this phone has not earned
+    // when it cannot tell whether it holds the whole trail.
+    const { climbLine, climbNote } = detail({
+      kind: 'unverified',
+      gainFt: 1100,
+      lossFt: 900,
+      miles: 3.4,
+    })
+
+    expect(climbLine).toBe('+1,100 ft / −900 ft')
+    expect(climbNote).toBe(
+      'Climb over the 3.4 mi of this trail on this phone, which may not be all of it.',
+    )
+    // The estimate disclosure belongs to `measured` alone; two sentences
+    // about the same number is how a hiker stops reading either.
+    expect(climbNote).not.toContain('expect other sources to differ')
+  })
+
   it('prints gain and loss in DayHikeCard’s own vocabulary', () => {
     // One fact, two screens, one way of writing it: a hiker meeting +4,900 ft
     // on the card and something else here would have to translate.

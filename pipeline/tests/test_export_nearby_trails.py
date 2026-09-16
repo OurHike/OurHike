@@ -192,7 +192,12 @@ def _run(tmp_path, monkeypatch, sources, features_by_key, mapping=None, centerli
 # --------------------------------------------------------------------------
 
 
-def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypatch):
+def test_publishes_the_six_properties_the_client_draws_from(tmp_path, monkeypatch):
+    """`length_miles` is the sixth, added by #1516 so a phone can tell a whole
+    trail from part of one. It is asserted separately from the exact-equality
+    check below because its value is EPSG:5070's rather than this writer's, and
+    pinning the literal would turn a test of what gets published into a test of
+    the projection."""
     _, body = _run(
         tmp_path,
         monkeypatch,
@@ -202,13 +207,22 @@ def test_publishes_the_five_properties_the_client_draws_from(tmp_path, monkeypat
     )
 
     (feature,) = body["features"]
-    assert feature["properties"] == {
+    properties = dict(feature["properties"])
+    length_miles = properties.pop("length_miles")
+
+    assert properties == {
         "id": "oprhp_trails:1",
         "source": "oprhp_trails",
         "name": "Ramapo-Dunderberg",
         "blaze_color": "Red",
         "trail_status": "open",
     }
+    # A real length, on a fixture that draws a real line. The bound that
+    # matters is the lower one: zero or absent is what lineClimb reads as
+    # "nothing to compare against", and shipping that for every feature is
+    # the defect #1516 fixed.
+    assert isinstance(length_miles, float)
+    assert 0 < length_miles < 100
 
 
 # --------------------------------------------------------------------------
@@ -1803,3 +1817,59 @@ def test_a_merged_record_ships_whose_copy_it_swallowed():
     # Omitted rather than null on a record that swallowed nothing - the rule
     # every optional property in this writer follows.
     assert "duplicate_of" not in plain
+
+
+def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_whole():
+    """#1516. client/src/lib/lineClimb.ts compares the graph edges a phone
+    holds against this property: materially shorter means the line runs past
+    the downloaded cells, so the climb it could sum would be silently low.
+
+    v1.3.0 shipped that comparison against a field no exporter wrote, so the
+    guard could never fire and every tap fell through to `measured` - the
+    confidently-wrong answer on the band a hiker uses to judge daylight. The
+    assertion that matters here is simply that the key exists on every
+    feature; the client's own suite covers what it does with it.
+
+    The value is measured from the geometry being published rather than taken
+    from a steward's stated mileage, which is both why it is the right number
+    for a coverage check - it describes the same clipped line the phone holds
+    edges of - and why nothing may present it as the steward's claim."""
+    # A degenerate one-point line alongside a real one: `_miles` returns 0.0
+    # for it, and 0 is the value lineClimb treats as "nothing to compare
+    # against" rather than as a zero-length trail.
+    geojson = ex.records_to_geojson(
+        [
+            {
+                "id": "long",
+                "source": "oprhp_trails",
+                "name": "A real line",
+                "blaze_color": "Red",
+                "wkt": "LINESTRING (-74.0 41.0, -74.0 41.1)",
+            },
+            {
+                "id": "degenerate",
+                "source": "oprhp_trails",
+                "name": "One point twice",
+                "blaze_color": "Red",
+                "wkt": "LINESTRING (-74.0 41.0, -74.0 41.0)",
+            },
+        ]
+    )
+
+    real, degenerate = (f["properties"] for f in geojson["features"])
+
+    # Always written, never omitted: an absent key is the case that cost
+    # v1.3.0 its guard, so this property is not optional the way closure_kind
+    # and duplicate_of are.
+    assert "length_miles" in real
+    assert "length_miles" in degenerate
+
+    # 0.1 degree of latitude is about 6.9 miles. Asserted as a range rather
+    # than a literal because the exact figure is EPSG:5070's, and pinning it
+    # would make this a test of the projection rather than of the writer.
+    assert 6.5 < real["length_miles"] < 7.5
+    assert degenerate["length_miles"] == 0.0
+
+    # Two decimals, matching what the client reads and never more precision
+    # than the clipped geometry earns.
+    assert real["length_miles"] == round(real["length_miles"], 2)

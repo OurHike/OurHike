@@ -880,3 +880,108 @@ def test_a_page_that_arrives_and_does_not_parse_is_not_the_archive_refusing(monk
 
     assert exit_code == 0
     assert "archive refused     0" in capsys.readouterr().out
+
+
+# --- an index the archive will not serve (#1530) --------------------------------
+
+# Run 35163174907 died 7.5 minutes in, on its FIRST request: main() fetched the
+# index, got None, and returned 1 with 444 write-ups untouched and the raised
+# tripwire never reached. The index is one frozen archived capture whose links
+# cannot change, so staking a run on re-reading it was all cost and no benefit.
+
+
+def _cached_cache(path, links, rows=(), fmt=None):
+    """A cache file in the shape write_cache leaves behind.
+
+    `rows` rather than `pages`, because the module under test is bound to that
+    name here and a parameter shadowing it reads as the module until it bites.
+    """
+    path.write_text(
+        json.dumps(
+            {
+                "source": "web.archive.org",
+                "format": pages.CACHE_FORMAT if fmt is None else fmt,
+                "index": pages.INDEX_URL,
+                "listed": len(links),
+                "links": list(links),
+                "pages": list(rows),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_a_refused_index_falls_back_to_the_list_a_previous_run_kept(monkeypatch, requests_mock, tmp_path, capsys):
+    """THE #1530 FIX. One CDX lookup used to decide whether 444 write-ups were
+    attempted at all."""
+    _no_sleep(monkeypatch)
+    out = tmp_path / "pages.json"
+    monkeypatch.setattr(pages, "OUT_PATH", out)
+    _cached_cache(out, ["https://www.nynjtc.org/hike/h1"])
+    requests_mock.get(CDX, status_code=503)
+
+    pages.main(limit=None, index_only=True)
+
+    printed = capsys.readouterr().out
+    assert "uses the list a previous one kept" in printed
+    assert "https://www.nynjtc.org/hike/h1" in printed
+
+
+def test_a_refused_index_with_nothing_cached_still_gives_up(monkeypatch, requests_mock, tmp_path, capsys):
+    """The fallback must not turn a genuinely dead run into a silent success."""
+    _no_sleep(monkeypatch)
+    monkeypatch.setattr(pages, "OUT_PATH", tmp_path / "pages.json")
+    requests_mock.get(CDX, status_code=503)
+
+    assert pages.main(limit=None, index_only=False) == 1
+    assert "no previous run listed it" in capsys.readouterr().out
+
+
+def test_the_archives_own_list_wins_when_it_answers(monkeypatch, requests_mock, tmp_path, capsys):
+    """The cache is a fallback, not a replacement: a capture the archive will
+    serve is the better list, and a stale cached one must not shadow it."""
+    _no_sleep(monkeypatch)
+    out = tmp_path / "pages.json"
+    monkeypatch.setattr(pages, "OUT_PATH", out)
+    _cached_cache(out, ["https://www.nynjtc.org/hike/stale"])
+    _index(requests_mock, markup='<a href="/hike/fresh">one</a>')
+    _cdx_serving_index_then(requests_mock, then_status=503)
+
+    pages.main(limit=None, index_only=True)
+
+    printed = capsys.readouterr().out
+    assert "hike/fresh" in printed
+    assert "hike/stale" not in printed
+
+
+def test_the_links_are_written_into_the_cache_for_the_next_run(monkeypatch, requests_mock, tmp_path):
+    _no_sleep(monkeypatch)
+    out = tmp_path / "pages.json"
+    monkeypatch.setattr(pages, "OUT_PATH", out)
+    monkeypatch.setattr(pages, "REFUSALS", wayback_rate.Refusals(ceiling=10_000))
+    _index(requests_mock, markup='<a href="/hike/h1">one</a>')
+    _cdx_serving_index_then(requests_mock, then_status=503)
+
+    pages.main(limit=None, index_only=False)
+
+    assert json.loads(out.read_text())["links"] == ["https://www.nynjtc.org/hike/h1"]
+
+
+def test_a_parser_bump_drops_the_rows_but_keeps_the_links(tmp_path):
+    """load_done is gated on CACHE_FORMAT because a parser change makes old
+    ROWS untrustworthy. A list of URLs is not parsed, so gating it too would
+    throw the fallback away on exactly the runs that most need it - the ones
+    following a bump."""
+    path = tmp_path / "pages.json"
+    _cached_cache(path, ["https://www.nynjtc.org/hike/h1"], fmt=pages.CACHE_FORMAT - 1)
+
+    assert pages.load_done(path) == {}
+    assert pages.known_links(path) == ["https://www.nynjtc.org/hike/h1"]
+
+
+def test_a_cache_with_no_links_key_is_simply_no_fallback(tmp_path):
+    """Every cache written before #1530 is in this shape."""
+    path = tmp_path / "pages.json"
+    path.write_text(json.dumps({"format": pages.CACHE_FORMAT, "listed": 3, "pages": []}), encoding="utf-8")
+
+    assert pages.known_links(path) == []

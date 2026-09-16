@@ -12,6 +12,13 @@ from carrying the same ground more cheaply. That is the axis the maintainer
 already re-decided on 2026-08-25, and this document sits beside that decision
 rather than arguing with it.
 
+> **One exception, found later and recorded below (#1486):** *encoder effort*
+> passes, because it changes how the pixels are packed rather than what they
+> are — 6.4 MB off `dem.pmtiles`, with all 162 sampled tiles decoding
+> bit-identical. Every lever that touches the pixels themselves still fails.
+> The sentence above holds as an argument about resolution and quantization,
+> which is what it was written about, and not as a claim about the encoder.
+
 > **The 789.6 MB in this document's title is historical, and the shares moved
 > with it.** Everything below was written against the pre-taper archives; both
 > halves have shrunk since, by different amounts and for unrelated reasons —
@@ -746,6 +753,60 @@ Nobody has asked for that, it is *not* a recommendation, and it would need
 its own issue and its own acceptance test. It is recorded because the
 measurement is already paid for and the next person to open this file should
 not have to re-derive it.
+
+### Two more levers, found while pricing the bake (#1486)
+
+Both fell out of the same rig and neither is proposed here. They are recorded
+because the measurements are already paid for, and because **one of them
+qualifies this document's opening sentence.**
+
+**Encoder effort is free, and it is the one per-unit-area lever that does not
+fail.** `export_dem.encode_tile` saves at PIL's WebP defaults (`method=4`,
+`quality=80`). Measured over the same 162 tiles, `method=6, quality=100`:
+
+| | z11 | z12 | z13 |
+|---|---|---|---|
+| vs PIL default | −0.74% | −1.98% | −4.26% |
+
+Against the published bands that is **6.4 MB** off `dem.pmtiles`, and it costs
+no fidelity *at all* — not "an acceptable amount". Verified rather than assumed:
+all 162 tiles decode bit-identical to their input arrays at that setting. What
+it costs is build time, which is the encoder's whole tradeoff. So "every lever
+that makes the terrain cheaper per unit area fails the project's own acceptance
+test" is true of every lever that changes the *pixels* and false of the one that
+only changes how they are packed. 2.3% of the archive, for a two-argument
+change.
+
+**The half-metre bit is 31% of the archive and mostly buys nothing.** At
+`QUANTIZE_STEP_M = 0.5` the blue channel holds one bit per pixel — it takes only
+0 or 128 — and that bit is close to incompressible: the same 162 tiles weigh
+6,017 KB at 0.5 m against 4,152 KB at 1 m, so **31.0%** of the archive is that
+one bit. It exists to stop the 1 m staircase banding under overzoom, and
+`spike_dem_banding.py` already found that banding is a *flat-ground*
+phenomenon — mountainsides hide it. Per tile, 4× overzoomed, % of hillshade
+pixels a 1 m floor shifts >8/255:
+
+| tile relief (σ, m) | n | at exag 0.30 | at exag 0.55 | 0.5 m | 1 m |
+|---|---|---|---|---|---|
+| under 15 | 11 | 3.33% | 20.3% | 19.2K | 12.1K |
+| 15–100 | 59 | 0.89% | 5.9% | 33.9K | 22.7K |
+| over 100 | 92 | 0.85% | 4.4% | 41.4K | 29.1K |
+
+So the bit earns its keep on the ground it was bought for and is close to waste
+everywhere else — and "everywhere else" is most of a trail corridor. Keeping
+0.5 m only where a 1 m floor shifts more than 2% of pixels at the worst shipped
+exaggeration drops 94 of 162 tiles to 1 m for an archive **19.4% smaller**
+(~53 MB), with no tile rendering worse than the threshold allows.
+
+@unvalidated, and the gap is specific: **the seam between the two regimes has
+not been looked at once.** Adjacent tiles either side of the threshold carry
+different noise floors, and whether that shows as an edge under a hillshade is
+exactly the question this table does not answer. The threshold itself is picked,
+not derived. The flat end of the sample is also thin — 11 tiles under 15 m of
+relief, from six areas chosen for a different question — so the row that matters
+most for the decision is the row with the least behind it. What would settle it:
+the same render-and-compare this file already runs, over a tile pair straddling
+a real threshold boundary, at all three shipped exaggerations.
 
 ### Calibration, and the bias in this sample
 

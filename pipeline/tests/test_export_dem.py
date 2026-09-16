@@ -91,22 +91,47 @@ def test_encode_tile_is_lossless_at_whatever_effort_is_set(monkeypatch):
     across the dial rather than at the shipped setting: whatever a future change
     puts in WEBP_EFFORT, the pixels have to survive it exactly.
 
-    Pseudo-random bytes rather than a smooth ramp on purpose. A gradient is the
-    easy case for any predictive codec; incompressible noise is where a mode
-    that silently quantized would show, and it is also what the blue channel
-    actually looks like after the 0.5 m floor."""
-    rng = np.random.default_rng(1506)
-    rgb = rng.integers(0, 256, size=(64, 64, 3), dtype=np.uint8)
-    png = io.BytesIO()
-    Image.fromarray(rgb).save(png, format="PNG")
+    THE INPUT IS A SYNTHETIC TERRAIN TILE, and that is load-bearing twice over.
+    The first version of this test used white noise, reasoning that
+    incompressible data is where a silently-quantizing mode would show. True,
+    but it defeats the other half: measured here, the three efforts encode white
+    noise to byte-IDENTICAL output (49,252 each), because a search has nothing
+    to find in noise. On terrain they differ (10,336 / 8,700 / 8,508), which is
+    what lets the size assertion below exist at all. It is also simply the
+    honest input - a real tile is smooth red and green over a blue plane the
+    0.5 m floor has reduced to two levels, not static.
 
+    The floor here is the SHIPPED 0.5 m one for the same reason. At unit=256
+    floor_blue zeroes blue outright, so asserting it decodes to zero proves
+    nothing about the codec - the first version did that too."""
+    rng = np.random.default_rng(1506)
+    y, x = np.mgrid[0:128, 0:128]
+    # Smooth relief carrying sub-metre noise: crosses several 256 m green-channel
+    # wraps, and leaves blue genuinely two-valued rather than constant.
+    elevations = 400 + 180 * np.sin(x / 19.0) + 120 * np.cos(y / 23.0) + rng.normal(0, 0.9, x.shape)
+    png = terrarium_png(elevations)
+    unit = quantize_unit(0.5)
+    expected = np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).copy()
+    expected[:, :, 2] = (expected[:, :, 2] // unit) * unit
+
+    sizes = {}
     for effort in (0, 80, 100):
         monkeypatch.setattr(export_dem, "WEBP_EFFORT", effort)
-        out = encode_tile(png.getvalue(), 256)
+        out = encode_tile(png, unit)
+        sizes[effort] = len(out)
         decoded = np.asarray(Image.open(io.BytesIO(out)).convert("RGB"))
-        # Blue is floored to the step; red and green must come back untouched.
-        assert np.array_equal(decoded[:, :, :2], rgb[:, :, :2]), f"effort {effort} altered elevation"
-        assert not decoded[:, :, 2].any(), f"effort {effort} did not floor blue"
+        assert np.array_equal(decoded, expected), f"effort {effort} changed a pixel"
+        assert set(np.unique(decoded[:, :, 2])) <= {0, unit}, f"effort {effort} broke the 0.5 m floor"
+
+    # The dial has to REACH the encoder, and losslessness alone cannot show
+    # that: every assertion above passes at Pillow's default too, so deleting
+    # `quality=WEBP_EFFORT` from encode_tile left the whole suite green (#1506
+    # review). Bytes are the one thing `quality` moves, so bytes are what pins
+    # it - and higher effort must not come out bigger.
+    assert len(set(sizes.values())) == 3, (
+        f"efforts did not produce distinct bytes ({sizes}) - WEBP_EFFORT is not reaching the encoder"
+    )
+    assert sizes[100] < sizes[80] < sizes[0], f"more effort should not cost more bytes ({sizes})"
 
 
 def test_fetch_tile_returns_none_on_404_and_retries_transient_errors(requests_mock, monkeypatch):

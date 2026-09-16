@@ -62,7 +62,7 @@ import numpy as np
 import requests
 from PIL import Image
 
-from export_dem import DEM_TILE_URL, encode_tile
+from export_dem import DEM_TILE_URL, WEBP_EFFORT, encode_tile
 from lib.http_retry import request_with_retry
 from spike_dem_banding import (
     AZIMUTH_DEG,
@@ -158,11 +158,18 @@ def dem_arm_bytes(rgb_block: np.ndarray) -> int:
 
 
 def webp_gray(img: np.ndarray, quality: int | None) -> bytes:
-    """Grayscale WebP, lossless when quality is None."""
+    """Grayscale WebP, lossless when quality is None.
+
+    The lossless arm carries export_dem's WEBP_EFFORT so it is encoded at the
+    same effort arm A is (#1506 review). Arm A picks that up for free by going
+    through encode_tile; this one had to be told, and until it was, the two
+    "lossless" columns of the report differed by encoder effort as well as by
+    content - the exact confound routing arm A through the shipping function
+    exists to remove."""
     buf = io.BytesIO()
     pil = Image.fromarray(img.astype(np.uint8), mode="L")
     if quality is None:
-        pil.save(buf, format="WEBP", lossless=True)
+        pil.save(buf, format="WEBP", lossless=True, quality=WEBP_EFFORT)
     else:
         pil.save(buf, format="WEBP", quality=quality, lossless=False)
     return buf.getvalue()

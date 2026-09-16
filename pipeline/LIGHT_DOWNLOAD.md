@@ -13,6 +13,7 @@ already re-decided on 2026-08-25, and this document sits beside that decision
 rather than arguing with it.
 
 > **One exception, found later (#1486) and shipped by #1506:** *encoder effort*
+> — 1.1% of the archive for roughly double the build's encode step —
 > passes, because it changes how the pixels are packed rather than what they
 > are — 3.1 MB off `dem.pmtiles`, with all 162 sampled tiles decoding
 > bit-identical. Every lever that touches the pixels themselves still fails.
@@ -642,6 +643,14 @@ itself on the same tiles (so arm A is the shipping transform, not a copy):
 | z12 | 36.9K | 39.8K | 10.2K | 14.3K | 23.0K |
 | z13 | 27.1K | 36.6K | 7.9K | 11.5K | 19.9K |
 
+**Both left-hand columns are pre-#1506 and are left as measured.** The shipped
+encoder now asks for effort 100, so "DEM (shipped)" is high by 0.65/1.16/1.76%
+and the 275.6 MB baseline with it; the spike's own lossless arm was encoding at
+Pillow's default and has been aligned, so a re-run moves both columns a little
+and neither conclusion. Restating them here from a ratio would replace numbers
+from a real run with a corrected estimate of one, which is the wrong direction
+to edit in — the next build re-measures them.
+
 **Lossless baking is already a loss** — a shaded image carries more entropy than
 the elevation it came from, once that elevation has had its sub-metre fraction
 floored away. Every saving here is the lossy codec's, which is the point.
@@ -782,10 +791,21 @@ over the canonical build's 8,658 tiles:
 | `method=2, quality=100` | +1.78% | +0.57% | +0.58% | *larger* | 1.1 min |
 
 **`quality` is the lever and `method` is a trap.** The deep end of `method`
-buys another 3.4 MB for **+66 minutes** of encode, on a six-hour job that also
-fetches 8,658 tiles across somebody else's network, and it would land on the
+buys another 3.4 MB for **+66 minutes** of encode, and it would land on the
 light build and every cell cut as well. `quality=100` alone is +4.6 minutes for
-1.1% of the archive, which is the trade #1506 made.
+1.1% of the archive, which is the trade
+**#1506 — The DEM encodes at PIL's WebP defaults, and one of them costs 3.1 MB
+for nothing** made.
+
+> **This paragraph said "+66 minutes … on a six-hour job" and the denominator
+> was invented.** The DEM build is not six hours: run 52 (canonical, 8,658
+> tiles) took **5 min 21 s** end to end, and `build-dem.yml` caps the job at
+> `timeout-minutes: 120`. So +66 minutes is about **thirteen times the whole
+> run**, not a fifth of it, and +4.6 minutes roughly doubles the encode rather
+> than disappearing into a long job. The conclusion is unchanged and in fact
+> stronger; the arithmetic supporting it was fiction, and it sat under a
+> *measured* heading, which is how it went unchallenged. Corrected 2026-09-16
+> against the Actions API.
 
 So "every lever that makes the terrain cheaper per unit area fails the project's
 own acceptance test" is true of every lever that changes the *pixels* and false

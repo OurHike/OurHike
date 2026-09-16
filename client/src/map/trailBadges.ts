@@ -158,11 +158,20 @@ export function trailIdForSource(source: string | null | undefined): string | nu
  * entry and stay unnamed, which is what keeps them out of the list.
  *
  * THE DATA'S NAME ALWAYS WINS where there is one, which is why this is a
- * fallback and not a lookup. The registry calls the A.T. "Appalachian Trail"
- * and ATC's feed calls it "Appalachian National Scenic Trail"; the feed is
- * what a hiker reads on the badge today and that does not change. In
- * practice this never fires for `centerline` at all - the A.T.'s own file
- * carries names at every zoom - and it is written to be correct if it did.
+ * fallback and not a lookup: this answers "the data gave us nothing", never
+ * "the data gave us something we would rather it hadn't". In practice it
+ * never fires for `centerline` at all - the A.T.'s own file carries names at
+ * every zoom - and it is written to be correct if it did.
+ *
+ * WHICH IS A DIFFERENT QUESTION FROM WHAT THE BADGE PRINTS, and until
+ * 2026-09-16 this paragraph ran the two together: it said ATC's
+ * "Appalachian National Scenic Trail" was "what a hiker reads on the badge
+ * today and that does not change". It changed - the maintainer asked for the
+ * app to say "Appalachian Trail" - but not here. map/trailsInView.ts passes
+ * every name, this fallback's included, through lib/trails.ts's
+ * displayTrailName on its way to the badge and the legend. The rename lives
+ * in one table there; this function still only ever answers for a feature
+ * that arrived with no name at all.
  */
 export function registryNameForSource(source: string | null | undefined): string | null {
   const trail =

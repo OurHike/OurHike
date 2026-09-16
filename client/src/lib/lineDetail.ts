@@ -30,7 +30,7 @@
 import { blazeLabel } from './blaze'
 import type { LineClimb } from './lineClimb'
 import { describeSpur, type SpurRecord } from './spurDestination'
-import { trailForName } from './trails'
+import { displayTrailName, trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
 import type { StoredPoi } from './trailData'
 import { formatDistance, formatElevation } from './units'
@@ -332,7 +332,12 @@ export function buildLineDetail(
   const kind = chosenThroughRoute
     ? trailName
     : throughRoute
-      ? (line.name ?? trailName)
+      ? // By the name this build shows, not the published one. Today this
+        // branch is the Long Path's alone and renames nothing - see the
+        // trail-mark lookup below for why an A.T. line never reaches it -
+        // so this is the heading agreeing with the badge in advance, not a
+        // heading anybody has seen change (lib/trails.ts).
+        (displayTrailName(line.name) ?? trailName)
       : spur !== undefined
         ? 'spur'
         : 'side trail'
@@ -480,6 +485,16 @@ export function buildLineDetail(
   // the app's own name for the through-route it chose, the steward's own
   // name for anything else, including a through-route it did not choose. A
   // spur's record name is a spur's, never a trail's.
+  //
+  // `trailForName` reads the published spellings too (lib/trails.ts), so
+  // ATC's "Appalachian National Scenic Trail" finds the A.T.'s mark on the
+  // `line.name` branch. THAT BRANCH CANNOT TAKE THE A.T. TODAY and this is
+  // insurance rather than a fix: `centerline` is in CHOSEN_SYSTEM_SOURCES
+  // unconditionally above, so an A.T. line is always `chosenThroughRoute`
+  // and always looked up by `trailName`. What would make it reachable is
+  // this module learning which trail the hiker actually took - the split
+  // map/nearbyTrails.ts already makes, and the reason its
+  // CHOSEN_SYSTEM_SOURCES is restated here rather than parameterised.
   const trail = trailForName(chosenThroughRoute ? trailName : line.name)
 
   const sharedWith =
@@ -490,26 +505,36 @@ export function buildLineDetail(
   // the A.T. by the name this build calls it, not the published one, since
   // "Appalachian National Scenic Trail" is nobody's word for it on a sheet
   // headed "Appalachian Trail".
+  //
+  // This line held that rename on its own as a string comparison until
+  // 2026-09-16, and it now reads the same table every display path does
+  // (lib/trails.ts's PUBLISHED_ALIASES). The rendered sentence is unchanged:
+  // the old branch printed `trailName`, which App.tsx supplies as the
+  // constant TRAILS.AT.name, so both spell "the Appalachian Trail". What
+  // moves is where the fact lives - one table instead of a literal here, so
+  // the sheet and the badge cannot disagree the next time a spelling is
+  // added.
+  const sharedDisplay = displayTrailName(sharedWith)
   const sharedName =
-    sharedWith === null
+    sharedDisplay === null
       ? null
-      : sharedWith === 'Appalachian National Scenic Trail'
-        ? `the ${trailName}`
-        : /^(the|a|an) /i.test(sharedWith)
-          ? sharedWith
-          : `the ${sharedWith}`
+      : /^(the|a|an) /i.test(sharedDisplay)
+        ? sharedDisplay
+        : `the ${sharedDisplay}`
   const sharedLine =
     sharedName === null ? null : `Shares this stretch with ${sharedName}.`
 
   return {
     heading: `${blazeLabel(line.blazeColor)} · ${kind}`,
     // A CHOSEN through-route's name is already the heading (kind IS
-    // trailName); repeating ATC's formal name under it ("Appalachian
-    // National Scenic Trail") would be the same fact twice in adjacent
-    // lines. Any other through-route - the Long Path, since #1307 - keeps
-    // its name here: its heading is the data's own name, not a synonym for
-    // it, and #1288 is where a hiker was first shown one at all.
-    name: chosenThroughRoute ? null : (spur?.name ?? line.name),
+    // trailName), so printing it again under itself would be the same fact
+    // twice in adjacent lines. Any other through-route - the Long Path,
+    // since #1307 - keeps its name here: its heading is the data's own name,
+    // not a synonym for it, and #1288 is where a hiker was first shown one
+    // at all. Shown as this build names it, which for an untaken A.T. means
+    // "Appalachian Trail" rather than ATC's formal designation - the
+    // repetition this line refuses is the same repetition either way.
+    name: chosenThroughRoute ? null : (spur?.name ?? displayTrailName(line.name)),
     destinationLine,
     roundTripLine: detail.roundTripLabel,
     junctionLine,

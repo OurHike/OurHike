@@ -74,7 +74,7 @@
 export const caption =
   'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a solid line at one fine weight (the dot rhythm of #1283 is gone since 2026-09-10), the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails in their own hues around its New York miles — the Long Path in aqua — no waypoints, and the A.T.’s one badge naming it, placed at this camera since the review of #1374'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single fine dark line from Georgia to Maine over the basemap, with no pins on it and one paper badge reading “Appalachian National Scenic Trail” with the ATC mark, and the other organizations’ trails as fine solid threads of the same weight in their own colours around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single fine dark line from Georgia to Maine over the basemap, with no pins on it and one paper badge reading “Appalachian Trail” with the ATC mark, and the other organizations’ trails as fine solid threads of the same weight in their own colours around its New York miles'
 
 /** The network overview is one 10.8 MB GeoJSON (lib/config.ts's
  *  NETWORK_OVERVIEW_KEY) that the map cuts into tiles in a worker after it

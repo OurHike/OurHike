@@ -113,18 +113,29 @@ ARCHIVE = RateLimit()
 #: One of those is an ordinary fact about a corpus: a capture the archive
 #: holds but will not serve today, which
 #: fetch_wayback_hike_pages.py deliberately costs that page and not the run.
-#: Three in a row is twelve refused requests spanning at least 22 minutes,
-#: because the ladder in both fetchers is 30 + 120 + 300 seconds per URL.
+#: Three in a row is twelve refused requests, and the ladder in both fetchers
+#: is 30 + 120 + 300 seconds per URL.
+#:
+#: HOW LONG THAT TAKES IS NOT BOUNDED BY THE THREE, and the first version of
+#: this comment said "about 22 minutes" as though it were. Corrected against
+#: run 35128687766 (2026-09-16), which stopped after **53 minutes**: the
+#: archive served that runner intermittently - 3 write-ups recovered, 4
+#: refused, of 7 attempted - and every served response resets the count, by
+#: design, so the run only ended once three refusals landed genuinely
+#: back-to-back. 22 minutes is the floor, reached only when the host refuses
+#: from the first request and refuses quickly; a host that answers slowly or
+#: in patches takes longer, and a run that is working is supposed to.
 #:
 #: @unvalidated - THREE IS PICKED, and what would settle it is the
-#: distribution of consecutive give-ups on a run that went on to finish,
-#: which no run here has recorded. The arithmetic either side of it is not
-#: picked: at three, a refused run stops in about 22 minutes instead of
-#: spending a 330-minute job on 42 of 444 write-ups (measured, run
-#: 35092759225, 2026-09-16); and being wrong costs a re-dispatch, against
-#: five and a half hours for being wrong in the other direction. That
-#: asymmetry is the whole argument for a low number, and it is why this is
-#: not tuned upward without the measurement.
+#: distribution of consecutive give-ups on a run that went on to FINISH,
+#: which no run here has yet recorded; 35128687766 is one refused run, not a
+#: distribution. What is measured is the asymmetry that argues for a low
+#: number, and it is what this rests on: at three, a refused run stopped in
+#: 53 minutes having banked what it got, against run 35092759225 the same
+#: day spending a whole 330-minute job on 42 of 444 write-ups and banking
+#: nothing. Being wrong here costs a re-dispatch; being wrong the other way
+#: cost five and a half hours. That is why this is not tuned upward without
+#: the measurement.
 MAX_CONSECUTIVE_REFUSALS = 3
 
 

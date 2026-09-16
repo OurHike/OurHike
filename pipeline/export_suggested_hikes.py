@@ -86,6 +86,7 @@ from lib.hashing import sha256_file
 from lib.hike_route_builder import PUBLISHED
 from lib.hikefinder import SOURCE_KEY
 from lib.manifest_paths import to_manifest_path
+from lib.photo_store import photo_key
 from lib.source_registry import find_source, load_registry
 from lib.stamps import utc_stamp
 from route_hikefinder import load_cache, load_graph
@@ -213,6 +214,31 @@ TRACK_REPRODUCTION_TOLERANCE = 0.10
 #: licence NYNJTC never wrote.
 CONTENT_LICENCE = "By permission of the New York-New Jersey Trail Conference"
 
+#: What a card prints under a photograph. The same permission the prose ships
+#: on, said in the form the licence names as its CONDITION rather than a
+#: courtesy: sources.json's nynjtc_hikes_licence requires "every photograph
+#: ships with the credit line the page carries". The photographer's own name
+#: rides in `credit` beside this; this is the grant, not the attribution.
+PHOTO_LICENCE = "By permission of the New York-New Jersey Trail Conference"
+
+#: The join a PERSON confirmed, hike by hike (#1450 Phase 1, #1522).
+#:
+#: NOT the matcher's proposal. `data/processed/wayback_photo_matches.json` is
+#: a score, and a score is a claim about strings; whether a photograph is OF a
+#: hike is a claim about the world, which is why match_wayback_hike_photos.py
+#: renders a sheet and prints "NOTHING SHIPS FROM THIS FILE". This path is
+#: where a reviewer's answer lands, and CONTRIBUTING.md reserves
+#: `reference/` for exactly that - "a join that encodes judgement somebody
+#: reviews row by row".
+#:
+#: IT DOES NOT EXIST YET, and that is a supported state rather than a gap to
+#: code around: no file means no confirmed row means every hike exports with
+#: no photo, which is what ships today and what the client already draws as a
+#: plain sunken block. publish.py's archive_photos_awaiting_review keeps the
+#: BYTES out of the bucket on the same file, so the two gates agree by
+#: reading one answer.
+CONFIRMED_PHOTOS_PATH = ROOT / "reference" / "nynjtc_hike_photos.json"
+
 
 def load_routes(path: Path | None = None) -> dict:
     """What route_hikefinder.py decided, or {} when it wrote nothing.
@@ -300,7 +326,93 @@ def segments_for(coords: list[list[float]], closed: bool) -> list[list[dict]]:
     return [[{"coord": coord, "poiId": None} for coord in walking]]
 
 
-def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str, reproduced: str | None) -> dict:
+def confirmed_photos(path: Path | None = None) -> dict[str, dict]:
+    """Every hike a person has confirmed a photograph for, keyed by hike id.
+
+    THREE SHAPES, AND THE REASON IS THE SAME ONE publish.py's `_digests_in`
+    gives: there is no schema, a person writes this file by hand from
+    `data/processed/wayback_photo_matches.json`, and that file's rows live
+    under `matches` while every other reference file here uses its own noun.
+    A reader accepting only one key would take the other as EMPTY - and an
+    empty confirmed join is indistinguishable, from the outside, from nobody
+    having confirmed anything. Both keys are read, and a bare list too.
+
+    BOTH SPELLINGS OF THE HIKE ID, which is the trap this function exists
+    for. The matcher writes `hike_id` as the export's own bare number
+    (`match_wayback_hike_photos.py`, `hike_id=str(key)`), and a record here
+    is `nynjtc_hike_finder:<number>`. A reviewer copying rows out of the
+    sheet - which is exactly how this file is meant to be written - would
+    otherwise produce a join that matches nothing at all, silently, and look
+    identical to an unreviewed corpus. So the prefix is stripped on both
+    sides and the number is what joins.
+
+    A ROW NEEDS ALL THREE OF hike, digest and credit. The credit is not a
+    courtesy: sources.json's nynjtc_hikes_licence makes attribution a
+    CONDITION of the permission these photographs ship on, so a row that
+    names no photographer ships no photograph, whatever its score and
+    whoever confirmed it. That is the same bar fetch_wayback_hike_photos.py
+    and publish.py hold, said a third time because this is the last place it
+    can be enforced before a card.
+    """
+    path = path or CONFIRMED_PHOTOS_PATH
+    if not path.exists():
+        return {}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # An unreadable confirm file confirms nothing. Failing the whole
+        # export over it would cost the hikes to save the photographs.
+        print(f"  {path.name} could not be read - exporting with no photographs", file=sys.stderr)
+        return {}
+    if isinstance(document, list):
+        rows = document
+    elif isinstance(document, dict):
+        rows = document.get("photos") or document.get("matches") or []
+    else:
+        rows = []
+
+    confirmed: dict[str, dict] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        hike_id, digest, credit = row.get("hike_id"), row.get("digest"), row.get("credit")
+        if not hike_id or not digest or not credit:
+            continue
+        confirmed.setdefault(str(hike_id).split(":")[-1], {"digest": digest, "credit": credit})
+    return confirmed
+
+
+def photo_for(hike_id: str, confirmed: dict[str, dict]) -> dict | None:
+    """The client's photo block for one hike, or None when nothing is confirmed.
+
+    `url` is the BUCKET KEY rather than an absolute address - `photos/<digest>.jpg`,
+    the content-addressed store the POI cards already draw from. The phone
+    resolves it against its own data base URL (lib/suggestedHikesData.ts's
+    `validPhoto`), so the artifact carries no hostname and a bucket move costs
+    no republish.
+
+    The credit is printed as the page printed it. `credit` off the sheet is
+    the photographer's name, and "Photo by " is the form the licence quotes
+    ("Photo by Daniel Chazin"), so a name that already carries the phrase is
+    not given it twice.
+    """
+    row = confirmed.get(str(hike_id).split(":")[-1])
+    if row is None:
+        return None
+    credit = str(row["credit"]).strip()
+    if not credit.lower().startswith("photo by") and not credit.lower().startswith("photo:"):
+        credit = f"Photo by {credit}"
+    return {"url": photo_key(row["digest"]), "credit": credit, "licence": PHOTO_LICENCE}
+
+
+def record_for(
+    hike: dict,
+    route: dict,
+    coords: list[list[float]],
+    steward: str,
+    reproduced: str | None,
+    confirmed: dict[str, dict] | None = None,
+) -> dict:
     """One hike as the client reads it.
 
     THE DETAIL FIELDS ARE FLAT, NOT NESTED, and that is not a style choice.
@@ -360,6 +472,13 @@ def record_for(hike: dict, route: dict, coords: list[list[float]], steward: str,
         "closed": bool(route.get("closed")),
         "measured": {"miles": round(route["miles"], 2), "note": router.SAME_TREAD_NOTE},
     }
+    photo = photo_for(hike["id"], confirmed or {})
+    if photo is not None:
+        # ABSENT, NEVER EMPTY. A hike with no confirmed photograph carries no
+        # `photo` key at all, which is what the client draws as a plain sunken
+        # block; a half-filled one would be a card claiming a picture it has
+        # no bytes for.
+        record["photo"] = photo
     if author:
         # validPublication refuses a block with no submittedBy, so a hike whose
         # page names nobody ships no publication rather than an empty one.
@@ -481,6 +600,10 @@ def split_record(record: dict) -> tuple[dict, dict]:
 def build_document(graph: router.Graph, cache: dict, routes: dict, steward: str, generated_at: datetime) -> tuple[dict, list]:
     hikes: list[dict] = []
     dropped: list[tuple[str, str]] = []
+    # Read ONCE for the whole export rather than per hike: it is a reviewer's
+    # file of at most a few hundred rows, and re-reading it 385 times would
+    # turn a missing-file check into 385 of them.
+    confirmed = confirmed_photos()
     for key in sorted(cache, key=lambda k: int(k)):
         hike, route = cache[key], routes.get(key)
         if route is None:
@@ -508,7 +631,7 @@ def build_document(graph: router.Graph, cache: dict, routes: dict, steward: str,
         else:
             coords = [[round(end[0], 6), round(end[1], 6)] for end in route["ends"]]
 
-        hikes.append(record_for(hike, route, coords, steward, reproduced))
+        hikes.append(record_for(hike, route, coords, steward, reproduced, confirmed))
 
     document = {"generated_at": utc_stamp(generated_at), "source": SOURCE_KEY, "hikes": hikes}
     return document, dropped

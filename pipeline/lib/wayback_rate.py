@@ -104,3 +104,86 @@ class RateLimit:
 #: cannot each spend the full allowance and together double it. Both archive
 #: fetchers take from this rather than building their own.
 ARCHIVE = RateLimit()
+
+
+#: How many consecutive give-ups mean the archive is refusing this CLIENT
+#: rather than declining one URL (#1522).
+#:
+#: A give-up is a request that exhausted its caller's whole backoff ladder.
+#: One of those is an ordinary fact about a corpus: a capture the archive
+#: holds but will not serve today, which
+#: fetch_wayback_hike_pages.py deliberately costs that page and not the run.
+#: Three in a row is twelve refused requests spanning at least 22 minutes,
+#: because the ladder in both fetchers is 30 + 120 + 300 seconds per URL.
+#:
+#: @unvalidated - THREE IS PICKED, and what would settle it is the
+#: distribution of consecutive give-ups on a run that went on to finish,
+#: which no run here has recorded. The arithmetic either side of it is not
+#: picked: at three, a refused run stops in about 22 minutes instead of
+#: spending a 330-minute job on 42 of 444 write-ups (measured, run
+#: 35092759225, 2026-09-16); and being wrong costs a re-dispatch, against
+#: five and a half hours for being wrong in the other direction. That
+#: asymmetry is the whole argument for a low number, and it is why this is
+#: not tuned upward without the measurement.
+MAX_CONSECUTIVE_REFUSALS = 3
+
+
+class ArchiveRefusing(RuntimeError):
+    """The archive has refused several requests in a row, so it is refusing us.
+
+    Raised rather than returned because the callers are loops whose whole
+    design is that one refused URL costs that URL. That is right until the
+    host is refusing everything, at which point continuing is neither polite
+    nor useful - and an exception is the one thing a `continue` cannot
+    swallow.
+
+    A caller catches this, WRITES WHAT IT HAS, and reports. Losing the
+    recovered rows to the same event that stopped the fetch is the failure
+    #1522 exists to end, so an unhandled escape of this class is a bug.
+    """
+
+
+class Refusals:
+    """Counts give-ups in a row, and trips when there have been too many.
+
+    Separate from `RateLimit` above because they answer opposite questions:
+    the limiter decides when this build may SEND, and this decides when it
+    should stop asking. They travel together only in that both are about the
+    same host's patience.
+
+    WHAT COUNTS AS BEING SERVED is the part worth getting right, and it is
+    not "the answer was useful". An HTTP 404 from the archive is the archive
+    working - it answered, and what it said is that it has no capture. A
+    corpus full of those would trip a tripwire that counted them, and report
+    a refusal that never happened.
+
+    So `served()` is called for a response the caller takes as FINAL - a 200
+    or a 404 alike - and `refused()` only where a caller has exhausted its
+    ladder. The status in between, a 503 the caller is about to retry, is
+    neither: calling `served()` on it would reset the count inside every
+    ladder and the tripwire could never trip at all.
+    """
+
+    def __init__(self, ceiling: int = MAX_CONSECUTIVE_REFUSALS) -> None:
+        if ceiling < 1:
+            raise ValueError("a tripwire that trips before anything is refused would stop every run")
+        self.ceiling = ceiling
+        self.consecutive = 0
+
+    def served(self) -> None:
+        """The host answered. Whatever it said, it is not refusing us."""
+        self.consecutive = 0
+
+    def refused(self, what: str) -> None:
+        """A request exhausted its ladder. Trip if that is now a pattern."""
+        self.consecutive += 1
+        if self.consecutive >= self.ceiling:
+            raise ArchiveRefusing(
+                f"{self.consecutive} requests in a row exhausted their retries, most recently {what}. "
+                "The archive is refusing this client rather than declining one URL - see lib/wayback_rate.py."
+            )
+
+
+#: One tripwire for the process, for the same reason ARCHIVE is one limiter:
+#: two fetchers sharing an egress address share the refusal too.
+REFUSALS = Refusals()

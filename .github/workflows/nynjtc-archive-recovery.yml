@@ -353,13 +353,24 @@ jobs:
       # store, so they move exactly when it does, and hashing 403 files to
       # learn the same thing would be slower for nothing.
       #
-      # The `if` is the other half of what the test asks for. hashFiles()
-      # returns an empty string when none of its paths exist, so an `index` or
-      # `probe` run - which fetch no corpus at all - would otherwise save the
-      # bare prefix as a key and poison every later restore with an empty
-      # entry.
+      # The hashFiles() half of the `if` is what the test asks for. It returns
+      # an empty string when none of its paths exist, so an `index` or `probe`
+      # run - which fetch no corpus at all - would otherwise save the bare
+      # prefix as a key and poison every later restore with an empty entry.
+      #
+      # `always() &&` IS THE OTHER HALF, AND IT IS THE POINT (#1522). Without
+      # it this step inherits the implicit success(), so a stage that exited
+      # non-zero threw away everything it had recovered - and a partial
+      # recovery is exactly the run whose cache is worth keeping, because the
+      # next dispatch resumes onto it. The same argument the last step of this
+      # job already makes for itself: the interesting case is the failed run.
+      #
+      # This is now the only thing standing between a refused stage and a
+      # cold re-fetch of 878 archive requests. Run 35092759225 spent 330
+      # minutes being refused and banked nothing; the fetcher writes its rows
+      # as it goes now, and this is what carries them to the next run.
       - name: Hand this on to the next stage
-        if: hashFiles('pipeline/data/raw/wayback_hike_pages.json', 'pipeline/data/raw/wayback_hike_photos.json') != ''
+        if: always() && hashFiles('pipeline/data/raw/wayback_hike_pages.json', 'pipeline/data/raw/wayback_hike_photos.json') != ''
         uses: actions/cache/save@v4
         with:
           path: |

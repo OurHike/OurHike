@@ -106,6 +106,26 @@ _LATLON_RES = (
     re.compile(r"data-lat=\"(-?\d+\.\d+)\"\s+data-l(?:on|ng)=\"(-?\d+\.\d+)\"", re.I),
     re.compile(r"[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)", re.I),  # a Google Maps link
     re.compile(r"[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)", re.I),
+    # A BARE PAIR, and it is last on purpose (#1502).
+    #
+    # The four above only know a coordinate that arrives LABELLED - behind a
+    # JSON key, a data- attribute, or a Maps query parameter. These pages
+    # publish it with nothing in front of it at all:
+    # "41.195754000000,-74.184073000000". Measured on the 20230606152417
+    # capture of /hike/claudius-smiths-rock, where that pair appears three
+    # times and all four labelled patterns returned zero hits - which is how
+    # the first full run reported a coordinate on NONE of 439 write-ups and
+    # left the matcher's distance route unable to fire.
+    #
+    # Last, so a page that DOES label its coordinate is read by the pattern
+    # that knows the label rather than by this one guessing.
+    #
+    # Three digits of fraction is the bar: it keeps this off "1.5,2.0" in a
+    # stylesheet or a version string while accepting anything a geocoder
+    # emits. What actually makes an unlabelled pair safe is the bounds check
+    # in `coordinates()` - two decimals are only read as a place when they
+    # land in the corner of the world these hikes are in.
+    re.compile(r"(-?\d{1,3}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})"),
 )
 
 
@@ -235,15 +255,19 @@ def coordinates(markup: str) -> tuple[float, float] | None:
     anywhere would put a hike in the Atlantic. NY/NJ/PA corner, generously.
     """
     for pattern in _LATLON_RES:
-        found = pattern.search(markup)
-        if not found:
-            continue
-        try:
-            lat, lon = float(found.group(1)), float(found.group(2))
-        except (TypeError, ValueError):
-            continue
-        if 38.0 <= lat <= 44.0 and -78.0 <= lon <= -71.0:
-            return lat, lon
+        # EVERY match, not just the first (#1502). `search()` took one match
+        # per pattern, so a match that failed the bounds below moved on to the
+        # next PATTERN rather than the next match - discarding a good
+        # coordinate sitting further down the page. Latent while every pattern
+        # was a labelled shape that appears once; live the moment the bare
+        # pair above is in the list, because an 82 KB Drupal page has several.
+        for found in pattern.finditer(markup):
+            try:
+                lat, lon = float(found.group(1)), float(found.group(2))
+            except (TypeError, ValueError):
+                continue
+            if 38.0 <= lat <= 44.0 and -78.0 <= lon <= -71.0:
+                return lat, lon
     return None
 
 
@@ -366,8 +390,15 @@ def probe(made, url: str) -> int:
     for window in windows[:5]:
         print("    ..." + " ".join(window.split()) + "...")
 
-    pairs = re.findall(r"-?\d{2}\.\d{3,}\s*[,;]\s*-?\d{2}\.\d{3,}", markup)
-    print(f"  {len(pairs)} bare decimal pair(s){' -> ' + str(pairs[:3]) if pairs else ''}")
+    # WITH THEIR SURROUNDINGS (#1502). The first version printed the numbers
+    # alone, which was enough to prove the parser wrong and not enough to
+    # write the replacement: a bare pair could be a coordinate, a bounding-box
+    # corner or a stylesheet value, and only the markup around it says which.
+    pairs = list(re.finditer(r"-?\d{1,3}\.\d{3,}\s*[,;]\s*-?\d{1,3}\.\d{3,}", markup))
+    print(f"  {len(pairs)} bare decimal pair(s)")
+    for hit in pairs[:5]:
+        window = markup[max(0, hit.start() - 80) : hit.end() + 40]
+        print("    ..." + " ".join(window.split()) + "...")
 
     photos = [urllib.parse.unquote(src.rsplit("/", 1)[-1]) for src in _U26_IMG_RE.findall(markup)]
     print(f"  {len(photos)} u26 image(s) -> {photos[:3]}")

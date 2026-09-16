@@ -438,3 +438,84 @@ def test_probe_is_not_prefix_matched_by_another_flag():
     stage's worth of requests at the archive with the wrong argument."""
     with pytest.raises(SystemExit):
         pages.run(["--prob"])  # ambiguous only if a second --prob* flag ever appears
+
+
+def coordinates(markup):
+    return pages.coordinates(markup)
+
+
+def coordinates_near(found, lat, lon, tolerance=1e-6):
+    """Compared with a tolerance rather than by equality: the point is which
+    place was parsed, not float repr."""
+    return found is not None and abs(found[0] - lat) < tolerance and abs(found[1] - lon) < tolerance
+
+
+# --- the coordinate the parser was throwing away (#1502) ------------------------
+#
+# The first full run reported a coordinate on NONE of 439 write-ups. The probe
+# stage settled why: these pages publish the pair BARE -
+# "41.195754000000,-74.184073000000" - and all four patterns only knew a
+# coordinate that arrives labelled, behind a JSON key, a data- attribute or a
+# Maps query parameter. So the matcher's distance route has never fired, and
+# MAX_JOIN_METRES was not merely unvalidated but unvalidatable.
+
+
+@pytest.mark.parametrize(
+    "markup",
+    [
+        "41.195754000000,-74.184073000000",
+        "41.195754, -74.184073",
+        "41.195754,-74.184073",
+    ],
+)
+def test_a_bare_pair_is_read_as_a_coordinate(markup):
+    """The shape these pages actually use, in the three spellings the probe
+    found on one capture of /hike/claudius-smiths-rock."""
+    assert coordinates_near(coordinates(markup), 41.195754, -74.184073)
+
+
+def test_a_labelled_coordinate_still_wins_over_a_bare_pair():
+    """The bare pattern is LAST for this reason. A page that says which number
+    is the latitude should be read by the pattern that knows the label, not by
+    the one guessing from position."""
+    markup = 'data-lat="41.500000" data-lon="-74.500000" and later 40.111111,-73.111111'
+
+    assert coordinates_near(coordinates(markup), 41.5, -74.5)
+
+
+def test_a_good_coordinate_below_a_bad_one_is_still_found():
+    """THE second defect, and the one that was invisible. `coordinates()` used
+    `search()`, so ONE match per pattern: a first match failing the region
+    check moved on to the next PATTERN rather than the next match, discarding
+    a good coordinate further down the page. Harmless while every pattern was
+    a labelled shape appearing once, and live the moment a bare pair - which
+    an 82 KB Drupal page has several of - joined the list."""
+    markup = "map centred on 51.507400,-0.127800 ... trailhead at 41.195754,-74.184073"
+
+    assert coordinates_near(coordinates(markup), 41.195754, -74.184073)
+
+
+@pytest.mark.parametrize(
+    ("markup", "why"),
+    [
+        ("51.507400,-0.127800", "London, outside the NY/NJ/PA box"),
+        ("41.19,-74.18", "two decimals is a version string, not a geocode"),
+        ("matrix(1.5000,2.0000)", "a CSS transform"),
+        ("<p>Park at the lot on Route 17 and walk north.</p>", "no numbers at all"),
+    ],
+)
+def test_what_a_bare_pair_must_not_accept(markup, why):
+    """What makes an unlabelled pair safe at all. The region bounds do the real
+    work - two decimals are only read as a place when they land in the corner
+    of the world these hikes are in - and the three-digit fraction keeps this
+    off stylesheet values."""
+    assert coordinates(markup) is None, why
+
+
+def test_the_bare_pattern_is_last_in_the_list():
+    """Pinned as ORDER rather than as behaviour, because the behaviour test
+    above passes for the wrong reason if somebody reorders these: a bare
+    pattern earlier in the list would match the labelled page's own numbers
+    before the labelled pattern ever ran."""
+    assert pages._LATLON_RES[-1].pattern.startswith("(-?")
+    assert "data-lat" in pages._LATLON_RES[1].pattern

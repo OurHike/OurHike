@@ -15,10 +15,13 @@ with what would settle them. The tag means the same thing it means in the code: 
 and nobody has checked it.
 
 `grep -rn '@unvalidated' GLOSSARY.md` answers "which of our own words do we not actually
-agree on". **No entry carries it today.** Two did on the first draft — whether `seam` is
-one idea or four, and whether `gate`'s third sense is a term at all — and both were
-settled by going back to the code rather than by anybody deciding. Each entry says what
-settled it, so the next reader can disagree with the step rather than the conclusion.
+agree on". **One entry carries it: `seam`**, for the 3 km margin it cites, which
+`pipeline/cut_cells.py` tags at the source as picked rather than found.
+
+Two other questions were open on the first draft — whether `seam` is one idea or four,
+and whether `gate`'s third sense is a term at all — and both were settled by going back
+to the code rather than by anybody deciding. Each says what settled it, so the next
+reader can disagree with the step rather than the conclusion.
 
 ---
 
@@ -35,8 +38,9 @@ optional for anything on this list.
 
 **Four meanings, all live.**
 
-1. **A boundary between two adjacent map cells** — `map/basemap.ts` carries
-   `seamMarginKm`, and a tile near a seam may be served by more than one cell.
+1. **A boundary between two adjacent map cells** — `lib/coverageCells.ts` declares
+   `seamMarginKm` and the `SeamEdge` type, and a tile near a seam may be served by more
+   than one cell.
 2. **The zoom threshold** where the map changes what it draws — `App.tsx` writes "above
    the seam" and "past the seam (below it a tap cannot land within 150 ft of anything)".
 3. **A test injection point** — "the engine seam passes the real `addProtocol` in"
@@ -59,13 +63,20 @@ for a place you can change behaviour without editing there.
 tells a reader the shape of the thing and not which of the four it is, which is the only
 question they actually have. Name the axis.
 
-Each sense has real code behind it, which is the fastest way to tell them apart:
-`map/coverageLayers.ts`'s `SeamEdge` and `COVERAGE_SEAM_LAYER_ID` are sense 1, where the
-margin is 3 km — every edge within it is filed in both cells
-(`pipeline/cut_trail_graph.py`), so the cell whose own bounds hold a point answers for it.
-Sense 2 has a constant: `App.tsx`'s `belowSeam` is `camera.zoom < POI_PIN_MIN_ZOOM`,
-which is 9 (`map/poiLayers.ts`). Below it the map is a corridor view and above it the
-hiker is navigating.
+Each sense has real code behind it, which is the fastest way to tell them apart. Sense 1
+is `lib/coverageCells.ts`'s `SeamEdge` and `seamMarginKm`, drawn by
+`map/coverageLayers.ts`'s `COVERAGE_SEAM_LAYER_ID`; every edge within the margin is filed
+in both cells (`pipeline/cut_trail_graph.py`), so the cell whose own bounds hold a point
+answers for it. Sense 2 has a constant: `App.tsx`'s `belowSeam` is
+`camera.zoom < POI_PIN_MIN_ZOOM`, which is 9 (`map/poiLayers.ts`). Below it the map is a
+corridor view and above it the hiker is navigating.
+
+`@unvalidated` — **the margin is 3 km and that number is picked, not found.**
+`pipeline/cut_cells.py` says so at the source: "`SEAM_MARGIN_KM = 3.0` is picked, not
+found. What would settle it: how far past a cell boundary a hiker actually pans and walks
+once #558 ships and there is behaviour to measure, plus the duplication share this module
+[costs]." Quoting 3 km here without that tag would be this file doing exactly what
+CLAUDE.md's *Never let a display outrun its source* forbids.
 
 ### shelf
 
@@ -121,6 +132,58 @@ This one was found by writing this file: the commit subject `Point the camera at
 split` and the code comment `under the camera` are different cameras, and nothing but
 the surrounding file says which.
 
+### bucket
+
+1. **The R2 bucket** hikers download map data from — [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md)
+   owns where an artifact goes in it and what it may be called, `lib/r2_keys.py` enforces
+   that, and every object is served publicly with its key as the URL path. "The bucket
+   describes the code before your change" (CLAUDE.md's *A pipeline change is not finished
+   at the merge*) means the published artifacts are stale, not that anything is broken.
+   `App.tsx`'s "forgives every cell the bucket refused" is this one.
+2. **A spatial lookup grid square** — `lib/trailPosition.ts`: "LOOKUPS ARE BUCKETED IN
+   TWO DIMENSIONS", cutting 3,154 haversines per waypoint to 565. CLAUDE.md's own
+   evidence section calls this "the bucket search".
+3. **A group a hiker puts their own trips in** — `App.tsx`: "The hiker's own buckets
+   (#800). A trip stays in every other group it is in".
+
+Senses 1 and 2 are the collision that matters: a sentence about publishing and a sentence
+about an in-memory index read identically.
+
+### anchor
+
+1. **Where a report lands and how the header says so** — `ReportWindowAnchor` in
+   `reporting/ReportWindow.tsx`. `label` and `phrase` are required; `lat`, `lon`, `mile`
+   and `poiId` are all optional, because a build with no GPS fix anchors to "here".
+2. **The place a report is about** — `chrome/FieldNoteSection.tsx`'s `ReportAnchor`.
+   Sense 1's own docstring says these are **not the same thing**: "that one is the place
+   a report is ABOUT, and this one is that plus the words the header prints."
+3. **A POI type that can hold a site** — `pipeline/lib/poi_sites.py`'s
+   `ANCHOR_TYPES = ("shelter", "campsite")`, and `map/poiIcons.ts`'s "a viewpoint never
+   anchors a site".
+4. **A rendering attachment point** — a layer's lower zoom anchor, and MapLibre's own
+   `text-anchor`.
+
+The repository went to the trouble of naming senses 1 and 2 apart in code and then used
+one word for both in prose.
+
+### cell
+
+1. **A 1°×1° graticule square — the unit of offline coverage**, anchored on whole degrees
+   and never on an archive's bounding box, so two organizations' sheets over the same
+   ground produce the *same* cells. The maintainer's #552 decision, 2026-08-25, replacing
+   the trail-derived stretch cut of #556. What gets built, versioned, downloaded and
+   resumed: [pipeline/cut_cells.py](pipeline/cut_cells.py), `lib/coverageCells.ts`.
+2. **A square of an in-memory lat/lon lookup grid** — `lib/trailPosition.ts`'s "Cells of
+   latitude AND longitude". Not 1°, not anchored on whole degrees, never built or
+   downloaded. It is sense 2 of **bucket** wearing the other word.
+
+On sense 1, `cut_cells.py` says "a hiker never sees one, they tap a named PIECE that is a
+set of cells". That is true of the *unit* and not of the *boundary*: `map/coverageLayers.ts`
+draws the seam between cells as a dashed line labelled "edge of what you downloaded",
+because a 1° cut crossing the map as a dead-straight meridian "reads as a rendering fault
+unless it is named" (maintainer's call, 2026-08-28). So a hiker never picks a cell and
+does see where one ends.
+
 ### gate
 
 1. **A CI check that blocks a merge** — BRANCHING.md's "path gates".
@@ -141,16 +204,6 @@ live and a reader has to be told which.
 
 Safe to use bare. Each is a real thing with a findable definition.
 
-### bucket
-
-**The R2 bucket hikers download map data from.** [pipeline/R2_LAYOUT.md](pipeline/R2_LAYOUT.md)
-owns where an artifact goes in it and what it may be called; `lib/r2_keys.py` enforces
-that. Every object in it is served publicly and its key is the URL path.
-
-"The bucket describes the code before your change" — the state CLAUDE.md's *A pipeline
-change is not finished at the merge* is about — means the published artifacts are stale,
-not that anything is broken.
-
 ### corridor
 
 **The 30-mile buffer polygon around the A.T.** that `export_poi.py` and
@@ -158,19 +211,10 @@ not that anything is broken.
 
 Since #1311 it is the A.T.'s polygon alone: another organization's trail network sits
 beside it as an indexed line table rather than being unioned into it, because the
-nationwide Forest Service layer took the widened version from 14.66 s to 20:07 per
-build (measured, run #88 of `publish-vector-data.yml`, 2026-09-08). `keep_within_corridor`
-asks both.
-
-### cell
-
-**A 1°×1° graticule square — the unit of offline coverage**, anchored on whole degrees
-and never on an archive's bounding box, so two organizations' sheets over the same
-ground produce the *same* cells. The maintainer's #552 decision, 2026-08-25, replacing
-the trail-derived stretch cut of #556. It is what gets built, versioned, downloaded and
-resumed. See [pipeline/cut_cells.py](pipeline/cut_cells.py).
-
-**A hiker never sees a cell.** They tap a **piece**.
+nationwide Forest Service layer took the widened version's unify-and-clip from 14.66 s to
+20:07 (measured, run #88 of `publish-vector-data.yml`, 2026-09-08) — **and that step is
+paid twice per build**, once in `reconcile_poi_identity.py` and once in `export_poi.py`,
+so roughly forty minutes a build rather than twenty. `keep_within_corridor` asks both.
 
 ### piece
 
@@ -183,13 +227,6 @@ cells sit underneath. See `features/OFFLINE_COVERAGE.md`.
 — [client/src/lib/outbox.ts](client/src/lib/outbox.ts). On this trail that is the normal
 path rather than the edge case: most reports are written with no signal at all. A report
 written Monday and flushed Thursday still reads as Monday.
-
-### anchor
-
-**The place a report names** — a mile, a named place, or "here". The window takes a
-finished phrase (`at mi 628.4`, or `here`) rather than composing one, because "here" is
-an adverb and the other forms are nouns. An anchor needs a lat and a lon. See
-`client/src/reporting/ReportWindow.tsx`.
 
 ### stretch
 

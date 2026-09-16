@@ -201,9 +201,10 @@ describe('filing on the tap', () => {
   })
 
   it('clears the note when "Note something else" starts a second report', async () => {
-    // Not the ordinary path - the note lives under the receipt - but the state
-    // is shared, and a note that silently failed to travel would be somebody's
-    // words dropped.
+    // The note lives under the receipt, so it is typed AFTER a report is
+    // filed and describes that one. "Note something else" starts a second
+    // report, and the state is shared - so the question is whether the first
+    // note travels, and it must not: somebody's words on the wrong report.
     const { props } = setup()
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-flooding'))
@@ -472,7 +473,7 @@ describe('changing where the report lands', () => {
     expect(picker.textContent).not.toMatch(/\b(others?|all|total|showing)\b/i)
   })
 
-  it('calls onPickAnchor with the lat and lon of the picked place, and closes it', () => {
+  it('calls onPickAnchor with the whole picked place, and closes the picker', () => {
     // The coordinates are the point: an anchor needs a lat and a lon, and the
     // alternative to carrying them is inventing them at pick time.
     const onPickAnchor = vi.fn()

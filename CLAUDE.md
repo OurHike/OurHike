@@ -153,8 +153,10 @@ function, a constant, a number with a unit, an issue number, a string the app re
 The section above makes that rule for issue references; it is the same rule everywhere
 else, and everywhere else it is being missed.
 
-Measured 2026-09-15: **10 of the last 100 non-merge commit subjects** contain any such
-token, and **471 of 7,202 `it()` names** in `client/src` do. The commands are in the
+Measured 2026-09-15 against `main` at 02418cd: **10 of the last 100 non-merge commit
+subjects** contain any such token, and **471 of 7,202 `it()` names** in `client/src` do.
+The second figure moves as names get fixed — that is the point of it, and why it carries
+a ref. The commands are in the
 skill and re-run in a second. Read them as a proxy rather than a defect count — `shows
 the distance in miles when the hiker chose miles` names no symbol and is perfectly clear
 — but 6.5% is low enough to explain a maintainer who cannot follow along.
@@ -177,15 +179,15 @@ subjects, and a chat reply.
 
 [GLOSSARY.md](GLOSSARY.md) is the "the" test's third answer: the words that really are
 shared vocabulary here, so `the bucket` needs no introduction and `the settle` does. It
-is worth reading once for what it found — **seven of these words mean more than one thing**.
+is worth reading once for what it found — **ten of these words mean more than one thing**.
 `seam` means four (a boundary between map cells, a zoom threshold, a test injection
-point, the client/backend API), and `the camera` is both the map viewport and the rig
-that photographs the preview. Those get disambiguated on first use, every time.
+point, the client/backend API), `the camera` is both the map viewport and the rig that
+photographs the preview, and `bucket` is the R2 bucket, a spatial lookup grid and a
+hiker's own trip grouping. Those get disambiguated on first use, every time.
 
 **None of this touches the evidence grades.** Plain is not confident: `nobody has checked
 this` is plainer than whatever would replace it. What gets cut is the private referent,
 never the caveat.
-
 
 ## Show what you changed
 

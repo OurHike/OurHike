@@ -32,7 +32,7 @@ body already said:
 > in there.
 >
 > The subject could have been: `Stub suggested_hikes.json in the detail shot
-> recipes` — 51 characters.
+> recipes` — 52 characters.
 
 > **`Re-price the elevation leg, which had not been measured since the graph
 > went nationwide`** (e7bfd2a)
@@ -66,7 +66,8 @@ git log --format='%s' -100 --no-merges |
   grep -cE '\.(py|ts|tsx|md|yml|sh|json)|[a-z]_[a-z]|[a-z][A-Z]|[0-9]|#[0-9]+|`'
 ```
 
-**471 of 7,202 `it()` names** in `client/src` name a symbol or a number:
+**471 of 7,202 `it()` names** in `client/src` name a symbol or a number — measured
+against `origin/main` at 02418cd:
 
 ```sh
 grep -rhoE "^\s*it\('[^']*'" client/src --include=*.test.ts --include=*.test.tsx |
@@ -75,6 +76,12 @@ grep -rhoE "^\s*it\('[^']*'" client/src --include=*.test.ts --include=*.test.tsx
 
 7,202 of the 7,241 `it(` lines are single-quoted, so that sample is 99.5% of
 them.
+
+**The second figure moves, and this file is what moves it.** Renaming 22 names in
+`reporting/ReportWindow.test.tsx` took it from 471 to 482, because 11 of them now
+name a symbol. That is the measurement doing its job rather than a defect in it —
+but it means the number has to carry the ref it was taken at, which is why the
+command above names one.
 
 **Read these as a proxy, not a defect count.** `shows the distance in miles when
 the hiker chose miles` names no symbol and is perfectly clear. What the figures
@@ -117,9 +124,10 @@ is not the problem; the missing introduction is.
 listed there is shared vocabulary and may be used bare. A word not listed is a
 private referent, and gets introduced where you use it.
 
-Check that file before reaching for one of these words, because seven of them mean
-more than one thing — `seam` means four, and `the camera` is both the map
-viewport and the rig that photographs the preview. For those, naming which one
+Check that file before reaching for one of these words, because ten of them mean
+more than one thing — `seam` means four, `the camera` is both the map viewport
+and the rig that photographs the preview, and `bucket` is the R2 bucket, a
+spatial lookup grid and a hiker's own trip grouping. For those, naming which one
 you mean costs a few words and is not optional.
 
 ### 3. The 2 a.m. test — tests only
@@ -128,7 +136,7 @@ you mean costs a few words and is not optional.
 what broke?**
 
 ```ts
-// ships
+// ships, under describe('filing on the tap')
 it('holds it back for less than the outbox is willing to hold anything')
 
 // what it asserts
@@ -198,8 +206,8 @@ outcome. `<condition>` only when the test is about a particular case.
   "at here"')` beats `it('does not say "at here"')`, which never says what it
   does print.
 - The `describe()` block is context, not an excuse. Runners print the chain, so
-  a name may lean on its parent — but `undo > holds it back for less than the
-  outbox is willing to hold anything` still names nothing.
+  a name may lean on its parent — but `filing on the tap > holds it back for
+  less than the outbox is willing to hold anything` still names nothing.
 - `TESTING.md`'s existing rules stand: name it for the behaviour it guards
   (`test_full_band_read_catches_late_strip_corruption`, never `test_bug_47`),
   and assert against imported constants rather than literals.
@@ -223,9 +231,9 @@ a summary, not a title, and nothing is gained by making it elegant.
 
 A subject that passes the search test and still fits git's 72 characters is
 nearly always available. The three rewrites at the top of this file are the
-proof — 51, 66 and 66 characters, against 62, 87 and 55 for what shipped. Two
-are longer by a few characters and every one of them names something you can
-grep for.
+proof — 52, 66 and 66 characters against 62, 87 and 55 for what shipped, so
+two are shorter (by 10 and 21) and one is longer by 11. Every one of them
+names something you can grep for.
 
 ### Chat with the maintainer
 

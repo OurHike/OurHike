@@ -313,3 +313,24 @@ jobs:
             pipeline/data/processed/wayback_photo_matches.json
           retention-days: 14
           if-no-files-found: warn
+
+      # THE LAST THING IN THE JOB, and it exists because reading these logs
+      # kept failing. A job's log is read from the END, and everything above
+      # here - a 40 MB artifact upload announcing every 8 MB, the cache save,
+      # git's credential cleanup - sits between a reader and the only output
+      # that matters. Six attempts at different depths on 2026-09-16 never
+      # reached a probe's findings; the run had to be diagnosed from its exit
+      # code instead.
+      #
+      # `if: always()` because the interesting case is the FAILED run, which
+      # is exactly the one whose output a reader needs and the one a
+      # short-circuiting job would skip.
+      - name: The output again, where a log tail can reach it
+        if: always()
+        run: |
+          for stage in probe index pages photos match; do
+            if [ -f "$stage.log" ]; then
+              echo "===== $stage (last 30 lines) ====="
+              tail -30 "$stage.log"
+            fi
+          done

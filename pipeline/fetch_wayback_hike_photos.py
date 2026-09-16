@@ -39,13 +39,36 @@ refetched through 2024, the rest fall in 2020-23. Older captures of a changing
 site are harder to match against today's export, which is the maintainer's own
 reason for wanting the newest.
 
-THE LICENCE IS THE STRONGEST OF ANY SOURCE THIS PROJECT HAS MEASURED, which is
-worth stating plainly because every other photo source here failed on it.
-These are NYNJTC's own photographs; `sources.json`'s `nynjtc_hikes_licence`
-records the maintainer's relay of NYNJTC's permission ("we have their
-permission", 2026-09-08; "We can use anything", 2026-09-09). Compare
-`spike_flickr_group.py` (right subject, unusable licence) and
-`spike_hike_photo_by_name.py` (right subject, seven of ten pre-4.0 CC).
+THE PERMISSION IS STRONG AND THIS FETCHER DOES NOT STAY INSIDE IT (#1504).
+Both halves matter and the first one was written here alone for a while, which
+is the error.
+
+The permission is real: these are NYNJTC's own photographs and
+`sources.json`'s `nynjtc_hikes_licence` records the maintainer's relay of it
+("we have their permission", 2026-09-08; "We can use anything", 2026-09-09).
+Against `spike_flickr_group.py` (right subject, unusable licence) and
+`spike_hike_photo_by_name.py` (seven of ten pre-4.0 CC), that is the best
+standing this project has for any photo source.
+
+What was not read, until #1504, is the condition the same block attaches:
+"the attribution is a condition rather than a courtesy: every photograph ships
+with the credit line the page carries ... and a photograph the page does not
+credit is not fetched at all". This fetcher selects by DIRECTORY PREFIX, so it
+honours neither half of that:
+
+  - `u26` is a Drupal user-files folder - everything user 26 ever uploaded to
+    nynjtc.org. The permission is for the Favorite Hikes, "their prose, their
+    photographs and their categorisation". A site-wide upload directory is a
+    wider set than the one that was granted.
+  - 9 of the 403 recovered carry a credit anywhere. The rest have no
+    attribution, and attribution is the condition.
+
+So the corpus this module produces is a SUPERSET of what may be used, and
+nothing downstream may treat its membership as permission. The bounded set is
+photographs displayed on a recovered hike write-up carrying that page's credit
+line, which `fetch_wayback_hike_pages.py` is where it comes from - #1504 is
+the work, and until it lands the right reading of this store is "recovered,
+not cleared".
 
 READING THE ARCHIVE IS NOT READING NYNJTC.ORG. #1450 closes the road to
 scraping nynjtc.org and this does not reopen it: every request here goes to

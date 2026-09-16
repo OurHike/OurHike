@@ -400,8 +400,25 @@ def probe(made, url: str) -> int:
         window = markup[max(0, hit.start() - 80) : hit.end() + 40]
         print("    ..." + " ".join(window.split()) + "...")
 
-    photos = [urllib.parse.unquote(src.rsplit("/", 1)[-1]) for src in _U26_IMG_RE.findall(markup)]
-    print(f"  {len(photos)} u26 image(s) -> {photos[:3]}")
+    # THE MARKUP AROUND EACH IMAGE (#1504), because the credit line is the
+    # licence's condition and nobody has seen where it lives. sources.json's
+    # nynjtc_hikes_licence says "every photograph ships with the credit line
+    # the page carries ('Photo by Daniel Chazin')" and "a photograph the page
+    # does not credit is not fetched at all" - and the recovery so far
+    # selected by directory prefix, so it has 403 images of which 9 carry a
+    # credit anywhere.
+    #
+    # A wide window on both sides: a Drupal credit can sit in the alt text, in
+    # a figcaption after the img, or in a sibling field div before it, and
+    # guessing which would repeat exactly the mistake that made coordinates()
+    # return None on 439 pages.
+    print()
+    found = list(_U26_IMG_RE.finditer(markup))
+    print(f"  {len(found)} u26 image(s), with their surroundings:")
+    for hit in found[:4]:
+        window = markup[max(0, hit.start() - 400) : hit.end() + 400]
+        print("    ---")
+        print("    " + " ".join(window.split()))
     return 0
 
 

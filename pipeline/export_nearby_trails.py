@@ -966,6 +966,32 @@ def records_to_geojson(records: list[dict]) -> dict:
                     "source": record["source"],
                     "name": record["name"],
                     "blaze_color": record["blaze_color"],
+                    # THIS RECORD'S OWN LENGTH, and the only thing that lets a
+                    # phone tell a whole trail from part of one (#1516).
+                    #
+                    # client/src/lib/lineClimb.ts compares the edges it holds
+                    # against this number: materially shorter means the line
+                    # runs past the cells downloaded, so the climb it could sum
+                    # would be silently low. Without the field that comparison
+                    # has nothing to stand on and the phone cannot refuse to
+                    # answer - which is what shipped in v1.3.0, where
+                    # lineClimb's own header said this exporter wrote the field
+                    # and it did not.
+                    #
+                    # MEASURED FROM THE GEOMETRY BEING PUBLISHED, not from a
+                    # steward's stated mileage, and the difference matters both
+                    # ways. It is the right number, because it describes the
+                    # same clipped and simplified line the phone is holding
+                    # edges of - a steward's own figure measures ground this
+                    # artifact may have clipped at a state border. It is also
+                    # NOT the steward's claim, so nothing downstream may
+                    # present it as one.
+                    #
+                    # `_miles` is export_trails.py's EPSG:5070 transform, the
+                    # one this file already names a trail and merges a
+                    # duplicate on either side of - one way of measuring
+                    # distance, not a second.
+                    "length_miles": round(_miles(record), 2),
                     # Every record this export builds carries a status. A
                     # shared-ground pair's A.T. half (#1384) carries none,
                     # because trails.geojson publishes none for the A.T. -

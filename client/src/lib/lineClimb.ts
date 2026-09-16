@@ -48,12 +48,23 @@
 //                that carries no elevation half.
 //
 // HOW `partial` IS DETECTED WITHOUT A NEW ARTIFACT. The tapped feature
-// carries the steward's own published length (`lengthMiles`, from
-// export_nearby_trails.py), and every matched edge carries `length_m`. If the
-// edges this phone holds are materially shorter than the line the steward
-// published, the phone is holding part of the line. That is a comparison
-// between two independent measurements of the same ground, so it needs a
-// tolerance - see COVERAGE_TOLERANCE.
+// carries the published line's own length (`lengthMiles`, written by
+// export_nearby_trails.records_to_geojson), and every matched edge carries
+// `length_m`. If the edges this phone holds are materially shorter than the
+// line that was published, the phone is holding part of the line. The two
+// numbers reach the phone down different paths - the line through
+// export_nearby_trails.py, the edges through build_trail_graph.py, each with
+// its own simplification - so it needs a tolerance; see COVERAGE_TOLERANCE.
+//
+// THE FIELD IS NOT ALWAYS THERE, AND `unverified` IS WHAT THAT COSTS. This
+// paragraph used to assert that export_nearby_trails.py wrote `length_miles`
+// when no exporter did (#1516): the guard below could never fire, so a phone
+// holding one cell of a long trail summed that cell's edges and printed the
+// total as `measured` - silently low, on the band a hiker uses to judge
+// daylight. #1516 added the field and added `unverified` for when it is
+// missing anyway, which is the case that outlives the fix: a phone reads
+// whatever release it downloaded, so a build running against data published
+// before that exporter change sees no length on any line.
 
 import type { GraphEdge, TrailGraph } from './trailGraph'
 
@@ -100,6 +111,16 @@ export type LineClimb =
   | { kind: 'unmeasured'; measuredMiles: number; unmeasuredMiles: number }
   /** The line runs past the cells this phone holds. */
   | { kind: 'partial'; heldMiles: number; publishedMiles: number }
+  /**
+   * Every edge this phone holds is measured, and there is no way to check
+   * whether they are all of the line: the tapped feature carries no
+   * `lengthMiles` to compare against (#1516).
+   *
+   * The gain and loss are real for `miles` of trail. What nobody can say is
+   * whether `miles` is the whole trail, so the figure is reported against the
+   * extent it was summed over rather than presented as the line's total.
+   */
+  | { kind: 'unverified'; gainFt: number; lossFt: number; miles: number }
   /** No climb figures on this phone for this line at all. */
   | { kind: 'none' }
 
@@ -207,12 +228,25 @@ export function lineClimb(
 
   const heldMiles = measuredMetres / METRES_PER_MILE
   const published = line.lengthMiles
-  if (
-    typeof published === 'number' &&
-    Number.isFinite(published) &&
-    published > 0 &&
-    heldMiles < published * (1 - COVERAGE_TOLERANCE)
-  ) {
+
+  // Nothing to compare against, so this phone cannot tell a whole trail from
+  // part of one. It reports what it summed and over how far, rather than
+  // calling it the line's total (#1516).
+  //
+  // This is not a dead branch waiting for old data: the field arrives with a
+  // publish, and a phone reads whatever release it downloaded. A build that
+  // ships before the exporter's next production run sees no `length_miles` on
+  // any line, and a source that publishes none would land here permanently.
+  if (typeof published !== 'number' || !Number.isFinite(published) || published <= 0) {
+    return {
+      kind: 'unverified',
+      gainFt: Math.round(gainFt),
+      lossFt: Math.round(lossFt),
+      miles: heldMiles,
+    }
+  }
+
+  if (heldMiles < published * (1 - COVERAGE_TOLERANCE)) {
     return { kind: 'partial', heldMiles, publishedMiles: published }
   }
 

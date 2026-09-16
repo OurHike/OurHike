@@ -136,16 +136,46 @@ describe('lineClimb (#1476)', () => {
     })
   })
 
-  it('answers with a total when the steward published no length to compare against', () => {
-    // The ordinary case for several sources: a line with a climb and no
-    // published length is not a partial download, and withholding the figure
-    // for want of a comparison would lose it on every one of them.
+  it('returns unverified, not measured, when lengthMiles is null (#1516)', () => {
+    // WHAT THIS TEST USED TO ASSERT, and why it changed rather than being
+    // deleted. It expected `measured` here, reasoning that "a line with a
+    // climb and no published length is not a partial download, and
+    // withholding the figure for want of a comparison would lose it on every
+    // one of them". The second half of that is still right and this fix keeps
+    // it - gainFt is still returned below. The first half rested on a false
+    // premise: no exporter wrote `length_miles`, so this was not one case
+    // among several, it was the ONLY case, and every tap took it. A phone
+    // holding one cell of a long trail printed that cell's climb as the
+    // trail's, silently low, on the band a hiker uses to judge daylight.
     const result = lineClimb(graph([edge({ climb: [400, 120] })]), {
       id: ID,
       lengthMiles: null,
     })
 
-    expect(result).toMatchObject({ kind: 'measured', gainFt: 400 })
+    expect(result).toMatchObject({ kind: 'unverified', gainFt: 400, lossFt: 120 })
+  })
+
+  it('returns unverified when lengthMiles is absent, zero or not finite', () => {
+    // Three shapes of "no length to compare against", each reaching the phone
+    // from a different place: a release published before #1516 added the
+    // field, a source that publishes a zero, and a malformed property that
+    // numberProp let through.
+    for (const lengthMiles of [undefined, null, 0, Number.NaN]) {
+      expect(
+        lineClimb(graph([edge({ climb: [400, 120] })]), { id: ID, lengthMiles }),
+      ).toMatchObject({ kind: 'unverified' })
+    }
+  })
+
+  it('still reports measured once a length is there and the edges cover it', () => {
+    // The guard firing in the other direction: with the field present and the
+    // held edges long enough, the answer is the line's own total and says so.
+    const result = lineClimb(graph([edge({ climb: [400, 120] })]), {
+      id: ID,
+      lengthMiles: 1,
+    })
+
+    expect(result).toMatchObject({ kind: 'measured', gainFt: 400, lossFt: 120 })
   })
 })
 

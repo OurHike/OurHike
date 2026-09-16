@@ -409,17 +409,24 @@ export function buildLineDetail(
   // the figure goes out with the same sentence DayHikeCard gives it, minus
   // the half about walking time that this sheet does not print.
   const climbLine =
-    climb.kind === 'measured'
+    climb.kind === 'measured' || climb.kind === 'unverified'
       ? `+${formatElevation(climb.gainFt, units)} / −${formatElevation(climb.lossFt, units)}`
       : null
   const climbNote =
     climb.kind === 'measured'
       ? 'Climb is an estimate from the best elevation data available — expect other sources to differ.'
-      : climb.kind === 'unmeasured'
-        ? `Climb is not measured on ${formatDistance(climb.unmeasuredMiles, units)} of this trail, so no total is shown.`
-        : climb.kind === 'partial'
-          ? `Only ${formatDistance(climb.heldMiles, units)} of this trail is downloaded, so its climb would be low.`
-          : null
+      : // The figure is real for the distance it was summed over; what nobody
+        // can say is whether that distance is the whole trail (#1516). So the
+        // sentence states the extent rather than hedging the number - a scope,
+        // not a caveat. When this phone does hold the whole line the sentence
+        // is merely informative, and when it does not it is the warning.
+        climb.kind === 'unverified'
+        ? `Climb over the ${formatDistance(climb.miles, units)} of this trail on this phone, which may not be all of it.`
+        : climb.kind === 'unmeasured'
+          ? `Climb is not measured on ${formatDistance(climb.unmeasuredMiles, units)} of this trail, so no total is shown.`
+          : climb.kind === 'partial'
+            ? `Only ${formatDistance(climb.heldMiles, units)} of this trail is downloaded, so its climb would be low.`
+            : null
 
   // §3: the closure, in the voice of whoever actually closed it (#1142).
   //

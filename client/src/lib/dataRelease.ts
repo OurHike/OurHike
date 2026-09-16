@@ -29,25 +29,52 @@
  * this folder's manifest resolves against their OWN base before deploying, so
  * a wrong pin costs a red deploy rather than a hiker's map.
  *
- * 2026-09-14 IS IN PRODUCTION, and this line moving is the sentence the last
- * one promised. The pin was `2026-09-10` from #1374 until the v1.3.0 release
- * train ran its production leg, and that entry said what would happen: the
- * release `publish-vector-data.yml` minted "must match this line or this line
- * moves again". It did not match, because nothing chooses a release id -
- * `lib/releases.next_release_id` returns `date.today()`, and
- * `publish-vector-data.yml` takes no id input, so a production publish on the
- * 14th could only ever write `releases/2026-09-14/`. The id is an outcome of
- * when the build ran, never a thing a branch can ask for.
+ * 2026-09-16-4 IS IN BOTH ENVIRONMENTS, minted by the v1.3.1 release train.
+ * The pin was `2026-09-14` - v1.3.0's data - until this line moved, and the
+ * previous entry's point still holds: nothing chooses a release id.
+ * `lib/releases.next_release_id` returns `date.today()`, and no publishing
+ * workflow takes an id input.
  *
- * WHY PINNING IT IS SAFE, measured 2026-09-14 rather than assumed, because the
- * client was validated against UA's `2026-09-10` and this is a different
- * folder: production's `2026-09-14` holds **1,958 artifacts against UA
- * 2026-09-10's 1,943, and the set difference in the direction that matters is
- * empty** - there is no artifact UA carried that production does not. The 15
- * extra are production's own (`background*.pmtiles` and six southern
- * `n38`/`n39` cells). Both files #1372 added resolve: `places.json` and
- * `trail_graph_cells.json` are 200 at
- * `https://data.ourhike.org/releases/2026-09-14/`.
+ * WHY THE `-4` SUFFIX, which is the part that surprised the session that cut
+ * this release. A release folder is IMMUTABLE, so `next_release_id` reads the
+ * ids already used and a second publish on one day gets `-2` rather than
+ * overwriting the morning's. Four production publishes on 2026-09-16 therefore
+ * minted four folders, each complete because `_stage_release` copies EVERY
+ * artifact from its flat key rather than a delta:
+ *
+ *   -1  basemap          -3  vector data (trails, POIs, hikes, graph)
+ *   -2  dem_light        -4  dem canonical
+ *
+ * So the pinnable folder is the LAST one of the day, not the first, and a
+ * session that pins `releases/<today>/` before every family has published
+ * ships a folder holding whatever had landed by the morning. Measured on
+ * 2026-09-16: `releases/2026-09-16/` held a fresh basemap and byte-identical
+ * copies of v1.3.0's trails, POIs, hikes, graph and both DEMs.
+ *
+ * WHY PINNING IT IS SAFE, measured 2026-09-16 rather than assumed. Both
+ * environments return 200 for `releases/2026-09-16-4/manifest.json`, and
+ * production's folder holds **2,158 artifacts** against UA's 3,166. That
+ * difference is NOT empty in the direction the 2026-09-14 entry above called
+ * the one that matters, and it is worth naming rather than rounding to safe:
+ *
+ *   505  trail_graph_elevation_cell_*.json   UA only
+ *   505  trail_graph_profile_cell_*.json     UA only
+ *     1  suggested_hikes_detail_*.json       UA only (201 against 200)
+ *
+ * The 1,010 elevation and profile cells are the STATUS QUO rather than a
+ * regression: production carried zero of them at `2026-09-14` too, the
+ * elevation leg is opt-in and this release's publishes ran with
+ * `include_elevation: false`. lineClimb.ts answers `none` for a line with no
+ * climb figures, which is the state its own tests and
+ * `preview-shots/long-path-line-sheet.mjs` already describe. The one extra
+ * hike detail is two independent builds minutes apart; each environment's
+ * `suggested_hikes.json` references its own folder's details, so neither
+ * client asks for a file its own release lacks.
+ *
+ * WHAT WOULD MAKE THAT SENTENCE STRONGER, and does not exist: a production
+ * publish with `include_elevation: true`, which would cost ~40 minutes and is
+ * the only way the two environments hold the same set. Nobody has decided
+ * whether production should carry elevation at all - it never has.
  *
  * WHAT WOULD HAVE CAUGHT THE MISMATCH EARLIER, and does not exist:
  * `pipeline/tests/test_release_pin_contract.py` asserts this id is *shaped*
@@ -62,7 +89,7 @@
  *
  * @see pipeline/DATA_RELEASES.md §4, pipeline/R2_LAYOUT.md
  */
-export const DATA_RELEASE = '2026-09-14'
+export const DATA_RELEASE = '2026-09-16-4'
 
 /**
  * Keys that stay at the bucket root rather than moving into the release

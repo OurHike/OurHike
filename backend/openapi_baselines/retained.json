@@ -90,13 +90,29 @@
       "release": "v1.3.0",
       "document": "v1.3.0.json",
       "published": "2026-09-14",
-      "superseded": null,
+      "superseded": "2026-09-16",
       "pinned": false,
       "note": "Kuwohi. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains. This branch IS v1.3.0 - the only files it adds are the notes, the version bump and this entry, none of which the OpenAPI document reads.",
       "refreshed": [
         "2026-09-14, added by the v1.3.0 release train. v1.2.2's `superseded` is set to the same date by this change - the retention clock starts when a newer release takes over, not when that release was published.",
         "THE FIRST ENTRY IN THIS FILE WHOSE RELEASE MOVES THE SCHEMA, and the note is worth making because every v1.2.x entry above records the opposite. `git diff --name-status v1.2.2..HEAD -- backend/alembic/versions/` names one revision, a3f6b81d2e94_synced_hikes, which creates `synced_hikes` and `synced_active_hikes` and enables row-level security on both. It drops and renames nothing - expand, not contract (RELEASING.md 8c) - so v1.2.2's clients, which know neither table, are unaffected by it, and the document below grew rather than narrowed: 195,365 bytes against v1.2.2's 186,026.",
-        "The retention window is unchanged by this: pre-1.0.0, v1.1.1, v1.2.0, v1.2.1 and v1.2.2 are all still listed, and the policy's floor of 3 keeps the last three whichever way the 90-day clock runs."
+        "The retention window is unchanged by this: pre-1.0.0, v1.1.1, v1.2.0, v1.2.1 and v1.2.2 are all still listed, and the policy's floor of 3 keeps the last three whichever way the 90-day clock runs.",
+        "2026-09-16: superseded by v1.4.0. The 90-day window for v1.3.0's clients runs from here."
+      ]
+    },
+    {
+      "release": "v1.4.0",
+      "document": "v1.4.0.json",
+      "published": "2026-09-16",
+      "superseded": null,
+      "pinned": false,
+      "note": "Roan Highlands. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains. This branch IS v1.4.0 - the only files it adds are the notes, the version bump, the data-release pin and this entry, none of which the OpenAPI document reads.",
+      "refreshed": [
+        "2026-09-16, added by the v1.4.0 release train. v1.3.0's `superseded` is set to the same date by this change - the retention clock starts when a newer release takes over, not when that release was published.",
+        "THE SECOND ENTRY WHOSE RELEASE MOVES THE SCHEMA, and like v1.3.0's it expands rather than contracts. `git diff --name-status v1.3.0..HEAD -- backend/alembic/versions/` names one revision, c9d1a7f48b62_report_photos_and_a_place_in_words, which adds `photo_count` and `place_words` to `reports` and drops or renames nothing (RELEASING.md 8c). It adds no table, so it makes no row-level-security statement; `reports` was already locked by b3d1c7a94e02.",
+        "MEASURED AGAINST v1.3.0.json rather than asserted: two paths added (`/reports/{report_id}/photos/{index}` and its `/link` sibling), none removed; two schemas changed (`ReportCreate`, `ReportOut`), none added or removed. 203,280 bytes against v1.3.0's 195,365. Nothing a v1.3.0 client reads has gone away, which is the claim this entry exists to make checkable.",
+        "GENERATED WITH PLACEHOLDER SUPABASE CREDENTIALS, the same three `tests/conftest.py` sets, because `app.config.Settings` refuses to construct without them and the document cannot be serialized without importing the app. Verified not to have leaked into the artifact: `grep -c test-only-placeholder openapi_baselines/v1.4.0.json` is 0. The document describes request and response shapes, which no credential reaches.",
+        "The retention window is unchanged: pre-1.0.0, v1.1.1, v1.2.0, v1.2.1, v1.2.2 and v1.3.0 are all still listed, and the policy's floor of 3 keeps the last three whichever way the 90-day clock runs."
       ]
     }
   ]

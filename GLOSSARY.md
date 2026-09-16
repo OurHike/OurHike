@@ -15,7 +15,10 @@ with what would settle them. The tag means the same thing it means in the code: 
 and nobody has checked it.
 
 `grep -rn '@unvalidated' GLOSSARY.md` answers "which of our own words do we not actually
-agree on". Two entries carry it today: `seam` and `gate`.
+agree on". **No entry carries it today.** Two did on the first draft — whether `seam` is
+one idea or four, and whether `gate`'s third sense is a term at all — and both were
+settled by going back to the code rather than by anybody deciding. Each entry says what
+settled it, so the next reader can disagree with the step rather than the conclusion.
 
 ---
 
@@ -44,11 +47,25 @@ optional for anything on this list.
 
 A fifth is nearby: `shard-seam-spike.yml`, which is sense 1 applied to build shards.
 
-`@unvalidated` — that these are four separate senses rather than one idea applied four
-times is my reading of the usages above. What would settle it: the maintainer saying
-whether "seam" is meant as a single concept (*a boundary where two things meet and
-something can leak*) or four coincidences. If it is one concept, this entry becomes one
-sentence and the rule stays the same — say which boundary.
+**Reasoned: it is one idea on four axes, not four coincidences.** The tailor's metaphor
+is used at its root in `reporting/categories.ts` — a campsite escalating into something
+called "Shelter repair" "was the seam showing", a join between two internal pieces
+becoming visible from outside. Every sense above is that: cells joined along a border,
+two rendering regimes joined at a zoom, a dependency joined to its replacement, a client
+joined to a backend. Sense 3 is not even ours — a *test seam* is the established term
+for a place you can change behaviour without editing there.
+
+**That resolves the origin and changes nothing about the rule.** Knowing the metaphor
+tells a reader the shape of the thing and not which of the four it is, which is the only
+question they actually have. Name the axis.
+
+Each sense has real code behind it, which is the fastest way to tell them apart:
+`map/coverageLayers.ts`'s `SeamEdge` and `COVERAGE_SEAM_LAYER_ID` are sense 1, where the
+margin is 3 km — every edge within it is filed in both cells
+(`pipeline/cut_trail_graph.py`), so the cell whose own bounds hold a point answers for it.
+Sense 2 has a constant: `App.tsx`'s `belowSeam` is `camera.zoom < POI_PIN_MIN_ZOOM`,
+which is 9 (`map/poiLayers.ts`). Below it the map is a corridor view and above it the
+hiker is navigating.
 
 ### shelf
 
@@ -112,8 +129,11 @@ the surrounding file says which.
 3. **A data filter that decides what may ship at all** — V2_PLAN.md: "It gates whether
    opentrail-derived data may ship".
 
-`@unvalidated` — sense 3 may just be ordinary English rather than a term. What would
-settle it: whether anybody writes "the gate" bare and means a data filter.
+**Settled: sense 3 is a real noun here, not just the verb.** V2_PLAN.md §72 writes
+"1,705 water features reaching the map through **a gate** that is only 'within thirty
+miles of the trail'" — a bare noun, and a data filter. The CI sense is a bare noun too:
+"a gate that cannot go red is not a gate" (V2_PLAN.md §424). So all three senses are
+live and a reader has to be told which.
 
 ---
 

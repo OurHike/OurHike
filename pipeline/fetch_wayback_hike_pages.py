@@ -414,11 +414,34 @@ def probe(made, url: str) -> int:
     # return None on 439 pages.
     print()
     found = list(_U26_IMG_RE.finditer(markup))
-    print(f"  {len(found)} u26 image(s), with their surroundings:")
+    print(f"  {len(found)} u26 image(s)")
     for hit in found[:4]:
-        window = markup[max(0, hit.start() - 400) : hit.end() + 400]
-        print("    ---")
-        print("    " + " ".join(window.split()))
+        print(f"    {urllib.parse.unquote(hit.group(1).rsplit('/', 1)[-1])}")
+
+    # THE CREDIT, asked directly rather than by dumping markup (#1504).
+    #
+    # The first version of this printed 800 characters of raw markup either
+    # side of each image, and the answer never arrived: those lines are so fat
+    # that the job log's tail could not reach them. Asking the narrow question
+    # - where does credit-shaped text appear, and what does it look like -
+    # fits in the log AND is the thing actually being decided.
+    #
+    # The patterns are the shapes sources.json's nynjtc_hikes_licence quotes
+    # ("Photo by Daniel Chazin", "Photo: Jane Daniels") plus the Drupal field
+    # names a credit usually hides behind.
+    print()
+    for label, pattern in (
+        ("photo by", r"(?i)photo\s+by"),
+        ("photo:", r"(?i)photo\s*:"),
+        ("credit", r"(?i)credit"),
+        ("courtesy", r"(?i)courtesy"),
+        ("field-.*credit", r"(?i)field-[a-z-]*credit"),
+    ):
+        hits = list(re.finditer(pattern, markup))
+        print(f"  {label:18} {len(hits)} hit(s)")
+        for hit in hits[:3]:
+            window = markup[max(0, hit.start() - 70) : hit.end() + 90]
+            print("      ..." + " ".join(window.split()) + "...")
     return 0
 
 

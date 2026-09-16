@@ -97,11 +97,28 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setattr(exporter, "DETAIL_DIR", processed / "suggested_hikes_detail")
     monkeypatch.setattr(exporter, "DETAIL_MANIFEST_PATH", processed / "suggested_hikes_detail_manifest.json")
 
+    # Pointed at a path in the sandbox rather than left at the real
+    # reference/ file, so a suite run once somebody confirms rows does not
+    # start attaching photographs to every test in this file (#1522).
+    confirmed = tmp_path / "nynjtc_hike_photos.json"
+    monkeypatch.setattr(exporter, "CONFIRMED_PHOTOS_PATH", confirmed)
+
     def write(hikes: dict, routes: dict):
         monkeypatch.setattr(exporter, "load_cache", lambda *a, **k: hikes)
         (processed / "hikefinder_routes.json").write_text(json.dumps({"routes": routes}))
 
-    return {"processed": processed, "write": write, "registry": registry, "out": processed / "suggested_hikes.json"}
+    def confirm(rows, key="photos"):
+        """Write the reviewer's file the way a person would, from the sheet."""
+        confirmed.write_text(json.dumps(rows if key is None else {key: rows}), encoding="utf-8")
+
+    return {
+        "processed": processed,
+        "write": write,
+        "registry": registry,
+        "confirm": confirm,
+        "confirmed_path": confirmed,
+        "out": processed / "suggested_hikes.json",
+    }
 
 
 def published(sandbox) -> list[dict]:
@@ -561,3 +578,163 @@ def test_a_routes_artifact_that_will_not_parse_still_fails_loudly(sandbox):
     exporter.ROUTES_PATH.write_text("{ not json at all")
     with pytest.raises(SystemExit, match="unreadable"):
         exporter.load_routes()
+
+
+# --- the photograph a person confirmed (#1450 Phase 2, #1522) ------------------
+
+# The shelf has shipped with no photographs since #1427 swapped the source:
+# nynjtc.org's WordPress API served a credited photograph for 19 of its 20
+# hikes, the Hike Finder export carries none, and the code that filled this
+# field went with the scraper. #1450 recovered 403 of them from the Internet
+# Archive; this is the half that puts one on a card, and it fires only for a
+# hike somebody confirmed by hand.
+
+DIGEST = "a" * 64
+
+
+def _confirmed_row(**overrides) -> dict:
+    return {"hike_id": "7", "digest": DIGEST, "credit": "Daniel Chazin", **overrides}
+
+
+def test_a_confirmed_photograph_reaches_the_record_as_a_bucket_key(sandbox):
+    """`photos/<digest>.jpg`, not an address. The phone resolves it against
+    its own data base URL, so no hostname enters the artifact."""
+    sandbox["confirm"]([_confirmed_row()])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    photo = published(sandbox)[0]["photo"]
+    assert photo["url"] == f"photos/{DIGEST}.jpg"
+    assert photo["credit"] == "Photo by Daniel Chazin"
+    assert photo["licence"] == exporter.PHOTO_LICENCE
+
+
+def test_a_hike_nobody_confirmed_carries_no_photo_key_at_all(sandbox):
+    """Absent, never empty: the client draws absence as a plain sunken block,
+    and a half-filled block would be a card claiming bytes it has none of."""
+    sandbox["confirm"]([_confirmed_row(hike_id="99")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_no_confirm_file_is_a_shelf_with_no_photographs_rather_than_a_failure(sandbox):
+    """Today's state, and a supported one. Nobody has reviewed the sheet, so
+    reference/nynjtc_hike_photos.json does not exist - and the export must
+    still ship the hikes."""
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert not sandbox["confirmed_path"].exists()
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_a_confirmed_row_naming_no_photographer_ships_no_photograph(sandbox):
+    """The licence condition, enforced at the last place it can be.
+    sources.json's nynjtc_hikes_licence makes attribution a condition of the
+    permission rather than a courtesy, so a row somebody confirmed but that
+    credits nobody is still not publishable."""
+    sandbox["confirm"]([_confirmed_row(credit="")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_the_sheets_bare_hike_number_joins_to_the_records_prefixed_id(sandbox):
+    """THE TRAP THIS JOIN IS MOST LIKELY TO FALL INTO. The matcher writes
+    `hike_id` as the bare export number and a record here is
+    `nynjtc_hike_finder:<number>`, so a reviewer copying rows out of the
+    sheet - the way this file is meant to be written - would otherwise get a
+    join matching nothing, silently, looking exactly like an unreviewed
+    corpus."""
+    sandbox["confirm"]([_confirmed_row(hike_id="7")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert published(sandbox)[0]["photo"]["url"] == f"photos/{DIGEST}.jpg"
+
+
+def test_a_row_already_carrying_the_prefixed_id_joins_too(sandbox):
+    sandbox["confirm"]([_confirmed_row(hike_id=f"{SOURCE_KEY}:7")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert published(sandbox)[0]["photo"]["url"] == f"photos/{DIGEST}.jpg"
+
+
+@pytest.mark.parametrize("key", ["photos", "matches", None])
+def test_every_shape_a_person_might_write_the_confirm_file_in_is_read(sandbox, key):
+    """`matches` is the key the matcher's own proposal file uses and so the
+    one a reviewer is most likely to keep; `photos` is the noun every other
+    reference file here uses; a bare list is what somebody writing it fresh
+    would produce. Reading only one would take the others as empty - which
+    is indistinguishable, from outside, from nobody having confirmed
+    anything. publish.py's `_digests_in` reads the same three."""
+    sandbox["confirm"]([_confirmed_row()], key=key)
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert "photo" in published(sandbox)[0]
+
+
+def test_a_credit_that_already_says_photo_by_is_not_given_it_twice(sandbox):
+    sandbox["confirm"]([_confirmed_row(credit="Photo by Jane Daniels")])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert published(sandbox)[0]["photo"]["credit"] == "Photo by Jane Daniels"
+
+
+def test_an_unreadable_confirm_file_costs_the_photographs_and_not_the_hikes(sandbox, capsys):
+    sandbox["confirmed_path"].write_text("{ not json", encoding="utf-8")
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    assert [record["id"] for record in published(sandbox)] == [f"{SOURCE_KEY}:7"]
+    assert "photo" not in published(sandbox)[0]
+
+
+def test_the_photo_travels_on_the_shelf_rather_than_in_the_detail(sandbox):
+    """`photo` is in SHELF_FIELDS, and it has to be: the shelf card and the
+    finder's rows both draw it, and neither fetches a detail object."""
+    sandbox["confirm"]([_confirmed_row()])
+    sandbox["write"]({"7": hike()}, {"7": route()})
+
+    exporter.main()
+
+    record = published(sandbox)[0]
+    assert "photo" in record
+    assert "photo" not in detail_of(record)
+
+
+def test_the_exporter_and_publish_read_the_same_confirm_file_the_same_way(sandbox, tmp_path):
+    """THE TWO GATES MUST AGREE, because disagreeing is worse than either one
+    being wrong. publish.py's archive_photos_awaiting_review decides which
+    BYTES reach the bucket from this file; this module decides which records
+    REFERENCE them. A shape one reads and the other does not would publish a
+    card pointing at a digest that was withheld - a broken image on a hiker's
+    shelf, from two correct-looking halves."""
+    import publish
+
+    rows = [_confirmed_row()]
+    for key in ("photos", "matches"):
+        sandbox["confirm"](rows, key=key)
+        recovered = tmp_path / "wayback_hike_photos.json"
+        recovered.write_text(json.dumps({"photos": [{"digest": DIGEST}]}), encoding="utf-8")
+
+        held, cleared = publish.archive_photos_awaiting_review(recovered, sandbox["confirmed_path"])
+
+        assert cleared == 1, f"publish.py read no confirmed digest out of a {key!r} file"
+        assert held == set(), f"publish.py withheld a digest the exporter would reference, from a {key!r} file"
+        assert exporter.confirmed_photos(sandbox["confirmed_path"]), f"the exporter read nothing out of a {key!r} file"

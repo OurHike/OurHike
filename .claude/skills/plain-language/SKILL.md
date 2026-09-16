@@ -113,6 +113,15 @@ already introduced. It never was. Write `the R2 bucket hikers download maps
 from` once, then `the bucket` freely for the rest of the paragraph. The article
 is not the problem; the missing introduction is.
 
+**There is a third answer, and it is [GLOSSARY.md](../../../GLOSSARY.md).** A word
+listed there is shared vocabulary and may be used bare. A word not listed is a
+private referent, and gets introduced where you use it.
+
+Check that file before reaching for one of these words, because seven of them mean
+more than one thing — `seam` means four, and `the camera` is both the map
+viewport and the rig that photographs the preview. For those, naming which one
+you mean costs a few words and is not optional.
+
 ### 3. The 2 a.m. test — tests only
 
 **This test goes red in CI and you see the name and nothing else. Do you know

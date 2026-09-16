@@ -175,6 +175,13 @@ verb, the aphorism as the only statement of a rule, elegance checked instead of
 information), and what each surface needs — comments, test names, test bodies, commit
 subjects, and a chat reply.
 
+[GLOSSARY.md](GLOSSARY.md) is the "the" test's third answer: the words that really are
+shared vocabulary here, so `the bucket` needs no introduction and `the settle` does. It
+is worth reading once for what it found — **seven of these words mean more than one thing**.
+`seam` means four (a boundary between map cells, a zoom threshold, a test injection
+point, the client/backend API), and `the camera` is both the map viewport and the rig
+that photographs the preview. Those get disambiguated on first use, every time.
+
 **None of this touches the evidence grades.** Plain is not confident: `nobody has checked
 this` is plainer than whatever would replace it. What gets cut is the private referent,
 never the caveat.

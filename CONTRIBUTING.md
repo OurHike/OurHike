@@ -23,6 +23,7 @@ This repository keeps two different kinds of writing, and the difference is wort
 | [TECHNICAL_ARCHITECTURE.md](TECHNICAL_ARCHITECTURE.md) | How it is built and why those choices |
 | [WIREFRAMES.md](WIREFRAMES.md) | Screen-by-screen specification |
 | [features/](features/) | Full design drafts, one per feature (including [ORG_NOTICES.md](features/ORG_NOTICES.md) — how a notice from an org that is not the ATC reaches a hiker) |
+| [GLOSSARY.md](GLOSSARY.md) | The words this repository uses as if everybody knew them — and the ten that mean more than one thing |
 | [TESTING.md](TESTING.md) | Testing approach and standards |
 | [BRANCHING.md](BRANCHING.md) | Branching and pull request strategy, and running several at once |
 | [ROADMAP.md](ROADMAP.md) | Phase narrative — where the project is and what each phase means |

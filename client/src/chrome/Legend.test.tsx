@@ -1544,9 +1544,13 @@ describe('the maintaining club', () => {
 })
 
 describe('the "Trails in view" block (#1283)', () => {
+  // As map/trailsInView.ts hands them over: `name` is the name to SHOW,
+  // already through lib/trails.ts's displayTrailName, so ATC's
+  // "Appalachian National Scenic Trail" reaches this panel as the
+  // "Appalachian Trail" the badge beside it prints.
   const TRAILS = [
     {
-      name: 'Appalachian National Scenic Trail',
+      name: 'Appalachian Trail',
       source: 'centerline',
       blazeColor: 'White',
       throughRoute: true,
@@ -1582,7 +1586,7 @@ describe('the "Trails in view" block (#1283)', () => {
     ).toBeInTheDocument()
     const rows = within(block).getAllByRole('listitem')
     expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual([
-      'Appalachian National Scenic Trail · taken',
+      'Appalachian Trail · taken',
       'Long Path',
     ])
     // Below the pin grid and the switches under it, above the foot: the
@@ -1614,7 +1618,7 @@ describe('the "Trails in view" block (#1283)', () => {
     )
     const block = screen.getByRole('region', { name: 'Trails in view' })
     const at = within(block).getByRole('button', {
-      name: /Appalachian National Scenic Trail/,
+      name: /Appalachian Trail/,
     })
     expect(within(at).getByText('take')).toBeInTheDocument()
     expect(within(block).queryByText('taken')).toBeNull()

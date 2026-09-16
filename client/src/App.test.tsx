@@ -1105,6 +1105,9 @@ describe('App shell', () => {
 })
 
 describe('taking a trail (#1306)', () => {
+  // ATC's own spelling, because this is a feature off the map: the rename
+  // to "Appalachian Trail" is map/trailsInView.ts's, on the way to the
+  // legend row clicked below (lib/trails.ts's PUBLISHED_ALIASES).
   const AT_LINE = {
     properties: {
       id: 'centerline:chain:0',
@@ -1179,9 +1182,7 @@ describe('taking a trail (#1306)', () => {
     })
 
     await user.click(await screen.findByRole('button', { name: /legend/i }))
-    await user.click(
-      await screen.findByRole('button', { name: /Appalachian National Scenic Trail/ }),
-    )
+    await user.click(await screen.findByRole('button', { name: /Appalachian Trail/ }))
 
     expect(
       await screen.findByRole('dialog', { name: 'Which long hike?' }),

@@ -51,6 +51,47 @@ export const TRAILS: Record<string, Trail> = {
 }
 
 /**
+ * Published spellings that mean a trail this registry already names, folded
+ * to lower case, mapped to the TRAILS key they mean.
+ *
+ * ONE ENTRY, AND IT IS ATC'S. Measured 2026-08-23 against the live bucket
+ * (the count is in map/trailLabels.test.ts): all 3,025 centerline segments
+ * carry "Appalachian National Scenic Trail", which is the trail's formal
+ * federal designation and the only name ATC's layer publishes. It is nobody's
+ * word for it on a sheet headed "Appalachian Trail", and lib/lineDetail.ts
+ * had already special-cased exactly this string for exactly that reason. The
+ * maintainer asked on 2026-09-16 for the app to say "Appalachian Trail"
+ * wherever a hiker reads it, so the special case became this table and the
+ * remaining display paths were routed through it.
+ *
+ * AN ALIAS IS NOT A GUESS. Only a spelling somebody has seen in a published
+ * feed goes here, and only mapped to a trail TRAILS already names - never a
+ * substring rule, never a truncation. That is `trailForName`'s own refusal
+ * below, for the same reason: "Long Path Link Trail" is a different trail. A
+ * publisher's spelling for a trail this registry does NOT name is left
+ * exactly as it arrived, which is what keeps a state park's forty lines out
+ * of this and stops the rename becoming a licence to rewrite other people's
+ * data.
+ *
+ * WHERE THE LONG NAME SURVIVES ON PURPOSE. The pipeline keeps it, because
+ * pipeline/lib/hike_route_builder.py's `normalise_name` is explicit that a
+ * name is "carried as its publisher spells it, and this is the key the two
+ * spellings meet under" - the exported artifact stays traceable to the row
+ * ATC published. So this is a display choice taken at the last step before a
+ * hiker reads it, not a rewrite of the data behind it.
+ */
+const PUBLISHED_ALIASES: Record<string, string> = {
+  'appalachian national scenic trail': 'AT',
+}
+
+/** The registry trail a published spelling aliases, for an already-folded
+ *  name. Undefined for every name that is not in the table above. */
+function aliasedTrail(folded: string): Trail | undefined {
+  const id = PUBLISHED_ALIASES[folded]
+  return id === undefined ? undefined : TRAILS[id]
+}
+
+/**
  * The trail a published line's name refers to, or undefined.
  *
  * By NAME rather than by id, because that is the only handle a nearby line
@@ -59,10 +100,43 @@ export const TRAILS: Record<string, Trail> = {
  * keys the route on) and no trail id. Exact after trimming and case-folding,
  * never a substring - "Long Path Link Trail" is a different trail and must
  * not wear the Long Path's mark.
+ *
+ * PUBLISHED_ALIASES is read after the registry's own names, so ATC's spelling
+ * finds the A.T. too. No caller reaches that today - lib/lineDetail.ts looks
+ * the A.T. up by the app's own trail name, never by `line.name`, and its
+ * comment says what would have to change first - so this is consistency with
+ * `displayTrailName` rather than a defect anybody has seen. A name and a mark
+ * that disagree about whether a spelling is the A.T. is the bug worth not
+ * having.
  */
 export function trailForName(name: string | null | undefined): Trail | undefined {
   if (name === null || name === undefined) return undefined
   const wanted = name.trim().toLowerCase()
   if (wanted === '') return undefined
-  return Object.values(TRAILS).find((trail) => trail.name.toLowerCase() === wanted)
+  return (
+    Object.values(TRAILS).find((trail) => trail.name.toLowerCase() === wanted) ??
+    aliasedTrail(wanted)
+  )
+}
+
+/**
+ * The name to SHOW for a published trail name: this registry's name where the
+ * publisher's spelling is one it knows, the publisher's own spelling
+ * everywhere else, and null where there is no name to show at all.
+ *
+ * The one place the rename happens, so the badge, the legend's "Trails in
+ * view" row and the line sheet cannot drift apart on what the same trail is
+ * called - the reason map/trailsInView.ts measures the badge and the list off
+ * one pass rather than two.
+ *
+ * Empty and whitespace-only names come back null rather than '', matching
+ * what the callers already do with a nameless line: they omit it, because a
+ * name this map invented is a fact about somebody else's data that nobody
+ * stands behind (map/trailLabels.test.ts says the same about "Unnamed").
+ */
+export function displayTrailName(name: string | null | undefined): string | null {
+  if (name === null || name === undefined) return null
+  const trimmed = name.trim()
+  if (trimmed === '') return null
+  return aliasedTrail(trimmed.toLowerCase())?.name ?? trimmed
 }

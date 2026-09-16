@@ -87,7 +87,7 @@ describe('trailsInView', () => {
     })
 
     expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
-      'Appalachian National Scenic Trail',
+      'Appalachian Trail',
       'Long Path',
       'Ramapo-Dunderberg Trail',
     ])
@@ -170,14 +170,38 @@ describe('trailsInView', () => {
     expect(trailsInView(map as unknown as MapLibreMap)).toEqual([])
   })
 
-  it('lets the data’s own name beat the registry’s', () => {
-    // ATC's feed says "Appalachian National Scenic Trail"; the registry says
-    // "Appalachian Trail". The feed is what a hiker reads on the badge, and
-    // the fallback must never quietly rename a trail that arrived named.
+  it('shows ATC’s centerline as "Appalachian Trail", not its federal designation', () => {
+    // ATC publishes "Appalachian National Scenic Trail" on all 3,025
+    // centerline segments (the count is in map/trailLabels.test.ts). Nobody
+    // says that on a sheet headed "Appalachian Trail", so the badge and the
+    // legend row - both measured off this one pass - read the registry's
+    // name instead (lib/trails.ts's PUBLISHED_ALIASES, the maintainer's ask
+    // of 2026-09-16). The fixture stays as ATC spells it: the point of the
+    // test is that the rename happens here rather than in the data.
     const map = mapWith({ [BLAZE_LAYER_ID]: [AT] })
 
     expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
-      'Appalachian National Scenic Trail',
+      'Appalachian Trail',
+    ])
+  })
+
+  it('leaves a steward’s own name exactly as published, however formal it looks', () => {
+    // The other half of the rename and the one worth guarding: only a
+    // spelling the registry already knows is swapped. A name this app does
+    // not recognise is somebody else's data, and renaming it would be a
+    // claim about that data nobody here can stand behind - the same refusal
+    // `trailForName` makes about substrings, where "Long Path Link Trail" is
+    // a different trail from the Long Path and must not wear its mark.
+    const map = mapWith({
+      [NEARBY_BLAZE_UNTAKEN_LAYER_ID]: [
+        line('Ramapo-Dunderberg Trail', 'oprhp_trails', [[-74.06, 41.21]], 'Red'),
+        line('Long Path Link Trail', 'oprhp_trails', [[-74.05, 41.22]], 'Aqua'),
+      ],
+    })
+
+    expect(trailsInView(map as unknown as MapLibreMap).map((t) => t.name)).toEqual([
+      'Long Path Link Trail',
+      'Ramapo-Dunderberg Trail',
     ])
   })
 
@@ -192,7 +216,7 @@ describe('trailsInView', () => {
 
     const trails = trailsInView(map as unknown as MapLibreMap)
     expect(trails.map((t) => [t.name, t.throughRoute, t.chosen])).toEqual([
-      ['Appalachian National Scenic Trail', true, true],
+      ['Appalachian Trail', true, true],
       ['Zebra Spur', false, true],
       ['Arden-Surebridge Trail', false, false],
       ['Beech Trail', false, false],
@@ -343,7 +367,10 @@ describe('badgeFeatures', () => {
     expect(features[0].geometry).toEqual({ type: 'Point', coordinates: [-74, 41.3] })
     expect(features[0].properties).toMatchObject({
       id: 'centerline:chain:0',
-      name: 'Appalachian National Scenic Trail',
+      // What the plate prints, so the registry's name rather than ATC's -
+      // and note it beats the feed's `name` the spread carries in, which is
+      // the one property of the line's own facts the badge overrides.
+      name: 'Appalachian Trail',
       source: 'centerline',
       blaze_color: 'White',
       [BADGE_MARK_PROPERTY]: trailMarkImageId('centerline'),
@@ -355,7 +382,7 @@ describe('badgeFeatures', () => {
     expect(
       badgeFeatures([
         {
-          name: 'Appalachian National Scenic Trail',
+          name: 'Appalachian Trail',
           source: 'centerline',
           blazeColor: 'White',
           throughRoute: true,
@@ -380,7 +407,7 @@ describe('attachTrailsInView', () => {
 
     expect(onChange).toHaveBeenCalledTimes(1)
     expect(onChange.mock.calls[0][0].map((t: { name: string }) => t.name)).toEqual([
-      'Appalachian National Scenic Trail',
+      'Appalachian Trail',
     ])
     const pushed = map.sourceData.get(TRAIL_BADGE_SOURCE_ID) as { features: unknown[] }
     expect(pushed.features).toHaveLength(1)
@@ -555,22 +582,43 @@ describe('the pins in view (#1283, the third preview frame)', () => {
     expect(taken.chosen).toBe(true)
   })
 
+  /** Five shelters along the trail from x = 38 to x = 230, each a 48 px box,
+   *  the boxes touching: together they cover x = 14 to 254 and leave 136 px
+   *  of clear frame east of them. Measured 2026-09-16 with the plate
+   *  geometry this file also pins below: the full plate's box is 148 px
+   *  wide (130 px of text, 3 left, 9 right, 3 of border and symbol padding
+   *  each side), so it fits in neither the 136 px gap nor anywhere behind
+   *  the row, and the mark's 36 px box fits the gap with room to spare.
+   *  That is the two-rung search this block exists to drive. */
+  const CROWDED = [38, 86, 134, 182, 230].map((x) => pin(x, 400))
+
   it('fans out from the centre to the first vertex with room, and takes the mark where the full plate has none', () => {
-    // A shelter on the trail just short of the middle, its box reaching
-    // from x = 161 to 209. The full plate is some 240 px wide on a 390 px
-    // frame, so no position anywhere keeps it both inside the frame and
-    // clear of that box - hung to either side it runs off an edge, centred
-    // above or below it still spans the pin's column - and the search
-    // falls to the mark. The mark's 36 px box, hung off the right of the
-    // vertex at 228 (33 px from the centre, one vertex nearer than 152 on
-    // the other side), starts at 223.6, clear of the pin by 14 px; at 209
-    // and 171 every position of it touches the box. The margins are the
-    // geometry the placer tests, to the decimal (the fifth preview frame,
-    // 2026-09-08).
+    // The mark goes on 266 - the eighth candidate out from the frame's
+    // centre (195, 422), and the first whose box clears the pins: hung off
+    // the right of that vertex it spans 263.6 to 299.6, clear of the last
+    // pin box by 9.6 px, where at 247 it would start at 244.6 and still be
+    // inside it. The margins are the geometry the placer tests, to the
+    // decimal (the fifth preview frame, 2026-09-08).
+    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: CROWDED })
+    const [at] = trailsInView(map as unknown as MapLibreMap)
+    expect(at.anchor).toEqual([266, 400])
+    expect(at.badgeFit).toBe('mark')
+  })
+
+  it('keeps the name beside a single shelter, which the longer one lost it to', () => {
+    // A row is what it now takes, and this is the pin that used to be
+    // enough on its own: one shelter just short of the middle, box from
+    // x = 161 to 209. ATC's "Appalachian National Scenic Trail" needed a
+    // 240 px plate and had nowhere on a 390 px frame to hang it clear of
+    // that box, so the badge fell to the bare mark and the trail went
+    // unnamed on screen. "Appalachian Trail" needs 144 px (both measured
+    // 2026-09-16, and badgePlateWidth is asserted on below), which fits
+    // beside the pin at the vertex at 228 - so the rename buys back the
+    // name on exactly the screen #1283's third preview frame was about.
     const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
     const [at] = trailsInView(map as unknown as MapLibreMap)
     expect(at.anchor).toEqual([228, 400])
-    expect(at.badgeFit).toBe('mark')
+    expect(at.badgeFit).toBe('full')
   })
 
   it('reads every pin layer placed before the badge, not the waypoints alone', () => {
@@ -585,7 +633,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
   it('reads the chrome’s bands as the frame too, and lands in the same place', () => {
     // The plate and the tab bar take the top and the foot; the line at
     // y = 400 is between them, so the answer is the one above.
-    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: [pin(185, 400)] })
+    const map = screenMap({ [BLAZE_LAYER_ID]: [ACROSS], [POI_LAYER_ID]: CROWDED })
     const [at] = trailsInView(map as unknown as MapLibreMap, {
       top: 110,
       right: 0,
@@ -593,7 +641,7 @@ describe('the pins in view (#1283, the third preview frame)', () => {
       left: 0,
     })
     expect(at.badgeFit).toBe('mark')
-    expect(at.anchor).toEqual([228, 400])
+    expect(at.anchor).toEqual([266, 400])
   })
 
   it('hands over the mark on the nearest vertex where not even the mark has room', () => {
@@ -698,10 +746,24 @@ describe('the pins in view (#1283, the third preview frame)', () => {
   it('estimates the plate wide enough for the name it will carry', () => {
     // Measured on the stand-alone render: 33 characters set 185 px of text;
     // the estimate must not come out narrower than what will be drawn.
+    //
+    // "Appalachian National Scenic Trail" is the CALIBRATION here, not a
+    // name this badge still prints - since 2026-09-16 the A.T.'s plate reads
+    // "Appalachian Trail" (lib/trails.ts). The measured pair is kept because
+    // it is the only chars-to-px datum anybody produced, and the estimator
+    // has to hold for whatever name a steward publishes next, not just for
+    // the four the registry knows.
     expect(badgePlateWidth('Appalachian National Scenic Trail')).toBeGreaterThan(185 + 42)
     expect(badgePlateWidth('A.T.')).toBeLessThan(badgePlateWidth('Long Path'))
     // The mark alone: the mark and its paper, whatever the name.
     expect(badgePlateWidth('Appalachian National Scenic Trail', 'mark')).toBe(32)
+
+    // The two figures the badge-fit tests above reason with, measured
+    // 2026-09-16: the rename took the A.T.'s plate from 240 px to 144 px on
+    // a 390 px frame, which is why one shelter no longer costs the trail its
+    // name and it takes a row of five.
+    expect(badgePlateWidth('Appalachian National Scenic Trail')).toBe(240)
+    expect(badgePlateWidth('Appalachian Trail')).toBe(144)
   })
 })
 

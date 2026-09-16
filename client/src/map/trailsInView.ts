@@ -78,6 +78,7 @@
 
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
+import { displayTrailName } from '../lib/trails'
 import { CHOSEN_SYSTEM_SOURCES } from './nearbyTrails'
 import { POI_LAYER_ID } from './poiLayers'
 import { TAPPABLE_BLAZE_LAYER_IDS } from './style'
@@ -133,6 +134,15 @@ const OBSTACLE_HALF_PX = 44 / 2 + 2
  * wide at 12 px Noto Sans, 5.6 px a character, so 0.5 em a character is a
  * slight over-estimate - the right direction for a box that decides whether
  * there is room. As tall as the mark, which is taller than the 12 px name.
+ *
+ * THAT STRING IS THE CALIBRATION, NOT A NAME THIS BADGE PRINTS. Since
+ * 2026-09-16 the A.T.'s plate reads "Appalachian Trail" (lib/trails.ts),
+ * which is 17 characters and a 144 px plate against the old 240 - so the
+ * estimate has to hold well below the width it was measured at, and does,
+ * because it is per-character. The measured pair is kept because it is the
+ * only chars-to-px datum anybody produced, and this has to answer for
+ * whatever name a steward publishes next rather than for the four names the
+ * registry knows.
  */
 export function badgeTextSize(
   name: string,
@@ -711,7 +721,16 @@ export function trailsInView(
     // where the published sketch carries no names at all
     // (map/trailBadges.ts's registryNameForSource says why, and why this
     // cannot name the unnamed haze around it).
-    const name = stringProp(properties, 'name') ?? registryNameForSource(source)
+    //
+    // Then through lib/trails.ts's displayTrailName, which is where ATC's
+    // "Appalachian National Scenic Trail" becomes the "Appalachian Trail" a
+    // hiker reads - once, here, so the badge and the legend row cannot
+    // disagree, this module's whole reason for measuring them together. It
+    // renames only a spelling the registry already knows; every other
+    // steward's name passes through untouched.
+    const name = displayTrailName(
+      stringProp(properties, 'name') ?? registryNameForSource(source),
+    )
     if (name === null) continue
     const throughRoute = BADGE_SOURCES.includes(source)
     const takeable = trailIdForSource(source) !== null

@@ -90,13 +90,27 @@
       "release": "v1.3.0",
       "document": "v1.3.0.json",
       "published": "2026-09-14",
-      "superseded": null,
+      "superseded": "2026-09-16",
       "pinned": false,
       "note": "Kuwohi. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains. This branch IS v1.3.0 - the only files it adds are the notes, the version bump and this entry, none of which the OpenAPI document reads.",
       "refreshed": [
         "2026-09-14, added by the v1.3.0 release train. v1.2.2's `superseded` is set to the same date by this change - the retention clock starts when a newer release takes over, not when that release was published.",
         "THE FIRST ENTRY IN THIS FILE WHOSE RELEASE MOVES THE SCHEMA, and the note is worth making because every v1.2.x entry above records the opposite. `git diff --name-status v1.2.2..HEAD -- backend/alembic/versions/` names one revision, a3f6b81d2e94_synced_hikes, which creates `synced_hikes` and `synced_active_hikes` and enables row-level security on both. It drops and renames nothing - expand, not contract (RELEASING.md 8c) - so v1.2.2's clients, which know neither table, are unaffected by it, and the document below grew rather than narrowed: 195,365 bytes against v1.2.2's 186,026.",
         "The retention window is unchanged by this: pre-1.0.0, v1.1.1, v1.2.0, v1.2.1 and v1.2.2 are all still listed, and the policy's floor of 3 keeps the last three whichever way the 90-day clock runs."
+      ]
+    },
+    {
+      "release": "v1.3.1",
+      "document": "v1.3.1.json",
+      "published": "2026-09-16",
+      "superseded": null,
+      "pinned": false,
+      "note": "Kuwohi, patch. Added on the release branch before the merge, same reason as every prior entry: `check_openapi_compat.py --write` serializes the working tree, so run after the tag it would capture whatever `main` had become rather than what the tag contains.",
+      "refreshed": [
+        "2026-09-16, added by the v1.3.1 release train. v1.3.0's `superseded` is set to the same date by this change - the retention clock starts when a newer release takes over, not when that release was published.",
+        "THE SCHEMA MOVES, WHICH THIS RELEASE'S NUMBER DOES NOT NORMALLY ALLOW, and it is recorded here rather than left for a reader to trip over. `git diff --name-status v1.3.0..HEAD -- backend/alembic/versions/` names one revision, c9d1a7f48b62_report_photos_and_a_place_in_words, whose `upgrade()` adds two nullable columns to `reports` - `photo_count` and `place_words` - and drops nothing; the `drop_column` calls are in `downgrade()` alone. Expand, not contract (RELEASING.md 8c), so v1.3.0's clients, which read neither column, are unaffected. RELEASING.md 4 defines PATCH as 'fixes only, no new behaviour, no schema change' and this release has a schema change and new behaviour both. The number is the maintainer's decision, taken 2026-09-15 and restated 2026-09-16 after this file's author put the 4 reading to them; it is written down so the next reader can tell a decision from an oversight.",
+        "The document grew rather than narrowed: 203,280 bytes against v1.3.0's 195,365. Two paths added and none removed - `/reports/{report_id}/photos/{index}` and `/reports/{report_id}/photos/{index}/link` - with no schema added or removed either way, because both reuse models the document already carried.",
+        "The retention window is unchanged by this: pre-1.0.0, v1.1.1, v1.2.0, v1.2.1, v1.2.2 and v1.3.0 are all still listed, and the policy's floor of 3 keeps the last three whichever way the 90-day clock runs."
       ]
     }
   ]

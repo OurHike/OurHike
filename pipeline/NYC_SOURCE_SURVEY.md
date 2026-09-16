@@ -40,6 +40,8 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | OpenStreetMap | ✓ | ✓ | | ✓ | continuous | gap-filler question, measured in #771 — §7 |
 | **NYC Parks Trails** (five boroughs) | ✓ 7,059 | | | ✓ Socrata | **2026-09-03** | **registered, ships** (#1432, statutory terms — no ask needed); §12 |
 | **NYC DOT greenways** (off-street) | ✓ 3,039 of 29,695 | | | ✓ Socrata | **2026-07-24** | **registered, ships** filtered (#1432); §12 |
+| **NYC CSCL Centerline** (`rw_type='6'`) | ✓ 5,990 | | | ✓ Socrata | **2026-09-12** | **candidate, unregistered** — the 97% of Central Park's path that the trails layer does not hold (#1530); §12f |
+| **NYC Planimetric Sidewalk** | polygons | | | ✓ Socrata | **2025-12-10** | **area, not line** — 80.7 acres inside Central Park, and centerline extraction is what it would take; §12f |
 | NYC DCP's ArcGIS bike mirror | stale | | | ✓ | **2017-03-08** | not a source — nine years stale, no greenway column; §12 |
 
 PIPC appears in no row of its own: its NY parks (Harriman, Bear Mountain, Sterling Forest)
@@ -520,6 +522,31 @@ reason every count here was read from the data rather than from the page. The de
 says *"paths or trails in designated Forever Wild areas"*; Central Park and Prospect Park
 are neither Forever Wild nor absent, and are the fourth and fifth largest parks in it.
 
+**That paragraph was a count and it got read as coverage**, which
+[#1530](https://github.com/OurHike/OurHike/issues/1530) opened on and this correction
+answers. 312 segments is a big number and 6.98 miles is not. Measured 2026-09-16 by
+`spike_central_park_paths.py`, clipping this layer to NYC Parks' own boundary polygons:
+
+| park | segments | miles inside the boundary | acres | mi/acre | of its own paved walkway |
+|---|---:|---:|---:|---:|---:|
+| Central Park | 312 | **6.98** | 839 | 0.0083 | **10–17%** |
+| Prospect Park | 376 | 14.32 | 478 | 0.0299 | 48–80% |
+
+**A factor of 3.6 out of one layer surveyed by one steward**, which is what makes this a
+fact about Central Park rather than about the dataset — and the reason Prospect Park is the
+right control and not merely a second example. The walkway column is an independent check
+against the city's planimetric sidewalk polygons (`52n9-sdep`): 80.7 acres of paved surface
+inside Central Park, 35.4 inside Prospect, divided by an assumed 3–5 m width. That band is
+picked rather than surveyed — `@unvalidated`, and the spike's `WALKWAY_WIDTH_BAND_M` says
+what would settle it — but it does not need to be precise to separate a tenth from a half.
+
+So **the description was closer to right than this survey gave it credit for.** What the
+layer holds in Central Park is roughly its Forever-Wild-shaped corners — the Ramble, the
+North Woods, the Hallett sanctuary — plus paved fragments. *Not absent* and *covered* are
+different claims, and only the first one was ever checked here.
+
+Where the rest of the park is, and what it would cost, is §12f.
+
 Three things the registration carries that a reader should know before trusting a line:
 
 - **There is no blaze field, and the colour is in the name.** `trail_name` reads `Blue
@@ -662,6 +689,66 @@ Two riders travel with it:
   maintainer can actually stand on, which is the whole reason it exists — Van Cortlandt and
   Pelham Bay are a subway ride, and a single afternoon would settle (c), (d) and the 2013
   survey dates in 12b better than any amount of further probing.
+- **(g) Central Park is a tenth drawn**, 12b's corrected table, and §12f is where the rest
+  of it lives.
+
+### 12f. Where the rest of Central Park is — two layers nobody registered (#1530)
+
+12b establishes the hole: 6.98 miles drawn inside an 839-acre park whose own paved walkway
+implies 41–68. This section is what fills it, measured the same day by the same spike, and
+**it is a survey rather than a proposal** — the registration decisions at the end are the
+maintainer's, in the same shape §12a–e handed them the first two city layers.
+
+**NYC's street centerline, CSCL (`inkn-q76z`), `rw_type='6'`.** 5,990 rows citywide,
+refreshed **2026-09-12**. Inside Central Park: **13.75 miles across 172 features, of which
+13.29 — 97% — lie more than 25 m from anything this build draws.** So this is not §13's
+question arriving a third time. It is not the same tread digitised twice; it is path we do
+not have, and registering it would roughly triple Central Park's line coverage. What it
+holds, by name: **BRIDLE PATH 3.01 mi, RESERVOIR LOOP 1.59, N MEADOW PATH 1.58, BRIDLE PATH
+W 1.52, HECKSCHER BALLFIELDS PATH 1.29, E MEADOW PATH 0.86, CONSERVATORY GARDEN PATH 0.84.**
+The reservoir loop alone is one of the most-walked miles in New York.
+
+**What `rw_type='6'` means is read from the rows, not from a dictionary — `@unvalidated`,
+and it is the weakest link in this section.** The portal publishes no description for the
+column (`api/views/inkn-q76z.json`, read 2026-09-16, returns an empty `description`), and
+NYC Planning's CSCL metadata PDF answers 403 from an agent sandbox. The class is inferred
+from the 5,990 values themselves — 3,041 names ending in PATH, 1,023 GREENWAY, 250 LINK,
+197 TRL, 129 WALK, 71 ESPL, 61 TRAIL. That is a pedestrian-path class on the evidence
+available. **Reading the published data dictionary is what would settle it, and it should be
+read before anything registers this layer**, because the difference between a path class and
+a mixed one is the difference between a walking network and a road drawn as trail.
+
+**It is Central Park's answer specifically, which is itself evidence.** The same clip over
+Prospect Park returns **0.67 miles across 9 features** — because NYC Parks' own layer
+already covers Prospect at 96% of the two layers' combined mileage. The two sources are not
+general substitutes for one another; CSCL is thick exactly where the trails layer is thin.
+
+**The park drives are a real question and this survey does not answer it.** `rw_type='1'`
+inside Central Park is 12.45 miles, and it splits into two opposite things under one value:
+**East Dr 2.90, West Dr 2.73, Center Dr 0.56, Terrace Dr 0.43 — 6.62 miles of drive that
+has been car-free since 2018** and is the park's main circuit, against **2.89 miles of
+65/79/86/97 St transverse**, which carry through traffic in a cut and are not walkable at
+all. `build_trail_graph.py`'s rule is that roads are not edges and
+[MAP_OPTIONS.md](../features/MAP_OPTIONS.md) §2's road-walkability tiers are deliberately
+unbuilt; drawing a loop drive as trail is an exception somebody has to argue for on the
+merits, not a filter to widen. Nothing in the layer distinguishes the two — the split above
+is by street name, read by a human.
+
+**The planimetric sidewalk polygons (`52n9-sdep`) are the whole park and are the wrong
+shape.** 67 polygons, **80.7 acres of paved walkway surface** inside Central Park (35.4
+inside Prospect), refreshed 2025-12-10. That is the measurement 12b's coverage percentage
+rests on, and it is an **area**: turning it into a line anybody can draw or route on is
+centerline extraction, which this pipeline has never done and which is a far larger piece of
+work than a registration. Recorded so the 80.7 acres is on the record rather than
+rediscovered.
+
+**Licensing needs no ask.** Both datasets are City of New York publications on the same
+portal, so `nyc_licence`'s statutory grant — Local Law 11 of 2012 — already covers them,
+with the same version-and-modifications rider 12d describes. This is the first time that
+block's "a grant made by statute to everyone rather than a permission granted to this
+project" pays for something it was not written for.
+
+`spike_central_park_paths.py` is the measurement and is re-runnable.
 
 ## 13. The two city agencies do draw the same tread — a quarter of it (#1453)
 

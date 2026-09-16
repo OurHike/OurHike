@@ -23,6 +23,27 @@
 // replaced because it already reaches the one screen that changed, which is
 // what pr-preview.yml re-photographs.
 //
+// AMENDED AGAIN (#1516) - THE SENTENCE UNDER THE ROW NOW HAS TWO FORMS. Where
+// the climb row appears at all, the line under it is one of:
+//
+//   measured    "Climb is an estimate from the best elevation data
+//               available - expect other sources to differ."
+//   unverified  "Climb over the N mi of this trail on this phone, which may
+//               not be all of it."
+//
+// Which one depends on whether the tapped feature carries `length_miles`.
+// lineClimb.ts compares the graph edges this phone holds against that number
+// to tell a whole trail from part of one; with no number it cannot tell, so
+// it reports the extent it summed over instead of calling it the total. v1.3.0
+// shipped that comparison against a field no exporter wrote, which is why
+// every tap read `measured` however little of the line was downloaded.
+//
+// #1516 added the field to export_nearby_trails.records_to_geojson, so
+// `unverified` is what a preview draws until a publish carries it - and it
+// stays the answer afterwards for any source publishing no length. This
+// recipe is touched rather than replaced for the same reason #1476 touched
+// it: it already reaches the one screen that changed.
+//
 // WHAT THE THIRD HONEST FRAME IS, AND WHY IT IS NOT A BROKEN SHOT. The climb
 // row needs the climb half in THE RELEASE THIS BUILD PINS, which is a
 // narrower condition than "somebody ran a publish with include_elevation"
@@ -82,9 +103,9 @@
 // pipelines section exists to track.
 
 export const caption =
-  'The Long Path’s line sheet. Since #1476 it says how much the trail CLIMBS — “+x ft / −y ft” and a line saying that is an estimate — but only where the climb half is in the release this build PINS, and dataRelease.ts pins 2026-09-14, which carries zero elevation cells on production and on UA alike (all three manifests read 2026-09-15). A UA preview does not change that: it moves the bucket prefix, not the release. So the frame here is the sheet WITHOUT a climb row, which is that change’s own honest absence rendered correctly; the row arrives when the pin moves to a release carrying the cells'
+  'The Long Path’s line sheet. Since #1476 it says how much the trail CLIMBS — “+x ft / −y ft” — but only where the climb half is in the release this build PINS, and dataRelease.ts pins 2026-09-14, which carries zero elevation cells on production and on UA alike (all three manifests read 2026-09-15). A UA preview does not change that: it moves the bucket prefix, not the release. So the frame here is the sheet WITHOUT a climb row, which is that change’s own honest absence rendered correctly. When the pin does move to a release carrying the cells, #1516 decides the line UNDER the row: “an estimate from the best elevation data available” only where the tapped feature carries a length to check coverage against, and otherwise “Climb over the N mi of this trail on this phone, which may not be all of it” — because a phone that cannot tell whether it holds the whole line must not call the total measured'
 export const alt =
-  'The tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, the Long Path’s round logo beside the words “Long Path” again, and a line saying the data is from the New York-New Jersey Trail Conference. Where this build’s bucket carries per-edge climb, a climb figure written as plus-feet over minus-feet sits above that with a note under it saying climb is an estimate; where it does not, there is no such row. Where the build has no network archive at all, there is no sheet: just the map over the Palisades crest with no trail line to tap.'
+  'The tapped-line sheet over the map at the Palisades, reading “Aqua blaze · Long Path”, the Long Path’s round logo beside the words “Long Path” again, and a line saying the data is from the New York-New Jersey Trail Conference. Where this build’s bucket carries per-edge climb, a climb figure written as plus-feet over minus-feet sits above that, with a note under it saying either that climb is an estimate or, where the tapped trail publishes no length to check the download against, how many miles of the trail the figure covers; where it does not, there is no such row. Where the build has no network archive at all, there is no sheet: just the map over the Palisades crest with no trail line to tap.'
 
 /** Vector tiles from the bucket plus contours over a cliff take longer than
  *  chrome; the sheet is waited on by the drive, this is the settle after. */

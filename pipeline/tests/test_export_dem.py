@@ -82,6 +82,33 @@ def test_encode_tile_is_lossless_after_quantization():
     assert np.array_equal(decode_elevations(once), decode_elevations(twice))
 
 
+def test_encode_tile_is_lossless_at_whatever_effort_is_set(monkeypatch):
+    """The WEBP_EFFORT dial must never cost a bit (#1506).
+
+    `quality` is libwebp's SEARCH EFFORT in lossless mode, not image quality,
+    which is the whole reason the constant can be tuned for bytes at all. That
+    is a property of the codec rather than of any one value, so this asserts it
+    across the dial rather than at the shipped setting: whatever a future change
+    puts in WEBP_EFFORT, the pixels have to survive it exactly.
+
+    Pseudo-random bytes rather than a smooth ramp on purpose. A gradient is the
+    easy case for any predictive codec; incompressible noise is where a mode
+    that silently quantized would show, and it is also what the blue channel
+    actually looks like after the 0.5 m floor."""
+    rng = np.random.default_rng(1506)
+    rgb = rng.integers(0, 256, size=(64, 64, 3), dtype=np.uint8)
+    png = io.BytesIO()
+    Image.fromarray(rgb).save(png, format="PNG")
+
+    for effort in (0, 80, 100):
+        monkeypatch.setattr(export_dem, "WEBP_EFFORT", effort)
+        out = encode_tile(png.getvalue(), 256)
+        decoded = np.asarray(Image.open(io.BytesIO(out)).convert("RGB"))
+        # Blue is floored to the step; red and green must come back untouched.
+        assert np.array_equal(decoded[:, :, :2], rgb[:, :, :2]), f"effort {effort} altered elevation"
+        assert not decoded[:, :, 2].any(), f"effort {effort} did not floor blue"
+
+
 def test_fetch_tile_returns_none_on_404_and_retries_transient_errors(requests_mock, monkeypatch):
     import requests as requests_lib
 

@@ -343,11 +343,43 @@ def floor_blue(rgb: np.ndarray, unit: int) -> np.ndarray:
     return rgb
 
 
+# The lossless-WebP effort dial, and it is NOT image quality (#1506). In
+# lossless mode libwebp reads `quality` as how hard to search, and the pixels
+# come back bit-identical at every setting - so this is free in the sense that
+# almost nothing on this archive is: it costs bytes and build minutes, never
+# fidelity. Verified rather than inferred from the flag, on all 162 corridor
+# tiles spike_baked_terrain.py caches: every one decodes bit-identical to its
+# input array at 100. That check is worth running again before this number
+# moves, because a 1-LSB error in terrarium's red channel is 256 m.
+#
+# MEASURED 2026-09-16 on 4 cores - the free runner's shape - over those tiles,
+# priced against the published per-zoom bands and timed at 8 workers for the
+# canonical build's 8,658 tiles:
+#
+#     setting          off dem.pmtiles   encode
+#     m4 q80 (Pillow)              —      1.8 min
+#     q100                     3.1 MB     6.4 min   <- here
+#     m6 q100                  6.5 MB    72.5 min
+#     m6 q90                   0.6 MB     3.2 min
+#     m2 q100                  larger     1.1 min
+#
+# WHY NOT method=6, which is where the bytes are. It buys another 3.4 MB for
+# +66 minutes of encode, on a 6-hour job that also fetches 8,658 tiles over
+# somebody else's network - and it would land on the light build and every
+# cell cut too. The deep end of `method` is a trap on a free runner, and the
+# knee is at `quality` alone: 1.1% of the archive for +4.6 minutes.
+#
+# `method` is deliberately left at Pillow's default rather than pinned here.
+# Naming it would suggest somebody chose it; nobody did, and the measurement
+# above is the argument for not choosing it.
+WEBP_EFFORT = 100
+
+
 def encode_tile(png_bytes: bytes, unit: int) -> bytes:
     """One tile: decode terrarium PNG, floor blue to `unit`, lossless WebP."""
     rgb = floor_blue(np.asarray(Image.open(io.BytesIO(png_bytes)).convert("RGB")).copy(), unit)
     buf = io.BytesIO()
-    Image.fromarray(rgb).save(buf, format="WEBP", lossless=True)
+    Image.fromarray(rgb).save(buf, format="WEBP", lossless=True, quality=WEBP_EFFORT)
     return buf.getvalue()
 
 

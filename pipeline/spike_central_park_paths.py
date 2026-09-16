@@ -21,8 +21,10 @@ WHAT THIS MEASURES, AND WHY EACH NUMBER IS HERE.
    the question has to be asked again of any third one rather than assumed.
 
 3. **What the paved-walkway polygons imply**, which is the only measurement
-   here that reaches the whole park. It is an area divided by a width band and
-   is labelled that way wherever it is printed - see IMPLIED_LENGTH below.
+   here that reaches the whole park. It is an AREA divided by a width band
+   nobody surveyed, and it is labelled that way wherever it is printed - see
+   WALKWAY_WIDTH_BAND_M below for why the band is picked and what would settle
+   it.
 
 THIS IS A SPIKE. The measurement is the deliverable and the assembly is
 throwaway; what should survive is the SHAPE of the answer - how much of a city
@@ -83,11 +85,12 @@ SIDEWALK_DATASET = "52n9-sdep"
 #: values themselves: 3,041 of their names end in PATH, 1,023 GREENWAY, 250
 #: LINK, 197 TRL, 129 WALK, 71 ESPL, 61 TRAIL. That is a pedestrian-path class
 #: on the evidence available. Reading the published data dictionary is what
-#: would settle it, and is worth doing before anything registers this layer.
+#: would settle it, and #1533 makes that reading a precondition of the
+#: registration it decides.
 PATH_RW_TYPE = "6"
 
-#: The class the park drives fall in, measured for #1530's second decision
-#: rather than proposed. East Dr and West Dr are car-free and are the most
+#: The class the park drives fall in, measured for #1533's decision 2 rather
+#: than proposed. East Dr and West Dr are car-free and are the most
 #: walked route in Central Park; the 65/79/86/97 St transverses are in the
 #: SAME class and carry through traffic in a cut. One value, two opposite
 #: answers - which is why this is printed and not filtered on.

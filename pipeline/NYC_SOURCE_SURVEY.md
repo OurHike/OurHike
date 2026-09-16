@@ -545,7 +545,8 @@ layer holds in Central Park is roughly its Forever-Wild-shaped corners — the R
 North Woods, the Hallett sanctuary — plus paved fragments. *Not absent* and *covered* are
 different claims, and only the first one was ever checked here.
 
-Where the rest of the park is, and what it would cost, is §12f.
+Where the rest of the park is, and what it would cost, is §12f; the decisions it raises are
+[#1533](https://github.com/OurHike/OurHike/issues/1533).
 
 Three things the registration carries that a reader should know before trusting a line:
 

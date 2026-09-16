@@ -178,7 +178,7 @@ def test_a_real_jpeg_lands_in_the_content_addressed_store(monkeypatch, requests_
 
     assert got is not None
     assert got.width == 250 and got.height == 188
-    assert fetch.local_photo_path(tmp_path, got.digest).exists()
+    assert fetch.archive_photo_path(tmp_path, got.digest).exists()
 
 
 def test_a_failed_request_is_one_missing_photo_rather_than_a_dead_run(monkeypatch, requests_mock, tmp_path):
@@ -412,3 +412,40 @@ def test_identical_captures_collapse_to_one_row(monkeypatch, requests_mock):
     fetch.latest_captures(_session())
 
     assert requests_mock.request_history[0].qs["collapse"] == ["digest"]
+
+
+class TestTheRecoveredBytesStayOutOfThePublishedStore:
+    """#1504. `publish.py`'s `collect_photos()` uploads `data/raw/poi_photos/`
+    WHOLE - every file in it, referenced by an artifact or not. This recovery
+    selects photographs by DIRECTORY PREFIX, and `u26` is a site-wide Drupal
+    upload folder wider than the permission `sources.json`'s
+    `nynjtc_hikes_licence` grants. Writing into the shared store therefore put
+    a publish run between an unreviewed corpus and a public bucket, with
+    nothing in between that had to be remembered.
+
+    The separate directory is the gate that cannot be forgotten. These tests
+    are the ones that fail if somebody tidies it back.
+    """
+
+    def test_the_bytes_do_not_land_in_the_store_publish_uploads(self, monkeypatch, requests_mock, tmp_path):
+        _no_sleep(monkeypatch)
+        capture = fetch.Capture("https://www.nynjtc.org/sites/default/files/u26/a.jpg", "20240103091500", 100)
+        requests_mock.get(capture.fetch_url, content=jpeg_bytes(250, 188))
+
+        got = fetch.recover(_session(), capture, tmp_path)
+
+        assert not (tmp_path / "poi_photos").exists()
+        assert (tmp_path / fetch.ARCHIVE_STORE_DIRNAME / f"{got.digest}.jpg").exists()
+
+    def test_the_key_is_still_the_digest_so_a_confirmed_row_can_be_copied_across(self, monkeypatch, requests_mock, tmp_path):
+        """Separate directory, same content-addressed naming. A row a person
+        confirms is one file copy from the published store, and the digest that
+        names it there is the digest the sheet and the matcher already carry."""
+        _no_sleep(monkeypatch)
+        capture = fetch.Capture("https://www.nynjtc.org/sites/default/files/u26/a.jpg", "20240103091500", 100)
+        requests_mock.get(capture.fetch_url, content=jpeg_bytes(250, 188))
+
+        got = fetch.recover(_session(), capture, tmp_path)
+
+        assert fetch.archive_photo_path(tmp_path, got.digest).name == f"{got.digest}.jpg"
+        assert fetch.archive_photo_path(tmp_path, got.digest).parent.name == fetch.ARCHIVE_STORE_DIRNAME

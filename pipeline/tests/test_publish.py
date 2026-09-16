@@ -566,6 +566,94 @@ def test_collect_photos_leaves_face_gate_held_bytes_out_of_the_upload_set(tmp_pa
     assert photo_key(digests["refused"]) not in collected
 
 
+class TestTheArchiveReviewGate:
+    """#1504, and the bucket half of it.
+
+    `fetch_wayback_hike_photos.py` recovers NYNJTC's Drupal-era photographs by
+    DIRECTORY PREFIX - `u26` is a site-wide upload folder, wider than the
+    Favorite Hikes `sources.json`'s `nynjtc_hikes_licence` covers - and 9 of
+    the 403 it recovered carry a photographer's name anywhere. That licence
+    makes the credit "a condition rather than a courtesy". `collect_photos()`
+    uploads the store WHOLE, so without this gate a publish distributes
+    several hundred photographs on a permission that does not reach them.
+
+    The fetcher now writes to a store of its own, which is the gate that
+    cannot be forgotten. This one is for a tree that still has the bytes in
+    the old place - the same argument the face gate (#836) already makes, and
+    the same shape of answer.
+    """
+
+    def _recovered(self, tmp_path, digests, cleared=()):
+        (tmp_path / "wayback_hike_photos.json").write_text(
+            json.dumps({"photos": [{"digest": digest} for digest in digests]}), encoding="utf-8"
+        )
+        reference = tmp_path / "reference"
+        reference.mkdir(exist_ok=True)
+        (reference / "nynjtc_hike_photos.json").write_text(
+            json.dumps({"photos": [{"digest": digest, "hike_id": "1"} for digest in cleared]}), encoding="utf-8"
+        )
+        return reference / "nynjtc_hike_photos.json"
+
+    def test_a_recovered_photograph_nobody_confirmed_is_held_from_the_bucket(self, tmp_path, monkeypatch):
+        cleared_path = self._recovered(tmp_path, ["a" * 64, "b" * 64])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+
+        held, cleared = publish.archive_photos_awaiting_review(cleared_path=cleared_path)
+
+        assert held == {"a" * 64, "b" * 64}
+        assert cleared == 0
+
+    def test_a_row_a_person_confirmed_is_released(self, tmp_path, monkeypatch):
+        """The other direction, because a gate that never opens is a deletion.
+        reference/nynjtc_hike_photos.json is a person saying this photograph is
+        of this hike - the standard #1450 set - and that is what earns the
+        upload."""
+        cleared_path = self._recovered(tmp_path, ["a" * 64, "b" * 64], cleared=["a" * 64])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        held, cleared = publish.archive_photos_awaiting_review(cleared_path=cleared_path)
+
+        assert held == {"b" * 64}
+        assert cleared == 1
+
+    def test_no_recovery_in_this_tree_holds_nothing(self, tmp_path, monkeypatch):
+        """Every other photo source must publish exactly as before. A gate that
+        fires on a tree the recovery never touched would be a silent outage."""
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        assert publish.archive_photos_awaiting_review(cleared_path=tmp_path / "absent.json") == (set(), 0)
+
+    def test_an_unreadable_manifest_clears_nothing_rather_than_everything(self, tmp_path, monkeypatch):
+        """The failure direction that matters. A manifest this cannot parse
+        cannot say which digests are safe, and under a licence conditioned on
+        the credit the honest answer is to release none of them - a re-run
+        costs a fetch, a wrong publish cannot be taken back."""
+        (tmp_path / "wayback_hike_photos.json").write_text("{ truncated", encoding="utf-8")
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        assert publish.archive_photos_awaiting_review(cleared_path=tmp_path / "absent.json") == (set(), 0)
+
+    def test_collect_photos_leaves_the_held_bytes_out_of_the_upload_set(self, tmp_path, monkeypatch):
+        """End to end, through the function that actually feeds the uploader -
+        because the gate only counts where `collect_photos()` reads it."""
+        photos_dir = tmp_path / PHOTOS_DIRNAME
+        photos_dir.mkdir()
+        digests = {}
+        for name, content in (("confirmed", b"\xff\xd8 confirmed"), ("awaiting", b"\xff\xd8 awaiting")):
+            digests[name] = photo_digest(content)
+            (photos_dir / f"{digests[name]}.jpg").write_bytes(content)
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert photo_key(digests["confirmed"]) in collected
+        assert photo_key(digests["awaiting"]) not in collected
+
+
 def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, local_photos):
     """A photo only becomes visible through a poi artifact that references
     it; that artifact's bytes changing is the real event. Bumping the version
@@ -1992,3 +2080,43 @@ def test_nothing_collected_without_writes_is_still_an_ordinary_empty_run(monkeyp
     assert result["version_written"] is False
     assert result["uploaded"] == []
     assert "No exported artifacts found" in capsys.readouterr().out
+
+
+class TestTheConfirmFileHasNoSchema:
+    """#1504's other half of the archive gate. `reference/nynjtc_hike_photos.json`
+    does not exist yet - a person will write it by hand, most likely from
+    `wayback_photo_matches.json`, whose rows sit under `matches` rather than
+    `photos`. A reader accepting only one key would take the other file as
+    EMPTY and hold every photograph for ever, logging "0 cleared" - which is
+    indistinguishable from nobody having confirmed anything.
+    """
+
+    def test_rows_under_matches_clear_as_readily_as_rows_under_photos(self, tmp_path):
+        for key in ("photos", "matches"):
+            path = tmp_path / f"{key}.json"
+            path.write_text(json.dumps({key: [{"digest": "a" * 64, "hike_id": "1"}]}), encoding="utf-8")
+
+            assert publish._digests_in(path) == {"a" * 64}, key
+
+    def test_a_bare_list_works_too(self, tmp_path):
+        path = tmp_path / "bare.json"
+        path.write_text(json.dumps([{"digest": "a" * 64}]), encoding="utf-8")
+
+        assert publish._digests_in(path) == {"a" * 64}
+
+    def test_a_shape_it_cannot_read_clears_nothing_rather_than_crashing(self, tmp_path):
+        """The safe direction: an unreadable confirm file withholds."""
+        for content in ("{ truncated", json.dumps({"photos": "not a list"}), json.dumps(42)):
+            path = tmp_path / "odd.json"
+            path.write_text(content, encoding="utf-8")
+
+            assert publish._digests_in(path) == set(), content[:20]
+
+    def test_a_recovered_manifest_whose_root_is_a_list_takes_the_safe_branch(self, tmp_path, monkeypatch):
+        """It raised AttributeError, which the adjacent `except ValueError` does
+        not catch - so an oddly-shaped file crashed the publish rather than
+        holding everything, which is the opposite of what that branch is for."""
+        (tmp_path / "wayback_hike_photos.json").write_text(json.dumps([{"digest": "a" * 64}]), encoding="utf-8")
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        assert publish.archive_photos_awaiting_review(cleared_path=tmp_path / "absent.json") == (set(), 0)

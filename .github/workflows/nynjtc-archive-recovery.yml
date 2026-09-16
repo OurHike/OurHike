@@ -137,13 +137,39 @@ jobs:
       # A RESTORE may use the run-id idiom, and does: it stores nothing, and
       # `key` + `restore-keys` is the documented way to say "never hit
       # exactly, take the most recent match by prefix".
-      - name: What earlier stages already fetched
+      # TWO RESTORES, AND THE FIRST ONE IS NOT REDUNDANT (#1504).
+      #
+      # actions/cache derives a hidden "version" from the PATH LIST, and only
+      # matches entries saved under the same one. Every entry earlier runs
+      # saved names `poi_photos`, so the new list below misses all of them -
+      # the restore comes back empty, the move finds nothing to move, and the
+      # stage re-fetches 403 images and 439 write-ups from the host that
+      # refused this client on 2026-09-15. Caught in review before a dispatch
+      # spent it.
+      #
+      # So this step keeps the OLD list, unchanged, purely so those entries
+      # still match. It can be deleted once a run has saved under the new
+      # one and the maintainer is content to lose the legacy entry.
+      - name: What earlier stages fetched, before the store moved
         uses: actions/cache/restore@v4
         with:
           path: |
             pipeline/data/raw/wayback_hike_pages.json
             pipeline/data/raw/wayback_hike_photos.json
             pipeline/data/raw/poi_photos
+          key: nynjtc-archive-recovery-data-${{ github.run_id }}
+          restore-keys: |
+            nynjtc-archive-recovery-data-
+
+      # ...and this one takes the current shape. Second, so its manifests win
+      # where both entries exist: it is the newer of the two by construction.
+      - name: What earlier stages already fetched
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            pipeline/data/raw/wayback_hike_pages.json
+            pipeline/data/raw/wayback_hike_photos.json
+            pipeline/data/raw/wayback_photos
           key: nynjtc-archive-recovery-data-${{ github.run_id }}
           restore-keys: |
             nynjtc-archive-recovery-data-
@@ -160,11 +186,53 @@ jobs:
               echo "absent:   $f - this stage starts from nothing"
             fi
           done
-          if [ -d data/raw/poi_photos ]; then
-            echo "restored: data/raw/poi_photos ($(find data/raw/poi_photos -type f | wc -l) images)"
+          if [ -d data/raw/wayback_photos ]; then
+            echo "restored: data/raw/wayback_photos ($(find data/raw/wayback_photos -type f | wc -l) images)"
           else
-            echo "absent:   data/raw/poi_photos"
+            echo "absent:   data/raw/wayback_photos"
           fi
+
+      # ONE-TIME, and it is here rather than in a script because it is about
+      # the CACHE rather than about the pipeline (#1504). Earlier runs wrote
+      # the recovered bytes into data/raw/poi_photos/ - the store publish.py
+      # uploads whole - and the fetcher now writes to a store of its own so a
+      # publish can never sweep an unreviewed corpus into a public bucket.
+      #
+      # Without this, the first run after that change restores a cache whose
+      # images are all in the old place, finds the new one empty and re-fetches
+      # 403 images from an archive that has already refused this client once.
+      # Moving them costs nothing and asks the archive for nothing.
+      #
+      # EVERY image in it, not only the ones the manifest still names. In
+      # THIS workflow `poi_photos/` can hold nothing else: the cache entry
+      # restored above is the only thing that creates it, and this job runs no
+      # other photo fetch. Keying the move on the manifest instead would leave
+      # behind exactly the images whose manifest row went stale - which are
+      # the ones nothing downstream can account for, and so the ones least
+      # safe to leave sitting in the store publish.py uploads whole.
+      - name: Move an older run's recovered images out of the published store
+        run: |
+          python - <<'PY'
+          import pathlib, shutil
+          raw = pathlib.Path("data/raw")
+          old, new = raw / "poi_photos", raw / "wayback_photos"
+          if not old.is_dir():
+              print("nothing to move: data/raw/poi_photos does not exist")
+              raise SystemExit(0)
+          new.mkdir(parents=True, exist_ok=True)
+          moved = 0
+          for source in old.glob("*.jpg"):
+              target = new / source.name
+              # Content-addressed, so a name collision is the same bytes.
+              if target.exists():
+                  source.unlink()
+              else:
+                  shutil.move(str(source), str(target))
+              moved += 1
+          shutil.rmtree(old, ignore_errors=True)
+          print(f"moved {moved} recovered image(s) out of data/raw/poi_photos")
+          print(f"data/raw/wayback_photos now holds {len(list(new.glob('*.jpg')))}")
+          PY
 
       # Said out loud before anything runs, because "0 photographs" and "the
       # archive would not talk to us" look identical in a log and mean
@@ -260,7 +328,7 @@ jobs:
       # hundreds of them would be paying to move bytes the next run would
       # re-derive" - true of the next RUN, and irrelevant to the only reader
       # this artifact has. write_sheet() renders
-      # <img src="../raw/poi_photos/{digest}.jpg">, so without them a person
+      # <img src="../raw/wayback_photos/{digest}.jpg">, so without them a person
       # downloads an HTML file of broken image icons.
       #
       # That is not a cosmetic loss. The whole design of this join is that a
@@ -297,7 +365,7 @@ jobs:
           path: |
             pipeline/data/raw/wayback_hike_pages.json
             pipeline/data/raw/wayback_hike_photos.json
-            pipeline/data/raw/poi_photos
+            pipeline/data/raw/wayback_photos
           key: nynjtc-archive-recovery-data-${{ hashFiles('pipeline/data/raw/wayback_hike_pages.json', 'pipeline/data/raw/wayback_hike_photos.json') }}
 
       - uses: actions/upload-artifact@v4
@@ -308,7 +376,7 @@ jobs:
             pipeline/*.log
             pipeline/data/raw/wayback_hike_pages.json
             pipeline/data/raw/wayback_hike_photos.json
-            pipeline/data/raw/poi_photos
+            pipeline/data/raw/wayback_photos
             pipeline/data/processed/wayback_photo_review.html
             pipeline/data/processed/wayback_photo_matches.json
           retention-days: 14

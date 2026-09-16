@@ -39,6 +39,7 @@ host that was already refusing us.
 from __future__ import annotations
 
 import argparse
+import html as html_module
 import json
 import re
 import sys
@@ -55,6 +56,24 @@ from lib.wayback_rate import ARCHIVE, MAX_REQUESTS_PER_MINUTE
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 OUT_PATH = RAW_DIR / "wayback_hike_pages.json"
+
+#: What this parser reads out of a write-up, as a number the cache carries.
+#:
+#: A RESUMED RUN SKIPS EVERY URL ALREADY IN THE CACHE, which is the whole
+#: point of the cache and is wrong the moment the parser learns something new:
+#: the rows are what an OLDER parser saw, and no amount of re-running reaches
+#: them. Two changes have now done that - #1502 taught `coordinates()` the
+#: bare pair these pages actually publish, and #1504 added the photographer's
+#: credit - and in both cases a cached row is silently missing the new field.
+#:
+#: So the cache declares which parser wrote it, and a run that finds an older
+#: number re-reads every write-up rather than resuming onto a cache it cannot
+#: trust. That costs 878 archive requests, which is the price of the answer
+#: being right; the alternative is a corpus reporting no coordinates and no
+#: credits and looking exactly like one that has none.
+#:
+#: BUMP THIS whenever `parse_page` extracts something it did not before.
+CACHE_FORMAT = 2
 
 CDX_API = "https://web.archive.org/cdx/search/cdx"
 WAYBACK = "https://web.archive.org/web"
@@ -85,6 +104,61 @@ _HIKE_HREF_RE = re.compile(r'href="([^"]*?/(?:hike|node)/[^"#?]+)"', re.I)
 _TITLE_RE = re.compile(r"<title>(.*?)</title>", re.I | re.S)
 _U26_IMG_RE = re.compile(r'src="([^"]*?/u26/[^"]+\.(?:jpe?g|JPE?G))"')
 _TAG_RE = re.compile(r"<[^>]+>")
+
+#: THE LICENCE'S CONDITION, AS A REGEX (#1504).
+#:
+#: sources.json's `nynjtc_hikes_licence` does not merely ask for a credit, it
+#: makes one the condition of the permission: "the attribution is a condition
+#: rather than a courtesy: every photograph ships with the credit line the
+#: page carries ('Photo by Daniel Chazin', 'Photo: Jane Daniels') ... and a
+#: photograph the page does not credit is not fetched at all". So finding the
+#: credit is not a nicety this parser adds; it is the thing that decides
+#: whether a photograph may be used at all.
+#:
+#: MEASURED, on the wrong corpus. This pattern is carried verbatim from
+#: `lib/nynjtc_hikes.py` as that module stood at c3be84f8^, where its comment
+#: recorded the three spellings as measured across NYNJTC's twenty public
+#: WordPress write-ups on 2026-09-09: "Photo by Daniel Chazin", "Photo: Jane
+#: Daniels", "Photo credit: Daniela Wagstaff". Reusing it is better than
+#: inventing one, because somebody did look at real pages to write it.
+#:
+#: @unvalidated AGAINST THESE PAGES. The archived corpus is the OLDER DRUPAL
+#: site, a different CMS and a different theme, and nobody has read one of its
+#: credit lines. What settles it is `--probe`, whose credit block already asks
+#: exactly this question and has not yet got an answer past the archive's
+#: throttle. Until it does, the direction of the error is the thing to be sure
+#: of, and it is the safe one: a spelling this misses withholds a photograph,
+#: it never ships an uncredited one.
+_PHOTO_BY = re.compile(r"Photo(?:graph)?(?:\s+credit)?\s*(?:\bby\b|:)\s*([^.,;()\-\u2013\u2014]+)", re.IGNORECASE)
+
+#: Which attributes on an `<img>` can hold a credit. Read as VALUES rather
+#: than by running _PHOTO_BY over the raw tag: the pattern stops at
+#: punctuation, and a tag ends in `" />`, so matching the tag text returned
+#: `Daniel Chazin" />` as the photographer's name. Caught by a smoke test
+#: before this ever ran, and the reason the tag is parsed rather than scanned.
+_CREDIT_ATTR_RE = re.compile(r'\b(?:alt|title)="([^"]*)"', re.IGNORECASE)
+
+#: The longest a photographer's name may be before this stops believing it.
+#:
+#: NOT a fact about names - it is a guard on the pattern. _PHOTO_BY ends its
+#: capture at punctuation, and a credit whose sentence has none runs on into
+#: whatever follows: the same smoke test returned "Daniela Wagstaff" followed
+#: by 500 characters of body text. A capture this long is evidence the
+#: pattern did not find the end of the name, so the honest answer is no
+#: credit rather than a name with a paragraph stapled to it - which, under a
+#: licence conditioned on the credit, is also the only safe answer.
+MAX_CREDIT_CHARS = 60
+
+#: How far past an `<img>` a caption may sit and still be that image's caption.
+#:
+#: @unvalidated - 600 characters is a guess at a Drupal caption block, not a
+#: measurement, and `--probe` prints the surroundings that would replace it.
+CAPTION_WINDOW_CHARS = 600
+
+#: Tags that close nothing, so a scanner counting depth must not wait for
+#: their closing tag. The HTML void elements, plus anything written `<x />`.
+_VOID_TAGS = frozenset({"img", "br", "hr", "input", "meta", "link", "source", "area", "base", "col", "embed"})
+_TAG_SHAPE_RE = re.compile(r"<\s*(/?)\s*([a-zA-Z][a-zA-Z0-9]*)[^>]*?(/?)\s*>")
 
 #: Drupal field labels on these write-ups. Read off the live markup rather
 #: than assumed - a label this build guessed at would silently return nothing
@@ -130,6 +204,29 @@ _LATLON_RES = (
 
 
 @dataclass(frozen=True)
+class PagePhoto:
+    """One photograph a write-up showed, and whether the page credits it.
+
+    THE CREDIT IS WHY THIS IS A RECORD RATHER THAN A STRING (#1504). It was a
+    bare filename until the licence was read properly: `nynjtc_hikes_licence`
+    conditions the whole permission on the credit line, and a filename cannot
+    carry one. Nothing downstream may offer a photograph whose `credit` is
+    None - absent means unknown and unusable here, never "ship it
+    uncredited".
+    """
+
+    filename: str
+    #: The photographer the page names, or None when it names nobody.
+    credit: str | None
+    #: WHERE that name was found - `img`, `caption` or `page, sole
+    #: photograph`. Carried because the three are not equally strong claims
+    #: about WHICH photograph is credited, and a reviewer deciding whether to
+    #: publish one should be told which of them they are looking at rather
+    #: than handed a name with no provenance.
+    credit_basis: str | None
+
+
+@dataclass(frozen=True)
 class HikePage:
     """One archived write-up, as the fields a match needs."""
 
@@ -141,10 +238,13 @@ class HikePage:
     lat: float | None
     lon: float | None
     description: str
-    #: The u26 filenames this page shows. THE JOIN: these are the same files
+    #: The u26 photographs this page shows, each with the credit the page
+    #: gives it. THE JOIN: these filenames are the same files
     #: fetch_wayback_hike_photos.py recovers, so a photograph's hike is read
-    #: off the page rather than scored.
-    photos: list[str]
+    #: off the page rather than scored - AND the page is the only place the
+    #: licence's required credit can come from, which is why these are
+    #: records rather than names (#1504).
+    photos: list[PagePhoto]
 
 
 def session() -> requests.Session:
@@ -271,6 +371,160 @@ def coordinates(markup: str) -> tuple[float, float] | None:
     return None
 
 
+def text_nodes(markup: str) -> list[str]:
+    """Each run of text between tags, unescaped, in order.
+
+    The unit a credit is searched in, and deliberately NOT `strip_tags`'s one
+    long string. A credit is written as its own caption or paragraph, so the
+    tag boundary IS the end of the name - and flattening the tags away
+    deletes exactly the boundary that stops _PHOTO_BY reading on into the
+    next sentence.
+
+    KNOWN MISS, and left as one on purpose: a credit split across a tag
+    ("Photo by <a>Daniel Chazin</a>") arrives here as two nodes and matches
+    nothing, so that photograph is withheld. Joining the nodes to catch it
+    would also join two unrelated paragraphs and could name the wrong
+    photographer - and misattributing a real person's work is a worse failure
+    than not publishing a picture. `--probe` is what says whether these pages
+    write it that way at all.
+    """
+    return [text for text in (html_module.unescape(chunk).strip() for chunk in _TAG_RE.split(markup)) if text]
+
+
+def enclosing_caption(markup: str, start: int, stop: int) -> str:
+    """The markup from `start` that is still INSIDE the image's own container.
+
+    THE BOUND THAT STOPS A MIS-ATTRIBUTION, and two weaker ones did not.
+
+    Bounding only by the next u26 image is enough for a gallery and nothing
+    for the LAST image on a page: there is no next image, so the window ran
+    on, and `<div><img></div><div id=footer><p>Photo by Daniel Chazin</p>`
+    credited the article's photograph to the site's footer. Review reproduced
+    that. Counting text runs instead does not fix it either - `</p></div>
+    <div id=footer><p>` yields no text at all, so the footer's credit is
+    still the second run.
+
+    What separates a caption from a footer is STRUCTURE, so that is what is
+    measured: walk forward counting tags, and stop at the first closing tag
+    that would leave the element the image was in. A caption sits beside the
+    picture inside that element; a footer is outside it by construction.
+
+    Text already written before that closing tag is kept, so
+    `<p>… <img> Photo by X</p>` - an image inline in a paragraph - still
+    yields its own paragraph.
+    """
+    depth = 0
+    for tag in _TAG_SHAPE_RE.finditer(markup, start, stop):
+        closing, name, self_closing = tag.group(1), tag.group(2).lower(), tag.group(3)
+        if closing:
+            if depth == 0:
+                return markup[start : tag.start()]
+            depth -= 1
+        elif not self_closing and name not in _VOID_TAGS:
+            depth += 1
+    return markup[start:stop]
+
+
+def photo_credit(*texts: str) -> str | None:
+    """The photographer named in any of these fragments, or None.
+
+    Carried from `lib/nynjtc_hikes.photo_credit` (at c3be84f8^, before the
+    WordPress fetcher it belonged to was withdrawn under #1427) so the two
+    roads to NYNJTC's photographs answer the licence's condition the same
+    way rather than two ways. MAX_CREDIT_CHARS is the one thing added to it,
+    for the reason recorded there.
+
+    TAKES TEXT, NOT MARKUP. Both callers unescape before handing anything
+    over, because _PHOTO_BY stops at `;` and would cut a name at an entity.
+    Unescaping again here would turn a page's literal `Smith &amp;amp; Co`
+    into `Smith & Co` - a credit that is not what the page says, which on a
+    licence conditioned on the credit is the one thing this must not invent.
+    """
+    for text in texts:
+        found = _PHOTO_BY.search(text or "")
+        if found:
+            name = " ".join(found.group(1).split()).strip()
+            if name and len(name) <= MAX_CREDIT_CHARS:
+                return name
+    return None
+
+
+def page_photos(markup: str) -> list[PagePhoto]:
+    """Every u26 photograph this page shows, with the credit the page gives it.
+
+    TWO PLACES A CREDIT MAY BE READ FROM, and both are ATTACHED to the image
+    rather than merely present on the page:
+
+    1. `img` - inside the `<img>` tag itself, in its alt or title text. Names
+       the photograph directly and cannot be confused with another.
+    2. `caption` - the markup after the tag that is still inside the image's
+       own container (`enclosing_caption`), stopping at the next u26 image or
+       CAPTION_WINDOW_CHARS, whichever comes first. The WordPress corpus put
+       the credit in the
+       paragraph under the figure on six of twenty pages (measured
+       2026-09-09, `lib/nynjtc_hikes.py` at c3be84f8^), so "outside the tag"
+       is where a credit demonstrably lives and not a case invented here.
+
+    THERE WAS A THIRD AND IT WAS WRONG. `page, sole photograph` read a credit
+    from anywhere in the document when the page showed exactly one u26 image,
+    on the argument that there was then nothing else it could be about. There
+    was: "sole" counted only u26 images, so a page with a news teaser
+    elsewhere - `<img src="/news/bear.jpg"><p>Bears return. Photo by Jane
+    Daniels</p>` - handed Jane Daniels' name to an entirely different
+    photograph, which review reproduced. Nothing measured supported the route
+    (the six WordPress pages put their credits in the caption, which route 2
+    reads), and attaching a real photographer's name to somebody else's
+    picture is the worst thing this parser can do. So it is gone rather than
+    narrowed: a route that cannot be made safe without markup nobody has seen
+    is a route to leave out until `--probe` has seen it.
+
+    WHAT REMAINS IS THE SAFETY ARGUMENT. Both surviving routes are bounded to
+    the image, so the only thing a missing credit causes is a photograph being
+    withheld - the direction CLAUDE.md's "omit rather than guess" asks for on
+    a licence condition as much as on a water distance.
+
+    A filename shown twice (a thumbnail and the full image are one photograph)
+    is deduped, keeping the strongest credit found for it.
+    """
+    hits = list(_U26_IMG_RE.finditer(markup))
+
+    found: dict[str, PagePhoto] = {}
+    for index, hit in enumerate(hits):
+        filename = urllib.parse.unquote(hit.group(1).rsplit("/", 1)[-1])
+
+        # The tag this src sits in: back to its "<" and forward to its ">",
+        # so alt= and title= are read whichever side of src= they were written.
+        opened = markup.rfind("<", 0, hit.start())
+        closed = markup.find(">", hit.end())
+        tag = markup[opened if opened != -1 else hit.start() : closed + 1 if closed != -1 else hit.end()]
+
+        # ...and the markup after it, bounded by the next photograph so a
+        # gallery cannot hand this one's credit to the next.
+        after_from = closed + 1 if closed != -1 else hit.end()
+        after_to = after_from + CAPTION_WINDOW_CHARS
+        if index + 1 < len(hits):
+            after_to = min(after_to, hits[index + 1].start())
+        caption = enclosing_caption(markup, after_from, max(after_from, after_to))
+
+        # Unescaped BEFORE matching, not after: _PHOTO_BY stops at `;`, so
+        # `alt="Photo by Jos&eacute; Ramos"` matched as written returns the
+        # surname-less "Jos&eacute". text_nodes() already does this, which is
+        # why only the attribute route needed saying.
+        attributes = [html_module.unescape(value) for value in _CREDIT_ATTR_RE.findall(tag)]
+
+        credit, basis = photo_credit(*attributes), "img"
+        if credit is None:
+            credit, basis = photo_credit(*text_nodes(caption)), "caption"
+        if credit is None:
+            basis = None
+
+        previous = found.get(filename)
+        if previous is None or (previous.credit is None and credit is not None):
+            found[filename] = PagePhoto(filename=filename, credit=credit, credit_basis=basis)
+
+    return sorted(found.values(), key=lambda photo: photo.filename)
+
+
 def parse_page(markup: str, url: str, timestamp: str) -> HikePage | None:
     """One write-up's fields, or None when this is not a hike page at all."""
     title = _TITLE_RE.search(markup)
@@ -287,7 +541,7 @@ def parse_page(markup: str, url: str, timestamp: str) -> HikePage | None:
         found = pattern.search(markup)
         fields[key] = strip_tags(found.group(1)).strip() if found else None
 
-    photos = [urllib.parse.unquote(src.rsplit("/", 1)[-1]) for src in _U26_IMG_RE.findall(markup)]
+    photos = page_photos(markup)
     where = coordinates(markup)
 
     body = strip_tags(markup)
@@ -300,7 +554,7 @@ def parse_page(markup: str, url: str, timestamp: str) -> HikePage | None:
         lat=where[0] if where else None,
         lon=where[1] if where else None,
         description=body[:4000],
-        photos=sorted(dict.fromkeys(photos)),
+        photos=photos,
     )
 
 
@@ -312,10 +566,28 @@ def load_done(path: Path | None = None) -> dict[str, HikePage]:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
+    if document.get("format") != CACHE_FORMAT:
+        # SAID OUT LOUD, because the first version of this dropped the rows
+        # in silence. `HikePage(**row)` raised TypeError on a pre-#1504 row
+        # (its `photos` were bare strings), the `except` swallowed it, and
+        # `main()`'s "N already recovered" line is inside an `if pages:` - so
+        # a run resumed onto a 439-page cache printed nothing at all and
+        # re-fetched the lot. Losing the cache is the RIGHT answer here;
+        # losing it without telling anybody is not.
+        print(f"  {path.name} was written by parser format {document.get('format')!r}, this is {CACHE_FORMAT}.")
+        print("  Re-reading every write-up: the cached rows predate the coordinate (#1502)")
+        print("  and credit (#1504) parsers, and a resumed run would never revisit them.")
+        return {}
     done = {}
     for row in document.get("pages", []):
         try:
-            done[row["url"]] = HikePage(**row)
+            fields = dict(row)
+            # asdict() flattened the records on the way out; rebuild them, or
+            # a resumed run would carry dicts where the rest of this module
+            # expects PagePhoto and lose the credit gate on every page it
+            # did not fetch itself.
+            fields["photos"] = [PagePhoto(**photo) for photo in fields.get("photos") or []]
+            done[row["url"]] = HikePage(**fields)
         except (TypeError, KeyError):
             continue
     return done
@@ -328,6 +600,7 @@ def write_cache(pages: list[HikePage], links: list[str], path: Path | None = Non
         json.dumps(
             {
                 "source": "web.archive.org",
+                "format": CACHE_FORMAT,
                 "index": INDEX_URL,
                 "one_time": True,
                 "listed": len(links),
@@ -413,10 +686,11 @@ def probe(made, url: str) -> int:
     # guessing which would repeat exactly the mistake that made coordinates()
     # return None on 439 pages.
     print()
-    found = list(_U26_IMG_RE.finditer(markup))
-    print(f"  {len(found)} u26 image(s)")
-    for hit in found[:4]:
-        print(f"    {urllib.parse.unquote(hit.group(1).rsplit('/', 1)[-1])}")
+    parsed = page_photos(markup)
+    print(f"  {len(parsed)} u26 image(s), as page_photos() reads them")
+    for photo in parsed[:6]:
+        credit = f"{photo.credit} (from {photo.credit_basis})" if photo.credit else "NO CREDIT - unusable"
+        print(f"    {photo.filename}  ->  {credit}")
 
     # THE CREDIT, asked directly rather than by dumping markup (#1504).
     #
@@ -499,16 +773,38 @@ def main(limit: int | None, index_only: bool) -> int:
     write_cache(pages, links)
 
     with_photo = [p for p in pages if p.photos]
+    with_credit = [p for p in pages if any(photo.credit for photo in p.photos)]
     with_coords = [p for p in pages if p.lat is not None]
+    shown = [photo for p in pages for photo in p.photos]
+    credited = [photo for photo in shown if photo.credit]
     print()
-    print(f"  listed          {len(links)}")
-    print(f"  recovered       {len(pages)}")
-    print(f"  carry a photo   {len(with_photo)}")
-    print(f"  carry a coord   {len(with_coords)}")
-    print(f"  archive refused {missed}")
+    print(f"  listed              {len(links)}")
+    print(f"  recovered           {len(pages)}")
+    print(f"  carry a photo       {len(with_photo)}")
+    print(f"  ...credited         {len(with_credit)}")
+    print(f"  carry a coord       {len(with_coords)}")
+    print(f"  archive refused     {missed}")
+    print()
+    print(f"  photographs shown   {len(shown)}")
+    print(f"  ...with a credit    {len(credited)}")
+    for basis in ("img", "caption", "page, sole photograph"):
+        count = sum(1 for photo in credited if photo.credit_basis == basis)
+        if count:
+            print(f"      from {basis:22} {count}")
     print()
     print(f"  written to {OUT_PATH}")
     print("  Each photo filename here is a READ join to a hike, not a scored one.")
+    # THE NUMBER THAT DECIDES WHAT MAY SHIP (#1504). sources.json's
+    # nynjtc_hikes_licence makes the credit a condition, so "with a credit" is
+    # the size of the usable corpus and "photographs shown" is not. A zero
+    # here is a finding about the parser as much as about the pages - see
+    # _PHOTO_BY, which is @unvalidated against this Drupal markup - and
+    # `--probe` is what tells the two apart.
+    if shown and not credited:
+        print()
+        print("  NOT ONE of those photographs carries a credit this parser can see.")
+        print("  That is either the corpus or _PHOTO_BY missing the Drupal spelling;")
+        print("  run --probe on one of these URLs before believing either.")
     return 0
 
 

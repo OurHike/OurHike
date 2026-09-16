@@ -157,7 +157,7 @@ def test_a_write_up_yields_name_park_location_photo_and_prose():
     assert page.park == "Wawayanda State Park"
     assert page.region == "North Jersey"
     assert page.lat == pytest.approx(41.1604)
-    assert page.photos == ["Beaver Lodge in swamp on Terrace Pond South Trail 250.jpg"]
+    assert [photo.filename for photo in page.photos] == ["Beaver Lodge in swamp on Terrace Pond South Trail 250.jpg"]
     assert "beaver lodge" in page.description.lower()
 
 
@@ -167,8 +167,8 @@ def test_the_photo_filename_matches_what_the_photo_fetcher_stores():
     without any scoring at all."""
     page = pages.parse_page(REAL_SHAPED_PAGE, "https://www.nynjtc.org/hike/x", "20190419182814")
 
-    assert page.photos[0].startswith("Beaver Lodge in swamp on Terrace Pond South Trail")
-    assert "%20" not in page.photos[0]
+    assert page.photos[0].filename.startswith("Beaver Lodge in swamp on Terrace Pond South Trail")
+    assert "%20" not in page.photos[0].filename
 
 
 def test_the_site_name_is_taken_off_the_title():
@@ -283,6 +283,7 @@ def test_a_previous_runs_pages_are_carried_forward(tmp_path):
     path.write_text(
         json.dumps(
             {
+                "format": pages.CACHE_FORMAT,
                 "pages": [
                     {
                         "url": "https://www.nynjtc.org/hike/a",
@@ -295,7 +296,7 @@ def test_a_previous_runs_pages_are_carried_forward(tmp_path):
                         "description": "x",
                         "photos": [],
                     }
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -519,3 +520,200 @@ def test_the_bare_pattern_is_last_in_the_list():
     before the labelled pattern ever ran."""
     assert pages._LATLON_RES[-1].pattern.startswith("(-?")
     assert "data-lat" in pages._LATLON_RES[1].pattern
+
+
+class TestTheCreditIsTheLicencesCondition:
+    """#1504. `sources.json`'s `nynjtc_hikes_licence` does not ask for a credit,
+    it CONDITIONS the permission on one: "the attribution is a condition rather
+    than a courtesy ... a photograph the page does not credit is not fetched at
+    all". The recovery this parser feeds selects by directory prefix, which is
+    wider than the permission, so whether a credit can be read off the page is
+    the thing that decides what may ever ship.
+
+    Every test here is about the DIRECTION of a wrong answer as much as the
+    answer: a credit this parser misses withholds a photograph, and no case
+    below may invent one or move one between photographs.
+    """
+
+    def test_a_credit_in_the_images_own_alt_text_is_read(self):
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Sunfish Pond. Photo by Daniel Chazin">')
+
+        assert [(p.filename, p.credit, p.credit_basis) for p in found] == [("a.jpg", "Daniel Chazin", "img")]
+
+    def test_the_title_attribute_counts_too(self):
+        found = pages.page_photos('<img title="Photo: Jane Daniels" src="/u26/a.jpg">')
+
+        assert found[0].credit == "Jane Daniels"
+
+    def test_a_credit_in_the_caption_under_the_image_is_read(self):
+        """The shape that actually carried the credit on six of NYNJTC's twenty
+        WordPress write-ups (measured 2026-09-09, lib/nynjtc_hikes.py at
+        c3be84f8^): a paragraph under the figure, not an attribute on it."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><div class="caption"><p>Looking north. Photo: Jane Daniels</p></div>')
+
+        assert (found[0].credit, found[0].credit_basis) == ("Jane Daniels", "caption")
+
+    def test_a_credit_elsewhere_on_the_page_is_not_this_photographs_credit(self):
+        """THE ROUTE THAT WAS REMOVED, kept as the case that must stay refused.
+
+        A third route once read a credit from anywhere in the document when
+        the page showed exactly one u26 image, on the argument that there was
+        nothing else it could be about. There was: "sole" counted only u26
+        images, so a news teaser elsewhere on the page handed ITS
+        photographer's name to the article's photograph. Nothing measured
+        supported the route, and attaching a real person's name to somebody
+        else's picture is the worst thing this parser can do.
+        """
+        markup = (
+            '<div class="teaser"><img src="/sites/default/files/news/bear.jpg">'
+            "<p>Bears return to Harriman. Photo by Jane Daniels</p></div>"
+            '<img src="/sites/default/files/u26/DSC00417.jpg">'
+        )
+
+        found = pages.page_photos(markup)
+
+        assert [(p.filename, p.credit) for p in found] == [("DSC00417.jpg", None)]
+
+    def test_a_credit_in_the_footer_is_not_the_last_photographs_caption(self):
+        """The bound that two weaker ones missed. Stopping at the next u26
+        image does nothing for the LAST image on a page, and counting text
+        runs does not either - `</p></div><div id=footer><p>` yields no text
+        at all, so the footer's credit is still the next run. What separates a
+        caption from a footer is structure, so `enclosing_caption` stops at
+        the first closing tag that leaves the image's own element."""
+        markup = (
+            '<div class="content"><img src="/u26/a.jpg"><p>A view north.</p></div>'
+            '<div id="footer"><p>Photo by Daniel Chazin</p></div>'
+        )
+
+        found = pages.page_photos(markup)
+
+        assert (found[0].credit, found[0].credit_basis) == (None, None)
+
+    def test_an_image_inline_in_a_paragraph_still_gets_that_paragraphs_credit(self):
+        """The other direction, because a bound that refuses everything is not
+        a bound. Text already written before the closing tag is kept, so a
+        picture set inside a paragraph reads its own paragraph."""
+        markup = '<p>The view north <img src="/u26/a.jpg"> Photo by Daniel Chazin</p><div id="footer">x</div>'
+
+        found = pages.page_photos(markup)
+
+        assert (found[0].credit, found[0].credit_basis) == ("Daniel Chazin", "caption")
+
+    def test_an_ampersand_in_a_name_survives_exactly_once(self):
+        """`photo_credit` must not unescape what its callers already
+        unescaped. `Photo by Smith &amp; Co` is a page that says "Smith & Co";
+        unescaping twice would turn a page that says `Smith &amp;amp; Co` into
+        one that does not, and inventing a credit is the one thing a licence
+        conditioned on the credit cannot tolerate."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><p>Photo by Smith &amp; Co</p>')
+
+        assert found[0].credit == "Smith & Co"
+
+    def test_a_cache_an_older_parser_wrote_is_re_read_rather_than_resumed_onto(self, tmp_path):
+        """A resumed run SKIPS every URL already cached, so a row an older
+        parser wrote is never revisited - it is silently missing whatever the
+        parser learned since. Two changes have done that (#1502's coordinate,
+        #1504's credit). The cache declares its format so the run re-reads
+        rather than reporting a corpus with no coordinates and no credits,
+        which looks exactly like a corpus that has none."""
+        path = tmp_path / "pages.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "pages": [
+                        {
+                            "url": "https://www.nynjtc.org/hike/a",
+                            "timestamp": "20190419182814",
+                            "name": "A Loop",
+                            "park": None,
+                            "region": None,
+                            "lat": None,
+                            "lon": None,
+                            "description": "x",
+                            "photos": ["a.jpg"],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        assert pages.load_done(path) == {}
+
+    def test_the_cache_this_parser_writes_is_one_it_will_resume_onto(self):
+        """...and the version it writes is the version it accepts, or every
+        run re-reads 439 write-ups for ever."""
+        assert pages.CACHE_FORMAT == 2
+
+    def test_a_gallery_cannot_hand_one_photographs_credit_to_the_one_before_it(self):
+        """The caption window stops at the NEXT u26 image, so a credit written
+        under the second picture belongs to the second picture."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><img src="/u26/b.jpg"><p>Photo by Daniel Chazin</p>')
+
+        assert [(p.filename, p.credit) for p in found] == [("a.jpg", None), ("b.jpg", "Daniel Chazin")]
+
+    def test_an_uncredited_photograph_says_so_rather_than_guessing(self):
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Bear Mountain from the south">')
+
+        assert (found[0].credit, found[0].credit_basis) == (None, None)
+
+    def test_a_name_that_runs_past_its_punctuation_is_refused_not_truncated(self):
+        """_PHOTO_BY ends its capture at punctuation, so a credit in a sentence
+        with none runs on into the body text. A capture that long is evidence
+        the pattern never found the end of the name, and under a licence
+        conditioned on the credit the honest answer is no credit at all."""
+        markup = "<p>Photo credit: Daniela Wagstaff " + ("word " * 40) + '</p><img src="/u26/a.jpg">'
+
+        assert pages.page_photos(markup)[0].credit is None
+
+    def test_the_photographers_name_survives_an_html_entity(self):
+        """Unescaped BEFORE matching: _PHOTO_BY stops at `;`, so matching the
+        raw attribute returned a surname-less "Jos&eacute"."""
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Photo by Jos&eacute; Ramos">')
+
+        assert found[0].credit == "Jos\u00e9 Ramos"
+
+    def test_the_credit_is_a_name_and_not_the_end_of_the_tag(self):
+        """The regression the first version of this shipped: running _PHOTO_BY
+        over raw tag markup captured `Daniel Chazin" />`, because the pattern
+        stops at punctuation and a tag ends in none of it. Attributes are read
+        as VALUES for this reason."""
+        found = pages.page_photos('<img src="/u26/a.jpg" alt="Photo by Daniel Chazin" />')
+
+        assert found[0].credit == "Daniel Chazin"
+
+    def test_one_photograph_shown_twice_keeps_the_credited_reading(self):
+        """A thumbnail and the full image are one photograph. The thumbnail
+        comes first and carries nothing; dropping the credit with the duplicate
+        would withhold a photograph the page does credit."""
+        found = pages.page_photos('<img src="/u26/styles/thumbnail/a.jpg"><img src="/u26/a.jpg" alt="Photo by Daniel Chazin">')
+
+        assert [(p.filename, p.credit) for p in found] == [("a.jpg", "Daniel Chazin")]
+
+    def test_a_credit_split_across_a_tag_withholds_rather_than_mis_attributes(self):
+        """A KNOWN MISS, asserted so it stays deliberate. Joining the text
+        either side of the <a> would catch this AND would join two unrelated
+        paragraphs elsewhere, which can name the wrong photographer. Withheld
+        is the direction to fail in; `--probe` is what says whether these pages
+        write it this way at all."""
+        found = pages.page_photos('<img src="/u26/a.jpg"><p>Photo by <a href="/bio">Daniel Chazin</a></p>')
+
+        assert found[0].credit is None
+
+    def test_a_resumed_run_rebuilds_the_records_rather_than_dicts(self, tmp_path):
+        """asdict() flattens PagePhoto on the way out. A resumed run that left
+        them as dicts would carry pages whose credits nothing downstream could
+        read - and the gate would then refuse photographs the page does credit.
+        """
+        cache = tmp_path / "pages.json"
+        written = pages.parse_page(
+            '<title>X</title><img src="/u26/a.jpg" alt="Photo by Daniel Chazin">',
+            "https://www.nynjtc.org/hike/x",
+            "20190419182814",
+        )
+        pages.write_cache([written], ["https://www.nynjtc.org/hike/x"], cache)
+
+        read = pages.load_done(cache)["https://www.nynjtc.org/hike/x"]
+
+        assert read.photos == [pages.PagePhoto(filename="a.jpg", credit="Daniel Chazin", credit_basis="img")]

@@ -286,7 +286,19 @@ def test_the_trials_correct_pairings_clear_the_floor():
 # only ever narrows, and that the one row which can never ship is ranked last.
 
 
-def _page(name, photos, lat=41.0, lon=-74.0, park="", region="", description="", url=None):
+def _page(name, photos, lat=41.0, lon=-74.0, park="", region="", description="", url=None, credit="Daniel Chazin"):
+    """A write-up whose photographs are CREDITED unless a test says otherwise.
+
+    Credited by default so the tests below stay about the join and the
+    ranking, which is what they were written for. The licence gate that
+    `credit=None` exercises has its own tests at the end of this file, where a
+    reader looking for it will find it named rather than inferred from a
+    fixture's default (#1504).
+    """
+    photos = [
+        photo if isinstance(photo, match.PagePhoto) else match.PagePhoto(filename=photo, credit=credit, credit_basis="img")
+        for photo in photos
+    ]
     return match.Page(
         url=url or f"https://www.nynjtc.org/hike/{name.lower().replace(' ', '-')}",
         timestamp="20240103091500",
@@ -428,15 +440,28 @@ def test_a_page_only_row_never_leads_the_sheet():
     answer - which it is, and it is certain about a write-up rather than about
     a photograph anyone can ship. Ranking certainty above usefulness buries
     every correct text match under work that cannot end in a photograph."""
-    unplaceable = match.Pairing(_photo("x"), _hike("Gone"), 0.0, basis=match.BASIS_PAGE_ONLY)
+    # CREDITED, so this pins the page-only rule rather than the licence gate.
+    # Without it `publishable` is False and the assertion below holds whatever
+    # `above_the_fold` does with `placed_by_page` - which review caught.
+    credited = match.PagePhoto("x.jpg", "Daniel Chazin", "img")
+    unplaceable = match.Pairing(
+        _photo("x"), _hike("Gone"), 0.0, basis=match.BASIS_PAGE_ONLY, page=_page("Gone", []), shown_as=credited
+    )
     weak_text = match.Pairing(_photo("y"), _hike("Real"), 0.01, basis=match.BASIS_SUBJECT)
 
+    assert unplaceable.publishable, "or this proves the credit gate, not the page-only rule"
     assert weak_text.rank < unplaceable.rank
     assert not match.above_the_fold(unplaceable, minimum=2.5)
 
 
 def test_a_placed_page_row_leads_even_when_the_words_share_nothing():
-    placed = match.Pairing(_photo("DSC00417"), _hike("Real"), 0.0, basis=match.BASIS_PAGE_NAME)
+    placed = match.Pairing(
+        _photo("DSC00417"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        shown_as=match.PagePhoto("DSC00417.jpg", "Daniel Chazin", "img"),
+    )
 
     assert match.above_the_fold(placed, minimum=2.5)
 
@@ -481,7 +506,10 @@ def test_a_photograph_cited_by_two_write_ups_keeps_the_first():
     first = _page("First Walk", shared, url="https://www.nynjtc.org/hike/a")
     second = _page("Second Walk", shared, url="https://www.nynjtc.org/hike/b")
 
-    assert match.pages_by_photo([first, second])["same.jpg"].name == "First Walk"
+    page, shown_as = match.pages_by_photo([first, second])["same.jpg"]
+
+    assert page.name == "First Walk"
+    assert shown_as.filename == "same.jpg"
 
 
 def test_the_matcher_still_means_what_it_meant_with_no_write_ups():
@@ -522,7 +550,7 @@ def test_load_pages_reads_exactly_what_the_fetcher_writes(tmp_path):
         lat=41.15,
         lon=-74.37,
         description="A loop past a beaver lodge.",
-        photos=["Beaver_Lodge.jpg"],
+        photos=[fetcher.PagePhoto(filename="Beaver_Lodge.jpg", credit="Daniel Chazin", credit_basis="img")],
     )
     cache = tmp_path / "wayback_hike_pages.json"
     fetcher.write_cache([written], ["https://www.nynjtc.org/hike/terrace-pond-south"], cache)
@@ -531,7 +559,10 @@ def test_load_pages_reads_exactly_what_the_fetcher_writes(tmp_path):
 
     assert len(read) == 1
     assert read[0].name == written.name
-    assert read[0].photos == written.photos
+    # Field for field, ACROSS THE JSON: the credit is the licence's condition,
+    # so a round trip that lost it would refuse photographs NYNJTC does
+    # credit (#1504).
+    assert read[0].photos == [match.PagePhoto("Beaver_Lodge.jpg", "Daniel Chazin", "img")]
     assert read[0].where == (written.lat, written.lon)
 
 
@@ -577,3 +608,204 @@ def test_the_proposed_json_records_which_route_reached_each_row(tmp_path, monkey
     assert row["page_title"] == "Terrace Pond South Loop"
     assert row["page_url"].endswith("/terrace-pond-south-loop")
     assert proposed["write_ups"] == 1
+
+
+# --- the licence gate (#1504) --------------------------------------------------
+#
+# `sources.json`'s `nynjtc_hikes_licence` conditions the whole permission on the
+# credit: "the attribution is a condition rather than a courtesy ... a photograph
+# the page does not credit is not fetched at all". The recovery this matcher reads
+# selected photographs by DIRECTORY PREFIX - `u26` is a site-wide upload folder,
+# wider than the Favorite Hikes the permission covers - so the credit is the only
+# thing separating a photograph this project may publish from one it may not.
+#
+# What follows pins the gate in both directions: nothing uncredited can ship, and
+# nothing credited is lost to it.
+
+
+def _run_main(tmp_path, monkeypatch, photos, hikes, pages):
+    monkeypatch.setattr(match, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(match, "PROPOSED_PATH", tmp_path / "matches.json")
+    monkeypatch.setattr(match, "SHEET_PATH", tmp_path / "sheet.html")
+    monkeypatch.setattr(match, "load_photos", lambda: photos)
+    monkeypatch.setattr(match, "load_hikes", lambda: hikes)
+    monkeypatch.setattr(match, "load_pages", lambda: pages)
+    assert match.main(2.5) == 0
+    return (
+        json.loads((tmp_path / "matches.json").read_text(encoding="utf-8")),
+        (tmp_path / "sheet.html").read_text(encoding="utf-8"),
+    )
+
+
+def test_an_uncredited_photograph_never_reaches_the_proposed_file(tmp_path, monkeypatch):
+    """THE GATE. This row is as strong as this matcher gets - NYNJTC printed the
+    photograph on that hike's own page and both call the walk the same thing -
+    and it still cannot ship, because nothing names the photographer. The
+    pairing being right is not the question the licence asks."""
+    proposed, _ = _run_main(
+        tmp_path,
+        monkeypatch,
+        photos=[_photo("DSC00417", digest="d1")],
+        hikes=[_hike("Terrace Pond South Loop")],
+        pages=[_page("Terrace Pond South Loop", ["DSC00417.jpg"], credit=None)],
+    )
+
+    assert proposed["matches"] == []
+    assert proposed["withheld_uncredited"] == 1
+
+
+def test_a_credited_photograph_still_reaches_it_and_says_where_the_name_came_from(tmp_path, monkeypatch):
+    """The other direction, because a gate that refuses everything is not a
+    gate. The credit travels into the file beside the pairing, so a row copied
+    out of it cannot lose the attribution the licence requires."""
+    proposed, _ = _run_main(
+        tmp_path,
+        monkeypatch,
+        photos=[_photo("DSC00417", digest="d1")],
+        hikes=[_hike("Terrace Pond South Loop")],
+        pages=[_page("Terrace Pond South Loop", ["DSC00417.jpg"], credit="Daniel Chazin")],
+    )
+
+    assert proposed["withheld_uncredited"] == 0
+    assert proposed["matches"][0]["credit"] == "Daniel Chazin"
+    assert proposed["matches"][0]["credit_basis"] == "page, img"
+
+
+def test_the_uncredited_row_is_still_shown_so_the_gap_has_a_size(tmp_path, monkeypatch):
+    """Refused, not subtracted. How many photographs the permission does not
+    cover is a fact about this corpus worth seeing - and a reviewer who finds
+    the credit somewhere this parser did not look needs the row in front of
+    them to say so."""
+    _, sheet = _run_main(
+        tmp_path,
+        monkeypatch,
+        photos=[_photo("DSC00417", digest="d1")],
+        hikes=[_hike("Terrace Pond South Loop")],
+        pages=[_page("Terrace Pond South Loop", ["DSC00417.jpg"], credit=None)],
+    )
+
+    assert "DSC00417" in sheet
+    assert "uncredited" in sheet
+    assert "cannot ship" in sheet
+
+
+def test_an_uncredited_row_cannot_lead_the_sheet_by_any_route(tmp_path, monkeypatch):
+    """Not the page join, and not a high text score either. Both routes answer
+    "which hike"; neither answers "may we publish it"."""
+    photo = _photo("Beaver Lodge in swamp on Terrace Pond South Trail", digest="d1")
+    hike = _hike("Terrace Pond South Loop", description="follows the Terrace Pond South Trail past a beaver lodge")
+
+    by_text = match.score_pair(photo, hike)
+    assert by_text.score >= 2.5, "fixture must score above the line, or this proves nothing"
+    assert not match.above_the_fold(by_text, minimum=2.5)
+
+    by_page = match.Pairing(photo, hike, 0.0, basis=match.BASIS_PAGE_NAME)
+    assert not match.above_the_fold(by_page, minimum=2.5)
+
+
+def test_the_page_credit_beats_the_one_in_the_filename():
+    """ "The credit line the page carries" is the licence's own wording, so a
+    name NYNJTC wrote in their prose outranks one this build read out of a file
+    name - and the basis says which, because they are not equally strong."""
+    pairing = match.Pairing(
+        _photo("DSC00417", credit="From The Filename"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        shown_as=match.PagePhoto("DSC00417.jpg", "Daniel Chazin", "caption"),
+    )
+
+    assert pairing.credit == "Daniel Chazin"
+    assert pairing.credit_basis == "page, caption"
+
+
+def test_a_credit_in_the_filename_alone_is_accepted_and_labelled_as_such():
+    """A judgement this build is making, not the licence's own words: NYNJTC
+    wrote the photographer into the file name and a write-up published that
+    name in its `src`. Labelled `filename` so a reviewer reading the condition
+    more strictly can find those rows and refuse them."""
+    pairing = match.Pairing(
+        _photo("DSC00417", credit="Daniel Chazin"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        page=_page("Real", ["DSC00417.jpg"], credit=None),
+        shown_as=match.PagePhoto("DSC00417.jpg", None, None),
+    )
+
+    assert pairing.publishable
+    assert pairing.credit_basis == "filename"
+
+
+def test_a_filename_credit_with_no_write_up_behind_it_is_not_a_credit():
+    """The filename route's whole justification is that a write-up published
+    that name in its `src`. With no recovered write-up there is no page
+    carrying anything, so the justification is an empty sentence - and the
+    licence's words are "the credit line the PAGE carries". The first version
+    accepted it anyway, which review caught."""
+    pairing = match.Pairing(_photo("DSC00417", credit="Daniel Chazin"), _hike("Real"), 4.0)
+
+    assert pairing.page is None
+    assert not pairing.publishable
+    assert pairing.credit_basis is None
+    assert not match.above_the_fold(pairing, minimum=2.5)
+
+
+def test_the_credit_basis_names_the_route_once():
+    """It is printed in the sheet and written into the proposed file, so it is
+    the provenance string a reviewer is told to read. An earlier version
+    prefixed "page, " onto a basis that already began "page,"."""
+    pairing = match.Pairing(
+        _photo("DSC00417"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        shown_as=match.PagePhoto("DSC00417.jpg", "Jane Daniels", "caption"),
+    )
+
+    assert pairing.credit_basis == "page, caption"
+
+
+def test_a_cache_written_before_the_gate_existed_is_refused_rather_than_trusted():
+    """An old cache holds bare filenames, which means "nobody looked for a
+    credit" and not "there is none" - and this module cannot tell those apart.
+    Under a licence conditioned on the credit, the unreadable case resolves to
+    refused: re-run the write-up recovery rather than publish on a guess."""
+    old_shape = {"url": "u", "photos": ["Beaver_Lodge.jpg"]}
+
+    assert match.page_photos_of(old_shape) == [match.PagePhoto("Beaver_Lodge.jpg", None, None)]
+    assert not match.Pairing(
+        _photo("Beaver_Lodge", digest="d1"),
+        _hike("Real"),
+        0.0,
+        basis=match.BASIS_PAGE_NAME,
+        shown_as=match.page_photos_of(old_shape)[0],
+    ).publishable
+
+
+def test_the_sheet_says_the_refusal_is_the_licence_and_not_the_matcher(tmp_path, monkeypatch):
+    """A reviewer who reads "no credit" as a scoring failure will try to fix it
+    by improving the match, which cannot work. The sheet names the licence, the
+    directory-prefix selection that caused it, and the issue."""
+    _, sheet = _run_main(
+        tmp_path,
+        monkeypatch,
+        photos=[_photo("DSC00417", digest="d1")],
+        hikes=[_hike("Terrace Pond South Loop")],
+        pages=[_page("Terrace Pond South Loop", ["DSC00417.jpg"], credit=None)],
+    )
+
+    assert "nynjtc_hikes_licence" in sheet
+    assert "condition rather than a courtesy" in sheet
+    assert "1504" in sheet
+
+
+def test_the_sheet_renders_from_the_store_the_fetcher_actually_writes_to():
+    """Two modules name that directory and they must not drift. If they do,
+    the sheet is a page of broken image icons - and a review sheet nobody can
+    see the pictures in cannot settle the one question (#1450) that only a
+    person looking at the photograph can settle."""
+    import fetch_wayback_hike_photos as fetcher
+
+    assert match.ARCHIVE_STORE_DIRNAME == fetcher.ARCHIVE_STORE_DIRNAME
+    assert match.ARCHIVE_STORE_DIRNAME != "poi_photos", "the published store is the one place these must never be"

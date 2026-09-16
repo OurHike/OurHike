@@ -12,9 +12,9 @@ from carrying the same ground more cheaply. That is the axis the maintainer
 already re-decided on 2026-08-25, and this document sits beside that decision
 rather than arguing with it.
 
-> **One exception, found later and recorded below (#1486):** *encoder effort*
+> **One exception, found later (#1486) and shipped by #1506:** *encoder effort*
 > passes, because it changes how the pixels are packed rather than what they
-> are — 6.4 MB off `dem.pmtiles`, with all 162 sampled tiles decoding
+> are — 3.1 MB off `dem.pmtiles`, with all 162 sampled tiles decoding
 > bit-identical. Every lever that touches the pixels themselves still fails.
 > The sentence above holds as an argument about resolution and quantization,
 > which is what it was written about, and not as a claim about the encoder.
@@ -760,22 +760,38 @@ Both fell out of the same rig and neither is proposed here. They are recorded
 because the measurements are already paid for, and because **one of them
 qualifies this document's opening sentence.**
 
-**Encoder effort is free, and it is the one per-unit-area lever that does not
-fail.** `export_dem.encode_tile` saves at PIL's WebP defaults (`method=4`,
-`quality=80`). Measured over the same 162 tiles, `method=6, quality=100`:
+**Encoder effort is the one per-unit-area lever that does not fail**, and it
+costs build minutes rather than fidelity. `export_dem.encode_tile` saved at
+Pillow's WebP defaults (`method=4`, `quality=80`) — never chosen, simply what
+the library does when asked for nothing. In *lossless* mode `quality` is
+libwebp's search effort and not image quality, so the pixels return
+bit-identical at any setting.
 
-| | z11 | z12 | z13 |
-|---|---|---|---|
-| vs PIL default | −0.74% | −1.98% | −4.26% |
+**The first version of this section quoted 6.4 MB and called it free. Both
+halves were wrong, and the second is the instructive one.** That figure was
+`method=6, quality=100`, and the time it costs had not been measured. It was,
+on 2026-09-16, on 4 cores — the free runner's shape — and timed at 8 workers
+over the canonical build's 8,658 tiles:
 
-Against the published bands that is **6.4 MB** off `dem.pmtiles`, and it costs
-no fidelity *at all* — not "an acceptable amount". Verified rather than assumed:
-all 162 tiles decode bit-identical to their input arrays at that setting. What
-it costs is build time, which is the encoder's whole tradeoff. So "every lever
-that makes the terrain cheaper per unit area fails the project's own acceptance
-test" is true of every lever that changes the *pixels* and false of the one that
-only changes how they are packed. 2.3% of the archive, for a two-argument
-change.
+| setting | z11 | z12 | z13 | off `dem.pmtiles` | encode |
+|---|---|---|---|---|---|
+| `method=4, quality=80` (was) | — | — | — | — | 1.8 min |
+| **`quality=100` (shipped, #1506)** | −0.65% | −1.16% | −1.76% | **3.1 MB** | **6.4 min** |
+| `method=6, quality=100` | −0.74% | −1.98% | −4.26% | 6.5 MB | **72.5 min** |
+| `method=6, quality=90` | −0.08% | −0.16% | −0.43% | 0.6 MB | 3.2 min |
+| `method=2, quality=100` | +1.78% | +0.57% | +0.58% | *larger* | 1.1 min |
+
+**`quality` is the lever and `method` is a trap.** The deep end of `method`
+buys another 3.4 MB for **+66 minutes** of encode, on a six-hour job that also
+fetches 8,658 tiles across somebody else's network, and it would land on the
+light build and every cell cut as well. `quality=100` alone is +4.6 minutes for
+1.1% of the archive, which is the trade #1506 made.
+
+So "every lever that makes the terrain cheaper per unit area fails the project's
+own acceptance test" is true of every lever that changes the *pixels* and false
+of the one that only changes how they are packed — but "free" was the wrong
+word for it, and a lever whose cost nobody had measured had no business being
+called that.
 
 **The half-metre bit is 31% of the archive and mostly buys nothing.** At
 `QUANTIZE_STEP_M = 0.5` the blue channel holds one bit per pixel — it takes only

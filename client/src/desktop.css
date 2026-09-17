@@ -310,6 +310,22 @@
     position: relative;
   }
 
+  /* THE SAME COLUMN BEFORE THE MAP (#1429, #1560). Until the archive store
+     has answered and MapScreen's own chunk has landed, App.tsx renders this
+     journal inside a plain `.app__screen`, where it is the screen's first
+     child - and App.css's phone rule `.app__screen > :first-child { flex: 1 }`
+     is exactly as specific as the rule above (0,2,0 against 0,2,0), so it
+     won on source order and the journal drew at the full width of the pane.
+     Measured 2026-09-17 at 1728x1080: 1,519 px in that branch, 405 px the
+     moment MapScreen took the same element over, every card, heading and
+     button re-flowing at the hand-over. This rule is that specificity again
+     and later in the cascade, which is what decides it: App.tsx imports
+     desktop.css after App.css deliberately. e2e/desktopSpine.spec.ts holds
+     the two widths equal. */
+  .app__screen > .map-screen__journal {
+    flex: 0 0 25.25rem;
+  }
+
   /* The journal re-inked for this room. On a phone the Today header is a
      pine block because it IS the screen's chrome; here the chrome is the
      sidebar, so the same markup reads as ink on the journal's own paper -

@@ -192,9 +192,12 @@ jobs:
           MAX_CELLS: ${{ inputs.max_cells }}
 
       - name: Say what will run
+        env:
+          TOTAL: ${{ steps.cells.outputs.total }}
+          PARTIAL: ${{ steps.cells.outputs.partial }}
         run: |
-          echo "${{ steps.cells.outputs.total }} cells in the corridor."
-          if [ "${{ steps.cells.outputs.partial }}" = "true" ]; then
+          echo "$TOTAL cells in the corridor."
+          if [ "$PARTIAL" = "true" ]; then
             echo "::warning::Building a SUBSET. assemble and publish are skipped - a partial corridor must never ship."
           fi
 

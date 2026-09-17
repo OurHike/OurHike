@@ -144,6 +144,11 @@ required_status_checks:
       that split. settings-manifest.yml touches no secrets context anywhere,
       which is the property that was actually bought.
 
+      2026-09-17: the signature turned out to be `toJSON(secrets)` itself and
+      not the pull request - the split workflow produced it on `main` too, on
+      every scheduled fire and on a dispatch, with zero jobs. It reads settings
+      by name now; BRANCHING.md carries the correction.
+
       The check NAME is unchanged across the split, deliberately: branch
       protection matches a check name, not a workflow file, so keeping it
       verbatim is what lets this move without a window in which the required

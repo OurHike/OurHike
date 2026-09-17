@@ -299,6 +299,37 @@ a:hover {
 /* A painted white blaze: the organising motif (§3), used sparingly. The
    shadow is what makes it read as a painted chip rather than a missing
    glyph on plain paper - white on paper needs an edge. */
+/* ---------- The skip link ----------
+ *
+ * First in the tab order on every page, and invisible until it has focus.
+ * The design handoff opens all 27 of its screen extracts with "Skip to
+ * content"; this site had it on none, so a keyboard or screen-reader user
+ * tabbed the whole nav on every page before reaching a word of content.
+ *
+ * Moved rather than hidden: `display: none` and `visibility: hidden` both
+ * take an element out of the tab order, which would make this a link nobody
+ * can reach - the exact opposite of the point. It sits off the top of the
+ * screen and comes back on focus.
+ */
+.skip {
+  position: absolute;
+  left: 12px;
+  top: -64px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--bg-chrome);
+  color: var(--fg-1);
+  border: 1px solid var(--brand-primary);
+  text-decoration: none;
+  font-weight: 600;
+  transition: top 120ms ease;
+}
+
+.skip:focus {
+  top: 12px;
+}
+
 .blaze {
   display: inline-block;
   width: 9px;

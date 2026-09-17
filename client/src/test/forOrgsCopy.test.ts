@@ -83,8 +83,11 @@ describe('the homepage card that points here', () => {
 describe('the nav link this page was waiting for', () => {
   const nav = readRepoFile('site/src/components/NavBar.astro')
 
-  it('links For clubs now that the page exists', () => {
-    expect(nav).toMatch(/'\/for-orgs\/', label: 'For clubs'/)
+  it('links the org page now that it exists', () => {
+    // The label became "For orgs" on 2026-09-17 - the wireframe audit's
+    // decision, and the reason is in the test below it. What this one is
+    // about is unchanged: the link exists because the page does.
+    expect(nav).toMatch(/'\/for-orgs\/', label: 'For orgs'/)
   })
 
   it('still does not link the two pages that are not real yet', () => {
@@ -222,5 +225,63 @@ describe('Astro placeholders are interpolated', () => {
       (match) => match[0].trim(),
     )
     expect(literal, `${path} renders these braces literally`).toEqual([])
+  })
+})
+
+/**
+ * What the 2026-09-17 wireframe audit found on this surface, and the
+ * maintainer decided to follow.
+ *
+ * Each of these is a difference from the design that was approved as a change
+ * to the BUILD rather than accepted as a deviation, so each gets a guard: the
+ * point of an approved fidelity decision is that it does not quietly rot back.
+ */
+describe('the wireframe decisions of 2026-09-17', () => {
+  const nav = () => readRepoFile('site/src/components/NavBar.astro')
+
+  it('names the org surface "For orgs", the word the design and the data model use', () => {
+    // ORG_ONBOARDING.md's conflict 2: not every organization is a club - OPRHP
+    // is a state agency, Mohonk a preserve, a land trust neither. The site said
+    // "For clubs" while the design, the console and the routes all said org.
+    expect(nav()).toContain("label: 'For orgs'")
+    expect(nav()).not.toContain("label: 'For clubs'")
+  })
+
+  it("offers an organization the design's own call to action in the nav", () => {
+    // The design's nav button is "Add your trails". The site's was "Support
+    // the trail" - a hiker's action, on the row an organization arrives by.
+    expect(nav()).toContain('Add your trails')
+  })
+
+  it('gives every reason card the icon the design draws on it', () => {
+    // REASONS carried title and body only, and the card template rendered only
+    // those, so four cards the design gives an icon each had none.
+    const copy = readRepoFile('site/src/lib/orgOnboarding.mjs')
+    const reasons = copy.slice(copy.indexOf('export const REASONS'))
+    const block = reasons.slice(0, reasons.indexOf('export const', 10))
+    const titles = [...block.matchAll(/title:/g)].length
+    const glyphs = [...block.matchAll(/glyph:/g)].length
+    expect(glyphs, 'every reason needs a glyph').toBe(titles)
+    expect(readRepoFile('site/src/pages/for-orgs/index.astro')).toContain('reason.glyph')
+  })
+
+  it('carries a skip link, which the design has on every screen and the site had on none', () => {
+    const base = readRepoFile('site/src/layouts/Base.astro')
+    expect(base).toMatch(/skip/i)
+    expect(base).toContain('#main')
+  })
+
+  it("asks a nominating hiker for the website and not for the org's name", () => {
+    // Dropped on the maintainer's decision: the design opens with the website
+    // and nothing else, and a name field ahead of it made the hiker answer a
+    // question the reading was supposed to answer.
+    const page = readRepoFile('site/src/pages/for-orgs/nominate.astro')
+    expect(page).not.toContain('nominate-name')
+  })
+
+  it('does not ask a nominating hiker for a data link they are unlikely to have', () => {
+    const page = readRepoFile('site/src/pages/for-orgs/nominate.astro')
+    expect(page).not.toContain('nominate-data')
+    expect(page).not.toContain('OPTIONAL · IF YOU ALREADY KNOW')
   })
 })

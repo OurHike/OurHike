@@ -55,6 +55,9 @@ export const OUT_OF_TREE_READS = [
   'site/src/pages/for-orgs/demo/api/workdays.ts',
   'site/src/pages/index.astro',
   'site/src/components/NavBar.astro',
+  // The shell every site page renders inside. Read for the skip link, which
+  // the design carries on all 27 screen extracts and the site had nowhere.
+  'site/src/layouts/Base.astro',
   // The four embeds (#1542), which run on somebody ELSE's website. The
   // console screen promises an organization no cookies, no tracking, no
   // branding they cannot remove and a page that still renders when we are

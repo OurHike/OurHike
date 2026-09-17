@@ -113,6 +113,18 @@ const description =
         {
           REASONS.map((reason) => (
             <div class="card card--on-pine">
+              <svg
+                viewBox="0 0 24 24"
+                width="24"
+                height="24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                set:html={reason.glyph}
+              />
               <h3 set:html={reason.title} />
               <p>{reason.body}</p>
             </div>

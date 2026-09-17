@@ -9,13 +9,19 @@ name is withheld too, which is HIKER_SAFETY.md §2's "name and exact date"
 masking applied at the only precision this surface ever had.
 """
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 from app.core.time import UtcDatetime, utc_now
 from app.models.poi_photo import PoiPhoto
+
+# How far past today (UTC) a capture date may sit before it is a date the
+# photo cannot have. A whole day rather than reports' five minutes, because
+# this is a DATE and the phone's midnight is not the server's -
+# `VolunteerHoursCreate.worked_on`'s allowance, for its reason.
+CAPTURE_DATE_LEEWAY = timedelta(days=1)
 
 
 class PoiPhotoShare(BaseModel):
@@ -35,6 +41,38 @@ class PoiPhotoShare(BaseModel):
 
     taken: date | None = None
     flagged: Literal["nudity", "faces"] | None = None
+
+    @field_validator("taken")
+    @classmethod
+    def _a_capture_date_from_the_future_is_no_date(cls, value: date | None) -> date | None:
+        """A `taken` past tomorrow is dropped, and the photo dates by its share.
+
+        The model's own comment calls `taken` "a claim... the server has no
+        way to check", which is true of the past and false of the future: a
+        photo cannot have been taken after it was shared. And the claim is
+        not decoration. `_recency()` (routers/poi_photos.py) orders the
+        rolling window by `coalesce(taken, shared_at)`, so a share claiming
+        9999-12-31 listed first in a place's gallery ahead of a photo shared
+        after it, would have held one of the twelve slots for as long as it
+        existed, and answered `taken_month: "9999-12"` for the card to
+        print - measured on the unfixed tree, 2026-09-17, by the two cases
+        in `tests/test_poi_photos.py` that now hold the opposite.
+
+        DROPPED RATHER THAN REFUSED, which is the opposite of what
+        `ReportCreate.authored_at` does with a future time, and deliberately.
+        A report's authored time is the report's substance - a moderation
+        queue is read by it - so a wrong one is refused and the hiker is told
+        to check the clock. A capture date is a month on a card plus a sort
+        key, and the share stands without it: "omit rather than guess" gives
+        the photo the one date this server can stand behind, the share
+        month, exactly as a photo whose original carried no EXIF date is
+        dated. A 422 would instead strand the share in the outbox with the
+        client's "this app is too old" message (`permanentFailureReason`,
+        lib/api.ts), over a camera clock that runs ahead.
+        """
+        if value is None or value <= utc_now().date() + CAPTURE_DATE_LEEWAY:
+            return value
+        return None
 
 
 class PoiPhotoReport(BaseModel):

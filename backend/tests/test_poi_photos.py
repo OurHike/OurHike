@@ -26,10 +26,12 @@ from datetime import date, timedelta
 
 import boto3
 import pytest
+from botocore.exceptions import EndpointConnectionError
 from moto import mock_aws
 
 from app.config import settings
-from app.core.photos import poi_photo_key
+from app.core import photos as photos_core
+from app.core.photos import STORAGE_UNAVAILABLE_DETAIL, poi_photo_key
 from app.core.time import utc_now
 from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
 from app.models.preferences import UserPreferences
@@ -144,6 +146,45 @@ def test_second_share_replaces_the_first_and_clears_the_pin(client, db_session, 
     assert rows[0].pinned_at is None
     # And the replacement is invisible until ITS bytes land.
     assert _gallery(client) == []
+
+
+def test_a_capture_date_in_the_future_dates_the_photo_by_its_share(client, db_session, r2):
+    """`taken` is a claim the server can check at one end: a photo cannot
+    have been taken after it was shared. On the unfixed tree a share claiming
+    9999-12-31 came back `taken_month: "9999-12"` and the card printed it."""
+    hiker = _hiker(db_session)
+
+    response = _share(client, hiker, taken="9999-12-31")
+
+    assert response.status_code == 201
+    assert response.json()["taken_month"] == utc_now().strftime("%Y-%m")
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    assert row.taken is None, "dropped, not clamped - the share month is the one date the server can stand behind"
+
+
+def test_tomorrow_is_still_a_capture_date_because_the_phone_has_its_own_midnight(client, db_session, r2):
+    hiker = _hiker(db_session)
+    tomorrow = utc_now().date() + timedelta(days=1)
+
+    response = _share(client, hiker, taken=tomorrow.isoformat())
+
+    assert response.status_code == 201
+    assert response.json()["taken_month"] == tomorrow.strftime("%Y-%m")
+
+
+def test_a_future_capture_date_cannot_hold_the_top_of_the_gallery(client, db_session, r2, no_cooling_off):
+    """The window orders by `coalesce(taken, shared_at)`, so an accepted
+    9999-12-31 listed first for ever and held one of the twelve slots against
+    every later photo. Measured on the unfixed tree: the liar's photo came
+    back ahead of one shared after it."""
+    liar = _hiker(db_session, name="Liar")
+    honest = _hiker(db_session, name="Honest")
+    _share(client, liar, taken="9999-12-31")
+    _upload(client, liar)
+    _share(client, honest)
+    _upload(client, honest)
+
+    assert [entry["attribution"] for entry in _gallery(client)] == ["Honest", "Liar"]
 
 
 # --- uploading -------------------------------------------------------------
@@ -286,6 +327,26 @@ def test_no_window_means_the_credit_shows(client, db_session, r2, no_cooling_off
     _upload(client, hiker)
 
     assert _gallery(client)[0]["attribution"] == "Sawyer"
+
+
+def test_an_absurd_window_is_clamped_rather_than_crashing_the_share(client, db_session, r2, no_cooling_off):
+    """A stored `anonymity_window_days` of 10**9 raised OverflowError out of
+    `timedelta` and answered the share with a 500 on the unfixed tree (the
+    schema stores the int unbounded - MAX_ANONYMITY_WINDOW_DAYS says why the
+    bound lives on the read side). Clamped, the share lands and the name is
+    withheld for the longest window this surface honours."""
+    hiker = _hiker(db_session)
+    db_session.add(UserPreferences(profile_id=hiker.id, data={"anonymity_window_days": 10**9}))
+    db_session.commit()
+
+    response = _share(client, hiker)
+
+    assert response.status_code == 201
+    _upload(client, hiker)
+    assert _gallery(client)[0]["attribution"] is None
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    ceiling = utc_now() + timedelta(days=poi_photos_router.MAX_ANONYMITY_WINDOW_DAYS)
+    assert timedelta(0) <= ceiling - row.masked_until < timedelta(minutes=5)
 
 
 # --- withdrawal ------------------------------------------------------------
@@ -540,3 +601,33 @@ def test_replacement_resets_the_moderation_state(client, db_session, r2, no_cool
     assert row.reported_at is None
     assert row.reported_reason is None
     assert row.flagged is None
+
+
+# --- what the sharer is told when R2 itself is the problem ------------------
+
+
+class _UnreachableR2:
+    """Every write fails the way an unreachable R2 fails: with the endpoint
+    URL - account id, bucket, key - in the message. test_report_photos.py
+    has the measurement; this is the same `store_photo_object`, reached
+    from the waypoint upload."""
+
+    def put_object(self, **_kwargs):
+        raise EndpointConnectionError(
+            endpoint_url="https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/ourhike-photos"
+        )
+
+
+def test_an_upload_that_cannot_reach_the_bucket_does_not_say_where_it_is(client, db_session, r2, monkeypatch):
+    hiker = _hiker(db_session)
+    _share(client, hiker)
+    monkeypatch.setattr(photos_core, "_client", lambda: _UnreachableR2())
+
+    response = _upload(client, hiker)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == STORAGE_UNAVAILABLE_DETAIL
+    assert "cloudflarestorage" not in response.text
+    # The share row stands and still awaits its bytes - a retry lands them.
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    assert row.uploaded_at is None

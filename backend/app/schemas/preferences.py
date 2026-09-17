@@ -37,6 +37,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.time import UtcDatetime
 from app.models.report import ReporterType
+from app.schemas.common import FiniteFloat
 
 
 class Theme(str, Enum):
@@ -193,8 +194,11 @@ class DefaultPlace(BaseModel):
     state: str | None = None
     category: str | None = None
     within: str | None = None
-    # west, south, east, north - the index's own order.
-    bbox: tuple[float, float, float, float] | None = None
+    # west, south, east, north - the index's own order. `FiniteFloat` for
+    # #658's reason: `lon`/`lat` above refuse NaN through their bounds, and a
+    # bare float here would let one into the box the map fits its fallback
+    # view to. Same JSON schema as `float`, so the baselines do not move.
+    bbox: tuple[FiniteFloat, FiniteFloat, FiniteFloat, FiniteFloat] | None = None
 
 
 class PreferencesIn(BaseModel):

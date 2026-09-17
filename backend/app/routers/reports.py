@@ -701,7 +701,10 @@ async def _store_report_photo(
     try:
         key = store_photo(report.id, body, index)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)`: the message names the endpoint
+        # the write failed against, and the endpoint names the account (see
+        # PhotoStorageUnavailable).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
     _record_photo(report, index, key)
     return ReportOut.for_viewer(commit_and_refresh(db, report), current_user)
@@ -783,7 +786,7 @@ def _authorised_photo_url(
     try:
         return presigned_photo_url(report.id, index)
     except PhotoStorageUnavailable as error:  # pragma: no cover - guarded above
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
 
 @router.get(

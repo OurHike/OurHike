@@ -453,3 +453,62 @@ describe('the seam the trace recorder taps (#1180)', () => {
     expect(gps.clearWatch).toHaveBeenCalled()
   })
 })
+
+describe('a lost signal keeps the last fix (#1581)', () => {
+  // The map draws it stale, with its age, while the header keeps saying
+  // "No GPS signal" - both true at once, which is why `unavailable` carries
+  // the fix rather than choosing between them. And only a fix that was
+  // actually had: a watch that never found one has nothing to keep.
+  const TIMEOUT = 3
+
+  it('carries the last fix and when it landed into unavailable', () => {
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    gps.reportFix({ longitude: -77, latitude: 39, accuracy: 10 }, 1_000)
+    gps.reportFailure(TIMEOUT)
+
+    expect(result.current.status).toBe('unavailable')
+    expect(result.current).toMatchObject({
+      last: { at: { lon: -77, lat: 39 }, fixedAt: new Date(1_000) },
+    })
+  })
+
+  it('keeps it through a second failure, rather than forgetting on the retry', () => {
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    gps.reportFix({ longitude: -77, latitude: 39, accuracy: 10 }, 1_000)
+    gps.reportFailure(TIMEOUT)
+    gps.reportFailure(TIMEOUT)
+
+    expect(result.current).toMatchObject({
+      status: 'unavailable',
+      last: { at: { lon: -77, lat: 39 } },
+    })
+  })
+
+  it('carries nothing when the signal was never found', () => {
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    gps.reportFailure(TIMEOUT)
+
+    expect(result.current).toEqual({ status: 'unavailable' })
+  })
+
+  it('is replaced outright by the next fix that lands', () => {
+    const gps = stubGeolocation()
+    const { result } = renderHook(() => useGeolocation(true))
+
+    gps.reportFix({ longitude: -77, latitude: 39, accuracy: 10 }, 1_000)
+    gps.reportFailure(TIMEOUT)
+    gps.reportFix({ longitude: -77.01, latitude: 39.01, accuracy: 12 }, 2_000)
+
+    expect(result.current).toMatchObject({
+      status: 'located',
+      at: { lon: -77.01, lat: 39.01 },
+    })
+    expect(result.current).not.toHaveProperty('last')
+  })
+})

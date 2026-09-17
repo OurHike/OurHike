@@ -179,9 +179,13 @@ footer.colophon { border-top: 1px solid var(--rule); margin-top: 40px; padding-t
     <span class="docket__item docket__item--measured"><b>19 px</b> among 38 px pins and 3.6 px dots</span>
     <span class="docket__item docket__item--measured"><b>2</b> high-accuracy watches on one battery</span>
     <span class="docket__item docket__item--measured"><b>accuracyFeet</b> · read by nothing (#315)</span>
-    <span class="docket__item docket__item--open"><b>open</b> · which mark, and whether the dash may mean two doubts</span>
+    <span class="docket__item docket__item--open"><b>decided</b> · A, built as #1581</span>
   </div>
 </header>
+<div class="callout" style="max-width:860px;margin-top:8px">
+  <h3>Decided the same day, and built into the pull request this page rides</h3>
+  <p>The maintainer picked <strong>option A, the reticle</strong> (<a href="https://github.com/OurHike/OurHike/issues/1581">#1581 &mdash; Draw the hiker as a hollow reticle in the sheet's own ink, fed by the header's GPS watch, and retire the stock blue dot</a>). What shipped with it: <code>map/positionMark.ts</code> rasterises the mark in three ink families, live and stale; <code>map/positionLayers.ts</code> draws it above every other layer with the accuracy ring under it; <code>map/mapChrome.ts</code>'s <code>LocateControl</code> replaces <code>GeolocateControl</code>, and the second GPS watch goes with it; <code>lib/useGeolocation.ts</code> carries the last fix through <code>unavailable</code>, so the stale state below is reachable. The dash was borrowed: on this map it now means <em>nobody has verified this</em> on a pin and <em>nobody has heard from the GPS since</em> on the mark. B and C stay drawn and unbuilt; D was not needed. {grade('decided', 'decided · 2026-09-17')}</p>
+</div>
 <section class="spine"><div class="spine__rail"><p class="spine__mark"><strong>01</strong>today</p></div><div class="spine__body"><h2>What the canvas draws today, at 1:1</h2>
 <p>Everything on this page is drawn at the size it renders on a 390&nbsp;px phone, in the field sheet's own inks, with the pin geometry read off <code>map/poiIcons.ts</code> rather than approximated: a 38&nbsp;px disc, a 3.17&nbsp;px paper halo, a 1.27&nbsp;px hairline, the glyph in a 17.7&nbsp;px box, the site badge at 0.555 of the rim. The stock dot is what <code>maplibre-gl.css</code> draws &mdash; 15&nbsp;px of <code>#1da1f2</code> under a 2&nbsp;px white ring, a 2&nbsp;s pulse, and a 20&nbsp;% accuracy disc with no floor.</p>
 <p class="lineup-label">In the field sheet's colour</p>

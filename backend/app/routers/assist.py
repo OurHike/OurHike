@@ -39,7 +39,7 @@ a consent worth less than none.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.assist import (
@@ -61,7 +61,6 @@ from app.schemas.assist import (
     AssistConsentUpdate,
     AssistOut,
     AssistPanel,
-    NominateAsk,
 )
 
 router = APIRouter(tags=["assist"])
@@ -181,33 +180,16 @@ def assist_org(
     )
 
 
-@router.post("/assist/nominate", response_model=AssistOut)
-def assist_nominate(
-    payload: NominateAsk,
-    request: Request,
-    db: Session = Depends(get_db),
-) -> AssistOut:
-    """The one panel with no account behind it.
-
-    **THE ONLY THING BETWEEN THIS AND ANYBODY ON THE INTERNET IS THE PUBLIC
-    BUDGET**, counted per address over a rolling day. That is a weaker control
-    than an account and is said here rather than discovered: it is the reason
-    the public budget is two orders of magnitude smaller than an
-    organization's, and the reason this panel takes a website and nothing
-    else rather than free text.
-
-    The address is hashed before it is stored - see `client_fingerprint`. What
-    this table needs is a counter, not a record of who looked up which
-    organization.
-    """
-    address = request.client.host if request.client else None
-    return _answer(
-        db,
-        panel="nominate",
-        prompt=f"Their website is {payload.website}. What can you tell about their trail data?",
-        club=None,
-        address=address,
-    )
+# THE PUBLIC NOMINATE PANEL WAS HERE AND HAS MOVED, with its rules rewritten.
+# It took a website from anybody on the internet, sent it to a model with no
+# tools, and the marketing page rendered the reply under "WHAT WE COULD SEE ON
+# THEIR SITE" - while nothing had been opened and the answer came out of the
+# model's own memory. The maintainer's 2026-09-17 decision made the reading
+# real, and made it signed-in with a proof of work on top.
+#
+# It now lives in app/routers/nominations.py with the rest of that flow, which
+# is CONTRIBUTING.md's one-home rule: `POST /assist/nominate`, the challenge
+# that precedes it, the submit, and the club's own screen are one story.
 
 
 def _consent_of(club: Club) -> AssistConsentOut:

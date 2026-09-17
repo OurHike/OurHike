@@ -19,6 +19,7 @@ from app.routers import (
     hikes,
     maintainer_assignments,
     moderation,
+    nominations,
     org_registry,
     org_roles,
     poi_photos,
@@ -116,3 +117,4 @@ app.include_router(work_projects.router)
 app.include_router(ridge_runner.router)
 app.include_router(console.router)
 app.include_router(assist.router)
+app.include_router(nominations.router)

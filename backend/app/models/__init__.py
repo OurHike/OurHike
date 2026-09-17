@@ -27,7 +27,24 @@ from app.models.console_key import (
 )
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.hike import Hike
+from app.models.mail import (
+    EmailSend,
+    EmailSuppression,
+    MailPurpose,
+    MailState,
+    SuppressionReason,
+)
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.nomination import (
+    ChallengeSpend,
+    NominationContact,
+    NominationRefusal,
+    NominationSource,
+    NominationState,
+    OrgNomination,
+    ProposedBy,
+    SourceVerdict,
+)
 from app.models.org_registry import OrgPark, OrgSection, OrgTrail, ParkKind, RegistrySignoff
 from app.models.org_role import (
     DEACTIVATION_HOLD_FRACTION,
@@ -125,4 +142,17 @@ __all__ = [
     "SignupState",
     "WorkProject",
     "WorkProjectSignup",
+    "ChallengeSpend",
+    "EmailSend",
+    "EmailSuppression",
+    "MailPurpose",
+    "MailState",
+    "NominationContact",
+    "NominationRefusal",
+    "NominationSource",
+    "NominationState",
+    "OrgNomination",
+    "ProposedBy",
+    "SourceVerdict",
+    "SuppressionReason",
 ]

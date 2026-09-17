@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_email, get_current_user, get_current_user_optional
+from app.core.auth import get_current_email, get_current_user
 from app.core.org_access import OrgAccess, club_by_slug, org_access, require_org_admin, resolve_access
 from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
@@ -38,7 +38,6 @@ from app.schemas.org import (
     OrgClaimRequest,
     OrgCreate,
     OrgDeclineRequest,
-    OrgNomination,
     OrgOut,
     OrgSettingsUpdate,
 )
@@ -441,45 +440,13 @@ def delete_org(
     return response
 
 
-@router.post("/nominations", status_code=status.HTTP_202_ACCEPTED)
-def nominate_org(
-    payload: OrgNomination,
-    current_user: Profile | None = Depends(get_current_user_optional),
-    db: Session = Depends(get_db),
-) -> dict[str, str]:
-    """A hiker submitting an organization's trails on its behalf.
-
-    **This creates nothing and publishes nothing.** It records an unclaimed
-    org so a maintainer can look at it, and a maintainer reading terms by
-    hand is still what turns it into a source - which is the honest state of
-    SOURCE_REGISTRY.md today rather than a shortcut around it.
-
-    The hiker is not claiming to speak for the organization and is not asked
-    to. They know their local club has trails and roughly where to find them;
-    that is the whole of what this collects.
-    """
-    if current_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Sign in first, so we can come back to you if we have a question",
-        )
-
-    club = Club(
-        name=payload.name,
-        website=payload.website,
-        region=payload.region,
-        state=OrgState.unclaimed,
-        created_by=current_user.id,
-    )
-    db.add(club)
-    db.commit()
-    return {
-        "status": "received",
-        "detail": (
-            "Thank you. A person reads every one of these - we check who owns the data and "
-            "what their terms say before anything of theirs reaches a map."
-        ),
-    }
+# NOMINATING AN ORG WAS HERE AND HAS MOVED to app/routers/nominations.py.
+# This version created an `unclaimed` club row from a name and a website, threw
+# away the `data_url` and `note` it had just validated, and told nobody at the
+# organization anything. What replaced it reads their published pages, lets the
+# hiker review what was found, stores only what the hiker kept, and writes to
+# the people the club itself lists. Same path, so nothing that already points
+# at it breaks.
 
 
 @router.get("/{slug}/export")

@@ -61,6 +61,7 @@ from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.nomination import OrgNomination
 from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
@@ -160,6 +161,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "trail_notes": _rows(db, FieldNote, FieldNote.reporter_id == profile_id),
         "notes_you_flagged": _rows(db, NoteFlag, NoteFlag.flagged_by == profile_id),
         "closures_you_reported": _rows(db, Closure, Closure.reported_by == profile_id),
+        # WHAT THEY OFFERED ON SOMEBODY ELSE'S BEHALF. A nomination is a
+        # thing this hiker did, so value #6 puts it in their file - and the
+        # contacts and sources under it are not theirs and are not here:
+        # those are a club's own published details, and a hiker's export is
+        # not a route to a copy of them.
+        "organizations_you_nominated": _rows(db, OrgNomination, OrgNomination.nominated_by == profile_id),
         # The one section that gains a field the table does not have: the R2
         # key is DERIVED from (poi_id, contributor_id) rather than stored
         # (core/photos.py), so dumping the columns alone would omit the only

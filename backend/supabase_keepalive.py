@@ -78,6 +78,11 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # up and when, and a readable one would be a traffic log we went out of
     # our way not to keep.
     "assist_usage",
+    # One proof-of-work nonce, spent (app/core/challenge.py). The nonces in
+    # it are public by construction, so this one is not about reading: an
+    # anon key that could DELETE a row here would make every solved
+    # challenge replayable, which is the whole of what that mechanism buys.
+    "challenge_spends",
     "closure_approvals",
     "closures",
     "club_admins",
@@ -88,6 +93,14 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # list of sites a key is good on, which is half of guard 2.
     "console_keys",
     "console_token_grants",
+    # What this project has written to people who never asked to hear from
+    # it, and the list of the ones who told it to stop
+    # (features/ORG_ONBOARDING.md, app/core/mail.py). A readable
+    # `email_sends` is a record of which organizations we approached and
+    # when; a readable `email_suppressions` is worse, because it is a list
+    # of who complained.
+    "email_sends",
+    "email_suppressions",
     # The field-notes pair (features/FIELD_NOTES.md): notes carry a
     # reporter_id beside a position and a date - #252's route-reconstruction
     # pair - so their RLS staying on is worth a read an hour.
@@ -103,6 +116,16 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # Not yet published to anybody when it is written, which is the whole
     # point of the sign-off: a readable one would serve an org's
     # unpublished sections to anyone holding the anon key.
+    # A hiker offering somebody else's trails, and what the reading found
+    # (features/ORG_ONBOARDING.md). `nomination_contacts` is the one that
+    # matters most on this whole list: it holds named people's work email
+    # addresses, lifted off their organization's own pages, for an
+    # organization that has not yet agreed to any of this. A readable one
+    # is a contact database of volunteers who never heard of us.
+    "nomination_contacts",
+    "nomination_refusals",
+    "nomination_sources",
+    "org_nominations",
     "org_parks",
     "org_roles",
     "org_sections",

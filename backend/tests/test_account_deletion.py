@@ -29,6 +29,7 @@ from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.nomination import OrgNomination
 from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
@@ -78,6 +79,24 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             hours=4.0,
             activity="maintenance",
             state=hours_state,
+        )
+    )
+    # A NOMINATION IS KEPT, and the decision is worth reading rather than
+    # inferring from a missing delete. It is a statement this hiker made about
+    # a third party's organization, and by the time an account is deleted
+    # three people at that club may already have been emailed about it and be
+    # partway through deciding. Withdrawing it silently would leave them
+    # answering a question nobody asked. The person does not survive it: the
+    # `profiles` row is scrubbed like every other kept contribution, so the
+    # nomination says somebody offered and no longer says who.
+    db.add(
+        OrgNomination(
+            id=f"nomination-{profile_id}",
+            club_id=club.id,
+            nominated_by=profile_id,
+            website="https://carolinamountainclub.org",
+            proposal_token=f"token-{profile_id}",
+            token_expires_at=utc_now() + dt.timedelta(days=30),
         )
     )
     db.add(

@@ -182,6 +182,57 @@ class Settings(BaseSettings):
     # standing between it and a bill is this number.
     assist_public_daily_token_budget: int = 20_000
 
+    # THE NOMINATE PANEL IS NOT PUBLIC ANY MORE. The maintainer's 2026-09-17
+    # decision: a signed-in hiker, and a proof of work on top, before this
+    # server fetches a website a stranger typed. The budget above still
+    # applies - it is now the third bound rather than the only one.
+    #
+    # The secret signs a challenge; it never leaves this process and is never
+    # in one. Empty means the panel answers 503 rather than issuing
+    # challenges anybody could mint, which is the same posture as an absent
+    # API key: refuse loudly rather than run insecurely.
+    nominate_challenge_secret: str = ""
+
+    # Bits of leading zeroes a browser must find. MEASURED on a CI-class
+    # container with a synchronous JS SHA-256: 18 bits is a 437 ms median and
+    # a 1.2 s p90. See app/core/challenge.py for the table and for what is
+    # still @unvalidated about it (nobody has run it on a phone).
+    nominate_challenge_difficulty: int = 18
+
+    # Whether the fetcher insists on confirming the address it actually
+    # reached against the ones the guard approved. ON, because a check that
+    # passes when it cannot run is not a check - see app/core/sitefetch.py.
+    #
+    # An egress proxy makes this impossible: the socket's peer is the proxy
+    # and the name was resolved by something we are not asking. A deployment
+    # behind one has to turn this off deliberately and knows what it gave up
+    # - the DNS-rebinding window between the guard's check and the socket.
+    site_fetch_require_peer_match: bool = True
+
+    # Mail. Nothing in this repository sent any until 2026-09-17, and the
+    # nominate flow writes to people who never asked to hear from us - see
+    # app/core/mail.py's four promises.
+    #
+    # OFF BY DEFAULT AND THAT IS LOAD-BEARING. A preview deployment holding a
+    # fixture with a real club's address must not be one variable away from
+    # writing to them.
+    mail_enabled: bool = False
+    # Comma-separated address suffixes this environment may write to. Empty
+    # means anywhere, which is only correct in production; UA sets this to
+    # "@ourhike.org" so the flow can be exercised end to end without reaching
+    # a club.
+    mail_allowed_suffixes: str = ""
+    mail_sender: str = "OurHike <hello@ourhike.org>"
+    mail_reply_to: str = "hello@ourhike.org"
+    # SES, because boto3 is already here for report photos going to R2. One
+    # vendor library rather than two.
+    ses_region: str = "us-east-1"
+
+    @property
+    def mail_allowed(self) -> tuple[str, ...]:
+        """The suffix list as `app/core/mail.py` wants it."""
+        return tuple(part.strip().lower() for part in self.mail_allowed_suffixes.split(",") if part.strip())
+
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":
         """Refuse to start rather than publish a photo of a person.

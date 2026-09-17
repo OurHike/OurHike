@@ -21,11 +21,37 @@ legitimate note observed in test data - and is @unvalidated: real reports
 from real hikers would settle where the ceiling belongs.
 """
 
+import re
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import AfterValidator, Field
 
 FiniteFloat = Annotated[float, Field(allow_inf_nan=False)]
 
 NOTE_MAX_CHARS = 4000
 NoteText = Annotated[str, Field(max_length=NOTE_MAX_CHARS)]
+
+# EmailAddress is deliberately a pattern rather than `pydantic.EmailStr`.
+# EmailStr pulls in `email-validator`, a dependency this backend does not
+# otherwise have, to adjudicate an RFC whose full grammar admits addresses no
+# mail provider will accept anyway. What the checks here have to do is refuse
+# something that is plainly not an address before it reaches a database or a
+# send path, and `app/core/mail.py` refuses again at the wire.
+#
+# `app/schemas/org_role.py` asks the same question in two hand-written
+# validators that predate this type (its `email` fields on the invite and the
+# roster row). They should use this and do not yet; changing them is a
+# separate diff from the one that introduced this file.
+EMAIL_MAX_CHARS = 320  # RFC 5321: 64 for the local part, 255 for the domain, one @
+_EMAIL = re.compile(r"^[^@\s,;<>\"]{1,64}@[A-Za-z0-9\-]{1,63}(?:\.[A-Za-z0-9\-]{1,63}){1,8}$")
+
+
+def _looks_like_an_address(value: str) -> str:
+    """One address, with nothing in it that could open a second mail header."""
+    cleaned = (value or "").strip()
+    if not _EMAIL.match(cleaned):
+        raise ValueError("that does not look like an email address")
+    return cleaned.lower()
+
+
+EmailAddress = Annotated[str, Field(max_length=EMAIL_MAX_CHARS), AfterValidator(_looks_like_an_address)]

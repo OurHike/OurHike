@@ -57,6 +57,7 @@ SECTION_FOR_TABLE = {
     "role_invites": "people_you_invited",
     "roster_sync_runs": "roster_loads_you_ran",
     "console_keys": "embed_keys_you_made",
+    "org_nominations": "organizations_you_nominated",
 }
 
 

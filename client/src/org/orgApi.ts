@@ -344,6 +344,22 @@ export const orgApi = {
     writeOrg<ConsoleKey>(`${org(slug)}/console-keys/${encodeURIComponent(keyId)}`, {
       method: 'DELETE',
     }),
+  /** One assist panel's question. See `app/routers/assist.py` for the gate.
+   *
+   *  A write rather than a read, though it changes nothing an organization
+   *  can see: it needs an account, it spends the org's budget, and it is
+   *  refused here when signed out rather than after a round trip.
+   */
+  assist: (slug: string, panel: string, question: string) =>
+    writeOrg<{
+      panel: string
+      answer: string
+      tokens_used: number
+      tokens_left_today: number | null
+    }>(`${org(slug)}/assist`, {
+      method: 'POST',
+      body: JSON.stringify({ panel, question }),
+    }),
   exportOrg: (slug: string) => writeOrg<Record<string, unknown>>(`${org(slug)}/export`),
   deleteOrg: (slug: string) => writeOrg<void>(org(slug), { method: 'DELETE' }),
   stepBack: (slug: string, assignmentId: string) =>

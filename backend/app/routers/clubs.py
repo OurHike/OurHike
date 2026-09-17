@@ -495,12 +495,26 @@ def export_org(
     one endpoint rather than a job with an email at the end - an export you
     have to request and wait for is an export that quietly stops working.
 
-    The roster is included because it is theirs. It is also the reason this
-    is admin-only: it is the one thing here rule 4 keeps unpublished.
+    **THE ROSTER IS IN IT, AND IT IS WHY THIS IS ADMIN-ONLY.** Everything
+    else here is already published - the registry, the workdays, the org's own
+    details - so an export without the roster would be a file an organization
+    could have rebuilt from the map, sitting behind an admin check with
+    nothing left to protect. The roster is the one thing on this endpoint that
+    rule 4 keeps unpublished, and it is theirs to take.
+
+    **IT CARRIES NAMES AND ADDRESSES, WHICH IS THE POINT AND THE RISK.** An
+    organization leaving needs to reach its own volunteers; that is the whole
+    of value #6's portability promise pointed at an org rather than a hiker.
+    It is also why nothing below is reachable by a supervisor - `can_read_roster`
+    would be enough to read the roster screen and is deliberately not enough to
+    download it - and why the volunteer's own hours and reports are NOT here.
+    Those belong to the person, travel with them when the organization is
+    deleted, and are theirs to export from their own account.
     """
     from app.models.org_registry import OrgPark, OrgSection, OrgTrail
     from app.models.org_role import OrgRole
     from app.models.work_project import WorkProject
+    from app.routers.org_roles import read_roster
 
     club = access.club
     parks = db.query(OrgPark).filter(OrgPark.club_id == club.id).all()
@@ -531,6 +545,11 @@ def export_org(
             row(a, ("id", "person_id", "title", "is_codeowner", "approved_at", "declined_at"))
             for a in db.query(OrgAdmin).filter(OrgAdmin.club_id == club.id).all()
         ],
+        # Assembled by the roster endpoint rather than re-queried here, so the
+        # file an organization downloads and the screen they read it on cannot
+        # answer differently. Two assemblies of the same list is how an export
+        # quietly starts omitting the pending invites.
+        "roster": [entry.model_dump() for entry in read_roster(slug, access=access, db=db)],
     }
 
 

@@ -21,6 +21,7 @@
  */
 
 import { useState } from 'react'
+import { AssistPanel } from '../AssistPanel'
 import { PageHeader, RegistryTable, SectionMap } from '../components'
 import type { OrgPark } from '../orgApi'
 
@@ -35,6 +36,7 @@ export interface AddTrailProps {
   readonly onBack: () => void
   /** Junctions reused rather than duplicated, where the read found any. */
   readonly junctionsReused?: number
+  readonly slug: string
 }
 
 export function AddTrail({
@@ -45,6 +47,7 @@ export function AddTrail({
   onPropose,
   onBack,
   junctionsReused = 0,
+  slug,
 }: AddTrailProps) {
   const [pointer, setPointer] = useState('')
 
@@ -182,6 +185,19 @@ export function AddTrail({
           </div>
         </>
       )}
+
+      <AssistPanel
+        kind="addtrail"
+        slug={slug}
+        title="Adding to an existing registry"
+        opening="It sees what you pointed us at and the count of what you already publish — never the 312 rows themselves. Nothing it says changes a section; the Propose button below is still the only thing that does."
+        placeholder="It's layer 4 on our server now"
+        context={
+          proposed === null
+            ? `${liveSections} sections already published. Nothing has been read yet.`
+            : `${liveSections} sections already published, untouched. Proposed: ${added.length} sections, ${miles.toFixed(1)} miles, ${junctionsReused} junctions reused.`
+        }
+      />
 
       <p className="org-mono">Registry for {orgName}.</p>
     </>

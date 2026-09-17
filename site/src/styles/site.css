@@ -1073,6 +1073,21 @@ a:hover {
 
 /* ---------- Nominate, claim and the demo ---------- */
 
+/* What a model could see on a club's public site, shown beside the form
+ * rather than filled into it. The border is the visual version of the
+ * sentence inside: this block is a reading, not one of your answers. */
+.org-found {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border-2);
+  border-radius: 10px;
+  background: var(--bg-sunken);
+}
+
+.org-found[hidden] {
+  display: none;
+}
+
 .org-found__title {
   font-family: var(--font-display);
   font-size: 22px;

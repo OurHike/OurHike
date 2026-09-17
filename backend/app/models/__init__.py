@@ -10,6 +10,7 @@ somewhere reachable from here... before autogenerate will see it."
 """
 
 from app.models.app_failure import AppFailure, Harm
+from app.models.assist import AssistUsage
 from app.models.closure import (
     CLOSURE_APPROVALS_REQUIRED,
     Closure,
@@ -27,7 +28,7 @@ from app.models.console_key import (
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
-from app.models.org_registry import OrgPark, OrgSection, OrgTrail, ParkKind
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail, ParkKind, RegistrySignoff
 from app.models.org_role import (
     DEACTIVATION_HOLD_FRACTION,
     OrgRole,
@@ -65,6 +66,8 @@ from app.models.work_project import (
 )
 
 __all__ = [
+    "RegistrySignoff",
+    "AssistUsage",
     "AppFailure",
     "Harm",
     "Closure",

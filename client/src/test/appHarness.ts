@@ -247,11 +247,18 @@ export function appHarness(options: HarnessOptions = {}): AppHarness {
     }
 
     if (objectUrls) {
-      vi.stubGlobal('URL', {
-        ...URL,
+      // A SUBCLASS, because the object-spread version was not constructible.
+      // `{...URL}` copies URL's own enumerable statics onto a plain object and
+      // throws its call signature away, so `new URL(href)` under this harness
+      // raised "URL is not a constructor" - which took down any code parsing a
+      // href during render. It went unnoticed while nothing did; the org
+      // router reads window.location on App's first frame and does.
+      class StubbedUrl extends URL {}
+      Object.assign(StubbedUrl, {
         createObjectURL: vi.fn(() => 'blob:trails'),
         revokeObjectURL: vi.fn(),
       })
+      vi.stubGlobal('URL', StubbedUrl)
     }
   })
 

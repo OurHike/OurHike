@@ -14,3 +14,4 @@ psycopg[binary]
 # same way pipeline/publish.py syncs published artifacts - one vendor, one
 # client library, one credential shape. See app/core/photos.py.
 boto3
+httpx

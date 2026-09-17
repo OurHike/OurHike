@@ -157,7 +157,17 @@ export function parseOrgRoute(
   url: string | URL,
   base: string = import.meta.env.BASE_URL,
 ): OrgRoute | null {
-  const parsed = typeof url === 'string' ? new URL(url, 'https://ourhike.org') : url
+  // NEVER THROWS. This runs on App's first frame, so anything it raises is a
+  // white screen instead of a map - and the inputs are a browser's own
+  // `location.href` plus whatever a test environment has stubbed over `URL`.
+  // Null is the ordinary answer for a URL that is not one of the three, and
+  // an unparseable one is not one of the three either.
+  let parsed: URL
+  try {
+    parsed = typeof url === 'string' ? new URL(url, 'https://ourhike.org') : url
+  } catch {
+    return null
+  }
   const parts = segments(parsed.pathname, base)
   if (parts === null) return null
 

@@ -31,6 +31,7 @@
  */
 
 import { PageHeader, PhoneFrame } from '../components'
+import { formatDistance, type UnitSystem } from '../../lib/units'
 
 export interface PhoneReportQueue {
   readonly queued: number
@@ -39,7 +40,10 @@ export interface PhoneReportQueue {
 
 export interface OnYourPhoneProps {
   readonly sectionName: string
-  readonly range: string
+  readonly anchors: string
+  readonly miles: number | null
+  /** The hiker's own choice, from Settings. Never assumed - #619. */
+  readonly units: UnitSystem
   readonly openReports: number
   readonly thanksCount: number
   readonly queue: PhoneReportQueue
@@ -75,7 +79,9 @@ const RULES: readonly { title: string; body: string }[] = [
 
 export function OnYourPhone({
   sectionName,
-  range,
+  anchors,
+  miles,
+  units,
   openReports,
   thanksCount,
   queue,
@@ -139,7 +145,10 @@ export function OnYourPhone({
           <div className="org-phone__row">
             <span className="org-eyebrow">Your tread</span>
             <p className="org-table__name">{sectionName}</p>
-            <p className="org-mono">{range}</p>
+            <p className="org-mono">
+              {anchors}
+              {miles === null ? '' : ` · ${formatDistance(miles, units)}`}
+            </p>
           </div>
           {openReports > 0 ? (
             <div className="org-phone__row">
@@ -193,7 +202,7 @@ export function OnYourPhone({
           </div>
           <div className="org-phone__row">
             <span className="org-eyebrow">We filled these in</span>
-            <p className="org-mono">📍 {range.split('·')[0]?.trim() || range}</p>
+            <p className="org-mono">📍 {anchors}</p>
             <p className="org-mono">🕘 Today, 9:41am</p>
             <p className="org-mono">You are the maintainer here</p>
           </div>

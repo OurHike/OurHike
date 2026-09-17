@@ -21,7 +21,9 @@
  */
 
 import { useState } from 'react'
+import { AssistPanel } from '../AssistPanel'
 import { PageHeader, SectionMap } from '../components'
+import { formatDistance, type UnitSystem } from '../../lib/units'
 import type { CoverageGap, OrgRole, OrgSection } from '../orgApi'
 
 export interface CoverageProps {
@@ -41,7 +43,10 @@ export interface CoverageProps {
   readonly onRegion: (region: string | null) => void
   readonly onEditRegions?: () => void
   readonly onExport: (format: 'csv' | 'geojson') => void
+  readonly slug: string
   readonly onBackToRoles: () => void
+  /** The hiker's own choice, from Settings. Never assumed - #619. */
+  readonly units: UnitSystem
 }
 
 export function Coverage({
@@ -57,7 +62,9 @@ export function Coverage({
   onRegion,
   onEditRegions,
   onExport,
+  slug,
   onBackToRoles,
+  units,
 }: CoverageProps) {
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -174,7 +181,7 @@ export function Coverage({
                     </div>
                     <p className="org-mono">
                       {gap.trail_name ?? '(unnamed route)'}
-                      {gap.miles === null ? '' : ` · ${gap.miles.toFixed(1)} mi`}
+                      {gap.miles === null ? '' : ` · ${formatDistance(gap.miles, units)}`}
                     </p>
                   </button>
                 )
@@ -244,6 +251,24 @@ export function Coverage({
           </div>
         )}
       </section>
+
+      <AssistPanel
+        kind="coverage"
+        slug={slug}
+        title="Read the gaps with me"
+        opening="It sees the same gap list you do, and nothing else about your organization. It can point at a pattern; it cannot attach a role, and would not be right to."
+        placeholder="Which of these has been open longest?"
+        context={[
+          `${gaps.length} of ${sectionsTotal} sections have no role attached${region ? ` in ${region}` : ''}.`,
+          ...gaps.map(
+            (gap) =>
+              `- ${gap.section_name}${gap.trail_name ? ` on ${gap.trail_name}` : ''}${gap.miles === null ? '' : `, ${gap.miles} miles`}`,
+          ),
+          unfilled.length === 0
+            ? 'Every required role is filled.'
+            : `Required roles nobody holds: ${unfilled.map((role) => role.name).join(', ')}.`,
+        ].join('\n')}
+      />
 
       <div className="org-inline">
         <button type="button" className="org-btn org-btn--ghost" onClick={onBackToRoles}>

@@ -17,7 +17,7 @@ import uuid
 import pytest
 
 from app.config import settings
-from app.core.console_tokens import mint_token, read_token
+from app.core.console_tokens import ConsoleKeyMaterialMissing, mint_token, read_token
 from app.models.club import OrgState
 from app.models.console_key import ConsoleTokenGrant
 from app.models.org_role import RoleInvite
@@ -421,3 +421,41 @@ def test_whoami_needs_an_origin_header_like_the_mint_does(client, console_on):
     response = client.get("/console/whoami", headers={"Authorization": "Bearer x"})
 
     assert response.status_code == 400
+
+
+# --------------------------------------------------------------------- #
+# The signing key. The first version of this fell back to the anon key,
+# which is published to every browser.
+# --------------------------------------------------------------------- #
+
+
+def test_a_console_token_is_never_signed_with_the_browser_published_anon_key(monkeypatch):
+    """The anon key is in the app's JavaScript bundle by design.
+
+    Signing with it would let anybody who opens the bundle mint a token
+    claiming any org, any person and write permission. The only acceptable
+    answer to a missing JWT secret is a refusal somebody notices.
+    """
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "")
+    monkeypatch.setattr(settings, "supabase_anon_key", "a-published-anon-key")
+
+    with pytest.raises(ConsoleKeyMaterialMissing):
+        mint_token(club_slug="x", person_id=None, origin=ORIGIN, permissions=[])
+
+
+def test_a_deployment_with_no_signing_key_verifies_nothing_either(monkeypatch):
+    """Not a fixed key derivable from this public file - no key at all."""
+    good = mint_token(club_slug="x", person_id=None, origin=ORIGIN, permissions=[])
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "")
+    monkeypatch.setattr(settings, "supabase_anon_key", "a-published-anon-key")
+
+    assert read_token(good, origin=ORIGIN) is None
+
+
+def test_the_signing_key_changes_when_the_jwt_secret_does(monkeypatch):
+    """A token minted under one deployment's secret is refused under another's,
+    which is what makes rotating the secret revoke every live token."""
+    minted = mint_token(club_slug="x", person_id=None, origin=ORIGIN, permissions=[])
+    monkeypatch.setattr(settings, "supabase_jwt_secret", "a-different-secret-entirely")
+
+    assert read_token(minted, origin=ORIGIN) is None

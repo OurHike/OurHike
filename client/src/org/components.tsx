@@ -13,6 +13,7 @@
  * earn its own.
  */
 
+import { formatDistance, type UnitSystem } from '../lib/units'
 import { useMemo, useState } from 'react'
 import './orgConsole.css'
 import type { CoverageGap, OrgPark, OrgSection, Workday } from './orgApi'
@@ -600,23 +601,35 @@ export interface FinderHike {
  *  this component's shape is one of the two things on these screens that is
  *  not @unvalidated.
  */
-export const LENGTH_BANDS = [
-  'Any length',
-  'Under 3 miles',
-  '3 to 6 miles',
-  'Over 6 miles',
-] as const
+/** The length filter's four buckets, in the hiker's own unit.
+ *
+ *  The EDGES are miles because the data is - `FinderHike.miles` and
+ *  `OrgSection.miles` both are - and the LABELS are whatever the hiker chose
+ *  in Settings. Writing "Under 3 miles" into the label would put a distance
+ *  on screen that `lib/units.ts` never saw, which is the whole of #619's
+ *  rule and what `unitDisplay.test.ts` catches. Converting the edges too
+ *  would move the buckets when somebody switches units, so a hike could fall
+ *  out of "3 to 6" by a Settings change alone.
+ */
+export const LENGTH_BAND_EDGES = [null, [null, 3], [3, 6], [6, null]] as const
+
+export function lengthBandLabels(units: UnitSystem): string[] {
+  const at = (miles: number) => formatDistance(miles, units, 'trimmed')
+  return ['Any length', `Under ${at(3)}`, `${at(3)} to ${at(6)}`, `Over ${at(6)}`]
+}
 
 export function HikeFinder({
   hikes,
   orgName,
+  units,
 }: {
   hikes: readonly FinderHike[]
   orgName: string
+  units: UnitSystem
 }) {
   const [region, setRegion] = useState('All regions')
   const [difficulty, setDifficulty] = useState('Any difficulty')
-  const [band, setBand] = useState<(typeof LENGTH_BANDS)[number]>('Any length')
+  const [bandIndex, setBandIndex] = useState(0)
   const [page, setPage] = useState(1)
 
   const regions = useMemo(
@@ -633,12 +646,15 @@ export function HikeFinder({
         if (region !== 'All regions' && hike.region !== region) return false
         if (difficulty !== 'Any difficulty' && hike.difficulty !== difficulty)
           return false
-        if (band === 'Under 3 miles' && hike.miles >= 3) return false
-        if (band === '3 to 6 miles' && (hike.miles < 3 || hike.miles > 6)) return false
-        if (band === 'Over 6 miles' && hike.miles <= 6) return false
+        const edge = LENGTH_BAND_EDGES[bandIndex]
+        if (edge !== null) {
+          const [low, high] = edge
+          if (low !== null && hike.miles < low) return false
+          if (high !== null && hike.miles > high) return false
+        }
         return true
       }),
-    [hikes, region, difficulty, band],
+    [hikes, region, difficulty, bandIndex],
   )
 
   const perPage = 6
@@ -649,7 +665,7 @@ export function HikeFinder({
   const reset = () => {
     setRegion('All regions')
     setDifficulty('Any difficulty')
-    setBand('Any length')
+    setBandIndex(0)
     setPage(1)
   }
 
@@ -690,14 +706,16 @@ export function HikeFinder({
           <span className="org-field__label">Length</span>
           <select
             className="org-select"
-            value={band}
+            value={bandIndex}
             onChange={(event) => {
-              setBand(event.target.value as (typeof LENGTH_BANDS)[number])
+              setBandIndex(Number(event.target.value))
               setPage(1)
             }}
           >
-            {LENGTH_BANDS.map((option) => (
-              <option key={option}>{option}</option>
+            {lengthBandLabels(units).map((option, index) => (
+              <option key={option} value={index}>
+                {option}
+              </option>
             ))}
           </select>
         </label>
@@ -731,7 +749,7 @@ export function HikeFinder({
                   <span className="org-mono">{hike.features}</span>
                 </td>
                 <td>{hike.park}</td>
-                <td className="org-table__num">{hike.miles.toFixed(1)} mi</td>
+                <td className="org-table__num">{formatDistance(hike.miles, units)}</td>
                 <td className="org-table__num">{hike.time}</td>
                 <td>{hike.route}</td>
                 <td>

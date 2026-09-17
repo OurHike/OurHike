@@ -64,6 +64,8 @@ RLS_TABLES: tuple[str, ...] = (
     "console_keys",
     "console_token_grants",
     "ridge_runner_commitments",
+    "registry_signoffs",
+    "assist_usage",
 )
 
 
@@ -453,6 +455,42 @@ def upgrade() -> None:
         ["id"],
     )
 
+    op.create_table(
+        "registry_signoffs",
+        sa.Column("id", sa.String(), nullable=False),
+        sa.Column("club_id", sa.String(), nullable=False),
+        sa.Column("person_id", sa.String(), nullable=False),
+        sa.Column("fingerprint", sa.String(), nullable=False),
+        sa.Column("signed_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(["club_id"], ["clubs.id"], name="fk_registry_signoffs_club"),
+        sa.ForeignKeyConstraint(["person_id"], ["profiles.id"], name="fk_registry_signoffs_person"),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_registry_signoffs_club_id", "registry_signoffs", ["club_id"])
+    op.create_index("ix_registry_signoffs_person_id", "registry_signoffs", ["person_id"])
+    # The count that gates publishing is "how many signed THIS registry", so
+    # the fingerprint is what the query filters on and what it is indexed for.
+    op.create_index("ix_registry_signoffs_fingerprint", "registry_signoffs", ["fingerprint"])
+
+    op.create_table(
+        "assist_usage",
+        sa.Column("id", sa.String(), nullable=False),
+        # Nullable for the public nominate form, which has no organization yet
+        # - that is the case it exists to serve, not an oversight.
+        sa.Column("club_id", sa.String(), nullable=True),
+        sa.Column("client_hash", sa.String(), nullable=True),
+        sa.Column("panel", sa.String(), nullable=False),
+        sa.Column("input_tokens", sa.Integer(), nullable=False),
+        sa.Column("output_tokens", sa.Integer(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
+    op.create_index("ix_assist_usage_club_id", "assist_usage", ["club_id"])
+    op.create_index("ix_assist_usage_client_hash", "assist_usage", ["client_hash"])
+    # The budget query is always "this handle, since this time", so the index
+    # that matters is the timestamp one.
+    op.create_index("ix_assist_usage_created_at", "assist_usage", ["created_at"])
+
     for statement in rls_statements(op.get_context().dialect.name, enable=True):
         op.execute(statement)
 
@@ -465,6 +503,14 @@ def downgrade() -> None:
     there is no undo for that beyond a backup, and this docstring is where
     somebody about to run it should find that out.
     """
+    op.drop_index("ix_assist_usage_created_at", table_name="assist_usage")
+    op.drop_index("ix_assist_usage_client_hash", table_name="assist_usage")
+    op.drop_index("ix_assist_usage_club_id", table_name="assist_usage")
+    op.drop_table("assist_usage")
+    op.drop_index("ix_registry_signoffs_fingerprint", table_name="registry_signoffs")
+    op.drop_index("ix_registry_signoffs_person_id", table_name="registry_signoffs")
+    op.drop_index("ix_registry_signoffs_club_id", table_name="registry_signoffs")
+    op.drop_table("registry_signoffs")
     op.drop_constraint("fk_maintainer_assignments_confirmed_by_profiles", "maintainer_assignments", type_="foreignkey")
     op.drop_constraint("fk_maintainer_assignments_proposed_by_profiles", "maintainer_assignments", type_="foreignkey")
     op.drop_constraint("fk_maintainer_assignments_section_id_org_sections", "maintainer_assignments", type_="foreignkey")

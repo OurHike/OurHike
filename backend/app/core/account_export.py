@@ -61,6 +61,7 @@ from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
@@ -183,6 +184,12 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "workdays_you_signed_up_for": _rows(db, WorkProjectSignup, WorkProjectSignup.person_id == profile_id),
         "trail_monitor_commitments": _rows(db, RidgeRunnerCommitment, RidgeRunnerCommitment.person_id == profile_id),
         "closures_you_helped_confirm": _rows(db, ClosureApproval, ClosureApproval.person_id == profile_id),
+        # A registry a person read and put their name to. Theirs to take for
+        # the same reason a closure approval is: it is a thing they did, not
+        # a thing done to them - and the `fingerprint` column travels with it,
+        # so an exported signature says WHICH registry was signed rather than
+        # merely that one was.
+        "registries_you_signed_off": _rows(db, RegistrySignoff, RegistrySignoff.person_id == profile_id),
         # The four below name this person without being about them: an
         # organization they registered, a workday they posted, a key they
         # minted, a roster sync they ran. They are in the file because the

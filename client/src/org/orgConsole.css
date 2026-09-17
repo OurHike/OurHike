@@ -579,7 +579,11 @@
 .org-pill[data-tone='done'] {
   background: var(--bg-sunken);
   color: var(--brand-primary);
-  border-color: var(--moss-300);
+  /* A semantic alias, not `--moss-300`. The base palette is the design
+   * system's own vocabulary and an app stylesheet reading one is how a
+   * theme stops being a theme - themeTokens.test.ts is the guard, and it
+   * caught this. */
+  border-color: var(--brand-primary);
 }
 
 .org-pill[data-tone='waiting'] {
@@ -905,6 +909,7 @@
 }
 
 .org-phone__body {
+  overflow: hidden;
   border: 10px solid var(--bg-inverse);
   border-radius: 30px;
   background: var(--bg-page);
@@ -931,16 +936,37 @@
   color: var(--fg-2);
 }
 
+/* A row inside a phone is a STACK, not a row.
+ *
+ * Laid out horizontally these wrapped a three-word button across four lines
+ * and pushed the last one outside the frame - which made the gallery a
+ * picture of a broken screen rather than of the screen a maintainer gets. The
+ * class keeps its name because it is one band of the phone's screen; what a
+ * band contains runs down it. */
 .org-phone__row {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   min-height: 48px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border-1);
   background: var(--bg-surface);
   font-size: 14px;
+  /* The frame is 390px and what is in it has to fit. A long place name
+   * breaking out of the bezel is the one thing this gallery must not show. */
+  overflow-wrap: anywhere;
+}
+
+.org-phone__row > p {
+  margin: 0;
+}
+
+/* The status bar is the one genuine row: a time on the left, a signal note on
+ * the right, exactly as a phone draws it. */
+.org-phone__bar {
+  justify-content: space-between;
 }
 
 .org-phones {

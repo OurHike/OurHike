@@ -23,6 +23,7 @@
  * feed - and the nightly diff would silently never happen.
  */
 
+import { AssistPanel } from '../AssistPanel'
 import { useState } from 'react'
 import { PageHeader, RegistryTable, SectionMap } from '../components'
 import type { OrgPark, OrgSection } from '../orgApi'
@@ -47,6 +48,7 @@ export interface HikeRegistryProps {
   readonly needsAnEye: number
   readonly onAddSource: (url: string, kind: string) => Promise<string>
   readonly onSendForSignoff: () => void
+  readonly slug: string
 }
 
 /** What we can read again tomorrow, which is the whole criterion. */
@@ -65,6 +67,7 @@ export function HikeRegistry({
   needsAnEye,
   onAddSource,
   onSendForSignoff,
+  slug,
 }: HikeRegistryProps) {
   const [url, setUrl] = useState('')
   const [kind, setKind] = useState(SOURCE_KINDS[0].value)
@@ -109,6 +112,15 @@ export function HikeRegistry({
             <path d="M9 4v13.5M15 6.5V20" />
           </>
         }
+      />
+
+      <AssistPanel
+        kind="registry"
+        slug={slug}
+        title="Registry assistant"
+        opening="Point it at your GIS however it exists — a feature server, a WMS endpoint, a bucket, or your public downloads page. It reports what it can see and says what it cannot; reading a layer is not the same as publishing one, and nothing here publishes."
+        placeholder="It's all on gis.example.org/arcgis/rest/… — names are in SECT_NAME"
+        context={`${sections.length} sections read so far, ${clean} clean, ${needsAnEye} needing a person. Sources connected: ${sources.length}.`}
       />
 
       <section className="org-grid org-grid--two">

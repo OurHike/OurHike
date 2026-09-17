@@ -38,15 +38,43 @@ from app.models.console_key import CONSOLE_TOKEN_TTL_SECONDS
 CONSOLE_PERMISSIONS = ("read_roster", "manage_volunteers", "write")
 
 
+class ConsoleKeyMaterialMissing(RuntimeError):
+    """`supabase_jwt_secret` is unset, so nothing here can be signed safely."""
+
+
 def _signing_key() -> bytes:
     """The key these tokens are signed with.
 
-    Derived from whatever secret material this deployment already holds
-    rather than adding a sixth environment variable nobody would remember to
-    rotate. HKDF-style domain separation via a fixed label, so a console
-    token can never be mistaken for - or replayed as - a Supabase one.
+    Derived from the secret this deployment already holds rather than adding
+    a sixth environment variable nobody would remember to rotate. HKDF-style
+    domain separation via a fixed label, so a console token can never be
+    mistaken for - or replayed as - a Supabase one.
+
+    **IT IS `supabase_jwt_secret` AND NOTHING ELSE, AND AN UNSET ONE RAISES.**
+    The first version of this fell back to `supabase_anon_key` and then to
+    `""`, which was a forgeable-token bug in two directions and is the reason
+    this docstring is long:
+
+    - The anon key is **published to every browser**: `client/.env.example`
+      names it `your-anon-public-key` and `lib/supabase.ts` reads it from the
+      bundle. Signing with it means anybody who opens the app's JavaScript can
+      mint a console token claiming any org, any person and `perms: ["write"]`.
+    - The `""` fallback was worse. It made the signing key a fixed value
+      derivable from this file, which is in a public repository.
+
+    Neither was reachable in a deployment that set the JWT secret, and
+    `console_embed_enabled` defaults False, so nothing shipped forgeable. But
+    a deployment CAN legitimately set the anon key and not the JWT secret -
+    the anon key is what the client needs - and that configuration silently
+    produced signable tokens. Raising turns a silent forgery into a loud
+    misconfiguration, which is the only version of this a person notices.
     """
-    base = (settings.supabase_jwt_secret or settings.supabase_anon_key or "").encode("utf-8")
+    base = (settings.supabase_jwt_secret or "").encode("utf-8")
+    if not base:
+        raise ConsoleKeyMaterialMissing(
+            "The console embed needs SUPABASE_JWT_SECRET set. It is never signed with the anon key, "
+            "which is published to every browser."
+        )
     return hmac.new(b"ourhike-console-embed-v1", base, hashlib.sha256).digest()
 
 
@@ -61,6 +89,16 @@ def new_key_pair() -> tuple[str, str]:
 
 
 def hash_secret(secret: str) -> str:
+    """A bare SHA-256, and that is correct here rather than a shortcut.
+
+    A password KDF - bcrypt, argon2 - exists to make guessing a LOW-entropy
+    human-chosen string expensive. `new_key_pair` returns
+    `secrets.token_urlsafe(32)`: 256 bits from the OS CSPRNG, with no
+    dictionary to guess from and nothing for a work factor to slow down. The
+    reason to say so in a comment is that "SHA-256 on a credential" is the
+    right thing to flag on sight, and the next reader should be able to settle
+    it here rather than by changing it.
+    """
     return hashlib.sha256(secret.encode("utf-8")).hexdigest()
 
 
@@ -120,7 +158,13 @@ def read_token(token: str, *, origin: str) -> dict[str, object] | None:
     except ValueError:
         return None
 
-    expected = _b64(hmac.new(_signing_key(), body.encode("ascii"), hashlib.sha256).digest())
+    try:
+        expected = _b64(hmac.new(_signing_key(), body.encode("ascii"), hashlib.sha256).digest())
+    except ConsoleKeyMaterialMissing:
+        # A deployment with no signing key cannot have minted this, so it
+        # cannot verify it either. Refusing is the same answer every other
+        # failure gets.
+        return None
     if not hmac.compare_digest(signature, expected):
         return None
 

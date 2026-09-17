@@ -63,6 +63,30 @@ const description =
             looking for a maps page, a GIS server, a downloads link, or a data
             portal.
           </p>
+          <div class="org-inline" style="margin-top: 10px">
+            <button class="btn btn--ghost" type="button" id="nominate-look">
+              Have a look at their site
+            </button>
+            <span class="org-help" id="nominate-look-note"></span>
+          </div>
+          {
+            /* WHAT THIS PANEL IS, and the sentence it has to keep. It reports
+               what a model could see on a public page. It does not verify
+               anything, it is not a decision, and the organization it is
+               about has not been contacted - which is exactly what the
+               heading below says, because a nomination that arrived reading
+               like an endorsement would be worse than none. */
+          }
+          <div class="org-found" id="nominate-found" hidden>
+            <span class="org-eyebrow">WHAT WE COULD SEE ON THEIR SITE</span>
+            <p class="org-help" id="nominate-found-text"></p>
+            <p class="org-help">
+              <strong>Read, not verified.</strong> Nobody at the club has been
+              contacted and nothing here is a commitment — yours or theirs. Add
+              anything it missed below; most orgs keep their data in more than
+              one place.
+            </p>
+          </div>
         </fieldset>
 
         <fieldset class="org-form__group">
@@ -171,4 +195,6 @@ const description =
       </div>
     </div>
   </section>
+
+  <script src="../../scripts/nominateLook.js"></script>
 </Base>

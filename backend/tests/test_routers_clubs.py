@@ -16,6 +16,8 @@ What these hold, in the order the design cares about them:
 
 import uuid
 
+import pytest
+
 from app.models.club import Club, OrgAdmin, OrgState
 from app.models.org_role import RoleInvite
 from app.models.volunteer_hours import HoursActivity, VolunteerHoursRecord
@@ -365,3 +367,130 @@ def test_an_unclaimed_organization_still_appears_in_the_list(client, db_session)
     slugs = [org["slug"] for org in client.get("/clubs").json()]
 
     assert "ramapo-trail-conference" in slugs
+
+
+# --------------------------------------------------------------------- #
+# The links an organization gives us are rendered as hrefs on THEIR site,
+# in the console, and on every one of their sections in the hiker's app.
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    [
+        "javascript:alert(document.cookie)",
+        "JavaScript:alert(1)",
+        "  javascript:alert(1)  ",
+        "data:text/html,<script>alert(1)</script>",
+        "vbscript:msgbox(1)",
+        "jar:http://x!/",
+        "//evil.example/looks-relative",
+    ],
+)
+def test_a_donation_link_a_browser_would_execute_is_refused_at_registration(client, db_session, hostile):
+    """The card that renders this is in a hiker's hand, on a trail.
+
+    An allow-list, so a scheme nobody here has heard of is refused rather
+    than waited for.
+    """
+    registrar = make_profile(db_session)
+
+    response = client.post(
+        "/clubs",
+        json={
+            "name": "Ramapo Trail Conference",
+            "slug": "ramapo-trail-conference",
+            "domain": "ramapotrails.org",
+            "donation_url": hostile,
+            "admins": [],
+        },
+        headers=auth_headers(registrar.id, email="chair@ramapotrails.org"),
+    )
+
+    assert response.status_code == 422
+
+
+def test_the_same_link_is_refused_when_edited_in_afterwards(client, db_session):
+    """The links usually arrive after the trails do, so the settings form is
+    the one an organization actually uses. A gate only on registration would
+    be a gate that only looked like one."""
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person)
+
+    response = client.patch(
+        f"/clubs/{org.slug}",
+        json={"membership_url": "javascript:alert(1)"},
+        headers=auth_headers(person.id),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "fine",
+    ["https://ramapotrails.org/join", "http://ramapotrails.org/give", "  https://x.org/a  "],
+)
+def test_an_ordinary_membership_page_still_goes_through(client, db_session, fine):
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person)
+
+    response = client.patch(f"/clubs/{org.slug}", json={"membership_url": fine}, headers=auth_headers(person.id))
+
+    assert response.status_code == 200
+    assert response.json()["membership_url"] == fine.strip()
+
+
+def test_an_organization_with_no_donation_page_has_no_donation_link(client, db_session):
+    """Absent is a real answer. A blank field must not become a dead link."""
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person)
+
+    response = client.patch(f"/clubs/{org.slug}", json={"donation_url": "   "}, headers=auth_headers(person.id))
+
+    assert response.status_code == 200
+    assert response.json()["donation_url"] is None
+
+
+def test_the_export_carries_the_roster_the_settings_screen_promises(client, db_session):
+    """Everything else in the file is already published.
+
+    An export without the roster would be a file an organization could have
+    rebuilt from the map, sitting behind an admin check with nothing left to
+    protect - and the settings screen shows a Roster tile beside the button.
+    """
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person)
+
+    body = client.get(f"/clubs/{org.slug}/export", headers=auth_headers(person.id)).json()
+
+    assert "roster" in body
+    assert isinstance(body["roster"], list)
+
+
+def test_a_supervisor_can_read_the_roster_screen_and_cannot_download_it(client, db_session):
+    """`can_read_roster` is enough for the screen and deliberately not enough
+    for the file. A screen is one org's supervisor looking something up; a
+    file is a copy of everybody's name and address leaving the building."""
+    org = make_org(db_session, state=OrgState.claimed)
+    supervisor = make_profile(db_session)
+
+    response = client.get(f"/clubs/{org.slug}/export", headers=auth_headers(supervisor.id))
+
+    assert response.status_code == 403
+
+
+def test_the_export_does_not_carry_a_volunteers_own_hours(client, db_session):
+    """Hours belong to the person, travel with them when the organization is
+    deleted, and are theirs to export from their own account."""
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person)
+
+    body = client.get(f"/clubs/{org.slug}/export", headers=auth_headers(person.id)).json()
+
+    assert "hours" not in body
+    assert "reports" not in body

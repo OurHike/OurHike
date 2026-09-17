@@ -131,3 +131,30 @@ class OrgSection(Base):
     region = Column(String, nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=utc_now)
+
+
+class RegistrySignoff(Base):
+    """One codeowner's signature on one exact registry.
+
+    **THE FINGERPRINT IS THE WHOLE POINT OF THE TABLE.** Three people
+    confirming a registry, somebody then adding a trail, and the confirmations
+    still counting would mean sections reaching a hiker that nobody signed
+    for. Each row stores a digest of what the signer actually read, so a
+    change to the registry drops the count back and the three are asked again.
+    Recording a bare "approved" flag would have been half the work and none of
+    the guarantee.
+
+    **RE-SIGNING IS AN INSERT, NEVER AN UPDATE.** Who confirmed what, and
+    when, is the question this table exists to answer later - "was this
+    section signed off before or after the reroute" is asked exactly once,
+    after something has gone wrong, and an updated row cannot answer it.
+    """
+
+    __tablename__ = "registry_signoffs"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=False, index=True)
+    person_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
+    # A digest of the registry as it stood when they pressed the button.
+    fingerprint = Column(String, nullable=False, index=True)
+    signed_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)

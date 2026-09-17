@@ -144,6 +144,44 @@ class Settings(BaseSettings):
     # credential, so there is nothing about them to review in this sense.
     console_embed_enabled: bool = False
 
+    # The assist panels (#1540, #1541 and the nominate form), and the three
+    # settings that decide whether they can run, what they cost and who pays.
+    #
+    # OFF BY DEFAULT, for a different reason from the console embed above.
+    # That one is off pending a security review; this one is off because it
+    # spends money on somebody else's API key, and a deployment that has not
+    # deliberately chosen to spend it should not start doing so because a
+    # branch merged. With no key set the endpoints answer 503 and the panels
+    # say so on screen rather than spinning.
+    assist_enabled: bool = False
+    anthropic_api_key: str = ""
+
+    # THE MODEL IS A SETTING AND NOT A PARAMETER, which is the whole of the
+    # abuse story. A client that could name the model could name the most
+    # expensive one and bill an organization - or us - for it. Nothing in the
+    # request body reaches this value; `app/routers/assist.py` reads it here
+    # and nowhere else, and the tests assert a model in a request body is
+    # ignored rather than honoured. Sonnet by decision, not by default: these
+    # are short structured reads of a GIS layer or a public web page, and the
+    # maintainer's instruction on 2026-09-17 was Sonnet only.
+    assist_model: str = "claude-sonnet-5"
+
+    # What one organization may spend in a day, in tokens across all panels.
+    #
+    # @unvalidated. Nobody has measured what a real registry read costs,
+    # because no organization has run one - the number is a ceiling chosen to
+    # be obviously survivable rather than a budget derived from usage. What
+    # would settle it is the token counts of the first ten real registry
+    # reads, which `assist_usage` records precisely so that the question can
+    # be answered rather than re-guessed.
+    assist_daily_token_budget: int = 400_000
+
+    # The same for the PUBLIC nominate form, per IP per day. Smaller by two
+    # orders of magnitude because it is the one assist surface with no account
+    # behind it: anybody on the internet can reach it, so the only thing
+    # standing between it and a bill is this number.
+    assist_public_daily_token_budget: int = 20_000
+
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":
         """Refuse to start rather than publish a photo of a person.

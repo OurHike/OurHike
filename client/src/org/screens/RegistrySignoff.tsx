@@ -21,6 +21,7 @@
 
 import { useState } from 'react'
 import { PageHeader, RegistryTable, SectionMap } from '../components'
+import { formatDistance, type UnitSystem } from '../../lib/units'
 import type { Org, OrgPark, OrgSection } from '../orgApi'
 
 export interface RegistrySignoffProps {
@@ -35,6 +36,8 @@ export interface RegistrySignoffProps {
   readonly onConfirm: () => void
   readonly onFlag: (note: string) => void
   readonly names?: Readonly<Record<string, string>>
+  /** The hiker's own choice, from Settings. Never assumed - #619. */
+  readonly units: UnitSystem
 }
 
 export function RegistrySignoff({
@@ -47,6 +50,7 @@ export function RegistrySignoff({
   onConfirm,
   onFlag,
   names = {},
+  units,
 }: RegistrySignoffProps) {
   const [flagging, setFlagging] = useState(false)
   const [note, setNote] = useState('')
@@ -97,7 +101,7 @@ export function RegistrySignoff({
             highlightId={selected?.id ?? null}
             caption={
               selected
-                ? `${selected.name} · ${selected.miles === null ? 'miles unknown' : `${selected.miles.toFixed(1)} mi`}`
+                ? `${selected.name} · ${selected.miles === null ? 'length unknown' : formatDistance(selected.miles, units)}`
                 : `All ${sections.length} sections`
             }
           />

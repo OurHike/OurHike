@@ -30,6 +30,7 @@
 
 import { useState } from 'react'
 import { PageHeader } from '../components'
+import { formatDistance, type UnitSystem } from '../../lib/units'
 
 export type PoiAge = 'current' | 'needs a look'
 
@@ -103,8 +104,13 @@ export type TreadWindow = (typeof TREAD_WINDOWS)[number]
 
 export interface YourTreadProps {
   readonly sectionName: string
-  readonly range: string
+  /** The trail's own mile markers - its labels, not a distance we convert. */
+  readonly anchors: string
+  /** How long the stretch is. A number, so Settings decides how it reads. */
+  readonly miles: number | null
   readonly standing: string
+  /** The hiker's own choice, from Settings. Never assumed - #619. */
+  readonly units: UnitSystem
   readonly roles: readonly TreadRole[]
   readonly roleId: string | null
   readonly period: TreadWindow
@@ -132,8 +138,10 @@ export interface YourTreadProps {
 
 export function YourTread({
   sectionName,
-  range,
+  anchors,
+  miles,
   standing,
+  units,
   roles,
   roleId,
   period,
@@ -172,7 +180,7 @@ export function YourTread({
   return (
     <>
       <PageHeader
-        eyebrow={`Your section · ${range}`}
+        eyebrow={`Your section · ${anchors}${miles === null ? '' : ` · ${formatDistance(miles, units)}`}`}
         title={sectionName}
         sub={
           <>

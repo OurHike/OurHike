@@ -112,6 +112,49 @@ class OrgAdminInvite(BaseModel):
         return cleaned
 
 
+# The only two URL schemes an organization may give us for a link we render.
+#
+# WHY THIS EXISTS, and it is the sharper of the two reasons this module
+# validates anything. `membership_url` and `donation_url` are shown on the
+# organization's own website through the embed, in the console, AND - by the
+# design's own line - on every one of their sections in the hiker's app. A
+# stored `javascript:` URL in any of those three is script running in a
+# hiker's app when they tap "Support this work" on a section card, from a
+# value an admin typed into a settings form. `data:` is the same hole wearing
+# a different hat.
+#
+# An allow-list rather than a block-list, because the list of schemes a
+# browser will execute is not one anybody can enumerate from memory: `vbscript:`
+# and `jar:` have both been it, and the next one is not knowable here. Two
+# schemes is what a membership page and a donation page need.
+SAFE_URL_SCHEMES = ("https://", "http://")
+
+URL_MAX = 2048
+
+
+def safe_external_url(value: str | None) -> str | None:
+    """An organization's own link, or a refusal naming what is wrong.
+
+    None and empty both mean "they gave none", which is a real answer: an
+    organization with no donation page has no donation link, and absent is
+    what the card renders rather than a dead one.
+    """
+    if value is None:
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if len(cleaned) > URL_MAX:
+        raise ValueError(f"that link is longer than {URL_MAX} characters")
+    if not cleaned.lower().startswith(SAFE_URL_SCHEMES):
+        raise ValueError("a link has to start with https:// or http://")
+    # A control character in an href survives some parsers and is stripped by
+    # others, which is exactly the disagreement a bypass lives in.
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in cleaned):
+        raise ValueError("that link contains a control character")
+    return cleaned
+
+
 class OrgCreate(BaseModel):
     """Registering. One admin fills this in; three approve before anything publishes."""
 
@@ -135,6 +178,11 @@ class OrgCreate(BaseModel):
         if cleaned in RESERVED_SLUGS:
             raise ValueError(f"{cleaned!r} is reserved - it already means something under /org/")
         return cleaned
+
+    @field_validator("website", "membership_url", "donation_url")
+    @classmethod
+    def _a_link_a_browser_will_not_execute(cls, value: str | None) -> str | None:
+        return safe_external_url(value)
 
     @field_validator("domain")
     @classmethod
@@ -163,6 +211,15 @@ class OrgSettingsUpdate(BaseModel):
     website: str | None = None
     membership_url: str | None = None
     donation_url: str | None = None
+
+    # The same gate as registration. An admin who could not register a
+    # `javascript:` link but could edit one in afterwards would be a gate that
+    # only looked like one - and this is the form an organization actually
+    # uses, because the links usually arrive after the trails do.
+    @field_validator("website", "membership_url", "donation_url")
+    @classmethod
+    def _a_link_a_browser_will_not_execute(cls, value: str | None) -> str | None:
+        return safe_external_url(value)
 
 
 class OrgClaimRequest(BaseModel):

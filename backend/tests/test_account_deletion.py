@@ -333,6 +333,12 @@ _TABLES_EMPTIED = {
     "hikes",
     "user_preferences",
     "maintainer_assignments",
+    # A registry signature says a NAMED person read this exact registry and
+    # confirmed it. With the account gone nobody is standing behind that
+    # sentence, so the row goes and the organization is asked again - which
+    # is the same thing a changed section already does to the count. Keeping
+    # it would mean three signatures where only two people exist.
+    "registry_signoffs",
     "volunteer_hours",
     # `reporter_id` is nullable and null is the ordinary state here, so this
     # is the one table that can forget the link without losing the row.

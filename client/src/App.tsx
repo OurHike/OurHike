@@ -10216,7 +10216,7 @@ function App() {
   if (orgRouting.route !== null) {
     return (
       <Suspense fallback={<div className="app__screen">Opening the console…</div>}>
-        <OrgConsole routing={orgRouting} />
+        <OrgConsole routing={orgRouting} units={units} />
       </Suspense>
     )
   }

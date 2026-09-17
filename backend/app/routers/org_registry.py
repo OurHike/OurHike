@@ -18,6 +18,8 @@ merges, and the screen says so in as many words.
 
 from __future__ import annotations
 
+import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -26,7 +28,7 @@ from app.core.orm import commit_and_refresh
 from app.db.session import get_db
 from app.models.club import OrgAdmin
 from app.models.maintainer_assignment import MaintainerAssignment
-from app.models.org_registry import OrgPark, OrgSection, OrgTrail
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail, RegistrySignoff
 from app.schemas.org_registry import (
     CoverageGap,
     CoverageOut,
@@ -262,6 +264,42 @@ def read_registry_diff(
     )
 
 
+def registry_fingerprint(db: Session, club_id: str) -> str:
+    """A digest of exactly what a codeowner is being asked to sign.
+
+    **WHAT IS IN IT IS THE WHOLE QUESTION.** Every park, trail and section
+    this organization publishes, with the fields a hiker would notice being
+    wrong: the names, the blazes, the anchors and the mileages. A change to
+    any of them produces a different digest, which drops the sign-off count
+    back to zero and asks the three again.
+
+    What is deliberately NOT in it: ids and timestamps. A row rewritten with
+    the same content is the same registry, and making a re-import invalidate
+    three signatures would train an organization to click through the one
+    screen that is supposed to make them read.
+
+    Sorted before hashing, because a database is free to return rows in any
+    order and a digest that moved with the query plan would be a digest that
+    invalidated itself at random.
+    """
+    parks = db.query(OrgPark).filter(OrgPark.club_id == club_id).all()
+    park_ids = [park.id for park in parks]
+    trails = db.query(OrgTrail).filter(OrgTrail.park_id.in_(park_ids)).all() if park_ids else []
+    trail_ids = [trail.id for trail in trails]
+    sections = db.query(OrgSection).filter(OrgSection.trail_id.in_(trail_ids)).all() if trail_ids else []
+
+    lines = sorted(f"park\x1f{park.name}\x1f{park.kind}" for park in parks)
+    lines += sorted(
+        f"trail\x1f{trail.name}\x1f{trail.blaze_value_raw}\x1f{trail.blaze_mapped}\x1f{trail.miles}" for trail in trails
+    )
+    lines += sorted(
+        f"section\x1f{section.name}\x1f{section.start_anchor}\x1f{section.end_anchor}"
+        f"\x1f{section.start_mile}\x1f{section.end_mile}\x1f{section.miles}\x1f{section.region}"
+        for section in sections
+    )
+    return hashlib.sha256("\x1e".join(lines).encode("utf-8")).hexdigest()
+
+
 @router.post("/{slug}/registry/signoff", status_code=status.HTTP_202_ACCEPTED)
 def sign_off_registry(
     slug: str,
@@ -270,11 +308,31 @@ def sign_off_registry(
 ) -> dict[str, object]:
     """Record that this codeowner agrees the registry is accurate.
 
-    **It publishes nothing.** Three codeowners agreeing produces a proposal;
-    a person merging it is what reaches a phone. Saying so in the response
-    rather than returning a bare 202 is deliberate - an org that thinks it
-    has published and then cannot find its trails on a phone will ask us why,
-    and the honest answer belongs where they are looking.
+    **IT PUBLISHES NOTHING, AND IT DOES NOT OPEN A PULL REQUEST EITHER.** The
+    first sentence was always true; the second is the correction. An earlier
+    version of this endpoint answered `"recorded"` while writing nothing at
+    all, and promised a pull request that no code in this repository opens -
+    two claims a reader would have had no way to check. Both are now what
+    they say: the signature is a row, and the response says plainly that
+    opening the pull request is a step nobody has built.
+
+    **A SIGNATURE IS AGAINST ONE EXACT REGISTRY.** `registry_fingerprint`
+    digests what the signer read, so adding a trail after two people have
+    agreed drops the count rather than carrying their names onto sections
+    they never saw. This is the guarantee the whole screen exists for.
+
+    **SIGNING TWICE IS NOT TWO SIGNATURES.** The count is over distinct
+    people, so a codeowner pressing the button again cannot reach three
+    alone. That is the failure this would have had if it counted rows.
+
+    WHOSE CREDENTIALS WOULD OPEN THE PULL REQUEST, when somebody builds it:
+    not the admin's. An organization admin has no GitHub account here, and
+    giving one the ability to cause a push would make every org admin a
+    committer to a public repository. It has to be a service identity with
+    write scoped to the registry path and nothing else, and a person still
+    merges. That is a decision to make in review rather than a detail to
+    settle in this docstring - features/ORG_ONBOARDING.md's "Known gaps"
+    carries it as an open question.
     """
     if not access.is_codeowner:
         raise HTTPException(
@@ -282,6 +340,33 @@ def sign_off_registry(
             detail="Signing off the registry is a codeowner's act",
         )
 
+    fingerprint = registry_fingerprint(db, access.club.id)
+    already = (
+        db.query(RegistrySignoff)
+        .filter(
+            RegistrySignoff.club_id == access.club.id,
+            RegistrySignoff.person_id == access.person_id,
+            RegistrySignoff.fingerprint == fingerprint,
+        )
+        .one_or_none()
+    )
+    if already is None:
+        db.add(
+            RegistrySignoff(
+                club_id=access.club.id,
+                person_id=access.person_id,
+                fingerprint=fingerprint,
+            )
+        )
+        db.commit()
+
+    signed_by = {
+        row.person_id
+        for row in db.query(RegistrySignoff).filter(
+            RegistrySignoff.club_id == access.club.id,
+            RegistrySignoff.fingerprint == fingerprint,
+        )
+    }
     codeowners = (
         db.query(OrgAdmin)
         .filter(
@@ -291,14 +376,30 @@ def sign_off_registry(
         )
         .count()
     )
+    complete = len(signed_by) >= REGISTRY_APPROVALS_REQUIRED
+
     return {
-        "status": "recorded",
+        "status": "signed",
+        "registry_fingerprint": fingerprint,
+        "signatures": len(signed_by),
         "approvals_required": REGISTRY_APPROVALS_REQUIRED,
         "codeowners_available": codeowners,
+        "complete": complete,
         "detail": (
-            "Recorded. Once all three codeowners agree we open a pull request against the public "
-            "repository - a person merges it, and the next map build is what puts your sections on "
-            "a phone. Approved is not published, and the org home screen tracks the gap."
+            (
+                "All three have signed this exact registry. Nothing is published yet: opening the "
+                "pull request against the public repository is a step nobody has built, so a "
+                "maintainer still raises it by hand. Approved is not published, and the org home "
+                "screen tracks the gap."
+            )
+            if complete
+            else (
+                f"Signed. {len(signed_by)} of {REGISTRY_APPROVALS_REQUIRED} codeowners have agreed "
+                "to this exact registry. Changing a section after somebody signs asks them again - "
+                "their name never carries onto sections they did not read. Nothing reaches a phone "
+                "until a pull request is merged and the next map build runs: approved is not "
+                "published."
+            )
         ),
     }
 

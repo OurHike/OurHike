@@ -10,6 +10,7 @@ safely be given a seat.
 import uuid
 
 from app.models.club import OrgState
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail, ParkKind, RegistrySignoff
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_section
 from tests.tokens import auth_headers
 
@@ -23,7 +24,13 @@ def _org_with_admin(db_session):
 
 def test_signing_off_says_in_words_that_it_published_nothing(client, db_session):
     """An organization that thinks it has published and then cannot find its
-    trails on a phone will ask us why. The answer belongs where they looked."""
+    trails on a phone will ask us why. The answer belongs where they looked.
+
+    The wording moved once, and the reason is worth keeping: the endpoint used
+    to promise a pull request in the present tense while no code in this
+    repository opened one. It now says the same thing about publishing and is
+    accurate about who raises the pull request.
+    """
     _, admin = _org_with_admin(db_session)
 
     response = client.post("/clubs/ramapo-trail-conference/registry/signoff", headers=auth_headers(admin.id))
@@ -31,7 +38,7 @@ def test_signing_off_says_in_words_that_it_published_nothing(client, db_session)
     assert response.status_code == 202
     detail = response.json()["detail"]
     assert "pull request" in detail
-    assert "Approved is not published" in detail
+    assert "approved is not published" in detail.lower()
 
 
 def test_sign_off_takes_three_codeowners(client, db_session):
@@ -247,5 +254,101 @@ def test_no_hiker_is_told_which_miles_nobody_looks_after(client, db_session):
     make_section(db_session, org)
 
     response = client.get("/clubs/ramapo-trail-conference/coverage", headers=auth_headers(str(uuid.uuid4())))
+
+    assert response.status_code == 403
+
+
+# --------------------------------------------------------------------- #
+# Sign-off. An earlier version answered "recorded" while writing nothing.
+# --------------------------------------------------------------------- #
+
+
+def test_a_signature_is_a_row_rather_than_a_word_in_a_response(client, db_session):
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person, is_codeowner=True)
+
+    body = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json()
+
+    assert body["signatures"] == 1
+    assert db_session.query(RegistrySignoff).filter(RegistrySignoff.club_id == org.id).count() == 1
+
+
+def test_one_codeowner_pressing_twice_is_still_one_signature(client, db_session):
+    """Counting rows rather than people would let one person reach three."""
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person, is_codeowner=True)
+
+    for _ in range(3):
+        body = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json()
+
+    assert body["signatures"] == 1
+    assert body["complete"] is False
+
+
+def test_three_codeowners_signing_the_same_registry_completes_it(client, db_session):
+    org = make_org(db_session, state=OrgState.claimed)
+    people = [make_profile(db_session) for _ in range(3)]
+    for person in people:
+        make_admin(db_session, org, person, is_codeowner=True)
+
+    for person in people:
+        body = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json()
+
+    assert body["signatures"] == 3
+    assert body["complete"] is True
+
+
+def test_changing_a_section_asks_the_signers_again(client, db_session):
+    """The guarantee the whole screen exists for: nobody's name carries onto
+    sections they never read."""
+    org = make_org(db_session, state=OrgState.claimed)
+    people = [make_profile(db_session) for _ in range(3)]
+    for person in people:
+        make_admin(db_session, org, person, is_codeowner=True)
+    park = OrgPark(club_id=org.id, name="Harriman", kind=ParkKind.park)
+    db_session.add(park)
+    db_session.flush()
+    trail = OrgTrail(park_id=park.id, name="Pine Meadow")
+    db_session.add(trail)
+    db_session.flush()
+    section = OrgSection(trail_id=trail.id, name="Pine Meadow North", miles=3.3)
+    db_session.add(section)
+    db_session.commit()
+
+    for person in people:
+        complete = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json()
+    assert complete["complete"] is True
+
+    section.miles = 4.1
+    db_session.commit()
+
+    after = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(people[0].id)).json()
+
+    assert after["registry_fingerprint"] != complete["registry_fingerprint"]
+    assert after["signatures"] == 1
+    assert after["complete"] is False
+
+
+def test_the_response_does_not_claim_a_pull_request_nobody_opens(client, db_session):
+    """No code in this repository opens one. Saying so is the point."""
+    org = make_org(db_session, state=OrgState.claimed)
+    people = [make_profile(db_session) for _ in range(3)]
+    for person in people:
+        make_admin(db_session, org, person, is_codeowner=True)
+
+    for person in people:
+        body = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id)).json()
+
+    assert "nobody has built" in body["detail"]
+
+
+def test_an_admin_who_is_not_a_codeowner_cannot_sign(client, db_session):
+    org = make_org(db_session, state=OrgState.claimed)
+    person = make_profile(db_session)
+    make_admin(db_session, org, person, is_codeowner=False)
+
+    response = client.post(f"/clubs/{org.slug}/registry/signoff", headers=auth_headers(person.id))
 
     assert response.status_code == 403

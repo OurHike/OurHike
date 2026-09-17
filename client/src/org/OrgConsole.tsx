@@ -42,6 +42,7 @@ import {
 } from './orgApi'
 import type { OrgRouting } from '../lib/useOrgRoute'
 import type { OrgRoute } from '../lib/orgRoute'
+import type { UnitSystem } from '../lib/units'
 import {
   DEMO_COVERED,
   DEMO_HIKES,
@@ -161,7 +162,15 @@ function useOrgData(slug: string | null): OrgData {
   const [data, setData] = useState<OrgData>(EMPTY)
 
   useEffect(() => {
-    if (slug === null) return
+    if (slug === null) {
+      // `/my/tread` with no `?org=` - the address a welcome email links to
+      // before anybody has picked which organization. There is nothing to
+      // fetch, and leaving `loading` true would hold that screen on "reading
+      // your organization" forever, which is the one URL that must not do
+      // that.
+      setData({ ...EMPTY, loading: false })
+      return
+    }
     if (isDemoOrg(slug)) {
       setData(demoData())
       return
@@ -237,7 +246,18 @@ const notWiredYet = () => {}
  * a `go` inside the console would move the URL and leave App still rendering
  * the map. One hook, one answer.
  */
-export function OrgConsole({ routing }: { routing: OrgRouting }) {
+export function OrgConsole({
+  routing,
+  units,
+}: {
+  routing: OrgRouting
+  /** Feet or metres, straight from the hiker's Settings (#619).
+   *
+   *  Passed in rather than read here, because App.tsx already holds the
+   *  preferences and a second reader is a second thing that can disagree
+   *  with the Settings screen. */
+  units: UnitSystem
+}) {
   const { route, go } = routing
   const slug =
     route === null ? null : route.kind === 'tread' ? (route.org ?? null) : route.slug
@@ -347,6 +367,7 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
               sources={[]}
               featuredHikes={demo ? DEMO_HIKES.length : 0}
               needsAnEye={sections.filter((section) => section.miles === null).length}
+              slug={route.slug}
               onAddSource={async () => 'Nothing read — the reader is not wired up yet.'}
               onSendForSignoff={() =>
                 go({ kind: 'setup', slug: route.slug, page: 'signoff' })
@@ -365,6 +386,7 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
               approvalsRequired={3}
               onConfirm={notWiredYet}
               onFlag={notWiredYet}
+              units={units}
             />
           ) : null
         case 'addtrail':
@@ -375,6 +397,7 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
               proposed={null}
               onRead={notWiredYet}
               onPropose={notWiredYet}
+              slug={route.slug}
               onBack={() => go({ kind: 'setup', slug: route.slug, page: 'home' })}
             />
           )
@@ -396,6 +419,7 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
               freshSecret={freshSecret}
               consoleEnabled={consoleEnabled}
               canEdit={data.access?.is_admin ?? false}
+              units={units}
               onCreateKey={(label, wanted) => {
                 void orgApi
                   .createConsoleKey(route.slug, label, [...wanted])
@@ -519,6 +543,8 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
               holders={holders}
               onRegion={notWiredYet}
               onExport={notWiredYet}
+              units={units}
+              slug={route.slug}
               onBackToRoles={() =>
                 go({ kind: 'volunteers', slug: route.slug, page: 'roles' })
               }
@@ -633,6 +659,33 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
       }
     }
 
+    // `/my/tread` with no organization named. A welcome email links here with
+    // one, and this is what somebody who typed the bare address gets: the
+    // truth, rather than a section name we made up and a rail with nothing in
+    // it. The five screens below all describe SOMEBODY'S miles, and with no
+    // org we do not know whose.
+    if (slug === null) {
+      return (
+        <div className="org-empty">
+          <h3>Which organization?</h3>
+          <p>
+            This address opens your own miles, and it needs to know whose trails they are.
+            The link in your welcome email carries that; a bare <code>/my/tread</code>{' '}
+            does not. Open it from your organization, or have a look at the demo.
+          </p>
+          <p>
+            <button
+              type="button"
+              className="org-btn org-btn--ghost org-btn--small"
+              onClick={() => go({ kind: 'tread', org: DEMO_SLUG })}
+            >
+              Open the demo organization
+            </button>
+          </p>
+        </div>
+      )
+    }
+
     // The volunteer's own five. These are ahead of their endpoints, so on a
     // real org they render the honest empty states rather than the demo's
     // rows; the demo fills them because that is what the demo is for.
@@ -641,7 +694,9 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
         return (
           <OnYourPhone
             sectionName={DEMO_VOLUNTEER.sectionName}
-            range={DEMO_VOLUNTEER.range}
+            anchors={DEMO_VOLUNTEER.anchors}
+            miles={DEMO_VOLUNTEER.miles}
+            units={units}
             openReports={demo ? DEMO_ISSUES.filter((i) => i.open).length : 0}
             thanksCount={demo ? DEMO_THANKS.length : 0}
             queue={{ queued: 0, online: true }}
@@ -738,7 +793,9 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
         return (
           <YourTread
             sectionName={DEMO_VOLUNTEER.sectionName}
-            range={DEMO_VOLUNTEER.range}
+            anchors={DEMO_VOLUNTEER.anchors}
+            miles={DEMO_VOLUNTEER.miles}
+            units={units}
             standing={DEMO_VOLUNTEER.standing}
             roles={DEMO_VOLUNTEER.treadRoles}
             roleId={null}

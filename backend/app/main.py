@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from app.routers import (
     app_failures,
+    assist,
     closures,
     clubs,
     console,
@@ -106,3 +107,4 @@ app.include_router(org_roles.router)
 app.include_router(work_projects.router)
 app.include_router(ridge_runner.router)
 app.include_router(console.router)
+app.include_router(assist.router)

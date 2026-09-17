@@ -72,6 +72,12 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # while shaken, so of every table here it is the one where "readable with
     # the anon key" would be worst.
     "app_failures",
+    # What the assist panels spent (features/ORG_ONBOARDING.md). No prompt and
+    # no answer is stored here - see app/models/assist.py - but `client_hash`
+    # plus `created_at` is still a record of which addresses looked something
+    # up and when, and a readable one would be a traffic log we went out of
+    # our way not to keep.
+    "assist_usage",
     "closure_approvals",
     "closures",
     "club_admins",
@@ -88,6 +94,10 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     "field_notes",
     "hikes",
     "maintainer_assignments",
+    # Who signed off which registry, and when. A readable one would name the
+    # people standing behind an organization's published trails, which is
+    # exactly the kind of "who maintains which mile" rule 4 keeps unpublished.
+    "registry_signoffs",
     "note_flags",
     # An organization's own registry (features/ORG_ONBOARDING.md, #1540).
     # Not yet published to anybody when it is written, which is the whole

@@ -64,6 +64,7 @@ from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
@@ -115,6 +116,7 @@ class DeletionSummary:
     #: signup are both permissions rather than contributions, so both go -
     #: see the reasoning at each query in `delete_account`.
     org_seats_released: int = 0
+    registry_signatures_withdrawn: int = 0
     workday_signups_released: int = 0
     commitments_deleted: int = 0
     org_rows_unlinked: int = 0
@@ -196,6 +198,21 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     # somebody who is gone is worse than showing it as uncovered.
     org_seats = db.query(OrgAdmin).filter(OrgAdmin.person_id == profile_id).delete(synchronize_session=False)
 
+    # A SIGNATURE CANNOT OUTLIVE ITS SIGNER, and this is the one row here
+    # where that is a safety property rather than tidiness. A registry
+    # sign-off says a named person read this exact registry and confirmed it
+    # is accurate; with the account gone there is nobody standing behind that
+    # sentence, and a count of three that includes a deleted signer is three
+    # people the organization thinks read something.
+    #
+    # Deleting it is safe and self-correcting: nothing is unpublished, the
+    # count simply drops below `REGISTRY_APPROVALS_REQUIRED` and the
+    # remaining codeowners are asked again - exactly what the fingerprint
+    # already does when a section changes. See app/routers/org_registry.py.
+    registry_signatures = (
+        db.query(RegistrySignoff).filter(RegistrySignoff.person_id == profile_id).delete(synchronize_session=False)
+    )
+
     # A hand put up for a workday, and a crew slot the organization may have
     # allocated. Released for the same reason: an organization planning
     # Saturday is better served by a free slot than by a name nobody can
@@ -276,6 +293,7 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         hours_kept=kept["volunteer hours a club confirmed"],
         app_failures_unlinked=len(failures),
         org_seats_released=org_seats,
+        registry_signatures_withdrawn=registry_signatures,
         workday_signups_released=signups,
         commitments_deleted=commitments,
         org_rows_unlinked=unlinked,

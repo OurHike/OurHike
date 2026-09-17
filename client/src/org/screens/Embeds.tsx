@@ -32,6 +32,7 @@ import { useState } from 'react'
 import { PageHeader, HikeFinder, WorkdaysWidget, CoverageBadge } from '../components'
 import type { FinderHike } from '../components'
 import type { ConsoleKey, Workday } from '../orgApi'
+import type { UnitSystem } from '../../lib/units'
 
 export type EmbedKind = 'hikes' | 'workdays' | 'coverage' | 'console'
 
@@ -52,6 +53,8 @@ export interface EmbedsProps {
   readonly canEdit: boolean
   readonly onCreateKey: (label: string, origins: readonly string[]) => void
   readonly onRevokeKey: (key: ConsoleKey) => void
+  /** The hiker's own choice, from Settings. Never assumed - #619. */
+  readonly units: UnitSystem
 }
 
 const TABS: readonly { key: EmbedKind; label: string }[] = [
@@ -109,6 +112,7 @@ export function Embeds({
   canEdit,
   onCreateKey,
   onRevokeKey,
+  units,
 }: EmbedsProps) {
   const [tab, setTab] = useState<EmbedKind>('hikes')
   const [label, setLabel] = useState('')
@@ -346,7 +350,19 @@ export function Embeds({
             <span className="org-panel__count">this is what visitors see</span>
           </div>
           {tab === 'hikes' ? (
-            <HikeFinder hikes={hikes} orgName={orgName} />
+            <>
+              <HikeFinder hikes={hikes} orgName={orgName} units={units} />
+              <div className="org-callout" data-tone="warn">
+                <span>
+                  <strong>The preview offers one filter the embed does not.</strong> This
+                  is drawn with the app's own finder, which has a difficulty for every
+                  hike. The embed reads your published registry, and a registry section
+                  carries no difficulty — so its paste asks for <code>region,length</code>{' '}
+                  and it draws those two. Saying so here is cheaper than an organization
+                  discovering it on their own homepage.
+                </span>
+              </div>
+            </>
           ) : tab === 'workdays' ? (
             <>
               <WorkdaysWidget

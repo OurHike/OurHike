@@ -701,14 +701,17 @@ describe('the Alerts switch (#1047)', () => {
   })
 })
 
-// --- The Blaze colors switch (#1575) ----------------------------------------
+// --- The Blaze colors toggle (#1575) ----------------------------------------
 //
 // The map's lines are one red by default and this is where the hues come
 // back. What is tested: it exists only where the shell offers the handler,
 // it says which state the map is in before the tap, it is disabled under red
-// light with the reason, it sits with the other switches directly above
-// "Trails in view", and - the maintainer's second instruction - the rows
-// below it keep their blaze swatches whichever way it is set.
+// light with the reason, it is the first row under the head and above the
+// pin grid as a `role="switch"` (the maintainer's follow-up: "Move the blaze
+// color option up to be the first one, directly under the Pills ... Can it be
+// a toggle instead of a checkbox?"), and - the maintainer's second
+// instruction - the rows below it keep their blaze swatches whichever way it
+// is set.
 
 describe('the Blaze colors switch (#1575)', () => {
   const BLAZES = { ...PROPS, onToggleBlazeColors: vi.fn() }
@@ -739,32 +742,38 @@ describe('the Blaze colors switch (#1575)', () => {
     },
   ]
 
+  /** By its role and its name: a `role="switch"` button, named by the row's
+   *  name span so the name opens "Blaze colors" and carries the sentence. */
   function blazesSwitch() {
-    return screen.getByRole('checkbox', { name: /^Blaze colors/ })
+    return screen.getByRole('switch', { name: /^Blaze colors/ })
+  }
+
+  function blazesRow() {
+    return blazesSwitch().closest('.legend__blazes')
   }
 
   it('is not drawn where the shell offers no handler for it', () => {
     render(<Legend {...PROPS} blazeColorsShown={false} />)
 
-    expect(screen.queryByRole('checkbox', { name: /^Blaze colors/ })).toBe(null)
+    expect(screen.queryByRole('switch', { name: /^Blaze colors/ })).toBe(null)
   })
 
-  it('reads unchecked over a map drawn in one red, and says so before the tap', () => {
+  it('is a switch, not a checkbox, and reads off over a map drawn in one red', () => {
     render(<Legend {...BLAZES} blazeColorsShown={false} />)
 
+    expect(blazesSwitch().tagName).toBe('BUTTON')
+    expect(screen.queryByRole('checkbox', { name: /^Blaze colors/ })).toBe(null)
     expect(blazesSwitch()).not.toBeChecked()
-    expect(blazesSwitch().closest('label')).toHaveTextContent(
+    expect(blazesRow()).toHaveTextContent(
       'Every trail as one red line. Tap a line for its blaze.',
     )
   })
 
-  it('reads checked over a map drawn in its hues, and says so', () => {
+  it('reads on over a map drawn in its hues, and says so', () => {
     render(<Legend {...BLAZES} blazeColorsShown />)
 
     expect(blazesSwitch()).toBeChecked()
-    expect(blazesSwitch().closest('label')).toHaveTextContent(
-      'Each trail in the color of its blazes.',
-    )
+    expect(blazesRow()).toHaveTextContent('Each trail in the color of its blazes.')
   })
 
   it('hands the tap back to the shell rather than deciding anything itself', async () => {
@@ -799,16 +808,18 @@ describe('the Blaze colors switch (#1575)', () => {
     )
 
     expect(blazesSwitch()).toBeDisabled()
-    expect(blazesSwitch().closest('label')).toHaveTextContent(
+    expect(blazesRow()).toHaveTextContent(
       'Red light draws every trail in one color until it is off.',
     )
     await user.click(blazesSwitch())
     expect(onToggleBlazeColors).not.toHaveBeenCalled()
   })
 
-  it('sits under the Drought switch and directly above "Trails in view"', () => {
-    // Last of the switches because it is about the lines, and the block
-    // under it is the lines' key.
+  it('is the first row under the head, above the pin grid and every other switch', () => {
+    // "Move the blaze color option up to be the first one, directly under
+    // the Pills. Have the most prominent thing in the legend." On the phone
+    // the head is the title row; on the desktop it is the rail's pills,
+    // handed in as `head`, and the row follows either.
     const { container } = render(
       <Legend
         {...BLAZES}
@@ -818,15 +829,31 @@ describe('the Blaze colors switch (#1575)', () => {
       />,
     )
 
-    const drought = container.querySelector('.legend__drought')!
+    const head = container.querySelector('.legend__head')!
     const blazes = container.querySelector('.legend__blazes')!
-    const trails = screen.getByRole('region', { name: 'Trails in view' })
-    expect(
-      drought.compareDocumentPosition(blazes) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    expect(
-      blazes.compareDocumentPosition(trails) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
+    const firstPin = rowFor('Shelter')
+    const drought = container.querySelector('.legend__drought')!
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(head.compareDocumentPosition(blazes) & following).toBeTruthy()
+    expect(blazes.compareDocumentPosition(firstPin) & following).toBeTruthy()
+    expect(blazes.compareDocumentPosition(drought) & following).toBeTruthy()
+    // Nothing but the head sits above it.
+    expect(head.nextElementSibling).toBe(blazes)
+  })
+
+  it('follows the rail’s pills on a persistent panel', () => {
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        persistent
+        head={<div data-testid="pills">Legend · In view</div>}
+        blazeColorsShown={false}
+      />,
+    )
+
+    expect(screen.getByTestId('pills').nextElementSibling).toBe(
+      container.querySelector('.legend__blazes'),
+    )
   })
 
   it('keeps the "Trails in view" swatches in their blaze hues while the map is one red', () => {

@@ -129,7 +129,10 @@ test.describe('the map’s chrome', () => {
     const verified = legend.getByRole('checkbox', { name: /Verified/ })
     const alerts = legend.getByRole('checkbox', { name: /^Alerts/ })
     const drought = legend.getByRole('checkbox', { name: /^Drought/ })
-    const blazes = legend.getByRole('checkbox', { name: /^Blaze colors/ })
+    // A `role="switch"` button rather than a checkbox (#1575, the
+    // maintainer's "Can it be a toggle instead of a checkbox?"); Playwright
+    // reads its state off aria-checked exactly as it reads an input's.
+    const blazes = legend.getByRole('switch', { name: /^Blaze colors/ })
 
     // The defaults this build ships, each with a decision behind it:
     // alerts on every launch (chrome/alertLayerPanel.ts, #1047), Verified?
@@ -209,10 +212,10 @@ test.describe('the map’s chrome', () => {
     const legend = await openLegend(page)
 
     await legend.getByRole('checkbox', { name: /^Drought/ }).click()
-    await legend.getByRole('checkbox', { name: /^Blaze colors/ }).click()
+    await legend.getByRole('switch', { name: /^Blaze colors/ }).click()
     await legend.getByRole('checkbox', { name: /^Alerts/ }).click()
     await expect(legend.getByRole('checkbox', { name: /^Drought/ })).toBeChecked()
-    await expect(legend.getByRole('checkbox', { name: /^Blaze colors/ })).toBeChecked()
+    await expect(legend.getByRole('switch', { name: /^Blaze colors/ })).toBeChecked()
     await expect(legend.getByRole('checkbox', { name: /^Alerts/ })).not.toBeChecked()
     // Observable proof the alert flip reached the map itself before anything
     // is restarted - the strip is fed from the same state the next boot is
@@ -236,7 +239,7 @@ test.describe('the map’s chrome', () => {
       // The blaze switch is the same kind of thing as the drought row and
       // rides the same store (#1575): a hiker who asked for the hues has them
       // back on the next boot.
-      await expect(second.getByRole('checkbox', { name: /^Blaze colors/ })).toBeChecked()
+      await expect(second.getByRole('switch', { name: /^Blaze colors/ })).toBeChecked()
       // The map opens on the alerts. Asserted positively rather than as the
       // absence of a hide, so a boot that failed cannot pass this.
       await expect(second.getByRole('checkbox', { name: /^Alerts/ })).toBeChecked()

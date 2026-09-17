@@ -463,7 +463,7 @@ describe('MapScreen', () => {
       PLAIN_TRAIL_COLOR,
     )
 
-    const toggle = screen.getByRole('checkbox', { name: /^Blaze colors/ })
+    const toggle = screen.getByRole('switch', { name: /^Blaze colors/ })
     expect(toggle).not.toBeChecked()
     await user.click(toggle)
     expect(onToggleBlazeColors).toHaveBeenCalledTimes(1)

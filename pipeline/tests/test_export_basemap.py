@@ -32,6 +32,7 @@ from export_basemap import (
     state_urls,
 )
 from lib import http_retry
+from lib.build_regions import NYC_SOURCE_KEYS
 
 
 def test_the_default_state_list_is_the_fourteen_at_states_with_no_duplicates():
@@ -185,10 +186,14 @@ def test_the_shapes_written_are_one_clip_one_per_region_and_one_union(tmp_path, 
     package past its advertised size."""
     external = tmp_path / "external"
     external.mkdir()
-    for key, coords in (
-        ("nyc_parks_trails", [[-73.97, 40.66], [-73.96, 40.67]]),
-        ("nyc_dot_greenways", [[-74.01, 40.70], [-74.00, 40.71]]),
-    ):
+    # Every key in NYC_SOURCE_KEYS, read from the constant rather than listed,
+    # because the failure this fixture had when the list grew (#1533) was a
+    # test going red for a reason that had nothing to do with what it asserts.
+    # region_from_layers refuses a missing layer on purpose - a region that
+    # silently came back empty would shrink the build's clip - so a fixture
+    # naming a subset breaks, correctly and unhelpfully.
+    for index, key in enumerate(NYC_SOURCE_KEYS):
+        coords = [[-73.97 - index * 0.02, 40.66 + index * 0.02], [-73.96 - index * 0.02, 40.67 + index * 0.02]]
         (external / f"{key}.geojson").write_text(
             json.dumps(
                 {

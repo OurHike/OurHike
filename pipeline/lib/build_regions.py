@@ -75,7 +75,18 @@ REGION_BUFFER_KM = 3.0
 #: The registered sources whose lines define the `nyc` region. Named by
 #: registry key so a reader can find them in sources.json, and so adding the
 #: city's next layer is one entry rather than a new polygon.
-NYC_SOURCE_KEYS = ("nyc_parks_trails", "nyc_dot_greenways")
+#:
+#: THE LAST TWO ARRIVED 2026-09-17 (#1533) AND THIS LIST IS WHY THEY HAD TO.
+#: The region is the ground the offline basemap covers, so a line source
+#: missing from here draws trail over a hole - a hiker who downloaded New York
+#: City would get the step streets and the Rockaway boardwalk as lines with no
+#: map under them. `nyc_cscl_paths` reaches ground the first two do not, which
+#: is the whole reason it was registered, and the boardwalks put it on the
+#: ocean edge of Queens and Brooklyn. `nyc_park_drives` is inside Central and
+#: Prospect Park and adds nothing the first entry has not already covered; it
+#: is here because leaving a drawn source out would be a rule broken quietly
+#: rather than a measurement.
+NYC_SOURCE_KEYS = ("nyc_parks_trails", "nyc_dot_greenways", "nyc_cscl_paths", "nyc_park_drives")
 
 _TO_METRIC = Transformer.from_crs(GEOGRAPHIC_CRS, PROJECTED_CRS, always_xy=True).transform
 _TO_GEOGRAPHIC = Transformer.from_crs(PROJECTED_CRS, GEOGRAPHIC_CRS, always_xy=True).transform

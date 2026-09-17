@@ -150,7 +150,7 @@ jobs:
       # knows which of them are unchanged.
       - name: Fetch the external layers a region is built from
         if: contains(inputs.regions, 'nyc')
-        run: python fetch_external_layers.py --only nyc_parks_trails nyc_dot_greenways
+        run: python fetch_external_layers.py --only nyc_parks_trails nyc_dot_greenways nyc_cscl_paths nyc_park_drives
 
       - name: Fetch the Planetiler jar
         env:

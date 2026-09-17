@@ -811,9 +811,11 @@ entry is built so that is cheap.
   not taken.
 - **The greenway overlap.** 1,023 of the 5,990 `rw_type='6'` names end in GREENWAY, so
   `nyc_cscl_paths` and `nyc_dot_greenways` plainly describe some of the same tread.
-  `duplicate_of` takes one senior key and this entry spends it on `nyc_parks_trails`, which is
-  the larger overlap inside a park. The greenway pair is unmeasured — §13's shape, a third
-  time.
+  `duplicate_of` takes one senior key and this entry spends it on `nyc_parks_trails` — and
+  that choice is now measured rather than argued. From the export's own dedupe line,
+  2026-09-17: the parks pair removes **698 records, 71.3 miles**, against the greenway pair's
+  427 and 30.4. The larger of the two by both counts, which is what the guess was. **The
+  greenway pair remains unmeasured** — §13's shape, a third time.
 - **Nobody has walked one.** The same `(e)` that closes §12e, and it bears hardest here: the
   drives entry rests on a decision rather than a document.
 

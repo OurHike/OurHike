@@ -291,3 +291,124 @@ def site_properties(sites: list[Site]) -> dict[str, dict]:
                 "site_name": site.site_name,
             }
     return properties
+
+
+# ---------------------------------------------------------------------------
+# A SECOND GROUPING, FOR GROUND WHERE NOBODY NAMED THE PARTS (#1536)
+#
+# Everything above resolves ATC's naming convention: "Mt. Algo Shelter Privy"
+# names its parent, so the NAME carries the argument and PROXIMITY_RADIUS_M is
+# only the sanity check on it. New York City's fountains have no such
+# convention and no parent to name - 3,148 of them carry a park name, 912
+# distinct, and Central Park's 137 all carry the same one. A park name says
+# "same property", not "same place".
+#
+# So the two gates swap weights. Geometry carries the argument here and the
+# name is the sanity check, which is why this is a second function rather than
+# a looser radius on the first: widening NAME_MATCH_RADIUS_M would loosen
+# ATC's grouping too, and the 903 km match its docstring warns about is exactly
+# what a name-led rule ships when the name stops being specific.
+
+
+#: How far apart two waypoints on one property may be and still be one place.
+#:
+#: MEASURED against the fountains this exists for, 2026-09-17, release
+#: 2026-09-16-4: over the 2,823 nearest-neighbour distances between fountains
+#: sharing a park property, p25 is 24 m, the MEDIAN IS 41 m, p75 is 73 m and
+#: p90 is 124 m. So 80 m sits just above the third quartile - it folds the
+#: banks of fountains a playground or a plaza holds, and leaves the quarter of
+#: pairings that are genuinely spread across a park.
+#:
+#: Wider was available and refused. A 150 m gate admits 93% of pairings rather
+#: than 78%, and 150 m is what NAME_MATCH_RADIUS_M already allows above - but
+#: it allows it on ATC's evidence, where the name names one parent. Here the
+#: same 150 m would start folding opposite ends of a playground into one mark
+#: on the strength of both being in the same park, which is not evidence that
+#: they are one place.
+#:
+#: The failure this bounds is a hiker walking to a pin and not finding the
+#: fountain. That is bounded by the anchor rule rather than by this number -
+#: see `group_place_sites`, which draws the pin on a REAL member and never on
+#: a centroid - but a tighter gate keeps the walk from the pin to the next
+#: member short as well.
+PLACE_PROXIMITY_RADIUS_M = 80.0
+
+
+def group_place_sites(
+    records: list[dict],
+    radius_m: float = PLACE_PROXIMITY_RADIUS_M,
+    types: tuple[str, ...] = ("water", "privy"),
+) -> list[Site]:
+    """Fold waypoints of ONE type that share a place name and stand together.
+
+    Single-link within each (name, type) group, so a line of fountains down a
+    boardwalk folds as one site instead of a chain of overlapping pairs - the
+    Coney Island case, where no two ends are within the radius of each other
+    but every step is.
+
+    THE ANCHOR IS A REAL WAYPOINT, NEVER A CENTROID, and that is the safety
+    rule of this whole function. A hiker walks to the pin. A centroid of twelve
+    fountains is a point on a lawn with no fountain on it, which is the
+    confidently wrong answer FEATURES.md calls more dangerous than an honest
+    unknown. The anchor is the member CLOSEST to the group's centre - the most
+    central fountain that actually exists - so the pin is always somewhere a
+    hiker can arrive and find water.
+
+    Ties break on the id, so the same input gives the same site id on every
+    run - which is what a report or a field note pointing at a site needs.
+    """
+    wanted = set(types)
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for record in records:
+        if record.get("poi_type") not in wanted:
+            continue
+        name = record.get("name")
+        if not name:
+            # No name is no gate. Geometry alone is what PROXIMITY_RADIUS_M
+            # above exists to refuse - two overlooks that close are two
+            # overlooks - and an unnamed fountain has nothing to pair that
+            # geometry with, so it keeps its own pin.
+            continue
+        groups.setdefault((normalise_name(name), record["poi_type"]), []).append(record)
+
+    sites: list[Site] = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        for cluster in _single_link(members, radius_m):
+            if len(cluster) < 2:
+                continue
+            anchor = _most_central(cluster)
+            sites.append(Site(anchor=anchor, members=[m for m in cluster if m is not anchor]))
+    return sites
+
+
+def _single_link(records: list[dict], radius_m: float) -> list[list[dict]]:
+    """Union-find over the pairs within `radius_m`, returning each component."""
+    parent = list(range(len(records)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i in range(len(records)):
+        for j in range(i + 1, len(records)):
+            here, there = records[i], records[j]
+            if distance_m(here["lat"], here["lon"], there["lat"], there["lon"]) <= radius_m:
+                a, b = find(i), find(j)
+                if a != b:
+                    parent[a] = b
+
+    clusters: dict[int, list[dict]] = {}
+    for index, record in enumerate(records):
+        clusters.setdefault(find(index), []).append(record)
+    return list(clusters.values())
+
+
+def _most_central(cluster: list[dict]) -> dict:
+    """The member nearest the cluster's mean position, id breaking ties."""
+    mid_lat = sum(r["lat"] for r in cluster) / len(cluster)
+    mid_lon = sum(r["lon"] for r in cluster) / len(cluster)
+    return min(cluster, key=lambda r: (distance_m(r["lat"], r["lon"], mid_lat, mid_lon), str(r["id"])))

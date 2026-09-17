@@ -62,6 +62,13 @@ import {
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
 } from './poiIcons'
+import {
+  CROWDED_NEIGHBOURS,
+  CROWDING_PROPERTY,
+  POI_ICON_PADDING_EXPRESSION,
+  QUIET_NEIGHBOURS,
+  crowdingByPoi,
+} from './poiCrowding'
 import { whenStyleReady } from './styleReady'
 
 export const POI_SOURCE_ID = 'pois'
@@ -280,8 +287,14 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // omitted: it is the entire density story, and an `icon-allow-overlap:
       // true` added later for one screenshot would silently undo it.
       'icon-allow-overlap': false,
-      // A little air, so two pins that merely touch are treated as colliding.
-      'icon-padding': 2,
+      // How much air each pin claims, which used to be a flat 2 - "a little
+      // air, so two pins that merely touch are treated as colliding" - and is
+      // now per-feature (#1536). A waypoint on quiet ground still claims
+      // exactly 2 and is placed exactly as it was; one on crowded ground
+      // claims more, so the collision engine stops packing pins edge to edge
+      // in a city. map/poiCrowding.ts owns every number in it and the
+      // measurement each rests on.
+      'icon-padding': POI_ICON_PADDING_EXPRESSION as unknown as number,
       // No `text-field` anywhere in this layer, and the reason has shifted
       // slightly rather than gone away. It used to be that the style had no
       // `glyphs` URL at all; the live background added one (map/style.ts), so
@@ -353,6 +366,51 @@ const RING_RADIUS_EXPRESSION: unknown[] = [
   22,
 ]
 
+/**
+ * The ring fades out on ground too crowded for it to be telling the truth
+ * (#1536).
+ *
+ * THE LAYER ALREADY STATED THIS RULE AND ONLY HALF-KEPT IT. Its own comment
+ * reads "rings exist to invite a tap, and only a pin can be tapped - so they
+ * start where the pins do, not where the dots do", and the `minzoom` below is
+ * the zoom half of that. The other half - WHICH waypoints - was never
+ * enforceable, because a circle layer joins no placement pass and cannot ask
+ * MapLibre which symbols won. On the corridor that never showed: almost every
+ * waypoint above the seam IS a pin, so ringing them all was very nearly
+ * ringing the pins.
+ *
+ * New York City is where it shows. Photographed from the preview on
+ * 2026-09-17 (client/preview-shots/city-waypoints-crowded.mjs), the z12 frame
+ * over Brooklyn holds 660 waypoints and draws 24 pins - and all 660 wore a
+ * 42 px ring. Every New York fountain is unconfirmed, so every one of them
+ * takes the `faint-invite`, and the result is the exact failure
+ * {@link RING_OPACITIES} is written to avoid: "a loud ring on all of it would
+ * be the 'nothing here is trustworthy' opening #256 warns about". Subtle per
+ * ring is not subtle six hundred times over.
+ *
+ * So the ring rides the same measurement the pins do, and the two stay in
+ * step by construction: full strength where a waypoint is drawn as a pin, out
+ * by the count at which the ground is crowded enough that it is almost
+ * certainly a dot. A ramp rather than a switch, because that is what passive
+ * prominence means and because a cliff would put a hard edge across a park.
+ *
+ * WHAT IT COSTS, and it is a real cost rather than a free win: a pin that IS
+ * drawn on crowded ground loses its invitation to confirm along with its
+ * neighbours' - the property cannot tell them apart. That is accepted against
+ * six hundred rings nobody can read. If MapLibre ever exposes placement
+ * results per feature, this is the expression that should be replaced by the
+ * real question.
+ */
+const RING_CROWDING_FADE: unknown[] = [
+  'interpolate',
+  ['linear'],
+  ['coalesce', ['get', CROWDING_PROPERTY], QUIET_NEIGHBOURS],
+  QUIET_NEIGHBOURS,
+  1,
+  CROWDED_NEIGHBOURS,
+  0,
+]
+
 export function buildPoiStalenessLayer(
   sourceId: string = POI_SOURCE_ID,
 ): LayerSpecification {
@@ -361,7 +419,9 @@ export function buildPoiStalenessLayer(
     type: 'circle',
     source: sourceId,
     // Rings exist to invite a tap, and only a pin can be tapped - so they
-    // start where the pins do, not where the dots do.
+    // start where the pins do, not where the dots do. See
+    // RING_CROWDING_FADE above for the half of that rule this `minzoom`
+    // cannot express.
     minzoom: POI_PIN_MIN_ZOOM,
     filter: ['!=', ['get', 'staleness_ring'], NO_RING] as never,
     paint: {
@@ -376,11 +436,14 @@ export function buildPoiStalenessLayer(
         ...Object.entries(RING_COLORS).flat(),
         RING_COLORS.green,
       ] as unknown as string,
+      // The ring's own opacity, scaled by how crowded its ground is. A
+      // product rather than a second `match`, so the per-tier values above
+      // stay the one home for "how loud is this tier" and this only ever
+      // turns them down.
       'circle-stroke-opacity': [
-        'match',
-        ['get', 'staleness_ring'],
-        ...Object.entries(RING_OPACITIES).flat(),
-        0,
+        '*',
+        ['match', ['get', 'staleness_ring'], ...Object.entries(RING_OPACITIES).flat(), 0],
+        RING_CROWDING_FADE,
       ] as unknown as number,
     },
   }
@@ -533,6 +596,9 @@ export interface PoiFeatureCollection {
       [SITE_MEMBERS_PROPERTY]: string
       staleness_ring: string
       staleness_faded: boolean
+      /** How many other drawn marks sit within map/poiCrowding.ts's radius -
+       *  what `icon-padding` interpolates on (#1536). */
+      [CROWDING_PROPERTY]: number
     }
   }>
 }
@@ -578,6 +644,13 @@ export function poiFeatureCollection(
   // rather than a rule.
   const { drawn, membersFor } = composeSites(pois, visibility)
 
+  // AFTER the fold, and that is the point of where this sits: what competes
+  // for a pin is the drawn mark, so a shelter riding one pin with its privy
+  // and two campsites is one neighbour to the marks around it rather than
+  // four. Counting before folding would report ground as crowded that the
+  // fold had already uncrowded, and buy air nobody needed.
+  const crowding = crowdingByPoi(drawn)
+
   return {
     type: 'FeatureCollection',
     features: drawn.map((poi) => {
@@ -600,6 +673,7 @@ export function poiFeatureCollection(
           [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
           staleness_ring: condition.ring,
           staleness_faded: condition.faded,
+          [CROWDING_PROPERTY]: crowding.get(poi.id) ?? 0,
         },
       }
     }),

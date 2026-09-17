@@ -280,6 +280,51 @@ def test_covered_never_claims_ground_outside_the_cell(tmp_path):
     assert cells["n40w074"]["covered"][0] >= -74.0
 
 
+def test_a_cell_the_margin_alone_reaches_is_not_built(tmp_path):
+    """The n38w082 case (#1559). A square the corridor passes just outside of
+    is reached by its neighbour's edge tiles once they are widened by the
+    seam margin, and used to be built from those tiles alone - an archive of
+    ground its neighbour already holds, and a `covered` box clipped to a
+    square none of that ground is in: inverted, and refused by the app along
+    with every other cell in the index. A cell is built only when a tile lies
+    inside its own square; the borrowed tile still reaches the cell it lies
+    in."""
+    near_the_seam = _tile_at(SEAM_LON - 0.01, 40.5)
+    out_dir, manifest = _cut(tmp_path, [_tile_at(-74.5, 40.5), near_the_seam], margin_km=25.0)
+    index = json.loads((out_dir / "at_basemap_cells.json").read_text())
+
+    assert [c["name"] for c in index["cells"]] == ["n40w075"]
+    assert not (out_dir / "at_basemap_cell_n40w074.pmtiles").exists()
+    assert "at_basemap_cell_n40w074.pmtiles" not in manifest["artifacts"]
+    assert near_the_seam in read_all(out_dir / "at_basemap_cell_n40w075.pmtiles")
+
+
+@pytest.mark.parametrize("margin_km", [0.0, 3.0, 25.0])
+def test_every_published_covered_box_has_area(tmp_path, margin_km):
+    """The property the app's parser rests on (client/src/lib/coverageCells.ts):
+    a `covered` box is a rectangle with ground in it, at any margin."""
+    tiles = [*_both_cells_tiles(), _tile_at(SEAM_LON - 0.01, 40.5), _tile_at(-74.5, 40.78)]
+    out_dir, _manifest = _cut(tmp_path, tiles, margin_km=margin_km)
+
+    for cell in json.loads((out_dir / "at_basemap_cells.json").read_text())["cells"]:
+        west, south, east, north = cell["covered"]
+        assert west < east and south < north, cell
+
+
+def test_covered_bounds_refuses_tiles_that_all_lie_outside_the_square():
+    """What n38w082's tiles looked like to covered_bounds() in release
+    2026-09-16-4: every one south of the cell's south edge at 38.0, so the
+    clip put south at the edge and north below it. Refused here rather than
+    published, so a cut that somehow routed such a cell would fail loudly
+    instead of shipping a box the app cannot read."""
+    cell = (-82.0, 38.0, -81.0, 39.0)
+    x0, y0 = _merc(-81.2, 37.9)
+    x1, y1 = _merc(-81.0, 37.996)
+
+    with pytest.raises(ValueError, match="holds no tile inside its own square"):
+        cut_cells.covered_bounds(cell, (x0, y0, x1, y1))
+
+
 @pytest.mark.parametrize("margin_km", [0.0, 3.0, 25.0])
 def test_every_tile_a_cell_holds_is_inside_what_it_claims_to_cover(tmp_path, margin_km):
     """The guarantee narrowing a footprint onto `covered` rests on, and the

@@ -27,6 +27,16 @@ export const OUT_OF_TREE_READS = [
   // live in the stylesheet, the markup in the install page.
   'site/src/styles/site.css',
   'site/src/pages/get-the-app.astro',
+  // The copy /for-orgs/ puts in front of an organization (#1539). It is read
+  // here rather than guarded by site/'s own vitest suite because nothing in
+  // CI runs that suite: pages.yml builds the site and never tests it, so a
+  // guard living there would be a guard nobody ran. The one that matters is
+  // the money sentence - features/ONBOARDING.md records what happened the
+  // last time a value-prop screen claimed OurHike funds anybody.
+  'site/src/lib/orgOnboarding.mjs',
+  'site/src/pages/for-orgs/index.astro',
+  'site/src/pages/index.astro',
+  'site/src/components/NavBar.astro',
   // ciScope.test.ts reads the workflow to check the entries above are
   // scoped - which makes the workflow itself an out-of-tree read, held to
   // the same rule it enforces.

@@ -1,0 +1,174 @@
+---
+// /for-orgs/nominate/ - a hiker putting a club on the map for them (#1539).
+//
+// THE HIKER IS NOT SPEAKING FOR THE ORGANIZATION AND MUST NOT BE ASKED TO.
+// They know their local club has trails and roughly where to find them; that
+// is the whole of what this collects, and it is why the form is one field.
+// Everything after that field is us doing the work, and the page says so.
+//
+// WHAT "WE GO LOOKING" HONESTLY MEANS, and the page must not overstate it.
+// Nothing here probes anything in the browser. Submitting records an
+// unclaimed organization (`POST /clubs/nominations`) and a person reads it -
+// which is the true state of SOURCE_REGISTRY.md today, where all 33 sources
+// across nine organizations arrived because a maintainer went looking and
+// read terms by hand. The discovery panel below is drawn as an EXAMPLE of
+// what comes back, labelled as one, rather than as a live result: a fake
+// result presented as real would be this page lying on its first screen.
+//
+// The flat-file refusal is stated here and not only at the API, because the
+// person reading this is about to go and ask a club for something. "Ask them
+// for the layer behind it" is the sentence that makes that ask possible.
+import Base from '../../layouts/Base.astro'
+
+const title = 'OurHike — Put a club on the map for them'
+const description =
+  "Hiking somewhere new and the local club publishes maps nobody can use offline? Give us their website. You submit their trails; they take it over whenever they are ready."
+---
+
+<Base title={title} description={description}>
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <span class="org-eyebrow">ANY SIGNED-IN HIKER CAN DO THIS</span>
+      <h1 class="org-form__title">Put a club on the map for them</h1>
+      <p class="lede">
+        Hiking somewhere new and the local club publishes maps nobody can use
+        offline? Give us their website. We go looking for their trail data, and
+        their trails go on the map — <strong>unclaimed</strong>, until somebody
+        from the org comes and takes it over.
+      </p>
+
+      <form class="org-form" id="nominate-form" novalidate style="margin-top: 24px">
+        <fieldset class="org-form__group">
+          <span class="org-eyebrow">STEP 1 · THEIR WEBSITE</span>
+          <label class="org-label" for="nominate-name">Their name</label>
+          <input
+            class="org-input"
+            id="nominate-name"
+            name="name"
+            type="text"
+            placeholder="Carolina Mountain Club"
+            required
+          />
+          <label class="org-label" for="nominate-website">Club website</label>
+          <input
+            class="org-input"
+            id="nominate-website"
+            name="website"
+            type="url"
+            inputmode="url"
+            placeholder="https://carolinamountainclub.org"
+          />
+          <p class="org-help">
+            That is all we need. We read the public site the way you would —
+            looking for a maps page, a GIS server, a downloads link, or a data
+            portal.
+          </p>
+        </fieldset>
+
+        <fieldset class="org-form__group">
+          <span class="org-eyebrow">OPTIONAL · IF YOU ALREADY KNOW</span>
+          <label class="org-label" for="nominate-data">A link to their trail data</label>
+          <input
+            class="org-input"
+            id="nominate-data"
+            name="data_url"
+            type="url"
+            inputmode="url"
+            placeholder="https://services.arcgis.com/…/FeatureServer/0"
+          />
+          <p class="org-help">
+            If you have stood on one of their trails with their map open, you
+            may already know where the layer lives. Saves us an afternoon.
+          </p>
+          <label class="org-label" for="nominate-note">Anything else worth knowing</label>
+          <textarea
+            class="org-input"
+            id="nominate-note"
+            name="note"
+            rows="3"
+            placeholder="Their sections around Mount Mitchell are the ones nobody has a good map of."></textarea>
+        </fieldset>
+
+        <button class="btn org-form__submit" type="submit">Submit their trails</button>
+        <p class="org-help org-help--centred">
+          This gives you no standing at their org, and asks nothing of them.
+        </p>
+      </form>
+
+      <div class="org-found" style="margin-top: 36px">
+        <span class="org-eyebrow">WHAT COMES BACK · AN EXAMPLE, NOT A LIVE RESULT</span>
+        <h2 class="org-found__title">What we look for on a club's site</h2>
+        <p class="org-help">
+          Every one of these is checked by a person before anything of a club's
+          reaches a map. This is what that reading usually turns up.
+        </p>
+        <ul class="org-sources">
+          <li class="org-source" data-verdict="usable">
+            <span class="org-source__what">An ArcGIS FeatureServer</span>
+            <span class="org-source__verdict">usable</span>
+            <span class="org-source__why"
+              >Line features with a blaze field and a published edit date. The
+              best case: we can read it again tomorrow and tell them what
+              changed.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="usable">
+            <span class="org-source__what">A WFS or GeoJSON endpoint</span>
+            <span class="org-source__verdict">usable</span>
+            <span class="org-source__why"
+              >Same test, different shape. Anything at a URL that answers with
+              geometry and keeps answering.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="closures">
+            <span class="org-source__what">A closures or alerts feed</span>
+            <span class="org-source__verdict">closures</span>
+            <span class="org-source__why"
+              >Live JSON we can read hourly once they approve it — the one
+              source where being an hour old matters.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="refused">
+            <span class="org-source__what">PDF trail maps</span>
+            <span class="org-source__verdict">not accepted</span>
+            <span class="org-source__why"
+              >We do not take these. <strong
+                >A PDF cannot be re-read, so it is stale the day it is
+                uploaded</strong
+              > — and taking a snapshot while implying a feed is worse than taking
+              nothing. Ask them for the layer behind it.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="found">
+            <span class="org-source__what">Membership and donation pages</span>
+            <span class="org-source__verdict">found</span>
+            <span class="org-source__why"
+              >We put these in front of every hiker walking their trails. The
+              money goes straight to them and is never routed through
+              OurHike.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="licence">
+            <span class="org-source__what">Whatever their terms say</span>
+            <span class="org-source__verdict">read by a person</span>
+            <span class="org-source__why"
+              >Asked <em>before</em> the bytes are in a build, which is the one
+              thing this project has got wrong twice already.</span
+            >
+          </li>
+        </ul>
+      </div>
+
+      <div class="org-note" style="margin-top: 28px">
+        <p>
+          <strong>Nothing publishes because you submitted it.</strong> A
+          nomination records the organization as unclaimed and puts it in front
+          of a person here. Three admins <em>at that organization</em> still have
+          to approve before a single section of theirs reaches a phone — the same
+          rule as an org that signs itself up, and the reason submitting
+          somebody else's trails is a favour rather than a liability.
+        </p>
+      </div>
+    </div>
+  </section>
+</Base>

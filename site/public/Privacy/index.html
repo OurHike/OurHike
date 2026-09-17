@@ -259,16 +259,18 @@
       <ul>
         <li>
           Your <strong>email address</strong>, whether you sign in with a
-          magic link, a password, or a Google account you already have.
+          code we email you, or with a Google or GitHub account you already
+          have.
         </li>
         <li>
-          If you sign in with Google, the basic profile information Google
-          shares to verify your identity (your email address, typically
-          nothing beyond that).
+          If you sign in with Google or GitHub, the basic profile
+          information that service shares to verify your identity (your
+          email address, typically nothing beyond that).
         </li>
         <li>
-          If you set a password, it's stored and hashed by Supabase — we
-          never see or store it ourselves.
+          There is no password. Signing in with email sends a 6-digit code
+          to your address, and typing it into the app is what signs you in.
+          Supabase issues and checks that code; we never see it.
         </li>
         <li>
           A <strong>trail name</strong> you choose yourself, and the kind

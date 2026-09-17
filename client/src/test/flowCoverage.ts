@@ -544,15 +544,17 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   'screens/EmailSignIn.tsx': {
     step: 'F13 More',
     flow: {
-      // Not "planned": no build this project ships can render it. Measured
-      // 2026-09-11 by driving More → You → Sign in, which offers "Continue
-      // with Google" and nothing else. lib/supabase.ts is why - email left
-      // ENABLED_PROVIDERS' default because Supabase's built-in sender "is
-      // not a delivery path this project can ship on", and this screen is
-      // only mounted when SignInPrompt offers the email provider. It comes
-      // back with a sender behind it, and a flow test comes back with it.
+      // Not "planned": the preview build the flow suite drives cannot render
+      // it. Measured 2026-09-11 by driving More → You → Sign in, which offers
+      // "Continue with Google" and nothing else. lib/supabase.ts is why -
+      // this screen is only mounted when SignInPrompt offers email, and the
+      // deployed set is the AUTH_PROVIDERS repository variable, which #1572
+      // switches to google,github,email as the LAST of its dashboard steps.
+      // The day that variable carries email, the preview build reaches this
+      // screen and a flow spec of both steps (address, then code) belongs
+      // here - #1399 is the account it would need to go further.
       status: 'unit-only',
-      why: 'Unreachable in any shipped build: ENABLED_PROVIDERS defaults to google alone (lib/supabase.ts), and this screen is mounted only when the sign-in prompt offers email. EmailSignIn.test.tsx holds the form; a flow test would need a build flag no deployment sets.',
+      why: 'Unreachable in the preview build until the AUTH_PROVIDERS repository variable carries email (#1572), because this screen is mounted only when the sign-in prompt offers it. EmailSignIn.test.tsx holds both steps, address then code.',
     },
   },
   'screens/SignInPrompt.tsx': {
@@ -635,6 +637,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     flow: {
       status: 'unit-only',
       why: 'A glyph. ModeIcon.test.tsx draws it; a flow test would be a slower way to look at the same SVG.',
+    },
+  },
+  'chrome/ProviderMark.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "A glyph per sign-in provider - Google's G, GitHub's mark, the OurHike icon - drawn inside SignInPrompt's buttons (#1572). SignInPrompt.test.tsx pins the colours and that each stays out of the accessible name; e2e/identityRooms.spec.ts finds the buttons by that name.",
     },
   },
   'chrome/PoiRow.tsx': {

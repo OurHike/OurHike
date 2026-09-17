@@ -332,6 +332,92 @@
   border-radius: 10px;
   cursor: pointer;
 }
+/* The doors on SignInPrompt, each in its provider's own colours, with its
+   mark from chrome/ProviderMark.tsx (#1572).
+
+   Google publishes exact values and the button has to use them
+   (developers.google.com/identity/branding-guidelines, read 2026-09-17):
+   light is #FFFFFF on a 1px #747775 stroke with #1F1F1F text, dark is
+   #131314 / #8E918F / #E3E3E3, the G is 20px with 10px to the label, and the
+   label is 14px medium. Two things here do NOT follow that page, both on
+   purpose: the label is set in --font-body rather than Google Sans, because
+   this build vendors its fonts and scripts/check-build-output.mjs refuses
+   cross-origin CSS; and the button is --min-touch-target (44px) tall rather
+   than 40px, because that minimum applies to every control in this app.
+
+   GitHub publishes no button spec, only the mark's rule: black or white at
+   the highest contrast, no effects (brand.github.com/foundations/logo). So
+   the button is GitHub's own black with the white mark, and on the ink theme
+   it inverts to white with the black mark - a black button on a near-black
+   page is the low-contrast case their page tells you to avoid.
+
+   Email is OurHike's own door and keeps the brand button, with the app icon
+   for a mark. Apple, deferred with #92, gets its HIG's black-or-white button
+   and no mark until the provider ships with Apple's own asset. */
+.reporting__provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 12px;
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.reporting__provider:disabled {
+  /* Held for want of signal (#315): dimmed rather than hidden, and the note
+     under the buttons says why. Same value as .reporting__photo:disabled. */
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.reporting__provider-mark {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.reporting__provider--google {
+  color: #1f1f1f;
+  background: #ffffff;
+  border: 1px solid #747775;
+}
+:root[data-theme='dark'] .reporting__provider--google {
+  color: #e3e3e3;
+  background: #131314;
+  border-color: #8e918f;
+}
+.reporting__provider--github {
+  color: #ffffff;
+  background: #24292f;
+  border: 1px solid #24292f;
+}
+:root[data-theme='dark'] .reporting__provider--github {
+  color: #24292f;
+  background: #ffffff;
+  border-color: #ffffff;
+}
+.reporting__provider--apple {
+  color: #ffffff;
+  background: #000000;
+  border: 1px solid #000000;
+}
+:root[data-theme='dark'] .reporting__provider--apple {
+  color: #000000;
+  background: #ffffff;
+  border-color: #ffffff;
+}
+.reporting__provider--email {
+  color: var(--fg-on-brand);
+  background: var(--brand-primary);
+  border: 0;
+}
+.reporting__provider--email .reporting__provider-mark {
+  /* The app icon is a rounded tile; on the brand button it reads as one. */
+  border-radius: 4px;
+}
 .reporting__card--thanks {
   color: var(--fg-1);
   background: color-mix(in srgb, var(--brand-primary) 10%, var(--bg-surface));

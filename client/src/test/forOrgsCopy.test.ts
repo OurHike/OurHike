@@ -285,3 +285,35 @@ describe('the wireframe decisions of 2026-09-17', () => {
     expect(page).not.toContain('OPTIONAL · IF YOU ALREADY KNOW')
   })
 })
+
+/**
+ * The demo page describes the widget it actually mounts.
+ *
+ * "Their sections" promised "the same table and map your own admins sign off
+ * on" and mounted the Hike Finder, which draws an organization's HIKES - a
+ * name, a park, a length - and has neither a map nor a status column. The
+ * table an admin signs off on is the console's registry table, which is not
+ * a public embed at all.
+ *
+ * A page that describes one widget and shows another is the failure the demo
+ * exists to avoid: it is supposed to be what a visitor to an organization's
+ * own site would see.
+ */
+describe('the demo page describes what it shows', () => {
+  const page = () => readRepoFile('site/src/pages/for-orgs/demo.astro')
+
+  /** The page with its Astro comment blocks removed.
+   *
+   *  Comments are stripped for the same reason `sentences()` above strips
+   *  them: this file's explanations quote the copy they are about, and a
+   *  guard its own explanation fails is a guard somebody deletes.
+   */
+  const rendered = () => page().replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+
+  it('does not promise the registry table an admin signs off on', () => {
+    const sections = rendered().slice(rendered().indexOf('Their sections'))
+    const lede = sections.slice(0, sections.indexOf('</p>'))
+    expect(lede).not.toMatch(/sign off|signs off/i)
+    expect(lede).not.toMatch(/\bmap\b/i)
+  })
+})

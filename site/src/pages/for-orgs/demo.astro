@@ -98,9 +98,22 @@ const ORG_SLUG = 'central-park-throughikers'
         <span class="blaze"></span>
         <h2>Their sections</h2>
       </div>
+      {
+        /* WHAT THIS ACTUALLY IS, corrected 2026-09-17. This lede used to
+           promise "the same table and map your own admins sign off on", and
+           the widget below it is the Hike Finder: an organization's hikes,
+           with a name, a park and a length. The table an admin signs off on
+           is the console's registry table - three tiers, blaze mapping, a
+           status column - and it is not a public embed at all.
+
+           A demo that describes one widget and shows another fails at the one
+           job it has, which is being what a visitor to an organization's own
+           site would see. */
+      }
       <p class="lede">
-        This is the same table and map your own admins sign off on — one widget,
-        one behaviour. Click a row to isolate that route.
+        Their hikes, filterable, exactly as a visitor to their own site would
+        get them — one widget, one behaviour. Narrow by region or length; the
+        lengths are theirs, drawn from the sections they published.
       </p>
       {
         /* THE REAL WIDGET, not a copy of it. Same script tag an organization

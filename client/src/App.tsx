@@ -118,6 +118,7 @@ import { trailIdForSource } from './map/trailBadges'
 import { chosenSystemSources } from './map/nearbyTrails'
 import type { TappedLine } from './map/lineTaps'
 import { CORRIDOR_ARCHIVE_URL } from './map/protocol'
+import { loadMapEngine } from './map/mapEngineLoader'
 import { DATA_CONFIGURED } from './lib/config'
 import {
   forgetPreferencesSync,
@@ -2160,6 +2161,79 @@ function App() {
   }, [entering, preferencesLoaded, archivesRead, mapKept])
 
   const mapMounted = mapNeededNow || mapKept
+
+  /**
+   * Whether MapScreen's own code has arrived - a separate question from
+   * whether the map is wanted, and one the return below has to ask (#1560).
+   *
+   * `MapScreen` is a deferred screen (screens/deferred.ts, #1302): its module
+   * comes through `import()` and the component renders NOTHING until it
+   * lands. On a laptop the tab bar is inside that screen, so the moment
+   * `mapMounted` flipped, the pre-map branch below unmounted and the deferred
+   * screen rendered null - a page with nothing on it, not even the sidebar.
+   * Measured 2026-09-17 at 1728x1080, 1x CPU, cold cache: the sidebar and
+   * Today on screen at 471 ms, gone at 897 ms when the archive store
+   * answered, back at 2,044 ms when the chunk did. With the precache warm the
+   * chunk lands before the store answers, which is why the blank showed only
+   * on a launch after a deploy.
+   *
+   * Read from `loaded()` DURING THE RENDER, with a piece of state only to
+   * force the render once the chunk lands. The first draft held the answer in
+   * state alone, set from `preload()`'s promise - and on a warm launch, where
+   * the module is already here when `mapMounted` flips, that state was a
+   * render behind: the wrapper below mounted MapScreen at once while this
+   * branch waited a microtask to hear the news, and for the length of the
+   * map's construction (measured 2026-09-17: 250-310 ms) the page carried
+   * two sidebars and two journals. `loaded()` is a module-level fact that
+   * only ever goes false to true, so reading it here cannot disagree with
+   * itself between renders; `mapScreenLanded` exists for the cold launch,
+   * where nothing else would re-render this component when the chunk
+   * arrives. A rejection counts as landed - the deferred screen then throws
+   * from render and the ErrorBoundary under it puts its own tab bar up, and
+   * a second one from this branch would not be the improvement.
+   */
+  const [mapScreenLanded, setMapScreenLanded] = useState(false)
+  useEffect(() => {
+    if (!mapMounted || mapScreenLanded || MapScreen.loaded()) return
+    let live = true
+    const landed = () => {
+      if (live) setMapScreenLanded(true)
+    }
+    MapScreen.preload().then(landed, landed)
+    return () => {
+      live = false
+    }
+  }, [mapMounted, mapScreenLanded])
+  /** The map subtree can actually draw: wanted, and its code is here. */
+  const mapScreenUp = mapMounted && (mapScreenLanded || MapScreen.loaded())
+
+  /**
+   * The engine fetched beside the archive sweep rather than after it, on a
+   * laptop (#1560).
+   *
+   * `MapView` asks for the engine in its mount effect, and MapView mounts
+   * only once `mapNeededNow` has opened AND MapScreen's chunk has landed - so
+   * the engine's chunk (991 KB raw, 257 KB compressed) was the last link of a
+   * chain that had already waited on the store and on a screen's code.
+   * Measured 2026-09-17, cold cache, 1x CPU: map screen at 2,044 ms, engine
+   * requested at 2,032 ms and landed at 2,837 ms, canvas at 2,895 ms - the
+   * fetch was the whole of the gap between the screen and the map.
+   *
+   * ONLY ABOVE THE BREAKPOINT, which is what keeps #722 and
+   * features/LAUNCH_BUDGET.md §4.2 whole: a phone landing on Today builds no
+   * map and parses no engine, and App.loadBudget.test.tsx counts both. A
+   * laptop builds one on every launch (`isDesktop` in `mapNeededNow`), so
+   * there is nothing to save by waiting, only the serial fetch to lose. After
+   * the first frame for the reason every launch fetch waits for it
+   * (lib/useAfterFirstFrame.ts): nothing here changes what that frame shows.
+   */
+  useEffect(() => {
+    if (!isDesktop || !afterFirstFrame) return
+    void loadMapEngine().catch(() => {
+      // MapView reports the failure when it asks in earnest; a warm-up that
+      // failed has nothing to tell a hiker yet.
+    })
+  }, [isDesktop, afterFirstFrame])
 
   // Whether something is drawn OVER the held map right now - one of the
   // full-screen flows (each is somewhere a hiker is typing or deciding, so
@@ -7302,7 +7376,21 @@ function App() {
     map.jumpTo({ center: [gps.at.lon, gps.at.lat] })
   }, [map, gps])
 
-  const handleMapReady = useCallback((next: MapLibreMap | null) => setMap(next), [])
+  const handleMapReady = useCallback((next: MapLibreMap | null) => {
+    setMap(next)
+    if (next === null) return
+    // The map's two moments on the launch readout (lib/launchMarks.ts,
+    // #1560): built, and then drawn - MapLibre's `load`, its "first visually
+    // complete rendering", which is the frame a hiker would call the map
+    // appearing. markLaunch keeps the first of each, so a map rebuilt later
+    // in the session reports nothing new.
+    markLaunch(LAUNCH_MARKS.map)
+    const drawn = () => {
+      next.off('load', drawn)
+      markLaunch(LAUNCH_MARKS.mapDrawn)
+    }
+    next.on('load', drawn)
+  }, [])
 
   /**
    * Taking a trail (#1306), from a badge tap or a legend row. False where
@@ -10172,7 +10260,12 @@ function App() {
   // `?? null` rather than a bare `=== null`, because `ReactNode` admits
   // undefined and a branch that ever assigns one would silently turn this
   // guard off - which is the shape of the bug it exists to prevent.
-  const nothingWouldRender = !mapMounted && (screenOver ?? null) === null && !entering
+  //
+  // AND `mapScreenUp` RATHER THAN `mapMounted` (#1560): wanting the map is not
+  // having its code, and between the two the deferred screen renders nothing.
+  // This branch stays up for that gap - see `mapScreenLanded` above for what
+  // the gap measured.
+  const nothingWouldRender = !mapScreenUp && (screenOver ?? null) === null && !entering
 
   return (
     <>

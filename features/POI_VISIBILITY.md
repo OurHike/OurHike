@@ -381,6 +381,29 @@ picture of the current camera is not a preference.
   view is *a complete map of something else*. It now carries a second thing, and that claim is
   softer than it was. ~2,837 circles at z4 — cheap to draw (a `circle` layer runs no collision
   pass), but not free of meaning.
+- **What a city does to this design, and it is not what the arithmetic above predicts.**
+  Every number in this doc is the A.T. corridor's, where the section above proves viewport
+  density is a marginal problem from z12 up and co-location is nearly the whole of it. New
+  York City inverts that. Measured 2026-09-17 against release `2026-09-16-4` by
+  [`pipeline/spike_city_poi_density.py`](../pipeline/spike_city_poi_density.py), the densest
+  z12 screen in the five boroughs — Red Hook to Prospect Park — holds **638 waypoints, and
+  the collision engine places 63 pins covering 30% of it**, over 575 dots. That is not the
+  screen this design was drawn for: `POI_PIN_MIN_SCALE`'s own table calls ~16 pins a full
+  column.
+
+  **The finding that matters is that folding does not fix it.** Site folding, park folding and
+  screen-space clustering were all run over that window and all land between 53 and 61 pins,
+  against today's 63 — because `icon-allow-overlap: false` packs pins until nothing more fits
+  and has no notion of *enough*. Withholding every fountain pin entirely leaves 50 restroom
+  pins in the same space. What folding moves is the dots (575 → 314, 217 or 58); what moves
+  the pins is spacing, and only spacing: `icon-padding` from 2 to 24 takes 63 to 22.
+
+  So the two levers are not alternatives and this doc's residue is bigger than it reads. Four
+  options are drawn on that real screen in
+  [`features/mockups/city-water-density.html`](mockups/city-water-density.html), with what each
+  costs. **Nothing is decided.** The maintainer's call of 2026-09-15, recorded in
+  [NEARBY_TRAILS.md](NEARBY_TRAILS.md) §10 with 233 pins in front of them, was that this is
+  normal for New York City; the mockup is the follow-up that call invites, not a reversal of it.
 - **Dot size, and whether it varies by `POI_PRIORITY`.** Built uniform — 2.5 px at the seam
   growing to 4 px by z16, the same for every category. A 4 px water dot and a 3 px vista dot would
   carry the priority ordering into the rank that has no ordering, and the argument for the rank is
@@ -420,6 +443,9 @@ waypoints are not what that map is for.
 inherits — the legend is a view onto categories that already exist, never a second taxonomy.
 
 [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) owns the *why* of `waypoint_types_shown`.
+
+[NEARBY_TRAILS.md](NEARBY_TRAILS.md) §10 owns the city's pin counts as a fact about the data
+that ships. This doc owns what the map does with them, which is the open question above.
 
 [DATA_NUDGES.md](DATA_NUDGES.md) plans to *boost* the prominence of stale POIs to solicit
 confirmations. Under two ranks that is a promotion rule — dot to pin — rather than a competing

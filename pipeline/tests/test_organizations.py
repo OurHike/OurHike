@@ -233,6 +233,24 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     maintainer's authorisation of 2026-09-15 - recorded there rather than
     here, because it is not what `licence_basis` is answering.
 
+    WHAT MOVED ON 2026-09-17 (#1533), 15 -> 17 on `stated_by_org`, and it is
+    the cheapest movement this column has recorded: `nyc_cscl_paths` and
+    `nyc_park_drives` are two more City of New York datasets, so NYC Local Law
+    11 of 2012 already covers them and nobody was asked anything. That is what
+    `nyc_licence` meant by "a grant made BY STATUTE TO EVERYONE rather than a
+    permission granted to this project" - the first time that block paid for a
+    registration it was not written for.
+
+    THE DISTINCTION THE PARAGRAPH ABOVE FLATTENS, and it belongs here beside
+    the OPRHP/USFS one: `nyc_park_drives` ships on the strongest LICENCE basis
+    in this file and the weakest FACTUAL one. The statute settles that the data
+    may be republished; it says nothing about whether the rows are true, and
+    that entry deliberately contradicts its own source - CSCL posts a 20 mph
+    speed limit on Central Park's East Dr, which has been closed to cars since
+    2018. Drawing it as walkable rests on the maintainer's decision of
+    2026-09-17, tagged `@unvalidated` in the entry. `licence_basis` is not the
+    column that would ever show that, which is the reason to say so here.
+
     This test is expected to change when an organization answers. It should
     change by somebody editing it deliberately, with the org's answer in hand.
     """
@@ -240,4 +258,4 @@ def test_most_of_this_registry_ships_on_the_maintainers_own_word():
     for source in REGISTRY["sources"]:
         counts[source["licence_basis"]] = counts.get(source["licence_basis"], 0) + 1
 
-    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 15, "unresolved": 1}
+    assert counts == {"maintainer_authorisation": 29, "stated_by_org": 17, "unresolved": 1}

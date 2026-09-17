@@ -67,6 +67,18 @@ CACHE_DIR = ROOT / "data" / "spike" / "central_park_paths"
 PARKS_TRAILS_KEY = "nyc_parks_trails"
 PARK_POLYGONS_KEY = "nyc_park_polygons"
 
+#: The layers #1533 registered off the back of this spike's first run. Listed
+#: so a re-run reports the gap AS IT NOW STANDS and not only as it was found -
+#: a measurement whose subject was fixed and which goes on reporting the old
+#: number is worse than no measurement, because it reads as current.
+ADDED_SINCE = ("nyc_cscl_paths", "nyc_park_drives")
+
+#: Which of ADDED_SINCE is ROADWAY rather than walking surface. The walkway
+#: share below divides by an area of paved SIDEWALK polygon, and a park drive
+#: has none under it, so counting the drives in that numerator overstates the
+#: share - see the split where it is computed.
+DRIVES_KEY = "nyc_park_drives"
+
 SOCRATA_DOMAIN = "data.cityofnewyork.us"
 
 #: NYC's street centerline (CSCL). Not registered, and the candidate answer to
@@ -256,6 +268,20 @@ def main() -> None:
     boundaries = _registered(PARK_POLYGONS_KEY)
     print(f"{PARKS_TRAILS_KEY}: {len(trails):,} segments")
 
+    # The layers registered SINCE this spike first ran (#1533), so re-running
+    # it measures the gap as it now stands rather than as it was found. Read
+    # from disk if they have been fetched and skipped with a line if not - the
+    # before-figure is the one this file was written to produce and must not
+    # depend on the after-figure being available.
+    added = {}
+    for key in ADDED_SINCE:
+        path = RAW_DIR / f"{key}.geojson"
+        if path.exists():
+            added[key] = json.loads(path.read_text())["features"]
+            print(f"{key}: {len(added[key]):,} segments")
+        else:
+            print(f"{key}: not fetched, so this run measures the gap BEFORE it was registered")
+
     box = _box_clause()
     centerline_paths = _cached("cscl_paths", CENTERLINE_DATASET, f"{box} AND rw_type='{PATH_RW_TYPE}'", args.refetch)
     centerline_streets = _cached("cscl_streets", CENTERLINE_DATASET, f"{box} AND rw_type='{STREET_RW_TYPE}'", args.refetch)
@@ -277,25 +303,57 @@ def main() -> None:
             print(f"{sign_name}: no boundary polygon under signname={sign_name!r}, skipped\n")
             continue
 
-        shipped = clip(to_metres([f for f in trails if (f.get("properties") or {}).get("park_name") == park_name]), boundary)
-        shipped_mi = miles(total_length(shipped))
+        was = clip(to_metres([f for f in trails if (f.get("properties") or {}).get("park_name") == park_name]), boundary)
+        was_mi = miles(total_length(was))
         park_acres = acres(boundary.area)
 
         print(f"--- {sign_name}, {park_acres:,.0f} acres ---")
         print(
-            f"  {PARKS_TRAILS_KEY}, what OurHike draws : {len(shipped):4,} features  {shipped_mi:6.2f} mi"
-            f"   {shipped_mi / park_acres:.4f} mi/acre"
+            f"  {PARKS_TRAILS_KEY}, the layer #1530 measured : {len(was):4,} features  {was_mi:6.2f} mi"
+            f"   {was_mi / park_acres:.4f} mi/acre"
         )
+
+        # Everything drawn in this park today, which is the `was` set plus
+        # whatever the layers registered since put inside the same boundary.
+        shipped = list(was)
+        # WALKWAY and ROADWAY are counted apart, because the denominator below
+        # only covers one of them. The paved-walkway polygons are sidewalk
+        # surface; a park drive is a road with no walkway polygon under it, so
+        # folding the drives into the walkway share produces a figure over
+        # 100% - Prospect Park read 69-115% before this split, which is the
+        # denominator being wrong rather than the park being over-drawn.
+        drives_mi = 0.0
+        for key, features in added.items():
+            piece = clip(to_metres(features), boundary)
+            if piece:
+                print(f"  + {key:<38}: {len(piece):4,} features  {miles(total_length(piece)):6.2f} mi")
+            if key == DRIVES_KEY:
+                drives_mi += miles(total_length(piece))
+            shipped.extend(piece)
+        shipped_mi = miles(total_length(shipped))
+        walkway_mi = shipped_mi - drives_mi
+        if added:
+            print(
+                f"  = what OurHike draws now                : {len(shipped):4,} features  {shipped_mi:6.2f} mi"
+                f"   {shipped_mi / park_acres:.4f} mi/acre" + (f"   ({drives_mi:.2f} mi of it park drive)" if drives_mi else "")
+            )
 
         inside_paths = clip(paths_m, boundary)
         inside_paths_mi = miles(total_length(inside_paths))
         print(f"  CSCL rw_type={PATH_RW_TYPE}, Path/Trail           : {len(inside_paths):4,} features  {inside_paths_mi:6.2f} mi")
         if inside_paths_mi:
-            beyond_mi = miles(length_beyond(inside_paths, shipped, DISJOINT_RADIUS_M))
+            beyond_mi = miles(length_beyond(inside_paths, was, DISJOINT_RADIUS_M))
+            still_beyond_mi = miles(length_beyond(inside_paths, shipped, DISJOINT_RADIUS_M))
             print(
-                f"     further than {DISJOINT_RADIUS_M:.0f} m from a drawn line : {beyond_mi:6.2f} mi "
-                f"({beyond_mi / inside_paths_mi * 100:.0f}%) - path we do not have, not a second copy of one"
+                f"     was further than {DISJOINT_RADIUS_M:.0f} m from a drawn line : {beyond_mi:6.2f} mi "
+                f"({beyond_mi / inside_paths_mi * 100:.0f}%) - path nobody had, not a second copy of one"
             )
+            # Measured against what ships NOW rather than asserted: if the
+            # registration did what it claims, this is zero, and a figure that
+            # can only ever read zero is not worth printing - so it prints only
+            # when it does not.
+            if still_beyond_mi > 0.01:
+                print(f"     STILL further than that today          : {still_beyond_mi:6.2f} mi")
 
         inside_streets = clip(streets_m, boundary)
         print(
@@ -317,9 +375,9 @@ def main() -> None:
         )
         if low:
             print(
-                f"  SO: OurHike draws {shipped_mi / high * 100:.0f}-{shipped_mi / low * 100:.0f}% of this park's "
-                f"paved walkway, and {shipped_mi / (shipped_mi + inside_paths_mi) * 100:.0f}% of what the city's "
-                "two line layers hold between them.\n"
+                f"  SO: OurHike draws {walkway_mi / high * 100:.0f}-{walkway_mi / low * 100:.0f}% of this park's "
+                f"paved walkway ({walkway_mi:.2f} mi of walking line against an area implying {low:.0f}-{high:.0f}), "
+                f"plus {drives_mi:.2f} mi of car-free park drive, which that area does not cover.\n"
             )
 
 

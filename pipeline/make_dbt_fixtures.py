@@ -829,6 +829,113 @@ def _nyc_park_polygons_layer():
     )
 
 
+def _nyc_cscl_paths_layer():
+    """nyc_cscl_paths' measured field list, 2026-09-17.
+
+    EVERY ROW HERE ALREADY PASSES THE FILTER, the same shape the greenway
+    fixture above is built on: the registry entry filters at the portal, so a
+    row that would be excluded describes a file that cannot exist. What that
+    means concretely here is that `status` is '2' (Constructed) on every row,
+    and every row is one of the three pedestrian `rw_type` classes NYC's own
+    data dictionary names - or the fourth clause's doubly-asserted street.
+
+    ONE ROW PER CLAUSE, because the clauses are what a reader doubts. 6 is
+    Path/Trail and is 5,990 of the live 6,498; 7 is StepStreet; 5 is Boardwalk;
+    and the last row is the `rw_type='1'` case that only ships because THREE
+    columns agree - trafdir NV, no posted speed, no travel lanes. `trafdir='NV'`
+    alone is 580 live rows of which 119 carry a posted speed, so a fixture that
+    left the speed and lane columns off that row would not exercise the clause
+    that matters.
+    """
+    return _features(
+        [
+            {
+                "stname_label": "FIXTURE BRIDLE PATH",
+                "rw_type": "6",
+                "status": "2",
+                "trafdir": "TW",
+                "physicalid": "900001",
+                "boroughcode": "1",
+            },
+            {
+                "stname_label": "FIXTURE HILL STEP ST",
+                "rw_type": "7",
+                "status": "2",
+                "trafdir": "NV",
+                "physicalid": "900002",
+                "boroughcode": "2",
+            },
+            {
+                "stname_label": "FIXTURE BEACH BOARDWALK",
+                "rw_type": "5",
+                "status": "2",
+                "trafdir": "NV",
+                "physicalid": "900003",
+                "boroughcode": "3",
+            },
+            # The fourth clause: a STREET that ships only because the city
+            # calls it non-vehicular AND posts no speed AND records no travel
+            # lanes. Both nulls are written rather than omitted, because their
+            # absence is the assertion.
+            {
+                "stname_label": "FIXTURE PARK PROMENADE",
+                "rw_type": "1",
+                "status": "2",
+                "trafdir": "NV",
+                "posted_speed": None,
+                "number_travel_lanes": None,
+                "physicalid": "900004",
+                "boroughcode": "4",
+            },
+        ],
+        _line,
+    )
+
+
+def _nyc_park_drives_layer():
+    """nyc_park_drives' measured field list, 2026-09-17.
+
+    THE ONE FIXTURE IN THIS FILE WHOSE ROWS CONTRADICT THEMSELVES, and it is
+    faithful rather than sloppy. CSCL still models Central Park's and Prospect
+    Park's drives as vehicular streets - the live EAST DR reads trafdir FT with
+    posted_speed 20 and one travel lane - because the street file has not caught
+    up with their 2018 closure to cars. The entry ships them anyway on the
+    maintainer's decision, so the fixture carries the speed limit and the lane
+    count rather than quietly cleaning them off; a fixture that dropped them
+    would describe a dataset that agrees with us, and none does.
+
+    The geometry is NOT clipped to a park here. `export_nearby_trails`'
+    `boundary_source` does that cut against NYC Parks' own polygons at export
+    time, and this fixture is what the FETCH writes - which is the portal's
+    answer to the name-and-borough filter, leak included.
+    """
+    return _features(
+        [
+            {
+                "stname_label": "EAST DR",
+                "rw_type": "1",
+                "status": "2",
+                "trafdir": "FT",
+                "posted_speed": "20",
+                "number_travel_lanes": "1",
+                "physicalid": "910001",
+                "boroughcode": "1",
+            },
+            {
+                "stname_label": "WEST DR",
+                "rw_type": "1",
+                "status": "2",
+                "trafdir": "TF",
+                "posted_speed": "25",
+                "number_travel_lanes": "1",
+                "physicalid": "910002",
+                "boroughcode": "3",
+            },
+        ],
+        _line,
+    )
+
+
 def _nyc_dot_greenways_layer():
     """nyc_dot_greenways' measured field list, 2026-09-15.
 
@@ -1185,6 +1292,8 @@ def write_fixtures(raw_dir: Path) -> list[str]:
         "external/nyc_parks_trails.geojson": _nyc_parks_trails_layer(),
         "external/nyc_park_polygons.geojson": _nyc_park_polygons_layer(),
         "external/nyc_dot_greenways.geojson": _nyc_dot_greenways_layer(),
+        "external/nyc_cscl_paths.geojson": _nyc_cscl_paths_layer(),
+        "external/nyc_park_drives.geojson": _nyc_park_drives_layer(),
         "external/nyc_public_restrooms.geojson": _nyc_public_restrooms_layer(),
         "external/nyc_drinking_fountains.geojson": _nyc_drinking_fountains_layer(),
         "external/dec_hiking_trails.geojson": _dec_hiking_trails_layer(),

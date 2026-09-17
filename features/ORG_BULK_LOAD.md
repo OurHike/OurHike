@@ -22,17 +22,17 @@ and the research's own caveat is that `inferred` rows were never opened.
 The maintainer's constraint was *"without me having to review 400 PRs."* The useful finding is that
 the number was never near 400, and seeing why is most of the plan.
 
-Measured against the catalogue, 2026-09-17, across its 163 rows:
+Measured against the catalogue, 2026-09-17, across its 168 rows:
 
 | `load` verdict | rows | what it costs to load |
 | --- | ---: | --- |
-| `via` — geometry arrives through another row | 59 | **nothing.** No entry, no fetch, no bytes. |
-| `hold` — recorded, `reaches_hikers: false` | 58 | nothing. A row in a file. |
+| `via` — geometry arrives through another row | 70 | **nothing.** No entry, no fetch, no bytes. |
+| `hold` — recorded, `reaches_hikers: false` | 49 | nothing. A row in a file. |
 | `none` — no geometry exists, now or later | 25 | nothing. |
-| `refuse` — stated commercial or waiver-gated terms | 6 | nothing. |
-| `ship` — open terms and a usable endpoint | 15 | a fetch, a clip, and download budget |
+| `refuse` — stated commercial or waiver-gated terms | 4 | nothing. |
+| `ship` — open terms and a usable endpoint | 20 | a fetch, a clip, and download budget |
 
-Of the 15 `ship` rows, **4 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
+Of the 20 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
 entries in `sources.json` today. So the work this whole catalogue produces is:
 
 > **11 new endpoints.**
@@ -192,7 +192,56 @@ the `Org` model beside it.
 None of the five is a redesign. Four are fields, and the fifth is a decision the design already
 flagged.
 
-## Filling the form: one run, not 163 people typing
+## The probe pass, and what inference had missed
+
+The catalogue's first version carried the research pass's own `verified`/`inferred` marks, and its
+caveat that an `inferred` row's URL was never opened. **On 2026-09-17 this repository probed the
+endpoints itself**, and the difference is worth recording because it moved sixteen organizations
+without adding a single fetch.
+
+**Eleven trails turned out to be inside layers this pipeline already pulls.** Counted live, each
+re-runnable:
+
+| Trail | Already in | Features |
+| --- | --- | ---: |
+| Sheltowee Trace | `usfs_trails` | 87 |
+| Maah Daah Hey | `usfs_trails` | 31 |
+| Ouachita | `usfs_trails` | 25 |
+| Pinhoti | `usfs_trails` | 21 |
+| Ozark Highlands | `usfs_trails` | 16 |
+| Benton MacKaye | `usfs_trails` | 14 |
+| Bartram | `usfs_trails` | 7 |
+| Lone Star Hiking | `usfs_trails` | 6 |
+| Condor | `usfs_trails` | 2 |
+| Northville-Placid | `dec_hiking_trails` | 117 |
+| Monadnock-Sunapee Greenway | `nh_granit_trails` | 145 |
+
+**Two of those were `refuse`, and the refusal was about the wrong thing.** Sheltowee Trace and Ozark
+Highlands both sell their own GPX, which restricts *their product* and says nothing about the trail.
+The Forest Service manages the ground and publishes the geometry as public domain. Both trails ship;
+neither organization's product is touched. That is a mistake worth naming rather than quietly fixing,
+because it is the shape an over-cautious licence read takes: refusing a trail because somebody sells
+a map of it.
+
+**Five organizations OurHike already ships data from were absent from the research pass entirely** —
+NYS DEC (8 registered layers, 5,291 trail features), NH GRANIT (19,877 statewide segments), Mohonk
+Preserve, NYC Parks and NYC DOT. A survey of who exists that omits five organizations already on the
+map is a survey with a blind spot in the one place it was cheapest to check, which is why the
+catalogue now carries them.
+
+**One endpoint the research recorded could not have been fetched.** COTREX was a Hub dataset page;
+the queryable layer is `CPW_Trails_08222024/FeatureServer/2`, and it holds **96,897 trail features**.
+That is a download-budget number rather than a detail — see #1231.
+
+**One cheap answer was ruled out by measurement.** The Cohos Trail is not in NH GRANIT: zero features
+match on either `TRAILNAME` or `TRAILSYS` across the 19,877-segment state layer. The row stays
+`hold`, but now on evidence rather than on nobody having looked.
+
+**The load after probing: 90 organizations reachable, from the same 11 new fetches.** Every one of
+the sixteen came from data already on disk.
+
+
+## Filling the form: one run, not 168 people typing
 
 [ORG_ONBOARDING.md](ORG_ONBOARDING.md)'s `/for-orgs/nominate/` screen is not a blank form. It reports
 what OurHike **found** about an organization — each endpoint with what is in it, the licence

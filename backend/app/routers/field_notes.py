@@ -380,7 +380,9 @@ async def upload_note_photo(
     try:
         store_photo_object(note_photo_key(note.id), body)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)` - the message names the endpoint
+        # and the endpoint names the account (app/core/photos.py).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
     note.photo_uploaded_at = utc_now()
     return FieldNoteOut.for_viewer(commit_and_refresh(db, note), current_user)

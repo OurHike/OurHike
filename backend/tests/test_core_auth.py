@@ -27,7 +27,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core import auth as auth_module
-from app.core.auth import get_current_user, require_role, verify_supabase_jwt
+from app.core.auth import get_current_user, get_current_user_optional, require_role, verify_supabase_jwt
 from app.models.profile import Profile, Role
 from tests.tokens import es256_keypair, make_es256_token, make_token, other_es256_key
 
@@ -269,3 +269,48 @@ def test_a_malformed_token_fails_as_an_auth_error_not_a_crash(db_session):
         get_current_user(credentials=_credentials("not-a-jwt"), db=db_session)
 
     assert raised.value.status_code == 401
+
+
+# The JWKS is fetched over the network, synchronously, on the first request
+# after PyJWKClient's five-minute cache lapses - so a Supabase key endpoint
+# that times out is a failure this backend meets in the middle of verifying
+# somebody. It is not a verdict on their token, and the unfixed tree said it
+# was: 401, "Invalid or expired token".
+
+
+def test_a_jwks_outage_is_a_503_not_an_invalid_token(db_session, monkeypatch):
+    def unreachable(_token):
+        raise jwt.PyJWKClientConnectionError('Fail to fetch data from the url, err: "<urlopen error timed out>"')
+
+    monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+
+    assert raised.value.status_code == 503
+    assert raised.value.headers["Retry-After"]
+
+
+def test_a_key_the_jwks_does_not_hold_is_still_an_invalid_token(db_session, monkeypatch):
+    # The fetch WORKED and no key matched the token's `kid`: that is a fact
+    # about the token, and PyJWT raises the parent class for it.
+    def unknown(_token):
+        raise jwt.PyJWKClientError('Unable to find a signing key that matches: "nobody"')
+
+    monkeypatch.setattr(auth_module, "signing_key_for", unknown)
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session)
+
+    assert raised.value.status_code == 401
+
+
+def test_the_optional_dependency_reads_a_jwks_outage_as_anonymous(db_session, monkeypatch):
+    # A browse never needed the token; taking the public list down with the
+    # key server would be the wrong degradation.
+    def unreachable(_token):
+        raise jwt.PyJWKClientConnectionError("timed out")
+
+    monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
+
+    assert get_current_user_optional(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session) is None

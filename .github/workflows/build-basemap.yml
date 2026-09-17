@@ -165,12 +165,22 @@ jobs:
           echo "$JAR_SHA256  planetiler.jar" | sha256sum -c -
           ls -la planetiler.jar
 
+      # Through env, never pasted into the script: a free-text dispatch input
+      # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
+      # held by .github/tests/test_run_steps_take_inputs_through_env.py).
+      # STATES and REGIONS stay unquoted on purpose: they are space-separated
+      # lists and the split is the point, exactly as the format() was.
       - name: Build the basemap
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          STATES: ${{ inputs.states }}
+          REGIONS: ${{ inputs.regions }}
         run: |
+          # shellcheck disable=SC2086
           python export_basemap.py --planetiler-jar planetiler.jar \
-            --max-zoom "${{ inputs.max_zoom }}" \
-            ${{ inputs.states != '' && format('--states {0}', inputs.states) || '' }} \
-            ${{ inputs.regions != '' && format('--regions {0}', inputs.regions) || '' }}
+            --max-zoom "$MAX_ZOOM" \
+            ${STATES:+--states $STATES} \
+            ${REGIONS:+--regions $REGIONS}
 
       - name: Cut the AT package from the build
         run: |
@@ -331,8 +341,11 @@ jobs:
       - name: Refuse a non-canonical shape
         if: inputs.states != '' || inputs.max_zoom != '14'
         working-directory: .
+        env:
+          STATES: ${{ inputs.states }}
+          MAX_ZOOM: ${{ inputs.max_zoom }}
         run: |
-          echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='${{ inputs.states }}' at z0-${{ inputs.max_zoom }}"
+          echo "::error::publish is only for the full corridor build (states empty, z0-14); this run built states='$STATES' at z0-$MAX_ZOOM"
           exit 1
 
       # What regions MUST include, for the same reason: the A.T. package is
@@ -341,8 +354,10 @@ jobs:
       - name: Refuse a publish that did not build the A.T.
         if: inputs.regions != '' && !contains(inputs.regions, 'at')
         working-directory: .
+        env:
+          REGIONS: ${{ inputs.regions }}
         run: |
-          echo "::error::publish needs the at region; this run built regions='${{ inputs.regions }}'"
+          echo "::error::publish needs the at region; this run built regions='$REGIONS'"
           exit 1
 
       - uses: actions/checkout@v7

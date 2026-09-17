@@ -193,6 +193,10 @@ jobs:
       # and the summary read "(did not run)". A spike that can fail silently
       # is worse than no spike, because it produces a result-shaped absence.
       - name: Build (control and both arms, or the disk probe)
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          STATES: ${{ inputs.states }}
+          REGIONS: ${{ matrix.regions }}
         run: |
           set -o pipefail
           # -u because Planetiler writes straight to the inherited stdout while
@@ -201,10 +205,10 @@ jobs:
           # was supposed to be explaining, which is how the last failure read.
           python -u spike_shard_seam.py \
             --planetiler-jar planetiler.jar \
-            --max-zoom "${{ inputs.max_zoom || '14' }}" \
+            --max-zoom "${MAX_ZOOM:-14}" \
             --mode "${{ matrix.mode }}" \
             --geofabrik-base "${{ matrix.base }}" \
-            --states ${{ inputs.states != '' && inputs.states || matrix.regions }} \
+            --states ${STATES:-$REGIONS} \
             | tee build.log
 
       # continue-on-error because the matrix legs race: both may miss the

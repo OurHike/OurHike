@@ -44,6 +44,7 @@ import type { OrgRouting } from '../lib/useOrgRoute'
 import type { OrgRoute } from '../lib/orgRoute'
 import type { UnitSystem } from '../lib/units'
 import {
+  DEMO_ASSIST_CONSENT,
   DEMO_COVERED,
   DEMO_HIKES,
   DEMO_ORG,
@@ -54,7 +55,6 @@ import {
   DEMO_SECTIONS,
   DEMO_SLUG,
   DEMO_WORKDAYS,
-  demoAssistConsent,
   isDemoOrg,
 } from './demoOrg'
 import { SetupHub } from './screens/SetupHub'
@@ -581,7 +581,7 @@ export function OrgConsole({
               // comes from `GET /clubs/{slug}/assist-consent`, which nothing
               // here reads yet - Settings says so rather than inventing a
               // date and a name for it.
-              assistConsent={demo ? demoAssistConsent : undefined}
+              assistConsent={demo ? DEMO_ASSIST_CONSENT : undefined}
               onSetAssistConsent={notWiredYet}
               names={names}
             />

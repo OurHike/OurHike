@@ -126,7 +126,7 @@ export const DEMO_ORG: Org = {
  * DEMO_ROSTER, so Settings resolves a name rather than printing an id at
  * somebody.
  */
-export const demoAssistConsent: AssistConsent = {
+export const DEMO_ASSIST_CONSENT: AssistConsent = {
   opted_in: true,
   opted_in_at: '2026-08-19T15:40:00Z',
   opted_in_by: 'demo-person-sam',

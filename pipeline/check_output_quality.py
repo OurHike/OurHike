@@ -19,8 +19,8 @@ documented pipeline run order (see README.md).
 
     .venv/Scripts/python check_output_quality.py
 
-SIX CHECKS, IN PRIORITY ORDER
-------------------------------
+SEVEN CHECKS, IN PRIORITY ORDER
+--------------------------------
 1. COMPLETENESS CROSS-CHECK (trails_verdict/poi_verdict/elevation_verdict/
    spurs_verdict).
    export_trails.py and export_poi.py already gate themselves on this via
@@ -136,6 +136,18 @@ SIX CHECKS, IN PRIORITY ORDER
    the measurement that made it worth writing: the live bucket was serving
    1,535 ungated points, 1,159 of them past five miles, with every check in
    this file green.
+7. JSON A PHONE CAN PARSE (json_verdict) - check 1 re-hashes every artifact
+   and confirms the bytes are the ones the exporter wrote; nothing confirms
+   a phone can read them. Python's json module writes a non-finite float as
+   the bare token `NaN` or `Infinity` and reads either back without a word,
+   and JSON.parse in the WebView rejects the whole document on the first
+   one (#659 - a literal NaN in the profile took the client down). DuckDB
+   answers 0.0/0.0 with nan and pyproj hands back inf for a point it cannot
+   place, so the value has real ways in; measured against production on
+   2026-09-17, none of 236 JSON artifacts carried one. This reads every
+   .json and .geojson under data/processed the strict way (lib/strict_json.py)
+   and fails on the file, by name, so that day costs a failed run instead of
+   an artifact nobody can open.
 
 Like check_freshness.py: pure-ish verdict functions (each does its own
 I/O, but none of them mutate anything except baseline_verdict()'s eventual
@@ -157,7 +169,7 @@ import duckdb
 import rasterio
 
 import check_water_reach
-from lib import fetch_receipts
+from lib import fetch_receipts, strict_json
 from lib.completeness import count_problems
 from lib.corridor import GEOGRAPHIC_CRS, METERS_PER_MILE, PROJECTED_CRS, build_corridor
 from lib.hashing import sha256_file
@@ -1067,6 +1079,63 @@ def water_reach_verdict(water_path: Path | None = None) -> dict:
     }
 
 
+# --- Check 7: JSON a phone can parse ----------------------------------------
+
+JSON_SUFFIXES = (".json", ".geojson")
+
+
+def json_verdict(processed_dir: Path | None = None) -> dict:
+    """Every .json and .geojson under data/processed parses the way a phone
+    parses it - no `NaN`, no `Infinity`, and no half-written file.
+
+    The module docstring's check 7 has the reasoning. Two shapes of the
+    same answer: a document with a non-finite token, and a document that
+    does not parse at all, which is what a write cut short looks like
+    (lib/atomic_write.py). Both name the file, because the file is the
+    finding and the exporter that wrote it is one directory name away.
+
+    Every document under the tree rather than only the manifest-backed
+    artifacts: a manifest, a sidecar or a cell shard no phone downloads is
+    still read by check_deployment.py, by verify_release.py or by a
+    maintainer, and the walk costs less than a second list of what to
+    check. One document in memory at a time - the largest, the junction
+    graph's geometry, is 224 MB on the 2026-09-08 build, and
+    cut_trail_graph.py parses it whole in the same job already.
+
+    SKIPPED when the tree holds no JSON - nothing has been produced for
+    this to read - and PROBLEM, never a crash, on the documents that fail.
+    """
+    root = PROCESSED_DIR if processed_dir is None else processed_dir
+    documents = sorted(path for path in root.rglob("*") if path.suffix in JSON_SUFFIXES and path.is_file())
+    if not documents:
+        return {
+            "check": "json",
+            "verdict": Verdict.SKIPPED,
+            "detail": f"no JSON under {root} to parse",
+            "problems": [],
+            "counts": {},
+        }
+
+    problems: list[str] = []
+    for path in documents:
+        try:
+            strict_json.load(path)
+        except Exception as exc:  # noqa: BLE001 - the document, not the parser, is the finding
+            problems.append(f"{path.relative_to(root)}: {exc.__class__.__name__}: {exc}")
+
+    counts = {"json_documents": len(documents)}
+    if problems:
+        detail = f"{len(problems)} of {len(documents)} JSON document(s) would not parse on a phone"
+        return {"check": "json", "verdict": Verdict.PROBLEM, "detail": detail, "problems": problems, "counts": counts}
+    return {
+        "check": "json",
+        "verdict": Verdict.OK,
+        "detail": f"{len(documents)} JSON document(s) parse the way a phone parses them",
+        "problems": [],
+        "counts": counts,
+    }
+
+
 def _safe_verdict(check_name: str, fn) -> dict:
     """Run one verdict-building function and never let it take check_all()
     down with it.
@@ -1132,6 +1201,9 @@ def check_all(
     elevation = verdict("elevation", elevation_verdict)
     spurs = verdict("spurs", spurs_verdict)
     manifests = verdict("manifests", manifests_verdict)
+    # Not routed through as_optional(): a partial run that produced nothing
+    # is SKIPPED on its own, and a document that exists has to parse.
+    json_documents = _safe_verdict("json", json_verdict)
     corridor = _safe_verdict("corridor", corridor_verdict)
     topo_quads = _safe_verdict("topo_quads", topo_quads_verdict)
     # Not routed through as_optional() and not keyed on --optional poi: its own
@@ -1149,7 +1221,7 @@ def check_all(
     # --fetched instead.
     fetches = _safe_verdict("fetches", lambda: fetches_verdict(fetched=fetched, root=RECEIPTS_ROOT))
 
-    return [trails, poi, elevation, spurs, manifests, corridor, topo_quads, water_reach, baseline, fetches]
+    return [trails, poi, elevation, spurs, manifests, json_documents, corridor, topo_quads, water_reach, baseline, fetches]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

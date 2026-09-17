@@ -31,7 +31,9 @@ FAILING IS NOT THE SAME AS FINDING NOTHING. A run that cannot reach ATC, or
 that parses a page it does not recognise, leaves the previous cache in place
 and exits non-zero. #463's rule - "their HTML is not an API… the job must fail
 loudly and propose nothing rather than propose a partial set" - is the whole
-reason the cache is written atomically at the end rather than per update.
+reason the cache is written atomically at the end rather than per update -
+one `os.replace` (lib/atomic_write.py), so a step killed at its timeout
+cannot leave half a file for the workflow's `if: always()` save to cache.
 """
 
 from __future__ import annotations
@@ -42,6 +44,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from lib.atc_scrape import atc_session, fetch_listing_slugs, fetch_update, plan_fetches
+from lib.atomic_write import write_text_atomically
 
 ROOT = Path(__file__).resolve().parent
 CACHE_PATH = ROOT / "data" / "raw" / "atc_updates.json"
@@ -89,6 +92,18 @@ def as_cache_entry(parsed, now: datetime) -> dict:
     }
 
 
+def write_cache(path: Path, document: dict) -> None:
+    """The cache, replaced in one step or not at all (lib/atomic_write.py).
+
+    publish-conditions.yml saves whatever this file holds `if: always()`, so
+    a write cut short by the step's timeout would be cached and restored
+    into every later run, not just lost. `os.replace` is what makes "written
+    atomically at the end" above true rather than a description of when.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomically(path, json.dumps(document, indent=2) + "\n")
+
+
 def main() -> int:
     now = datetime.now(timezone.utc)
     session = atc_session()
@@ -127,14 +142,7 @@ def main() -> int:
     for slug, entry in cache.items():
         entry["listed"] = slug in listed
 
-    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    CACHE_PATH.write_text(
-        json.dumps(
-            {"fetched_at": now.isoformat(), "listed": len(slugs), "updates": cache},
-            indent=2,
-        )
-        + "\n"
-    )
+    write_cache(CACHE_PATH, {"fetched_at": now.isoformat(), "listed": len(slugs), "updates": cache})
     dropped = sum(1 for entry in cache.values() if not entry["listed"])
     print(f"Wrote {len(cache)} update(s) to {CACHE_PATH}" + (f", {dropped} no longer listed." if dropped else "."))
     return 0

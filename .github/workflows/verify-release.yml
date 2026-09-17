@@ -108,11 +108,13 @@ jobs:
 
       - name: Write the job summary
         if: always()
+        env:
+          BASE: ${{ steps.can.outputs.base }}
         run: |
           {
             echo "## Release verification"
             echo
-            echo "Base: \`${{ steps.can.outputs.base }}\`"
+            echo "Base: \`$BASE\`"
             echo
             if [ -f verify-release.txt ]; then
               echo '```'

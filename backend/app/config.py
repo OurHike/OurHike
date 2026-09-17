@@ -222,6 +222,12 @@ class Settings(BaseSettings):
     # "@ourhike.org" so the flow can be exercised end to end without reaching
     # a club.
     mail_allowed_suffixes: str = ""
+    # WHERE A LINK WE MAIL POINTS. A preview deployment must mail a preview
+    # link rather than a production one - the club-facing proposal screen is
+    # reached only by the address in the message, so getting this wrong means
+    # three people at an organization following a link to somebody else's
+    # deployment, or to a page that does not exist yet.
+    public_site_url: str = "https://ourhike.org"
     mail_sender: str = "OurHike <hello@ourhike.org>"
     mail_reply_to: str = "hello@ourhike.org"
     # SES, because boto3 is already here for report photos going to R2. One

@@ -49,7 +49,9 @@ from app.core.assist import (
 )
 from app.core.auth import get_current_user
 from app.core.challenge import Challenge, ChallengeRefused, issue, verify
+from app.core.mail import ses_client
 from app.core.nominate import ReadingFailed, reading_from
+from app.core.nomination_mail import ask_the_club
 from app.core.sitefetch import (
     FetchRefused,
     peer_from_response,
@@ -326,6 +328,15 @@ def submit_nomination(
                 proposed_by=ProposedBy(contact.proposed_by),
             )
         )
+    # ASK THEM NOW, in the same transaction that wrote the nomination down.
+    # Deliberately not a queue: a queue is a thing that stops being drained,
+    # and #1123 is this repository's standing issue about exactly that shape
+    # of dropped handoff. `ask_the_club` reports what happened rather than
+    # raising, and leaves the nomination at `proposed` when nothing went - so
+    # a deployment with mail off (every preview, and the default) records a
+    # nomination a maintainer can see and makes no claim to have asked
+    # anybody.
+    ask_the_club(db, nomination, provider=ses_client())
     db.commit()
     return _nomination_out(db, nomination, club)
 

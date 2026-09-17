@@ -51,6 +51,7 @@ from email.utils import parseaddr
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.core.time import utc_now
 from app.models.mail import (
     EmailSend,
@@ -74,6 +75,24 @@ _SUPPRESSES: dict[MailState, SuppressionReason] = {
 
 DEFAULT_SENDER = "OurHike <hello@ourhike.org>"
 DEFAULT_REPLY_TO = "hello@ourhike.org"
+
+
+def ses_client():
+    """The provider, built from settings, or None when nothing is configured.
+
+    Returned rather than raised so a caller can tell "sending is off here"
+    from "sending is on and broken" - the first is the ordinary state of every
+    preview and every developer's machine, and it must not look like a fault.
+
+    boto3 is imported inside the function on purpose: `app/core/mail.py` is
+    imported at start-up by the routers, and a deployment with no mail
+    configured should not pay for a client library it will never call.
+    """
+    if not settings.mail_enabled:
+        return None
+    import boto3
+
+    return boto3.client("sesv2", region_name=settings.ses_region)
 
 
 class MailDisabled(Exception):

@@ -188,3 +188,39 @@ describe('the demo org has data behind it', () => {
     expect(readRepoFile(path)).toContain(`served(${fixture})`)
   })
 })
+
+/**
+ * No Astro attribute carries an uninterpolated `{PLACEHOLDER}`.
+ *
+ * THE DEFECT THIS IS MADE FROM. /for-orgs/demo/ shipped its primary call to
+ * action as `href="/app/my/tread?org={ORG_SLUG}"`. Astro interpolates inside
+ * `href={...}`, not inside a quoted string, so the button that opens "the view
+ * that matters most" - the screen the page says every admin screen exists to
+ * produce - linked to a literal `{ORG_SLUG}`.
+ *
+ * It survived every check the branch had: the page built, the link was
+ * present, the copy was right, and nothing read the attribute's VALUE. It took
+ * a comparison that dumps controls rather than text to see it.
+ *
+ * Written against the class rather than the instance, because the next one
+ * will be a different attribute on a different page.
+ */
+describe('Astro placeholders are interpolated', () => {
+  const PAGES = [
+    'site/src/pages/for-orgs/index.astro',
+    'site/src/pages/for-orgs/demo.astro',
+    'site/src/pages/for-orgs/nominate.astro',
+    'site/src/pages/for-orgs/claim.astro',
+  ] as const
+
+  it.each(PAGES)('%s has no braces left inside a quoted attribute', (path) => {
+    const source = readRepoFile(path)
+    // An attribute written as name="...{THING}..." - the shape that renders
+    // the braces literally. `name={...}` is the correct form and is not
+    // matched, because the value does not open with a quote.
+    const literal = [...source.matchAll(/\s[a-zA-Z-]+="[^"]*\{[A-Za-z_$][^"]*"/g)].map(
+      (match) => match[0].trim(),
+    )
+    expect(literal, `${path} renders these braces literally`).toEqual([])
+  })
+})

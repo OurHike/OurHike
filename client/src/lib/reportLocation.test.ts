@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
   AT_THE_FIX,
+  COARSE_FIX_METRES,
   NEARBY_LIMIT,
   NEARBY_WITHIN_MILES,
   STALE_FIX_SECONDS,
   chosenMile,
   fixAgeSeconds,
   fixAgeWords,
+  fixNeedsAWord,
   fixWords,
   hasPlace,
   locationWords,
@@ -206,6 +208,19 @@ describe('how a place reads', () => {
       '±16 ft · 6 min ago — you may have moved since',
     )
     expect(fixWords(FIX, 'imperial', NOW)).not.toContain('moved')
+  })
+
+  it('spends a header line only on a fix that is stale or coarse', () => {
+    // The ordinary fresh, tight fix reads as its mile alone; the line under
+    // it is for a fix a hiker should hesitate over before filing.
+    expect(fixNeedsAWord(FIX, NOW)).toBe(false)
+    expect(fixNeedsAWord({ ...FIX, accuracyM: COARSE_FIX_METRES }, NOW)).toBe(true)
+    expect(
+      fixNeedsAWord(
+        { ...FIX, fixedAt: new Date(NOW.getTime() - STALE_FIX_SECONDS * 1000) },
+        NOW,
+      ),
+    ).toBe(true)
   })
 
   it('writes the age coarsely: just now, minutes, then hours', () => {

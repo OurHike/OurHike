@@ -127,6 +127,35 @@ export function fixIsStale(fixedAt: Date, now: Date): boolean {
   return fixAgeSeconds(fixedAt, now) >= STALE_FIX_SECONDS
 }
 
+/**
+ * The radius past which a fix is worth a word before anybody files under it.
+ *
+ * @unvalidated - a hundred metres is picked, not measured. The reasoning it
+ * rests on: a GNSS fix under open sky states a radius of a few metres and
+ * under canopy a few tens, while a fix from wifi or a cell tower states
+ * tens to thousands - so a hundred is about where the platform has stopped
+ * seeing satellites, which is the case a hiker standing at a blowdown should
+ * be told about. What would settle it is the radius distribution on real
+ * `gps` reports, which the column now collects. Like STALE_FIX_SECONDS it
+ * changes only whether a line is drawn, never what is recorded.
+ */
+export const COARSE_FIX_METRES = 100
+
+/**
+ * Whether the report window prints the fix's provenance UNDER its place line
+ * rather than only inside the picker (#1563).
+ *
+ * The line costs height on the smallest phone: with it always drawn, the
+ * tile frame that #1480 made fit at 375x667 scrolled again on WebKit by 7 px
+ * (measured in CI on 949555d). So it is spent only when it carries a
+ * warning - a fix that is stale, or coarser than {@link COARSE_FIX_METRES} -
+ * and the ordinary fresh, tight fix reads as its mile alone, with the radius
+ * and age one tap away in the picker's own row.
+ */
+export function fixNeedsAWord(fix: FixSnapshot, now: Date): boolean {
+  return fixIsStale(fix.fixedAt, now) || fix.accuracyM >= COARSE_FIX_METRES
+}
+
 /** "just now", "12 min ago", "3 hr ago" - coarse on purpose, for a line read
  *  at arm's length. The exact seconds are what the wire carries. */
 export function fixAgeWords(fixedAt: Date, now: Date): string {

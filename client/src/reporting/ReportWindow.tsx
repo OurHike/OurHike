@@ -59,6 +59,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import {
+  fixNeedsAWord,
   hasPlace,
   locationWords,
   type FixSnapshot,
@@ -374,6 +375,13 @@ export function ReportWindow({
   // What the header states, resolved against the fix as it is right now.
   const words = locationWords(location, fix, units, knowsTrail, now, placeWords)
   const placed = hasPlace(location, fix) || placeWords.trim() !== ''
+  // Whether the provenance gets a line of its own under the place. Only for
+  // a fix that is stale or coarse: the line costs height that the tile frame
+  // does not have on the smallest phone (#1480; lib/reportLocation.ts's
+  // `fixNeedsAWord` carries the measurement), and a fresh, tight fix is
+  // already what its mile says. The picker's own row prints it either way.
+  const warnAboutFix =
+    location.kind === 'fix' && fix !== null && filed === null && fixNeedsAWord(fix, now)
 
   const file = async (type: ReportTypeId) => {
     // The two that never one-tap. Checked here as well as being drawn as rows,
@@ -653,10 +661,12 @@ export function ReportWindow({
                 </button>
               )}
             </p>
-            {/* HOW the place is known - the provenance the wire carries, in
-                words, so a ±800 ft fix from twelve minutes ago reads as
-                exactly that before anybody files under it. */}
-            {filed === null && words.detail !== null && (
+            {/* HOW SURE THE PHONE IS, when that is worth a line: a ±800 ft
+                fix, or one from twelve minutes ago, reads as exactly that
+                before anybody files under it. Withheld for a fresh, tight
+                fix and for a named place or a marked spot - see
+                `warnAboutFix` for what the line costs on a small phone. */}
+            {warnAboutFix && words.detail !== null && (
               <p
                 className="report-window__anchor-detail"
                 data-testid="report-anchor-detail"

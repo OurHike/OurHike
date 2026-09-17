@@ -3,7 +3,12 @@ import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import { ReportWindow, UNDO_WINDOW_MS, type ReportWindowProps } from './ReportWindow'
 import { EMERGENCY_NOTICE } from './categories'
 import { MAX_UNDO_HOLD_MS } from '../lib/outbox'
-import { AT_THE_FIX, type FixSnapshot, type NearbyPlace } from '../lib/reportLocation'
+import {
+  AT_THE_FIX,
+  STALE_FIX_SECONDS,
+  type FixSnapshot,
+  type NearbyPlace,
+} from '../lib/reportLocation'
 
 afterEach(() => {
   cleanup()
@@ -435,18 +440,35 @@ describe('getting out', () => {
 // when it leads somewhere, ordered by what a hiker is actually thinking in,
 // and silent about how many places they walked past without reporting.
 describe('changing where the report lands (#1563)', () => {
-  it('states the fix in the header with its radius and age, and offers Change', () => {
+  it('states the fix in the header as its mile, and offers Change', () => {
     setup()
 
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('mi 628.4')
-    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
-      'Your position · ±16 ft · just now',
-    )
+    // A fresh, tight fix gets no second line: the line costs height the tile
+    // frame does not have at 375x667 (#1480 - CI on WebKit measured the body
+    // scrolling by 7 px with it always drawn), and the radius and age are one
+    // tap away in the picker's own row.
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
     // OFFERED WHATEVER THE PLACES LIST HOLDS, which is the change from the
     // passed-places control this replaces: the picker always has the words
     // and the map to offer, so there is no empty list to open onto.
     expect(screen.getByTestId('report-change-anchor')).toBeInTheDocument()
     expect(screen.queryByTestId('report-places')).toBeNull()
+  })
+
+  it('spends a line under the place on a fix that is stale or coarse, with the words a hiker should hesitate over', () => {
+    const { unmount } = setup({
+      fix: { ...FIX, fixedAt: new Date(NOW.getTime() - (STALE_FIX_SECONDS + 30) * 1000) },
+    })
+    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
+      'Your position · ±16 ft · 5 min ago — you may have moved since',
+    )
+    unmount()
+
+    setup({ fix: { ...FIX, accuracyM: 250 } })
+    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
+      '±820 ft · just now',
+    )
   })
 
   it('opens the picker by itself when nothing places the report, and refuses a tap until it is answered', async () => {
@@ -513,9 +535,8 @@ describe('changing where the report lands (#1563)', () => {
       },
     })
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('Niday Shelter')
-    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
-      'A named place · mi 627.8',
-    )
+    // The name says what it is; no second line.
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-trash'))
@@ -541,9 +562,7 @@ describe('changing where the report lands (#1563)', () => {
     )
     expect(screen.queryByTestId('report-places')).toBeNull()
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('mi 630.0')
-    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
-      'Marked on the map',
-    )
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
   })
 
   it('stands aside for the crosshair: hidden, inert, and deaf to Escape', () => {

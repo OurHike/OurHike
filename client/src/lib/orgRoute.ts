@@ -78,7 +78,14 @@ export const TREAD_PAGES: readonly TreadPage[] = [
 
 /** Which console page is open, for the same reason and with the same shape. */
 export type SetupPage =
-  'home' | 'approve' | 'registry' | 'signoff' | 'addtrail' | 'emails' | 'leaving'
+  | 'home'
+  | 'approve'
+  | 'registry'
+  | 'signoff'
+  | 'addtrail'
+  | 'embeds'
+  | 'emails'
+  | 'leaving'
 
 export const SETUP_PAGES: readonly SetupPage[] = [
   'home',
@@ -86,6 +93,7 @@ export const SETUP_PAGES: readonly SetupPage[] = [
   'registry',
   'signoff',
   'addtrail',
+  'embeds',
   'emails',
   'leaving',
 ]

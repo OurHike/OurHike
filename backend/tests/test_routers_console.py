@@ -308,3 +308,116 @@ def test_a_token_cannot_claim_a_permission_that_is_not_one(client):
     claims = read_token(token, origin=ORIGIN)
     assert claims is not None
     assert claims["perms"] == ["write"]
+
+
+# --------------------------------------------------------------------- #
+# /console/whoami - what the token in a browser's hand actually permits
+# --------------------------------------------------------------------- #
+
+
+def test_whoami_is_inert_until_a_deployment_switches_the_embed_on(client):
+    """Same switch as the mint. Half a handshake is not a shipped feature."""
+    response = client.get(
+        "/console/whoami",
+        headers={"Origin": ORIGIN, "Authorization": "Bearer anything"},
+    )
+
+    assert response.status_code == 503
+
+
+def test_whoami_reports_the_permissions_the_server_read_out_of_the_signature(client, db_session, console_on):
+    """The widget asks rather than reading the claims itself.
+
+    Parsing the token in JavaScript would let somebody edit it in a debugger
+    and change what the widget draws - which teaches a reader that the
+    widget's own display is the permission check.
+    """
+    org, admin = _org_with_admin(db_session)
+    volunteer = make_profile(db_session)
+    make_assignment(db_session, org, volunteer)
+    db_session.add(
+        RoleInvite(
+            club_id=org.id,
+            email="ana@ramapotrails.org",
+            claimed_by=volunteer.id,
+            claimed_at="2026-09-01",
+        )
+    )
+    db_session.commit()
+    key = _make_key(client, admin.id)
+    minted = client.post(
+        "/console/session",
+        json={"public_key": key["public_key"], "secret": key["secret"], "email": "ana@ramapotrails.org"},
+        headers={"Origin": ORIGIN},
+    ).json()
+
+    response = client.get(
+        "/console/whoami",
+        headers={"Origin": ORIGIN, "Authorization": f"Bearer {minted['token']}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["org_slug"] == "ramapo-trail-conference"
+    assert body["permissions"] == minted["permissions"]
+
+
+def test_whoami_does_not_reissue_the_token_it_was_shown(client, db_session, console_on):
+    """Reporting on a token is not extending one. A silent refresh would need
+    the secret, which is the thing that must never reach a browser."""
+    _, admin = _org_with_admin(db_session)
+    key = _make_key(client, admin.id)
+    minted = client.post(
+        "/console/session",
+        json={"public_key": key["public_key"], "secret": key["secret"], "email": "stranger@example.org"},
+        headers={"Origin": ORIGIN},
+    ).json()
+
+    body = client.get(
+        "/console/whoami",
+        headers={"Origin": ORIGIN, "Authorization": f"Bearer {minted['token']}"},
+    ).json()
+
+    assert body["token"] == ""
+    assert 0 < body["expires_in"] <= 900
+
+
+def test_whoami_refuses_a_token_lifted_onto_another_organizations_page(client, db_session, console_on):
+    """Guard 2, on use rather than only at mint."""
+    _, admin = _org_with_admin(db_session)
+    key = _make_key(client, admin.id)
+    minted = client.post(
+        "/console/session",
+        json={"public_key": key["public_key"], "secret": key["secret"], "email": "stranger@example.org"},
+        headers={"Origin": ORIGIN},
+    ).json()
+
+    response = client.get(
+        "/console/whoami",
+        headers={
+            "Origin": "https://somebody-elses-site.example",
+            "Authorization": f"Bearer {minted['token']}",
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_every_bad_session_answers_the_same_401(client, console_on):
+    """A forged signature, a missing header and a malformed string are one
+    answer. Telling them apart hands somebody an oracle."""
+    answers = set()
+    for header in (None, "Bearer", "Bearer not.a.token", "Token abc", "Bearer " + "x" * 40):
+        headers = {"Origin": ORIGIN}
+        if header is not None:
+            headers["Authorization"] = header
+        response = client.get("/console/whoami", headers=headers)
+        answers.add((response.status_code, response.json().get("detail")))
+
+    assert answers == {(401, "That session is not valid here")}
+
+
+def test_whoami_needs_an_origin_header_like_the_mint_does(client, console_on):
+    response = client.get("/console/whoami", headers={"Authorization": "Bearer x"})
+
+    assert response.status_code == 400

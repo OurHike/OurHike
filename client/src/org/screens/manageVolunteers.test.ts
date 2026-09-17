@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import { lastReadLabel } from './Workdays'
 import { matchesRoster } from './Roster'
+import { snippetFor } from './Embeds'
 import type { RosterEntry } from '../orgApi'
 
 const NOW = new Date('2026-09-17T12:00:00Z')
@@ -82,5 +83,38 @@ describe('matchesRoster', () => {
   it('still finds a nameless person by their section', () => {
     const nameless = entry({ display_name: null, full_name: null, email: null })
     expect(matchesRoster(nameless, 'Pine Meadow')).toBe(true)
+  })
+})
+
+describe('snippetFor', () => {
+  it('puts the org slug in the paste rather than a placeholder to fill in', () => {
+    expect(
+      snippetFor('hikes', 'ramapo-trail-conference', 'https://ourhike.org'),
+    ).toContain('data-org="ramapo-trail-conference"')
+  })
+
+  it('points the script tag at the origin serving it, not a hardcoded host', () => {
+    expect(snippetFor('coverage', 'x', 'https://staging.example.org')).toContain(
+      'src="https://staging.example.org/embed/v1/ourhike.js"',
+    )
+  })
+
+  it('does not double the slash when the origin already ends in one', () => {
+    expect(snippetFor('coverage', 'x', 'https://ourhike.org/')).toContain(
+      'https://ourhike.org/embed/v1/ourhike.js',
+    )
+  })
+
+  it('never puts a secret in the console paste, only a token placeholder', () => {
+    const paste = snippetFor('console', 'x', 'https://ourhike.org')
+    expect(paste).toContain('data-token=')
+    expect(paste).not.toContain('data-secret')
+  })
+
+  it('mounts each embed on the id the embed file looks for', () => {
+    expect(snippetFor('hikes', 'x', 'u')).toContain('id="ourhike-hikes"')
+    expect(snippetFor('workdays', 'x', 'u')).toContain('id="ourhike-workdays"')
+    expect(snippetFor('coverage', 'x', 'u')).toContain('id="ourhike-coverage"')
+    expect(snippetFor('console', 'x', 'u')).toContain('id="ourhike-console"')
   })
 })

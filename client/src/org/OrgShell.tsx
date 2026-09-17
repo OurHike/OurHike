@@ -86,6 +86,7 @@ function crumbsFor(
       registry: ['Hike registry', 'stage 2 of 3 · admins only'],
       signoff: ['Registry sign-off', 'stage 3 of 3 · three approvals'],
       addtrail: ['Add a trail', 'a scoped registry run'],
+      embeds: ['Put this on your own website', '3 public · 1 private'],
       emails: ['What we email on your behalf', 'every message, in full'],
       leaving: ['Settings and leaving', 'export, remove, unpublish, delete'],
     }
@@ -130,6 +131,7 @@ export function OrgShell({
       { key: 'registry', label: 'Hike registry', route: setup('registry') },
       { key: 'signoff', label: 'Registry sign-off', route: setup('signoff') },
       { key: 'addtrail', label: 'Add a trail', route: setup('addtrail') },
+      { key: 'embeds', label: 'Put this on your site', route: setup('embeds') },
     ]
 
     // Add a trail is the one management item the registry gate owns: it is a

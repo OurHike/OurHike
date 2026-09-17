@@ -37,6 +37,14 @@ export const OUT_OF_TREE_READS = [
   'site/src/pages/for-orgs/index.astro',
   'site/src/pages/index.astro',
   'site/src/components/NavBar.astro',
+  // The four embeds (#1542), which run on somebody ELSE's website. The
+  // console screen promises an organization no cookies, no tracking, no
+  // branding they cannot remove and a page that still renders when we are
+  // down - four promises made in copy, kept in one file, and checkable by
+  // reading it. Same reasoning as the /for-orgs/ entries above: site/'s own
+  // vitest suite is never run by CI, so a guard living there is a guard
+  // nobody ran.
+  'site/public/embed/v1/ourhike.js',
   // ciScope.test.ts reads the workflow to check the entries above are
   // scoped - which makes the workflow itself an out-of-tree read, held to
   // the same rule it enforces.

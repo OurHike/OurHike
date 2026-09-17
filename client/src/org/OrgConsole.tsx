@@ -31,6 +31,7 @@ import { useEffect, useState } from 'react'
 import { OrgShell } from './OrgShell'
 import {
   orgApi,
+  type ConsoleKey,
   type Coverage,
   type Org,
   type OrgAccess,
@@ -58,6 +59,7 @@ import { AdminApproval } from './screens/AdminApproval'
 import { HikeRegistry } from './screens/HikeRegistry'
 import { RegistrySignoff } from './screens/RegistrySignoff'
 import { AddTrail } from './screens/AddTrail'
+import { Embeds } from './screens/Embeds'
 import { OrgEmails } from './screens/OrgEmails'
 import { OrgSettings } from './screens/OrgSettings'
 import { Roles } from './screens/Roles'
@@ -240,7 +242,35 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
   const slug =
     route === null ? null : route.kind === 'tread' ? (route.org ?? null) : route.slug
   const data = useOrgData(slug)
+  // The keys are an admin read on a screen most sessions never reach, so
+  // they load when it opens rather than with everything else. A 503 means the
+  // deployment has not switched the console embed on, which the screen says
+  // rather than showing an empty key table as if that were the answer.
+  const onEmbeds = route !== null && route.kind === 'setup' && route.page === 'embeds'
+  const [consoleEnabled, setConsoleEnabled] = useState(true)
+  useEffect(() => {
+    if (!onEmbeds || slug === null || isDemoOrg(slug)) return
+    const controller = new AbortController()
+    orgApi
+      .consoleKeys(slug, controller.signal)
+      .then((loaded) => {
+        setKeys(loaded)
+        setConsoleEnabled(true)
+      })
+      .catch((error: unknown) => {
+        setKeys([])
+        setConsoleEnabled(!(error instanceof Error && error.message.includes('503')))
+      })
+    return () => controller.abort()
+  }, [onEmbeds, slug])
   const [period, setPeriod] = useState<TreadWindow>('3 months')
+  // The console keys live here rather than in `useOrgData` because they are
+  // the one thing on these screens a person changes and then has to see
+  // change. The secret is held in state for exactly one render and is never
+  // written anywhere - the server keeps a hash, so it could not be re-shown
+  // even if this kept it.
+  const [keys, setKeys] = useState<readonly ConsoleKey[]>([])
+  const [freshSecret, setFreshSecret] = useState<string | null>(null)
   const [summaryShown, setSummaryShown] = useState(true)
   const [askingOn, setAskingOn] = useState(false)
 
@@ -348,6 +378,47 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
               onBack={() => go({ kind: 'setup', slug: route.slug, page: 'home' })}
             />
           )
+        case 'embeds':
+          return (
+            <Embeds
+              orgName={orgName}
+              slug={route.slug}
+              scriptOrigin={
+                typeof window === 'undefined'
+                  ? 'https://ourhike.org'
+                  : window.location.origin
+              }
+              hikes={demo ? DEMO_HIKES : []}
+              workdays={data.workdays}
+              gaps={data.coverage?.gaps.length ?? 0}
+              sectionsTotal={data.coverage?.sections_total ?? sections.length}
+              keys={keys}
+              freshSecret={freshSecret}
+              consoleEnabled={consoleEnabled}
+              canEdit={data.access?.is_admin ?? false}
+              onCreateKey={(label, wanted) => {
+                void orgApi
+                  .createConsoleKey(route.slug, label, [...wanted])
+                  .then((created) => {
+                    setKeys((current) => [...current, created])
+                    setFreshSecret(created.secret ?? null)
+                  })
+                  .catch(() => setFreshSecret(null))
+              }}
+              onRevokeKey={(key) => {
+                void orgApi
+                  .revokeConsoleKey(route.slug, key.id)
+                  .then((revoked) =>
+                    setKeys((current) =>
+                      current.map((candidate) =>
+                        candidate.id === revoked.id ? revoked : candidate,
+                      ),
+                    ),
+                  )
+                  .catch(() => {})
+              }}
+            />
+          )
         case 'emails':
           return (
             <OrgEmails
@@ -409,7 +480,7 @@ export function OrgConsole({ routing }: { routing: OrgRouting }) {
                 total: 3,
               }}
               onOpen={(page) => go({ kind: 'setup', slug: route.slug, page })}
-              onOpenEmbeds={() => go({ kind: 'setup', slug: route.slug, page: 'emails' })}
+              onOpenEmbeds={() => go({ kind: 'setup', slug: route.slug, page: 'embeds' })}
               onOpenSettings={() =>
                 go({ kind: 'setup', slug: route.slug, page: 'leaving' })
               }

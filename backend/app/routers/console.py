@@ -24,6 +24,7 @@ from app.core.console_tokens import (
     hash_secret,
     mint_token,
     new_key_pair,
+    read_token,
     secret_matches,
 )
 from app.core.org_access import OrgAccess, require_org_admin, resolve_access
@@ -242,4 +243,68 @@ def create_session(
         org_slug=club.slug,
         display_name=display_name,
         permissions=permissions,
+    )
+
+
+@router.get("/console/whoami", response_model=ConsoleSessionOut)
+def whoami(
+    authorization: str | None = Header(default=None),
+    origin: str | None = Header(default=None),
+) -> ConsoleSessionOut:
+    """What the token in the browser's hand actually permits.
+
+    The console embed calls this as its first act, because it is handed a
+    token by the page it sits in and has no way to know what is inside one.
+    Reading the claims in JavaScript would be worse than useless: an
+    attacker editing them in a debugger would change what the widget draws
+    and nothing else, which teaches a reader that the widget's own display
+    is the permission check. **The permissions this returns are the ones the
+    server read out of a signature it verified.**
+
+    **THE ORIGIN IS CHECKED AGAIN HERE, NOT ONLY AT MINT.** `read_token`
+    refuses a token whose `org_origin` is not this request's, so a token
+    lifted off one organization's members area is worthless pasted into
+    another's page. That is guard 2 applied on use, and it is the whole
+    reason this endpoint takes an `Origin` header at all.
+
+    **EVERY REFUSAL IS THE SAME 401.** A forged signature, an expired token,
+    a wrong origin and a malformed string answer identically, for the reason
+    `read_token` returns a bare `None`: telling them apart hands somebody an
+    oracle for whichever half they already hold.
+
+    Nothing is written. This reads a signed token and answers - it does not
+    touch the database, does not extend the token's life, and does not log a
+    grant, because a grant was already logged when the token was minted.
+    """
+    _enabled_or_503()
+
+    if not origin:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This endpoint is called from a browser on your site, and needs an Origin header",
+        )
+    try:
+        requested_origin = normalise_origin(origin)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    refusal = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="That session is not valid here",
+    )
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise refusal
+    claims = read_token(authorization[7:].strip(), origin=requested_origin)
+    if claims is None:
+        raise refusal
+
+    permissions = claims.get("perms")
+    return ConsoleSessionOut(
+        # The token is not reissued: this reports on the one the caller
+        # already holds, so its remaining life is theirs to run out.
+        token="",
+        expires_in=max(0, int(claims.get("exp", 0)) - int(utc_now().timestamp())),
+        org_slug=str(claims.get("org") or ""),
+        display_name=None,
+        permissions=[str(item) for item in permissions] if isinstance(permissions, list) else [],
     )

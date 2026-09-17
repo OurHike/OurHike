@@ -124,6 +124,26 @@ class Settings(BaseSettings):
     # a moderator the photo attached to the report they are deciding on.
     r2_photo_write_enabled: bool = False
 
+    # The management-console embed, and it is OFF unless a deployment says
+    # otherwise - deliberately, and for a different reason from the photo
+    # switch above.
+    #
+    # `POST /console/session` mints a token that renders an organization's own
+    # roster inside a page on THEIR domain. That is a first-party credential
+    # crossing to a third-party origin, and the six guards around it
+    # (app/models/console_key.py) are a design nobody has security-reviewed -
+    # the maintainer's call on 2026-09-17 was to build it anyway, against a
+    # recommendation to ship only the three public embeds. Both halves of that
+    # decision are honoured by making it real and making it inert: the code
+    # exists, the endpoint answers 503 while this is false, and switching it
+    # on is a deliberate act after a review rather than a consequence of a
+    # merge.
+    #
+    # The three PUBLIC embeds - hike finder, workdays, coverage badge - are
+    # not gated on this. They read a published registry and hold no
+    # credential, so there is nothing about them to review in this sense.
+    console_embed_enabled: bool = False
+
     @model_validator(mode="after")
     def _photos_do_not_go_in_the_published_bucket(self) -> "Settings":
         """Refuse to start rather than publish a photo of a person.

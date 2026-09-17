@@ -55,18 +55,23 @@ from sqlalchemy.orm import Session
 from app.core.photos import poi_photo_key
 from app.core.time import utc_now
 from app.models.app_failure import AppFailure
-from app.models.closure import Closure
+from app.models.closure import Closure, ClosureApproval
+from app.models.club import Club, OrgAdmin
+from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
+from app.models.ridge_runner import RidgeRunnerCommitment
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import VolunteerHoursRecord
+from app.models.work_project import WorkProject, WorkProjectSignup
 
 # Written into every archive. Plain sentences rather than a schema, because
 # the reader is a hiker with a text editor and no context, possibly months
@@ -165,4 +170,28 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),
+        # --- The organization surface (features/ORG_ONBOARDING.md). Every
+        # table here names a profile, so every one of them owes this file a
+        # section - `test_every_profile_linked_table_reaches_the_file` reads
+        # that requirement off the metadata rather than off a list.
+        #
+        # THE SECTION NAMES SAY WHAT THE ROW IS TO THE HIKER, not what it is
+        # to an organization. "Organizations you help run" rather than
+        # "club_admins", because somebody opening this file months later is
+        # reading their own life rather than our schema. ---
+        "organizations_you_help_run": _rows(db, OrgAdmin, OrgAdmin.person_id == profile_id),
+        "workdays_you_signed_up_for": _rows(db, WorkProjectSignup, WorkProjectSignup.person_id == profile_id),
+        "trail_monitor_commitments": _rows(db, RidgeRunnerCommitment, RidgeRunnerCommitment.person_id == profile_id),
+        "closures_you_helped_confirm": _rows(db, ClosureApproval, ClosureApproval.person_id == profile_id),
+        # The four below name this person without being about them: an
+        # organization they registered, a workday they posted, a key they
+        # minted, a roster sync they ran. They are in the file because the
+        # hiker's name is on them and the rule is completeness, not because
+        # they are the hiker's to take away - the organization keeps all four
+        # (core/account_deletion.py unlinks rather than deletes).
+        "organizations_you_registered": _rows(db, Club, Club.created_by == profile_id),
+        "workdays_you_posted": _rows(db, WorkProject, WorkProject.created_by == profile_id),
+        "people_you_invited": _rows(db, RoleInvite, RoleInvite.invited_by == profile_id),
+        "roster_loads_you_ran": _rows(db, RosterSyncRun, RosterSyncRun.run_by == profile_id),
+        "embed_keys_you_made": _rows(db, ConsoleKey, ConsoleKey.created_by == profile_id),
     }

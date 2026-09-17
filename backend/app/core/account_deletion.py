@@ -58,18 +58,23 @@ from sqlalchemy.orm import Session
 
 from app.core.time import utc_now
 from app.models.app_failure import AppFailure
-from app.models.closure import Closure
+from app.models.closure import Closure, ClosureApproval
+from app.models.club import Club, OrgAdmin
+from app.models.console_key import ConsoleKey
 from app.models.field_note import FieldNote, NoteFlag
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.org_role import RoleInvite, RosterSyncRun
 from app.models.poi_photo import PoiPhoto
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
+from app.models.ridge_runner import RidgeRunnerCommitment
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
+from app.models.work_project import WorkProject, WorkProjectSignup
 
 # Hours a club has already acted on. A `claimed` hour is a logbook entry and
 # nobody else's business (VOLUNTEERING.md §5: "the record is theirs first").
@@ -106,6 +111,13 @@ class DeletionSummary:
     assignments_deleted: int = 0
     hours_deleted: int = 0
     hours_kept: int = 0
+    #: The organization surface (features/ORG_ONBOARDING.md). A seat and a
+    #: signup are both permissions rather than contributions, so both go -
+    #: see the reasoning at each query in `delete_account`.
+    org_seats_released: int = 0
+    workday_signups_released: int = 0
+    commitments_deleted: int = 0
+    org_rows_unlinked: int = 0
     app_failures_unlinked: int = 0
     contributions_kept: dict[str, int] = field(default_factory=dict)
 
@@ -177,6 +189,53 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         .delete(synchronize_session=False)
     )
 
+    # A seat at an organization is a PERMISSION, not a contribution. A
+    # deleted account cannot administer anything, and a row saying it can is
+    # a codeowner the organization would be waiting on forever - the same
+    # argument as the assignment above, where showing a section as covered by
+    # somebody who is gone is worse than showing it as uncovered.
+    org_seats = db.query(OrgAdmin).filter(OrgAdmin.person_id == profile_id).delete(synchronize_session=False)
+
+    # A hand put up for a workday, and a crew slot the organization may have
+    # allocated. Released for the same reason: an organization planning
+    # Saturday is better served by a free slot than by a name nobody can
+    # reach. VOLUNTEERING.md's "an introduction, not an enrolment" cuts this
+    # way too - nothing was ever a roster entry to preserve.
+    signups = db.query(WorkProjectSignup).filter(WorkProjectSignup.person_id == profile_id).delete(synchronize_session=False)
+
+    # The commitment window is a mode the app was in for this person, visible
+    # to nobody else and issuing nothing that functions as a badge
+    # (VOLUNTEERING.md §3). There is no third party relying on it.
+    commitments = (
+        db.query(RidgeRunnerCommitment).filter(RidgeRunnerCommitment.person_id == profile_id).delete(synchronize_session=False)
+    )
+
+    # --- Organization rows that NAME them and belong to the organization.
+    # Every one of these columns is nullable, so the link can be forgotten
+    # while the row goes on being the organization's - the same thing
+    # `app_failures.reporter_id` does below, applied to four more tables. An
+    # organization does not lose its registry, its workdays, its audit trail
+    # or its embed keys because one of its admins closed their OurHike
+    # account. ---
+
+    unlinked = 0
+    for model, column in (
+        (Club, Club.created_by),
+        (WorkProject, WorkProject.created_by),
+        (ConsoleKey, ConsoleKey.created_by),
+        (RosterSyncRun, RosterSyncRun.run_by),
+        (RoleInvite, RoleInvite.invited_by),
+    ):
+        for row in db.query(model).filter(column == profile_id).all():
+            setattr(row, column.key, None)
+            unlinked += 1
+
+    # An invite this person CLAIMED is the audit row for a grant that has just
+    # gone with them, so it goes too rather than pointing at an account
+    # nobody can sign into. An invite they SENT is the organization's, and is
+    # unlinked above.
+    unlinked += db.query(RoleInvite).filter(RoleInvite.claimed_by == profile_id).delete(synchronize_session=False)
+
     # --- The rows that name them but are not about them. Link and contact go. ---
 
     # `reporter_id` is nullable here and null is the ORDINARY state (most app
@@ -216,6 +275,10 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         hours_deleted=hours_gone,
         hours_kept=kept["volunteer hours a club confirmed"],
         app_failures_unlinked=len(failures),
+        org_seats_released=org_seats,
+        workday_signups_released=signups,
+        commitments_deleted=commitments,
+        org_rows_unlinked=unlinked,
         contributions_kept={name: count for name, count in kept.items() if count},
     )
 
@@ -246,4 +309,10 @@ def _contributions_kept(db: Session, profile_id: str) -> dict[str, int]:
         # a licence back, so this is the one place where "unattributed" is
         # not on offer and a hiker is entitled to know that in advance.
         "photos you shared": db.query(PoiPhoto).filter(PoiPhoto.contributor_id == profile_id).count(),
+        # An approval is a statement about a closure other hikers are already
+        # routing around - the same class of row as the closure itself, which
+        # this function has always kept. Withdrawing one could drop a closure
+        # back below the three it needed, which is a decision about that
+        # closure rather than about this account.
+        "closures you helped confirm": db.query(ClosureApproval).filter(ClosureApproval.person_id == profile_id).count(),
     }

@@ -1,13 +1,23 @@
 ---
-// The site's navigation: only pages that exist. Explore the trail (Phase 4),
-// For clubs and Get involved (Phase 6) join this row when they are real -
-// WEBSITE.md §9 sequences them - and not a day before: a nav link to a page
-// that is not there is a promise the site breaks on its second click.
+// The site's navigation: only pages that exist. Explore the trail (Phase 4)
+// and Get involved (Phase 6) join this row when they are real - WEBSITE.md §9
+// sequences them - and not a day before: a nav link to a page that is not
+// there is a promise the site breaks on its second click.
+//
+// FOR CLUBS IS NOW REAL, so it joined the row (features/ORG_ONBOARDING.md,
+// #116's Phase 6). The condition above is the reason it took this long and is
+// the reason the other two are still absent: /for-orgs/ exists, it answers,
+// and the rule is satisfied rather than waived.
+//
+// It sits between the links and NOT as a second button. `Support the trail`
+// stays the only CTA on a hiker's homepage: an organization arriving is not
+// the primary action here and should not outrank donating.
 import Mark from './Mark.astro'
 
 const here = Astro.url.pathname
 const links = [
   { href: '/get-the-app/', label: 'Get the app' },
+  { href: '/for-orgs/', label: 'For clubs' },
   { href: '/about/', label: 'About' },
 ]
 ---

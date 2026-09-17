@@ -1,21 +1,70 @@
-"""The `clubs` table - a maintaining club.
+"""The `clubs` table - a maintaining organization, and who administers it.
 
 `Club` is a first-class concept already anticipated by FEATURES.md's
 multi-club support (value #7) and sketched in
-../../../features/VOLUNTEERING.md. It arrives here now because
-../../../features/SAYING_THANKS.md needs somewhere for a thanks to go when
-the hiker knows the club but not the person - which is the common case.
+../../../features/VOLUNTEERING.md. It arrived here for
+../../../features/SAYING_THANKS.md, which needed somewhere for a thanks to go
+when the hiker knows the club but not the person - the common case.
 
-Deliberately minimal: id, name, region. Crews, membership rosters and admin
-tooling all live in VOLUNTEERING.md's larger module and are not invented
-here on the strength of one feature needing a name to attribute work to.
+**`Org` is this table's name in the UI, and only in the UI.** Not every
+organization that maintains a trail is a club: OPRHP is a state agency,
+Mohonk is a preserve, and a land trust is neither. Renaming the table would
+be a migration across every existing foreign key to buy a word, so
+../../../features/ORG_ONBOARDING.md's conflict 2 keeps the route at `/clubs`
+and the rename where it costs nothing.
+
+**What onboarding added, and why each column is here rather than derived.**
+Until 2026-09-17 this model held id, name and region, with a comment saying
+admin tooling was VOLUNTEERING.md's larger module and would not be invented
+on the strength of one feature needing a name. That module is now being
+built, and these are the columns it needs:
+
+- `slug` is the readable id in every route (`/org/ramapo-trail-conference`),
+  every embed's `data-org`, and every pull-request path. A surrogate UUID in
+  a URL an organization pastes onto its own website is a worse answer than a
+  name, and the decision was taken deliberately early because everything
+  links to it.
+- `domain` plus `verified_by` is how we know an organization is itself. At
+  least one admin must hold an email at `domain`; DNS is the stronger proof
+  and email the one most organizations can actually complete today.
+- `state` is what makes claiming coherent. An **unclaimed** org has live
+  trails and no admins - which is exactly what every source a maintainer
+  registered by hand looks like today (33 of them across nine organizations,
+  counted 2026-08-27 in SOURCE_REGISTRY.md). Claiming is the migration path
+  for the registry we already have, not a new concept.
+- `membership_url` and `donation_url` are the whole of the money model.
+  ONBOARDING.md records the maintainer's 2026-08-27 correction - *"There is
+  no funding model today for the orgs"* - so OurHike holds nothing, takes
+  nothing and links to theirs.
 """
 
+import enum
 import uuid
 
-from sqlalchemy import Column, String
+from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
 
+from app.core.time import utc_now
 from app.db.base import Base
+
+
+class OrgState(str, enum.Enum):
+    """Where an organization is between "we hold its data" and "it holds its data".
+
+    `frozen` is the one worth explaining: two people at the same domain
+    claiming the same org is not a race to be won, so a contested claim stops
+    and waits for a person. It has no automatic exit by design - a timer here
+    would resolve the contest in favour of whoever was patient.
+    """
+
+    unclaimed = "unclaimed"
+    claimed = "claimed"
+    frozen = "frozen"
+    deleted = "deleted"
+
+
+class VerifiedBy(str, enum.Enum):
+    dns = "dns"
+    email = "email"
 
 
 class Club(Base):
@@ -24,3 +73,75 @@ class Club(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     name = Column(String, nullable=False)
     region = Column(String, nullable=True)
+
+    # Unique because it is an address. Nullable because rows predate it: the
+    # migration backfills every existing row from its name, and a row that
+    # arrives some other way later should fail loudly at the route rather
+    # than silently answer as some other org.
+    slug = Column(String, nullable=True, unique=True, index=True)
+
+    domain = Column(String, nullable=True)
+    website = Column(String, nullable=True)
+    verified_by = Column(Enum(VerifiedBy, native_enum=False, length=10), nullable=True)
+
+    state = Column(
+        Enum(OrgState, native_enum=False, length=20),
+        nullable=False,
+        default=OrgState.unclaimed,
+    )
+
+    membership_url = Column(String, nullable=True)
+    donation_url = Column(String, nullable=True)
+
+    # Who registered or claimed it. Null for the orgs that got here because a
+    # maintainer wrote a row in pipeline/sources.json, which is most of them.
+    created_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+    created_at = Column(DateTime, nullable=False, default=utc_now)
+
+
+class OrgAdmin(Base):
+    """One person's seat at one organization - the first role this backend can grant.
+
+    See ../../../features/ORG_ONBOARDING.md, and #1169, which measured on
+    2026-08-28 that **no router in `app/routers/` assigns a role at all**:
+    `core/auth.py` sets `Profile.role` once when a profile is provisioned and
+    nothing ever changes it. This table is where that stops being true, and
+    it is org-scoped rather than global on purpose - "club admin" is not a
+    fact about a person, it is a fact about a person and an organization, and
+    the same human is a trails chair at one and a maintainer at another.
+
+    **A decline pauses the org and is reversible - it is never a rejection.**
+    `declined_at` and `decline_reason` exist so the console can say who has
+    not answered and why, and `approved_at` can still be set afterwards. The
+    common cause of a decline is a secretary who does not know what OurHike
+    is, not a board that said no, and a model that treated the two the same
+    would make the recoverable case look final.
+
+    **`is_codeowner` is the three-approvals rule.** Registry changes need all
+    three codeowners; everything else needs one admin. Three-for-everything
+    makes small corrections cost more than they are worth, and the
+    corrections then stop happening.
+    """
+
+    __tablename__ = "club_admins"
+    __table_args__ = (UniqueConstraint("club_id", "person_id", name="uq_club_admins_club_person"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Both indexed: the console reads "who administers this org" on every
+    # page load, and the sign-in path reads "which orgs does this person
+    # administer" to build the org switcher.
+    club_id = Column(String, ForeignKey("clubs.id"), nullable=False, index=True)
+    person_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
+
+    # Their job at the organization, in their own words - "Trails chair",
+    # "Secretary". Display only; nothing branches on it.
+    title = Column(String, nullable=True)
+
+    is_codeowner = Column(Boolean, nullable=False, default=True)
+
+    invited_at = Column(DateTime, nullable=False, default=utc_now)
+    approved_at = Column(DateTime, nullable=True)
+    declined_at = Column(DateTime, nullable=True)
+    decline_reason = Column(Text, nullable=True)

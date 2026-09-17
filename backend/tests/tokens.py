@@ -33,11 +33,20 @@ def make_token(
     secret: str | None = None,
     expires_delta: timedelta = timedelta(hours=1),
     audience: str | None | object = _CONFIGURED,
+    email: str | None = None,
 ) -> str:
     """A signed JWT for `user_id`, carrying the claims Supabase really sends.
 
     `audience` defaults to the configured one; pass `None` to omit the claim
     entirely, or a string to mint a token for some other consumer.
+
+    `email` is omitted unless a test asks for it, and that default is the
+    honest one: **whether a real Supabase access token carries an `email`
+    claim is @unvalidated** (#1169 asked for it to be confirmed against a live
+    token, and this environment has no Supabase project). Defaulting it on
+    here would make every test agree with an assumption nobody has checked.
+    The org tests that need a verified address pass it explicitly, which keeps
+    "this path needs an email claim" visible at each call site.
     """
     payload: dict = {
         "sub": user_id,
@@ -45,6 +54,8 @@ def make_token(
         "role": "authenticated",
         "iss": f"{settings.supabase_url}/auth/v1",
     }
+    if email is not None:
+        payload["email"] = email
 
     resolved = settings.supabase_jwt_audience if audience is _CONFIGURED else audience
     if resolved:
@@ -53,9 +64,9 @@ def make_token(
     return jwt.encode(payload, secret if secret is not None else settings.supabase_jwt_secret, algorithm="HS256")
 
 
-def auth_headers(user_id: str) -> dict[str, str]:
+def auth_headers(user_id: str, *, email: str | None = None) -> dict[str, str]:
     """The Authorization header a signed-in client would send."""
-    return {"Authorization": f"Bearer {make_token(user_id)}"}
+    return {"Authorization": f"Bearer {make_token(user_id, email=email)}"}
 
 
 # The shape a *hosted* Supabase project actually issues: ES256, with a `kid`

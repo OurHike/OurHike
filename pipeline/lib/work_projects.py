@@ -46,11 +46,20 @@ TRAIL_MILE_MAX = 2197.5
 
 STATUSES = ("upcoming", "completed", "cancelled")
 
-# Phase B is read-only, so `contact` is the only mode a reviewed row may
-# carry today: `in_app` means an RSVP the backend accepts, which is Phase D
-# (#762), and a row claiming it before the endpoint exists would render a
-# button that files nothing.
-SIGNUP_MODES = ("contact",)
+# `in_app` joined `contact` on 2026-09-17, when #762's backend landed.
+#
+# Until then this tuple held `contact` alone, for a reason worth keeping
+# rather than deleting: a row claiming `in_app` before the endpoint existed
+# would have rendered a button that files nothing, and a hiker tapping it
+# would have believed they had signed up. The refusal was the guard, and it
+# comes off now because the thing it was guarding against is built -
+# `POST /workdays/{id}/signups` exists, answers, and is born `interested`.
+#
+# Both modes stay first-class, which is the harder half. An organization
+# with a working calendar is not going to abandon it, so a `contact` row is
+# not a legacy shape being phased out: it is the org saying their own system
+# is authoritative, and the client renders which one it is talking to.
+SIGNUP_MODES = ("contact", "in_app")
 
 REQUIRED_FIELDS = ("id", "club_name", "title", "starts_on", "ends_on", "signup_mode")
 
@@ -89,7 +98,7 @@ def row_problems(row: dict) -> list[str]:
         problems.append(f"{row_id}: status must be one of {STATUSES}")
 
     if row.get("signup_mode") not in SIGNUP_MODES:
-        problems.append(f"{row_id}: signup_mode must be one of {SIGNUP_MODES} - `in_app` arrives with the signup backend (#762)")
+        problems.append(f"{row_id}: signup_mode must be one of {SIGNUP_MODES}")
     if row.get("signup_mode") == "contact" and not isinstance(row.get("signup_contact"), str):
         problems.append(f"{row_id}: a contact-mode row needs signup_contact (a mailto: or tel: or https: string)")
 

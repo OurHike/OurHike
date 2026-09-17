@@ -673,6 +673,18 @@ export interface MapScreenProps {
   mapStyle?: MapStyle
   redLight?: boolean
   detail?: LayerDetailLevel
+  /**
+   * Whether the map's trail lines wear their blaze hues, or every one the
+   * same red (#1575). Read twice on this screen: passed to MapView, which
+   * paints by it, and to the legend, which displays it on its Blaze colors
+   * switch. Defaults to the hues like MapView's own prop; the shell passes
+   * the stored preference (chrome/waypointFiltersPanel.ts).
+   */
+  blazeColorsShown?: boolean
+  /** Flips it. Omitted, the legend draws no Blaze colors switch - a switch
+   *  that goes nowhere is worse than none, the legend's rule for every
+   *  control it offers. */
+  onToggleBlazeColors?: () => void
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -955,6 +967,8 @@ export function MapScreen({
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  blazeColorsShown = true,
+  onToggleBlazeColors,
   detail = 'standard',
   center,
   zoom,
@@ -1649,6 +1663,7 @@ export function MapScreen({
               themeChoice={themeChoice}
               mapStyle={mapStyle}
               redLight={redLight}
+              blazeColorsShown={blazeColorsShown}
               detail={detail}
               center={center}
               zoom={zoom}
@@ -1830,8 +1845,11 @@ export function MapScreen({
             onTakeTrail={onTakeTrail}
             onDayHikesNearHere={onDayHikesNearHere}
             // The sheet the canvas beside it is drawn in, so each row's swatch
-            // inks its line the way the map does (#1283).
-            sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
+            // inks its line the way the map does (#1283) - except for the
+            // blaze switch, which the swatch deliberately does not follow
+            // (map/MapIcon.tsx's TrailLineSwatch, #1575); the legend reads it
+            // for its own switch and for the red-light sentence under it.
+            sheetAppearance={{ theme, themeChoice, mapStyle, redLight, blazeColorsShown }}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}
@@ -1843,6 +1861,8 @@ export function MapScreen({
             onToggleAlerts={onToggleAlerts}
             droughtShown={droughtShown}
             onToggleDrought={onToggleDrought}
+            blazeColorsShown={blazeColorsShown}
+            onToggleBlazeColors={onToggleBlazeColors}
             units={units}
             maintainerLine={maintainerLine}
             droughtSummary={

@@ -7,6 +7,14 @@
 //     source imported later inherits the rule instead of needing its own layer.
 //     That expression lives in lib/blaze.ts and is imported, never re-spelled.
 //
+//     SINCE #1575 THE MATCH IS ONE OF THREE ANSWERS, and the other two are
+//     also one value for every source: red light's single hue, and - the
+//     shipped default - lib/blaze.ts's PLAIN_TRAIL_COLOR, every trail one
+//     red until the hiker switches "Blaze colors" on in the legend
+//     (chrome/Legend.tsx). blazeLineColor is the one function that decides
+//     between the three, so the rule holds: nothing spells a line colour per
+//     layer, and nothing but the map's own lines reads the switch.
+//
 //  2. EVERY trail line is SOLID and one colour end to end. Lines used to be
 //     dashed on a per-blaze rhythm, and the rhythm was the map's second
 //     hue-independent channel. What that actually produced on screen was a
@@ -99,7 +107,7 @@ import type {
   LayerSpecification,
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
-import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
@@ -575,14 +583,36 @@ function nearWhiteBlazeCondition(): unknown[] {
 }
 
 /**
- * `line-color` for every blaze layer, per appearance: red light's one hue,
- * or the shared blaze match - with near-white swapped for the sheet's
- * casing ink on day sheets where the layer draws with no casing under it
- * (`cased: false`, the sketches; see NEAR_WHITE_BLAZES). A cased line is
- * the match on every sheet: white stays white, and the casing is its edge.
+ * Whether the appearance paints each trail in its blaze hue (#1575).
+ *
+ * Absent means yes - liveTopo.ts's SheetAppearance says why the absent value
+ * is the hues while the shipped default is not - so the one caller that draws
+ * the canvas, MapView, always passes the preference.
+ */
+export function paintsBlazeHues(appearance: SheetAppearance): boolean {
+  return appearance.blazeColorsShown ?? true
+}
+
+/**
+ * `line-color` for every blaze layer, per appearance, in this order:
+ *
+ *   1. red light's one hue, wherever red light is active;
+ *   2. PLAIN_TRAIL_COLOR - the palette's Red - on every line while blaze
+ *      colours are off (#1575), cased or not, day sheet or dark. lib/blaze.ts
+ *      carries its contrast on both sheets against #782's bars, so it needs
+ *      none of the near-white handling below;
+ *   3. the shared blaze match - with near-white swapped for the sheet's
+ *      casing ink on day sheets where the layer draws with no casing under it
+ *      (`cased: false`, the sketches; see NEAR_WHITE_BLAZES). A cased line is
+ *      the match on every sheet: white stays white, and the casing is its edge.
+ *
+ * Red light before the switch, deliberately: the legend's Blaze colors switch
+ * is disabled under red light and says why (chrome/Legend.tsx), so the order
+ * here and the sentence there make one claim.
  */
 export function blazeLineColor(appearance: SheetAppearance, cased: boolean): unknown {
   if (redLightActive(appearance)) return RED_LIGHT_BLAZE_COLOR
+  if (!paintsBlazeHues(appearance)) return PLAIN_TRAIL_COLOR
   if (cased || !inksNearWhiteAsCasing(appearance)) return BLAZE_MATCH_EXPRESSION
   return [
     'case',
@@ -1728,6 +1758,14 @@ export interface MapStyleOptions {
   themeChoice?: Theme
   mapStyle?: MapStyle
   redLight?: boolean
+  /**
+   * Whether the trail lines are inked in their blaze hues, or every one in
+   * PLAIN_TRAIL_COLOR (#1575). Seeded here for the reason the four above
+   * are: the first frame under the shipped default (off) has to be red, not
+   * a flash of hues before attachMapAppearance repaints. Absent means the
+   * hues, like SheetAppearance's own field.
+   */
+  blazeColorsShown?: boolean
   /** Whether the hiker has asked for the drought wash (#720). Off by
    *  default: it is context, and an unasked-for tint over the whole map is
    *  the opposite of "find information faster". */
@@ -1763,12 +1801,19 @@ export function buildMapStyle({
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  blazeColorsShown = true,
   showDrought = false,
   trailsMerged = false,
   chosenTrailId = TRAILS.AT.id,
 }: MapStyleOptions): StyleSpecification {
   const chosen = chosenSystemSources(chosenTrailId)
-  const appearance: SheetAppearance = { theme, themeChoice, mapStyle, redLight }
+  const appearance: SheetAppearance = {
+    theme,
+    themeChoice,
+    mapStyle,
+    redLight,
+    blazeColorsShown,
+  }
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.

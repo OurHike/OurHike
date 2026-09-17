@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { MapIcon, TrailLineSwatch } from './MapIcon'
-import { blazePaintColor, NEUTRAL_BLAZE_COLOR } from '../lib/blaze'
+import { blazePaintColor, NEUTRAL_BLAZE_COLOR, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { NEARBY_TRAIL_OPACITY } from './nearbyTrails'
 import {
   CASING_OVERHANG,
@@ -339,6 +339,22 @@ describe('TrailLineSwatch: a trail line as the map draws it (#1283)', () => {
     const svg = swatch({ appearance: { mapStyle: 'night_hike', redLight: true } })
     expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
       RED_LIGHT_BLAZE_COLOR,
+    )
+  })
+
+  it('keeps the blaze hue while the appearance has blaze colours off (#1575)', () => {
+    // The one place the swatch and the line disagree on purpose: the map
+    // draws every line PLAIN_TRAIL_COLOR with the switch off, and the row's
+    // swatch stays the blaze - "Changing the color option should only
+    // affect the map itself, not the other options" (the maintainer,
+    // 2026-09-17) - so the legend is where a named trail's blaze is read
+    // while the map is red.
+    const svg = swatch({ appearance: { theme: 'light', blazeColorsShown: false } })
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).toBe(
+      blazePaintColor('Blue'),
+    )
+    expect(part(svg, 'map-icon__trail-blaze').getAttribute('stroke')).not.toBe(
+      PLAIN_TRAIL_COLOR,
     )
   })
 

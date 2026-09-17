@@ -11,7 +11,7 @@ import {
   latest,
   validateStyleMin,
 } from '@maplibre/maplibre-gl-style-spec'
-import { BLAZE_MATCH_EXPRESSION } from '../lib/blaze'
+import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import { OSM_CREDIT, USGS_TOPO_CREDIT } from './credits'
 import {
   attachChosenTrail,
@@ -56,6 +56,7 @@ import {
   archiveRasterPaint,
   attachMapAppearance,
   blazeLineColor,
+  paintsBlazeHues,
   mapBackdrop,
   redLightActive,
   sheetIsDark,
@@ -2182,5 +2183,127 @@ describe('nothing taken (#1306)', () => {
     expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toEqual(
       NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
     )
+  })
+})
+
+describe('one red line for every trail while blaze colours are off (#1575)', () => {
+  const OFF = { theme: 'light', blazeColorsShown: false } as const
+  const LIVE = { ...STYLE_OPTIONS, background: 'hiking_topo_live' as const }
+
+  it('paintsBlazeHues reads an absent field as the hues and false as the one red', () => {
+    // Absent means what every caller drew before the switch existed;
+    // MapView always passes the preference, so the shipped default is
+    // lib/userPreferences.ts's and not this function's.
+    expect(paintsBlazeHues({ theme: 'light' })).toBe(true)
+    expect(paintsBlazeHues({ theme: 'light', blazeColorsShown: true })).toBe(true)
+    expect(paintsBlazeHues(OFF)).toBe(false)
+  })
+
+  it('blazeLineColor answers PLAIN_TRAIL_COLOR on every sheet, cased or not, while the hues are off', () => {
+    // Cased or not: the near-white swap exists because a white line has no
+    // edge on white paper, and the red has its own edge on both sheets
+    // (lib/blaze.ts's contrast figures), so the sketches take the same
+    // answer as the lines.
+    for (const cased of [true, false]) {
+      expect(blazeLineColor(OFF, cased)).toBe(PLAIN_TRAIL_COLOR)
+      expect(blazeLineColor({ theme: 'dark', blazeColorsShown: false }, cased)).toBe(
+        PLAIN_TRAIL_COLOR,
+      )
+      expect(
+        blazeLineColor({ mapStyle: 'night_hike', blazeColorsShown: false }, cased),
+      ).toBe(PLAIN_TRAIL_COLOR)
+      expect(
+        blazeLineColor({ mapStyle: 'parchment', blazeColorsShown: false }, cased),
+      ).toBe(PLAIN_TRAIL_COLOR)
+    }
+  })
+
+  it('lets red light win over the switch, whichever way it is set', () => {
+    // The legend disables the switch under red light and says why; the
+    // order here is what makes that sentence true.
+    for (const blazeColorsShown of [true, false]) {
+      for (const cased of [true, false]) {
+        expect(
+          blazeLineColor(
+            { mapStyle: 'night_hike', redLight: true, blazeColorsShown },
+            cased,
+          ),
+        ).toBe(RED_LIGHT_BLAZE_COLOR)
+      }
+    }
+  })
+
+  it('seeds a cold start with the one red in its first frame, on every blaze layer', () => {
+    const built = buildMapStyle({ ...LIVE, blazeColorsShown: false })
+    const paintOf = (id: string) =>
+      (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
+
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      expect(paintOf(id)['line-color'], id).toBe(PLAIN_TRAIL_COLOR)
+    }
+    expect(validateStyleMin(built, latest)).toEqual([])
+  })
+
+  it('changes line-color on the blaze layers and nothing else in the built style', () => {
+    // "Changing the color option should only affect the map itself, not the
+    // other options" (the maintainer, 2026-09-17) - and on the map itself,
+    // only the lines' ink: the casings, the widths, the closure tape, the
+    // day hike route, the badge and every other layer are identical between
+    // the two builds, as are the sources.
+    const hues = buildMapStyle({ ...LIVE, blazeColorsShown: true })
+    const red = buildMapStyle({ ...LIVE, blazeColorsShown: false })
+
+    expect(red.layers.map((l) => l.id)).toEqual(hues.layers.map((l) => l.id))
+    expect(red.sources).toEqual(hues.sources)
+    for (const [at, layer] of hues.layers.entries()) {
+      const other = red.layers[at]
+      if (BLAZE_LINE_LAYER_IDS.includes(layer.id)) {
+        const { 'line-color': hueInk, ...restHues } = (layer.paint ?? {}) as Record<
+          string,
+          unknown
+        >
+        const { 'line-color': redInk, ...restRed } = (other.paint ?? {}) as Record<
+          string,
+          unknown
+        >
+        expect(redInk, layer.id).toBe(PLAIN_TRAIL_COLOR)
+        expect(hueInk, layer.id).not.toBe(PLAIN_TRAIL_COLOR)
+        expect(restRed, layer.id).toEqual(restHues)
+        expect({ ...other, paint: undefined }, layer.id).toEqual({
+          ...layer,
+          paint: undefined,
+        })
+      } else {
+        expect(other, layer.id).toEqual(layer)
+      }
+    }
+  })
+
+  it('repaints every blaze layer to the one red in place, and back to its hue', async () => {
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [BACKDROP_LAYER_ID, ...TRAIL_CASING_LAYER_IDS, ...BLAZE_LINE_LAYER_IDS]
+
+    attachMapAppearance(m as never, OFF)
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      expect(m.paintProperties.get(`${id}/line-color`), id).toBe(PLAIN_TRAIL_COLOR)
+    }
+    // The casing is not the switch's: it keeps the sheet's ink either way,
+    // which is what keeps the red line edged on paper.
+    for (const id of TRAIL_CASING_LAYER_IDS) {
+      expect(m.paintProperties.get(`${id}/line-color`), id).toBe(
+        trailCasingColor({ theme: 'light' }),
+      )
+    }
+
+    // Back on is a true restore: every layer takes exactly what buildMapStyle
+    // spells for it, the sketches' dark ink included.
+    attachMapAppearance(m as never, { theme: 'light', blazeColorsShown: true })
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(
+        blazeLineColor({ theme: 'light' }, !DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
+      )
+    }
+    expect(m.styles).toEqual([])
   })
 })

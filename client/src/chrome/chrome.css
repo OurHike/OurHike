@@ -1498,6 +1498,37 @@
   color: var(--fg-2);
 }
 
+/* The blaze colours switch (#1575, Legend.tsx). The alerts row's shape once
+   more, for the alerts row's reason: one more map-wide switch under the
+   category list - a name, a sentence, a checkbox - and a hiker should not
+   have to work out that it is the same kind of thing. Disabled under red
+   light; the checkbox's disabled look is the browser's own, and the sentence
+   beside it is what says why. */
+.legend__blazes {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  min-height: var(--min-touch-target);
+  margin-top: var(--space-2, 8px);
+  padding-top: var(--space-2, 8px);
+  border-top: 1px solid var(--border-1);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.legend__blazes-name {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.legend__blazes-detail {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+
 /* A safety row spans the grid rather than sitting in one column of it.
    It carries everything an ordinary row does plus its tag ("Always shown"
    where nothing can hide these marks, "Alerts"/"Alerts off" where the switch

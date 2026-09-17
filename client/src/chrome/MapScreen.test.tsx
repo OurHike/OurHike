@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { MockMap, ScaleControl, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { MapScreen } from './MapScreen'
+import { PLAIN_TRAIL_COLOR } from '../lib/blaze'
+import { BLAZE_LAYER_ID } from '../map/style'
 import {
   mapCredits,
   OPENFREEMAP_CREDIT,
@@ -435,6 +437,36 @@ describe('MapScreen', () => {
 
     expect(screen.getByRole('dialog', { name: /removed waypoint/i })).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: /^waypoint$/i })).not.toBeInTheDocument()
+  })
+
+  it('hands blazeColorsShown to the map it builds and to the legend’s switch (#1575)', async () => {
+    // One prop, read twice on this screen: the canvas paints by it, and the
+    // legend displays it. A screen that forwarded one and not the other
+    // would show a switch disagreeing with the map beside it, which is the
+    // one thing a legend may never do.
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <MapScreen
+        {...PROPS}
+        legendOpen
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+      />,
+    )
+
+    const [map] = MockMap.live
+    const style = map.options.style as {
+      layers: Array<{ id: string; paint?: Record<string, unknown> }>
+    }
+    expect(style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color']).toBe(
+      PLAIN_TRAIL_COLOR,
+    )
+
+    const toggle = screen.getByRole('checkbox', { name: /^Blaze colors/ })
+    expect(toggle).not.toBeChecked()
+    await user.click(toggle)
+    expect(onToggleBlazeColors).toHaveBeenCalledTimes(1)
   })
 
   it('hands the card the live map, so it anchors to the pin it describes', () => {

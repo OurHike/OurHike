@@ -15,15 +15,28 @@
 // panel's foot, below this frame's fold; legend-trails-in-view.mjs is the
 // phone frame that scrolls to it.
 //
+// Re-pointed 2026-09-17 (#1575) rather than copied, per README.md: the
+// screen this pull request changes is THIS one, and the reads above of
+// "every trail line solid, the A.T. white with its dark casing ... the
+// park's trails in their own hues" are exactly what changed. Every trail is
+// now ONE RED LINE by default - the maintainer: "Showing the blaze color can
+// be distracting and feel like I'm living in a rainbow ... Maybe the default
+// color should be a red line, like the nynjtc has on their maps" - and the
+// legend beside the map carries the switch that brings the hues back, "Blaze
+// colors", unchecked under the Drought row. So the difference to look for is
+// an ABSENCE: no white A.T. inside its casing, no blue or yellow park trails,
+// one red at two weights instead. hudson-highlands-blaze-colors.mjs is this
+// same frame with the switch on, which is the other half of the evidence.
+//
 // A REMEMBERED CAMERA, THEN A RELOAD: lib/cameraMemory.ts's contract, as
 // network-above-the-seam.mjs seeds it, so the map is built at this camera
 // rather than moved there - and no location fix, no account, nobody's
 // reports: the plate reads "Location is off", which is the truth about the
 // runner's phone.
 export const caption =
-  'The Hudson at Dutchess Junction on a laptop, z13 (the maintainer’s own frame of 2026-09-10): no contour at or below sea level along the shore — the brown 0 ft rings are gone (map/liveTopo.ts) — every trail a solid line, the A.T. white inside its dark casing over Breakneck Ridge, and the legend beside the map opening on the pin key with "Read all N trail notices" directly under the Serious warning row'
+  'The Hudson at Dutchess Junction on a laptop, z13, with blaze colours OFF — the shipped default since #1575: every trail one red line (lib/blaze.ts’s PLAIN_TRAIL_COLOR, the palette’s own Red), the A.T. over Breakneck Ridge the widest of them and no longer white, the park’s trails narrower in the same red, and the legend beside the map with its new "Blaze colors" switch unchecked under the Drought row, reading "Every trail as one red line. Tap a line for its blaze." The same frame as before this change, so the absence is the evidence: no white line in a casing, no blue or yellow trails. hudson-highlands-blaze-colors.mjs is this frame with the switch on'
 export const alt =
-  'A wide browser window with the OurHike sidebar down the left, the map filling the middle over the Hudson River at Dutchess Junction with contour lines on the hills and none along the water, trails as solid coloured lines with the Appalachian Trail a white line inside a thin dark casing, and the legend panel down the right: the waypoint category grid, the Closure and Serious warning rows, the "Read all trail notices" link directly under them, and the Showing, Verified, Alerts and Drought switches'
+  'A wide browser window with the OurHike sidebar down the left, the map filling the middle over the Hudson River at Dutchess Junction with contour lines on the hills and none along the water, every trail a solid red line inside a thin dark casing with the Appalachian Trail the widest, and the legend panel down the right: the waypoint category grid, the Closure and Serious warning rows, the "Read all trail notices" link directly under them, and the Showing, Verified, Alerts, Drought and Blaze colors switches, the last unchecked'
 
 // The wide layout is the subject; the legend is the panel beside the map.
 export const desktop = true

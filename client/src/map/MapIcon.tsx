@@ -378,7 +378,8 @@ export interface TrailLineSwatchProps {
   chosen: boolean
   /** Which sheet the map is drawn in, for the casing ink and red light.
    *  Defaults to the field day sheet, which is what a legend rendered
-   *  without a map behind it should assume. */
+   *  without a map behind it should assume. Its `blazeColorsShown` is
+   *  deliberately not read - the docstring below says why. */
   appearance?: SheetAppearance
   className?: string
 }
@@ -392,6 +393,15 @@ export interface TrailLineSwatchProps {
  * white blaze white with its dark edge, the way the real line draws it
  * since 2026-09-10 (the near-white dark ink is the uncased sketches' rule
  * only, DARK_INKED_BLAZE_LAYER_IDS, and no sketch has a legend row).
+ *
+ * EXCEPT THE BLAZE SWITCH (#1575). blazeLineColor paints every line one red
+ * while `blazeColorsShown` is off; this swatch keeps the blaze hue whatever
+ * `appearance.blazeColorsShown` says, on the maintainer's instruction of
+ * 2026-09-17 - "Changing the color option should only affect the map itself,
+ * not the other options" - so that with the map one red, the legend's
+ * "Trails in view" rows are where a named trail's blaze is read. That is why
+ * the ink below comes from `blazePaintColor` and not from `blazeLineColor`:
+ * the two agree everywhere but here, and here the disagreement is the point.
  */
 export function TrailLineSwatch({
   blazeColor,

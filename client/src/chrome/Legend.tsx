@@ -85,6 +85,16 @@
 // where two trail systems overlap and reporting whether the lines are
 // legible without a key.
 //
+// THE BLAZE COLORS SWITCH (#1575, 2026-09-17) changes what that cost is. The
+// map now draws every trail in one red by default - the maintainer: "Showing
+// the blaze color can be distracting and feel like I'm living in a rainbow" -
+// and the switch under the drought row is where the hues come back. The
+// "Trails in view" rows keep their blaze swatches whichever way it is set
+// (the maintainer, the same day: "Changing the color option should only
+// affect the map itself, not the other options"), so with the switch off
+// those rows are the key the blaze rows used to be, for every trail the map
+// can name. A line with no name is still a tap away from its blaze.
+//
 // Closure and serious-warning rows still render with no hide control of their
 // own - plain text with a tag beside them, where a hideable row is a button
 // edge to edge. That much is unchanged and is why the row is not uniformly a
@@ -129,6 +139,7 @@ import {
 } from '../lib/legendContents'
 import { MapIcon, TrailLineSwatch } from '../map/MapIcon'
 import type { SheetAppearance } from '../map/liveTopo'
+import { redLightActive } from '../map/style'
 import type { TrailInView } from '../map/trailsInView'
 import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
@@ -263,6 +274,16 @@ export interface LegendProps {
    */
   droughtShown?: boolean
   onToggleDrought?: () => void
+  /**
+   * Whether the map's trail lines wear their blaze hues, or every one the
+   * same red (#1575) - what the Blaze colors switch displays. Defaults to
+   * the hues, like MapScreen's own prop; the shipped default is the stored
+   * preference's (lib/userPreferences.ts), which the shell passes.
+   */
+  blazeColorsShown?: boolean
+  /** Flips it. Omitted, no switch is drawn - the rule every control on this
+   *  panel keeps. */
+  onToggleBlazeColors?: () => void
   /** What the bands say, for that row's summary line. Empty when none
    *  arrived, which draws no numbers rather than a confident zero. */
   droughtSummary?: { miles: number; weekStart: Date | null }
@@ -406,6 +427,8 @@ export function Legend({
   onToggleAlerts,
   droughtShown = false,
   onToggleDrought,
+  blazeColorsShown = true,
+  onToggleBlazeColors,
   droughtSummary,
   units = 'imperial',
   onToggleVerifiedOnly,
@@ -426,6 +449,12 @@ export function Legend({
   newNoticeCount = 0,
   onOpenNotices,
 }: LegendProps) {
+  // Red light draws every line one red-amber before the blaze switch is
+  // consulted (map/style.ts's blazeLineColor), so the Blaze colors switch
+  // below is disabled, with that sentence, while it is active. False with no
+  // sheet handed in: a legend rendered without a map assumes the field day
+  // sheet, as the swatches do.
+  const underRedLight = sheetAppearance !== undefined && redLightActive(sheetAppearance)
   const [allTrails, setAllTrails] = useState(false)
   if (!open && !persistent) return null
 
@@ -914,6 +943,54 @@ export function Legend({
             name="drought_layer"
             checked={droughtShown}
             onChange={onToggleDrought}
+          />
+        </label>
+      )}
+
+      {/* THE BLAZE COLORS SWITCH (#1575). Off, every trail line on the canvas
+          is lib/blaze.ts's PLAIN_TRAIL_COLOR; on, each line is its blaze hue,
+          which is what the map drew before the switch existed. The
+          maintainer's request, 2026-09-17: "Showing the blaze color can be
+          distracting and feel like I'm living in a rainbow. Provide a switch
+          for the user to 'Show blaze colors' in the legend."
+
+          Last of the switches, directly above "Trails in view", because it
+          is about the lines and that block is the lines' key. A stored
+          preference like the drought row (chrome/waypointFiltersPanel.ts),
+          not a `useState` like Alerts: nobody's safety turns on it.
+
+          WHAT IT DOES NOT CHANGE, which the sentence under it says: the
+          swatches in "Trails in view" below, the tapped line's sheet and the
+          day hike card's legs keep the blaze hue whichever way this is set -
+          the maintainer's second instruction the same day, "Changing the
+          color option should only affect the map itself, not the other
+          options" - so with the map one red, this panel is where a named
+          trail's blaze is read.
+
+          DISABLED UNDER RED LIGHT, with the reason in its sentence. Red light
+          draws every line in one red-amber before this switch is consulted
+          (map/style.ts's blazeLineColor), so a live switch there would be a
+          control that visibly does nothing, and this panel draws a control
+          only where it goes. The preference keeps its value and takes effect
+          again with the day sheet. */}
+      {onToggleBlazeColors !== undefined && (
+        <label className="legend__blazes">
+          <span className="legend__blazes-name">
+            Blaze colors
+            <span className="legend__blazes-detail">
+              {underRedLight
+                ? 'Red light draws every trail in one color until it is off.'
+                : blazeColorsShown
+                  ? 'Each trail in the color of its blazes.'
+                  : 'Every trail as one red line. Tap a line for its blaze.'}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            name="blaze_colors"
+            checked={blazeColorsShown}
+            disabled={underRedLight}
+            onChange={onToggleBlazeColors}
           />
         </label>
       )}

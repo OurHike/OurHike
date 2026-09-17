@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TRAILS } from '../lib/trails'
+import { PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import {
   CHOSEN_SYSTEM_SOURCES,
   chosenSystemFilter,
@@ -385,6 +386,40 @@ describe('MapView', () => {
     // And the repaint landed: red light's own ink on the backdrop, in place.
     expect(map.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       TOPO_PALETTE_RED.labelHalo,
+    )
+  })
+
+  it('repaints for a blaze-colours change without rebuilding the map (#1575)', () => {
+    // The switch rides the appearance effect, so flipping it in the legend
+    // repaints every blaze layer's line-color in place - the same promise
+    // red light keeps, and for the same reason: a hiker tapping a switch
+    // while walking must not lose the map they were reading.
+    const { rerender } = render(<MapView {...PROPS} blazeColorsShown />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} blazeColorsShown={false} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toBe(
+      PLAIN_TRAIL_COLOR,
+    )
+  })
+
+  it('seeds a cold start with blaze colours off as one red in its first frame (#1575)', () => {
+    // The shipped default is off, so this is the frame every hiker sees on
+    // launch: seeded into the built style rather than left to the repaint,
+    // or the first frame would be a flash of hues.
+    render(<MapView {...PROPS} blazeColorsShown={false} />)
+    const [map] = MockMap.live
+    const style = map.options.style as {
+      layers: Array<{ id: string; paint?: Record<string, unknown> }>
+    }
+
+    expect(style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color']).toBe(
+      PLAIN_TRAIL_COLOR,
     )
   })
 

@@ -8,6 +8,7 @@ import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { blazePaintColor } from '../lib/blaze'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
 // weight beyond layout:
@@ -686,6 +687,156 @@ describe('the Alerts switch (#1047)', () => {
     const picker = screen.getByRole('combobox', { name: /showing waypoint types/i })
     expect(within(picker).queryByRole('option', { name: /alert/i })).toBe(null)
     expect(within(picker).queryByRole('option', { name: /closure/i })).toBe(null)
+  })
+})
+
+// --- The Blaze colors switch (#1575) ----------------------------------------
+//
+// The map's lines are one red by default and this is where the hues come
+// back. What is tested: it exists only where the shell offers the handler,
+// it says which state the map is in before the tap, it is disabled under red
+// light with the reason, it sits with the other switches directly above
+// "Trails in view", and - the maintainer's second instruction - the rows
+// below it keep their blaze swatches whichever way it is set.
+
+describe('the Blaze colors switch (#1575)', () => {
+  const BLAZES = { ...PROPS, onToggleBlazeColors: vi.fn() }
+  const NAMED_TRAILS = [
+    {
+      name: 'Appalachian Trail',
+      source: 'centerline',
+      blazeColor: 'White',
+      throughRoute: true,
+      takeable: true,
+      chosen: true,
+      anchor: [-74.1, 41.25] as [number, number],
+      badgeFit: 'full' as const,
+      badgeAnchor: 'left',
+      properties: {},
+    },
+    {
+      name: 'Long Path',
+      source: 'oprhp_trails',
+      blazeColor: 'Aqua',
+      throughRoute: false,
+      takeable: false,
+      chosen: false,
+      anchor: null,
+      badgeFit: 'full' as const,
+      badgeAnchor: 'left',
+      properties: {},
+    },
+  ]
+
+  function blazesSwitch() {
+    return screen.getByRole('checkbox', { name: /^Blaze colors/ })
+  }
+
+  it('is not drawn where the shell offers no handler for it', () => {
+    render(<Legend {...PROPS} blazeColorsShown={false} />)
+
+    expect(screen.queryByRole('checkbox', { name: /^Blaze colors/ })).toBe(null)
+  })
+
+  it('reads unchecked over a map drawn in one red, and says so before the tap', () => {
+    render(<Legend {...BLAZES} blazeColorsShown={false} />)
+
+    expect(blazesSwitch()).not.toBeChecked()
+    expect(blazesSwitch().closest('label')).toHaveTextContent(
+      'Every trail as one red line. Tap a line for its blaze.',
+    )
+  })
+
+  it('reads checked over a map drawn in its hues, and says so', () => {
+    render(<Legend {...BLAZES} blazeColorsShown />)
+
+    expect(blazesSwitch()).toBeChecked()
+    expect(blazesSwitch().closest('label')).toHaveTextContent(
+      'Each trail in the color of its blazes.',
+    )
+  })
+
+  it('hands the tap back to the shell rather than deciding anything itself', async () => {
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+      />,
+    )
+
+    await user.click(blazesSwitch())
+
+    expect(onToggleBlazeColors).toHaveBeenCalledTimes(1)
+  })
+
+  it('is disabled under red light, says why, and takes no tap', async () => {
+    // Red light draws every line one red-amber before the switch is
+    // consulted (map/style.ts's blazeLineColor), so a live switch here would
+    // be a control that visibly does nothing.
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+        sheetAppearance={{ mapStyle: 'night_hike', redLight: true }}
+      />,
+    )
+
+    expect(blazesSwitch()).toBeDisabled()
+    expect(blazesSwitch().closest('label')).toHaveTextContent(
+      'Red light draws every trail in one color until it is off.',
+    )
+    await user.click(blazesSwitch())
+    expect(onToggleBlazeColors).not.toHaveBeenCalled()
+  })
+
+  it('sits under the Drought switch and directly above "Trails in view"', () => {
+    // Last of the switches because it is about the lines, and the block
+    // under it is the lines' key.
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        onToggleDrought={vi.fn()}
+        blazeColorsShown={false}
+        trailsInView={NAMED_TRAILS}
+      />,
+    )
+
+    const drought = container.querySelector('.legend__drought')!
+    const blazes = container.querySelector('.legend__blazes')!
+    const trails = screen.getByRole('region', { name: 'Trails in view' })
+    expect(
+      drought.compareDocumentPosition(blazes) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(
+      blazes.compareDocumentPosition(trails) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it('keeps the "Trails in view" swatches in their blaze hues while the map is one red', () => {
+    // The maintainer, 2026-09-17: "Changing the color option should only
+    // affect the map itself, not the other options." With the switch off
+    // these rows are the key the removed blaze rows used to be, so a red
+    // swatch here would be the panel losing the one place a named trail's
+    // blaze is still read without a tap.
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        sheetAppearance={{ theme: 'light', blazeColorsShown: false }}
+        trailsInView={NAMED_TRAILS}
+      />,
+    )
+
+    const inks = [
+      ...container.querySelectorAll('.legend__swatch .map-icon__trail-blaze'),
+    ].map((path) => path.getAttribute('stroke'))
+    expect(inks).toEqual([blazePaintColor('White'), blazePaintColor('Aqua')])
   })
 })
 

@@ -1,6 +1,6 @@
 # The workflows
 
-36 files, 49 jobs (counted 2026-09-09). Each file's header comment is the design record for that
+38 files, 53 jobs (counted 2026-09-17, `python3 -c "import yaml, glob; print(sum(len(yaml.safe_load(open(f)).get('jobs', {})) for f in glob.glob('.github/workflows/*.yml')))"` against the number of files `ls` reports). Each file's header comment is the design record for that
 workflow and is the place to find out *why* it is the way it is — this file is
 the level above: what exists, what makes each one run, and the three or four
 facts that are dangerous to learn by discovering them.
@@ -194,6 +194,17 @@ All dispatch-only. [RELEASING.md](../../RELEASING.md) is the process.
 | `release-notes.yml` | drafts the notes — **never publishes**, per §12 |
 | `verify-release.yml` | checks a release after it is out |
 
+### Drafts a pull request and stops
+
+Scheduled, but never publishes anything itself — the pull request it opens is
+the whole deliverable, and a human merging or acting on it is what has any
+effect. `release-notes.yml` is the dispatch-only sibling of this shape,
+category above; this one is the daily one.
+
+| | |
+|---|---|
+| `propose-atc-updates.yml` | drafts `pipeline/reference/atc_updates_proposed.json` from what ATC posted that `publish-conditions.yml`'s hourly gate (#963) could not place on its own, and opens (or refreshes) a pull request carrying it — never `reference/atc_updates.json` itself, and never anything a client reads (#463) |
+
 ### Runs when someone is debugging or measuring
 
 All dispatch-only, none of them gates anything.
@@ -220,6 +231,7 @@ gathered rather than restated.
 | `35 7 * * 1` | Mondays | `settings-configured.yml` |
 | `45 7 * * 1` | Mondays | `protections-check.yml` |
 | `10 8 * * *` | daily | `schema-drift.yml` |
+| `50 8 * * *` | daily | `propose-atc-updates.yml` — reads the same cache `publish-conditions.yml`'s hourly leg does, so a slot near it rather than far from it |
 | `40 * * * *` | hourly | `publish-conditions.yml` — moved off daily by #720; still shown here at its :40-past-the-hour slot, which is what keeps it clear of `check-pending-approvals.yml` above |
 | `15 9 * * *` | daily | `check-deployment.yml` — after `publish-conditions`, so a publish that breaks something is noticed the same day |
 | `30 9 * * *` | daily | `check-deployed-app.yml` |

@@ -1,0 +1,215 @@
+# Drafts pipeline/reference/atc_updates_proposed.json and opens (or
+# refreshes) a pull request carrying it - the propose half of #463, now
+# that #963 publishes the mechanically unambiguous majority on its own.
+#
+# features/ATC_TRAIL_UPDATES.md section 6 is the design ("the parse
+# proposes; a human publishes") and pipeline/propose_atc_updates.py is the
+# script this dispatches. NEVER PUBLISHES ANYTHING: the file this writes is
+# not read by export_atc_updates.py, the R2 publish step, or any client - a
+# human reads the pull request, checks each candidate against ATC's own
+# page, and types the row into reference/atc_updates.json by hand if it is
+# right. That is the same reviewed-file path #460 proved, not a new one.
+#
+# DELIBERATELY NEVER SAYS "publish.py" ANYWHERE IN THIS FILE, spelled out
+# rather than left for the next reader to rediscover: scripts/pipeline_scopes.py
+# classifies a workflow as a publishing path by searching its own text for
+# that literal token, with no way to tell code from a comment. This workflow
+# never calls it and must not be classified as if it did - see
+# propose_atc_updates.py's own docstring for what avoiding that
+# misclassification costs on the pipeline/lib/ side too.
+#
+# THE MECHANISM IS COPIED FROM release-notes.yml RATHER THAN INVENTED - the
+# same "a second producer, not a second mechanism" argument #463 itself
+# makes. Same git-push-then-curl shape, same non-fatal handling of the
+# #1501 gap (a refused POST prints the compare URL instead of failing the
+# job, because the push - the thing that actually carries the draft - always
+# lands). What differs: this branch is one fixed name, force-pushed fresh
+# every run rather than named per-dispatch, because there is one standing
+# proposal to keep current rather than one archived document per release;
+# and a run with nothing new to propose skips the push and the API call
+# entirely rather than opening an empty diff.
+
+name: Propose ambiguous ATC updates
+
+on:
+  schedule:
+    # 50 past 8, daily. Off the hour for the reason every cron in this
+    # directory gives (GitHub queues everything submitted at :00 behind
+    # everyone else's), and clear of the slots check-upstream-freshness
+    # (07:20), settings-configured/protections-check (07:35/07:45),
+    # check-deployment (09:15) and check-deployed-app/check-launch-speed
+    # (09:30/09:45) already hold. Daily rather than hourly like
+    # publish-conditions.yml: the update this workflow exists for is
+    # already live for a hiker the moment #963's gate can place it: this
+    # leg only speeds up how soon a PERSON notices the handful it cannot -
+    # candidate count is single digits most days (three of ATC's 89 live
+    # updates, measured 2026-09-17), not a queue that backs up waiting a
+    # day.
+    - cron: "50 8 * * *"
+  workflow_dispatch:
+
+# contents: write to push the proposal branch; pull-requests: write to open
+# or find its pull request. Nothing wider - no R2 credential, no database
+# reader, the same separation check-upstream-freshness.yml argues for on a
+# different workflow.
+permissions:
+  contents: write
+  pull-requests: write
+
+# One at a time. Two runs racing to force-push the same branch would leave
+# whichever finished last as the real state anyway, but racing the "does a
+# pull request already exist" check against a push still in flight is how
+# a workflow ends up opening two.
+concurrency:
+  group: propose-atc-updates
+  cancel-in-progress: false
+
+jobs:
+  propose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: pipeline
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Same cache key prefix publish-conditions.yml's ATC leg uses, so this
+      # job reads whatever the last hourly bake already fetched instead of
+      # asking ATC's site for all ten listing pages and every update page
+      # cold - and its own fetch, if it runs, leaves a warmer cache for the
+      # next hourly bake in turn. Politeness argument in full:
+      # publish-conditions.yml's own "Fetch ATC's trail updates" step.
+      - name: Restore ATC's trail updates
+        uses: actions/cache/restore@v6
+        with:
+          path: pipeline/data/raw/atc_updates.json
+          key: atc-updates-${{ github.run_id }}
+          restore-keys: atc-updates-
+
+      # continue-on-error, same reasoning as publish-conditions.yml: ATC
+      # being unreachable or re-themed must cost this run's freshness, never
+      # crash it into silence. A stale or missing cache means
+      # propose_atc_updates.py sees fewer (or no) parsed updates and
+      # proposes less than it might have - a quiet gap, not a red job.
+      - name: Fetch ATC's trail updates
+        continue-on-error: true
+        timeout-minutes: 4
+        run: python fetch_atc_updates.py
+
+      - name: Save ATC's trail updates
+        if: always() && hashFiles('pipeline/data/raw/atc_updates.json') != ''
+        uses: actions/cache/save@v6
+        with:
+          path: pipeline/data/raw/atc_updates.json
+          key: atc-updates-${{ hashFiles('pipeline/data/raw/atc_updates.json') }}
+
+      - name: Draft the candidate file
+        run: python propose_atc_updates.py
+
+      # The only question this workflow exists to answer for itself: did
+      # today's CANDIDATES differ from what is already on main - not the
+      # file's raw bytes, which `generated_at` changes on every run whether
+      # or not anything else did. Comparing bytes here would force-push an
+      # identical proposal and hit the pull request API every single day,
+      # exactly the noise this gate exists to prevent, so both sides drop
+      # that one field before diffing.
+      - name: Check whether the candidates changed
+        id: diff
+        run: |
+          jq 'del(.generated_at)' reference/atc_updates_proposed.json > /tmp/new.json
+          if git show HEAD:pipeline/reference/atc_updates_proposed.json 2>/dev/null | jq 'del(.generated_at)' > /tmp/old.json \
+             && diff -q /tmp/old.json /tmp/new.json > /dev/null; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Push the proposal branch
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="atc-updates/proposed"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add reference/atc_updates_proposed.json
+          git commit -m "Propose $(python -c "import json; print(len(json.load(open('reference/atc_updates_proposed.json'))['candidates']))") ATC update candidate(s)"
+          git push -f -u origin "$branch"
+
+      # Idempotent on purpose: a branch that already has an open pull request
+      # just got a new commit pushed onto it above, which is the update -
+      # nothing here needs to open a second one. Only a branch with no open
+      # pull request needs the POST below.
+      - name: Check for an existing open pull request
+        id: existing
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          count="$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/pulls?head=${REPO%%/*}:atc-updates/proposed&state=open" | jq 'length')"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+
+      # Same non-fatal shape as release-notes.yml's "Open the pull request",
+      # for the same #1501 reason: the push above is this job's real work and
+      # it already landed, so a refused POST prints the compare URL instead
+      # of coloring the run red for something that already succeeded.
+      - name: Open the pull request
+        if: steps.diff.outputs.changed == 'true' && steps.existing.outputs.count == '0'
+        # Repo root, not pipeline/ - this step's own inputs are the checked-
+        # out .github/scripts/ body file and the API, neither under pipeline/.
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          count="$(python3 -c "import json; print(len(json.load(open('pipeline/reference/atc_updates_proposed.json'))['candidates']))")"
+
+          # The body is a checked-in file rather than an inline heredoc, same
+          # reason release-notes.yml's own pull-request step gives: this
+          # whole step is already inside a YAML block scalar, and a heredoc's
+          # content has to stay indented at least as far as that scalar's
+          # first line or YAML reads it as leaving the block - "---" above a
+          # markdown rule is exactly the line that then parses as a document
+          # separator instead of prose.
+          request="$(jq -n \
+            --arg title "Propose $count ATC update candidate(s) for review" \
+            --rawfile body .github/scripts/atc_proposal_pr_body.md \
+            --arg head "atc-updates/proposed" \
+            '{title: $title, head: $head, base: "main", body: $body, draft: true}')"
+          response="$(curl -sS -w '\n%{http_code}' -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/pulls" -d "$request")"
+          status="${response##*$'\n'}"
+          payload="${response%$'\n'*}"
+
+          if [ "$status" -ge 200 ] && [ "$status" -lt 300 ]; then
+            number="$(jq -r '.number' <<<"$payload")"
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/issues/$number/labels" \
+              -d '{"labels":["no-issue"]}' > /dev/null
+            echo "Opened https://github.com/$REPO/pull/$number" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Opening the pull request failed (HTTP $status) - the #1501 gap. The branch pushed correctly." >> "$GITHUB_STEP_SUMMARY"
+            echo "https://github.com/$REPO/compare/main...atc-updates/proposed?expand=1" >> "$GITHUB_STEP_SUMMARY"
+          fi

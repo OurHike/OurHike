@@ -74,9 +74,9 @@ describe('matchesRoster', () => {
   })
 
   it('answers false rather than throwing for a person with no name and no email', () => {
-    expect(matchesRoster(entry({ display_name: null, full_name: null, email: null }), 'ana')).toBe(
-      false,
-    )
+    expect(
+      matchesRoster(entry({ display_name: null, full_name: null, email: null }), 'ana'),
+    ).toBe(false)
   })
 
   it('still finds a nameless person by their section', () => {

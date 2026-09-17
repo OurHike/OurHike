@@ -57,6 +57,25 @@ export const VOLUNTEER_PAGES: readonly VolunteerPage[] = [
   'welcome',
 ]
 
+/**
+ * Which of the volunteer's own five screens is open.
+ *
+ *  `tread` is the bare address, for the reason `page=home` is bare under
+ *  setup: a hiker who bookmarks their own miles from a welcome email should
+ *  get `/my/tread`, not `/my/tread?page=tread`. The other four are query
+ *  parameters because they are the same console with a different screen in
+ *  it, not four documents.
+ */
+export type TreadPage = 'tread' | 'phone' | 'handback' | 'ridge' | 'profile'
+
+export const TREAD_PAGES: readonly TreadPage[] = [
+  'tread',
+  'phone',
+  'handback',
+  'ridge',
+  'profile',
+]
+
 /** Which console page is open, for the same reason and with the same shape. */
 export type SetupPage =
   'home' | 'approve' | 'registry' | 'signoff' | 'addtrail' | 'emails' | 'leaving'
@@ -79,7 +98,7 @@ export type OrgRoute =
       readonly page: VolunteerPage
       readonly person?: string
     }
-  | { readonly kind: 'tread'; readonly org?: string }
+  | { readonly kind: 'tread'; readonly org?: string; readonly page?: TreadPage }
 
 /** The app's base path, with exactly one trailing slash. */
 export function basePath(base: string = import.meta.env.BASE_URL): string {
@@ -108,6 +127,10 @@ function asSetupPage(value: string | null): SetupPage {
   return SETUP_PAGES.includes(value as SetupPage) ? (value as SetupPage) : 'home'
 }
 
+function asTreadPage(value: string | null): TreadPage {
+  return TREAD_PAGES.includes(value as TreadPage) ? (value as TreadPage) : 'tread'
+}
+
 function asVolunteerPage(value: string | null): VolunteerPage {
   return VOLUNTEER_PAGES.includes(value as VolunteerPage)
     ? (value as VolunteerPage)
@@ -132,7 +155,13 @@ export function parseOrgRoute(
 
   if (parts[0] === 'my' && parts[1] === 'tread' && parts.length === 2) {
     const org = parsed.searchParams.get('org')
-    return org ? { kind: 'tread', org } : { kind: 'tread' }
+    const page = asTreadPage(parsed.searchParams.get('page'))
+    const route: OrgRoute = { kind: 'tread' }
+    return {
+      ...route,
+      ...(org ? { org } : {}),
+      ...(page === 'tread' ? {} : { page }),
+    }
   }
 
   if (parts[0] === 'org' && parts.length === 3 && parts[1]) {
@@ -161,9 +190,13 @@ export function orgRoutePath(
 ): string {
   const prefix = basePath(base)
   if (route.kind === 'tread') {
-    return route.org
-      ? `${prefix}my/tread?org=${encodeURIComponent(route.org)}`
-      : `${prefix}my/tread`
+    const query = [
+      route.org ? `org=${encodeURIComponent(route.org)}` : null,
+      route.page && route.page !== 'tread' ? `page=${route.page}` : null,
+    ].filter(Boolean)
+    return query.length === 0
+      ? `${prefix}my/tread`
+      : `${prefix}my/tread?${query.join('&')}`
   }
   const slug = encodeURIComponent(route.slug)
   if (route.kind === 'setup') {

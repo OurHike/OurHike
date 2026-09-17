@@ -36,7 +36,16 @@
 // so that step ends the flow the way it already ended, with the report
 // queued.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
@@ -520,6 +529,21 @@ import {
 import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
 import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
+import { useOrgRoute } from './lib/useOrgRoute'
+
+/* THE CONSOLE IS LAZY, AND THE BUDGET IS WHY.
+ *
+ * Imported eagerly it put the launch bundle 37,336 bytes over
+ * features/LAUNCH_BUDGET.md §3's 256,000-byte ceiling (measured 2026-09-17:
+ * 293,336 compressed against 256,000). Every one of those bytes is parsed
+ * before a hiker's first frame, for a surface almost no hiker opens - the
+ * console is for the handful of people running an organization, reached by
+ * typing a URL. `import()` is what §3 asks for by name, and it costs the
+ * console one frame of "Opening the console" on a screen nobody reaches by
+ * accident. */
+const OrgConsole = lazy(() =>
+  import('./org/OrgConsole').then((module) => ({ default: module.OrgConsole })),
+)
 import './App.css'
 // Last, and entirely inside media queries - see the file header. Nothing in it
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
@@ -684,6 +708,17 @@ const NO_HIKE_PLACES: ReturnType<typeof hikePlaces> = []
 const NO_PASSED_PLACES: { id: string; name: string; type: string; mile: number }[] = []
 
 function App() {
+  // THE ORGANIZATION CONSOLE (#1539-#1542), and the whole of its footprint in
+  // this file: one hook and one early return, some 250 lines below. #937
+  // counted App.tsx as the file 12 of the last 27 merge conflicts landed in,
+  // so a console woven through it is a console every future branch fights.
+  //
+  // The hook is called here rather than inside OrgConsole because there can
+  // only be one: two instances would each keep their own copy of the route,
+  // and a `go` inside the console would move the URL while this file carried
+  // on rendering the map.
+  const orgRouting = useOrgRoute()
+
   // Two pieces of state rather than one nullable, because null only ever meant
   // "not read off the phone yet" - and saying that with a boolean keeps the
   // preferences themselves always a whole object. That removes an unreachable
@@ -10173,6 +10208,18 @@ function App() {
   // undefined and a branch that ever assigns one would silently turn this
   // guard off - which is the shape of the bug it exists to prevent.
   const nothingWouldRender = !mapMounted && (screenOver ?? null) === null && !entering
+
+  // The console is a whole screen rather than a panel over the map, so it
+  // returns instead of rendering beside anything. Every hook above has
+  // already run, which is why this sits here and not at the top of the
+  // function.
+  if (orgRouting.route !== null) {
+    return (
+      <Suspense fallback={<div className="app__screen">Opening the console…</div>}>
+        <OrgConsole routing={orgRouting} />
+      </Suspense>
+    )
+  }
 
   return (
     <>

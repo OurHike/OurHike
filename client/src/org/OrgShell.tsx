@@ -22,7 +22,7 @@ import { useMemo } from 'react'
 import './orgConsole.css'
 import { Mark } from './Mark'
 import type { OrgAccess } from './orgApi'
-import type { OrgRoute, SetupPage, VolunteerPage } from '../lib/orgRoute'
+import type { OrgRoute, SetupPage, TreadPage, VolunteerPage } from '../lib/orgRoute'
 
 export interface OrgShellProps {
   readonly slug: string
@@ -64,8 +64,17 @@ function crumbsFor(
   route: OrgRoute,
   onboarded: boolean,
 ): { trail: string[]; aside: string } {
-  if (route.kind === 'tread')
-    return { trail: ['Volunteer', 'Your Tread'], aside: 'your own miles' }
+  if (route.kind === 'tread') {
+    const names: Record<TreadPage, [string, string]> = {
+      tread: ['Your Tread', 'your own miles'],
+      phone: ['On your phone', 'four screens, 390px'],
+      handback: ['What you hand back', "the hiker's half"],
+      ridge: ['Ridge Runner At-Large', 'seven days, maximum'],
+      profile: ['Your profile', 'yours to edit'],
+    }
+    const [here, aside] = names[route.page ?? 'tread']
+    return { trail: ['Volunteer', here], aside }
+  }
   if (route.kind === 'setup') {
     const group = onboarded ? 'Org home' : 'Onboarding'
     const names: Record<SetupPage, [string, string]> = {
@@ -134,8 +143,30 @@ export function OrgShell({
       { key: 'welcome', label: 'Welcome them', route: volunteers('welcome') },
     ]
 
+    // `page` is left off the first entry so its address stays `/my/tread`,
+    // which is what a welcome email links to.
     const volunteer: RailItem[] = [
       { key: 'tread', label: 'Your Tread', route: { kind: 'tread', org: slug } },
+      {
+        key: 'phone',
+        label: 'On your phone',
+        route: { kind: 'tread', org: slug, page: 'phone' },
+      },
+      {
+        key: 'handback',
+        label: 'What you hand back',
+        route: { kind: 'tread', org: slug, page: 'handback' },
+      },
+      {
+        key: 'ridge',
+        label: 'Ridge Runner',
+        route: { kind: 'tread', org: slug, page: 'ridge' },
+      },
+      {
+        key: 'profile',
+        label: 'Your profile',
+        route: { kind: 'tread', org: slug, page: 'profile' },
+      },
     ]
 
     return { onboarding, manage, volunteer }
@@ -149,7 +180,12 @@ export function OrgShell({
 
   const isHere = (item: RailItem): boolean => {
     if (item.route.kind !== route.kind) return false
-    if (item.route.kind === 'tread') return true
+    if (item.route.kind === 'tread') {
+      // Both are tread routes; `undefined` and 'tread' are the same screen.
+      return (
+        (item.route.page ?? 'tread') === ((route as { page?: TreadPage }).page ?? 'tread')
+      )
+    }
     if (route.kind === 'tread') return false
     return item.route.page === route.page
   }

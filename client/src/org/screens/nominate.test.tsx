@@ -268,7 +268,9 @@ describe('the demo path, which is what the preview photographs', () => {
     await person.click(screen.getByRole('button', { name: /read their site/i }))
     expect(await screen.findByText('WHO AT THE CLUB WE WOULD ASK')).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Write to 3 people at Blue Ridge Footpath Society/ }),
+      screen.getByRole('button', {
+        name: /Write to 3 people at Blue Ridge Footpath Society/,
+      }),
     ).toBeInTheDocument()
   })
 
@@ -295,7 +297,9 @@ describe('the demo path, which is what the preview photographs', () => {
   it('the proposal screen opens on the demo token', async () => {
     const fetched = vi.spyOn(orgApi, 'proposal')
     render(<Proposal token="demo" />)
-    expect(await screen.findByRole('button', { name: /No thank you/ })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /No thank you/ }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /never to ask again/ })).toBeInTheDocument()
     expect(fetched).not.toHaveBeenCalled()
   })
@@ -305,7 +309,9 @@ describe('the demo path, which is what the preview photographs', () => {
     const person = userEvent.setup()
     render(<Proposal token="demo" />)
     await person.click(await screen.findByRole('button', { name: /No thank you/ }))
-    expect(await screen.findByText(/Nothing of yours is going anywhere/i)).toBeInTheDocument()
+    expect(
+      await screen.findByText(/Nothing of yours is going anywhere/i),
+    ).toBeInTheDocument()
     expect(decide).not.toHaveBeenCalled()
   })
 })

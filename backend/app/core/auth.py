@@ -130,9 +130,16 @@ def verify_supabase_jwt(token: str) -> dict:
         # one leaves no room for a token to be verified under an algorithm
         # other than the one it claims.
         algorithms=[algorithm],
-        # An empty setting means "this project's tokens are shaped some other
-        # way" - skip the check rather than demand a claim that is not there.
-        **({"audience": audience} if audience else {"options": {"verify_aud": False}}),
+        # `exp` is REQUIRED, not merely checked when present (#1545). PyJWT
+        # verifies an expiry it finds and says nothing about one it does not,
+        # so a token minted without the claim never expired here. Only
+        # forgeable with the signing key - defence in depth, not a hole - but
+        # every token Supabase issues carries one, so a token without it is
+        # not Supabase's. An empty audience setting means "this project's
+        # tokens are shaped some other way": skip that check rather than
+        # demand a claim that is not there.
+        options={"require": ["exp"], **({} if audience else {"verify_aud": False})},
+        **({"audience": audience} if audience else {}),
     )
 
 

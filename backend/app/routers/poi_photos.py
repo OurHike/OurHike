@@ -116,7 +116,10 @@ def _anonymity_window_days(db: Session, profile_id: str) -> int:
     if stored is None or not isinstance(stored.data, dict):
         return 0
     days = stored.data.get("anonymity_window_days", 0)
-    if not isinstance(days, int) or days < 0:
+    # `bool` first, because it IS an int to `isinstance` and `True` read as a
+    # one-day window (#1545). A bool is not a count of days; it is the unset
+    # value's shape, and gets the unset value's answer.
+    if isinstance(days, bool) or not isinstance(days, int) or days < 0:
         return 0
     return min(days, MAX_ANONYMITY_WINDOW_DAYS)
 

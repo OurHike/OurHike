@@ -257,7 +257,8 @@ cell; a range is the two.
 | map screen mounts (`.map-screen`) | 1,643–2,044 ms | 2,149–2,329 ms | 523–616 ms | 578–679 ms |
 | map canvas exists | 2,748–2,982 ms | 2,371–2,486 ms | 591–679 ms | 578–679 ms |
 | `ourhike:map` — the engine handed the shell a map | not instrumented | 2,705–2,808 ms | not instrumented | 578–679 ms |
-| first frame with the trail line drawn | 4,457–5,697 ms | 4,267–4,864 ms | 2,047–2,330 ms | 2,057–2,312 ms |
+| first frame with 40+ WebGL draw calls — the pins, NOT the line (see below) | 4,457–5,697 ms | 4,267–4,864 ms | 2,047–2,330 ms | 2,057–2,312 ms |
+| the trail-line source reports loaded (instrumented build, one run each) | — | metadata at 4,707 ms; not loaded by 6.2 s | — | **6,155 ms** |
 
 What moved and what did not, read across the rows:
 
@@ -277,12 +278,19 @@ What moved and what did not, read across the rows:
   MapScreen's chunk and 37 others — a cost that is the proxy's uncompressed
   bytes more than anything a laptop on production would pay, and the canvas
   is the frame a hiker sees.
-- **The warm launch is unmoved, and it is already inside the maintainer's two
-  seconds for everything but the line**: map built at 0.6–0.7 s, the line at
-  2.1–2.3 s. The line's 1.4–1.6 s after the map is MapLibre's single worker
-  fetching and tiling the 11.5 MB trails blob, which no change here touches —
-  **#1564 — Research: the map on screen, trail line included, within two
-  seconds of opening the app** is about that.
+- **The warm launch is unmoved, and the line is nowhere near two seconds.**
+  The "40+ draw calls" row was first written up as "the trail line drawn", and
+  the screencast says otherwise: at 2.2 s and 3.1 s the warm launch's pane
+  holds the pins and no line. What that row measures is the pins arriving. An
+  instrumented build recording each source's `sourcedata` puts the trails
+  source — the 11.5 MB blob, 249,038 vertices in 1,657 features, fetched and
+  tiled by MapLibre's single worker — at **loaded 6,155 ms** on a warm launch
+  at 1×, with the basemap tiles (`osm`) loading at 6,158 ms behind it and
+  every small GeoJSON source (pins, closures, sketch) done by 2.0 s; cold it
+  reports metadata at 4,707 ms; at 4× it had not loaded by the 10 s the run
+  watched. The line is the whole of the gap to the maintainer's two seconds,
+  and no change here touches it — **#1564 — Research: the map on screen,
+  trail line included, within two seconds of opening the app** is about that.
 
 Two marks were added for this (`lib/launchMarks.ts`): `ourhike:map` and
 `ourhike:map-drawn`, the second on MapLibre's `load`. Settings → About build

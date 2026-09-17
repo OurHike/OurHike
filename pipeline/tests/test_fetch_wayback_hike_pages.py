@@ -985,3 +985,51 @@ def test_a_cache_with_no_links_key_is_simply_no_fallback(tmp_path):
     path.write_text(json.dumps({"format": pages.CACHE_FORMAT, "listed": 3, "pages": []}), encoding="utf-8")
 
     assert pages.known_links(path) == []
+
+
+def test_an_index_only_run_banks_the_links_it_listed(monkeypatch, requests_mock, tmp_path):
+    """The cheapest run there is - two requests - is the natural way to arm
+    the fallback, and it used to return before write_cache and throw the list
+    away."""
+    _no_sleep(monkeypatch)
+    out = tmp_path / "pages.json"
+    monkeypatch.setattr(pages, "OUT_PATH", out)
+    _index(requests_mock, markup='<a href="/hike/h1">one</a>')
+    _cdx_serving_index_then(requests_mock, then_status=503)
+
+    assert pages.main(limit=None, index_only=True) == 0
+    assert json.loads(out.read_text())["links"] == ["https://www.nynjtc.org/hike/h1"]
+
+
+def test_seeding_the_links_does_not_delete_the_write_ups_already_banked(monkeypatch, requests_mock, tmp_path):
+    """write_cache rewrites the whole file, so an index-only run passing an
+    empty page list would wipe every row a previous run recovered - #1522's
+    loss reintroduced from the other end."""
+    _no_sleep(monkeypatch)
+    out = tmp_path / "pages.json"
+    monkeypatch.setattr(pages, "OUT_PATH", out)
+    _cached_cache(
+        out,
+        ["https://www.nynjtc.org/hike/h1"],
+        rows=[
+            {
+                "url": "https://www.nynjtc.org/hike/h1",
+                "timestamp": "20190419182814",
+                "name": "A Loop",
+                "park": None,
+                "region": None,
+                "lat": None,
+                "lon": None,
+                "description": "x",
+                "photos": [],
+            }
+        ],
+    )
+    _index(requests_mock, markup='<a href="/hike/h1">one</a><a href="/hike/h2">two</a>')
+    _cdx_serving_index_then(requests_mock, then_status=503)
+
+    pages.main(limit=None, index_only=True)
+
+    written = json.loads(out.read_text())
+    assert [row["name"] for row in written["pages"]] == ["A Loop"]
+    assert len(written["links"]) == 2

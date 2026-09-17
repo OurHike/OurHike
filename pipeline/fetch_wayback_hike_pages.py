@@ -846,8 +846,22 @@ def main(limit: int | None, index_only: bool) -> int:
     if index_only:
         # `not links` used to ride along here and is gone: the guard above
         # already returned 1 for an empty list, so it could never be false.
+        #
+        # AND IT BANKS WHAT IT LISTED (#1531). This returned before
+        # write_cache, so the cheapest possible run - two requests, about a
+        # minute - threw away the very thing index_links() needs to fall back
+        # on. That made `--index-only` useless as a way to arm the fallback,
+        # which is the one job it is perfectly shaped for.
+        #
+        # The rows already recovered are carried through rather than passing
+        # an empty list: write_cache rewrites the whole file, so seeding the
+        # links with `[]` here would delete every write-up a previous run
+        # banked - the exact loss #1522 existed to stop, reintroduced from
+        # the other end.
+        write_cache(list(load_done().values()), links)
         for link in links[:20]:
             print(f"    {link}")
+        print(f"  {len(links)} links kept - a later run can no longer be stopped by a refused index")
         return 0
 
     done = load_done()

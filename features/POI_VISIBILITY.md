@@ -430,6 +430,28 @@ picture of the current camera is not a preference.
   centroid**, because a hiker walks to the pin and the centroid of twelve
   fountains is a point on a lawn.
 
+  **And a third change, which the camera found and no measurement would have.**
+  `client/preview-shots/city-waypoints-crowded.mjs` photographs the Brooklyn
+  frame, and the first picture of it showed the padding working — 24 pins where
+  63 used to pack — over a screen that was *still* a wash, because **all 660
+  waypoints wore a 42 px staleness ring**. The ring layer's own comment states
+  the rule it was breaking: *"rings exist to invite a tap, and only a pin can be
+  tapped — so they start where the pins do, not where the dots do."* Its
+  `minzoom` is the zoom half of that; the other half was never enforceable,
+  because a `circle` layer joins no placement pass and cannot ask which symbols
+  won. On the corridor it never showed — nearly every waypoint above the seam
+  *is* a pin, so ringing them all was very nearly ringing the pins.
+
+  So the ring now rides the same count the padding does and fades out across the
+  same anchors. `RING_OPACITIES`' own note is what makes this a defect rather
+  than a preference: a loud ring on everything is *"the 'nothing here is
+  trustworthy' opening #256 warns about"*, and subtle per ring is not subtle six
+  hundred times over. **It costs something real** — a pin that *is* drawn on
+  crowded ground loses its invitation to confirm along with its neighbours',
+  because the property cannot tell them apart. That is accepted against six
+  hundred rings nobody can read, and it is the expression to replace if MapLibre
+  ever exposes per-feature placement.
+
   **And the badge does not say twelve.** The mockup drew a count on the pin and
   this does not, which is a deliberate departure: every New York City fountain
   ships at `confidence_floor: low` — `featuresta` reads *Active* on all 3,849

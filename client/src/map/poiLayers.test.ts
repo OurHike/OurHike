@@ -28,6 +28,8 @@ import {
   attachPoiIcons,
   buildPoiDotLayer,
   buildPoiLayer,
+  buildPoiStalenessLayer,
+  NO_RING,
   poiFeatureCollection,
   poiFilter,
   POI_DOT_COLOR_EXPRESSION,
@@ -496,6 +498,55 @@ describe('poiFeatureCollection', () => {
 
   it('is empty for no POIs rather than undefined', () => {
     expect(poiFeatureCollection([])).toEqual({ type: 'FeatureCollection', features: [] })
+  })
+})
+
+describe('the staleness ring on crowded ground (#1536)', () => {
+  /** The ring's stroke opacity as MapLibre would compute it. */
+  function ringOpacity(ring: string, crowding: number): number {
+    const paint = buildPoiStalenessLayer().paint as Record<string, unknown>
+    return evaluate(paint['circle-stroke-opacity'] as unknown[], {
+      staleness_ring: ring,
+      [CROWDING_PROPERTY]: crowding,
+    }) as number
+  }
+
+  it('draws the ring at its full tier strength on quiet ground', () => {
+    // The corridor, where every waypoint measures under QUIET_NEIGHBOURS.
+    // Nothing about the A.T.'s rings changes.
+    expect(ringOpacity('green', 0)).toBeCloseTo(0.9, 5)
+    expect(ringOpacity('green', QUIET_NEIGHBOURS)).toBeCloseTo(0.9, 5)
+    expect(ringOpacity('faint-invite', QUIET_NEIGHBOURS)).toBeCloseTo(0.35, 5)
+  })
+
+  it('takes the ring away entirely where the ground is crowded', () => {
+    // 660 waypoints on one Brooklyn screen each wore a 42 px ring, which is
+    // the "nothing here is trustworthy" wash RING_OPACITIES is written to
+    // avoid. A circle layer joins no placement pass, so this is the only
+    // question the layer can ask about whether a ring is on a pin.
+    expect(ringOpacity('faint-invite', CROWDED_NEIGHBOURS)).toBe(0)
+    expect(ringOpacity('green', CROWDED_NEIGHBOURS * 3)).toBe(0)
+  })
+
+  it('fades rather than switching, so no hard edge runs across a park', () => {
+    const midpoint = (QUIET_NEIGHBOURS + CROWDED_NEIGHBOURS) / 2
+    const faded = ringOpacity('faint-invite', midpoint)
+
+    expect(faded).toBeGreaterThan(0)
+    expect(faded).toBeLessThan(0.35)
+  })
+
+  it('leaves the per-tier strengths as the one home for how loud a tier is', () => {
+    // A product, not a second `match`: this expression can only ever turn the
+    // tier values down, so a tier whose opacity changes changes in one place.
+    const quiet = ringOpacity('grey-dotted', QUIET_NEIGHBOURS)
+    expect(quiet).toBeCloseTo(0.55, 5)
+    expect(ringOpacity('grey-dotted', CROWDED_NEIGHBOURS)).toBeLessThan(quiet)
+  })
+
+  it('still draws nothing for a waypoint with no ring, at any crowding', () => {
+    expect(ringOpacity(NO_RING, 0)).toBe(0)
+    expect(ringOpacity(NO_RING, CROWDED_NEIGHBOURS)).toBe(0)
   })
 })
 

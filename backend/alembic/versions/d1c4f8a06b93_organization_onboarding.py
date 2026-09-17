@@ -1,7 +1,7 @@
 """organization onboarding
 
 Revision ID: d1c4f8a06b93
-Revises: c9d1a7f48b62
+Revises: b1e4c7a9d2f6
 Create Date: 2026-09-17 03:40:00.000000
 
 The twelve tables behind ../../../features/ORG_ONBOARDING.md, plus the
@@ -26,6 +26,14 @@ which is called out where it happens below:
 3. **`slug` is backfilled from `name`.** It is unique and it is in every
    route, so existing rows cannot be left without one. See `_SLUG_BACKFILL`.
 
+**This revision was re-parented after it was written.** It was authored against
+`c9d1a7f48b62` and `b1e4c7a9d2f6` (one flag per account per note) landed on
+`main` against the same parent while this branch was open - two heads, which
+`alembic upgrade head` refuses to resolve and which every Postgres test in
+tests/test_migrations.py and tests/test_schema_drift_check.py failed on. It
+stacks on that revision instead, which is the linear answer and costs nothing
+here because nothing had applied this revision yet.
+
 4. **Foreign keys added to existing tables are named.** Autogenerate emits
    `op.create_foreign_key(None, ...)` and then a matching
    `op.drop_constraint(None, ...)`, which is not a thing Alembic can execute:
@@ -42,7 +50,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d1c4f8a06b93"
-down_revision: Union[str, Sequence[str], None] = "c9d1a7f48b62"
+down_revision: Union[str, Sequence[str], None] = "b1e4c7a9d2f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

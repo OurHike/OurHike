@@ -1,0 +1,300 @@
+# OurHike — Loading the trail organizations in bulk (Plan v1)
+
+Companion to [SOURCE_REGISTRY.md](SOURCE_REGISTRY.md) (what a registered source is, and the rule that
+nothing self-service reaches a hiker without a merge) and [ORG_ONBOARDING.md](ORG_ONBOARDING.md) (the
+four public doors, one of which this plan drives). The catalogue this plan operates on is
+[`pipeline/reference/trail_orgs.json`](../pipeline/reference/trail_orgs.json), and the tracking issue
+is **#1543 — 165 trail organizations exist and the registry knows 14, with no way to load the rest
+that does not cost one pull request each**.
+
+**Provenance.** The organization list is the maintainer's research pass of 2026-09-17: 165 rows
+covering national umbrellas, all 11 National Scenic Trail stewards, the National Historic Trail
+stewards, all ~30 Appalachian Trail maintaining clubs, regional nonprofits, federal agencies,
+aggregators and route-only trails, each with a GIS endpoint where one was found and its licence
+terms. Every count below is measured against that pass as loaded into the catalogue file, and says
+so. Nothing here has been fetched — **no endpoint in this plan has been probed by this repository**,
+and the research's own caveat is that `inferred` rows were never opened.
+
+---
+
+## The reframe: it was never 400 pull requests
+
+The maintainer's constraint was *"without me having to review 400 PRs."* The useful finding is that
+the number was never near 400, and seeing why is most of the plan.
+
+Measured against the catalogue, 2026-09-17, across its 163 rows:
+
+| `load` verdict | rows | what it costs to load |
+| --- | ---: | --- |
+| `via` — geometry arrives through another row | 59 | **nothing.** No entry, no fetch, no bytes. |
+| `hold` — recorded, `reaches_hikers: false` | 58 | nothing. A row in a file. |
+| `none` — no geometry exists, now or later | 25 | nothing. |
+| `refuse` — stated commercial or waiver-gated terms | 6 | nothing. |
+| `ship` — open terms and a usable endpoint | 15 | a fetch, a clip, and download budget |
+
+Of the 15 `ship` rows, **4 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
+entries in `sources.json` today. So the work this whole catalogue produces is:
+
+> **11 new endpoints.**
+>
+> National Park Service · Bureau of Land Management · Colorado COTREX · Washington RCO ·
+> Utah SGID · Wisconsin DNR · AZGeo · City of Duluth · Pacific Crest Trail Association ·
+> Continental Divide Trail Coalition · North Country Trail Association
+
+Eight are public domain, one is CC BY 4.0, and two are published openly with no stated terms.
+
+**The 59 `via` rows are where the leverage is, and they are the reason a club-shaped form would have
+produced 400 pull requests.** All 30 A.T. maintaining clubs consolidate into the ATC centerline this
+repository already fetches — the Maine Appalachian Trail Club publishes nothing, and its 267 miles
+are already on the map. Twenty-three National Historic Trail and National Scenic Trail stewards hold
+no geometry and point at the National Park Service; **one NPS registration answers all 23.** Florida
+Trail and Arizona Trail resolve to USFS and AZGeo. Washington Trails Association and The Mountaineers
+both defer to WA RCO.
+
+A form that asks each organization for its endpoint gets 59 organizations inventing one, or 59
+organizations bouncing. A catalogue that lets a row say *"real organization, geometry lives there"*
+gets the same map for eleven fetches.
+
+## What the licence question actually blocks, which is almost nothing
+
+The maintainer's instruction was to treat an unstated licence as open rather than as a blocker. That
+turns out to change two rows, because licence was never the binding constraint:
+
+- **51 of the 58 `hold` rows have no endpoint at all.** They are blocked on a URL nobody has found —
+  Connecticut Forest & Park Association's 825 miles of Blue-Blazed trails, the Appalachian Mountain
+  Club's White Mountains inventory, North Carolina's Mountains-to-Sea corridor. The licence question
+  has not been *reached* on any of them, because there is nothing yet to licence.
+- **7 `hold` rows have an endpoint.** Three are public domain and held for other reasons (USACE
+  publishes facilities rather than centerlines; USGS's National Map is a human downloader with no
+  service URL to poll; NY State Parks is held because the same data is already registered under
+  NYS OPRHP at `reaches_hikers: false` and this must not become the way that holdback is bypassed).
+  One is held on format rather than terms — Tahoe Rim Trail publishes shapefile, GPX and KMZ for
+  free behind an email form, and a form-gated download is not a URL a freshness check can poll.
+- **That leaves two rows genuinely waiting on somebody reading terms**: Friends of the Mountains-to-Sea
+  Trail and the Ozark Trail Association, both of which publish an interactive web map rather than a
+  dataset anyway.
+
+So: **assume-open costs nothing here and buys two rows, neither of which has a fetchable endpoint.**
+The instruction is recorded and applied — `cdtc` and `ncta` ship on it, both being open ArcGIS hubs
+with public downloads and no stated restriction — and the catalogue records `licence_basis:
+"unstated"` rather than claiming a grant nobody made. That distinction is the whole point: a row may
+ship on an unstated licence, and a reader must still be able to see that nobody stated one.
+
+**Six rows state a real restriction and stay out**: Buckeye Trail (1,444 miles behind paid apps),
+Sheltowee Trace and Ozark Highlands (commercial GPX and printed maps), Avenza's store, TrailLink,
+and the Oregon Desert Trail, whose GPX is released only after a liability waiver. Assume-open does
+not reach a stated restriction, and three of those six have their ground managed by the Forest
+Service, so the open path to the same trail is a row already on the list.
+
+## The binding constraint is download budget, and it has a measured precedent
+
+**#1231 — usfs_trails and usfs_rec_sites ship nationwide (Arizona and beyond), when only the region
+near the corridor was the point of registering them** is what this plan has to answer before anything
+flips to `reaches_hikers: true`. One federal source, registered with no geographic scope, produced
+(measured 2026-09-04 against the published UA release) a 228 MB `nearby_trails.geojson` carrying
+112,378 features of which **68,622 fell outside the A.T. corridor** — Arizona trails on the phone of
+somebody walking through Georgia.
+
+This catalogue adds **NPS and BLM, both nationwide, and eight state-scale layers.** Colorado COTREX
+alone is 45,076 miles from 236 land managers. Against archive baselines of z11 ~64 MB, z12 ~314 MB
+and z13 ~1.18 GB, that is not a rounding error.
+
+The tension is real and is not this plan's to resolve: the maintainer's own documented policy
+(`export_nearby_trails.py`, #1019) is *"Don't limit data from orgs based on geography."* That was
+written about organizations whose services are themselves state-scoped, where it costs nothing. A
+nationwide federal layer is the case it did not anticipate. **#1543 carries this as the open
+question, and no `ship` row flips to `reaches_hikers: true` until it has an answer.** That is why the
+plan below registers before it ships, rather than as caution for its own sake.
+
+## The load, in four pull requests
+
+Batched by **the decision a reviewer is making**, not by organization. A reviewer approving eight
+public-domain federal rows makes one decision eight times; a reviewer approving eight bespoke
+licences makes eight decisions. The first is worth batching and the second is not.
+
+| | what it contains | the reviewer's decision | ships? |
+| --- | --- | --- | --- |
+| **1** | This plan and the 163-row catalogue | Is the `load` column right? | no |
+| **2** | 8 public-domain endpoints, probed, `reaches_hikers: false` | Is public domain the right reading, and did the probe run honestly? | no |
+| **3** | 3 open-licence endpoints + attribution strings, `reaches_hikers: false` | Are the attribution strings correct? | no |
+| **4** | The `reaches_hikers` flip, once #1231's scope question is answered | Which geography, and what does the archive weigh? | **yes** |
+
+Pull request 1 is this one. Each of 2 and 3 carries a **summary table, not 163 diffs** — the probe
+result per endpoint (feature count, geometry kind, CRS, whether the freshness marker exists,
+transfer size), which is what a reviewer needs and what `sources.json`'s existing entries already
+record by hand. `nh_granit_trails` is the standard to meet: four column findings, each measured, each
+dated.
+
+**Four pull requests, and the fourth is the only one that changes a hiker's map.** The gate
+SOURCE_REGISTRY.md and DATA_RELEASES.md exist to protect is untouched, because registering and
+shipping were already two acts and `reaches_hikers` already separates them.
+
+### This is existing practice, not a new lane
+
+Worth stating plainly, because the batching sounds like a shortcut and is not. **GATC and all four
+NYS OPRHP layers are registered in `sources.json` right now at `reaches_hikers: false`** — fetched,
+recorded, and deliberately absent from every hiker's screen until their licence answers land.
+`export_sources.py` names both organizations and says why in its own docstring. The bulk load is that
+arrangement at scale.
+
+## What the nominate form needs, to do this well
+
+The maintainer's question. Checked against [ORG_ONBOARDING.md](ORG_ONBOARDING.md)'s
+`/for-orgs/nominate/` — *"Any signed-in hiker submits an org's trails on its behalf"* — and against
+the `Org` model beside it.
+
+### Three things it already gets right
+
+- **`Org.state = unclaimed | claimed | frozen | deleted`.** An unclaimed org has live trails and no
+  admins, which is exactly what all 163 of these rows are. The design already says this is "the
+  migration path for the registry we already have", and a bulk load is the same shape. **No change.**
+- **`POST /clubs/:id/gis-source` refuses flat files.** Correct, and it refuses the right six rows —
+  the Avenza and paid-app tier fails re-readability before it fails licensing.
+- **A thin top tier is legitimate.** "An org with one park has one row at the top, and that is thin
+  rather than wrong" is what lets a state clearinghouse row exist without inventing a hierarchy.
+
+### Five things it needs
+
+1. **Provenance that is not a person.** The form records the nominating hiker. 163 rows nominated by
+   one account is a false record of how they arrived — and every session here authenticates as the
+   same identity, so the field would not even distinguish sessions. Needs a submission kind
+   (`org_self | hiker_nomination | maintainer_research`) beside the submitter.
+   `sources.json`'s `discovered_via` is the existing free-text home for exactly this and should
+   become structured rather than being replaced.
+
+2. **A `via` pointer — the single largest saving, and the form has no field for it.** 59 of 163 rows
+   are a real organization whose geometry arrives through somebody else's endpoint. Today the form
+   can express "here is my endpoint" and cannot express "I am real, my trails are on the map, and
+   that row over there is where they come from." Without it those 59 either invent an endpoint or
+   never register, and the Maine Appalachian Trail Club is absent from a product that has been
+   drawing its 267 miles since v1.
+
+3. **Licence evidence, kept apart from a licence claim.** SOURCE_REGISTRY.md requires a licence and
+   an attribution string at submission and says a registration without them cannot be approved. The
+   catalogue shows what that produces at scale: **54 of 163 rows are `unstated`**, and a required
+   field would get 54 guesses. Needs `licence_basis` as a closed vocabulary — the four values
+   `sources.json` already uses in practice (`public_domain`, `stated_by_org`,
+   `maintainer_authorisation`, `unstated`) — plus `licence_evidence_url` and `licence_read_date`, so
+   that *nobody has read the terms* is a recordable state rather than a blank box or a lie.
+
+4. **A geographic scope, required at registration.** #1231 is this field not existing. A nationwide
+   endpoint registered without one costs 228 MB and 68,622 out-of-corridor features, and the
+   catalogue adds two more nationwide federal layers plus eight state-scale ones. The probe already
+   reports transfer size; the scope is what makes that number mean something at review.
+
+5. **A dedupe identity, decided now rather than in week three.** #1539 already flags slug collision
+   handling as undecided, and at 163 rows it is load-bearing rather than theoretical: the Appalachian
+   Mountain Club legitimately needs two rows resolving to different upstreams, the Great Western
+   Trail collides by name with two unrelated rail-trails, and NJGIN and NY State Parks both
+   redistribute data already registered here under other providers. A bulk load without a dedupe key
+   writes duplicates into the one file the build reads.
+
+None of the five is a redesign. Four are fields, and the fifth is a decision the design already
+flagged.
+
+## Filling the form: one run, not 163 people typing
+
+[ORG_ONBOARDING.md](ORG_ONBOARDING.md)'s `/for-orgs/nominate/` screen is not a blank form. It reports
+what OurHike **found** about an organization — each endpoint with what is in it, the licence
+position, the membership and donation links, and the flat files we refuse — and asks a human to
+confirm it. The prototype's own licence row reads *"nothing restricting use — published publicly, no
+terms attached"* against a pill saying **no restrictions**, which is the maintainer's assume-open
+position already drawn into the design rather than a new argument.
+
+[`pipeline/build_org_nominations.py`](../pipeline/build_org_nominations.py) fills that report for
+every catalogue row. Its output is generated, so it lands in `pipeline/data/` and not in the
+repository — the reviewed artifact is the catalogue, and the run is what turns it into submissions.
+It prints the review table rather than a diff:
+
+```
+163 nominations built, none reaching a hiker.
+
+  verdict     orgs   what it costs to load
+  ship          15   a fetch, a clip and download budget
+  via           59   nothing - another row already carries it
+  hold          58   nothing - a row in a file
+  refuse         6   nothing - stated terms refuse it
+  none          25   nothing - no geometry exists
+```
+
+**Two gaps the run makes visible, and neither is filled with a guess.**
+
+- **Contacts: 0 of 163.** The form asks for a named human and a role address, and SOURCE_REGISTRY.md
+  makes a verified contact the thing that stops a broken layer going unnoticed. The research pass
+  collected none. Every nomination carries an empty list and the reason, because 163 plausible
+  coordinator names would be worse than none — they would be believed.
+- **Membership and donation links: 0 of 163.** These are the whole of what an organization gets back
+  — OurHike takes no cut because there is no cut to take — and the research did not gather them.
+  Both are null rather than invented.
+
+Both are one scrape away and neither blocks the load. They are recorded here because a form field
+silently defaulting to empty is how a promise to an organization quietly stops being kept.
+
+## Long trails get an emblem, because width has run out
+
+[TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md) records that after dash style was tried and withdrawn
+twice, **line width** carries the hue-independent channel: a system's through-route is drawn markedly
+wider than the spurs hanging off it. That document also says exactly how long that holds:
+
+> It answers it for exactly as long as that stays true: […] a second through-route on the map turns
+> the question width answers into "through-route or spur".
+
+The 11 new endpoints above are that second through-route arriving several times over — the Pacific
+Crest Trail, the Continental Divide, North Country's 4,800 miles. Width will still say *this is a
+through-route* and will no longer say *which*.
+
+[`pipeline/reference/trail_emblems.json`](../pipeline/reference/trail_emblems.json) is the answer:
+**67 long-distance trails**, each with an emblem, following the maintainer's scope decision of
+2026-09-17 — the 11 National Scenic Trails, 43 named regional long trails, and the 13 route-only
+trails that have no maintainer at all.
+
+**It is a specification, not artwork.** Each row carries a shape, a ground colour, a figure colour
+and a letterform, and the client draws from those the same way the map already draws blaze colour
+from a MapLibre `match` expression — one data-driven rule, no per-trail rendering code, and no
+third party's logo file committed to a public tree. `test_no_emblem_embeds_an_image` enforces that.
+
+Three things the file is careful about:
+
+- **`mark_state` records whose mark each emblem follows**, in three values: `org_mark_not_asked`
+  (44 trails), `public_domain` (10 — federal and state agency signage, which is not a private mark),
+  and `own_work` (13 — the route-only trails, whose emblem is OurHike's own). The first value is the
+  honest one and is deliberately greppable. `export_sources.py` already publishes a `mark_state` per
+  source and the whole registry reads `not_asked`; this file does not disagree with it, and
+  `test_a_mark_we_never_asked_about_is_never_recorded_as_licensed` stops it starting to.
+- **A route with no maintainer is never drawn like a trail with one.** The 13 route-only emblems are
+  a dotted ground on purpose — the Hayduke is, in the National Park Service's own words, not an
+  established or maintained trail, and an emblem that flattened that difference would be making a
+  safety-relevant claim with a graphic.
+- **`blaze: "none"` is a fact, not a gap.** A signed trail has no painted blaze, and recording that
+  as unknown is the error `nh_granit_trails` already made once and wrote down.
+
+
+## What this plan deliberately does not do
+
+- **It does not fetch anything.** No endpoint here has been probed by this repository. Every
+  `verified` mark is the research pass's, and its own caveat is that `inferred` rows were never
+  opened. Re-validating federal service URLs before a production load is recommendation 5 of the
+  research and is pull request 2's job, not this one's.
+- **It does not ship a single byte to a hiker.** See the four-pull-request table.
+- **It does not settle the corridor question.** #1231 is named, quantified and left open, because the
+  answer is a maintainer's policy call about what a hiker downloads, not a data question.
+- **It does not chase the 51 endpointless rows.** They are recorded with the next place to look —
+  PASDA for Pennsylvania, MassGIS for the Trustees and the Blue Hills, CT DEEP for the Blue-Blazed
+  trails, and `nh_granit_trails`' undocumented `MAINTORG` integer codes for the Appalachian Mountain
+  Club, which is the cheapest unopened lead in the catalogue.
+
+## Open questions
+
+- **Does an aggregated state layer beat a steward's own?** Colorado Trail Foundation publishes its
+  own trail and is also in COTREX; this plan takes COTREX, because public domain beats unstated. That
+  is a licence-driven answer to a data-quality question, and the quality answer might differ — a
+  steward's own centerline is likelier current than a clearinghouse's copy of it. Unmeasured.
+- **What `ogc_features` costs.** North Country's hub is the catalogue's best-published source and
+  serves WFS/WMS, which SOURCE_REGISTRY.md names as the one adapter this pipeline does not have and
+  the one whose freshness is unstandardised. 4,800 miles is a reason to build it; the recurring cost
+  of hashing payloads to detect change is the reason it was deferred.
+- **Whether the A.T. clubs should be rows at all.** All 30 resolve to ATC and none publishes
+  geometry. They earn their rows here because `trail_club_sections` already puts one polygon per club
+  on the map and [SAYING_THANKS.md](SAYING_THANKS.md) and `MaintainerAssignment` already mean *club* —
+  so the registry knowing their names is worth something even though it fetches nothing from them.
+  That is an argument, not a measurement.

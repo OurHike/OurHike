@@ -125,7 +125,7 @@ jobs:
       # Fourteen days rather than the default ninety. This is a build to walk
       # with while a branch is live, not an archive - and a stale APK is worse
       # than none, because it looks like a current one in the Actions UI.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.scope.outputs.run == 'true'
         with:
           name: ourhike-debug-apk

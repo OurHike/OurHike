@@ -230,44 +230,73 @@ It prints the review table rather than a diff:
 Both are one scrape away and neither blocks the load. They are recorded here because a form field
 silently defaulting to empty is how a promise to an organization quietly stops being kept.
 
-## Long trails get an emblem, because width has run out
+## Long trails get a badge, and the mark is not ours to draw
 
 [TRAIL_BLAZE_COLORS.md](TRAIL_BLAZE_COLORS.md) records that after dash style was tried and withdrawn
-twice, **line width** carries the hue-independent channel: a system's through-route is drawn markedly
-wider than the spurs hanging off it. That document also says exactly how long that holds:
+twice, **line width** carries the hue-independent channel: a through-route is drawn wider than the
+spurs off it. That document also says exactly how long that holds:
 
 > It answers it for exactly as long as that stays true: […] a second through-route on the map turns
 > the question width answers into "through-route or spur".
 
-The 11 new endpoints above are that second through-route arriving several times over — the Pacific
-Crest Trail, the Continental Divide, North Country's 4,800 miles. Width will still say *this is a
-through-route* and will no longer say *which*.
+The 11 new endpoints above are that second through-route arriving several times over. Width will
+still say *this is a through-route* and will no longer say *which*.
 
-[`pipeline/reference/trail_emblems.json`](../pipeline/reference/trail_emblems.json) is the answer:
-**67 long-distance trails**, each with an emblem, following the maintainer's scope decision of
-2026-09-17 — the 11 National Scenic Trails, 43 named regional long trails, and the 13 route-only
-trails that have no maintainer at all.
+**The client already has the mechanism, and it already has this gap written down.**
+`client/src/map/trailBadges.ts` draws one badge per through-route in view — mark, plate, name — and
+takes the mark from `BADGE_MARK_BY_SOURCE`, which has **two entries**: `centerline` (the A.T.) and
+`nynjtc_long_path` (the Long Path). Its own header says what happens to everything else — *"every
+other source falls through to the OurHike blaze chip in the trail's own blaze hue"* — and what would
+change that: *"When a `trail_id` arrives, `BADGE_MARK_BY_SOURCE` becomes a lookup against the
+registry and nothing else here changes."*
 
-**It is a specification, not artwork.** Each row carries a shape, a ground colour, a figure colour
-and a letterform, and the client draws from those the same way the map already draws blaze colour
-from a MapLibre `match` expression — one data-driven rule, no per-trail rendering code, and no
-third party's logo file committed to a public tree. `test_no_emblem_embeds_an_image` enforces that.
+[`pipeline/reference/trail_emblems.json`](../pipeline/reference/trail_emblems.json) is the list that
+tier grows to: **67 long-distance trails** — the 11 National Scenic Trails, 43 named regional long
+trails, and the 13 route-only trails — each with its steward and the blaze its chip takes.
 
-Three things the file is careful about:
+### What it does not contain, and why that was a correction
 
-- **`mark_state` records whose mark each emblem follows**, in three values: `org_mark_not_asked`
-  (44 trails), `public_domain` (10 — federal and state agency signage, which is not a private mark),
-  and `own_work` (13 — the route-only trails, whose emblem is OurHike's own). The first value is the
-  honest one and is deliberately greppable. `export_sources.py` already publishes a `mark_state` per
-  source and the whole registry reads `not_asked`; this file does not disagree with it, and
-  `test_a_mark_we_never_asked_about_is_never_recorded_as_licensed` stops it starting to.
-- **A route with no maintainer is never drawn like a trail with one.** The 13 route-only emblems are
-  a dotted ground on purpose — the Hayduke is, in the National Park Service's own words, not an
-  established or maintained trail, and an emblem that flattened that difference would be making a
-  safety-relevant claim with a graphic.
-- **`blaze: "none"` is a fact, not a gap.** A signed trail has no painted blaze, and recording that
-  as unknown is the error `nh_granit_trails` already made once and wrote down.
+An earlier draft of that file carried a per-trail shape, ground colour and letterform, so that every
+long trail would have a drawn emblem. **That draft was wrong**, and the rule it broke is the
+repository's own, written before this branch existed. `sources.json`'s `org_marks` block:
 
+> **UNTIL A GRANT ARRIVES, THE SLOT RENDERS EMPTY** — never a placeholder mark, never an initial,
+> never a generated shape. An organization's identity is the one thing in this app that must not be
+> approximated, and a visibly empty slot is also the thing most likely to prompt somebody to go and
+> ask.
+
+`pipeline/tests/test_org_marks.py` gives that teeth for assets: a mark file in the client tree for an
+organization whose state is not `granted` fails the suite, and **every one of the 14 rows reads
+`not_asked`**. So neither shape of the original idea could ship — 44 drawn emblems are the generated
+shapes that sentence forbids, and 44 real logos are assets at `not_asked`, which turns the suite red.
+
+What a trail without a granted mark wears is **the blaze chip**, which is already built, already
+shipping, and says something true about paint on a tree rather than something invented about an
+organization. `org_marks`' own `brand_colour_chip_only` permission exists to protect exactly that
+channel — *"an organization's brand colour touching a trail line would make the map say something
+false about paint on a tree."*
+
+So the file carries `blaze` and `mark_state`, the latter in `org_marks`' own four words rather than a
+fifth vocabulary beside it. Every row reads `not_asked`, because that is true.
+
+### The ask this actually unblocks
+
+Asking is the only thing that moves a row off `not_asked`, and asking was expensive because nobody
+had the list. **`reference/trail_orgs.json` is now that list** — 163 organizations with their
+websites — which makes the mark ask the same shape as the licence ask and roughly as cheap.
+
+The A.T. and Long Path marks ship on the maintainer's own authorisation, recorded in
+`client/src/lib/trails.ts` and in `org_marks`. That is a real basis, it is the same footing
+`atc_licence` stands on, and it does not extend to anybody else's mark.
+
+**One pre-existing defect is worth naming rather than leaving.** `client/src/lib/trails.ts` carries
+PCT and CDT marks it describes as *"placeholder marks of OurHike's own design, since PCTA's and
+CDTC's official logos aren't sourced here"* — two invented shapes standing in for two organizations'
+identities, which is what the `org_marks` comment forbids. They predate that block. Neither
+organization is in `sources.json`'s provider list, so `test_org_marks.py`'s org-derived check does
+not reach them today. **Registering PCTA — one of the 11 endpoints above — brings it into that list
+and those marks into scope**, which makes this the branch that has to say so even though it is not
+the branch that fixes it.
 
 ## What this plan deliberately does not do
 

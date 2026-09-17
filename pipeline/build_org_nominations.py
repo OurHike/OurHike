@@ -206,7 +206,7 @@ def build() -> dict:
     for trail in emblems["trails"]:
         if trail["steward"]:
             by_steward.setdefault(trail["steward"], []).append(
-                {"slug": trail["slug"], "trail": trail["trail"], "emblem": trail["emblem"], "mark_state": trail["mark_state"]}
+                {"slug": trail["slug"], "trail": trail["trail"], "blaze": trail["blaze"], "mark_state": trail["mark_state"]}
             )
 
     orgs = catalogue["orgs"]
@@ -250,7 +250,7 @@ def summarise(payload: dict) -> str:
         f"  {len(ships)} endpoints to register. Contacts collected: "
         f"{sum(len(n['contacts']) for n in noms)} - the form asks for one per org and the "
         "research gathered none.",
-        f"  Emblems attached to an organization: "
+        f"  Badged trails attached to an organization: "
         f"{sum(len(n['emblems']) for n in noms)} of {payload['generated_from']['emblem_trails']}.",
     ]
     return "\n".join(lines)

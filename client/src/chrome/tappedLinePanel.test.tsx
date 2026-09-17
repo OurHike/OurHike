@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { act, cleanup, renderHook } from '@testing-library/react'
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react'
 import { useTappedLinePanel, type TappedLineInput } from './tappedLinePanel'
 import { buildTrailIndex } from '../lib/trailPosition'
 import { clubTimeline, parseClubSections } from '../lib/clubSections'
@@ -11,6 +11,7 @@ import { emptyMergedGraph } from '../lib/trailGraphData'
 import type { GraphEdge } from '../lib/trailGraph'
 import type { ReactElement } from 'react'
 import type { LineDetail } from '../lib/lineDetail'
+import { paperMapLinesAt } from '../lib/paperMaps'
 
 // The climb half is mocked at the fetch rather than at IndexedDB: what is
 // under test here is that a TAP is what asks for it, that the answer is
@@ -18,6 +19,14 @@ import type { LineDetail } from '../lib/lineDetail'
 // not recorded as an absence. lib/trailGraphData.ts's own tests own the
 // fetching (#1476).
 const fetchElevation = vi.hoisted(() => vi.fn())
+// The paper-map join the panel loads on the first tap (#1574). Mocked
+// whole: what this file tests is the panel's wiring - that it asks for the
+// tapped point, prints what comes back, and never loads the join when no
+// steward sells a map - and lib/paperMaps.test.ts owns the join itself.
+vi.mock('../lib/paperMaps', () => ({
+  paperMapLinesAt: vi.fn(async () => []),
+}))
+
 vi.mock('../lib/trailGraphData', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/trailGraphData')>()),
   fetchTrailGraphElevationCells: fetchElevation,
@@ -115,10 +124,9 @@ function panel(overrides: Partial<TappedLineInput> = {}) {
         trailName: 'Appalachian Trail',
         pace: STANDARD_PACE,
         trailSources: {},
-        // No stewards and no archive: the state every test here was written
-        // in, and the one that must still open the sheet with no paper map.
+        // No stewards: the state every test here was written in, and the one
+        // that must still open the sheet with no paper map.
         stewards: [],
-        mapSheets: null,
         walked: [],
         trailIndex: TRAIL_INDEX,
         belowSeam: false,
@@ -328,5 +336,93 @@ describe('the tapped line’s climb (#1476)', () => {
 
     expect(detailOf(result.current.mapScreen.lineSheet).climbLine).toBeNull()
     expect(detailOf(result.current.mapScreen.lineSheet).climbNote).toMatch(/not measured/)
+  })
+})
+
+describe('the paper map under the tap (#1574)', () => {
+  const NYNJTC = {
+    provider: 'NYNJTC',
+    name: 'New York-New Jersey Trail Conference',
+    trust: null,
+    licence: null,
+    attribution: null,
+    terms: null,
+    termsSource: null,
+    layers: [],
+    keys: ['nynjtc_long_path'],
+    support: null,
+    store: {
+      storeUrl: 'https://store.nynjtc.org/collections/maps',
+      storeCta: 'Trail Maps',
+      storeSurfaces: ['trail_sheet'],
+      paperMaps: [],
+    },
+  }
+  const LINE = {
+    lead: 'This spot is on sheet 118 of the New York-New Jersey Trail Conference’s',
+    title: 'Harriman-Bear Mountain Trails Map',
+    url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map',
+  }
+
+  /** The sheet's detail off the element the panel hands the map screen,
+   *  the way the climb tests above read it. */
+  function detailOf(sheet: unknown): LineDetail {
+    return (sheet as ReactElement<{ detail: LineDetail }>).props.detail
+  }
+
+  afterEach(() => {
+    vi.mocked(paperMapLinesAt).mockReset()
+    vi.mocked(paperMapLinesAt).mockImplementation(async () => [])
+  })
+
+  it('asks the lazily loaded join for the tapped point and prints its lines on the sheet', async () => {
+    vi.mocked(paperMapLinesAt).mockResolvedValue([LINE])
+    const { result } = panel({ stewards: [NYNJTC], online: true })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+
+    await waitFor(() =>
+      expect(detailOf(result.current.mapScreen.lineSheet).paperMaps).toEqual([LINE]),
+    )
+    expect(paperMapLinesAt).toHaveBeenCalledWith(
+      [NYNJTC],
+      'trail_sheet',
+      TAP.at[0],
+      TAP.at[1],
+      true,
+    )
+  })
+
+  it('never loads the join when no steward on the phone sells a map', async () => {
+    const { result } = panel({ stewards: [] })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+
+    expect(paperMapLinesAt).not.toHaveBeenCalled()
+    expect(detailOf(result.current.mapScreen.lineSheet).paperMaps).toEqual([])
+  })
+
+  it('shows no answer for a line it was not resolved for', async () => {
+    vi.mocked(paperMapLinesAt).mockResolvedValue([LINE])
+    const { result } = panel({ stewards: [NYNJTC], online: true })
+
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.(TAP)
+    })
+    await waitFor(() =>
+      expect(detailOf(result.current.mapScreen.lineSheet).paperMaps).toEqual([LINE]),
+    )
+    // A second tap on another line: the first line's answer must not print
+    // under the second line's heading while its own is on its way.
+    vi.mocked(paperMapLinesAt).mockImplementation(() => new Promise(() => {}))
+    await act(async () => {
+      result.current.mapScreen.onSelectLine?.({ ...TAP, at: [TAP.at[0] + 1, TAP.at[1]] })
+    })
+
+    expect(detailOf(result.current.mapScreen.lineSheet).paperMaps).toEqual([])
   })
 })

@@ -32,7 +32,6 @@ import type { LineClimb } from './lineClimb'
 import { describeSpur, type SpurRecord } from './spurDestination'
 import { displayTrailName, trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
-import { paperMapLead, type PaperMapMatch } from './paperMaps'
 import type { StoredPoi } from './trailData'
 import { formatDistance, formatElevation } from './units'
 import type { UnitSystem } from './units'
@@ -87,6 +86,20 @@ export interface TappedLineFacts {
   sharedWith?: string | null
 }
 
+/**
+ * One paper map the tapped point is on, as the sheet prints it (#1574): the
+ * words before the linked title, the product title verbatim, and its page on
+ * the organization's own store. PLAIN DATA rather than lib/paperMaps.ts's
+ * match, deliberately: this module is in the launch bundle, and the join
+ * that produces these lines is loaded on the first tap instead
+ * (chrome/tappedLinePanel.tsx), so nothing here may import it.
+ */
+export interface PaperMapLine {
+  lead: string
+  title: string
+  url: string
+}
+
 export interface LineDetail {
   /** "Blue blaze · spur", "White blaze · Appalachian Trail", "Blaze not
    *  recorded · side trail" - the sheet's heading. */
@@ -113,7 +126,7 @@ export interface LineDetail {
    * the trail sheet - each of which renders as no line. Usually one; two
    * where two sets' footprints overlap at a margin, and both are true.
    */
-  paperMaps: readonly { lead: string; title: string; url: string }[]
+  paperMaps: readonly PaperMapLine[]
   /** "24.0 mi · Harriman State Park" - §2's length and park, on one line
    *  because they answer one question (what and where this trail is), and
    *  collapsing to whichever half is known when the other is not. */
@@ -317,10 +330,10 @@ export function buildLineDetail(
    *  Defaults to the absence every caller written before it had, so a sheet
    *  on a release with no elevation renders exactly as it did. */
   climb: LineClimb = { kind: 'none' },
-  /** The paper maps holding the tapped point (#1574), as lib/paperMaps.ts
-   *  resolved them in the shell. Defaults to none, which is what every
-   *  caller written before it passed by omission. */
-  paperMaps: readonly PaperMapMatch[] = [],
+  /** The paper maps holding the tapped point (#1574), already resolved
+   *  and worded by lib/paperMaps.ts in the shell. Defaults to none, which
+   *  is what every caller written before it passed by omission. */
+  paperMaps: readonly PaperMapLine[] = [],
 ): LineDetail {
   const throughRoute = line.source !== null && THROUGH_ROUTE_SOURCES.includes(line.source)
   // Whether this line belongs to somebody else's network - the same question
@@ -554,11 +567,7 @@ export function buildLineDetail(
     roundTripLine: detail.roundTripLabel,
     junctionLine,
     sourceLine: source === null ? null : `From ${source}.`,
-    paperMaps: paperMaps.map((match) => ({
-      lead: paperMapLead(match, 'This spot'),
-      title: match.map.title,
-      url: match.map.url,
-    })),
+    paperMaps: [...paperMaps],
     extentLine,
     climbLine,
     climbNote,

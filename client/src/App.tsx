@@ -382,7 +382,6 @@ import {
 } from './lib/trailGraphData'
 import { useTrailGraph } from './lib/useTrailGraph'
 import { orgLabelFrom, orgProviderFrom, trailSourceTableFrom } from './lib/stewards'
-import { useMapSheets } from './lib/useMapSheets'
 import {
   EMPTY_DAY_HIKES,
   loadDayHikes,
@@ -1336,11 +1335,6 @@ function App() {
 
   const now = useClock()
   const online = useOnline()
-  // The paper-sheet footprints from the bucket's archive (#1574), read when
-  // there is signal and kept for when there is not - the tapped-line sheet
-  // says which NYNJTC paper map a spot is on. Null until one arrives, which
-  // is no line on the sheet rather than a failure.
-  const mapSheets = useMapSheets(online)
   /** A frame after the first commit - the earliest the shell can be on screen
    *  (#1302, lib/useAfterFirstFrame.ts). What waits on it is everything that
    *  does not change the first frame: the launch fetches, and the screens a
@@ -3453,7 +3447,6 @@ function App() {
     pace,
     trailSources,
     stewards,
-    mapSheets,
     walked,
     trailIndex,
     belowSeam,

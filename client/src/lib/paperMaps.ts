@@ -35,7 +35,8 @@
 // the one the pipeline published, referral query and all, and the phone
 // copies it.
 
-import { sheetsContaining, type MapSheets } from './mapSheets'
+import type { PaperMapLine } from './lineDetail'
+import { fetchMapSheets, sheetsContaining, type MapSheets } from './mapSheets'
 import type { PaperMap, Steward, Stewards } from './stewards'
 
 /** The screens a store block may grant (pipeline/export_sources.py's
@@ -211,4 +212,34 @@ export function paperMapLead(match: PaperMapMatch, subject: string): string {
   return label === null
     ? `${subject} is on ${owner}`
     : `${subject} is on ${label} of ${owner}`
+}
+
+/** The archive, asked for once per session and kept; asked again only while
+ *  it has not arrived (a first tap in a dead spot with nothing kept), so a
+ *  tap with signal later can still bring it in. */
+let archive: Promise<MapSheets | null> | null = null
+
+/**
+ * The paper-map lines for a tapped point, worded for the tapped-line sheet -
+ * THE ONE ENTRY POINT THE SHELL LOADS, through `import()`, on the first tap
+ * (chrome/tappedLinePanel.tsx). Everything above, and the archive reader
+ * under it, is parsed then rather than before the first frame: this branch's
+ * first push imported it all statically and put the launch 90 bytes over
+ * features/LAUNCH_BUDGET.md §3's 256,000-byte eager budget.
+ */
+export async function paperMapLinesAt(
+  stewards: Stewards,
+  surface: StoreSurface,
+  lon: number,
+  lat: number,
+  online: boolean,
+): Promise<PaperMapLine[]> {
+  if (archive === null) archive = fetchMapSheets(online)
+  const sheets = await archive
+  if (sheets === null) archive = null
+  return paperMapsAt(stewards, sheets, surface, lon, lat).map((match) => ({
+    lead: paperMapLead(match, 'This spot'),
+    title: match.map.title,
+    url: match.map.url,
+  }))
 }

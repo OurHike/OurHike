@@ -20,8 +20,10 @@ one-line decision instead of an incident.
 RLS is enabled here rather than in a later revision because this revision
 adds the table, 619320d2b4a9's rule: a table added later brings its own
 lock, and tests/test_migration_rls.py unions every revision's RLS_TABLES.
-Stacked on b1e4c7a9d2f6 rather than branched from c9d1a7f48b62 because two
-heads cannot merge, which is why #1551 rides the same pull request as #1545.
+Revises b1e4c7a9d2f6 because that is the head of the chain on `main` since
+#1554 (Make one flag per account true in the database, cap every request
+body, and require a token's expiry) merged; a revision that also revised
+c9d1a7f48b62 would be a second head, and two heads cannot migrate.
 """
 
 from typing import Sequence, Union

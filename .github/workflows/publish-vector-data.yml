@@ -71,6 +71,10 @@ on:
         description: "Fetch POI photos before exporting. Untick only to publish a release without them."
         type: boolean
         default: true
+      carry_archive_photos:
+        description: "Bring the recovered NYNJTC archive to the runner and park it. One-time; leave unticked."
+        type: boolean
+        default: false
       include_osm_water:
         description: "Fetch OSM water points (Geofabrik extracts, ~3.5 GB / ~15 min; a cached scan whose receipt verifies is reused without re-fetching). Untick to publish with opentrail's water alone."
         type: boolean
@@ -412,43 +416,35 @@ jobs:
         continue-on-error: true
         run: python fetch_poi_images.py
 
-      # The recovered NYNJTC photographs, brought to the one job that can put
-      # them in the bucket (#1550).
+      # The recovered NYNJTC photographs, brought to the runner so publish.py
+      # can park the whole corpus in R2 (#1567). ONE-TIME, which is why it is
+      # an input that defaults to false rather than something a routine
+      # publish does.
       #
-      # nynjtc-archive-recovery.yml deliberately invokes no publisher - its
-      # header says "Loading anything into R2 is a separate, deliberate act" -
-      # so the bytes it recovers live in its own cache and its own artifact,
-      # and neither reaches a publish run by itself. THE CACHE IS THE CLOSER
-      # OF THE TWO AND DOES NOT CROSS: GitHub scopes a cache to the branch
-      # that saved it, and the five runs holding this corpus saved on
-      # `claude/nifty-ptolemy-srceif`, which a run on `main` cannot read. The
-      # artifact does cross, so the artifact is the carrier.
+      # WHAT IT REPLACES, because the first version of this step was wrong in
+      # a way worth leaving written down. #1550 gated it on `include_photos`,
+      # which defaults to TRUE, and `wayback_photos` is not in FETCH_OUTPUTS
+      # so the "already here" exit never fires on a fresh runner. Every vector
+      # publish therefore spent ~20 API calls and 40,609,870 bytes rebuilding
+      # a store whose contents cannot change - the archive recovery is
+      # finished, 403 frozen captures, nothing upstream left to fetch. The
+      # pull request that added it argued the work was bounded because
+      # publish.py uploads only what the bucket lacks; that was true of the
+      # UPLOAD and said nothing about the download, which is the part that
+      # recurred.
       #
-      # WHAT IT COSTS, AND WHY IT IS NOT GATED HARDER. One artifact download
-      # per publish - 40,609,870 bytes for run 35202093452's, MEASURED from
-      # its artifact listing - against a build that takes about 30 minutes,
-      # and skipped outright on any tree whose confirm file clears nothing,
-      # which is every branch that has not done the review. The USEFUL work
-      # is bounded to the window after a recovery run clears photographs the
-      # bucket does not hold yet: publish.py uploads only what
-      # `published_photo_keys` says is missing, and `verify_photo_promises`
-      # settles a key against the bucket OR the local store, so once these
-      # objects exist every later run passes with no local bytes at all.
+      # WHY IT STILL EXISTS AT ALL. The park has to be filled once, and the
+      # bytes live in the recovery's own artifact - 14-day retention, and a
+      # branch cache the merge deleted. After that the prefix holds them for
+      # good and this stays unticked. A later confirmation batch needs one
+      # deliberate dispatch with this on, until the server-side copy out of
+      # the park exists (#1567, deliberately out of scope there).
       #
-      # AN EXPIRED ARTIFACT IS THEREFORE NOT AN ERROR HERE, it is the steady
-      # state - the recovery keeps its artifacts 14 days and the bucket keeps
-      # the bytes for good. This step says so and carries on; if the bucket is
-      # ALSO missing them, `verify_photo_promises` fails the publish loudly
-      # and names them, which is the honest failure rather than a card
-      # pointing at a 404.
-      #
-      # Everything about WHICH photographs is decided in publish.py, not here.
-      # This step carries the whole recovered store - hundreds of images on a
-      # permission narrower than they need - and `cleared_archive_photos()`
-      # offers only the digests `reference/nynjtc_hike_photos.json` names. A
-      # store on disk is not a store published.
+      # It carries the store whatever the confirm file says: the park is
+      # about the bytes surviving, and `reference/nynjtc_hike_photos.json`
+      # decides only what may reach a card.
       - name: Carry the confirmed archive photographs to the publisher
-        if: inputs.include_photos
+        if: inputs.carry_archive_photos
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -459,11 +455,7 @@ jobs:
             exit 0
           fi
           cleared=$(python -c 'import publish; print(len(publish.cleared_archive_digests()))')
-          if [ "$cleared" = "0" ]; then
-            echo "reference/nynjtc_hike_photos.json confirms nothing - no archive photographs to carry."
-            exit 0
-          fi
-          echo "$cleared photograph(s) confirmed. Looking for the recovery artifact that holds their bytes."
+          echo "$cleared photograph(s) confirmed for cards; carrying the whole store regardless, for the park."
 
           # The BIGGEST unexpired artifact across the last 20 recovery runs,
           # not the newest. Every stage uploads one and only some carry the
@@ -482,7 +474,7 @@ jobs:
 
           if [ -z "$best_id" ]; then
             echo "No unexpired nynjtc-archive-recovery artifact in the last 20 runs."
-            echo "The bucket must already hold the $cleared confirmed photograph(s); publish.py checks that and fails loudly if not."
+            echo "Nothing to park. If the confirmed photographs are also absent from the bucket, publish.py fails loudly by name."
             exit 0
           fi
 

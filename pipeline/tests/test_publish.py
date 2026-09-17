@@ -653,6 +653,106 @@ class TestTheArchiveReviewGate:
         assert photo_key(digests["confirmed"]) in collected
         assert photo_key(digests["awaiting"]) not in collected
 
+    def _store(self, tmp_path, images):
+        """Bytes in the recovery's OWN store - the directory #1504 moved them
+        into, not the one collect_photos sweeps. Returns {label: digest}."""
+        store = tmp_path / publish.ARCHIVE_STORE_DIRNAME
+        store.mkdir(exist_ok=True)
+        digests = {}
+        for label, content in images.items():
+            digests[label] = photo_digest(content)
+            (store / f"{digests[label]}.jpg").write_bytes(content)
+        return digests
+
+    def test_a_confirmed_photograph_in_the_recovery_store_is_offered_to_the_bucket(self, tmp_path, monkeypatch):
+        """The gap #1550 closed. Before it, reference/nynjtc_hike_photos.json
+        let a photograph reach a CARD through export_suggested_hikes.photo_for
+        and had no way to send its bytes, so the export promised keys
+        verify_photo_promises would refuse."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert collected == {
+            photo_key(digests["confirmed"]): str(tmp_path / publish.ARCHIVE_STORE_DIRNAME / f"{digests['confirmed']}.jpg")
+        }
+
+    def test_an_unconfirmed_photograph_beside_it_is_never_named(self, tmp_path, monkeypatch):
+        """The asymmetry with poi_photos/ and the whole reason this store is
+        read by name. poi_photos/ is swept whole and filtered down, so a new
+        digest arrives published-by-default and something must hold it back;
+        this store is never swept, so a digest the confirm file does not name
+        is not considered at all."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed", "unreviewed": b"\xff\xd8 unreviewed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert photo_key(digests["unreviewed"]) not in collected
+
+    def test_the_recovery_store_is_read_on_a_tree_with_no_poi_photos_directory(self, tmp_path, monkeypatch):
+        """collect_photos() used to `return {}` the moment poi_photos/ was
+        absent, which after #1550 would skip the archive store on exactly the
+        tree that has one and no other photo source - a publish job that
+        received the recovery's bytes and no Commons or ATC fetch."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        assert not (tmp_path / PHOTOS_DIRNAME).exists()
+        assert photo_key(digests["confirmed"]) in publish.collect_photos()
+
+    def test_a_confirmed_row_whose_bytes_are_absent_is_reported_rather_than_raised(self, tmp_path, monkeypatch, capsys):
+        """The bucket may already hold them from an earlier publish, in which
+        case verify_photo_promises passes and this line is the only trace that
+        the local store was thin. Raising here would decide that without the
+        bucket listing, which collect_photos cannot see."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        absent = "c" * 64
+        self._recovered(tmp_path, list(digests.values()) + [absent], cleared=[digests["confirmed"], absent])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        collected = publish.collect_photos()
+
+        assert photo_key(absent) not in collected
+        assert photo_key(digests["confirmed"]) in collected
+        assert absent in capsys.readouterr().out
+
+    def test_the_face_gate_still_wins_over_a_confirmation(self, tmp_path, monkeypatch):
+        """Defence in depth rather than an expected case - the face review
+        reads poi_images.json, which the recovery never writes. A digest that
+        somehow reached both reviews must lose, and losing means held."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+        monkeypatch.setattr(publish, "unpublishable_digests", lambda *_: {digests["confirmed"]})
+
+        assert publish.collect_photos() == {}
+
+    def test_cleared_archive_digests_reads_the_shape_the_confirm_file_is_written_in(self, tmp_path):
+        """The same three shapes _digests_in accepts, through the name the
+        workflow step imports. A reader that took only `photos` would report 0
+        confirmed for a file keyed `matches`, and "0 confirmed" is also what
+        nobody having reviewed anything prints - so the publish workflow would
+        skip fetching the bytes and the publish would fail on the promise."""
+        for shape in ({"photos": [{"digest": "a" * 64}]}, {"matches": [{"digest": "a" * 64}]}, [{"digest": "a" * 64}]):
+            path = tmp_path / "confirm.json"
+            path.write_text(json.dumps(shape), encoding="utf-8")
+            assert publish.cleared_archive_digests(path) == {"a" * 64}
+
 
 def test_photos_alone_do_not_write_a_new_version(s3_client, local_artifacts, local_photos):
     """A photo only becomes visible through a poi artifact that references

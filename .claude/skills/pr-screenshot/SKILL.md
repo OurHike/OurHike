@@ -246,7 +246,9 @@ So an image has to be *served* from somewhere. **The preview is that
 somewhere**, and it is why the automated screenshot exists: `pr-preview.yml`
 writes the capture into the directory it uploads to Cloudflare Pages, so the
 image comes from the same deployment as the app it shows, at
-`https://pr-<n>.<project>.pages.dev/__screenshot/<name>.png`.
+`https://pr-<n>.<project>.pages.dev/app/__screenshot/<name>.png` — under
+`/app/`, because a preview is now laid out the way production is, with the
+marketing site at the root and the app beneath it.
 
 **It dies when the pull request closes**, because the preview does — the
 workflow tears previews down on close so a build vouched for by nobody does not

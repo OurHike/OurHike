@@ -21,6 +21,51 @@
 # the picture entirely: `wrangler pages deploy` uploads an already-built
 # directory, so nothing queues behind anyone else's build.
 #
+# A PREVIEW IS LAID OUT LIKE PRODUCTION: THE SITE AT `/`, THE APP AT `/app/`
+#
+# pages.yml assembles `_site/` with the Astro marketing site at the root and
+# the app under `app/`, and builds the app with `VITE_BASE_PATH: /app/`. This
+# workflow assembles the same two things the same way and uploads that. It
+# used to upload `client/dist` alone, which was wrong twice over and looked
+# wrong neither time:
+#
+#   THE SITE WAS NOT IN THE PREVIEW AT ALL, so `/for-orgs/` and the three
+#   pages under it (`demo/`, `nominate/`, `claim/`) could not be clicked
+#   through on a pull request that changed them. They did not 404 either,
+#   which is what kept it invisible: Cloudflare Pages answers a path it holds
+#   no file for with the root index.html, so the marketing URLs served the APP
+#   and looked like they worked. Measured against pr-1547's live preview,
+#   2026-09-17: `curl https://pr-1547.ourhike-preview.pages.dev/for-orgs/`
+#   answered 200 with the app's index.html. The nine `/app/...` links the site
+#   carries (`grep -rn 'href="/app' site/src`) were the same dead end from the
+#   other side.
+#
+#   AND THE APP WAS BUILT FOR `/`, which production is not. That made the
+#   preview the one environment never exercising the base path hikers are
+#   served on - the environment client/src/lib/orgRoute.ts is written against,
+#   taking its basename from `import.meta.env.BASE_URL` because a router
+#   taking it from anywhere else "breaks deep links in exactly one environment
+#   - the one nobody tests". This was that environment.
+#
+# WHAT THIS DELIBERATELY DOES NOT COPY FROM pages.yml: `site/CNAME` and
+# `.nojekyll`. Both are GitHub Pages mechanisms - a custom domain, and
+# Jekyll's rule about leading underscores - and Cloudflare Pages reads
+# neither. Uploading them would be two files whose irrelevance the next reader
+# has to work out.
+#
+# AND ONE THING IT INHERITS RATHER THAN FIXES. A path with no file behind it
+# still falls back to the root index.html, which is now the site's landing
+# page rather than the app's shell. So `/app/my/tread` - the deep link
+# site/src/pages/for-orgs/demo.astro's own button points at - serves the
+# landing page here. That is not a preview defect to paper over with a
+# `_redirects` rewrite: GitHub Pages answers the same URL with a 404 in
+# production, this repository contains no `404.html` or `_redirects` anywhere,
+# and a rewrite added here would make the preview the only place those links
+# resolve, which is the failure orgRoute.ts's comment describes. Reasoned from
+# the pr-1547 measurement above - the same fallback, one directory deeper -
+# rather than measured against `/app/`, which needs this change deployed
+# first.
+#
 # SETUP: needs a Pages project and an API token - LAUNCH_CHECKLIST.md 3a.
 # Until those exist this workflow says so and skips, rather than failing every
 # pull request with a wrangler error.
@@ -209,12 +254,35 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: client/package-lock.json
+          # Both lockfiles, as in pages.yml: this preview builds both halves of
+          # what production serves, and a cache keyed on one of them would go
+          # stale silently whenever the other moved.
+          cache-dependency-path: |
+            client/package-lock.json
+            site/package-lock.json
 
       - name: Install
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         working-directory: client
         run: npm ci
+
+      # The site's own toolchain, separate from the app's for the reason
+      # pages.yml gives: the app is the safety-relevant artifact and its
+      # dependency set stays its own.
+      - name: Install the site's toolchain
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        working-directory: site
+        run: npm ci
+
+      # No preview-specific configuration, unlike the app's build below. The
+      # site is static HTML built from site/src, its `/app/...` links are
+      # root-relative, and `site/astro.config.mjs`'s `site:` only sets
+      # canonical URLs - which name ourhike.org in a preview, correctly, since
+      # the preview is not the page anybody should be linked to.
+      - name: Build the site
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        working-directory: site
+        run: npm run build
 
       # Production's data by default - same source as the production build
       # (see pages.yml) - because that is what most reviewers should be
@@ -314,12 +382,18 @@ jobs:
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         working-directory: client
         env:
-          # The root, because a Cloudflare preview gets a hostname to itself
-          # rather than a subdirectory of the production site. That also means
-          # the installed PWA's scope is the whole origin here, which is closer
-          # to how the real app is served than the old /OurHike/pr-preview/...
-          # path ever was - see the note on VITE_BASE_PATH in pages.yml.
-          VITE_BASE_PATH: /
+          # The same path production serves the app at, and for the same
+          # reason pages.yml spells it out: a PWA's `scope` and `start_url`
+          # follow `base` (client/vite.config.ts), so the base has to match the
+          # serving path exactly or the install owns the wrong pages and the
+          # asset requests go somewhere nothing answers.
+          #
+          # It was `/` here until the site joined the upload - a Cloudflare
+          # preview gets a hostname to itself, so the root was available and
+          # taking it was reasonable. What it cost is at the top of this file:
+          # the preview never exercised production's `/app/`, which is the one
+          # thing a preview of an org deep link has to get right.
+          VITE_BASE_PATH: /app/
           VITE_DATA_BASE_URL: ${{ steps.data.outputs.url }}
           VITE_SUPABASE_URL: ${{ steps.supabase.outputs.url }}
           VITE_SUPABASE_ANON_KEY: ${{ steps.supabase.outputs.key }}
@@ -446,9 +520,83 @@ jobs:
         working-directory: client
         env:
           LIST: ${{ runner.temp }}/pr-files.txt
+          # THE CAMERA NEEDS THE BASE PATH TOO, and this is the line that is
+          # easiest to forget and hardest to see the loss from. `--dist` serves
+          # the built app through `vite preview`, which reads
+          # client/vite.config.ts, which takes `base` from this variable - so
+          # with it unset the server would serve at `/` a bundle whose every
+          # asset path begins `/app/`, and each shot would be a photograph of a
+          # blank page rather than a failure anybody notices.
+          #
+          # The recipes need no change: screenshot.mjs opens the server's root,
+          # vite answers `/` with a 302 to `base` when the two differ (vite
+          # 8.2.2, baseMiddleware), and both the readiness `fetch` and
+          # Playwright's `goto` follow it. The two recipes that navigate -
+          # preview-shots/org-your-tread.mjs and org-embed-preview.mjs - build
+          # their URL relative to `page.url()`, so they land on `/app/my/tread`
+          # here and photograph the deep link at the base production uses,
+          # which is the shot this whole change is about.
+          VITE_BASE_PATH: /app/
         run: |
           node scripts/photograph-preview.mjs --dist --changed="$LIST"
           echo "taken=true" >> "$GITHUB_OUTPUT"
+
+      # What gets uploaded, laid out the way pages.yml lays out its own
+      # `_site` - the header at the top of this file has the argument and the
+      # two files this one leaves out. The directory reuses that name because
+      # it is the same shape and because `.gitignore` already covers `_site/`,
+      # so an agent assembling this by hand cannot commit the result.
+      #
+      # AFTER THE PHOTOGRAPH, NOT BEFORE. The camera writes its PNGs and
+      # comment.md into client/dist (screenshot.mjs, DEFAULT_OUT_DIR), so a
+      # copy taken any earlier would upload an app with no pictures in it and a
+      # comment linking at them.
+      - name: Assemble the preview
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        run: |
+          mkdir -p _site/app
+          # The BUILT site, not the source tree - site/src would be shipped raw
+          # otherwise. status/, Privacy/ and embed/ ride through Astro's
+          # public/ into dist/, so their served paths are the production ones.
+          cp -r site/dist/. _site/
+          cp -r client/dist/. _site/app/
+          # The site asks for /favicon.svg (site/src/layouts/Base.astro) and
+          # Astro's output holds no icon to answer with. Copied as a file from
+          # the app's own copy, exactly as pages.yml does it.
+          cp client/public/favicon.svg _site/favicon.svg
+          # THE ONE PLACE THIS PREVIEW IS DELIBERATELY NOT PRODUCTION, and it
+          # is one line. Cloudflare Pages reads `_redirects`; GitHub Pages
+          # ignores the file entirely, so production is untouched by it.
+          #
+          # Without it a console address - `/app/org/<slug>/setup`,
+          # `/app/my/tread` - serves the SITE's landing page here, because a
+          # path with no file behind it falls back to the root index.html and
+          # the root is now the marketing site. Those addresses are the only
+          # way the org console is reached at all (client/src/lib/orgRoute.ts:
+          # a welcome email, an organization's members area, a bookmark), so a
+          # preview that cannot open them is a preview of a console nobody can
+          # review.
+          #
+          # Production answers those same URLs with a 404 today - measured
+          # against the live site 2026-09-17:
+          # `curl -o /dev/null -w '%{http_code}' https://ourhike.org/app/my/tread`
+          # printed 404, as did /app/org/central-park-throughikers/setup, while
+          # / and /app/ printed 200. There is no 404.html or _redirects
+          # anywhere in this repository for GitHub Pages to fall back to. That
+          # is a real gap in the org surface rather than a preview quirk, it is
+          # written up in features/ORG_ONBOARDING.md's Known gaps, and fixing
+          # it is a change to how hikers are served - so it is the
+          # maintainer's, not this workflow's.
+          printf '/app/*  /app/index.html  200\n' > _site/_redirects
+          # /status/ keeps its `__DATA_BASE_URL__` placeholder here, which
+          # pages.yml substitutes and this deliberately does not: the page
+          # reads the placeholder and says it is not configured rather than
+          # checking anything. That is the one page in the preview that does
+          # not behave as production does, and it is a choice rather than an
+          # obstacle - a `pr-<n>` origin is on the bucket's allow-list
+          # (.github/expected-origins.yml), so the checks would run if this
+          # ever wanted them to.
+          echo "Uploading $(find _site -type f | wc -l) files: $(find _site/app -type f | wc -l) of them the app."
 
       - name: Publish the preview
         id: deploy
@@ -463,10 +611,34 @@ jobs:
           # can be long, mixed case, and full of slashes, none of which survive
           # being a DNS label intact.
           command: >-
-            pages deploy client/dist
+            pages deploy _site
             --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT }}
             --branch=${{ steps.preview.outputs.alias }}
             --commit-dirty=true
+
+      # Every URL this run hands anybody, worked out once, from the same two
+      # candidates the comment has always preferred between: the alias URL the
+      # deploy REPORTED, which cannot disagree with where the upload went, and
+      # the one "Name this preview" works out, which is what remains when there
+      # was no deploy to report one.
+      #
+      # Once, rather than per link, because of the trailing slash. The two
+      # candidates disagree about it - a wrangler alias URL may carry one, the
+      # worked-out URL does not - and `https://host//app/` is a 404 on Pages,
+      # the same trap the images have always had to dodge. Three links built
+      # from a raw `${{ }}` would be three places to get that wrong.
+      - name: Work out where to link
+        id: links
+        if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
+        env:
+          BASE: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+        run: |
+          BASE="${BASE%/}"
+          {
+            echo "base=$BASE"
+            echo "app=$BASE/app/"
+            echo "orgs=$BASE/for-orgs/"
+          } >> "$GITHUB_OUTPUT"
 
       # Cloudflare mints the `pr-<n>` alias the first time a pull request
       # deploys, and its edge answers 522 for a short while before that alias
@@ -484,23 +656,31 @@ jobs:
         id: wait
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         env:
-          URL: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+          APP: ${{ steps.links.outputs.app }}
+          ORGS: ${{ steps.links.outputs.orgs }}
           IMMUTABLE: ${{ steps.deploy.outputs.deployment-url }}
         run: |
           attempts=30
           note=""
           for attempt in $(seq 1 "$attempts"); do
-            code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$URL" || echo 000)"
-            if [ "$code" = "200" ]; then
-              echo "The preview answered 200 on attempt $attempt."
+            # BOTH LINKS THE COMMENT MAKES, not just the app's. They share a
+            # hostname, so after the first 200 this is no longer a question
+            # about routing - it is the one check that the upload actually put
+            # a marketing site at the root and an app under /app/, which is
+            # the arrangement this workflow assembles and nothing else here
+            # would notice getting wrong.
+            app="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$APP" || echo 000)"
+            orgs="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$ORGS" || echo 000)"
+            if [ "$app" = "200" ] && [ "$orgs" = "200" ]; then
+              echo "Both links answered 200 on attempt $attempt."
               break
             fi
             if [ "$attempt" -eq "$attempts" ]; then
-              echo "::warning::The preview alias still answers $code after $attempts attempts. Posting the link anyway - it usually routes shortly - with the immutable deployment URL alongside it."
-              note="The alias above is still being routed and may return a Cloudflare 522 for a few more minutes. This exact build is already live at <$IMMUTABLE>."
+              echo "::warning::After $attempts attempts $APP answers $app and $ORGS answers $orgs. Posting the links anyway - an alias usually routes shortly - with the immutable deployment URL alongside them."
+              note="The links above are still being routed and may return a Cloudflare 522 for a few more minutes. This exact build is already live at <$IMMUTABLE>."
               break
             fi
-            echo "Attempt $attempt: $code. Waiting for the alias to route."
+            echo "Attempt $attempt: the app answered $app, the organization pages $orgs. Waiting for the alias to route."
             sleep 5
           done
           {
@@ -520,15 +700,28 @@ jobs:
       #
       # The trailing slash matters: the two candidate bases disagree about it
       # (a wrangler alias URL may carry one, the worked-out URL does not), and
-      # `https://host//__screenshot/x.png` is a 404 on Pages.
+      # `https://host//__screenshot/x.png` is a 404 on Pages. "Work out where
+      # to link" above has already taken it off.
+      #
+      # THE PLACEHOLDER RESOLVES TO THE APP, NOT TO THE ROOT. The runner writes
+      # the images into client/dist (screenshot.mjs, DEFAULT_OUT_DIR), and the
+      # assembly copies client/dist to `_site/app/`, so the pictures are served
+      # at `<preview>/app/__screenshot/<shot>.png`. This one segment is the
+      # whole of what the site joining the upload costs the camera - get it
+      # wrong and the comment is a wall of broken images, which is a worse
+      # outcome than no picture at all.
+      #
+      # The block is still read out of client/dist rather than out of the
+      # assembled copy: it is the same bytes, and reading the original keeps
+      # one file the runner's product rather than two.
       - name: Name the images
         id: images
         if: steps.can.outputs.deploy == 'true' && github.event.action != 'closed'
         env:
-          BASE: ${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }}
+          BASE: ${{ steps.links.outputs.base }}
           TAKEN: ${{ steps.shots.outputs.taken }}
         run: |
-          BASE="${BASE%/}"
+          BASE="${BASE%/}/app"
           BLOCK="client/dist/__screenshot/comment.md"
           if [ "$TAKEN" != "true" ] || [ ! -f "$BLOCK" ]; then
             echo "::warning::The preview screenshots could not be taken, so this pull request's comment carries no image. The preview itself is unaffected."
@@ -559,10 +752,14 @@ jobs:
           message: |
             ### Preview
 
-            **[Open this change in the app](${{ steps.deploy.outputs.pages-deployment-alias-url || steps.preview.outputs.url }})**
+            **[Open this change in the app](${{ steps.links.outputs.app }})**
 
-            Built from ${{ github.event.pull_request.head.sha || github.sha }}. The link
-            stays the same as you push - it always serves the latest build of this pull
+            **[Open the organization pages](${{ steps.links.outputs.orgs }})** - the
+            marketing site, at the root of the same preview. This build is laid out the
+            way production is: the site at `/`, the app at `/app/`.
+
+            Built from ${{ github.event.pull_request.head.sha || github.sha }}. Both links
+            stay the same as you push - they always serve the latest build of this pull
             request.
 
             ${{ steps.data.outputs.banner }}

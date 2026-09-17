@@ -562,6 +562,19 @@ magnitude smaller and counted per address.
 
 What this design does not answer, stated plainly.
 
+- **Every address this console is reached by answers 404 in production today.** Measured against
+  the live site 2026-09-17: `https://ourhike.org/` and `/app/` answer 200, and
+  `/app/my/tread` and `/app/org/central-park-throughikers/setup` both answer GitHub Pages' own
+  "Page not found". There is no `404.html` and no `_redirects` anywhere in this repository for
+  GitHub Pages to fall back to, so every deep link under `/app/` misses. That is the whole of how
+  this surface is entered — [`client/src/lib/orgRoute.ts`](../client/src/lib/orgRoute.ts) exists
+  because a welcome email, an organization's members area and a bookmark are the three doors, and
+  the hiker's app links to none of it. **What would settle it:** a static fallback in the published
+  tree — a `404.html` that boots the app for a path under `/app/` and stays a not-found page for
+  everything else. It is a change to how hikers are served rather than a change to this feature, so
+  it is the maintainer's call and not this branch's. Pull-request previews carry the Cloudflare
+  equivalent (`_redirects`, in `pr-preview.yml`) so the console can be reviewed at all; that file is
+  preview-only and GitHub Pages ignores it.
 - **One admin's click is the whole of an organization's consent, and that is a judgement call rather
   than a finding.** Three codeowners approve a registry change because a registry reaches a hiker's
   phone; agreeing that a model may read that registry takes the ordinary admin gate that

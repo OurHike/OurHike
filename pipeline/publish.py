@@ -564,6 +564,13 @@ def collect_sidecars() -> dict[str, dict]:
 ARCHIVE_PHOTOS_NAME = "wayback_hike_photos.json"
 ARCHIVE_PHOTOS_CLEARED_NAME = "nynjtc_hike_photos.json"
 
+#: The directory the recovery writes its photographs into, which is NOT the
+#: store `collect_photos` sweeps whole. #1504 separated them precisely so a
+#: publish could not sweep an unreviewed corpus into a public bucket. Spelled
+#: here for the same reason as the two names above - a publisher that imported
+#: it from `fetch_wayback_hike_photos` would depend on a fetcher to publish.
+ARCHIVE_STORE_DIRNAME = "wayback_photos"
+
 
 def archive_photos_awaiting_review(recovered_path: Path | None = None, cleared_path: Path | None = None) -> tuple[set[str], int]:
     """Digests the archive recovery fetched that nobody has cleared to publish,
@@ -649,6 +656,78 @@ def _digests_in(path: Path) -> set[str]:
     return {row["digest"] for row in rows if isinstance(row, dict) and row.get("digest")}
 
 
+def cleared_archive_digests(cleared_path: Path | None = None) -> set[str]:
+    """Every digest `reference/nynjtc_hike_photos.json` confirms.
+
+    A one-line wrapper on `_digests_in`, and public because two callers must
+    not be able to disagree about the answer: `cleared_archive_photos` below,
+    which sends the bytes, and `publish-vector-data.yml`, which reads it to
+    decide whether fetching those bytes is worth doing at all. The second
+    caller is a shell step, so it needs a name it can import.
+    """
+    return _digests_in(cleared_path or ROOT / "reference" / ARCHIVE_PHOTOS_CLEARED_NAME)
+
+
+def cleared_archive_photos(held: set[str] | None = None, cleared_path: Path | None = None) -> dict[str, str]:
+    """The recovered NYNJTC photographs a person has confirmed, as
+    {bucket key: local path}.
+
+    THE OTHER HALF OF A SWITCH THAT ONLY HAD ONE (#1550).
+    `archive_photos_awaiting_review` above subtracts unconfirmed digests from
+    the store `collect_photos` sweeps. #1504 then moved the recovered bytes
+    out of that store altogether, into `data/raw/wayback_photos/`, so that a
+    publish could not sweep an unreviewed corpus into a public bucket. That
+    was right, and it left `reference/nynjtc_hike_photos.json` wired to one of
+    the two things its own docstring says it controls: confirming a row let
+    the photograph reach a CARD, through `export_suggested_hikes.photo_for`,
+    and could not let its bytes reach the BUCKET. The export then promised 119
+    keys with nothing behind them, which `verify_photo_promises` refuses - a
+    failed publish rather than a broken card, but a failed publish either way.
+
+    So the file is now the whole gate in both directions: a row in it ships
+    the photograph AND sends its bytes, and deleting the row stops both. The
+    asymmetry with `poi_photos/` is deliberate and is the safe one. That store
+    is swept whole and filtered down; THIS store is never swept - a digest the
+    file does not name is not merely excluded from the upload, it is never
+    looked at, so a store holding a thousand unreviewed images offers none of
+    them.
+
+    `held` is the face gate's set (#836), passed in rather than recomputed. No
+    archive digest is expected in it - the face review reads `poi_images.json`,
+    which the recovery never writes - but a digest that somehow reached both
+    reviews must lose, and losing means held.
+    """
+    store = RAW_DIR / ARCHIVE_STORE_DIRNAME
+    if not store.is_dir():
+        return {}
+    held = held or set()
+    offered = {}
+    missing = []
+    for digest in sorted(cleared_archive_digests(cleared_path)):
+        if digest in held:
+            continue
+        path = store / f"{digest}.{PHOTO_EXTENSION}"
+        if path.is_file():
+            offered[photo_key(digest)] = str(path)
+        else:
+            missing.append(digest)
+    if offered:
+        print(f"{len(offered)} confirmed archive photograph(s) offered to the bucket from {ARCHIVE_STORE_DIRNAME}/ (#1550).")
+    if missing:
+        # Said rather than raised. The bucket may already hold these from an
+        # earlier publish, in which case verify_photo_promises passes and this
+        # line is the only trace that the local store was thin; if it does not,
+        # that check fails the run and names them. Deciding here would be
+        # deciding without the bucket listing, which this function cannot see.
+        print(
+            f"{len(missing)} confirmed archive photograph(s) are named by "
+            f"reference/{ARCHIVE_PHOTOS_CLEARED_NAME} but absent from {ARCHIVE_STORE_DIRNAME}/ - "
+            f"the bucket must already hold them or this publish will fail on the promise: {', '.join(missing[:3])}"
+            + (f" (+{len(missing) - 3} more)" if len(missing) > 3 else "")
+        )
+    return offered
+
+
 def collect_photos() -> dict[str, str]:
     """Every cached POI photo, as {bucket key: local path}.
 
@@ -674,10 +753,12 @@ def collect_photos() -> dict[str, str]:
     artifact (the same bytes reaching the export another way),
     verify_photo_promises() fails the publish loudly rather than letting
     this exclusion silently break a card.
+
+    Plus what the archive review gate RELEASES (#1550), which is the same
+    file read the other way round and is a second store rather than a second
+    filter - `cleared_archive_photos` has why the two stores are not treated
+    alike.
     """
-    photos_dir = RAW_DIR / PHOTOS_DIRNAME
-    if not photos_dir.is_dir():
-        return {}
     held = unpublishable_digests(RAW_DIR / "poi_images.json", load_decisions())
     if held:
         print(f"{len(held)} photo(s) held from the bucket by the face gate (#836 - review_flagged_photos.py).")
@@ -688,7 +769,18 @@ def collect_photos() -> dict[str, str]:
             f"(#1504 - {cleared} cleared in reference/nynjtc_hike_photos.json)."
         )
     held = held | awaiting
-    return {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
+    photos_dir = RAW_DIR / PHOTOS_DIRNAME
+    photos = (
+        {photo_key(path.stem): str(path) for path in sorted(photos_dir.glob(f"*.{PHOTO_EXTENSION}")) if path.stem not in held}
+        if photos_dir.is_dir()
+        else {}
+    )
+    # Second, and additive rather than filtered - the archive store is read
+    # by name from the confirm file, never swept. An absent poi_photos/ used
+    # to return early here, which would now skip the archive store too on
+    # exactly the tree that has one and no other photo source.
+    photos.update(cleared_archive_photos(held))
+    return photos
 
 
 def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:

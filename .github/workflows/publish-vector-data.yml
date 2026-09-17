@@ -97,6 +97,12 @@ concurrency:
 
 permissions:
   contents: read
+  # Read-only, and for exactly one step: "Carry the confirmed archive
+  # photographs to the publisher" lists nynjtc-archive-recovery.yml's runs and
+  # downloads one of their artifacts, which the default `contents: read` token
+  # cannot do (#1550). It grants no write of any kind - a workflow cannot be
+  # dispatched, cancelled or re-run with it.
+  actions: read
 
 # Every line a step prints reaches the log the second it is printed, not
 # when the step exits.
@@ -405,6 +411,99 @@ jobs:
         if: inputs.include_photos
         continue-on-error: true
         run: python fetch_poi_images.py
+
+      # The recovered NYNJTC photographs, brought to the one job that can put
+      # them in the bucket (#1550).
+      #
+      # nynjtc-archive-recovery.yml deliberately invokes no publisher - its
+      # header says "Loading anything into R2 is a separate, deliberate act" -
+      # so the bytes it recovers live in its own cache and its own artifact,
+      # and neither reaches a publish run by itself. THE CACHE IS THE CLOSER
+      # OF THE TWO AND DOES NOT CROSS: GitHub scopes a cache to the branch
+      # that saved it, and the five runs holding this corpus saved on
+      # `claude/nifty-ptolemy-srceif`, which a run on `main` cannot read. The
+      # artifact does cross, so the artifact is the carrier.
+      #
+      # WHAT IT COSTS, AND WHY IT IS NOT GATED HARDER. One artifact download
+      # per publish - 40,609,870 bytes for run 35202093452's, MEASURED from
+      # its artifact listing - against a build that takes about 30 minutes,
+      # and skipped outright on any tree whose confirm file clears nothing,
+      # which is every branch that has not done the review. The USEFUL work
+      # is bounded to the window after a recovery run clears photographs the
+      # bucket does not hold yet: publish.py uploads only what
+      # `published_photo_keys` says is missing, and `verify_photo_promises`
+      # settles a key against the bucket OR the local store, so once these
+      # objects exist every later run passes with no local bytes at all.
+      #
+      # AN EXPIRED ARTIFACT IS THEREFORE NOT AN ERROR HERE, it is the steady
+      # state - the recovery keeps its artifacts 14 days and the bucket keeps
+      # the bytes for good. This step says so and carries on; if the bucket is
+      # ALSO missing them, `verify_photo_promises` fails the publish loudly
+      # and names them, which is the honest failure rather than a card
+      # pointing at a 404.
+      #
+      # Everything about WHICH photographs is decided in publish.py, not here.
+      # This step carries the whole recovered store - hundreds of images on a
+      # permission narrower than they need - and `cleared_archive_photos()`
+      # offers only the digests `reference/nynjtc_hike_photos.json` names. A
+      # store on disk is not a store published.
+      - name: Carry the confirmed archive photographs to the publisher
+        if: inputs.include_photos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          store=data/raw/wayback_photos
+          if [ -d "$store" ]; then
+            echo "$store is already here ($(find "$store" -type f | wc -l) images) - nothing to carry."
+            exit 0
+          fi
+          cleared=$(python -c 'import publish; print(len(publish.cleared_archive_digests()))')
+          if [ "$cleared" = "0" ]; then
+            echo "reference/nynjtc_hike_photos.json confirms nothing - no archive photographs to carry."
+            exit 0
+          fi
+          echo "$cleared photograph(s) confirmed. Looking for the recovery artifact that holds their bytes."
+
+          # The BIGGEST unexpired artifact across the last 20 recovery runs,
+          # not the newest. Every stage uploads one and only some carry the
+          # store, so a probe run's few kilobytes of log would otherwise win
+          # on recency; the store is tens of megabytes and dominates the size
+          # of any artifact containing it.
+          best_id=""; best_size=0; best_run=""
+          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nynjtc-archive-recovery.yml/runs?per_page=20" --jq '.workflow_runs[].id'); do
+            line=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq \
+              '[.artifacts[] | select(.expired == false) | select(.name | startswith("nynjtc-archive-recovery-"))]
+               | sort_by(.size_in_bytes) | reverse | .[0] | select(. != null) | "\(.id) \(.size_in_bytes)"')
+            if [ -z "$line" ]; then continue; fi
+            size=${line##* }
+            if [ "$size" -gt "$best_size" ]; then best_id=${line%% *}; best_size=$size; best_run=$run; fi
+          done
+
+          if [ -z "$best_id" ]; then
+            echo "No unexpired nynjtc-archive-recovery artifact in the last 20 runs."
+            echo "The bucket must already hold the $cleared confirmed photograph(s); publish.py checks that and fails loudly if not."
+            exit 0
+          fi
+
+          echo "Carrying artifact $best_id ($best_size bytes) from run $best_run."
+          tmp=$(mktemp -d)
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$best_id/zip" > "$tmp/recovery.zip"
+          unzip -q -o "$tmp/recovery.zip" -d "$tmp/unpacked"
+          # Found rather than assumed: upload-artifact roots its archive at the
+          # least common ancestor of the paths it matched, so where
+          # wayback_photos/ sits inside the zip depends on which OTHER paths
+          # that run happened to match - see .github/tests/test_artifact_handoff_paths.py.
+          src=$(find "$tmp/unpacked" -type d -name wayback_photos -print -quit)
+          if [ -z "$src" ]; then
+            echo "That artifact carries no wayback_photos/ directory - the run it came from recovered none."
+            rm -rf "$tmp"
+            exit 0
+          fi
+          mkdir -p "$(dirname "$store")"
+          mv "$src" "$store"
+          rm -rf "$tmp"
+          echo "Carried $(find "$store" -type f | wc -l) recovered image(s) into $store."
 
       # BEFORE THE THREE WATER STEPS, and that ordering is load-bearing
       # rather than tidy (#1016). All three read this export's artifact:
@@ -1096,6 +1195,14 @@ jobs:
       # is exactly the drift #1262's tests exist to catch elsewhere in this
       # file. Short retention because nothing outside this same run ever
       # reads it.
+      #
+      # `wayback_photos/` is the SECOND photo store (#1550), and it is listed
+      # for a reason invisible from the publish job: collect_photos() reads an
+      # absent store as empty rather than as an error, so a handoff that
+      # dropped it would publish no archive photograph at all and say nothing
+      # about it. Listing it does not move the archive root the download
+      # reconstructs - it is another `pipeline/data/raw/` entry, so the least
+      # common ancestor stays `pipeline/data` (#1347).
       - name: Upload data for the publish job
         uses: actions/upload-artifact@v4
         with:
@@ -1108,6 +1215,7 @@ jobs:
             pipeline/data/raw/osm_water_reach.json
             pipeline/data/raw/trail_water.json
             pipeline/data/raw/poi_photos/
+            pipeline/data/raw/wayback_photos/
           retention-days: 1
           if-no-files-found: warn
 

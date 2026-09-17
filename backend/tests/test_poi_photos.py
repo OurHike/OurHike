@@ -33,7 +33,7 @@ from app.config import settings
 from app.core import photos as photos_core
 from app.core.photos import STORAGE_UNAVAILABLE_DETAIL, poi_photo_key
 from app.core.time import utc_now
-from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Role
 from app.routers import poi_photos as poi_photos_router
@@ -646,3 +646,109 @@ def test_an_upload_that_cannot_reach_the_bucket_does_not_say_where_it_is(client,
     # The share row stands and still awaits its bytes - a retry lands them.
     row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
     assert row.uploaded_at is None
+
+
+# --- the takedown ledger (#1551) --------------------------------------------
+#
+# The row a dismissal is recorded on is not a record: a re-share upserts over
+# it and a withdrawal deletes it, and both used to take the decision with
+# them. The ledger is what a moderator reads next time this person's photo of
+# this place comes up.
+
+
+def _dismiss(client, moderator, photo_id):
+    return client.post(f"/moderation/poi-photos/{photo_id}/dismiss", headers=auth_headers(moderator.id))
+
+
+def _ledger(db_session):
+    return db_session.query(PoiPhotoDismissal).order_by(PoiPhotoDismissal.dismissed_at, PoiPhotoDismissal.id).all()
+
+
+def test_a_takedown_is_recorded_with_who_decided_and_what_they_saw(client, db_session, r2, no_cooling_off):
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    photo_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+    reporter = _hiker(db_session, name="Reporter")
+    assert (
+        client.post(
+            f"/waypoints/{_POI}/photos/{photo_id}/report", json={"reason": "person"}, headers=auth_headers(reporter.id)
+        ).status_code
+        == 204
+    )
+
+    response = _dismiss(client, moderator, photo_id)
+
+    assert response.status_code == 200
+    assert response.json()["dismissal_count"] == 1
+    line = _ledger(db_session)
+    assert [(row.poi_id, row.contributor_id, row.photo_id, row.dismissed_by, row.reported_reason) for row in line] == [
+        (_POI, hiker.id, photo_id, moderator.id, "person")
+    ]
+
+
+def test_the_ledger_survives_the_row_being_withdrawn_and_counts_the_next_photograph(client, db_session, r2, no_cooling_off):
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    first_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+    assert _dismiss(client, moderator, first_id).status_code == 200
+
+    # Withdrawn: the row goes, the line does not.
+    assert client.delete(f"/waypoints/{_POI}/photos/mine", headers=auth_headers(hiker.id)).status_code == 204
+    assert db_session.query(PoiPhoto).count() == 0
+    assert len(_ledger(db_session)) == 1
+
+    # Shared again and taken down again: a second photograph, a second line,
+    # and the answer to the second takedown says two.
+    second_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+    second = _dismiss(client, moderator, second_id)
+
+    assert second.json()["dismissal_count"] == 2
+    assert [row.photo_id for row in _ledger(db_session)] == [first_id, second_id]
+
+
+def test_a_repeated_dismissal_of_the_same_row_is_one_takedown(client, db_session, r2, no_cooling_off):
+    # The outbox retries, and two moderators can press the same button; the
+    # count is photographs that came down, not presses.
+    moderator = _moderator(db_session)
+    hiker = _hiker(db_session)
+    photo_id = _share(client, hiker).json()["id"]
+    _upload(client, hiker)
+
+    assert _dismiss(client, moderator, photo_id).status_code == 200
+    again = _dismiss(client, moderator, photo_id)
+
+    assert again.status_code == 200
+    assert again.json()["dismissal_count"] == 1
+    assert len(_ledger(db_session)) == 1
+
+
+def test_a_previously_taken_down_contributor_sorts_between_the_reports_and_the_tail(client, db_session, r2, no_cooling_off):
+    """Three shares of one place, ordered by the queue. Recency alone would
+    put the newcomer's photo first; the ledger lifts the re-share of somebody
+    whose photo of this place came down above it, and a live report still
+    outranks both - a report is somebody saying something about THIS
+    photograph."""
+    moderator = _moderator(db_session)
+    offender = _hiker(db_session, name="Offender")
+    newcomer = _hiker(db_session, name="Newcomer")
+    reported = _hiker(db_session, name="Reported")
+
+    first_id = _share(client, offender, taken="2026-01-01").json()["id"]
+    _upload(client, offender)
+    assert _dismiss(client, moderator, first_id).status_code == 200
+    _share(client, offender, taken="2026-01-02")
+    _upload(client, offender)
+    _share(client, newcomer, taken="2026-05-01")
+    _upload(client, newcomer)
+    reported_id = _share(client, reported, taken="2025-01-01").json()["id"]
+    _upload(client, reported)
+    someone = _hiker(db_session, name="Someone")
+    client.post(f"/waypoints/{_POI}/photos/{reported_id}/report", json={"reason": "other"}, headers=auth_headers(someone.id))
+
+    queue = client.get("/moderation/poi-photos", headers=auth_headers(moderator.id)).json()
+
+    assert [entry["attribution"] for entry in queue] == ["Reported", "Offender", "Newcomer"]
+    assert [entry["dismissal_count"] for entry in queue] == [0, 1, 0]

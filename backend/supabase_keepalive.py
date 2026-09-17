@@ -81,6 +81,7 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     "hikes",
     "maintainer_assignments",
     "note_flags",
+    "poi_photo_dismissals",
     "poi_photos",
     "profiles",
     "reports",

@@ -236,14 +236,18 @@ jobs:
         working-directory: .
         env:
           # Through env, never interpolated - same reasoning as the UA gate
-          # (#660).
+          # (#660). The ref and the UA verdict too: git allows quotes and
+          # semicolons in a branch name, and this is the step that decides
+          # whether a production migration proceeds.
           CONFIGURED_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          DISPATCHED_REF: ${{ github.ref }}
+          UA_APPLIED: ${{ needs.ua.outputs.applied }}
         run: |
-          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
-            echo "::error::Production migrations run from main only; this dispatch names ${{ github.ref }}."
+          if [ "$DISPATCHED_REF" != "refs/heads/main" ]; then
+            echo "::error::Production migrations run from main only; this dispatch names $DISPATCHED_REF."
             exit 1
           fi
-          if [ "${{ needs.ua.outputs.applied }}" != "true" ]; then
+          if [ "$UA_APPLIED" != "true" ]; then
             echo "::error::UA was not migrated in this run, so this would be the first database to see these revisions. RELEASING.md 3: applied to UA first, always. Configure UA_MIGRATION_DATABASE_URL (#371) and dispatch again."
             exit 1
           fi

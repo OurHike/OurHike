@@ -237,10 +237,13 @@ jobs:
       # Said out loud before anything runs, because "0 photographs" and "the
       # archive would not talk to us" look identical in a log and mean
       # opposite things.
+      # Through env, never pasted into the script: a free-text dispatch input
+      # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
+      # held by .github/tests/test_run_steps_take_inputs_through_env.py).
       - name: What this run may reach
         run: |
           echo "stage:     ${{ inputs.stage }}"
-          echo "limit:     ${{ inputs.limit || '(none)' }}"
+          echo "limit:     ${LIMIT:-(none)}"
           if [ -n "${HIKEFINDER_PASSWORD}" ]; then
             echo "export:    password present - the hike side of the join is reachable"
           else
@@ -248,6 +251,7 @@ jobs:
           fi
         env:
           HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+          LIMIT: ${{ inputs.limit }}
 
       # Two requests, and the only stage that answers a question rather than
       # fetching a corpus. The first full `pages` run found a coordinate in
@@ -257,9 +261,11 @@ jobs:
       # sandbox cannot reach web.archive.org at all.
       - name: The probe - what one write-up actually carries
         if: inputs.stage == 'probe'
+        env:
+          PROBE_URL: ${{ inputs.probe_url }}
         run: |
           set -o pipefail
-          python -u fetch_wayback_hike_pages.py --probe "${{ inputs.probe_url }}" | tee probe.log
+          python -u fetch_wayback_hike_pages.py --probe "$PROBE_URL" | tee probe.log
 
       - name: The index - what /view/hike lists
         if: inputs.stage == 'index' || inputs.stage == 'everything'
@@ -269,18 +275,22 @@ jobs:
 
       - name: The write-ups - name, location, description, photo
         if: inputs.stage == 'pages' || inputs.stage == 'everything'
+        env:
+          LIMIT: ${{ inputs.limit }}
         run: |
           set -o pipefail
           python -u fetch_wayback_hike_pages.py \
-            ${{ inputs.limit != '' && format('--limit {0}', inputs.limit) || '' }} \
+            ${LIMIT:+--limit "$LIMIT"} \
             | tee pages.log
 
       - name: The photographs
         if: inputs.stage == 'photos' || inputs.stage == 'everything'
+        env:
+          LIMIT: ${{ inputs.limit }}
         run: |
           set -o pipefail
           python -u fetch_wayback_hike_photos.py \
-            ${{ inputs.limit != '' && format('--limit {0}', inputs.limit) || '' }} \
+            ${LIMIT:+--limit "$LIMIT"} \
             | tee photos.log
 
       # The hike side of the join. continue-on-error for the reason
@@ -298,9 +308,11 @@ jobs:
 
       - name: Propose the join, and write the sheet
         if: inputs.stage == 'match' || inputs.stage == 'everything'
+        env:
+          MIN_SCORE: ${{ inputs.min_score }}
         run: |
           set -o pipefail
-          python -u match_wayback_hike_photos.py --min "${{ inputs.min_score || '2.5' }}" | tee match.log
+          python -u match_wayback_hike_photos.py --min "${MIN_SCORE:-2.5}" | tee match.log
 
       # What a person actually reads, rather than a link to a log they have to
       # open. The counts are the whole output of the earlier stages.

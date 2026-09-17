@@ -28,6 +28,7 @@ from pmtiles.tile import Compression, TileType, zxy_to_tileid
 from pmtiles.writer import Writer
 
 import smoke_published
+from lib import strict_json
 from smoke_published import (
     FAILED,
     OK,
@@ -914,3 +915,14 @@ def test_without_duckdb_the_water_check_skips_rather_than_passing(mock, monkeypa
 
     assert report["state"] == SKIPPED
     assert "DuckDB" in report["detail"]
+
+
+def test_the_water_document_is_read_the_way_a_phone_reads_it(tmp_path):
+    """_at_anchored_water refuses a `NaN` rather than being the one reader
+    that copes with it (lib/strict_json.py); check_reach reports the raise as
+    the check failing, naming the class."""
+    source = tmp_path / "poi_water.geojson"
+    source.write_text('{"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"mile": NaN}}]}')
+
+    with pytest.raises(strict_json.NonFiniteNumber):
+        smoke_published._at_anchored_water(source, tmp_path / "kept.geojson")

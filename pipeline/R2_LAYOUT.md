@@ -84,7 +84,31 @@ data a phone is pinned to.
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
 | `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
 | `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
+| `archive__nynjtc_photos__do_not_delete/` | the whole Internet Archive recovery of NYNJTC's Drupal-era photographs, content-addressed | written once, never rewritten, never pruned | **no** |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
+
+**`archive__nynjtc_photos__do_not_delete/` is a park, not a store anything reads** (#1567).
+It holds all 403 photographs the Internet Archive recovery pulled out of NYNJTC's
+Drupal-era site — a finished corpus of frozen captures that cannot change — so that the
+archive is never asked for them a second time. It was added because 284 of those 403 had
+come to live only in a 14-day workflow artifact and a branch cache that a merge deleted,
+which made a one-time crawl into something that would have to be repeated.
+
+Nothing in the app or the pipeline reads it. What may reach a hiker is decided by
+`pipeline/reference/nynjtc_hike_photos.json` and travels through `photos/` exactly as
+before, so a digest sitting here has no route to a card. The shouting name is doing real
+work rather than decoration: no prune job exists yet ([DATA_RELEASES.md](DATA_RELEASES.md),
+Phase 7 — retention is "keep everything"), and the one eventually written will be scoped
+to `releases/`, so this prefix is safe by design *and* by the name whoever writes that job
+will read.
+
+**What it costs, recorded because it is a real cost.** 284 of the 403 are unreviewed, and
+the `u26` directory they came from is a site-wide upload folder wider than the Favorite
+Hikes permission `sources.json`'s `nynjtc_hikes_licence` covers. A key in this bucket is a
+permanent public URL — the argument #1504 made when it built the review gate, in the words
+"unreferenced is not private". No published artifact references these digests, so nothing
+advertises them, but that is a mitigation and not the licence. The maintainer chose this
+bucket and this name on 2026-09-17, knowing that.
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs.
 That document owns the tree, the retention clocks and the migration — this one only says

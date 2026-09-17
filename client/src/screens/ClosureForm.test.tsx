@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ClosureForm } from './ClosureForm'
+import { preloadScreens } from './deferred'
+
+// The location sheet is deferred (screens/deferred.ts); loaded ahead so it
+// renders synchronously here, as it does in the shell.
+beforeAll(() => preloadScreens())
 
 // The closure form (#832). Three properties, and the first one is the whole
 // design decision:

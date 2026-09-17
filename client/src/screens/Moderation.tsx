@@ -157,6 +157,22 @@ function provenanceOf(report: QueuedReport, units: UnitSystem): string {
   }
 }
 
+/**
+ * Who put their name to a report and whether they may be asked more (#1563).
+ * Only a moderator's view carries these - the server withholds them from
+ * everyone else like `reporter_id` - and an absent name is exactly that:
+ * nothing is printed for it, never "anonymous", which would be a claim.
+ */
+function signerOf(report: QueuedReport): string {
+  const parts: string[] = []
+  if (report.signed_name !== null && report.signed_name !== undefined) {
+    const kind = report.signed_name_kind === 'real' ? 'real name' : 'trail name'
+    parts.push(`signed ${report.signed_name} (${kind})`)
+  }
+  if (report.contact_ok === true) parts.push('may be contacted')
+  return parts.map((part) => ` · ${part}`).join('')
+}
+
 /** Where a report happened, in the words the form used - see
  *  lib/reportLocation.ts for why 0,0 is never a stand-in for "unknown". */
 function placeOf(report: QueuedReport, units: UnitSystem): string {
@@ -525,7 +541,7 @@ export function Moderation({ onClose, units }: ModerationProps) {
       <p className="moderation__headline">
         <span className="moderation__type">{TYPE_WORDS[report.type] ?? report.type}</span>
         <span className="moderation__meta">
-          {`${report.reporter_type} · ${placeOf(report, units)} · ${ageOf(report.timestamp)}`}
+          {`${report.reporter_type} · ${placeOf(report, units)} · ${ageOf(report.timestamp)}${signerOf(report)}`}
         </span>
       </p>
       {report.note !== null && <p className="moderation__note">{report.note}</p>}

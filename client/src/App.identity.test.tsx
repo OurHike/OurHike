@@ -49,11 +49,14 @@ async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
   }
   await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-  // No GPS in this harness, so the window opens on its picker and the tap is
-  // refused until the report has a place (#1563): words, with nothing else.
+  // No GPS in this harness, so the first tap is refused and opens the
+  // location sheet (#1563): words are the place, with nothing else, and
+  // Done hands the tiles back.
+  await user.click(await screen.findByRole('button', { name: /blow down/i }))
   await user.type(await screen.findByTestId('location-words'), 'by the gap')
+  await user.click(screen.getByTestId('location-sheet-done'))
   // ONE CLICK FILES IT (#1133). This used to be tile-then-Send; the window
-  // writes to the outbox on the tap itself, and what the second click does now
+  // writes to the outbox on the tap itself, and what the next click does now
   // is CLOSE the window - which is when the identity question gets asked,
   // rather than interrupting the receipt and its undo.
   await user.click(await screen.findByRole('button', { name: /blow down/i }))

@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
-import { ReportWindow, UNDO_WINDOW_MS, type ReportWindowProps } from './ReportWindow'
+import { ReportWindow, type ReportWindowProps } from './ReportWindow'
+import { UNDO_WINDOW_MS } from './undoWindow'
+import { preloadScreens } from '../screens/deferred'
 import { EMERGENCY_NOTICE } from './categories'
 import { MAX_UNDO_HOLD_MS } from '../lib/outbox'
 import {
@@ -9,6 +11,10 @@ import {
   type FixSnapshot,
   type NearbyPlace,
 } from '../lib/reportLocation'
+
+// The sheet and the reporter block are deferred (screens/deferred.ts);
+// loaded ahead so they render synchronously here, as they do in the shell.
+beforeAll(() => preloadScreens())
 
 afterEach(() => {
   cleanup()
@@ -65,7 +71,10 @@ function setup(overrides: Partial<ReportWindowProps> = {}) {
     onChooseLocation: vi.fn(),
     units: 'imperial',
     reporterType: 'thru',
+    names: { trail: 'Switchback', real: null },
+    onRealName: vi.fn(),
     onFile: vi.fn().mockResolvedValue('outbox-1'),
+    onAmend: vi.fn().mockResolvedValue(true),
     onUndo: vi.fn().mockResolvedValue(undefined),
     onReportClosure: vi.fn(),
     onReportUnsafe: vi.fn(),
@@ -204,14 +213,18 @@ describe('filing on the tap', () => {
     })
 
     expect(props.onFile).toHaveBeenCalledTimes(1)
-    const [type, note, holdUntil, placeWords] =
-      vi.mocked(props.onFile).mock.calls[0] ?? []
+    const [type, note, holdUntil, extras] = vi.mocked(props.onFile).mock.calls[0] ?? []
     expect(type).toBe('blowdown')
     expect(note).toBe('')
     expect(holdUntil).toBeInstanceOf(Date)
     // No words: the fix placed it, and the shell sends words only when
-    // nothing else can (lib/reportLocation.ts).
-    expect(placeWords).toBe('')
+    // nothing else can (lib/reportLocation.ts). Signed with the trail name
+    // and not contactable, because nothing was asked before the tap.
+    expect(extras).toEqual({
+      placeWords: '',
+      signature: { kind: 'trail', name: 'Switchback' },
+      contactOk: false,
+    })
 
     expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 628.4')
     // And the tiles are gone: there is nothing left to tap by accident on a
@@ -453,7 +466,7 @@ describe('changing where the report lands (#1563)', () => {
     // passed-places control this replaces: the picker always has the words
     // and the map to offer, so there is no empty list to open onto.
     expect(screen.getByTestId('report-change-anchor')).toBeInTheDocument()
-    expect(screen.queryByTestId('report-places')).toBeNull()
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
   })
 
   it('spends a line under the place on a fix that is stale or coarse, with the words a hiker should hesitate over', () => {
@@ -471,32 +484,42 @@ describe('changing where the report lands (#1563)', () => {
     )
   })
 
-  it('opens the picker by itself when nothing places the report, and refuses a tap until it is answered', async () => {
+  it('refuses a tap with nothing to place the report at, opening the sheet with the reason, and files once answered', async () => {
     // THE GAP THIS CHANGE CLOSES. No fix, no card, no press: the old window
     // filed a blowdown here with no location of any kind. Now the tap is
-    // refused, the picker says why, and the tile files once the hiker has
-    // said where - in words, when there is nothing else.
+    // refused, the sheet opens saying why, and the tile files once the hiker
+    // has said where - in words, when there is nothing else.
     const { props } = setup({ fix: null })
 
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
-    expect(screen.getByTestId('report-places')).toBeInTheDocument()
+    // Nothing opens by itself: the sheet is modal, and the tiles come first.
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-blowdown'))
     })
     expect(props.onFile).not.toHaveBeenCalled()
+    // A window of its own over the tiles (reporting/LocationSheet.tsx), and
+    // it has focus: the refusal is heard as well as seen.
+    expect(screen.getByTestId('location-sheet')).toHaveFocus()
     expect(screen.getByRole('alert')).toHaveTextContent('Say where this is first')
     expect(screen.queryByTestId('report-undo')).toBeNull()
 
     fireEvent.change(screen.getByTestId('location-words'), {
       target: { value: 'the ford below the gap' },
     })
+    // Done hands back the tiles with the words kept; the header says so.
+    fireEvent.click(screen.getByTestId('location-sheet-done'))
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('In your words')
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-blowdown'))
     })
 
     expect(props.onFile).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(props.onFile).mock.calls[0]?.[3]).toBe('the ford below the gap')
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[3]?.placeWords).toBe(
+      'the ford below the gap',
+    )
     expect(screen.getByRole('status')).toHaveTextContent(
       'Filed — blow down where you described',
     )
@@ -520,7 +543,7 @@ describe('changing where the report lands (#1563)', () => {
       lon: -80.35,
       mile: 624.0,
     })
-    expect(screen.queryByTestId('report-places')).toBeNull()
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
   })
 
   it('states a named place, and files under its phrase', async () => {
@@ -560,7 +583,7 @@ describe('changing where the report lands (#1563)', () => {
         location={{ kind: 'point', lat: 37.4, lon: -80.4, mile: 630 }}
       />,
     )
-    expect(screen.queryByTestId('report-places')).toBeNull()
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('mi 630.0')
     expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
   })
@@ -579,7 +602,7 @@ describe('changing where the report lands (#1563)', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('closes the picker on Escape, and the window only on the second one', async () => {
+  it('closes the sheet on Escape, and the window only on the second one', async () => {
     // THE REFLEX THIS PROTECTS. Escape is how a person backs out of a list,
     // and closing the whole window from inside one would lose the screen
     // behind it - the single thing this change exists to prevent. The search
@@ -589,17 +612,17 @@ describe('changing where the report lands (#1563)', () => {
     const onClose = vi.fn()
     setup({ places: PLACES, onClose })
     fireEvent.click(screen.getByTestId('report-change-anchor'))
-    expect(screen.getByTestId('report-places')).toBeTruthy()
+    expect(screen.getByTestId('location-sheet')).toBeTruthy()
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByTestId('report-places')).toBeNull()
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
     expect(onClose).not.toHaveBeenCalled()
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('forgets a typed search when the picker is dismissed', async () => {
+  it('forgets a typed search when the sheet is dismissed', async () => {
     // Reopening onto somebody's abandoned three letters is a list that looks
     // short for a reason nobody can see.
     setup({ places: PLACES, onSearchPlaces: () => [] })
@@ -626,5 +649,185 @@ describe('changing where the report lands (#1563)', () => {
 
     expect(screen.queryByTestId('report-change-anchor')).toBeNull()
     expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
+  })
+})
+
+describe('the sheet over the window (#1563)', () => {
+  it('is a dialog of its own that Done closes without closing the window', () => {
+    const onClose = vi.fn()
+    setup({ places: PLACES, onClose })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+
+    const sheet = screen.getByTestId('location-sheet')
+    expect(sheet).toHaveAttribute('role', 'dialog')
+    expect(sheet).toHaveTextContent('Where is this?')
+    expect(sheet).toHaveFocus()
+    // The picker is the same one the long form renders, inside it.
+    expect(screen.getByTestId('location-picker')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('location-sheet-done'))
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    // Focus comes back to the window, and to the dialog rather than a tile.
+    expect(screen.getByTestId('report-window')).toHaveFocus()
+  })
+
+  it('does not let a tap on its own scrim reach the scrim under it', () => {
+    // The sheet sits inside the window's scrim, whose click closes the whole
+    // window. A tap beside the sheet must close the sheet and nothing else.
+    const onClose = vi.fn()
+    setup({ places: PLACES, onClose })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    fireEvent.click(screen.getByTestId('location-sheet-scrim'))
+
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('the receipt writes back (#1563)', () => {
+  /** Files a blowdown and waits for the receipt. */
+  async function filed(overrides: Partial<ReportWindowProps> = {}) {
+    const result = setup(overrides)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    await screen.findByTestId('report-note')
+    return result
+  }
+
+  it('writes the note to the filed report at Done, and only then closes', async () => {
+    // "Add detail - optional" used to be a textarea nothing read.
+    const { props } = await filed()
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: '  Big oak, step over the top.  ' },
+    })
+    expect(props.onAmend).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    expect(props.onAmend).toHaveBeenCalledWith('outbox-1', {
+      note: 'Big oak, step over the top.',
+    })
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('writes nothing at Done when no note was typed', async () => {
+    const { props } = await filed()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+    expect(props.onAmend).not.toHaveBeenCalled()
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('says so and stays open once when the report had already sent, then closes', async () => {
+    // A note the hiker believes is attached and is not would be a confident
+    // wrong display; the window says it instead, once, and the second Done
+    // closes because there is nothing left it can do.
+    const { props } = await filed({ onAmend: vi.fn().mockResolvedValue(false) })
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: 'the ford was waist deep' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    expect(screen.getByTestId('report-lost')).toHaveTextContent('had already sent')
+    expect(props.onClose).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('signs with the trail name by default, and writes a change of name or consent to the report as it is made', async () => {
+    const { props } = await filed()
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Switchback (trail name) · thru',
+    )
+
+    // The consent, written at once rather than at Done: a receipt left open
+    // still carries it.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reporter-contact-ok'))
+    })
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', {
+      signed_name: 'Switchback',
+      signed_name_kind: 'trail',
+      contact_ok: true,
+    })
+
+    // A real name that is not set yet reads as exactly that, and clears the
+    // signature on the report rather than sending a kind with no name.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /real name/i }))
+    })
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as not set (real name) · thru',
+    )
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', {
+      signed_name: undefined,
+      signed_name_kind: undefined,
+      contact_ok: true,
+    })
+
+    // Typed and kept on leaving the field: to the preferences through
+    // onRealName, and to the report without waiting for them.
+    fireEvent.change(screen.getByTestId('reporter-real-name'), {
+      target: { value: 'Jane Doe' },
+    })
+    await act(async () => {
+      fireEvent.blur(screen.getByTestId('reporter-real-name'))
+    })
+    expect(props.onRealName).toHaveBeenCalledWith('Jane Doe')
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', {
+      signed_name: 'Jane Doe',
+      signed_name_kind: 'real',
+      contact_ok: true,
+    })
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Jane Doe (real name) · thru',
+    )
+  })
+
+  it('carries the signature and the consent onto the next report, and the note only to the one it described', async () => {
+    const { props } = await filed()
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: 'three trunks' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reporter-contact-ok'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-again'))
+    })
+    // The note went to the first report on the way out.
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', { note: 'three trunks' })
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-trash'))
+    })
+    const [, note, , extras] = vi.mocked(props.onFile).mock.calls[1] ?? []
+    expect(note).toBe('')
+    expect(extras).toEqual({
+      placeWords: '',
+      signature: { kind: 'trail', name: 'Switchback' },
+      contactOk: true,
+    })
+  })
+
+  it('offers a real name already in the preferences without asking for it again', async () => {
+    await filed({ names: { trail: 'Switchback', real: 'Jane Doe' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /real name/i }))
+    })
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Jane Doe (real name) · thru',
+    )
+    expect(screen.getByTestId('reporter-real-name')).toHaveValue('Jane Doe')
   })
 })

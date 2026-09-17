@@ -125,6 +125,18 @@ export interface ReportDraft {
    * anything. Floored at zero on the phone. Sent only with a `gps` source.
    */
   location_fix_age_s?: number
+  /**
+   * The name the hiker chose to sign this report with, and which of their
+   * names it is (#1563; lib/reporterSignature.ts): the trail name they hike
+   * under, or the real name they chose to put behind this one report so a
+   * club can address them by it. Both absent when they have no name set.
+   * Never shown to other hikers - the server withholds it like `reporter_id`.
+   */
+  signed_name?: string
+  signed_name_kind?: 'trail' | 'real'
+  /** "You can contact me for more information", ticked. Consent and only
+   *  consent; the account is how a club reaches them. Absent means no. */
+  contact_ok?: boolean
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server
    *  resolves it from location and authored date instead. */
@@ -218,6 +230,15 @@ export const APP_FAILURE_MAX_CHARS = 8000
 
 /** The same, for the two short fields - where they were, how to reach them. */
 export const APP_FAILURE_SHORT_MAX_CHARS = 500
+
+/**
+ * How long a name a report may be signed with (#1563). Restates
+ * backend/app/schemas/report.py's SIGNED_NAME_MAX_CHARS, for the reason the
+ * two caps above restate theirs: the field is typed offline, and a server
+ * refusal at the wire is a report the outbox marks failed. Held together by
+ * backend/tests/test_client_report_contract.py.
+ */
+export const SIGNED_NAME_MAX_CHARS = 200
 
 /**
  * A report that this app failed somebody while they were out on the trail
@@ -477,6 +498,49 @@ async function mutateQueue(
 
 export async function listQueued(): Promise<OutboxItem[]> {
   return readQueue()
+}
+
+/** The fields a report can take on after it was filed - what the window's
+ *  receipt asks for (#1133's "detail is optional and comes after"; #1563). */
+export type ReportAmendment = Partial<
+  Pick<ReportDraft, 'note' | 'signed_name' | 'signed_name_kind' | 'contact_ok'>
+>
+
+/**
+ * Change a report that is still waiting in the queue (#1563).
+ *
+ * WHAT THIS FIXES. The report window files on the tap and then offers "Add
+ * detail - optional" under the receipt, and the note typed there went
+ * nowhere: nothing read it back out of the window, so "detail comes after"
+ * (features/REPORT_A_PROBLEM.md) was true of the screen and false of the
+ * outbox. This is the write it lacked, and the signature and the consent
+ * the receipt now asks for travel the same way.
+ *
+ * TRUE WHEN THE REPORT WAS STILL HERE TO AMEND, false when it had already
+ * gone. A filed report is held for the undo window and sent by the next
+ * flush after it, so a receipt left open for a minute can lose the race -
+ * and a caller must say so rather than let the hiker believe the words were
+ * attached. Absent keys are left alone; an explicit `undefined` clears.
+ */
+export async function amendQueuedReport(
+  id: string,
+  amendment: ReportAmendment,
+): Promise<boolean> {
+  let found = false
+  await mutateQueue((queue) =>
+    queue.map((item) => {
+      if (item.id !== id || item.payload === undefined) return item
+      found = true
+      const payload: ReportDraft = { ...item.payload }
+      for (const key of Object.keys(amendment) as (keyof ReportAmendment)[]) {
+        const value = amendment[key]
+        if (value === undefined) delete payload[key]
+        else Object.assign(payload, { [key]: value })
+      }
+      return { ...item, payload }
+    }),
+  )
+  return found
 }
 
 export async function enqueue(

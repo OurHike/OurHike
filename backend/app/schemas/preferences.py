@@ -209,6 +209,12 @@ class PreferencesIn(BaseModel):
 
     # Identity
     trail_name: str | None = None
+    # The hiker's real name, given only if they choose to sign a report with
+    # it (#1563; client/src/lib/reporterSignature.ts). None until they do, and
+    # nothing reads it here: it travels in this blob so a second phone offers
+    # the same choice, and reaches a report only as `signed_name` when the
+    # hiker picks it for that report.
+    real_name: str | None = None
     # None until the hiker says, and deliberately not defaulted to a type
     # (#233). Every report used to be filed as `thru` from a hardcoded literal
     # in the client, and `reporter_type` is the one attribution that survives

@@ -30,7 +30,7 @@ column here follows, and the open question about it.
 import enum
 import uuid
 
-from sqlalchemy import JSON, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, Float, ForeignKey, Integer, String, Text
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -112,6 +112,21 @@ class LocationSource(str, enum.Enum):
     poi = "poi"
     gps = "gps"
     map = "map"
+
+
+class SignedNameKind(str, enum.Enum):
+    """Which of a hiker's names a report is signed with (#1563).
+
+    `trail` is the pseudonym features/IDENTITY_AND_PRIVACY.md calls "the
+    identity actually shown to others, never a hiker's real name by default";
+    `real` is the hiker choosing, for this one report, to put their real
+    name behind it - so a club can address them by it when it follows up.
+    The default is the trail name, and the choice is per report: nothing
+    here changes what any other surface shows.
+    """
+
+    trail = "trail"
+    real = "real"
 
 
 class Report(Base):
@@ -204,6 +219,39 @@ class Report(Base):
     location_fix_age_s = Column(Integer, nullable=True)
 
     reporter_type = Column(Enum(ReporterType, native_enum=False, length=20), nullable=False)
+
+    # WHO THE REPORT IS SIGNED BY, IN THE HIKER'S OWN CHOICE OF NAME, and
+    # whether they may be contacted about it (#1563, the maintainer's ask of
+    # 2026-09-17).
+    #
+    # `reporter_id` already says which account filed this, and a moderator can
+    # follow it to a profile whose `display_name` is the trail name. What it
+    # cannot say is what the hiker wanted to be called on THIS report: the
+    # trail name they hike under, or the real name they chose to put behind a
+    # report about something serious. `signed_name` is that text as sent, and
+    # `signed_name_kind` says which of the two it is - so "Jane Doe (real
+    # name)" and "Switchback (trail name)" read as the different claims they
+    # are.
+    #
+    # `contact_ok` is consent, and only consent: "You can contact me for more
+    # information", ticked by the hiker. It carries no way to reach them - the
+    # account does, through whoever holds the Supabase Auth mapping - and
+    # false is the default because an unticked box is not a yes.
+    #
+    # **Never public.** ReportOut withholds all three from anyone who is not
+    # the reporter or a moderator, the same rule as `reporter_id`: a name
+    # beside a trail position and a time is exactly the linkability
+    # features/IDENTITY_AND_PRIVACY.md exists to prevent, and the anonymous
+    # attribution stays `reporter_type` alone. The conditions publisher's
+    # column list (pipeline/export_conditions.py) never selects them.
+    #
+    # **Cleared when the account is deleted** (app/core/account_deletion.py),
+    # the way an app-failure report's `contact` is: the report stays, because
+    # other people rely on it, and the name and the consent go, because they
+    # were offered by a person who is gone.
+    signed_name = Column(Text, nullable=True)
+    signed_name_kind = Column(Enum(SignedNameKind, native_enum=False, length=20), nullable=True)
+    contact_ok = Column(Boolean, nullable=False, default=False, server_default="false")
 
     # When the report was WRITTEN. WIREFRAMES.md is explicit that this is
     # "the moment of writing, not of sending" - a report composed offline on

@@ -31,16 +31,15 @@
 import drive from './report-window.mjs'
 
 export const small = true
-// TOUCHED BY #1563, and the claim in the caption changed with it. With no fix
-// the window opens on its location picker above the tiles, which is a taller
-// frame than the one #1480 measured: the body scrolls again at 375x667. What
-// this frame now holds to is the property that survives a scroll - the 911
-// band pinned under the header, outside the scrolling body - and not "no
-// scroll at all", which was true of the tile frame and is not true of this
-// one. e2e/reportingDoors.spec.ts measures both: the tile frame with a fix
-// (no scroll), and this one (the band whole in the viewport).
+// TOUCHED BY #1563 TWICE. Its first version drew the location picker inside
+// the body, above the tiles, and this frame recorded the cost: the body
+// scrolled again at 375x667. The picker is a sheet of its own now
+// (reporting/LocationSheet.tsx), opened by Change or by a refused tap, so
+// this is the tile frame #1480 measured once more - 605 px in 643 - with one
+// line of the header changed. e2e/reportingDoors.spec.ts holds the 911 band
+// whole in the viewport in both states.
 export const caption =
-  'The same window at 375×667 with no fix — the picker open above the tiles makes the body scroll again on the smallest phone, and the 911 band stays pinned under the header where a scroll cannot hide it (#1480, #1563)'
+  'The same window at 375×667 with no fix — the tile frame still fits with no scroll, because the location picker is a sheet over the window rather than a drawer inside it (#1480, #1563)'
 export const alt =
-  'The report window on a small phone, over a dimmed Today screen. Its dark header reads “Report a problem / What did you find?” with the place line “No location yet”, a full-width pale band in red type directly beneath it reads “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.”, and below that the location picker — a find-by-name box, a “Mark it on the map ›” row and an “Or say where in words” text box — then the top of the six category tiles, with the rest of the body cut off at the window’s bottom edge and scrollable.'
+  'The report window on a small phone, over a dimmed Today screen. Its dark header reads “Report a problem / What did you find?” with the place line “No location yet” and a “Change” control, a full-width pale band in red type directly beneath it reads “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.”, and below that the six category tiles two per row, the “The trail is closed” row and the “Something unsafe happened” row, whole inside the window’s bottom edge.'
 export default drive

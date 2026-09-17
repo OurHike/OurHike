@@ -274,6 +274,9 @@ def create_report(
 
     timestamp = authored if authored is not None else now
     credited_maintainer, credited_club = _credit_for(db, payload, timestamp)
+    signed_name = payload.signed_name.strip() if payload.signed_name is not None else None
+    if signed_name == "":
+        signed_name = None
 
     report = Report(
         # None lets the model's own default mint one - the same fallback
@@ -295,6 +298,12 @@ def create_report(
         location_fix_age_s=payload.location_fix_age_s,
         reporter_type=payload.reporter_type,
         note=payload.note,
+        # The hiker's chosen name and their consent to be contacted (#1563),
+        # stored as sent. A kind without a name is a claim about nothing, so
+        # it is dropped rather than stored; whitespace is not a name.
+        signed_name=signed_name,
+        signed_name_kind=payload.signed_name_kind if signed_name is not None else None,
+        contact_ok=payload.contact_ok,
         # Stored as prose and resolved to nothing (#1439). A report that
         # carries this carries no coordinates either, deliberately - see
         # ReportCreate.place_words and the model's column.

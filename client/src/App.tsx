@@ -84,6 +84,7 @@ import {
   preloadScreens,
   Registry,
   ReportForm,
+  ReportWindow,
   ShareHike,
   SignInPrompt,
   TripList,
@@ -107,7 +108,8 @@ import { disputeFor } from './lib/disputes'
 import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
 import type { ReportFormSubmission } from './screens/ReportForm'
-import { ReportWindow, UNDO_WINDOW_MS } from './reporting/ReportWindow'
+import type { FiledExtras } from './reporting/ReportWindow'
+import { UNDO_WINDOW_MS } from './reporting/undoWindow'
 import { type ReportTypeId } from './reporting/categories'
 import { FIT_PADDING } from './map/fitPadding'
 import { trailIdForSource } from './map/trailBadges'
@@ -422,6 +424,7 @@ import {
   signUpWithEmail,
 } from './lib/auth'
 import {
+  amendQueuedReport,
   enqueueAppFailure,
   enqueueClosure,
   listQueued,
@@ -430,6 +433,7 @@ import {
   type AppFailureDraft,
   type FlushResult,
   type OutboxItem,
+  type ReportAmendment,
 } from './lib/outbox'
 import { useOutboxSync, syncOutbox } from './lib/outboxSync'
 import { listSentReports, type SentReport } from './lib/sentReports'
@@ -524,6 +528,7 @@ import {
   type NearbyPlace,
   type PlaceCandidate,
 } from './lib/reportLocation'
+import { namesOnOffer, signatureFields } from './lib/reporterSignature'
 import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
 import './App.css'
@@ -7797,7 +7802,7 @@ function App() {
       type: ReportTypeId,
       note: string,
       holdUntil: Date,
-      placeWords: string,
+      extras: FiledExtras,
     ): Promise<string> => {
       // WHERE THE REPORT SAYS IT IS, spelled by the one function every filing
       // surface uses (lib/reportLocation.ts, #1563): a waypoint's id and
@@ -7821,8 +7826,16 @@ function App() {
             reporting?.location ?? AT_THE_FIX,
             currentFix,
             now,
-            placeWords,
+            extras.placeWords,
           ),
+          // WHO SIGNED IT, as the receipt's block has it at the tap - the
+          // trail name unless the hiker chose otherwise for an earlier report
+          // in this same window - and whether they may be contacted. Both
+          // keys are absent rather than null or false when unset, so a report
+          // nobody touched has the shape every report had before #1563
+          // (lib/reporterSignature.ts).
+          ...signatureFields(extras.signature),
+          ...(extras.contactOk ? { contact_ok: true } : {}),
         },
         now,
         undefined,
@@ -7831,6 +7844,37 @@ function App() {
       return item.id
     },
     [reporting, preferences.reporter_type, currentFix],
+  )
+
+  /**
+   * The receipt writing back to the report it describes (#1563): the note,
+   * the signature, the consent. `refreshOutbox` after it so the outbox's own
+   * screen shows the note if the hiker goes there next; the answer is
+   * whether the report was still in the queue to take it.
+   */
+  const handleAmendFromWindow = useCallback(
+    async (outboxId: string, amendment: ReportAmendment): Promise<boolean> => {
+      const found = await amendQueuedReport(outboxId, amendment)
+      await refreshOutbox()
+      return found
+    },
+    [refreshOutbox],
+  )
+
+  /**
+   * The two names a report can be signed with (#1563). The trail name is the
+   * one every other surface shows; the real name is kept only for this
+   * choice, typed on a report surface and saved as a preference so the next
+   * report offers it. Trimmed and empty is null, as the identity screen
+   * already treats the trail name (`handleSaveIdentity`).
+   */
+  const reportNames = useMemo(() => namesOnOffer(preferences), [preferences])
+  const handleRealName = useCallback(
+    (name: string) => {
+      const trimmed = name.trim()
+      updatePreferences({ real_name: trimmed === '' ? null : trimmed })
+    },
+    [updatePreferences],
   )
 
   /** Undo: the same `removeQueued` everything else uses. There is no second
@@ -8926,12 +8970,13 @@ function App() {
       reportFormNode = (
         <ReportForm
           type={reporting.type}
-          trailName={preferences.trail_name}
           // The stored answer, or the floor when nobody has said (#233). It was
           // a hardcoded "thru" here and in More below, so every report in the
           // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
           // for why the fallback is the weakest claim rather than that one.
           reporterType={signReportAs(preferences.reporter_type)}
+          names={reportNames}
+          onRealName={handleRealName}
           // Where the report is, owned by the reporting state so the picker's
           // rows and the map's Keep change one answer (#1563). A card's
           // waypoint needs no GPS fix - it is the place being reported on -
@@ -11145,7 +11190,10 @@ function App() {
             onPointOnMap={handleReportPointOnMap}
             standingAside={reportCrosshairOut}
             reporterType={signReportAs(preferences.reporter_type)}
+            names={reportNames}
+            onRealName={handleRealName}
             onFile={handleFileFromWindow}
+            onAmend={handleAmendFromWindow}
             onUndo={handleUndoFromWindow}
             // A closure leaves the report flow rather than continuing it: it is
             // a different record with a different form (#832), and it is not a

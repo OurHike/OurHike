@@ -34,8 +34,9 @@
 // see the column's own comment in backend/app/models/closure.py.
 //
 // THE NEAR END CAN BE PICKED AS A PLACE (#1563). The same control the report
-// window and the long form use (reporting/LocationPicker.tsx) fills the
-// "shut from" box from a named place's mile or the fix's snapped mile, for the
+// window and the long form use (reporting/LocationPicker.tsx, in a sheet of
+// its own over this form) fills the "shut from" box from a named place's
+// mile or the fix's snapped mile, for the
 // hiker who knows the closure starts at the shelter and not what mile the
 // shelter is. Only places that CARRY a mile are offered, and the map is not:
 // a closure is two miles by definition, and a spot with no mile is a spot
@@ -56,7 +57,7 @@ import {
   type NearbyPlace,
 } from '../lib/reportLocation'
 import type { UnitSystem } from '../lib/units'
-import { LocationPicker } from '../reporting/LocationPicker'
+import { LocationSheet } from './deferred'
 import './reporting.css'
 
 export interface ClosureFormSubmission {
@@ -248,14 +249,14 @@ export function ClosureForm({
             type="button"
             className="reporting__change"
             data-testid="closure-pick-place"
-            aria-expanded={pickingStart}
-            onClick={() => setPickingStart((open) => !open)}
+            aria-haspopup="dialog"
+            onClick={() => setPickingStart(true)}
           >
-            {pickingStart ? 'Done' : 'Pick a place ›'}
+            Pick a place ›
           </button>
         </p>
         {pickingStart && (
-          <LocationPicker
+          <LocationSheet
             choice={startChoice}
             fix={fixWithMile}
             places={withMile(places)}
@@ -276,6 +277,7 @@ export function ClosureForm({
               setStartPlace(choice.kind === 'fix' ? null : choice)
               setPickingStart(false)
             }}
+            onClose={() => setPickingStart(false)}
           />
         )}
       </div>

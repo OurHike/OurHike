@@ -361,9 +361,21 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
-  // The picker is driven where the window is: the "no fix" state opens it
-  // by itself, and the spec files a report by the words it collects (#1563).
+  // The picker is driven where the window is: a tap with no fix is refused
+  // and opens it, and the spec files a report by the words it collects
+  // (#1563).
   'reporting/LocationPicker.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The sheet the picker lives in, and the block the receipt and the long
+  // form sign with: both are driven by the same "no fix" and thanks-form
+  // specs, which read the sheet's title and the signature line.
+  'reporting/LocationSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/ReporterDetails.tsx': {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },

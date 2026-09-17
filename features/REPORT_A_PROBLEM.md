@@ -53,6 +53,14 @@ from the map — and:
    picker opens and says why - and files once it has an answer. That is the
    one exception to "one tap files": a report a moderator cannot place is a
    report they cannot act on. A thanks is exempt; it is not a problem.
+   **The picker is a second window** (revised 2026-09-17, the maintainer's
+   steer: "the location should be exposed as a 2nd emergent window") -
+   `client/src/reporting/LocationSheet.tsx`, opened by the header's Change or
+   by the refused tap, over the window, the long form and the closure form
+   alike, and never by itself. Its first version was a drawer inside the
+   window, above the tiles, and the small-phone frame #1480 had just made fit
+   scrolled again the moment it opened; a sheet covers the tiles instead of
+   pushing them.
 3. **One tap on a type files the report**, into the outbox, at once. There is
    no submit button and nothing to abandon.
 4. **An 8-second `Undo` stands where the Cancel used to.** The report is held
@@ -61,7 +69,23 @@ from the map — and:
    published.
 5. **Detail is optional and comes after.** A note, and photos, on the receipt
    — the same fields, no longer in the way of the thing a hiker actually came
-   to do.
+   to do. **The note reaches the report** (2026-09-17, #1563): it is written
+   to the queued report when the receipt is left (`amendQueuedReport` in
+   `client/src/lib/outbox.ts`), which the first version of the receipt did
+   not do - the textarea was drawn and nothing read it. If the report has
+   already sent by then, the receipt says so rather than letting the hiker
+   believe the words went with it. **And two more questions sit on the
+   receipt**, both the maintainer's additions of 2026-09-17
+   (`client/src/reporting/ReporterDetails.tsx`, on the long form too): which
+   name the report is signed with - the trail name, as every report was, or
+   the hiker's real name for this one report, typed once and kept in the
+   preferences as `real_name` - and a checkbox, "You can contact me for more
+   information". Both travel as `signed_name`, `signed_name_kind` and
+   `contact_ok`, are written to the queued report as they change, and are
+   served to nobody but the reporter and a moderator, exactly as `reporter_id`
+   is ([IDENTITY_AND_PRIVACY.md](IDENTITY_AND_PRIVACY.md)). Asked after the
+   tap rather than before it, because under 1a nothing may stand between a
+   hiker and the tile.
 6. The report enters the **moderation queue for club admins** and the
    **maintainer verification/flagging workflow** — both already planned in
    FEATURES.md, unchanged by any of the above.
@@ -166,6 +190,18 @@ Report
         Null off-trail, and for a phone with no trail index yet)
   reporter_type (thru-hiker / section-hiker / day-hiker / maintainer -
                  FEATURES.md's existing "reporter type shown" line)
+  signed_name (2026-09-17, #1563 - the name the hiker put to THIS report,
+               or null; up to 200 chars, trimmed, empty is null. Withheld
+               from everyone but the reporter and a moderator, like
+               reporter_id; cleared by account deletion)
+  signed_name_kind: trail | real (which of the hiker's two names signed_name
+               is. Null whenever signed_name is - a kind without a name is
+               dropped by the server rather than stored)
+  contact_ok (bool, default false - "You can contact me for more
+              information", the box the receipt and the long form carry. No
+              address travels with it: the account is how a club reaches the
+              hiker, and an unticked box is a no. Withheld like signed_name;
+              reset to false by account deletion)
   timestamp
   place_words (free text, optional - the hiker's own words for where this
                was, and sent ONLY with no location reference at all. Never

@@ -1,5 +1,6 @@
-// The report window's location picker with a GPS fix to offer (#1563) - the
-// frame report-window.mjs cannot show, because that camera has no fix.
+// The report window's location sheet with a GPS fix to offer (#1563) - the
+// frame report-window.mjs cannot show, because that camera has no fix, and
+// report-window-refused.mjs cannot either, because a refused tap has none.
 //
 // WHAT THE PICTURE IS FOR. Two of the picker's four answers exist only with a
 // fix, and prose cannot make either claim:
@@ -23,14 +24,15 @@
 // location fix in a shot is about somebody's location, and this is a fixture.
 //
 // Driven from Today's own door. The header states the fix; "Change" opens the
-// picker, which is the thing this frame is for.
+// sheet over the window (reporting/LocationSheet.tsx, the maintainer's steer
+// of 2026-09-17), which is the thing this frame is for.
 
 import { IDB } from '../scripts/screenshot.mjs'
 
 export const caption =
-  'The location picker with a fix (#1563): a named place nearby first (when the release’s waypoints are on the phone), then “Where you are” with the fix’s radius and age, then the map. A poor fix reads as a poor fix before anybody files under it.'
+  'The location sheet with a fix (#1563), opened by Change over the report window: a named place nearby first (when the release’s waypoints are on the phone), then “Where you are” with the fix’s radius and age, then the map. A poor fix reads as a poor fix before anybody files under it.'
 export const alt =
-  'The report window over a dimmed Today screen. Under the header’s place line — “Where you are” or a trail mile, with a “Done” control — and the red 911 band, a sunken picker: “A named place” with a find-by-name box and, when the phone holds the waypoints, a short list of places nearest first, each with how far away it is and its mile; then a “Where you are” row reading “±16 ft · just now”; then “Mark it on the map ›”. Below the picker, the six category tiles.'
+  'A second, smaller dialog centred over the dimmed report window, its dark header reading “Where is this?” with a “Done” button at the right. Inside: a small heading “A named place” over a “Find a place by name” box and, when the phone holds the waypoints, a short list of places nearest first, each with how far away it is and its mile; then a “Where you are” row reading “±16 ft · just now”; then a “Mark it on the map ›” row. Behind the sheet, the report window’s header states “Where you are” or a trail mile with a “Change” control, and its tiles are dimmed.'
 
 export default async function drive(page) {
   await page.context().grantPermissions(['geolocation'])

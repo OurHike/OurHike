@@ -30,15 +30,19 @@
 // which is itself the decision frame 9e records.
 
 // TOUCHED BY #1563: the location line and the "Where was this?" field are the
-// shared picker's now (reporting/LocationPicker.tsx). With no fix the line
-// reads "No location yet" with Done beside it, because the picker is open
-// under it - a named place to find by name, the map row, and the words field
-// - and Send is refused until one of them has placed the report.
+// shared picker's now (reporting/LocationPicker.tsx), in a sheet of its own
+// that "Change ›" opens over the form. With no fix the line reads "No
+// location yet", and Save is refused - the sheet opens saying why - until a
+// named place, the map or the words have placed the report. And the line
+// that stated the signature is a block now (reporting/ReporterDetails.tsx):
+// which name signs it, trail or real, and whether a club may contact the
+// hiker - the maintainer's additions of 2026-09-17. No trail name is set on
+// the camera, so the summary says "not set" rather than inventing one.
 
 export const caption =
-  'The report form — a tile per photo, and a place you can correct or give in words through the same picker the window uses (#1439, #1563)'
+  'The report form — a tile per photo, a place you can correct through the same sheet the window uses, and the name the report is signed with plus a contact opt-in above Save (#1439, #1563)'
 export const alt =
-  'The report form headed “Something unsafe happened”: a Note textarea, then a “Photos” field showing a single dashed square tile with a plus and “Add a photo”, then a row reading “No location yet” with a “Done” control beside it and, under it, the location picker — a “Find a place by name” box, a “Mark it on the map ›” row, and “Or say where in words” over a text box with the hint “A landmark, a road, a shelter you passed — however you would say it to somebody. It travels as your words; nobody turns it into a pin.” — and “Save to outbox” and “Cancel” at the foot.'
+  'The report form headed “Something unsafe happened”: a Note textarea, then a “Photos” field showing a single dashed square tile with a plus and “Add a photo”, then a row reading “No location yet” with a “Change ›” control beside it, then a boxed “Signed as” block reading “Signed as not set (trail name) · day” with two radio rows, “Trail name” selected and “Real name”, a checkbox “You can contact me for more information” and a hint that only the club moderators who read the report see the name and the answer, and “Save to outbox” and “Cancel” at the foot.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Today' }).click()

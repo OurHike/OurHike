@@ -68,9 +68,9 @@ describe('the report form keeps what is in it while the crosshair is out', () =>
     const note = screen.getByRole('textbox', { name: /note/i })
     await user.type(note, 'Followed for two miles north of the gap.')
 
-    // No fix in this harness, so the picker is already open under the
-    // location line (the button beside it reads Done, not Change) and the map
-    // row is right there.
+    // No fix in this harness; Change opens the location sheet over the form
+    // and the map row is in it.
+    await user.click(await screen.findByTestId('report-form-change'))
     await user.click(await screen.findByTestId('location-map'))
 
     // The form is still mounted - stood aside, not unmounted - so the words
@@ -98,9 +98,9 @@ describe('the report form keeps what is in it while the crosshair is out', () =>
     render(<App />)
 
     await openTheLongForm(user)
-    // No fix in this harness, so the picker is already open under the
-    // location line (the button beside it reads Done, not Change) and the map
-    // row is right there.
+    // No fix in this harness; Change opens the location sheet over the form
+    // and the map row is in it.
+    await user.click(await screen.findByTestId('report-form-change'))
     await user.click(await screen.findByTestId('location-map'))
 
     const bar = await screen.findByRole('dialog', { name: 'Say where this was' })
@@ -132,9 +132,9 @@ describe('leaving the crosshair by a tab', () => {
       screen.getByRole('textbox', { name: /note/i }),
       'Two trunks across the tread.',
     )
-    // No fix in this harness, so the picker is already open under the
-    // location line (the button beside it reads Done, not Change) and the map
-    // row is right there.
+    // No fix in this harness; Change opens the location sheet over the form
+    // and the map row is in it.
+    await user.click(await screen.findByTestId('report-form-change'))
     await user.click(await screen.findByTestId('location-map'))
     await screen.findByRole('dialog', { name: 'Say where this was' })
 
@@ -159,9 +159,9 @@ describe('leaving the crosshair by a tab', () => {
     render(<App />)
 
     await openTheLongForm(user)
-    // No fix in this harness, so the picker is already open under the
-    // location line (the button beside it reads Done, not Change) and the map
-    // row is right there.
+    // No fix in this harness; Change opens the location sheet over the form
+    // and the map row is in it.
+    await user.click(await screen.findByTestId('report-form-change'))
     await user.click(await screen.findByTestId('location-map'))
     await screen.findByRole('dialog', { name: 'Say where this was' })
     await user.click(screen.getByRole('tab', { name: 'Today' }))
@@ -192,15 +192,16 @@ describe('the report window stands aside for the map and comes back', () => {
     const user = userEvent.setup()
     render(<App />)
 
-    // No fix in this harness, so the picker is open by itself and the map
-    // row is the way out of "No location yet".
+    // No fix in this harness; Change opens the location sheet over the
+    // window, and the map row is the way out of "No location yet".
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(screen.getByRole('button', { name: /^Volunteer & report/ }))
     await user.click(screen.getByRole('button', { name: 'Report a problem' }))
     await screen.findByRole('dialog', { name: 'What did you find?' })
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
 
-    await user.click(screen.getByTestId('location-map'))
+    await user.click(screen.getByTestId('report-change-anchor'))
+    await user.click(await screen.findByTestId('location-map'))
 
     // The bar is up over the map, and the window is stood aside - hidden and
     // inert - rather than unmounted.

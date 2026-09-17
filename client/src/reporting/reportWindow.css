@@ -616,3 +616,15 @@
 .report-window__scrim--stood-aside {
   visibility: hidden;
 }
+
+/* Where the note went, when it went nowhere (#1563): the report had already
+   sent when the receipt tried to write to it. A status line in the body's
+   own voice, not an alert - nothing is wrong with the report, only with what
+   was typed after it. */
+.report-window__lost {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}

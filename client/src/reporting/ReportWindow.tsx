@@ -47,17 +47,30 @@
 // phone with no fix used to file a blowdown with no location of any kind -
 // not even the hiker's words, which only the long form asked for. So the
 // window carries the same location control the long form and the closure
-// form carry (reporting/LocationPicker.tsx): the place is STATED in the
-// header, as it always was, and CHANGEABLE under it to a named place nearby,
-// the phone's own fix with its radius and age printed, or a spot marked on
-// the map. A tap on a tile with nothing to place the report at is refused -
-// the picker opens instead, and the tile files once it has an answer. That
-// refusal is the one exception to "one tap files" and it is deliberate: 1a's
-// argument was that the tap should cost the hiker nothing, which is not the
-// same as costing the reader everything, and a report a moderator cannot
-// place is a report they cannot act on.
+// form carry: the place is STATED in the header, as it always was, and
+// CHANGEABLE from it - to a named place nearby, the phone's own fix with its
+// radius and age printed, or a spot marked on the map. The control is a
+// second window over this one (reporting/LocationSheet.tsx), which is the
+// maintainer's steer and what #1480 needs: a picker drawn inside this frame
+// put the tiles back under a scroll on the smallest phone. A tap on a tile
+// with nothing to place the report at is refused - the sheet opens instead,
+// saying why, and the tile files once it has an answer. That refusal is the
+// one exception
+// to "one tap files" and it is deliberate: 1a's argument was that the tap
+// should cost the hiker nothing, which is not the same as costing the reader
+// everything, and a report a moderator cannot place is a report they cannot
+// act on.
+//
+// AND THE RECEIPT WRITES BACK. "Add detail - optional" under the receipt used
+// to be a textarea nothing read: the note typed there reached no report. It
+// reaches the queued one now, through `onAmend` (lib/outbox.ts's
+// `amendQueuedReport`), along with the two things the receipt newly asks -
+// which name the report is signed with and whether the hiker may be
+// contacted (reporting/ReporterDetails.tsx). Asked AFTER the tap, on the
+// receipt, because under 1a nothing may stand between a hiker and the tile.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import type { ReportAmendment } from '../lib/outbox'
 import {
   fixNeedsAWord,
   hasPlace,
@@ -66,6 +79,7 @@ import {
   type LocationChoice,
   type NearbyPlace,
 } from '../lib/reportLocation'
+import { signatureFields, type Signature, type SignedAs } from '../lib/reporterSignature'
 import type { UnitSystem } from '../lib/units'
 import {
   CLOSURE_ROW,
@@ -77,20 +91,26 @@ import {
   type ReportTypeId,
 } from './categories'
 import { REPORT_ICONS, type ReportIconName } from './icons'
-import { LocationPicker } from './LocationPicker'
+// Both deferred (screens/deferred.ts), as this window is: neither is on
+// screen the instant it opens, and the eager budget could not hold them.
+import { LocationSheet, ReporterDetails } from '../screens/deferred'
+// In a module of its own because the shell reads it (undoWindow.ts).
+import { UNDO_WINDOW_MS } from './undoWindow'
 import './reportWindow.css'
 
 /**
- * How long a filed report can still be taken back.
- *
- * @unvalidated - eight seconds is the design handoff's number and nobody has
- * watched a hiker use it. What bounds the cost of it being wrong is that both
- * errors are recoverable: too short and the report stands, editable from the
- * outbox; too long and it sends a few seconds later than it might have, on a
- * queue whose ordinary delay is measured in hours. lib/outbox.ts's
- * MAX_UNDO_HOLD_MS is the ceiling any future value has to stay under.
+ * What a tap files besides its category and note (#1563): the hiker's words
+ * for the place when nothing else could say, which name the report is signed
+ * with, and whether they may be contacted about it. The caller turns these
+ * into wire fields (lib/reportLocation.ts, lib/reporterSignature.ts); the
+ * window only knows what the hiker chose.
  */
-export const UNDO_WINDOW_MS = 8_000
+export interface FiledExtras {
+  /** Trimmed, and empty unless nothing else could place the report. */
+  placeWords: string
+  signature: Signature
+  contactOk: boolean
+}
 
 export interface ReportWindowProps {
   /**
@@ -136,20 +156,28 @@ export interface ReportWindowProps {
   /** Signed exactly as every other contribution is - the floor in
    *  lib/reporterIdentity.ts applies, and the caller has already applied it. */
   reporterType: 'thru' | 'section' | 'day' | 'maintainer'
+  /** The two names a report can be signed with, from the preferences
+   *  (lib/reporterSignature.ts's `namesOnOffer`) - null where none is set. */
+  names: Record<SignedAs, string | null>
+  /** Keep a real name typed on the receipt, so the next report offers it.
+   *  A preference write, made by the shell. */
+  onRealName: (name: string) => void
   /**
    * Write the report and hand back the outbox id, so Undo has something to
    * delete. Held back for {@link UNDO_WINDOW_MS} by the caller.
-   *
-   * `placeWords` is the hiker's own words for where this was, trimmed, and
-   * empty unless nothing else could place the report. The caller sends them
-   * only in that case (lib/reportLocation.ts's `reportLocationFields`).
    */
   onFile: (
     type: ReportTypeId,
     note: string,
     holdUntil: Date,
-    placeWords: string,
+    extras: FiledExtras,
   ) => Promise<string>
+  /**
+   * Change a report this window filed and that is still in the queue: the
+   * note from the receipt, the signature, the consent. Resolves false when
+   * the report had already sent, which the window says rather than hides.
+   */
+  onAmend: (outboxId: string, amendment: ReportAmendment) => Promise<boolean>
   /** Take it back out of the queue. The same `removeQueued` everything else
    *  uses - see lib/outbox.ts on why this is not a special withdrawal path. */
   onUndo: (outboxId: string) => Promise<void>
@@ -179,6 +207,22 @@ export interface ReportWindowProps {
  *  Out here it can only be the tap, because only the tap calls it. */
 function undoWindowFromNow(): Date {
   return new Date(Date.now() + UNDO_WINDOW_MS)
+}
+
+/**
+ * The signature and the consent as an amendment to a queued report. A kind
+ * without a name clears both keys (an explicit undefined is how
+ * `amendQueuedReport` deletes), and an unticked box clears its key rather
+ * than writing false: the server's default is false and the payload stays
+ * the shape every other report has.
+ */
+function signerAmendment(signature: Signature, contactOk: boolean): ReportAmendment {
+  const fields = signatureFields(signature)
+  return {
+    signed_name: fields.signed_name,
+    signed_name_kind: fields.signed_name_kind,
+    contact_ok: contactOk || undefined,
+  }
 }
 
 function Icon({ name }: { name: ReportIconName }) {
@@ -211,7 +255,10 @@ export function ReportWindow({
   onPointOnMap,
   standingAside = false,
   reporterType,
+  names,
+  onRealName,
   onFile,
+  onAmend,
   onUndo,
   onReportClosure,
   onReportUnsafe,
@@ -220,7 +267,6 @@ export function ReportWindow({
 }: ReportWindowProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement | null>(null)
-  const pickerRef = useRef<HTMLDivElement | null>(null)
 
   // What has been filed, if anything. `outboxId` is what Undo deletes;
   // `undoUntil` is when the button stops being offered; `phrase` is where it
@@ -242,19 +288,40 @@ export function ReportWindow({
   // when nothing else can place the report, and sent only then.
   const [placeWords, setPlaceWords] = useState('')
   // Whether a tap was just refused for want of a place. What turns the
-  // picker's opening from an offer into an alert.
+  // sheet's opening from an offer into an alert.
   const [refused, setRefused] = useState(false)
-  // Whether the location picker is open. OPENS BY ITSELF when the door
-  // supplied nothing the report can be placed at - no fix, no card, no press -
-  // because every tile below it is about to refuse until it is answered, and
-  // a control a hiker has to find is a control they meet after the refusal.
-  const [picking, setPicking] = useState(() => !hasPlace(location, fix))
+  // Whether the location sheet is up. Only on demand - the header's Change,
+  // or a tap refused for want of a place - and never by itself on open: the
+  // sheet is modal, and a window that opened onto a question about WHERE
+  // before the hiker had said WHAT would be the form-first flow 1a replaced.
+  // (The picker's first version, a drawer inside this frame, did open itself
+  // with no fix; a drawer covers nothing, a sheet covers the tiles.) The
+  // refusal is where a fixless hiker meets it, and the refusal opens it with
+  // the alert, so there is no control to find.
+  const [picking, setPicking] = useState(false)
+  // Which name signs the report and whether the hiker may be contacted -
+  // asked on the receipt, kept across "Note something else" because a hiker
+  // who put their name to the first of three findings at a campsite means it
+  // for the other two. The trail name and an unticked box are the defaults:
+  // a hiker who never touches the block signs exactly as before this existed.
+  const [signedAs, setSignedAs] = useState<SignedAs>('trail')
+  const [contactOk, setContactOk] = useState(false)
+  // The real name as this window knows it: the preference on open, then
+  // whatever the receipt's field last held when it was left. Kept here as
+  // well as sent up through `onRealName`, so the amendment below does not
+  // wait on the preference round trip.
+  const [realName, setRealName] = useState(names.real)
+  // Whether something typed on the receipt failed to reach the report,
+  // because the report had already sent. Said on the receipt rather than
+  // swallowed: a note the hiker believes is attached and is not is the kind
+  // of confident wrong display CLAUDE.md forbids.
+  const [lost, setLost] = useState(false)
   // Ticks only while an undo window is open, so a window sitting on the tiles
   // costs no timer at all.
   const [remaining, setRemaining] = useState(0)
 
   // A point kept on the map arrives as a new `location` from the shell, and
-  // the picker closes on it the way it closes on one of its own rows.
+  // the sheet closes on it the way it closes on one of its own rows.
   // Adjusted during render rather than in an effect, which is React's own
   // pattern for reacting to a prop change without a wasted paint.
   const [seenLocation, setSeenLocation] = useState(location)
@@ -272,40 +339,87 @@ export function ReportWindow({
   const openedFrom = useRef<Element | null>(null)
   useEffect(() => {
     openedFrom.current = document.activeElement
-    // The dialog itself, not the first tile. Focusing a tile would put a
-    // control that FILES A REPORT under the first keystroke of somebody who
-    // has not read the window yet - and under 1a that keystroke is not
-    // recoverable by pressing Escape.
-    dialogRef.current?.focus()
     return () => {
       const returning = openedFrom.current
       if (returning instanceof HTMLElement) returning.focus()
     }
   }, [])
 
-  // Back from the map with the dialog's focus where the crosshair left it -
-  // on nothing, since the window was inert. The dialog takes it again, for
-  // the reason above: never a tile.
+  // The dialog itself takes focus, not the first tile - on open, back from
+  // the map, and back from the sheet. Focusing a tile would put a control
+  // that FILES A REPORT under the first keystroke of somebody who has not
+  // read the window yet, and under 1a that keystroke is not recoverable by
+  // pressing Escape. Not while the sheet is up: the sheet holds focus then,
+  // and an effect here that took it back would leave a hiker typing into a
+  // search box that is no longer focused.
   useEffect(() => {
-    if (!standingAside) dialogRef.current?.focus()
-  }, [standingAside])
+    if (!standingAside && !picking) dialogRef.current?.focus()
+  }, [standingAside, picking])
+
+  /**
+   * The name the report is signed with, as the hiker has it set right now.
+   * Resolved here rather than in lib/reporterSignature.ts's `reportSignature`
+   * because the real name may be newer than the preferences.
+   */
+  const signatureFor = (kind: SignedAs): Signature => ({
+    kind,
+    name: kind === 'real' ? realName : names.trail,
+  })
+  const signature = signatureFor(signedAs)
+
+  /** Change the filed report, and remember when it was already gone. */
+  const amend = async (amendment: ReportAmendment) => {
+    if (filed === null) return true
+    const found = await onAmend(filed.outboxId, amendment)
+    if (!found) setLost(true)
+    return found
+  }
+
+  /**
+   * Write the receipt's note to the report it describes, on the way out of
+   * the receipt. Once, at Done, Close or "Note something else", rather than
+   * per keystroke: the queue is on disk, and nothing reads it back while
+   * this window is open. True when there was nothing to write.
+   */
+  const settleNote = async () => {
+    const trimmed = note.trim()
+    if (trimmed === '') return true
+    return amend({ note: trimmed })
+  }
 
   // `standing` rather than a ref: the identity of this callback changing when
   // it changes is what keeps the Escape handler below closing over the right
   // answer instead of the one from the render it was installed on.
-  const close = useCallback(() => {
+  //
+  // THE NOTE GOES FIRST, and a note that could not go holds the window open
+  // once, with the line under the receipt saying why. The second press
+  // closes regardless: the hiker has read the line, and there is nothing
+  // this window can still do about a report that has sent.
+  const close = useCallback(async () => {
+    if (filed !== null && !lost) {
+      const trimmed = note.trim()
+      if (trimmed !== '') {
+        const found = await onAmend(filed.outboxId, { note: trimmed })
+        if (!found) {
+          setLost(true)
+          return
+        }
+      }
+    }
     onClose(standing.length > 0)
-  }, [onClose, standing])
+  }, [filed, lost, note, onAmend, onClose, standing])
 
   // Escape closes, and the scrim does too. Safe under 1a in a way it is not
   // under the other two variants: by the time there is anything to lose, the
   // report is already in the outbox. The only unsaved thing is the note, and
-  // it is optional detail on a report that already stands.
+  // `close` writes it on the way out.
   //
-  // ESCAPE PEELS ONE LAYER, and the picker is the layer. Closing the whole
+  // ESCAPE PEELS ONE LAYER, and the sheet is the layer. Closing the whole
   // window from inside an open list would lose the screen behind it, which
   // is the single thing this change exists to prevent - and it is what a
-  // hiker gets by reflex, because Escape is how you back out of a list.
+  // hiker gets by reflex, because Escape is how you back out of a list. The
+  // sheet closes itself on Escape too (reporting/LocationSheet.tsx); this
+  // is the same answer given twice, not a race.
   //
   // The search box compounds it: `<input type="search">` clears itself on
   // Escape in WebKit and Blink, so somebody who typed three letters and
@@ -325,10 +439,13 @@ export function ReportWindow({
           setRefused(false)
           return
         }
-        close()
+        void close()
         return
       }
       if (event.key !== 'Tab') return
+      // The sheet loops its own focus while it is up; the loop below is for
+      // this dialog alone, and would otherwise drag focus out of the sheet.
+      if (picking) return
 
       // A focus trap, hand-rolled because this is the app's first true modal
       // and one screen does not earn a dependency. Queried per keystroke
@@ -392,20 +509,22 @@ export function ReportWindow({
       return
     }
     // THE TAP NEEDS A PLACE (#1563). Nothing to file it at - no fix, no named
-    // place, no marked spot, not even words - and the tap opens the picker
+    // place, no marked spot, not even words - and the tap opens the sheet
     // instead of writing a report a moderator would read as "no location".
-    // Focus goes into the picker so the refusal is heard as well as seen.
+    // The sheet takes focus on open, so the refusal is heard as well as seen.
     if (!placed) {
       setPicking(true)
       setRefused(true)
-      setTimeout(() => {
-        pickerRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
-      }, 0)
       return
     }
     const holdUntil = undoWindowFromNow()
-    const outboxId = await onFile(type, note.trim(), holdUntil, placeWords.trim())
+    const outboxId = await onFile(type, note.trim(), holdUntil, {
+      placeWords: placeWords.trim(),
+      signature,
+      contactOk,
+    })
     setStanding((current) => [...current, outboxId])
+    setLost(false)
     setFiled({ type, outboxId, undoUntil: holdUntil.getTime(), phrase: words.phrase })
   }
 
@@ -419,13 +538,22 @@ export function ReportWindow({
 
   const undoable = filed !== null && remaining > 0
 
-  /* The picker, when the header's Change is open or nothing has placed the
-     report yet. Above the tiles rather than below them: it answers "where",
-     and a hiker who opened it is not looking at the categories until they
-     have. */
-  const locationPicker = !picking ? null : (
-    <div ref={pickerRef} data-testid="report-places">
-      <LocationPicker
+  /* Where the note went, when it went nowhere. Under the receipt, and above
+     the tiles after "Note something else" - wherever the hiker is when the
+     answer arrives. */
+  const lostLine = !lost ? null : (
+    <p className="report-window__lost" role="status" data-testid="report-lost">
+      That report had already sent, so what you added here did not go with it.
+    </p>
+  )
+
+  /* THE SHEET, over this window, while the header's Change is open or nothing
+     has placed the report yet. A sibling of the dialog inside the scrim, so
+     it stands aside with the window when the crosshair goes out and a tap on
+     its own scrim (stopped there) never closes the window under it. */
+  const locationSheet =
+    !picking || filed !== null ? null : (
+      <LocationSheet
         choice={location}
         fix={fix}
         places={places}
@@ -447,13 +575,16 @@ export function ReportWindow({
         }}
         needed={refused}
         now={now}
+        onClose={() => {
+          setPicking(false)
+          setRefused(false)
+        }}
       />
-    </div>
-  )
+    )
 
   const tiles = (
     <>
-      {locationPicker}
+      {lostLine}
       <div className="report-window__grid">
         {REPORT_CATEGORIES.map((category) => (
           <button
@@ -562,11 +693,41 @@ export function ReportWindow({
             placeholder="Big oak across the trail, you can step over the top."
             onChange={(event) => setNote(event.target.value)}
           />
+
+          {/* Who signed it and whether they may be asked more - written to the
+              queued report as each answer changes, not at Done, so a receipt
+              left open still carries them. */}
+          <ReporterDetails
+            names={{ trail: names.trail, real: realName }}
+            signedAs={signedAs}
+            onSignedAs={(kind) => {
+              setSignedAs(kind)
+              void amend(signerAmendment(signatureFor(kind), contactOk))
+            }}
+            onRealName={(typed) => {
+              const trimmed = typed.trim()
+              const next = trimmed === '' ? null : trimmed
+              setRealName(next)
+              onRealName(typed)
+              if (signedAs === 'real') {
+                void amend(signerAmendment({ kind: 'real', name: next }, contactOk))
+              }
+            }}
+            contactOk={contactOk}
+            onContactOk={(ok) => {
+              setContactOk(ok)
+              void amend(signerAmendment(signature, ok))
+            }}
+            reporterType={reporterType}
+          />
+
+          {lostLine}
+
           <button
             type="button"
             className="report-window__done"
             data-testid="report-done"
-            onClick={close}
+            onClick={() => void close()}
           >
             Done
           </button>
@@ -577,9 +738,10 @@ export function ReportWindow({
             onClick={() => {
               // Back to the tiles with the place intact - the real multi-report
               // case, which is a hiker clearing a campsite finding three things.
-              // The note is cleared with it: it described the report that was
-              // just filed, and carrying it onto the next one would attach
-              // somebody's words to the wrong thing.
+              // The note goes to the report it described first, and is cleared
+              // with it: carrying it onto the next one would attach somebody's
+              // words to the wrong thing. The signature and the consent stay.
+              void settleNote()
               setFiled(null)
               setNote('')
             }}
@@ -608,7 +770,7 @@ export function ReportWindow({
       // The scrim is not a control and takes no focus; it is the dialog's
       // backdrop, and closing on it is a convenience the close button and
       // Escape both also provide.
-      onClick={close}
+      onClick={() => void close()}
     >
       <div
         ref={dialogRef}
@@ -632,13 +794,13 @@ export function ReportWindow({
                 question: every entry point supplies one, and the hiker is
                 standing at it. `Change` is the escape hatch for the case that
                 is not that - a blow-down noticed and remembered a mile later,
-                or a fix the picker's own radius line shows to be poor - and it
+                or a fix the sheet's own radius line shows to be poor - and it
                 is deliberately the smaller of the two, because the stated
                 place is right nearly every time.
 
                 OFFERED WHENEVER THERE IS A REPORT TO PLACE, which is a change
                 from the passed-places list it replaces (#1563). That list was
-                withheld without walked miles and a fix; the picker always has
+                withheld without walked miles and a fix; the sheet always has
                 something to offer - the map at least, and words when nothing
                 else can say - so a control that opens onto nothing is no
                 longer a state this can be in. Taken away once the report is
@@ -651,13 +813,13 @@ export function ReportWindow({
                   type="button"
                   className="report-window__change"
                   data-testid="report-change-anchor"
+                  aria-haspopup="dialog"
                   onClick={() => {
-                    setPicking((open) => !open)
+                    setPicking(true)
                     setRefused(false)
                   }}
-                  aria-expanded={picking}
                 >
-                  {picking ? 'Done' : 'Change'}
+                  Change
                 </button>
               )}
             </p>
@@ -679,7 +841,7 @@ export function ReportWindow({
             type="button"
             className="report-window__close"
             data-testid="report-close"
-            onClick={close}
+            onClick={() => void close()}
           >
             <span className="visually-hidden">Close</span>
             <span aria-hidden="true">×</span>
@@ -719,9 +881,13 @@ export function ReportWindow({
 
         {/* Signed the way every contribution is. Said out loud because a
             report carries an attribution a moderator weighs it by, and the
-            person filing it should be able to see which one. */}
-        <p className="visually-hidden">{`Signed as ${reporterType}`}</p>
+            person filing it should be able to see which one. Only while the
+            tiles are up: the receipt's own block says the whole signature. */}
+        {filed === null && (
+          <p className="visually-hidden">{`Signed as ${reporterType}`}</p>
+        )}
       </div>
+      {locationSheet}
     </div>
   )
 }

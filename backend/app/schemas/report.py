@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -15,9 +15,17 @@ from app.models.report import (
     ReportStatus,
     ReportType,
     Severity,
+    SignedNameKind,
     Visibility,
 )
 from app.schemas.common import FiniteFloat, NoteText
+
+# A name is short. Bounded for NoteText's reason - the compounding failure of
+# an unbounded text field on a row that is stored for good - and at a length
+# no name needs; 200 is picked and @unvalidated in the same way NOTE_MAX_CHARS
+# is, and the client refuses at the same figure (lib/outbox.ts).
+SIGNED_NAME_MAX_CHARS = 200
+SignedName = Annotated[str, Field(max_length=SIGNED_NAME_MAX_CHARS)]
 
 
 class ReportCreate(BaseModel):
@@ -116,6 +124,14 @@ class ReportCreate(BaseModel):
 
     reporter_type: ReporterType
     note: NoteText | None = None
+
+    # WHO SIGNS IT, IN WHICH NAME, AND WHETHER THEY MAY BE CONTACTED (#1563).
+    # The model's column comment is the reasoning. `signed_name_kind` without
+    # a `signed_name` is a claim about nothing, and is dropped in the router;
+    # `contact_ok` defaults to no, because an unticked box is not a yes.
+    signed_name: SignedName | None = None
+    signed_name_kind: SignedNameKind | None = None
+    contact_ok: bool = False
 
     # ACCEPTED AND IGNORED, WHICH IS NOT THE SAME AS SUPPORTED (#1447 review).
     #
@@ -345,6 +361,16 @@ class ReportOut(BaseModel):
     # public reads it - the client's ReportSummary does not even declare it.
     received_at: UtcDatetime | None = None
 
+    # The name the hiker signed with, which of their names it is, and whether
+    # they said a club may contact them (#1563). Withheld for `reporter_id`'s
+    # reason, and more so: a name beside a trail position and a time is the
+    # linkability features/IDENTITY_AND_PRIVACY.md exists to prevent. Null is
+    # "not for you" to the public and "not given" to a moderator; `contact_ok`
+    # is null to the public and a plain yes or no to a moderator.
+    signed_name: str | None = None
+    signed_name_kind: SignedNameKind | None = None
+    contact_ok: bool | None = None
+
     # Only meaningful on a `thanks`, which is `club_only` and so never
     # reaches a non-owner through these endpoints anyway. They are withheld
     # because `create_report` copies them from the request for EVERY type
@@ -392,6 +418,9 @@ class ReportOut(BaseModel):
             verified_at=report.verified_at,
             reporter_id=report.reporter_id if privileged else None,
             received_at=report.received_at if privileged else None,
+            signed_name=report.signed_name if privileged else None,
+            signed_name_kind=report.signed_name_kind if privileged else None,
+            contact_ok=report.contact_ok if privileged else None,
             maintainer_id=report.maintainer_id if privileged else None,
             club_id=report.club_id if privileged else None,
         )

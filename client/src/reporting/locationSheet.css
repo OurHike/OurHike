@@ -1,0 +1,93 @@
+/* The location sheet (#1563) - the picker as a window of its own, over the
+   report window, the long form or the closure form. Every colour is a token:
+   the app has a full dark theme that re-points these aliases. */
+
+/* Over its host. The host is itself a fixed overlay with a stacking context
+   of its own (the report window's scrim, the long form's `.reporting-window`),
+   so the number here only has to beat the host's dialog, which has none; on
+   the closure form, a flow screen with no context of its own, it has to beat
+   the tab bar and the map chrome, and 60 clears both. */
+.location-sheet__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: max(var(--space-3, 12px), env(safe-area-inset-top, 0px));
+  padding-right: max(var(--space-3, 12px), env(safe-area-inset-right, 0px));
+  padding-bottom: max(var(--space-3, 12px), env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--space-3, 12px), env(safe-area-inset-left, 0px));
+  /* The same ink the report window's scrim uses - the app's `--black` at 55%
+     - and for the same reason a literal: the palette names surfaces and
+     foregrounds, not overlays. */
+  background: rgb(20 19 15 / 55%);
+}
+
+.location-sheet {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 334px;
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-l, 14px);
+  box-shadow: var(--shadow-raised);
+}
+
+.location-sheet:focus {
+  outline: none;
+}
+
+/* On the dark chrome, like the report window's own header: this is the
+   application talking, and it reads the same way at night. */
+.location-sheet__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-3, 12px) 14px;
+  background: var(--bg-chrome);
+}
+
+.location-sheet__title {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-chrome-1);
+}
+
+.location-sheet__done {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-chrome-1);
+  background: transparent;
+  border: 1px solid var(--border-chrome);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+/* The only region that scrolls, and the picker's own frame is the body: its
+   sunken panel would be a drawer inside a window, so it is flattened here. */
+.location-sheet__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-3, 12px);
+  overflow-y: auto;
+}
+
+.location-sheet .location-picker {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}

@@ -1303,3 +1303,119 @@ def test_a_resent_report_keeps_the_provenance_it_was_filed_with(client):
     assert resent.json()["location_source"] == "gps"
     assert resent.json()["location_accuracy_m"] == 9.0
     assert resent.json()["location_fix_age_s"] == 3
+
+
+# --- Who signed it, in which name, and whether they may be contacted (#1563) --
+#
+# The maintainer's additions of 2026-09-17: a hiker chooses, per report, to
+# sign with their trail name or their real name, and ticks (or does not) "You
+# can contact me for more information". Both are about the person rather than
+# the trail, so they follow `reporter_id`'s rule - stored for the moderator
+# and the reporter, withheld from everyone else - and they leave with the
+# account (tests/test_account_deletion.py).
+
+
+def test_create_report_stores_the_name_it_was_signed_with_and_which_name_it_is(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="Jane Doe", signed_name_kind="real", contact_ok=True)
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["signed_name"] == "Jane Doe"
+    assert body["signed_name_kind"] == "real"
+    assert body["contact_ok"] is True
+
+
+def test_a_report_that_says_nothing_about_its_signer_is_unsigned_and_not_contactable(client):
+    """No name, no kind, and `contact_ok` false: an unticked box is not a yes."""
+    user_id = str(uuid.uuid4())
+
+    body = client.post("/reports", json=_VALID_PAYLOAD, headers=auth_headers(user_id)).json()
+
+    assert body["signed_name"] is None
+    assert body["signed_name_kind"] is None
+    assert body["contact_ok"] is False
+
+
+@pytest.mark.parametrize("name", [None, "", "   "])
+def test_a_kind_without_a_name_is_dropped_rather_than_stored(client, name):
+    """`signed_name_kind` says which name `signed_name` is. With no name it is
+    a claim about nothing, and whitespace is not a name."""
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name=name, signed_name_kind="trail")
+
+    body = client.post("/reports", json=payload, headers=auth_headers(user_id)).json()
+
+    assert body["signed_name"] is None
+    assert body["signed_name_kind"] is None
+
+
+def test_a_name_kind_the_server_does_not_know_is_refused(client):
+    user_id = str(uuid.uuid4())
+    payload = dict(_VALID_PAYLOAD, signed_name="Jane Doe", signed_name_kind="nickname")
+
+    response = client.post("/reports", json=payload, headers=auth_headers(user_id))
+
+    assert response.status_code == 422
+    assert "signed_name_kind" in response.text
+
+
+def test_the_public_list_never_carries_a_name_or_the_consent(client, db_session):
+    """A name beside a trail position and a time is the linkability
+    IDENTITY_AND_PRIVACY.md exists to prevent; the anonymous attribution stays
+    `reporter_type` alone. The consent is about the person too."""
+    reporter = make_profile(db_session, Role.hiker)
+    db_session.add(
+        Report(
+            reporter_id=reporter.id,
+            type=ReportType.blowdown,
+            lat=35.6,
+            lon=-83.5,
+            signed_name="Jane Doe",
+            signed_name_kind="real",
+            contact_ok=True,
+            reporter_type=ReporterType.thru,
+            status=ReportStatus.verified,
+            visibility=Visibility.public,
+        )
+    )
+    db_session.commit()
+
+    [listed] = client.get("/reports").json()
+    assert listed["signed_name"] is None
+    assert listed["signed_name_kind"] is None
+    assert listed["contact_ok"] is None
+
+    # A stranger with a token is still a stranger.
+    stranger = make_profile(db_session, Role.hiker)
+    [listed] = client.get("/reports", headers=auth_headers(stranger.id)).json()
+    assert listed["signed_name"] is None
+    assert listed["contact_ok"] is None
+
+
+def test_a_moderator_sees_the_name_and_the_consent(client, db_session):
+    """The whole point of carrying them: the club that follows up knows what
+    to call the hiker and whether they said it may."""
+    reporter = make_profile(db_session, Role.hiker)
+    moderator = make_profile(db_session, Role.club_admin)
+    db_session.add(
+        Report(
+            reporter_id=reporter.id,
+            type=ReportType.blowdown,
+            lat=35.6,
+            lon=-83.5,
+            signed_name="Switchback",
+            signed_name_kind="trail",
+            contact_ok=True,
+            reporter_type=ReporterType.thru,
+            status=ReportStatus.submitted,
+            visibility=Visibility.public,
+        )
+    )
+    db_session.commit()
+
+    [queued] = client.get("/moderation/queue", headers=auth_headers(moderator.id)).json()["reports"]
+
+    assert queued["signed_name"] == "Switchback"
+    assert queued["signed_name_kind"] == "trail"
+    assert queued["contact_ok"] is True

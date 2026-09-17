@@ -256,48 +256,60 @@ test.describe('the reporting doors', () => {
     await expect(window_.getByRole('button', { name: /^Blow down/ })).toBeVisible()
   })
 
-  test('states: with no fix, a kind does not file until the report has a place - and the words file it', async ({
+  test('states: with no fix, a kind does not file until the report has a place - the sheet asks, and the words file it', async ({
     page,
   }) => {
     // THE GAP #1563 CLOSED. A one-tap report from a phone with no fix used to
     // file with no location of any kind - a blowdown a moderator reads as
-    // "no location" and cannot act on. The window now opens on its location
-    // picker (reporting/LocationPicker.tsx), the tile refuses until the
-    // report has a place, and the hiker's own words are the last resort:
-    // sent as prose, never turned into a pin.
+    // "no location" and cannot act on. The tile refuses now and opens the
+    // location sheet (reporting/LocationSheet.tsx) saying why; the hiker's
+    // own words are the last resort, sent as prose and never turned into a
+    // pin.
     //
-    // Measured on the small phone, because the picker makes this frame
-    // taller and the one thing that must survive that is the 911 line.
+    // Measured on the small phone: the sheet is a window of its own, so the
+    // tile frame stays the size #1480 measured, and the 911 line stays where
+    // it was put.
     await page.setViewportSize({ width: 375, height: 667 })
     await openContribute(page)
     const window_ = await openReportWindow(page)
 
     await expect(window_.getByTestId('report-anchor')).toContainText('No location yet')
-    const picker = window_.getByTestId('location-picker')
-    await expect(picker).toBeVisible()
-    // The map row is offered - the shell always has a map - and the words
-    // field, because nothing else can place this report.
-    await expect(picker.getByTestId('location-map')).toBeVisible()
-    await expect(picker.getByTestId('location-words')).toBeVisible()
-    // No fix, no "where you are": a row that cannot do anything is not drawn.
-    await expect(picker.getByTestId('location-fix')).toHaveCount(0)
-    // The 911 line is pinned outside the body, so the taller frame does not
-    // push it below the fold.
+    // Nothing opens by itself: the sheet is modal, and the tiles come first.
+    await expect(page.getByTestId('location-sheet')).toHaveCount(0)
     await expect(window_.getByRole('note')).toBeInViewport({ ratio: 1 })
 
     await window_.getByRole('button', { name: /^Blow down/ }).click()
 
-    // Refused, and said so. Nothing filed: the eyebrow still reads the
-    // before-state and there is no receipt to undo.
-    await expect(window_.getByRole('alert')).toContainText('Say where this is first')
+    // Refused, and said so in a sheet over the window. Nothing filed: the
+    // eyebrow still reads the before-state and there is no receipt to undo.
+    const sheet = page.getByRole('dialog', { name: 'Where is this?' })
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByRole('alert')).toContainText('Say where this is first')
     await expect(window_.getByText('Report · filed')).toHaveCount(0)
     await expect(window_.getByRole('button', { name: /^Undo/ })).toHaveCount(0)
+    // The map row is offered - the shell always has a map - and the words
+    // field, because nothing else can place this report. No fix, no "where
+    // you are": a row that cannot do anything is not drawn.
+    await expect(sheet.getByTestId('location-map')).toBeVisible()
+    await expect(sheet.getByTestId('location-words')).toBeVisible()
+    await expect(sheet.getByTestId('location-fix')).toHaveCount(0)
 
-    await picker.getByTestId('location-words').fill('The ford below the gap')
+    await sheet.getByTestId('location-words').fill('The ford below the gap')
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await expect(sheet).toHaveCount(0)
+    await expect(window_.getByTestId('report-anchor')).toContainText('In your words')
     await window_.getByRole('button', { name: /^Blow down/ }).click()
 
     await expect(window_.getByText('Report · filed')).toBeVisible()
     await expect(window_.getByText(/Filed — blow down where you described/)).toBeVisible()
+    // The receipt asks who signed it and whether they may be contacted,
+    // after the tap rather than before it (reporting/ReporterDetails.tsx).
+    await expect(window_.getByTestId('report-signature')).toContainText(
+      'Signed as not set (trail name)',
+    )
+    await expect(
+      window_.getByRole('checkbox', { name: /you can contact me/i }),
+    ).not.toBeChecked()
   })
 
   test('entrance: the closure door opens the closure form, which is a different form', async ({
@@ -427,20 +439,33 @@ test.describe('the form for the kinds you have to write', () => {
     // With no fix the form says the report has no place yet — it does not
     // quietly send 0,0, which lib/reportLocation.ts calls "a confident,
     // wrong place in the Atlantic" rather than a missing one. Since #1563 the
-    // line is the shared picker's, open under it because nothing has placed
-    // the report: a named place to find, the map, and the words a thanks may
-    // leave empty (a thanks is not a problem, and files without a place).
+    // line is the shared picker's, and Change opens it in a sheet of its
+    // own: a named place to find, the map, and the words a thanks may leave
+    // empty (a thanks is not a problem, and files without a place).
     await expect(page.getByTestId('report-form-location')).toContainText(
       'No location yet',
     )
-    await expect(page.getByTestId('location-picker')).toBeVisible()
-    await expect(page.getByTestId('location-words')).toBeVisible()
+    await expect(page.getByTestId('location-sheet')).toHaveCount(0)
+    await page.getByTestId('report-form-change').click()
+    const sheet = page.getByRole('dialog', { name: 'Where is this?' })
+    await expect(sheet.getByTestId('location-words')).toBeVisible()
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await expect(sheet).toHaveCount(0)
 
     // And the signature falls back to the WEAKEST claim rather than the
     // strongest: "day", not "thru" (lib/reporterIdentity.ts). A form that
     // signed every unset report as a thru-hiker would be putting a claim in
     // a hiker's mouth on the one surface a maintainer reads for credibility.
-    await expect(page.getByText(/^Signed as not set · day$/)).toBeVisible()
+    // No trail name is seeded, and the line says so rather than inventing
+    // one; the choice of name and the contact box sit under it
+    // (reporting/ReporterDetails.tsx).
+    await expect(page.getByTestId('report-signature')).toHaveText(
+      'Signed as not set (trail name) · day',
+    )
+    await expect(page.getByRole('radio', { name: /trail name/i })).toBeChecked()
+    await expect(
+      page.getByRole('checkbox', { name: /you can contact me/i }),
+    ).not.toBeChecked()
   })
 
   test('states: the photo field is here and empty, with no claim attached to it', async ({

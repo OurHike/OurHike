@@ -13,16 +13,23 @@
 //
 // WHERE THE REPORT IS comes from the same control the window and the closure
 // form use (reporting/LocationPicker.tsx, #1563), stated on one line and
-// changeable under it. This form used to hold its own three-state sentence
-// and its own "Where was this?" field; both are the picker's now, so the two
-// surfaces cannot describe one place differently. And a report that nothing
-// can place - no fix, no named place, no marked spot, no words - is refused
-// at Send rather than filed as "no location". A thanks is the exception: it
-// is not a problem, and a thanks with no place is still a complete thanks
+// changeable from it in a sheet of its own (reporting/LocationSheet.tsx).
+// This form used to hold its own three-state sentence and its own "Where was
+// this?" field; both are the picker's now, so the two surfaces cannot
+// describe one place differently. And a report that nothing can place - no
+// fix, no named place, no marked spot, no words - is refused at Send rather
+// than filed as "no location". A thanks is the exception: it is not a
+// problem, and a thanks with no place is still a complete thanks
 // (backend/app/routers/reports.py resolves who it is for from what it has).
+//
+// WHO SIGNS IT is asked above Send (reporting/ReporterDetails.tsx): the trail
+// name, as every report was signed before, or the hiker's real name for this
+// one report, and whether a club may contact them about it. The line that
+// used to state the signature is that block's summary now.
 
 import { useEffect, useRef, useState } from 'react'
 import type { ReportDraft } from '../lib/outbox'
+import { signatureFields, type SignedAs } from '../lib/reporterSignature'
 import {
   hasPlace,
   locationWords,
@@ -33,7 +40,7 @@ import {
 } from '../lib/reportLocation'
 import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
 import type { UnitSystem } from '../lib/units'
-import { LocationPicker } from '../reporting/LocationPicker'
+import { LocationSheet, ReporterDetails } from './deferred'
 import './reporting.css'
 
 export type ReportFormType = ReportDraft['type']
@@ -87,8 +94,13 @@ function photoSummary(ready: readonly { blob: Blob }[]): string {
 
 export interface ReportFormProps {
   type: ReportFormType
-  trailName: string | null
   reporterType: ReportDraft['reporter_type']
+  /** The two names the report can be signed with, from the preferences
+   *  (lib/reporterSignature.ts's `namesOnOffer`) - null where none is set. */
+  names: Record<SignedAs, string | null>
+  /** Keep a real name typed here, so the next report offers it. A
+   *  preference write, made by the shell. */
+  onRealName: (name: string) => void
   /**
    * Where the report is (lib/reportLocation.ts): the card's waypoint when it
    * started from one, the pressed point from the map's plate, or the fix.
@@ -127,8 +139,9 @@ export interface ReportFormProps {
 
 export function ReportForm({
   type,
-  trailName,
   reporterType,
+  names,
+  onRealName,
   location,
   fix,
   places,
@@ -151,13 +164,22 @@ export function ReportForm({
    *  (#1439, D16). Asked for by the picker only in that state, and sent only
    *  then (lib/reportLocation.ts). */
   const [placeWords, setPlaceWords] = useState('')
-  /** Whether the location picker is open. Opens by itself when nothing has
-   *  placed the report yet, because Send is about to refuse until it is
-   *  answered and the words field lives inside it. */
-  const [picking, setPicking] = useState(() => !hasPlace(location, fix))
+  /** Whether the location sheet is up. Only on demand - Change, or a Send
+   *  refused for want of a place - never by itself: the sheet is modal, and
+   *  a thanks needs no place at all. The refusal opens it with the alert. */
+  const [picking, setPicking] = useState(false)
   /** Whether Send was just refused for want of a place - what turns the
    *  picker's opening from an offer into an alert. */
   const [refused, setRefused] = useState(false)
+  /** Which name signs this report and whether the hiker may be contacted
+   *  (#1563). The trail name and an unticked box unless changed, so a hiker
+   *  who never touches the block sends exactly what they sent before. */
+  const [signedAs, setSignedAs] = useState<SignedAs>('trail')
+  const [contactOk, setContactOk] = useState(false)
+  /** The real name as this form knows it: the preference on mount, then
+   *  whatever the field last held when it was left - sent from here rather
+   *  than waited for from the preferences, which sync on their own time. */
+  const [realName, setRealName] = useState(names.real)
 
   // A point kept on the map arrives as a new `location` from the shell, and
   // the picker closes on it as it closes on one of its own rows. Adjusted
@@ -274,6 +296,14 @@ export function ReportForm({
       type,
       reporter_type: reporterType,
       note: note.trim() === '' ? undefined : note.trim(),
+      // Who signed it, as the block above Send has it: both keys or neither
+      // (lib/reporterSignature.ts), and the consent only when given, so a
+      // report nobody touched has the shape every report had before #1563.
+      ...signatureFields({
+        kind: signedAs,
+        name: signedAs === 'real' ? realName : names.trail,
+      }),
+      ...(contactOk ? { contact_ok: true } : {}),
       // The place, as one function spells it for every surface that files
       // (lib/reportLocation.ts): a waypoint's id and coordinates, a marked
       // spot's coordinates, or the fix with its radius and its age as of this
@@ -434,12 +464,13 @@ export function ReportForm({
 
           The line states the place and HOW it is known - a named place at
           its mile, the fix with its radius and age, a spot marked on the
-          map - and "Change" opens the same picker the report window uses:
-          a place nearby, where you are, the map, and words when nothing else
-          can say. The three states describeLocation used to spell are still
-          here, spelled by lib/reportLocation.ts for every surface at once;
-          "mi 0.0" is Springer Mountain and 0,0 is the Atlantic off West
-          Africa, and neither is a stand-in for "we do not know". */}
+          map - and "Change" opens the same picker the report window uses,
+          in a sheet over this form: a place nearby, where you are, the map,
+          and words when nothing else can say. The three states
+          describeLocation used to spell are still here, spelled by
+          lib/reportLocation.ts for every surface at once; "mi 0.0" is
+          Springer Mountain and 0,0 is the Atlantic off West Africa, and
+          neither is a stand-in for "we do not know". */}
       <div className="reporting__field">
         <p className="reporting__location">
           <span className="reporting__meta" data-testid="report-form-location">
@@ -449,49 +480,32 @@ export function ReportForm({
             type="button"
             className="reporting__change"
             data-testid="report-form-change"
-            aria-expanded={picking}
+            aria-haspopup="dialog"
             onClick={() => {
-              setPicking((open) => !open)
+              setPicking(true)
               setRefused(false)
             }}
           >
-            {picking ? 'Done' : 'Change ›'}
+            Change ›
           </button>
         </p>
-        {picking && (
-          <LocationPicker
-            choice={location}
-            fix={fix}
-            places={places}
-            onSearch={onSearchPlaces}
-            units={units}
-            knowsTrail={knowsTrail}
-            onChoose={(choice) => {
-              onChooseLocation(choice)
-              setPicking(false)
-              setRefused(false)
-            }}
-            onPointOnMap={onPointOnMap}
-            // The hiker's words, sent exactly as typed and only in the one
-            // state that asks for them. Never turned into a pin: a typed name
-            // geocoded into coordinates would be a confident wrong dot on
-            // every phone that downloads the report. A moderator places it.
-            words={{
-              value: placeWords,
-              onChange: (value) => {
-                setPlaceWords(value)
-                setRefused(false)
-              },
-            }}
-            needed={refused}
-            now={now}
-          />
-        )}
       </div>
 
-      <p className="reporting__meta">
-        {`Signed as ${trailName ?? 'not set'} · ${reporterType}`}
-      </p>
+      {/* WHO SIGNED IT (#1563) - the whole signature in one sentence, as the
+          static line here used to say it, and the two choices under it. */}
+      <ReporterDetails
+        names={{ trail: names.trail, real: realName }}
+        signedAs={signedAs}
+        onSignedAs={setSignedAs}
+        onRealName={(typed) => {
+          const trimmed = typed.trim()
+          setRealName(trimmed === '' ? null : trimmed)
+          onRealName(typed)
+        }}
+        contactOk={contactOk}
+        onContactOk={setContactOk}
+        reporterType={reporterType}
+      />
 
       {!online && (
         <p className="reporting__queued" role="status">
@@ -517,6 +531,43 @@ export function ReportForm({
           Cancel
         </button>
       </div>
+
+      {/* THE SHEET, over this form, while Change is open or nothing has
+          placed the report yet. Inside the form's own element so it stands
+          aside with the form when the crosshair goes out (#1439). */}
+      {picking && (
+        <LocationSheet
+          choice={location}
+          fix={fix}
+          places={places}
+          onSearch={onSearchPlaces}
+          units={units}
+          knowsTrail={knowsTrail}
+          onChoose={(choice) => {
+            onChooseLocation(choice)
+            setPicking(false)
+            setRefused(false)
+          }}
+          onPointOnMap={onPointOnMap}
+          // The hiker's words, sent exactly as typed and only in the one
+          // state that asks for them. Never turned into a pin: a typed name
+          // geocoded into coordinates would be a confident wrong dot on
+          // every phone that downloads the report. A moderator places it.
+          words={{
+            value: placeWords,
+            onChange: (value) => {
+              setPlaceWords(value)
+              setRefused(false)
+            },
+          }}
+          needed={refused}
+          now={now}
+          onClose={() => {
+            setPicking(false)
+            setRefused(false)
+          }}
+        />
+      )}
     </main>
   )
 }

@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReportForm } from './ReportForm'
+import { preloadScreens } from './deferred'
 import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
 import { AT_THE_FIX, type FixSnapshot } from '../lib/reportLocation'
 
@@ -44,8 +45,9 @@ const { mile: _offCorridor, ...FIX_NO_MILE } = FIX
 
 const PROPS = {
   type: 'blowdown' as const,
-  trailName: 'Switchback',
   reporterType: 'thru' as const,
+  names: { trail: 'Switchback', real: null },
+  onRealName: vi.fn(),
   location: AT_THE_FIX,
   fix: FIX,
   places: [],
@@ -56,6 +58,10 @@ const PROPS = {
   onCancel: vi.fn(),
   now: new Date('2026-07-29T12:00:00Z'),
 }
+
+// The sheet and the reporter block are deferred (screens/deferred.ts);
+// loaded ahead so they render synchronously here, as they do in the shell.
+beforeAll(() => preloadScreens())
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -205,7 +211,64 @@ describe('ReportForm', () => {
   it('shows how the report will be signed', () => {
     render(<ReportForm {...PROPS} />)
 
-    expect(screen.getByText(/Switchback/)).toHaveTextContent(/thru/i)
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Switchback (trail name) · thru',
+    )
+  })
+
+  it('sends neither a name nor a consent unless the hiker changed the block above Send', async () => {
+    // A report nobody touched has the shape every report had before #1563:
+    // the trail name is the server-side identity already, and an unticked
+    // box is a no that needs no key.
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    const sent = onSubmit.mock.calls[0][0]
+    expect(sent.signed_name).toBe('Switchback')
+    expect(sent.signed_name_kind).toBe('trail')
+    expect('contact_ok' in sent).toBe(false)
+  })
+
+  it('sends the real name and the consent when chosen, and keeps the name for next time', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    const onRealName = vi.fn()
+    render(<ReportForm {...PROPS} onSubmit={onSubmit} onRealName={onRealName} />)
+
+    await user.click(screen.getByRole('radio', { name: /real name/i }))
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as not set (real name) · thru',
+    )
+    await user.type(screen.getByTestId('reporter-real-name'), 'Jane Doe')
+    await user.tab()
+    expect(onRealName).toHaveBeenCalledWith('Jane Doe')
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Jane Doe (real name) · thru',
+    )
+
+    await user.click(screen.getByTestId('reporter-contact-ok'))
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        signed_name: 'Jane Doe',
+        signed_name_kind: 'real',
+        contact_ok: true,
+      }),
+    )
+  })
+
+  it('opens the location sheet over the form, and its Done closes it', async () => {
+    const user = userEvent.setup()
+    render(<ReportForm {...PROPS} />)
+    await user.click(screen.getByRole('button', { name: /change/i }))
+    expect(screen.getByTestId('location-sheet')).toHaveTextContent('Where is this?')
+
+    await user.click(screen.getByTestId('location-sheet-done'))
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(screen.queryByTestId('location-picker')).toBeNull()
   })
 
   // #89 disabled this field because there was nowhere to upload to; #234
@@ -509,11 +572,13 @@ describe('ReportForm', () => {
       )
     })
 
-    it('asks for a place in words only when nothing else can say where', () => {
+    it('asks for a place in words only when nothing else can say where', async () => {
       // No fix AND no waypoint behind the report. With either, the question
       // would collect prose nobody needs beside a location the report has.
+      const user = userEvent.setup()
       render(<ReportForm {...PROPS} fix={null} />)
-      expect(screen.getByTestId('location-words')).toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: /change/i }))
+      expect(await screen.findByTestId('location-words')).toBeInTheDocument()
       cleanup()
 
       render(
@@ -538,10 +603,13 @@ describe('ReportForm', () => {
       const onSubmit = vi.fn()
       render(<ReportForm {...PROPS} fix={null} onSubmit={onSubmit} />)
 
+      // The words live in the sheet, which Change opens.
+      await user.click(screen.getByRole('button', { name: /change/i }))
       await user.type(
-        screen.getByTestId('location-words'),
+        await screen.findByTestId('location-words'),
         'The brook crossing north of Fitzgerald Falls',
       )
+      await user.click(screen.getByTestId('location-sheet-done'))
       await user.click(send())
 
       const submitted = onSubmit.mock.calls[0][0]

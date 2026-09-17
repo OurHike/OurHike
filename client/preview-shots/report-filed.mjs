@@ -49,29 +49,39 @@
 // finished until a recipe reaches the screen it changed; this is that recipe,
 // and this paragraph is what re-points the camera at it.
 
-// AND SINCE #1563 THE TAP NEEDS A PLACE. The camera has no fix, so the window
-// opens on its picker and a bare tap on Blow down would be refused - the state
-// report-window.mjs photographs. This drive gives the report the last-resort
-// place, words, before the tap, which is what a hiker with no fix does; the
-// receipt therefore reads "where you described" rather than "here", and that
-// wording is the visible trace of the change in this frame.
+// AND SINCE #1563 THE TAP NEEDS A PLACE. The camera has no fix, so the first
+// tap on Blow down is refused and opens the location sheet - the state
+// report-window-refused.mjs photographs. This drive answers it with the
+// last-resort place, words, closes the sheet and taps again, which is what a
+// hiker with no fix does; the receipt therefore reads "where you described"
+// rather than "here".
+//
+// AND THE RECEIPT ASKS TWO THINGS IT DID NOT (the maintainer's additions of
+// 2026-09-17): which name the report is signed with - the trail name, or a
+// real name typed here and kept for next time - and whether the hiker may be
+// contacted for more. Both sit under the note, after the tap, because under
+// 1a nothing may stand between a hiker and the tile; both are written to the
+// queued report as they change (reporting/ReporterDetails.tsx). The camera
+// has no trail name set, so the summary line says "not set" rather than
+// inventing one.
 
 export const caption =
-  'One tap files it — and the Undo that makes that safe to do (#1133). With no fix the tap needs a place first, here the hiker’s own words (#1563).'
+  'One tap files it — and the Undo that makes that safe to do (#1133). With no fix the tap needs a place first, here the hiker’s own words; the receipt then asks which name signs it and whether a club may follow up (#1563).'
 export const alt =
-  'The report window after tapping Blow down: a green-tinted receipt reading “Filed — blow down where you described” over “It waits in your outbox and sends itself”, with an “Undo · 7s” button counting down beside it; below a rule, an optional note field labelled “Add detail — optional”, a filled “Done” button and an outlined “Note something else”. No Cancel.'
+  'The report window after tapping Blow down: a green-tinted receipt reading “Filed — blow down where you described” over “It waits in your outbox and sends itself”, with an “Undo · 7s” button counting down beside it; below a rule, an optional note field labelled “Add detail — optional”; then a boxed “Signed as” block reading “Signed as not set (trail name) · day” with two radio rows, “Trail name — not set” selected and “Real name — not set, type it below”, a checkbox “You can contact me for more information”, and a hint that only the club moderators who read the report see the name and the answer; then a filled “Done” button and an outlined “Note something else”. No Cancel.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Today' }).click()
   await page.getByRole('button', { name: 'Report a problem' }).click()
   await page.getByRole('dialog', { name: 'What did you find?' }).waitFor()
 
-  // No fix, so the picker is open and the tile would refuse: the words are
-  // the place (#1563). Fixture-shaped prose, nobody's actual report.
-  await page.getByTestId('location-words').fill('The ford below the gap')
-
   // A blow-down, because it is the plainest of the six and the one the
-  // receipt's own copy uses as its example.
+  // receipt's own copy uses as its example. No fix, so this first tap is
+  // refused and opens the location sheet; the words are the place (#1563).
+  // Fixture-shaped prose, nobody's actual report.
+  await page.getByTestId('report-tile-blowdown').click()
+  await page.getByTestId('location-words').fill('The ford below the gap')
+  await page.getByTestId('location-sheet-done').click()
   await page.getByTestId('report-tile-blowdown').click()
 
   // The receipt, waited on rather than slept for: filing is a write to

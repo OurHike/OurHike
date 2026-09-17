@@ -50,13 +50,13 @@ import pytest
 
 from app.core.photos import MAX_PHOTO_BYTES
 from app.models.app_failure import Harm
-from app.models.report import LocationSource, ReporterType, ReportStatus, ReportType
+from app.models.report import LocationSource, ReporterType, ReportStatus, ReportType, SignedNameKind
 from app.schemas.app_failure import (
     SHORT_FIELD_MAX_CHARS,
     WHAT_HAPPENED_MAX_CHARS,
     AppFailureCreate,
 )
-from app.schemas.report import ReportCreate
+from app.schemas.report import SIGNED_NAME_MAX_CHARS, ReportCreate
 
 CLIENT_SRC = Path(__file__).resolve().parents[2] / "client" / "src"
 OUTBOX = CLIENT_SRC / "lib" / "outbox.ts"
@@ -273,6 +273,25 @@ def test_both_halves_spell_the_location_sources_the_same_way():
         f"  only in the client: {sorted(client - server)}\n"
         f"  only in the server: {sorted(server - client)}"
     )
+
+
+def test_both_halves_spell_the_signed_name_kinds_the_same_way():
+    """`trail`, `real` - written in `ReportDraft` and in `SignedNameKind` (#1563)."""
+    client = _interface_field_union(_read(OUTBOX), "ReportDraft", "signed_name_kind")
+    server = {member.value for member in SignedNameKind}
+
+    assert client == server, (
+        "client/src/lib/outbox.ts and app/models/report.py disagree about "
+        "which names a report can be signed with.\n"
+        f"  only in the client: {sorted(client - server)}\n"
+        f"  only in the server: {sorted(server - client)}"
+    )
+
+
+def test_the_client_caps_a_signed_name_where_the_server_refuses_it():
+    """The client stops the typing at the figure the server would 422 at -
+    and a 422 here is a report the outbox marks failed and stops retrying."""
+    assert _number_constant(_read(OUTBOX), "SIGNED_NAME_MAX_CHARS") == SIGNED_NAME_MAX_CHARS
 
 
 # --- Guarding the guards ---------------------------------------------------

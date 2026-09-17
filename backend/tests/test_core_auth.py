@@ -314,3 +314,16 @@ def test_the_optional_dependency_reads_a_jwks_outage_as_anonymous(db_session, mo
     monkeypatch.setattr(auth_module, "signing_key_for", unreachable)
 
     assert get_current_user_optional(credentials=_credentials(make_es256_token("hiker-es256")), db=db_session) is None
+
+
+def test_a_token_with_no_expiry_is_refused(db_session):
+    # PyJWT checks an `exp` it finds and says nothing about one it does not,
+    # so this token used to verify for ever (#1545). Every token Supabase
+    # issues carries the claim; one without it is not Supabase's.
+    claims = {"sub": "hiker-no-expiry", "role": "authenticated", "aud": settings.supabase_jwt_audience}
+    token = jwt.encode(claims, settings.supabase_jwt_secret, algorithm="HS256")
+
+    with pytest.raises(HTTPException) as raised:
+        get_current_user(credentials=_credentials(token), db=db_session)
+
+    assert raised.value.status_code == 401

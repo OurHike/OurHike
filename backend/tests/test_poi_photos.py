@@ -329,6 +329,21 @@ def test_no_window_means_the_credit_shows(client, db_session, r2, no_cooling_off
     assert _gallery(client)[0]["attribution"] == "Sawyer"
 
 
+def test_a_stored_true_is_not_a_one_day_window(client, db_session, r2, no_cooling_off):
+    # `isinstance(True, int)` holds, so a bool in the blob used to read as one
+    # day (#1545). A bool is not a count of days; it gets the unset answer.
+    hiker = _hiker(db_session)
+    db_session.add(UserPreferences(profile_id=hiker.id, data={"anonymity_window_days": True}))
+    db_session.commit()
+
+    _share(client, hiker)
+    _upload(client, hiker)
+
+    assert _gallery(client)[0]["attribution"] == "Sawyer"
+    row = db_session.query(PoiPhoto).filter_by(poi_id=_POI, contributor_id=hiker.id).one()
+    assert row.masked_until is None
+
+
 def test_an_absurd_window_is_clamped_rather_than_crashing_the_share(client, db_session, r2, no_cooling_off):
     """A stored `anonymity_window_days` of 10**9 raised OverflowError out of
     `timedelta` and answered the share with a 500 on the unfixed tree (the

@@ -200,3 +200,61 @@ def test_the_models_match_the_migrations(migration_engine):
     # this test wants, so it is left to propagate rather than caught and
     # re-raised as something less informative.
     command.check(_alembic_config())
+
+
+def test_the_flag_constraint_revision_collapses_duplicates_keeping_the_earliest(migration_engine):
+    """b1e4c7a9d2f6 (#1545) cannot add `uq_note_flags_note_flagger` over rows
+    that already violate it, so it deletes the later of each duplicate pair
+    first. Staged by upgrading to the revision before it, planting a pair
+    and a bystander, and upgrading the rest of the way - the operation a
+    deploy performs on a database that has been taking flags for weeks.
+
+    The downgrade is exercised too, because tests/test_migration_expand_contract.py
+    pairs columns and tables and knows nothing about constraints: a
+    `drop_constraint` forgotten here would roll back cleanly to base and
+    leave the constraint behind on a one-revision rollback.
+    """
+    config = _alembic_config()
+    command.upgrade(config, "c9d1a7f48b62")
+    with migration_engine.begin() as connection:
+        connection.execute(
+            sqlalchemy.text(
+                "insert into profiles (id, role, created_at) values ('flagger', 'hiker', now()), ('other', 'hiker', now())"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into field_notes (id, reporter_id, observed_at, posted_at, reporter_type) "
+                "values ('note', 'other', now(), now(), 'thru')"
+            )
+        )
+        connection.execute(
+            sqlalchemy.text(
+                "insert into note_flags (id, note_id, flagged_by, reason, created_at) values "
+                "('later', 'note', 'flagger', 'second tap', now()), "
+                "('earlier', 'note', 'flagger', 'first tap', now() - interval '1 minute'), "
+                "('bystander', 'note', 'other', null, now())"
+            )
+        )
+
+    command.upgrade(config, "head")
+
+    with migration_engine.connect() as connection:
+        kept = connection.execute(sqlalchemy.text("select id from note_flags order by id")).scalars().all()
+        constraints = (
+            connection.execute(sqlalchemy.text("select conname from pg_constraint where conname = 'uq_note_flags_note_flagger'"))
+            .scalars()
+            .all()
+        )
+    assert kept == ["bystander", "earlier"], "the first tap is the one that put the note in the queue"
+    assert constraints == ["uq_note_flags_note_flagger"]
+
+    command.downgrade(config, "c9d1a7f48b62")
+
+    with migration_engine.connect() as connection:
+        constraints = (
+            connection.execute(sqlalchemy.text("select conname from pg_constraint where conname = 'uq_note_flags_note_flagger'"))
+            .scalars()
+            .all()
+        )
+    assert constraints == []

@@ -36,7 +36,7 @@ column here follows.
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, Text
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, Text, UniqueConstraint
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -203,9 +203,18 @@ class NoteFlag(Base):
     only what is flagged (FIELD_NOTES.md §5), so this table is the queue's
     source rather than an audit sidecar. A flag never hides anything by
     itself; a person does.
+
+    ONE ROW PER ACCOUNT PER NOTE, and the database says so (#1545). The
+    router has always promised it and used to enforce it with a SELECT before
+    the INSERT alone, which two concurrent flags from one account both pass -
+    and the queue sorts by how many rows are here, so the promise that it
+    counts "people, not taps" rested on nothing. Revision b1e4c7a9d2f6 adds
+    the constraint; `routers/field_notes.py` answers the loser of the race
+    with the same 200 it answers a plain second tap.
     """
 
     __tablename__ = "note_flags"
+    __table_args__ = (UniqueConstraint("note_id", "flagged_by", name="uq_note_flags_note_flagger"),)
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
 

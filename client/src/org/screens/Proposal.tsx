@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { PageHeader } from '../components'
 import { orgApi, type Proposal as ProposalView } from '../orgApi'
+import { DEMO_PROPOSAL, DEMO_PROPOSAL_TOKEN } from '../demoOrg'
 
 export interface ProposalProps {
   readonly token: string
@@ -52,6 +53,12 @@ export function Proposal({ token, refusing }: ProposalProps) {
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
+    // Served from a file, like the console's demo org and for the same reason
+    // (#600). Without it this screen photographs as "that link has expired".
+    if (token === DEMO_PROPOSAL_TOKEN) {
+      setProposal(DEMO_PROPOSAL)
+      return
+    }
     const controller = new AbortController()
     orgApi
       .proposal(token, controller.signal)
@@ -67,6 +74,13 @@ export function Proposal({ token, refusing }: ProposalProps) {
       setProblem(null)
       setSending(true)
       try {
+        if (token === DEMO_PROPOSAL_TOKEN) {
+          // The demo answers itself. A button that 404s is worse than one that
+          // is honestly a demonstration - and a reviewer clicking through it
+          // is looking at the states, not at the endpoint.
+          setProposal({ ...DEMO_PROPOSAL, state: approve ? 'accepted' : 'declined' })
+          return
+        }
         setProposal(
           await orgApi.proposalDecision(token, {
             approve,
@@ -84,7 +98,7 @@ export function Proposal({ token, refusing }: ProposalProps) {
 
   if (gone) {
     return (
-      <div className="org-screen">
+      <div className="org org__body org-solo">
         <PageHeader
           eyebrow="THIS LINK"
           title="That link has expired, or is not one of ours"
@@ -95,12 +109,12 @@ export function Proposal({ token, refusing }: ProposalProps) {
   }
 
   if (proposal === null) {
-    return <div className="org-screen">Opening…</div>
+    return <div className="org org__body org-solo">Opening…</div>
   }
 
   if (proposal.state === 'declined') {
     return (
-      <div className="org-screen">
+      <div className="org org__body org-solo">
         <PageHeader
           eyebrow="ANSWERED"
           title="Nothing of yours is going anywhere"
@@ -112,7 +126,7 @@ export function Proposal({ token, refusing }: ProposalProps) {
 
   if (proposal.state === 'accepted') {
     return (
-      <div className="org-screen">
+      <div className="org org__body org-solo">
         <PageHeader
           eyebrow="ACCEPTED"
           title={`${proposal.org_name}'s trails are yours to run`}
@@ -123,7 +137,7 @@ export function Proposal({ token, refusing }: ProposalProps) {
   }
 
   return (
-    <div className="org-screen">
+    <div className="org org__body org-solo">
       <PageHeader
         eyebrow="FOR THE CLUBS WHO CUT THE TREAD"
         title="A hiker wants to put your trails on the map."
@@ -166,7 +180,7 @@ export function Proposal({ token, refusing }: ProposalProps) {
       <div className="org-card org-stack">
         <span className="org-eyebrow">WHAT WE FOUND ON YOUR OWN PAGES</span>
         {proposal.sources.length === 0 ? (
-          <p className="org-help">
+          <p className="org-panel__note">
             Nothing we could re-read. Whoever proposed this described your trails in their
             own words.
           </p>
@@ -179,7 +193,9 @@ export function Proposal({ token, refusing }: ProposalProps) {
                   {VERDICT_WORDS[source.verdict] ?? source.verdict}
                 </span>
                 <p className="org-mono">{source.url}</p>
-                {source.detail ? <p className="org-help">{source.detail}</p> : null}
+                {source.detail ? (
+                  <p className="org-panel__note">{source.detail}</p>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -191,16 +207,21 @@ export function Proposal({ token, refusing }: ProposalProps) {
           WHO WE ASKED · {proposal.approvals_so_far} OF {proposal.approvals_required} HAVE
           AGREED
         </span>
-        <p className="org-help">
+        <p className="org-panel__note">
           These addresses are published on your own site. If the wrong people are listed,
           declining is the right answer — we will not go looking for others.
         </p>
         <ul className="org-stack">
           {proposal.contacts.map((contact) => (
             <li key={contact.email} className="org-panel">
-              <strong>{contact.name ?? contact.role ?? 'No name given'}</strong>
+              {/* One element, because `.org-panel` is a column flex and two
+                  siblings put the role on its own line under the name. */}
+              <p>
+                <strong>{contact.name ?? contact.role ?? 'No name given'}</strong>
+                {contact.name && contact.role ? ` · ${contact.role}` : null}
+              </p>
               <p className="org-mono">{contact.email}</p>
-              <p className="org-help">
+              <p className="org-panel__note">
                 From {contact.source_page}
                 {contact.responded ? ' · has answered' : ''}
               </p>
@@ -224,7 +245,7 @@ export function Proposal({ token, refusing }: ProposalProps) {
         ) : null}
         <div className="org-inline">
           <button
-            className="btn"
+            className="org-btn"
             type="button"
             disabled={sending}
             onClick={() => decide(true)}
@@ -232,7 +253,7 @@ export function Proposal({ token, refusing }: ProposalProps) {
             This is ours — go ahead
           </button>
           <button
-            className="btn btn--ghost"
+            className="org-btn org-btn--ghost"
             type="button"
             disabled={sending}
             onClick={() => decide(false)}
@@ -240,10 +261,10 @@ export function Proposal({ token, refusing }: ProposalProps) {
             No thank you
           </button>
         </div>
-        <p className="org-help">
+        <p className="org-panel__note">
           Would rather nobody proposed your data at all?{' '}
           <button
-            className="org-link"
+            className="org-link org-link--inline"
             type="button"
             disabled={sending}
             onClick={() => decide(false, true)}

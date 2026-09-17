@@ -253,3 +253,59 @@ describe('the club answers', () => {
     expect(decide).not.toHaveBeenCalled()
   })
 })
+
+describe('the demo path, which is what the preview photographs', () => {
+  // THESE ARE THE SHOT RECIPES' SELECTORS, asserted here rather than
+  // discovered in CI. `preview-shots/org-nominate-review.mjs` waits on the
+  // text "WHO AT THE CLUB WE WOULD ASK" and clicks a button matching /Write to
+  // 3 people/; `org-proposal-refusal.mjs` waits on /No thank you/ and scrolls
+  // to /never to ask again/. A recipe whose wait never resolves fails the
+  // preview job with a timeout and no useful message, twenty minutes after
+  // the push.
+  it('the nominate screen reaches the review without a backend', async () => {
+    const person = userEvent.setup()
+    render(<Nominate website="https://demo.ourhike.org" onLeave={vi.fn()} />)
+    await person.click(screen.getByRole('button', { name: /read their site/i }))
+    expect(await screen.findByText('WHO AT THE CLUB WE WOULD ASK')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Write to 3 people at Blue Ridge Footpath Society/ }),
+    ).toBeInTheDocument()
+  })
+
+  it('the demo shows a role nobody published a name against', async () => {
+    // The design's own example, and the case worth photographing: absent is
+    // not an empty string and not a guess.
+    const person = userEvent.setup()
+    render(<Nominate website="https://demo.ourhike.org" onLeave={vi.fn()} />)
+    await person.click(screen.getByRole('button', { name: /read their site/i }))
+    expect(await screen.findByText('Board president')).toBeInTheDocument()
+  })
+
+  it('the demo reading never asks the server for anything', async () => {
+    const challenge = vi.spyOn(orgApi, 'nominateChallenge')
+    const read = vi.spyOn(orgApi, 'nominateRead')
+    const person = userEvent.setup()
+    render(<Nominate website="https://demo.ourhike.org" onLeave={vi.fn()} />)
+    await person.click(screen.getByRole('button', { name: /read their site/i }))
+    await screen.findByText('WHO AT THE CLUB WE WOULD ASK')
+    expect(challenge).not.toHaveBeenCalled()
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('the proposal screen opens on the demo token', async () => {
+    const fetched = vi.spyOn(orgApi, 'proposal')
+    render(<Proposal token="demo" />)
+    expect(await screen.findByRole('button', { name: /No thank you/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /never to ask again/ })).toBeInTheDocument()
+    expect(fetched).not.toHaveBeenCalled()
+  })
+
+  it('the demo proposal answers itself rather than 404ing', async () => {
+    const decide = vi.spyOn(orgApi, 'proposalDecision')
+    const person = userEvent.setup()
+    render(<Proposal token="demo" />)
+    await person.click(await screen.findByRole('button', { name: /No thank you/ }))
+    expect(await screen.findByText(/Nothing of yours is going anywhere/i)).toBeInTheDocument()
+    expect(decide).not.toHaveBeenCalled()
+  })
+})

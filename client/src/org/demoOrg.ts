@@ -626,3 +626,113 @@ export const DEMO_COVERAGE: Coverage = {
 export function isDemoOrg(slug: string): boolean {
   return slug === DEMO_SLUG
 }
+
+// ---------------------------------------------------------------------------
+// THE NOMINATE FLOW'S DEMO, on the same argument as everything above it: a
+// reviewer, a maintainer, and the preview's camera all need to see these two
+// screens, and #600 leaves the production backend unbuilt. Without this the
+// nominate screen photographs as an empty field and the club's proposal screen
+// photographs as "that link has expired", neither of which shows anybody what
+// was built.
+//
+// IT IS A DIFFERENT ORGANIZATION FROM THE ONE ABOVE, deliberately. Central Park
+// Throughikers is an org that has signed itself up and runs its own console;
+// this is a club somebody else has offered, which has never heard of us. Using
+// one fixture for both would put the demo console and the demo proposal in
+// disagreement about what state that organization is in.
+
+/** The address that makes the nominate screen read from this file. */
+export const DEMO_NOMINATION_SITE = 'https://demo.ourhike.org'
+
+/** The token that makes the club's proposal screen read from this file. */
+export const DEMO_PROPOSAL_TOKEN = 'demo'
+
+export function isDemoNomination(website: string): boolean {
+  return website.trim().toLowerCase().replace(/\/+$/, '') === DEMO_NOMINATION_SITE
+}
+
+/** What a reading of a club's public pages looks like when it went well.
+ *
+ *  Every address and URL in here is on `demo.ourhike.org`, which is ours - the
+ *  screens this fills are photographed on every pull request that touches
+ *  them, and a fixture naming a real club's real volunteers would publish
+ *  their addresses in a picture, on a schedule, forever. `.claude/skills/
+ *  pr-screenshot/SKILL.md` lists somebody else's data as one of the four
+ *  things that must never appear in a shot. */
+export const DEMO_READING = {
+  website: DEMO_NOMINATION_SITE,
+  read_at_all: true,
+  pages_read: 4,
+  org_name: 'Blue Ridge Footpath Society',
+  // NO DISTANCE IN HERE, and `src/test/unitDisplay.test.ts` is why: the first
+  // version read "Maintains 38 miles of footpath", which a hiker who chose
+  // kilometres would still read as miles. See `NominateReading.summary` in
+  // orgApi.ts for what that means for the LIVE field, which is a model's own
+  // prose and not ours to rewrite.
+  summary:
+    'A volunteer trail club. Maintains a footpath across three counties and publishes its sections as an ArcGIS layer.',
+  sources: [
+    {
+      label: 'ArcGIS FeatureServer',
+      url: 'https://demo.ourhike.org/gis/BRFS_Trails/FeatureServer/0',
+      verdict: 'usable' as const,
+      detail: '214 line features · BLZ_COLOR field present · updated March 2026',
+    },
+    {
+      label: 'Closures feed',
+      url: 'https://demo.ourhike.org/alerts.json',
+      verdict: 'closures' as const,
+      detail: 'Live JSON — we could read this hourly once they approve',
+    },
+    {
+      label: 'Four PDF trail maps',
+      url: 'https://demo.ourhike.org/trail-maps',
+      verdict: 'not_accepted' as const,
+      detail:
+        'We do not take these — a PDF cannot be re-read, so it is stale the day it is uploaded. Ask them for the layer behind it.',
+    },
+  ],
+  contacts: [
+    {
+      name: 'Dale Whitford',
+      role: 'Volunteer coordinator',
+      email: 'volunteers@demo.ourhike.org',
+      source_page: 'https://demo.ourhike.org/get-involved',
+    },
+    {
+      name: 'Priya Raghavan',
+      role: 'GIS and trail data',
+      email: 'maps@demo.ourhike.org',
+      source_page: 'https://demo.ourhike.org/trail-maps',
+    },
+    {
+      // The design's own example of the case worth showing: a role nobody
+      // published a name against. Absent is not an empty string and not a
+      // guess, and the screen renders the role instead.
+      name: null,
+      role: 'Board president',
+      email: 'president@demo.ourhike.org',
+      source_page: 'https://demo.ourhike.org/contact',
+    },
+  ],
+  membership_url: 'https://demo.ourhike.org/join',
+  donation_url: 'https://demo.ourhike.org/support',
+  licence_note: 'Nothing restricting use — published publicly, no terms attached.',
+  tokens_used: 4820,
+}
+
+/** What the club sees when it opens the link we mailed. */
+export const DEMO_PROPOSAL = {
+  org_name: DEMO_READING.org_name,
+  website: DEMO_NOMINATION_SITE,
+  proposed_by_display: 'A hiker on OurHike',
+  proposed_at: '2026-09-15T14:02:00Z',
+  sources: DEMO_READING.sources,
+  contacts: DEMO_READING.contacts.map((contact, at) => ({
+    ...contact,
+    responded: at === 0,
+  })),
+  approvals_required: 3,
+  approvals_so_far: 1,
+  state: 'emailed' as const,
+}

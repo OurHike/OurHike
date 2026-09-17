@@ -561,6 +561,18 @@
   text-decoration: underline;
 }
 
+/* A LINK SITTING INSIDE A PARAGRAPH NEEDS TO LOOK LIKE ONE. `.org-link`
+   underlines on hover only, which reads fine in a table cell where the
+   column already says the thing is a control, and does not read at all in
+   running text - measured by looking at a rendered frame of the club's
+   proposal screen, where "Tell us never to ask again" was indistinguishable
+   from the sentence around it. That is the most consequential control on
+   that page. */
+.org-link--inline {
+  text-decoration: underline;
+  font-weight: 600;
+}
+
 /* ---------- Status pills ---------- */
 
 .org-pill {
@@ -973,4 +985,18 @@
   display: flex;
   gap: 24px;
   flex-wrap: wrap;
+}
+
+/* ---------- A screen with no console around it ---------- */
+
+/* THE TWO NOMINATE SCREENS ARE NOT THE CONSOLE, so they do not get the rail
+   the `.org` grid lays out for one - see `ConsoleRoute` in lib/orgRoute.ts for
+   why they are a different kind of route. `.org` still carries the type, the
+   colours and the page background every `org-` class below is written
+   against; this collapses its two-column grid to one and stops the content
+   running the full width of a desktop, which is what a reading task needs. */
+.org-solo {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 860px;
+  margin: 0 auto;
 }

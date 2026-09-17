@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { PageHeader } from '../components'
 import { solve } from '../../lib/proofOfWork'
+import { DEMO_READING, isDemoNomination } from '../demoOrg'
 import {
   orgApi,
   type KeptContact,
@@ -83,6 +84,19 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
     const controller = new AbortController()
     cancel.current = controller
     try {
+      // THE DEMO READS FROM A FILE AND SAYS SO, the same way the console's
+      // demo org does. #600 leaves the production backend unbuilt, so without
+      // this the screen a reviewer opens is an empty field and the preview's
+      // camera photographs nothing that was built.
+      if (isDemoNomination(website)) {
+        setStage('reading')
+        setReading(DEMO_READING)
+        setSources(DEMO_READING.sources.map((item) => ({ item, keep: true })))
+        setContacts(DEMO_READING.contacts.map((item) => ({ item, keep: true })))
+        setOrgName(DEMO_READING.org_name)
+        setStage('reviewing')
+        return
+      }
       setStage('working')
       const challenge = await orgApi.nominateChallenge()
       const solution = await solve(challenge, {
@@ -109,6 +123,10 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
     setProblem(null)
     setStage('sending')
     try {
+      if (isDemoNomination(website)) {
+        setStage('done')
+        return
+      }
       await orgApi.nominateSubmit({
         website,
         org_name: orgName.trim(),
@@ -129,7 +147,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
 
   if (stage === 'done') {
     return (
-      <div className="org-screen">
+      <div className="org org__body org-solo">
         <PageHeader
           eyebrow="THANK YOU"
           title="That is with them now"
@@ -145,7 +163,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
             You will not be told who at the club read this or what they decided
             individually. That is theirs.
           </p>
-          <button className="btn" type="button" onClick={onLeave}>
+          <button className="org-btn" type="button" onClick={onLeave}>
             Back to the map
           </button>
         </div>
@@ -154,7 +172,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
   }
 
   return (
-    <div className="org-screen">
+    <div className="org org__body org-solo">
       <PageHeader
         eyebrow="ANY SIGNED-IN HIKER CAN DO THIS"
         title="Put a club on the map for them"
@@ -165,7 +183,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
         <label className="org-field">
           <span className="org-field__label">Their website</span>
           <input
-            className="org-field__input"
+            className="org-input"
             type="url"
             inputMode="url"
             value={website}
@@ -176,14 +194,14 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
         </label>
 
         {stage === 'working' ? (
-          <p className="org-help" role="status">
+          <p className="org-panel__note" role="status">
             Your browser is doing a few seconds of arithmetic, which is what stops this
             being used a thousand times an hour by somebody who is not you.
             {attempts > 0 ? ` ${attempts.toLocaleString()} tries so far.` : ''}
           </p>
         ) : null}
         {stage === 'reading' ? (
-          <p className="org-help" role="status">
+          <p className="org-panel__note" role="status">
             Reading their published pages…
           </p>
         ) : null}
@@ -194,7 +212,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
         ) : null}
 
         <button
-          className="btn"
+          className="org-btn"
           type="button"
           onClick={read}
           disabled={!website.trim() || stage === 'working' || stage === 'reading'}
@@ -223,7 +241,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
               {reading.pages_read === 1 ? 'PAGE' : 'PAGES'} OF THEIR SITE
             </span>
             {reading.summary ? <p>{reading.summary}</p> : null}
-            <p className="org-help">
+            <p className="org-panel__note">
               <strong>Read, not verified.</strong> Nobody at the club has been contacted
               yet and nothing here is a commitment — yours or theirs. Everything below
               came off a page we opened; drop anything that is wrong.
@@ -232,7 +250,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
             <label className="org-field">
               <span className="org-field__label">Their name</span>
               <input
-                className="org-field__input"
+                className="org-input"
                 value={orgName}
                 onChange={(event) => setOrgName(event.target.value)}
               />
@@ -240,7 +258,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
             <label className="org-field">
               <span className="org-field__label">Where they are (optional)</span>
               <input
-                className="org-field__input"
+                className="org-input"
                 value={region}
                 placeholder="Asheville, NC"
                 onChange={(event) => setRegion(event.target.value)}
@@ -251,7 +269,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
           <div className="org-card org-stack">
             <span className="org-eyebrow">WHERE THEIR DATA LIVES</span>
             {sources.length === 0 ? (
-              <p className="org-help">
+              <p className="org-panel__note">
                 We did not find anything we could re-read on the pages we opened. That
                 happens — plenty of clubs publish a PDF and nothing else.
               </p>
@@ -280,7 +298,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
                     </label>
                     <p className="org-mono">{row.item.url}</p>
                     {row.item.detail ? (
-                      <p className="org-help">{row.item.detail}</p>
+                      <p className="org-panel__note">{row.item.detail}</p>
                     ) : null}
                   </li>
                 ))}
@@ -290,7 +308,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
 
           <div className="org-card org-stack">
             <span className="org-eyebrow">WHO AT THE CLUB WE WOULD ASK</span>
-            <p className="org-help">
+            <p className="org-panel__note">
               {/* THE SENTENCE THAT MAKES THE REVIEW REAL. Every address here was
                   published by the club on the page named beneath it, and every
                   one is a real person's inbox. Dropping one here means it is
@@ -328,7 +346,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
                       </span>
                     </label>
                     <p className="org-mono">{row.item.email}</p>
-                    <p className="org-help">Listed on {row.item.source_page}</p>
+                    <p className="org-panel__note">Listed on {row.item.source_page}</p>
                   </li>
                 ))}
               </ul>
@@ -348,7 +366,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
               </p>
             ) : null}
             <button
-              className="btn"
+              className="org-btn"
               type="button"
               onClick={submit}
               disabled={keeping.length === 0 || !orgName.trim() || stage === 'sending'}
@@ -357,7 +375,7 @@ export function Nominate({ website: carried, onLeave }: NominateProps) {
                 ? 'Sending…'
                 : `Write to ${keeping.length} ${keeping.length === 1 ? 'person' : 'people'} at ${orgName || 'this club'}`}
             </button>
-            <button className="btn btn--ghost" type="button" onClick={onLeave}>
+            <button className="org-btn org-btn--ghost" type="button" onClick={onLeave}>
               Leave this and go back
             </button>
           </div>

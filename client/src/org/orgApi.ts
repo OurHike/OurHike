@@ -331,6 +331,16 @@ export interface NominateReading {
   read_at_all: boolean
   pages_read: number
   org_name: string | null
+  /** The reading's own sentence about what it read.
+   *
+   *  **IT MAY CARRY UNITS WE DO NOT CONVERT**, and that is a deliberate
+   *  exception to the rule `src/test/unitDisplay.test.ts` enforces. A model
+   *  summarising a trail club's website will write "38 miles of footpath",
+   *  and a hiker who chose kilometres reads it as written. Rewriting it would
+   *  be worse: this is a description of somebody else's page, shown under a
+   *  heading saying so, and a converted number in it would be us editing what
+   *  we claim to have read. Every figure the APP owns - miles maintained,
+   *  section lengths - goes through lib/units.ts as usual. */
   summary: string | null
   sources: ProposedSource[]
   contacts: ProposedContact[]

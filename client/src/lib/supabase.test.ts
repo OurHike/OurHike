@@ -20,6 +20,13 @@ describe('parseProviders', () => {
     // out differently, and the difference would be a comma in an env var.
     expect(parseProviders('email,google')).toEqual(['google', 'email'])
     expect(parseProviders('apple,email,google')).toEqual(['google', 'apple', 'email'])
+    // GitHub sits with the providers that leave the app, before email, which
+    // is the one that needs a screen (#1572).
+    expect(parseProviders('email,github,google')).toEqual(['google', 'github', 'email'])
+  })
+
+  it('knows github, the set #1572 switches the deployed build to', () => {
+    expect(parseProviders('google,github,email')).toEqual(['google', 'github', 'email'])
   })
 
   it('ignores whitespace and casing, which a settings field will contain', () => {

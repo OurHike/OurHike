@@ -3,9 +3,9 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { SignInPrompt } from './SignInPrompt'
 
-// WIREFRAMES.md §6: Google / Apple / email, plus "a green callout [that]
-// states that reading the map — water, shelters, closures, warnings — never
-// needs an account."
+// WIREFRAMES.md §6: Google / Apple / email - and GitHub since #1572 - plus
+// "a green callout [that] states that reading the map — water, shelters,
+// closures, warnings — never needs an account."
 //
 // The callout is not reassurance decoration. This is the first and only time
 // OurHike asks anyone to sign in, and the honest thing to say at that moment
@@ -27,10 +27,19 @@ afterEach(() => {
 })
 
 describe('SignInPrompt', () => {
-  it.each([/google/i, /apple/i, /email/i])('offers %s', (provider) => {
+  it.each([/google/i, /apple/i, /github/i, /email/i])('offers %s', (provider) => {
     render(<SignInPrompt {...PROPS} />)
 
     expect(screen.getByRole('button', { name: provider })).toBeInTheDocument()
+  })
+
+  it('labels GitHub "Continue with GitHub" and reports it as github, the name Supabase keys on', async () => {
+    const user = userEvent.setup()
+    render(<SignInPrompt {...PROPS} />)
+
+    await user.click(screen.getByRole('button', { name: 'Continue with GitHub' }))
+
+    expect(PROPS.onSignIn).toHaveBeenCalledWith('github')
   })
 
   it('reports which provider was chosen', async () => {
@@ -102,6 +111,36 @@ describe('the providers a build can actually complete', () => {
       .filter((text) => text?.startsWith('Continue'))
 
     expect(labels).toEqual(['Continue with email', 'Continue with Google'])
+  })
+
+  it('offline, holds every provider that leaves the app - GitHub with Google - and names them', () => {
+    // #315: Google, Apple and GitHub are a full off-origin navigation, so
+    // offline they take the hiker out of the app rather than merely failing.
+    // Email is a fetch that fails inside the app, so it stays enabled.
+    render(
+      <SignInPrompt
+        {...PROPS}
+        providers={['google', 'github', 'email']}
+        online={false}
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Continue with GitHub' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Continue with email' })).toBeEnabled()
+    const notes = screen.getAllByRole('note').map((note) => note.textContent)
+    expect(notes.some((text) => /Google and GitHub need signal/.test(text ?? ''))).toBe(
+      true,
+    )
+    expect(notes.some((text) => /Email works from here/.test(text ?? ''))).toBe(true)
+  })
+
+  it('offline with one provider held, says "needs signal" in the singular and does not promise email', () => {
+    render(<SignInPrompt {...PROPS} providers={['google']} online={false} />)
+
+    const notes = screen.getAllByRole('note').map((note) => note.textContent ?? '')
+    expect(notes.some((text) => /Google needs signal/.test(text))).toBe(true)
+    expect(notes.some((text) => /Email works from here/.test(text))).toBe(false)
   })
 
   it('still lets someone back out when no provider is configured at all', () => {

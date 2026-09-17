@@ -23,10 +23,13 @@
 // the failure mode of being wrong is a vaguer message rather than a
 // confidently wrong one.
 //
-// `@unvalidated`: these patterns come from the strings quoted in #315's
-// audit, not from a survey of what supabase-js can emit. What would settle
-// it is a real sign-in failing in each of these ways against the live
-// project, which needs #875's deployed app.
+// `@unvalidated`: the first two patterns come from the strings quoted in
+// #315's audit; the code-path ones below come from Supabase's own docs and
+// GoTrue's error strings ("Token has expired or is invalid", "Email address
+// not authorized", "Error sending magic link email"), not from a failure
+// observed against this project. What would settle it is a real sign-in
+// failing in each of these ways against the live project, which needs
+// #1572's dashboard steps done.
 
 /** The general case, and a true sentence about every failure this maps. */
 const UNCLEAR = 'Sign-in did not go through. Nothing was lost — you can try again.'
@@ -50,14 +53,25 @@ export function signInMessage(raw: string): string {
     // and "for security purposes" reads as an accusation about them.
     return 'That was just sent. Give it a minute before asking again.'
   }
-  if (text.includes('invalid login credentials')) {
-    return 'That email and password did not match. Check both, or use a sign-in link instead.'
+  if (text.includes('token has expired or is invalid') || text.includes('otp_expired')) {
+    // A mistyped code and a code left an hour are one case to a hiker: the
+    // way out of both is the same, and saying which it was would be a guess.
+    return 'That code did not match, or it has expired. Check the six digits, or ask for a new code.'
   }
-  if (text.includes('email not confirmed')) {
-    return 'This account still needs confirming — follow the link in the email we sent.'
+  if (text.includes('email address not authorized')) {
+    // What a project with no sender says: Supabase's built-in mailer sends
+    // only to the project's own team members (LAUNCH_CHECKLIST.md 4.3c). A
+    // hiker cannot act on that, so the sentence says what stays true for
+    // them; backend/check_supabase_config.py is what tells a maintainer.
+    return 'Email sign-in is not switched on in this version of the app, so no code can be sent. Everything on the map still works without an account.'
   }
-  if (text.includes('user already registered')) {
-    return 'There is already an account with that email. Sign in instead, or ask for a sign-in link.'
+  if (text.includes('error sending')) {
+    // The sender exists and refused just now - "Error sending magic link
+    // email" is GoTrue's wording whether the email carries a link or a code.
+    return 'The code could not be sent just now. That is on our side, not yours — try again in a little while. Everything on the map still works without an account.'
+  }
+  if (text.includes('signups not allowed')) {
+    return 'New accounts are not being created right now. Everything on the map still works without an account.'
   }
   return UNCLEAR
 }

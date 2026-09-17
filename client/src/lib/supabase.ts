@@ -20,16 +20,21 @@ const ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY ?? ''
  *  say so instead of offering a sign-in that cannot complete. */
 export const AUTH_CONFIGURED = PROJECT_URL !== '' && ANON_KEY !== ''
 
-// Which providers this build offers. Configurable because the three do not
-// cost the same to switch on: email needs nothing, Google needs a Cloud
-// Console registration, and Apple needs a $99/yr Developer Program membership
-// and a Services ID (LAUNCH_CHECKLIST.md 4.3, which already says "nothing in
-// the code assumes all three").
+// Which providers this build offers. Configurable because the four do not
+// cost the same to switch on: Google needs a Cloud Console OAuth client and
+// GitHub an OAuth app, both free; Apple needs a $99/yr Developer Program
+// membership and a Services ID; and email needs a sender - custom SMTP on the
+// Supabase project, without which the 6-digit code it sends reaches nobody
+// (LAUNCH_CHECKLIST.md 4.3, which already says "nothing in the code assumes
+// all of them").
 //
 // This is about what a *build* offers, not what a hiker prefers - a button for
 // a provider whose credentials do not exist yet is a button that reaches an
 // error page, which is worse than an absent option.
-const ALL_PROVIDERS: readonly AuthProvider[] = ['google', 'apple', 'email']
+//
+// The order here is the order the buttons appear in: the three that leave
+// the app for a provider, then email, which is the one that needs a screen.
+const ALL_PROVIDERS: readonly AuthProvider[] = ['google', 'apple', 'github', 'email']
 
 /**
  * Parses the configured provider list, keeping ALL_PROVIDERS' order rather
@@ -62,9 +67,13 @@ export function parseProviders(raw: string): AuthProvider[] {
  *  exact failure the comment above ALL_PROVIDERS describes, and the default
  *  was producing it rather than guarding against it.
  *
- *  Apple stays off for the membership fee and is deferred to v2 (#92).
- *  Email returns when it has a sender behind it, by adding it here and to
- *  the AUTH_PROVIDERS variable together. */
+ *  The deployed set is the AUTH_PROVIDERS repository variable, not this
+ *  default: #1572 switches it to `google,github,email` as the LAST step of
+ *  configuring the Supabase project - GitHub's OAuth app, custom SMTP, and
+ *  `{{ .Token }}` in the email templates - so no button is offered before
+ *  the project can honour it. This default stays at the one provider a
+ *  fresh project can complete with a Cloud Console client and nothing else.
+ *  Apple stays off for the membership fee and is deferred to v2 (#92). */
 const CONFIGURED_PROVIDERS: string = import.meta.env.VITE_AUTH_PROVIDERS ?? ''
 
 /**

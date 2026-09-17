@@ -13,21 +13,22 @@
 //    still have what they wrote. The flow saves before asking (see
 //    lib/contributionFlow.ts); this is where that promise gets made out loud.
 
-export type AuthProvider = 'google' | 'apple' | 'email'
+export type AuthProvider = 'google' | 'apple' | 'github' | 'email'
 
 export interface SignInPromptProps {
   onSignIn: (provider: AuthProvider) => void
   onCancel: () => void
   /**
-   * Which providers this build can actually complete. Defaults to all three,
-   * which is what WIREFRAMES.md §6 specifies and what this screen is for.
+   * Which providers this build can actually complete. Defaults to all four:
+   * WIREFRAMES.md §6's Google / Apple / email, plus GitHub (#1572).
    *
-   * It is narrowable because the three do not cost the same to switch on -
-   * Apple needs a $99/yr membership that Google and email do not - and a
-   * button for a provider whose credentials do not exist reaches an error
-   * page. Which set a given build offers is lib/supabase.ts's
-   * ENABLED_PROVIDERS; the wireframe's answer is the default here, not a
-   * decision this component makes.
+   * It is narrowable because the four do not cost the same to switch on -
+   * Google and GitHub each need a free OAuth registration, Apple a $99/yr
+   * membership, and email a sender behind the project (LAUNCH_CHECKLIST.md
+   * 4.3) - and a button for a provider whose credentials do not exist
+   * reaches an error page. Which set a given build offers is
+   * lib/supabase.ts's ENABLED_PROVIDERS; the full set is the default here,
+   * not a decision this component makes.
    */
   providers?: AuthProvider[]
   /**
@@ -48,7 +49,7 @@ export interface SignInPromptProps {
    *
    * WHY OFFLINE IS NOT MERELY "IT WILL FAIL"
    *
-   * Google and Apple go through `signInWithOAuth`, which is a FULL OFF-ORIGIN
+   * Google, Apple and GitHub go through `signInWithOAuth`, which is a FULL OFF-ORIGIN
    * NAVIGATION - `lib/auth.ts` hands the browser to the provider. Offline
    * that lands on the browser's own error page, which is outside the service
    * worker's scope, so the hiker is not looking at a failed sign-in: they are
@@ -67,14 +68,25 @@ export interface SignInPromptProps {
 const LABELS: Record<AuthProvider, string> = {
   google: 'Continue with Google',
   apple: 'Continue with Apple',
+  github: 'Continue with GitHub',
   email: 'Continue with email',
 }
 
-const ALL: AuthProvider[] = ['google', 'apple', 'email']
+const ALL: AuthProvider[] = ['google', 'apple', 'github', 'email']
 
 /** The providers that leave the app to sign in, and so cannot be offered
  *  without signal. See `online` on the props for why email is not one. */
-const LEAVES_THE_APP: ReadonlySet<AuthProvider> = new Set(['google', 'apple'])
+const LEAVES_THE_APP: ReadonlySet<AuthProvider> = new Set(['google', 'apple', 'github'])
+
+/** The provider names as the offline note reads them out: "Google",
+ *  "Google and Apple", "Google, Apple and GitHub". */
+function namesOf(providers: AuthProvider[]): string {
+  const names = providers.map((provider) =>
+    LABELS[provider].replace('Continue with ', ''),
+  )
+  if (names.length <= 1) return names.join('')
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+}
 
 export function SignInPrompt({
   onSignIn,
@@ -114,18 +126,17 @@ export function SignInPrompt({
 
       {held.length > 0 && (
         /* Said rather than left to be discovered by a dimmed button. The
-           sentence names what is true - these two hand you to Google or
-           Apple, which needs signal - and what is still available, because a
-           hiker who came here to file a report should not conclude that
-           signing in is off entirely. */
+           sentence names what is true - these hand you to Google, Apple or
+           GitHub, which needs signal - and what is still available, because
+           a hiker who came here to file a report should not conclude that
+           signing in is off entirely. "Email works from here" is only said
+           when this build offers email; the code it sends is a fetch, which
+           fails inside the app rather than taking the map away. */
         <p className="reporting__note" role="note">
-          {LABELS[held[0]].replace('Continue with ', '')}
-          {held.length > 1
-            ? ` and ${LABELS[held[1]].replace('Continue with ', '')}`
-            : ''}{' '}
-          need signal — they hand you to{' '}
-          {held.length > 1 ? 'those services' : 'that service'} and back. Email works from
-          here.
+          {namesOf(held)} {held.length > 1 ? 'need' : 'needs'} signal —{' '}
+          {held.length > 1 ? 'they hand' : 'it hands'} you to{' '}
+          {held.length > 1 ? 'those services' : 'that service'} and back.
+          {providers.includes('email') ? ' Email works from here.' : ''}
         </p>
       )}
 

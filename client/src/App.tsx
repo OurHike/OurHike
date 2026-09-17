@@ -418,13 +418,7 @@ import type { AuthProvider } from './screens/SignInPrompt'
 import { ENABLED_PROVIDERS } from './lib/supabase'
 import { TRAILS } from './lib/trails'
 import { useAccount } from './lib/useAuth'
-import {
-  sendMagicLink,
-  signInWithEmail,
-  signInWithProvider,
-  signOut,
-  signUpWithEmail,
-} from './lib/auth'
+import { sendEmailCode, signInWithProvider, signOut, verifyEmailCode } from './lib/auth'
 import {
   enqueueAppFailure,
   enqueueClosure,
@@ -8739,18 +8733,17 @@ function App() {
     flowScreen =
       authFlow.screen === 'email' ? (
         <EmailSignIn
-          onMagicLink={sendMagicLink}
-          onSignIn={signInWithEmail}
-          onSignUp={signUpWithEmail}
+          onSendCode={sendEmailCode}
+          onVerifyCode={verifyEmailCode}
           onCancel={() => setAuthFlow(null)}
         />
       ) : (
         <SignInPrompt
           providers={ENABLED_PROVIDERS}
           reportSaved={authFlow.afterReport}
-          // #315: Google and Apple are a full off-origin navigation, so
-          // offline they take the hiker out of the app and away from the map
-          // rather than merely failing. The screen holds those two and says so.
+          // #315: Google, Apple and GitHub are a full off-origin navigation,
+          // so offline they take the hiker out of the app and away from the
+          // map rather than merely failing. The screen holds them and says so.
           online={online}
           onSignIn={handleChooseProvider}
           onCancel={() => setAuthFlow(null)}

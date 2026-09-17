@@ -3,10 +3,9 @@ import type { Session } from '@supabase/supabase-js'
 import {
   accountFromSession,
   redirectUrl,
-  sendMagicLink,
+  sendEmailCode,
+  verifyEmailCode,
   signInWithProvider,
-  signInWithEmail,
-  signUpWithEmail,
   signOut,
   currentAccount,
   subscribeToAccount,
@@ -27,7 +26,9 @@ function fakeClient(auth: Record<string, unknown>) {
 }
 
 const NO_ERROR = { error: null }
-const FAILED = { error: { message: 'Invalid login credentials' } }
+/** A refusal in wording lib/authMessages.ts does not recognise, so what
+ *  reaches the screen is its general case. */
+const FAILED = { error: { message: 'Unexpected failure' } }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -77,10 +78,10 @@ describe('with no project configured', () => {
   })
 
   it.each([
-    ['a provider sign-in', () => signInWithProvider('google')],
-    ['a magic link', () => sendMagicLink('a@b.c')],
-    ['an email sign-in', () => signInWithEmail('a@b.c', 'pw')],
-    ['a sign-up', () => signUpWithEmail('a@b.c', 'pw')],
+    ['a Google sign-in', () => signInWithProvider('google')],
+    ['a GitHub sign-in', () => signInWithProvider('github')],
+    ['sending an email code', () => sendEmailCode('a@b.c')],
+    ['checking an email code', () => verifyEmailCode('a@b.c', '123456')],
     ['a sign-out', () => signOut()],
   ])('%s says so rather than throwing', async (_label, call) => {
     const outcome = await call()
@@ -127,28 +128,41 @@ describe('signInWithProvider', () => {
     expect(await signInWithProvider('google')).toEqual({
       ok: false,
       // Mapped at the boundary since #315 - see lib/authMessages.ts.
-      message:
-        'That email and password did not match. Check both, or use a sign-in link instead.',
+      message: 'Sign-in did not go through. Nothing was lost — you can try again.',
+    })
+  })
+
+  it('passes github through as its own provider name, which is what Supabase keys on', async () => {
+    const signInWithOAuth = vi.fn().mockResolvedValue(NO_ERROR)
+    mockedGetClient.mockReturnValue(fakeClient({ signInWithOAuth }))
+
+    await signInWithProvider('github')
+
+    expect(signInWithOAuth).toHaveBeenCalledWith({
+      provider: 'github',
+      options: { redirectTo: redirectUrl() },
     })
   })
 })
 
-describe('sendMagicLink', () => {
-  it('asks for the link to come back to the app, and to create the user if new', async () => {
+describe('sendEmailCode', () => {
+  it('calls signInWithOtp for the address, creating the user if new, with the app as the way back', async () => {
     const signInWithOtp = vi.fn().mockResolvedValue(NO_ERROR)
     mockedGetClient.mockReturnValue(fakeClient({ signInWithOtp }))
 
-    await sendMagicLink('hiker@example.com')
+    await sendEmailCode('hiker@example.com')
 
     // shouldCreateUser is what lets one path serve both a returning hiker and
     // a new one, so it is asserted rather than left to the library default.
+    // emailRedirectTo is for a template that still carries a link: it then
+    // returns to the app rather than to the project's Site URL.
     expect(signInWithOtp).toHaveBeenCalledWith({
       email: 'hiker@example.com',
       options: { emailRedirectTo: redirectUrl(), shouldCreateUser: true },
     })
   })
 
-  it('reports a refusal rather than claiming an email is on its way', async () => {
+  it('reports a rate limit rather than claiming a code is on its way', async () => {
     // Supabase rate-limits these. Saying "check your email" when nothing was
     // sent leaves someone waiting on a message that is not coming.
     mockedGetClient.mockReturnValue(
@@ -159,68 +173,68 @@ describe('sendMagicLink', () => {
       }),
     )
 
-    expect(await sendMagicLink('hiker@example.com')).toEqual({
+    expect(await sendEmailCode('hiker@example.com')).toEqual({
       ok: false,
       message: 'That was just sent. Give it a minute before asking again.',
     })
   })
+
+  it('says "Email address not authorized" means this build has no sender, not that the hiker did anything', async () => {
+    // What a project still on Supabase's built-in mailer answers for any
+    // address outside its own team (LAUNCH_CHECKLIST.md 4.3c).
+    mockedGetClient.mockReturnValue(
+      fakeClient({
+        signInWithOtp: vi
+          .fn()
+          .mockResolvedValue({ error: { message: 'Email address not authorized' } }),
+      }),
+    )
+
+    const outcome = await sendEmailCode('hiker@example.com')
+
+    expect(outcome.ok).toBe(false)
+    expect(outcome.ok === false && outcome.message).toMatch(/not switched on/i)
+    expect(outcome.ok === false && outcome.message).toMatch(/map still works/i)
+  })
 })
 
-describe('signInWithEmail', () => {
-  it('passes the credentials through unchanged', async () => {
-    const signInWithPassword = vi.fn().mockResolvedValue(NO_ERROR)
-    mockedGetClient.mockReturnValue(fakeClient({ signInWithPassword }))
+describe('verifyEmailCode', () => {
+  it("calls verifyOtp with type 'email', which covers a new address's code and a returning one's alike", async () => {
+    const verifyOtp = vi.fn().mockResolvedValue(NO_ERROR)
+    mockedGetClient.mockReturnValue(fakeClient({ verifyOtp }))
 
-    const outcome = await signInWithEmail('hiker@example.com', 'a good password')
+    const outcome = await verifyEmailCode('hiker@example.com', '123456')
 
-    expect(signInWithPassword).toHaveBeenCalledWith({
+    expect(verifyOtp).toHaveBeenCalledWith({
       email: 'hiker@example.com',
-      password: 'a good password',
+      token: '123456',
+      type: 'email',
     })
     expect(outcome).toEqual({ ok: true })
   })
 
-  it("surfaces the provider's wording on a bad password", async () => {
-    mockedGetClient.mockReturnValue(
-      fakeClient({ signInWithPassword: vi.fn().mockResolvedValue(FAILED) }),
-    )
+  it('strips the space a thumb puts in "123 456" rather than refusing it as a wrong code', async () => {
+    const verifyOtp = vi.fn().mockResolvedValue(NO_ERROR)
+    mockedGetClient.mockReturnValue(fakeClient({ verifyOtp }))
 
-    expect(await signInWithEmail('hiker@example.com', 'wrong')).toEqual({
-      ok: false,
-      // Mapped at the boundary since #315 - see lib/authMessages.ts.
-      message:
-        'That email and password did not match. Check both, or use a sign-in link instead.',
-    })
-  })
-})
+    await verifyEmailCode('hiker@example.com', ' 123 456 ')
 
-describe('signUpWithEmail', () => {
-  it('asks for the confirmation email to come back to the app', async () => {
-    const signUp = vi.fn().mockResolvedValue(NO_ERROR)
-    mockedGetClient.mockReturnValue(fakeClient({ signUp }))
-
-    await signUpWithEmail('hiker@example.com', 'a good password')
-
-    expect(signUp).toHaveBeenCalledWith({
-      email: 'hiker@example.com',
-      password: 'a good password',
-      options: { emailRedirectTo: redirectUrl() },
-    })
+    expect(verifyOtp).toHaveBeenCalledWith(expect.objectContaining({ token: '123456' }))
   })
 
-  it('reports a refusal, so a known address is not read as a new account', async () => {
+  it('maps "Token has expired or is invalid" to a sentence with the way out in it', async () => {
     mockedGetClient.mockReturnValue(
       fakeClient({
-        signUp: vi
+        verifyOtp: vi
           .fn()
-          .mockResolvedValue({ error: { message: 'User already registered' } }),
+          .mockResolvedValue({ error: { message: 'Token has expired or is invalid' } }),
       }),
     )
 
-    expect(await signUpWithEmail('hiker@example.com', 'pw')).toEqual({
+    expect(await verifyEmailCode('hiker@example.com', '000000')).toEqual({
       ok: false,
       message:
-        'There is already an account with that email. Sign in instead, or ask for a sign-in link.',
+        'That code did not match, or it has expired. Check the six digits, or ask for a new code.',
     })
   })
 })

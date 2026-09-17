@@ -531,6 +531,11 @@
 }
 
 .report-window__note {
+  /* Border-box, or `width: 100%` plus the padding and border runs 26 px past
+     the window's own edge - visible in the receipt frame once the signed-as
+     block sat under it with edges that lined up (review of the preview
+     comment on #1571). */
+  box-sizing: border-box;
   width: 100%;
   padding: var(--space-3, 12px);
   font-family: var(--font-body, system-ui, sans-serif);

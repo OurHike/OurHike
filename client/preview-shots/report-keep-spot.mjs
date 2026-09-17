@@ -39,9 +39,25 @@ export default async function drive(page) {
   const canvas = page.getByRole('region', { name: /trail map/i })
   const box = await canvas.boundingBox()
   if (box === null) return
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
 
-  // Waited on rather than assumed: if the window never opened, the shot
-  // should fail as a missing recipe rather than quietly photograph the bar.
-  await page.getByRole('dialog', { name: 'Keep this spot?' }).waitFor({ timeout: 5000 })
+  // TAPPED UNTIL THE MAP ANSWERS. A tap is the engine's event, not the
+  // page's: MapLibre fires `click` only once it is up, and the map tab was
+  // switched to a moment ago, so the first tap can land on a canvas that is
+  // still loading and go nowhere - which is exactly what the first run of
+  // this recipe did in CI (one tap, then a 5 s wait that timed out).
+  // map-press-plate.mjs needs none of this because a press is the page's
+  // own gesture. So: tap, give the window a moment, tap again, for as long
+  // as a slow runner could need.
+  const keep = page.getByRole('dialog', { name: 'Keep this spot?' })
+  const deadline = Date.now() + 30_000
+  while (Date.now() < deadline) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+    const opened = await keep.waitFor({ timeout: 1_500 }).then(
+      () => true,
+      () => false,
+    )
+    if (opened) return
+  }
+  // Failed as a missing recipe rather than quietly photographing the bar.
+  throw new Error('the map never answered a tap with the keep window')
 }

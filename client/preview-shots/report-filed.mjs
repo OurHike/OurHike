@@ -49,12 +49,14 @@
 // finished until a recipe reaches the screen it changed; this is that recipe,
 // and this paragraph is what re-points the camera at it.
 
-// AND SINCE #1563 THE TAP NEEDS A PLACE. The camera has no fix, so the first
-// tap on Blow down is refused and opens the location sheet - the state
+// AND SINCE #1563 THE TAP NEEDS A PLACE. The camera has no fix, so the tap
+// on Blow down is refused and opens the location sheet - the state
 // report-window-refused.mjs photographs. This drive answers it with the
-// last-resort place, words, closes the sheet and taps again, which is what a
-// hiker with no fix does; the receipt therefore reads "where you described"
-// rather than "here".
+// last-resort place, words, and closes the sheet; the tap that was refused
+// files by itself the moment it has a place (the maintainer's "only ask
+// once", 2026-09-17), so there is no second tap to make - the camera's
+// first version made one and timed out on tiles that were already gone.
+// The receipt therefore reads "where you described" rather than "here".
 //
 // AND THE RECEIPT ASKS TWO THINGS IT DID NOT (the maintainer's additions of
 // 2026-09-17): which name the report is signed with - the trail name, or a
@@ -76,13 +78,12 @@ export default async function drive(page) {
   await page.getByRole('dialog', { name: 'What did you find?' }).waitFor()
 
   // A blow-down, because it is the plainest of the six and the one the
-  // receipt's own copy uses as its example. No fix, so this first tap is
-  // refused and opens the location sheet; the words are the place (#1563).
-  // Fixture-shaped prose, nobody's actual report.
+  // receipt's own copy uses as its example. No fix, so the tap is refused
+  // and opens the location sheet; the words are the place (#1563), and Done
+  // is what files it. Fixture-shaped prose, nobody's actual report.
   await page.getByTestId('report-tile-blowdown').click()
   await page.getByTestId('location-words').fill('The ford below the gap')
   await page.getByTestId('location-sheet-done').click()
-  await page.getByTestId('report-tile-blowdown').click()
 
   // The receipt, waited on rather than slept for: filing is a write to
   // IndexedDB and the button does not appear until it has returned.

@@ -313,21 +313,12 @@ test.describe('the reporting doors', () => {
     ).not.toBeChecked()
   })
 
-  test('states: marking the spot on the map hands over the map with nothing to keep yet, and the window stands aside', async ({
+  test('states: marking the spot on the map opens the keep window on a tap, and Keep files the tapped kind', async ({
     page,
   }) => {
     // THE MAINTAINER'S TWO ASKS OF 2026-09-17 ON THIS PATH: Keep is a window
     // over the map rather than a button on the crosshair's bar, and the tile
     // tapped before the map is not asked for again once the spot is kept.
-    //
-    // WHAT THIS SPEC CAN AND CANNOT DRIVE. Up to the bar, everything: the
-    // refused tap, the sheet's map row, the window standing aside, the bar
-    // saying what a tap will do with no Keep on it. Not the tap itself - the
-    // map engine is not live under this runner (the status line reads "No
-    // live map"; no spec here taps the canvas), so the tap, the keep window
-    // and the filing are App.reportPlace.test.tsx's, against the mock map,
-    // and preview-shots/report-keep-spot.mjs photographs the window in CI,
-    // where the map is real.
     await openContribute(page)
     const window_ = await openReportWindow(page)
     await window_.getByRole('button', { name: /^Blow down/ }).click()
@@ -340,20 +331,62 @@ test.describe('the reporting doors', () => {
     const bar = page.getByRole('dialog', { name: 'Say where this was' })
     await expect(bar).toContainText('Tap the map where this was.')
     await expect(bar.getByRole('button', { name: /keep/i })).toHaveCount(0)
-    await expect(page.getByRole('dialog', { name: 'Keep this spot?' })).toHaveCount(0)
+    const keep = page.getByRole('dialog', { name: 'Keep this spot?' })
+    await expect(keep).toHaveCount(0)
     await expect(page.getByTestId('report-window-scrim')).toHaveAttribute('inert', '')
     await expect(page.getByRole('tab', { name: 'Map' })).toHaveAttribute(
       'aria-selected',
       'true',
     )
 
-    // Cancel on the bar is the way back: the window returns, still with
-    // nothing filed and its place still to give.
-    await bar.getByRole('button', { name: 'Cancel' }).click()
+    // TAPPED UNTIL THE MAP ANSWERS. A tap is the engine's event, not the
+    // page's: MapLibre fires `click` only once it is up, and the map tab was
+    // switched to a moment ago, so the first tap can land on a canvas that
+    // is still loading and go nowhere - the first version of this spec made
+    // one tap and waited, and timed out. The window is the proof the engine
+    // heard one.
+    const canvas = page.getByRole('region', { name: /trail map/i })
+    const box = await canvas.boundingBox()
+    if (box === null) throw new Error('the map has no box to tap')
+    await expect
+      .poll(
+        async () => {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+          return keep.count()
+        },
+        { timeout: 30_000, intervals: [1_000] },
+      )
+      .toBeGreaterThan(0)
+    // One of lib/placement.ts's three answers, whichever the tap got - a
+    // mile only when the trail index is on the phone, which it is not here.
+    await expect(keep.getByTestId('keep-spot-words')).toHaveText(
+      /^(mi [\d,]+\.\d|This spot|More than .* off the trail)$/,
+    )
+    await expect(bar).toContainText(/This spot|mi |off the trail/)
+
+    // "Tap again" clears the aim: the bar is back to what a tap will do.
+    await keep.getByRole('button', { name: 'Tap again' }).click()
+    await expect(keep).toHaveCount(0)
+    await expect(bar).toContainText('Tap the map where this was.')
+
+    await expect
+      .poll(
+        async () => {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+          return keep.count()
+        },
+        { timeout: 30_000, intervals: [1_000] },
+      )
+      .toBeGreaterThan(0)
+    await keep.getByRole('button', { name: 'Keep this spot' }).click()
+
+    // Back to the window, which files the Blow down that was waiting - no
+    // second tap on the tile - and says where.
+    await expect(keep).toHaveCount(0)
     await expect(bar).toHaveCount(0)
     await expect(window_).toBeVisible()
-    await expect(window_.getByTestId('report-anchor')).toContainText('No location yet')
-    await expect(window_.getByText('Report · filed')).toHaveCount(0)
+    await expect(window_.getByText('Report · filed')).toBeVisible()
+    await expect(window_.getByText(/Filed — blow down/)).toBeVisible()
   })
 
   test('entrance: the closure door opens the closure form, which is a different form', async ({

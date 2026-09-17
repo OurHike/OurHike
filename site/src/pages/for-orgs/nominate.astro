@@ -6,14 +6,22 @@
 // is the whole of what this collects, and it is why the form is one field.
 // Everything after that field is us doing the work, and the page says so.
 //
-// WHAT "WE GO LOOKING" HONESTLY MEANS, and the page must not overstate it.
-// Nothing here probes anything in the browser. Submitting records an
-// unclaimed organization (`POST /clubs/nominations`) and a person reads it -
-// which is the true state of SOURCE_REGISTRY.md today, where all 33 sources
-// across nine organizations arrived because a maintainer went looking and
-// read terms by hand. The discovery panel below is drawn as an EXAMPLE of
-// what comes back, labelled as one, rather than as a live result: a fake
-// result presented as real would be this page lying on its first screen.
+// THIS PAGE IS A DOOR NOW, AND THE HISTORY IS WORTH KEEPING. It used to
+// carry the whole flow, including a panel headed "WHAT WE COULD SEE ON
+// THEIR SITE" over an answer a model produced from its own memory - nothing
+// had been fetched, and the page said otherwise on its first screen. That
+// is exactly the failure CLAUDE.md's "never let a display outrun its
+// source" names.
+//
+// The maintainer's 2026-09-17 decision made the reading real and put two
+// conditions on it - a signed-in hiker and a proof of work - and this site
+// has neither to give: four static pages, no Supabase client, no sign-in.
+// So the address goes to the app and the reading happens there. What is
+// left here is the explaining, which is what a marketing page is for.
+//
+// The block below the form stays an EXAMPLE and is labelled as one. It
+// describes what the reading looks for rather than what it found, which is
+// a claim about us rather than about anybody's organization.
 //
 // The flat-file refusal is stated here and not only at the API, because the
 // person reading this is about to go and ask a club for something. "Ask them
@@ -39,84 +47,68 @@ const description =
         from the org comes and takes it over.
       </p>
 
-      <form class="org-form" id="nominate-form" novalidate style="margin-top: 24px">
+      {
+        /* THE READING HAPPENS IN THE APP, AND THAT IS WHY THIS IS A DOOR
+           RATHER THAN A FORM. Until 2026-09-17 this page carried the whole
+           flow: a field, a "have a look at their site" button, and a panel
+           headed WHAT WE COULD SEE ON THEIR SITE over an answer a model
+           produced from its own memory. Nothing had been opened.
+
+           The maintainer's decision that day made the reading real - the
+           backend fetches their published pages through app/core/urlguard.py
+           - and put two conditions on it: a signed-in hiker, and a proof of
+           work. This site has neither to give. It carries no Supabase client
+           and no sign-in at all, by design: it is four static pages.
+
+           So the address a hiker types here is carried into the app, where
+           there is an account to check and a browser that can do the work.
+           The wireframe's own eyebrow said ANY SIGNED-IN HIKER CAN DO THIS
+           from the beginning; this is the first version of the page where
+           that is true. */
+      }
+      <form class="org-form" action="/app/nominate" method="get" style="margin-top: 24px">
         <fieldset class="org-form__group">
           <span class="org-eyebrow">STEP 1 · THEIR WEBSITE</span>
-          {
-            /* NO NAME FIELD, on the maintainer's decision of 2026-09-17. The
-               design opens with the website and nothing else, and asking for
-               the name first made a hiker answer the question the reading is
-               there to answer. */
-          }
-          <label class="org-label" for="nominate-website">Club website</label>
-          <input
-            class="org-input"
-            id="nominate-website"
-            name="website"
-            type="url"
-            inputmode="url"
-            placeholder="https://carolinamountainclub.org"
-          />
+          <label class="org-field">
+            <span class="org-field__label">Club website</span>
+            <input
+              class="org-field__input"
+              type="url"
+              name="website"
+              inputmode="url"
+              autocomplete="url"
+              placeholder="https://carolinamountainclub.org"
+            />
+          </label>
           <p class="org-help">
-            That is all we need. We read the public site the way you would —
-            looking for a maps page, a GIS server, a downloads link, or a data
-            portal.
+            That is all we need. We open their published pages — looking for a
+            maps page, a GIS server, a downloads link, or a data portal — and
+            show you what was on them, to keep or throw away line by line.
           </p>
           {
-            /* WHO DOES THE READING, said before the button rather than after.
-               The address goes to a model at Anthropic's API, which is a
-               third party and is not us. An organization gets asked this
-               question properly - `Club.assist_opted_in`, off until one of
-               their admins turns it on - and nobody can be asked here,
-               because the organization this is about does not exist in our
-               database yet and a hiker cannot agree on their behalf. So what
-               is owed on this page is the plain sentence, and the smallest
-               thing sent that could do the job: one public web address, and
-               nothing about the person typing it. */
+            /* WHY AN ACCOUNT, said before the button rather than after. A page
+               that asks somebody to sign in without saying why reads as a
+               sign-up wall, and this one stands in front of a person doing a
+               favour for a club they are not a member of. The two reasons are
+               both true and neither is about us: opening a website somebody
+               typed is a thing worth being able to attribute, and the panel
+               spends money on a model. */
           }
           <p class="org-help">
-            The address goes to a model at Anthropic's API to do the reading —
-            just the address, nothing about you. Skip this and fill the form in
-            yourself if you would rather it did not.
+            <strong>You will be asked to sign in.</strong> Reading somebody's
+            website is something we will only do for a hiker we can name, and
+            the reading costs us a little to run — an account is how both of
+            those stay true. Your browser also does a few seconds of arithmetic
+            on the way, which is what stops this being used a thousand times an
+            hour by somebody who is not you.
           </p>
-          <div class="org-inline" style="margin-top: 10px">
-            <button class="btn btn--ghost" type="button" id="nominate-look">
-              Have a look at their site
-            </button>
-            <span class="org-help" id="nominate-look-note"></span>
-          </div>
-          {
-            /* WHAT THIS PANEL IS, and the sentence it has to keep. It reports
-               what a model could see on a public page. It does not verify
-               anything, it is not a decision, and the organization it is
-               about has not been contacted - which is exactly what the
-               heading below says, because a nomination that arrived reading
-               like an endorsement would be worse than none. */
-          }
-          <div class="org-found" id="nominate-found" hidden>
-            <span class="org-eyebrow">WHAT WE COULD SEE ON THEIR SITE</span>
-            <p class="org-help" id="nominate-found-text"></p>
-            <p class="org-help">
-              <strong>Read, not verified.</strong> Nobody at the club has been
-              contacted and nothing here is a commitment — yours or theirs. Add
-              anything it missed below; most orgs keep their data in more than
-              one place.
-            </p>
-          </div>
         </fieldset>
 
-        {
-          /* THE OPTIONAL BLOCK IS GONE, on the maintainer's decision of
-             2026-09-17: a data link and a free-text note the design does not
-             ask for. A hiker who knows where an organization's FeatureServer
-             lives is not the hiker this form is for, and the reading finds
-             the layer anyway. */
-        }
-
-        <button class="btn org-form__submit" type="submit">Submit their trails</button>
+        <button class="btn org-form__submit" type="submit">Read their site</button>
         <p class="org-help org-help--centred">
           This gives you no standing at their org, and asks nothing of them.
         </p>
+
       </form>
 
       <div class="org-found" style="margin-top: 36px">

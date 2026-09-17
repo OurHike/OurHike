@@ -41,7 +41,7 @@ import {
   type Workday,
 } from './orgApi'
 import type { OrgRouting } from '../lib/useOrgRoute'
-import type { OrgRoute } from '../lib/orgRoute'
+import type { ConsoleRoute } from '../lib/orgRoute'
 import type { UnitSystem } from '../lib/units'
 import {
   DEMO_ASSIST_CONSENT,
@@ -257,7 +257,17 @@ export function OrgConsole({
    *  with the Settings screen. */
   units: UnitSystem
 }) {
-  const { route, go } = routing
+  // NARROWED HERE RATHER THAN CAST AT EVERY USE. `nominate` and `proposal`
+  // are org routes without an organization - no slug, no seat, and in the
+  // proposal's case no account at all - so App.tsx sends them to their own
+  // screen and this file never sees one. The narrowing is what makes that a
+  // compile-time fact rather than a convention: adding a sixth route later
+  // fails here until somebody decides whether it is a console screen.
+  const { route: anyRoute, go } = routing
+  const route: ConsoleRoute | null =
+    anyRoute !== null && anyRoute.kind !== 'nominate' && anyRoute.kind !== 'proposal'
+      ? anyRoute
+      : null
   const slug =
     route === null ? null : route.kind === 'tread' ? (route.org ?? null) : route.slug
   const data = useOrgData(slug)
@@ -921,7 +931,7 @@ export function OrgConsole({
     }
   }
 
-  const shellRoute: OrgRoute = route
+  const shellRoute: ConsoleRoute = route
 
   return (
     <OrgShell

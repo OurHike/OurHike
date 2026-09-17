@@ -22,7 +22,13 @@ import { useMemo } from 'react'
 import './orgConsole.css'
 import { Mark } from './Mark'
 import type { OrgAccess } from './orgApi'
-import type { OrgRoute, SetupPage, TreadPage, VolunteerPage } from '../lib/orgRoute'
+import type {
+  ConsoleRoute,
+  OrgRoute,
+  SetupPage,
+  TreadPage,
+  VolunteerPage,
+} from '../lib/orgRoute'
 
 export interface OrgShellProps {
   readonly slug: string
@@ -30,7 +36,7 @@ export interface OrgShellProps {
   /** The caller's own seats here, from the server. */
   readonly access: OrgAccess | null
   /** Where the console is now, so the rail can mark it. */
-  readonly route: OrgRoute
+  readonly route: ConsoleRoute
   readonly go: (route: OrgRoute) => void
   /** Leave the console for the app. */
   readonly onLeave: () => void
@@ -47,7 +53,7 @@ export interface OrgShellProps {
 interface RailItem {
   readonly key: string
   readonly label: string
-  readonly route: OrgRoute
+  readonly route: ConsoleRoute
 }
 
 function initials(name: string): string {
@@ -61,7 +67,7 @@ function initials(name: string): string {
 
 /** Where the crumb strip says you are, and the aside beside it. */
 function crumbsFor(
-  route: OrgRoute,
+  route: ConsoleRoute,
   onboarded: boolean,
 ): { trail: string[]; aside: string } {
   if (route.kind === 'tread') {
@@ -118,8 +124,8 @@ export function OrgShell({
   children,
 }: OrgShellProps) {
   const groups = useMemo(() => {
-    const setup = (page: SetupPage): OrgRoute => ({ kind: 'setup', slug, page })
-    const volunteers = (page: VolunteerPage): OrgRoute => ({
+    const setup = (page: SetupPage): ConsoleRoute => ({ kind: 'setup', slug, page })
+    const volunteers = (page: VolunteerPage): ConsoleRoute => ({
       kind: 'volunteers',
       slug,
       page,

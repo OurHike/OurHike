@@ -34,6 +34,26 @@ async function readOrg<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T
 }
 
+/** A write from somebody with no account, addressed by a token in the URL.
+ *
+ *  The one shape in this file that sends no Authorization header at all, and
+ *  it is deliberate rather than an oversight: three people at a nominated club
+ *  answer "is this yours?" from a link in an email, and requiring an account
+ *  to say no would be a sign-up wall in front of a question we asked them.
+ *
+ *  The token IS the authorization, which is why `backend/app/routers/
+ *  nominations.py` gives expired, withdrawn and never-existed the same 404
+ *  with the same sentence - a distinguishing error is an oracle for guessing
+ *  one. */
+async function postWithoutAnAccount<T>(path: string, body: unknown): Promise<T> {
+  const response = await apiFetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return (await response.json()) as T
+}
+
 /** A call that needs an account, refused here rather than by a round trip. */
 async function writeOrg<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken()
@@ -266,8 +286,129 @@ export interface AssistConsent {
 
 const org = (slug: string) => `/clubs/${encodeURIComponent(slug)}`
 
+/** The work a browser does before the backend will read a website.
+ *
+ *  Every field is public by construction - see `lib/proofOfWork.ts` and
+ *  `backend/app/core/challenge.py`. The signature is what makes them
+ *  unforgeable, not secrecy. */
+export interface NominateChallenge {
+  nonce: string
+  difficulty: number
+  expires_at: number
+  signature: string
+}
+
+export type SourceVerdict =
+  'usable' | 'closures' | 'found' | 'not_accepted' | 'unreadable'
+
+export interface ProposedSource {
+  label: string
+  url: string
+  verdict: SourceVerdict
+  detail: string | null
+}
+
+/** One person or role, as published on the club's own pages.
+ *
+ *  `name` is null when nobody published one - the design's own example is
+ *  "Board president · Leadership · president@… · no name given". Absent means
+ *  unknown, never an empty string and never a guess. */
+export interface ProposedContact {
+  name: string | null
+  role: string | null
+  email: string
+  source_page: string
+}
+
+/** What the reading saw. STORED NOWHERE until the hiker submits it.
+ *
+ *  `read_at_all` is separate from an empty `sources` on purpose: a reading
+ *  that reached the site and found nothing is a different answer from one
+ *  that could not reach the site, and a hiker deciding whether to type the
+ *  sources in by hand needs to know which one they got. */
+export interface NominateReading {
+  website: string
+  read_at_all: boolean
+  pages_read: number
+  org_name: string | null
+  summary: string | null
+  sources: ProposedSource[]
+  contacts: ProposedContact[]
+  membership_url: string | null
+  donation_url: string | null
+  licence_note: string | null
+  tokens_used: number
+}
+
+export interface KeptSource extends ProposedSource {
+  proposed_by: 'reading' | 'hiker'
+}
+
+export interface KeptContact extends ProposedContact {
+  proposed_by: 'reading' | 'hiker'
+}
+
+export interface NominationSubmission {
+  website: string
+  org_name: string
+  region: string | null
+  sources: KeptSource[]
+  contacts: KeptContact[]
+}
+
+export interface ProposalContact {
+  name: string | null
+  role: string | null
+  email: string
+  source_page: string
+  responded: boolean
+}
+
+/** What somebody at the club sees when they open the link we mailed them. */
+export interface Proposal {
+  org_name: string
+  website: string
+  proposed_by_display: string
+  proposed_at: string
+  sources: ProposedSource[]
+  contacts: ProposalContact[]
+  approvals_required: number
+  approvals_so_far: number
+  state: 'proposed' | 'emailed' | 'accepted' | 'declined' | 'withdrawn'
+}
+
 export const orgApi = {
   list: (signal?: AbortSignal) => readOrg<Org[]>('/clubs', signal),
+
+  // THE NOMINATE FLOW. The challenge and the reading both need an account -
+  // `writeOrg` refuses before spending a request when signed out, which is
+  // the right answer here because the whole screen is behind sign-in.
+  nominateChallenge: () => writeOrg<NominateChallenge>('/assist/nominate/challenge'),
+  nominateRead: (body: NominateChallenge & { website: string; solution: string }) =>
+    writeOrg<NominateReading>('/assist/nominate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  nominateSubmit: (body: NominationSubmission) =>
+    writeOrg<{ id: string; club_slug: string }>('/clubs/nominations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // THE CLUB'S OWN SCREEN NEEDS NO ACCOUNT, which is why these two use the
+  // plain read rather than `writeOrg`. Nobody at a nominated club has one, and
+  // asking them to make one in order to answer "is this yours?" would be a
+  // sign-up wall in front of a question we asked them.
+  proposal: (token: string, signal?: AbortSignal) =>
+    readOrg<Proposal>(`/nominations/${encodeURIComponent(token)}`, signal),
+  proposalDecision: (
+    token: string,
+    body: { approve: boolean; never_ask_again?: boolean; note?: string },
+  ) =>
+    postWithoutAnAccount<Proposal>(
+      `/nominations/${encodeURIComponent(token)}/decision`,
+      body,
+    ),
   read: (slug: string, signal?: AbortSignal) => readOrg<Org>(org(slug), signal),
   access: (slug: string, signal?: AbortSignal) =>
     readOrg<OrgAccess>(`${org(slug)}/access`, signal),

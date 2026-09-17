@@ -107,6 +107,34 @@ export type OrgRoute =
       readonly person?: string
     }
   | { readonly kind: 'tread'; readonly org?: string; readonly page?: TreadPage }
+  // THE TWO NOMINATE ADDRESSES, and they are here for the same reason the
+  // three above are: both are arrived at from OUTSIDE the app and cannot be
+  // reached by tapping.
+  //
+  // `/nominate` is where /for-orgs/nominate/ sends a hiker. That page is
+  // static and has no sign-in to offer - the site carries no Supabase client
+  // at all - so the address they typed is carried here, where there is an
+  // account to check and a browser that can do the challenge's arithmetic.
+  //
+  // `/n/:token` is the only thing three people at a nominated club ever
+  // receive from us. They have no account and are not asked to make one to
+  // answer "is this yours?", so the token in the link is the whole of the
+  // addressing. `/no-thank-you` under it is what RFC 8058's List-Unsubscribe
+  // header points at, so a mail client can offer one click without anybody
+  // reading to the bottom of the message.
+  | { readonly kind: 'nominate'; readonly website?: string }
+  | { readonly kind: 'proposal'; readonly token: string; readonly refusing?: boolean }
+
+/** The three routes that are the CONSOLE - a rail, a shell, an organization.
+ *
+ *  `nominate` and `proposal` are deliberately not in it. Neither has a slug,
+ *  neither belongs to an organization the visitor has a seat at, and the
+ *  club's proposal screen has no account behind it at all. Giving them the
+ *  console's shell would draw an org rail for somebody who is not at that org
+ *  - and the type is here rather than a cast so that adding a fourth route
+ *  later fails to compile in the two files that assume a slug, which is how
+ *  these two were caught. */
+export type ConsoleRoute = Extract<OrgRoute, { kind: 'setup' | 'volunteers' | 'tread' }>
 
 /** The app's base path, with exactly one trailing slash. */
 export function basePath(base: string = import.meta.env.BASE_URL): string {
@@ -182,6 +210,21 @@ export function parseOrgRoute(
     }
   }
 
+  if (parts[0] === 'nominate' && parts.length === 1) {
+    const website = parsed.searchParams.get('website')
+    return website ? { kind: 'nominate', website } : { kind: 'nominate' }
+  }
+
+  if (parts[0] === 'n' && parts[1]) {
+    // A token is a secret carried in a URL, so an unrecognised path under one
+    // is not quietly treated as the proposal itself.
+    if (parts.length === 2) return { kind: 'proposal', token: parts[1] }
+    if (parts.length === 3 && parts[2] === 'no-thank-you') {
+      return { kind: 'proposal', token: parts[1], refusing: true }
+    }
+    return null
+  }
+
   if (parts[0] === 'org' && parts.length === 3 && parts[1]) {
     const slug = parts[1]
     if (parts[2] === 'setup') {
@@ -215,6 +258,15 @@ export function orgRoutePath(
     return query.length === 0
       ? `${prefix}my/tread`
       : `${prefix}my/tread?${query.join('&')}`
+  }
+  if (route.kind === 'nominate') {
+    return route.website
+      ? `${prefix}nominate?website=${encodeURIComponent(route.website)}`
+      : `${prefix}nominate`
+  }
+  if (route.kind === 'proposal') {
+    const token = encodeURIComponent(route.token)
+    return route.refusing ? `${prefix}n/${token}/no-thank-you` : `${prefix}n/${token}`
   }
   const slug = encodeURIComponent(route.slug)
   if (route.kind === 'setup') {

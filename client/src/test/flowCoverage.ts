@@ -779,6 +779,29 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   },
 
   // ---- F15 the volunteer's own screens ------------------------------------
+  // THE TWO SCREENS THAT ARE NOT THE CONSOLE. Both are arrived at from
+  // outside the app - one from /for-orgs/nominate/, one from a link in an
+  // email to somebody with no account - so neither is reachable by the tap
+  // sequence from boot that the flow battery drives, which is the same
+  // exception e2e/orgConsole.spec.ts already takes at the top of its file for
+  // the console itself. Unit-only rather than planned, because the properties
+  // worth asserting on them are decisions rather than journeys: that a
+  // dropped contact is not submitted, and that the refusal is offered as
+  // plainly as the approval.
+  'org/screens/Nominate.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only from the marketing site, which the flow battery does not boot into; the review step is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/Proposal.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only by a token in an email, by somebody with no account; the refusal path is asserted in org/screens/nominate.test.tsx',
+    },
+  },
   'org/screens/YourTread.tsx': {
     step: 'F15 volunteer',
     flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },

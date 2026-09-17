@@ -16,7 +16,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrgShell } from './OrgShell'
 import type { OrgAccess } from './orgApi'
-import type { OrgRoute } from '../lib/orgRoute'
+import type { ConsoleRoute } from '../lib/orgRoute'
 import { readRepoFile } from '../test/repoFile'
 
 const SLUG = 'ramapo-trail-conference'
@@ -58,7 +58,7 @@ const OUTSIDER = access({})
 
 function draw(
   seat: OrgAccess | null,
-  route: OrgRoute = { kind: 'setup', slug: SLUG, page: 'home' },
+  route: ConsoleRoute = { kind: 'setup', slug: SLUG, page: 'home' },
 ) {
   render(
     <OrgShell

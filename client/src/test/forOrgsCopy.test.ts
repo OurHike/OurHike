@@ -317,3 +317,59 @@ describe('the demo page describes what it shows', () => {
     expect(lede).not.toMatch(/\bmap\b/i)
   })
 })
+
+describe('the nominate page describes where the reading actually happens', () => {
+  // THE PAGE USED TO CLAIM A READING NOBODY DID. It said "We read the public
+  // site the way you would" and headed a result panel "WHAT WE COULD SEE ON
+  // THEIR SITE", over an answer a model produced from its own memory - nothing
+  // had ever been fetched. That is CLAUDE.md's "never let a display outrun its
+  // source", and it is fixed on both sides: the backend really reads now
+  // (app/core/sitefetch.py), and the reading needs a signed-in hiker and a
+  // proof of work, neither of which this site has - it carries no Supabase
+  // client and no sign-in at all.
+  //
+  // So the reading moved into the app and this page is the door to it. These
+  // guards are about the seam: a marketing page that describes a step it
+  // cannot perform is the same defect in a new place.
+  const source = () => readRepoFile('site/src/pages/for-orgs/nominate.astro')
+
+  /** What the page actually renders, with both kinds of comment removed.
+   *
+   *  Needed rather than tidy: the file's own header quotes the old heading in
+   *  order to explain why it went, and a guard reading the raw source would
+   *  fail on the sentence recording the fix. The frontmatter block between the
+   *  `---` fences is comments and imports and never reaches a reader either. */
+  const rendered = () =>
+    source()
+      .replace(/^---[\s\S]*?^---/m, '')
+      .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, '')
+
+  it('does not head a panel with what we saw on a site it never opened', () => {
+    expect(rendered()).not.toContain('WHAT WE COULD SEE ON THEIR SITE')
+  })
+
+  it('does not say this page reads anybody', () => {
+    // Present tense about this page. The example block below the form is
+    // allowed to describe what the reading looks for, because it is labelled
+    // as an example - the thing being refused here is a claim about now.
+    expect(rendered()).not.toMatch(/We read the public site/i)
+  })
+
+  it('sends a hiker to the app, where the reading needs an account', () => {
+    expect(source()).toContain('/app/nominate')
+  })
+
+  it('says why signing in is asked for at all', () => {
+    // Not a hoop. A page that asks for an account without saying why reads as
+    // a sign-up wall, and this one is standing in front of somebody doing a
+    // favour for a club they are not a member of.
+    expect(source()).toMatch(/sign in|signed in/i)
+  })
+
+  it('still refuses flat files where a hiker can read it', () => {
+    // The sentence that survives all of this, because the person reading is
+    // about to go and ask a club for something: "ask them for the layer
+    // behind it" is what makes that ask possible.
+    expect(source()).toMatch(/PDF/)
+  })
+})

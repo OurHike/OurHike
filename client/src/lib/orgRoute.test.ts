@@ -150,3 +150,66 @@ describe('telling two addresses apart', () => {
     expect(sameOrgRoute(null, null)).toBe(true)
   })
 })
+
+describe('the two nominate addresses', () => {
+  // WHY THESE ARE ROUTES AND NOT SCREENS REACHED BY TAPPING. Both are arrived
+  // at from outside the app and cannot be reached any other way: `/nominate`
+  // is where /for-orgs/nominate/ sends a hiker, carrying the address they
+  // typed on a site that has no sign-in to offer; and `/n/:token` is the only
+  // thing three people at a club ever receive from us, in an email, with no
+  // account to log into. That is the same argument #970 makes for the console.
+  it('reads the nominate screen with the address a hiker already typed', () => {
+    expect(parseOrgRoute('/nominate?website=https%3A%2F%2Fcmc.org', '/')).toEqual({
+      kind: 'nominate',
+      website: 'https://cmc.org',
+    })
+  })
+
+  it('reads it with no address at all', () => {
+    // Somebody who bookmarked it, or followed the door without filling the
+    // field in. The screen asks for the address rather than failing.
+    expect(parseOrgRoute('/nominate', '/')).toEqual({ kind: 'nominate' })
+  })
+
+  it('round-trips the address through the path', () => {
+    const route = { kind: 'nominate', website: 'https://cmc.org/a b' } as const
+    expect(parseOrgRoute(orgRoutePath(route, '/'), '/')).toEqual(route)
+  })
+
+  it('reads a club proposal link', () => {
+    expect(parseOrgRoute('/n/abc123', '/')).toEqual({ kind: 'proposal', token: 'abc123' })
+  })
+
+  it('reads the one-click refusal the email carries', () => {
+    // RFC 8058's List-Unsubscribe points here, so a mail client can offer
+    // "never again" without anybody reading to the bottom of the message.
+    expect(parseOrgRoute('/n/abc123/no-thank-you', '/')).toEqual({
+      kind: 'proposal',
+      token: 'abc123',
+      refusing: true,
+    })
+  })
+
+  it('does not read a third segment it does not know', () => {
+    // A token is a secret in a URL, so a path under it that we do not
+    // recognise is not quietly treated as the proposal itself.
+    expect(parseOrgRoute('/n/abc123/something-else', '/')).toBeNull()
+  })
+
+  it('round-trips both proposal shapes', () => {
+    for (const route of [
+      { kind: 'proposal', token: 'abc123' },
+      { kind: 'proposal', token: 'abc123', refusing: true },
+    ] as const) {
+      expect(parseOrgRoute(orgRoutePath(route, '/'), '/')).toEqual(route)
+    }
+  })
+
+  it('honours the base path, like every other route here', () => {
+    expect(orgRoutePath({ kind: 'nominate' }, '/app/')).toBe('/app/nominate')
+    expect(parseOrgRoute('/app/n/abc123', '/app/')).toEqual({
+      kind: 'proposal',
+      token: 'abc123',
+    })
+  })
+})

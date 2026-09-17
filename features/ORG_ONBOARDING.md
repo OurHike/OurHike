@@ -567,9 +567,174 @@ magnitude smaller and counted per address.
 
 ---
 
+## Nominating an organization
+
+A hiker who is not affiliated with a club offers its trails on its behalf. The design's own
+eyebrow on that screen reads **ANY SIGNED-IN HIKER CAN DO THIS**, and until 2026-09-17 the
+built version was neither signed-in nor doing it.
+
+**What it was.** `POST /assist/nominate` took a website from anybody on the internet, sent the
+URL to a model with no tools, and `/for-orgs/nominate/` rendered the reply under the heading
+**WHAT WE COULD SEE ON THEIR SITE**. Nothing had ever been opened — the answer came out of the
+model's training memory. `POST /clubs/nominations` then created an `unclaimed` club row from a
+name and a website, discarded the `data_url` and `note` it had just validated, and told nobody
+at the organization anything at all.
+
+The maintainer took four decisions on 2026-09-17 and all four are built.
+
+### 1. We really read their site, and only a signed-in hiker can make us
+
+A server fetching an address a stranger typed is server-side request forgery in its plainest
+form, so the guard is a module of its own —
+[`backend/app/core/urlguard.py`](../backend/app/core/urlguard.py) — with
+[`sitefetch.py`](../backend/app/core/sitefetch.py) on top of it. The decisions worth
+disagreeing with on the merits:
+
+- **`is_global`, not `is_private`.** Measured on both Pythons this repository runs, 3.11.15 and
+  3.13.12: `ipaddress.ip_address("100.64.0.1").is_private` is **False**. That is RFC 6598
+  carrier-grade NAT — a hundred million real devices, none publicly routable. An explicit table
+  of fifteen v4 and eleven v6 networks sits underneath so a change in the standard library's
+  classification fails a test rather than widening what we open. `169.254.169.254` is in it by
+  name as well as by range, because a range is a thing a later edit loosens.
+- **Every resolved address must pass, not the first.** A name answering with one public address
+  and one private one is DNS rebinding's ordinary shape. A mixed answer refuses the host.
+- **And the connection is checked once it is open.** Between the guard's decision and the
+  socket, DNS can answer differently, and whoever runs it picks the moment. So the fetcher asks
+  the connection what it actually reached and refuses before reading a byte of the body. An
+  unknown peer is a refusal rather than a pass — which is why an egress proxy is a deployment
+  that must turn the reading off deliberately rather than run it unverified.
+
+Six pages of one organization's own site, a megabyte each, ten seconds each, robots.txt
+honoured per RFC 9309 (4xx opens the site, 5xx closes it). No cookie and no Authorization
+header ever leaves.
+
+### 2. The contacts are proposed, and the hiker abandons the ones that are wrong
+
+The design's contacts step lists named people with the addresses their organization publishes
+— "Dale Whitford · Volunteer coordinator · volunteers@… · Listed on the Get Involved page". The
+maintainer allowed it **on the condition that the hiker reviews and can drop each one**, and
+that condition is implemented literally rather than as a display convention:
+
+**`POST /assist/nominate` stores nothing.** It returns proposed sources and proposed people to
+the browser; only what comes back on `POST /clubs/nominations` becomes a row. A person whose
+address the reading found and the hiker dropped was never written down — there is no row to
+leak, to export, or to delete later on their behalf. That is why
+[`schemas/nomination.py`](../backend/app/schemas/nomination.py) has two schemas where one would
+have been shorter.
+
+**And nothing reaches the hiker that was not on a page we opened.**
+[`core/nominate.py`](../backend/app/core/nominate.py) checks every address and every URL in the
+model's answer back against the literal text of the fetched pages and drops anything absent. A
+model asked who to contact at a club produces plausible addresses whether or not the page had
+any — `president@carolinamountainclub.org` is exactly the shape of the thing that gets invented
+— and a hiker reading a screen headed "what we could see on their site" cannot tell an
+invention from a reading. Then we would email it. The citation is checked too: a contact whose
+`source_page` names a page we never opened has it corrected to the page the address was
+actually on, or is dropped.
+
+### 3. A proof of work, because sign-in bounds who and not how fast
+
+[`core/challenge.py`](../backend/app/core/challenge.py) and
+[`client/src/lib/proofOfWork.ts`](../client/src/lib/proofOfWork.ts). A CAPTCHA would put a third
+party in front of every hiker who nominates a club, on a page whose whole subject is somebody
+else's public data; this is arithmetic in the hiker's own browser and needs no vendor.
+
+MEASURED 2026-09-17, medians of fifteen solves on a CI-class container:
+
+| difficulty | median | p90 |
+| --- | --- | --- |
+| 16 bits | 124 ms | 421 ms |
+| 18 bits | **382 ms** | 2,680 ms |
+| 20 bits | 3,675 ms | 6,398 ms |
+
+18 by default. Two measurements changed the code rather than confirming it: `await
+crypto.subtle.digest` once per candidate costs ~44 µs, nearly all of it the await, which puts
+16 bits at a 2.9 second median; and calling `sha256Hex` per candidate cost 3.1 s at 18 bits,
+because `digest()` allocates two folds and a hex string every time. `reset()` and `finishInto()`
+were added to `sha256.ts` rather than a second SHA-256 being written. **@unvalidated on a
+phone** — every figure above came off a desktop CPU, and what would settle it is this solver on
+hardware somebody owns.
+
+The server stores no challenge it issues; the HMAC covers nonce, subject, difficulty and expiry,
+and the subject is inside it so a solved challenge cannot be handed to somebody else. A wrong
+answer does not burn the nonce.
+
+### 4. We write to the people the club publishes, properly
+
+Nothing in this repository sent mail before 2026-09-17.
+[`core/mail.py`](../backend/app/core/mail.py) carries four promises, each a promise rather than
+a preference: **off unless switched on** (with an allow-list so UA can exercise the flow without
+reaching a real club), **the suppression list is checked on the send path and never by callers**,
+**a bounce or complaint writes a suppression**, and **every message carries `List-Unsubscribe`
+and `List-Unsubscribe-Post`** (RFC 8058) so a mail client can offer one click.
+
+The message itself is in [`core/nomination_mail.py`](../backend/app/core/nomination_mail.py).
+Plain text only — an HTML message about somebody's data from a sender they do not know is the
+shape of every phishing attempt they have been trained to distrust. It names the organization,
+says nothing has been published, carries the link that stops it forever, and **does not name the
+hiker**: the design's rule runs both ways, so the club is not handed a way to contact whoever
+proposed them and the hiker is never told who declined.
+
+Sent once, read from the send log rather than from `nomination.state` — a run that sent two of
+three and then failed leaves those two written to and the nomination still `proposed`. And the
+nomination moves to `emailed` only if something actually went, because a row reading `emailed`
+with nothing sent is the row a maintainer would trust to decide it needs no follow-up.
+
+**The DNS half is the maintainer's and is not code.** SPF, DKIM and a DMARC policy on the
+sending domain are what stop this being filed as junk, and sending before they exist is how a
+domain earns a reputation it cannot spend. `mail_enabled` is off by default for that reason as
+much as for the preview one.
+
+### Where the flow lives, and why it is split across two hosts
+
+The reading needs an account and the marketing site has none — `site/` is four static Astro
+pages with no Supabase client at all. So `/for-orgs/nominate/` is the **door**: it explains,
+takes the address, and hands it to the app at `/app/nominate?website=…`, where there is an
+account to check and a browser that can do the arithmetic. The club's own answer is at
+`/app/n/:token`, unauthenticated by design — nobody at a nominated club has an account and
+asking them to make one in order to answer "is this yours?" would be a sign-up wall in front of
+a question we asked them.
+
+One refusal ends it; three approvals are needed to proceed. The asymmetry is deliberate and is
+the same one the rest of this project applies to anything that reaches a hiker: a club that does
+not want this has said so once and should not have to say it three times, while publishing their
+data is a thing we make hard. `never_ask_again` is not a stronger word for declining — it writes
+a `nomination_refusals` row keyed by the club's own domain, and the next hiker to try is stopped
+before anybody there is written to a second time.
+
+---
+
 ## Known gaps
 
 What this design does not answer, stated plainly.
+
+- **The pull request at sign-off still has nobody's credentials behind it, and the nominate flow
+  now depends on the same answer.** The maintainer chose on 2026-09-17 that it must be the
+  hiker's own GitHub account, through OAuth, so no OurHike token ever touches a public repository
+  on somebody else's behalf and the pull request honestly carries their name. Supabase Auth is
+  where that provider would be enabled and `session.provider_token` is where the token would
+  arrive — in the browser, never here — which is the shape that keeps this backend out of it
+  entirely. **None of that is built.** A nomination that three people at a club approve
+  currently reaches `accepted` and stops there: the club owns the row, and nothing opens a pull
+  request against `pipeline/sources.json` yet. **What would settle it:** enabling the provider
+  on the real Supabase project, which is the maintainer's to do, and then the narrowest scope
+  that can fork and open a pull request.
+- **The design's coverage scoreboard — miles maintained, active volunteers, hours this season —
+  is approved and not built.** It needs two public aggregate endpoints that do not exist, and it
+  turns an organization's volunteer count and season hours into public facts. The gap badge the
+  embed carries today is what stands in for it.
+- **Nobody has run the proof of work on a phone.** Every timing in the section above came off a
+  desktop CPU. A mid-range phone is commonly two to four times slower at single-thread
+  JavaScript, which would put the p90 between two and five seconds — tolerable next to a fetch
+  that takes seconds anyway, and unmeasured. **What would settle it:** the solver in a page, on
+  hardware somebody owns, at 16, 18 and 20 bits.
+- **A deployment behind an egress proxy cannot run the reading at all, and that is the intended
+  behaviour rather than a limitation to work around.** Through a proxy the socket's peer is the
+  proxy and the hostname is resolved by something we are not asking, so the DNS-rebinding window
+  the peer check closes is wide open and invisible. `site_fetch_require_peer_match` exists to be
+  turned off deliberately by somebody who knows what they gave up; with it on, an unknown peer is
+  a refusal. **What would settle it:** a resolver-pinned transport that hands the proxy an
+  address rather than a name, which httpx does not offer today.
 
 - **Every address this console is reached by answers 404 in production today.** Measured against
   the live site 2026-09-17: `https://ourhike.org/` and `/app/` answer 200, and

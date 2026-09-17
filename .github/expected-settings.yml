@@ -133,9 +133,34 @@ settings:
       Email was in it because switching it on costs nothing, which was true
       of the setup and false of the result - Supabase's built-in sender is
       not a delivery path this project ships on, so an unset variable built
-      an app offering a sign-in that could not complete. Setting this to
-      `google` explicitly is still worth doing; since #397 it agrees with the
-      default rather than rescuing it.
+      an app offering a sign-in that could not complete.
+
+      #1572 is the value becoming `google,github,email`, and the ORDER is the
+      point: it is the last of that issue's steps, after GitHub's OAuth app
+      exists, custom SMTP is configured and both email templates carry
+      `{{ .Token }}` - and after the Supabase config check has read all of
+      that back. Set early, it is #397's defect again with two buttons.
+
+  SUPABASE_ACCESS_TOKEN:
+    where: secret
+    required: false
+    why: >-
+      A personal access token for Supabase's management API, read only by
+      the Supabase config check, and only to READ the project's auth
+      config: whether custom SMTP is configured, whether the email templates
+      carry `{{ .Token }}`, the code's length and expiry, and each
+      provider's client id - the settings a hiker meets as an email that
+      never arrives, and which the public settings endpoint does not show
+      (#1572). Optional because the check says what it could not see
+      without one, and runs everything else regardless.
+
+      Mint it FINE-GRAINED, with `auth_config_read` and nothing more
+      (supabase.com -> Account -> Access Tokens). A classic token is the
+      whole account - every project, every table - and there is no reason
+      for that to sit in Actions when a read of one document is all this
+      needs. Never the service-role key, which is a different credential
+      for a different API and which app/config.py deliberately does not
+      hold.
 
   API_BASE_URL:
     where: variable

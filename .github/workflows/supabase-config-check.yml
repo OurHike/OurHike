@@ -54,4 +54,11 @@ jobs:
           SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
           AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
+          # Optional, and the one real secret here: a fine-grained personal
+          # access token with auth_config_read, which lets the script read
+          # the project's auth config - custom SMTP, `{{ .Token }}` in the
+          # email templates, each provider's client id (#1572). Absent, the
+          # script says which of those it could not check and runs the rest.
+          # .github/expected-settings.yml has what to mint and what not to.
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: python check_supabase_config.py

@@ -113,30 +113,43 @@ ARCHIVE = RateLimit()
 #: One of those is an ordinary fact about a corpus: a capture the archive
 #: holds but will not serve today, which
 #: fetch_wayback_hike_pages.py deliberately costs that page and not the run.
-#: Three in a row is twelve refused requests, and the ladder in both fetchers
-#: is 30 + 120 + 300 seconds per URL.
+#: Ten in a row is forty refused requests, and the ladder in both fetchers is
+#: 30 + 120 + 300 seconds per URL.
 #:
-#: HOW LONG THAT TAKES IS NOT BOUNDED BY THE THREE, and the first version of
-#: this comment said "about 22 minutes" as though it were. Corrected against
-#: run 35128687766 (2026-09-16), which stopped after **53 minutes**: the
-#: archive served that runner intermittently - 3 write-ups recovered, 4
-#: refused, of 7 attempted - and every served response resets the count, by
-#: design, so the run only ended once three refusals landed genuinely
-#: back-to-back. 22 minutes is the floor, reached only when the host refuses
-#: from the first request and refuses quickly; a host that answers slowly or
-#: in patches takes longer, and a run that is working is supposed to.
+#: HOW LONG THAT TAKES IS NOT BOUNDED BY THE CEILING. An earlier version of
+#: this comment said "about 22 minutes" as though it were; run 35128687766
+#: stopped after 53. Every served response resets the count, by design, so
+#: elapsed-to-trip depends on how intermittently the host answers rather than
+#: on the ceiling alone. The ceiling bounds the WORST case - a host refusing
+#: from the first request - at about ten times 450 seconds, or 75 minutes of
+#: the job's 330-minute budget.
 #:
-#: @unvalidated - THREE IS PICKED, and what would settle it is the
-#: distribution of consecutive give-ups on a run that went on to FINISH,
-#: which no run here has yet recorded; 35128687766 is one refused run, not a
-#: distribution. What is measured is the asymmetry that argues for a low
-#: number, and it is what this rests on: at three, a refused run stopped in
-#: 53 minutes having banked what it got, against run 35092759225 the same
-#: day spending a whole 330-minute job on 42 of 444 write-ups and banking
-#: nothing. Being wrong here costs a re-dispatch; being wrong the other way
-#: cost five and a half hours. That is why this is not tuned upward without
-#: the measurement.
-MAX_CONSECUTIVE_REFUSALS = 3
+#: WHY TEN AND NOT THREE (#1528). Three was tuned for the wrong failure. It
+#: assumed the tripwire's job was to spot a client being BANNED, where the
+#: first three requests fail and so will every later one. What the archive
+#: actually does is serve in PATCHES, and from inside a run the two look
+#: identical. Measured over the three runs that followed the ceiling
+#: shipping: run 35128687766 attempted 7 write-ups and recovered 3 before
+#: three refusals landed together; runs 35146187058 and 35157398032 tripped
+#: on their first three and recovered nothing. 82 minutes of runner time,
+#: zero write-ups, and the archive was answering ~43% of the time throughout.
+#:
+#: Reasoned from that 43%: the chance of N refusals in a row is 0.57^N, so a
+#: ceiling of 3 trips about every 5 pages, 8 about every 90, and 10 about
+#: every 280 - against a corpus of 444. That is the whole argument, and it is
+#: an argument about a distribution rather than about any one run.
+#:
+#: @unvalidated - TEN IS PICKED, and 43% comes from one run of seven pages.
+#: What would settle it is the service rate measured across several runs in
+#: different hours, which nothing here has recorded. The asymmetry is what
+#: this rests on: too high costs 50 extra minutes of a budget with room to
+#: spare, and banks every write-up it got on the way (#1522); too low costs
+#: the whole recovery, which is what happened three times in one evening.
+#:
+#: THIS DOES NOT LOOSEN THE POLITENESS. MAX_REQUESTS_PER_MINUTE above is what
+#: governs load on the archive and is untouched; a ceiling of ten is at most
+#: forty requests spread over 75 minutes before the run stands down.
+MAX_CONSECUTIVE_REFUSALS = 10
 
 
 class ArchiveRefusing(RuntimeError):

@@ -36,6 +36,8 @@ That `--provider` label is as far as *discovery* currently goes toward being mul
 
 What exists upstream *beyond* the registry - the maintaining clubs, the federal servers, the community datasets, and what each is worth - is published and qualified in [SOURCE_SURVEY.md](SOURCE_SURVEY.md) (snapshot dated 2026-08-09; it also corrects who actually hosts the layers above). The water-source question that survey left open - measured against the shelters for **#529 - 97% of shelters have no water source within 250 m, and the trail is not like that** - has its own dated snapshot in [WATER_SOURCES.md](WATER_SOURCES.md), with the three measurement spikes (`spike_shelter_water.py`, `spike_osm_water_census.py`, `spike_guide_water_check.py`) beside it.
 
+Elevation is surveyed separately in [ELEVATION_SOURCES.md](ELEVATION_SOURCES.md) (2026-08-12, restored and updated 2026-09-17), because a DEM is qualified on different terms than a feature layer - what a source does to *cumulative ascent* matters more than its nominal resolution, and the finest DEM tested is not the most truthful one.
+
 ## Where a script's output goes
 
 Three shelves, and picking the wrong one is the one mistake that cannot be undone — see [../CONTRIBUTING.md](../CONTRIBUTING.md)'s "Data does not go in commits" for why a commit is a permanent publication of somebody else's data.

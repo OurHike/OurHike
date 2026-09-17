@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { ATC_UPDATE_LAYER_ID, atcTapeImageId } from '../lib/atcUpdateStyle'
 import {
   SHARED_GROUND_BLAZE_LAYER_ID,
   SHARED_GROUND_CASING_LAYER_ID,
@@ -74,6 +75,7 @@ import {
   TRAIL_CASING_WIDTH_EXPRESSION,
   solidTrailWidthExpression,
   DARK_INKED_BLAZE_LAYER_IDS,
+  CLOSURE_TAPE_LAYER_IDS,
 } from './style'
 import {
   BUNDLED_GLYPHS,
@@ -87,6 +89,7 @@ import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
   CLOSURE_TAPE_IMAGE_ID,
+  closureTapeImageId,
   CLOSURE_LAYER_ID,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
@@ -382,7 +385,10 @@ describe('buildMapStyle', () => {
     // prevent.
     const band = layer(LONG_TERM_CLOSURE_LAYER_ID).paint as Record<string, unknown>
 
-    expect(band['line-pattern']).toBe(CLOSURE_TAPE_IMAGE_ID)
+    // The tape on the paper of the sheet this style was built for: the field
+    // day sheet, which is what a build with no appearance draws (#1575).
+    expect(band['line-pattern']).toBe(closureTapeImageId(mapBackdrop({ theme: 'light' })))
+    expect(String(band['line-pattern']).startsWith(CLOSURE_TAPE_IMAGE_ID)).toBe(true)
   })
 
   it('draws the long-term closure with exactly the temporary closure’s treatment', () => {
@@ -2302,6 +2308,58 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(
         blazeLineColor({ theme: 'light' }, !DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
+      )
+    }
+    expect(m.styles).toEqual([])
+  })
+})
+
+describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () => {
+  const LIVE = { ...STYLE_OPTIONS, background: 'hiking_topo_live' as const }
+  const paintOf = (
+    built: { layers: Array<{ id: string; paint?: unknown }> },
+    id: string,
+  ) => (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
+
+  it('builds every tape layer on the paper of the appearance it was built for', () => {
+    // Four closure layers and the ATC band, all on one paper: the sheet's
+    // backdrop. A night build that pointed one of them at the day tape would
+    // draw a cream band across ink on that layer alone.
+    const night = buildMapStyle({ ...LIVE, theme: 'dark' })
+    const ground = mapBackdrop({ theme: 'dark' })
+
+    for (const id of CLOSURE_TAPE_LAYER_IDS) {
+      expect(paintOf(night, id)['line-pattern'], id).toBe(closureTapeImageId(ground))
+    }
+    expect(paintOf(night, ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(
+      atcTapeImageId(ground),
+    )
+    expect(ground).not.toBe(mapBackdrop({ theme: 'light' }))
+  })
+
+  it('re-points every tape layer at the new paper on a sheet change', async () => {
+    // The badge plate's rule, applied to the tape: the image is per sheet,
+    // so a sheet switch that left a tape layer on the previous paper would
+    // keep a day band on a night map. map/closureTape.ts has registered every
+    // paper's pair, so the id named here always exists.
+    const { MockMap } = await import('../test/mocks/maplibre-gl')
+    const m = new MockMap({})
+    m.layerIds = [BACKDROP_LAYER_ID, ...CLOSURE_TAPE_LAYER_IDS, ATC_UPDATE_LAYER_ID]
+
+    for (const appearance of [
+      { theme: 'dark' } as const,
+      { mapStyle: 'parchment' } as const,
+      { mapStyle: 'night_hike', redLight: true } as const,
+    ]) {
+      attachMapAppearance(m as never, appearance)
+      const ground = mapBackdrop(appearance)
+      for (const id of CLOSURE_TAPE_LAYER_IDS) {
+        expect(m.paintProperties.get(`${id}/line-pattern`), id).toBe(
+          closureTapeImageId(ground),
+        )
+      }
+      expect(m.paintProperties.get(`${ATC_UPDATE_LAYER_ID}/line-pattern`)).toBe(
+        atcTapeImageId(ground),
       )
     }
     expect(m.styles).toEqual([])

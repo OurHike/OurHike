@@ -1,10 +1,23 @@
 // How a closure is drawn (WIREFRAMES.md §7).
 //
 // A closure is a LINE, not a pin: barrier tape laid along the closed geometry -
-// red diagonals with a dark edge, and nothing at all between them, so the trail
-// underneath stays visible through its own closure. Its whole job is to be
-// unmistakable for a red blaze, which is a thinner SOLID line with a hairline
-// casing.
+// red diagonals with a dark edge, on an opaque band of the sheet's own paper.
+// Its whole job is to be unmistakable for a red blaze, which is a thinner
+// SOLID line with a hairline casing.
+//
+// THE PAPER UNDER-BAND IS THE MAINTAINER'S CHOICE OF 2026-09-17 (#1575). From
+// 2026-08-27 there was nothing at all between the stripes, so the trail stayed
+// visible through its own closure. Then every trail line became one red by
+// default (lib/blaze.ts's PLAIN_TRAIL_COLOR - the same hex as CLOSURE_COLOR),
+// and a red line showing through the gaps read as more of the same red. Shown
+// five rendered treatments - the tape as it was, orange stripes, yellow and
+// black, a monochrome barrier, and this - the maintainer chose this one: "I
+// think I like option E the best". The ground is the sheet's backdrop
+// (map/style.ts's mapBackdrop), baked into the image per sheet by
+// map/closureTape.ts and swapped with the sheet, so on night_hike it is ink
+// and on parchment it is parchment. What it costs is exactly the sentence it
+// replaced: the trail is not visible through its closure any more. The
+// stripes, their cadence, their edges and the tape's width did not move.
 //
 // That distinction is safety-critical and is deliberately structural rather
 // than chromatic. Colour alone vanishes in greyscale, in direct sun on a
@@ -32,10 +45,27 @@ import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 
 export const CLOSURE_LAYER_ID = 'closure-band'
 
-/** The image id the band's `line-pattern` points at. Registered on the live
- *  map by map/closureTape.ts, which owns the pixels; this module owns only
- *  the spec they are drawn from. */
+/** The stem of the image ids the band's `line-pattern` points at - one image
+ *  per sheet paper since #1575, named by `closureTapeImageId` below.
+ *  Registered on the live map by map/closureTape.ts, which owns the pixels;
+ *  this module owns only the spec they are drawn from. */
 export const CLOSURE_TAPE_IMAGE_ID = 'closure-tape'
+
+/**
+ * The id of the closure tape drawn on `ground`, the sheet's paper as a
+ * `#rrggbb` hex (#1575, option E).
+ *
+ * One image per paper rather than one image and a second layer under it: a
+ * `line-pattern` layer ignores `line-color`, so the ground can only be in the
+ * pixels, and a separate under-band layer per tape layer would double the
+ * five tape layers for a colour the image can simply carry. map/closureTape.ts
+ * registers the image for every paper the sheet table can produce, and
+ * map/style.ts's attachMapAppearance points each tape layer at the current
+ * one - both through this function, so the two agree by construction.
+ */
+export function closureTapeImageId(ground: string): string {
+  return `${CLOSURE_TAPE_IMAGE_ID}-${ground.replace('#', '').toLowerCase()}`
+}
 
 /** Drawn at 2x, like every other generated image on this map
  *  (map/poiIcons.ts's POI_PIN_PIXEL_RATIO), so the stripes stay crisp on a
@@ -197,6 +227,12 @@ export const LONG_TERM_CLOSED_FILTER: unknown[] = [
 ]
 
 export interface ClosureLayerOptions {
+  /** The sheet's paper the tape lies on, as a `#rrggbb` hex - the backdrop
+   *  of the appearance the style is built for (map/style.ts's mapBackdrop).
+   *  Required rather than defaulted, because this module cannot know which
+   *  sheet a caller is drawing and a tape on the wrong paper is a pale band
+   *  across a night map. */
+  ground: string
   /** A distinct id, for a second instance over a different source. Defaults
    *  to the temporary-closure layer's own. */
   bandId?: string
@@ -207,9 +243,12 @@ export interface ClosureLayerOptions {
 
 /**
  * ONE LAYER, WHICH IS THE POINT RATHER THAN A SIMPLIFICATION. A casing drawn
- * as a second line beneath this one would show through every transparent gap
- * in the tape, which is exactly the defect the tape exists to end - so the
- * casing lives in the image instead, where it can only ever edge a stripe.
+ * as a second line beneath this one would have shown through every gap in the
+ * tape while the gaps were transparent, which is exactly the defect the tape
+ * was built to end - so the casing lives in the image instead, where it can
+ * only ever edge a stripe. The paper under-band (#1575) lives there too, and
+ * for the same reason: a `line-pattern` layer has no colour of its own, so
+ * the image is the only place a ground can be.
  *
  * Still an array, and still built by one function for every source that needs
  * it: ONE TREATMENT, NOT TWO THAT CURRENTLY AGREE. map/style.ts calls this
@@ -226,9 +265,9 @@ export interface ClosureLayerOptions {
  */
 export function buildClosureLayers(
   sourceId: string,
-  options: ClosureLayerOptions = {},
+  options: ClosureLayerOptions,
 ): LayerSpecification[] {
-  const { bandId = CLOSURE_LAYER_ID, filter } = options
+  const { ground, bandId = CLOSURE_LAYER_ID, filter } = options
   // Spread rather than a conditional key so the instances produce byte-
   // identical layer objects apart from id, source and filter - the property
   // that lets the tests assert "one treatment" rather than "two that currently
@@ -246,8 +285,9 @@ export function buildClosureLayers(
         // blaze_color - a closure must not inherit the hue of the trail it
         // sits on. Baking the red into the pixels is a stronger form of that
         // guarantee than the flat literal it replaces: there is no colour
-        // property left here for anyone to data-drive by accident.
-        'line-pattern': CLOSURE_TAPE_IMAGE_ID,
+        // property left here for anyone to data-drive by accident. Which
+        // image is the sheet's: the tape drawn on this sheet's paper (#1575).
+        'line-pattern': closureTapeImageId(ground),
         'line-width': CLOSURE_TAPE_WIDTH,
       },
     },

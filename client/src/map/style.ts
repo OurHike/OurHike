@@ -108,9 +108,15 @@ import type {
   StyleSpecification,
 } from '@maplibre/maplibre-gl-style-spec'
 import { BLAZE_MATCH_EXPRESSION, PLAIN_TRAIL_COLOR } from '../lib/blaze'
-import { buildAtcUpdateLayers } from '../lib/atcUpdateStyle'
+import {
+  ATC_UPDATE_LAYER_ID,
+  atcTapeImageId,
+  buildAtcUpdateLayers,
+} from '../lib/atcUpdateStyle'
 import {
   buildClosureLayers,
+  CLOSURE_LAYER_ID,
+  closureTapeImageId,
   LONG_TERM_CLOSED_FILTER,
   LONG_TERM_CLOSURE_LAYER_ID,
 } from '../lib/closureStyle'
@@ -268,6 +274,21 @@ export const NEARBY_BLAZE_LAYER_ID = 'nearby-trail-blaze'
 export const NEARBY_LONG_TERM_CLOSURE_LAYER_ID = 'nearby-long-term-closure-band'
 export const NETWORK_OVERVIEW_LAYER_ID = 'network-overview-line'
 export const NETWORK_OVERVIEW_CLOSURE_LAYER_ID = 'network-overview-closure-band'
+
+/**
+ * Every layer painting barrier tape from the closure image: the closures
+ * feed's band, the A.T.'s long-term-closed lines, the nearby network's and the
+ * corridor-view sketch's. The tape's ground is the sheet's paper, baked into
+ * the image (#1575, option E), so a sheet change points each of these at the
+ * tape drawn on its own paper - attachMapAppearance walks this list. The ATC
+ * band paints from its own image and is re-pointed beside them by name.
+ */
+export const CLOSURE_TAPE_LAYER_IDS: readonly string[] = [
+  CLOSURE_LAYER_ID,
+  LONG_TERM_CLOSURE_LAYER_ID,
+  NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
+  NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
+]
 
 /**
  * The untaken half of each trail-line split (#1283, map/nearbyTrails.ts).
@@ -684,6 +705,28 @@ export function attachMapAppearance(
             appearance,
             !DARK_INKED_BLAZE_LAYER_IDS.includes(layerId),
           ) as never,
+        )
+      }
+
+      // The barrier tape's ground is the sheet's paper, baked into the image
+      // (#1575, option E), so a sheet change points every tape layer at the
+      // tape drawn on its own paper - the closure layers at the closure tape,
+      // the ATC band at its own. map/closureTape.ts has registered every
+      // paper's pair before any of these ids is asked for.
+      const tapeGround = mapBackdrop(appearance)
+      for (const layerId of CLOSURE_TAPE_LAYER_IDS) {
+        if (map.getLayer(layerId) === undefined) continue
+        map.setPaintProperty(
+          layerId,
+          'line-pattern',
+          closureTapeImageId(tapeGround) as never,
+        )
+      }
+      if (map.getLayer(ATC_UPDATE_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          ATC_UPDATE_LAYER_ID,
+          'line-pattern',
+          atcTapeImageId(tapeGround) as never,
         )
       }
 
@@ -1814,6 +1857,9 @@ export function buildMapStyle({
     redLight,
     blazeColorsShown,
   }
+  // The paper every barrier tape lies on (#1575, option E): this sheet's
+  // backdrop, which is what map/closureTape.ts bakes under the stripes.
+  const tapeGround = mapBackdrop(appearance)
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.
@@ -2156,6 +2202,7 @@ export function buildMapStyle({
       // ghosted line, under everything the A.T. draws, and capped at the
       // seam where the full network's own tape takes over.
       ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
+        ground: tapeGround,
         bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }).map((layer) => ({ ...layer, maxzoom: POI_PIN_MIN_ZOOM })),
@@ -2251,6 +2298,7 @@ export function buildMapStyle({
       // chosen trail, per the ordering argument above.
       ...onSourceLayer(
         buildClosureLayers(NEARBY_TRAILS_SOURCE_ID, {
+          ground: tapeGround,
           bandId: NEARBY_LONG_TERM_CLOSURE_LAYER_ID,
           filter: LONG_TERM_CLOSED_FILTER,
         }),
@@ -2375,8 +2423,9 @@ export function buildMapStyle({
       // closed long-term, whichever draws last wins pixels that look
       // identical either way. Two tapes at the same cadence stack without a
       // seam, because they are the same image.
-      ...buildClosureLayers(CLOSURE_SOURCE_ID),
+      ...buildClosureLayers(CLOSURE_SOURCE_ID, { ground: tapeGround }),
       ...buildClosureLayers(TRAILS_SOURCE_ID, {
+        ground: tapeGround,
         bandId: LONG_TERM_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
       }),
@@ -2455,7 +2504,7 @@ export function buildMapStyle({
       // distinction at length - but because a band is not a dot, so it does
       // not have the problem this move fixes, and re-ordering a layer nobody
       // reported a fault with is how a fix turns into two.
-      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID),
+      ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID, tapeGround),
     ],
   }
 }

@@ -9,6 +9,8 @@ import {
   RED_LIGHT_BLAZE_COLOR,
   SIDE_TRAIL_WIDTH,
   trailCasingColor,
+  MAP_BACKDROP,
+  mapBackdrop,
 } from './style'
 import {
   glyphPath,
@@ -223,26 +225,38 @@ describe('MapIcon: a closure', () => {
     // THE DEFECT THIS SWATCH USED TO SHOW, held so it cannot come back. The
     // legend drew a filled casing rect with a dashed band over it - which was
     // honest, because that is what the map drew, and both were a near-black
-    // line with red ticks in it. There is no rect now, and the casing is a
-    // stroke wider than the stripe it outlines.
+    // line with red ticks in it. The one rect here now is the sheet's paper
+    // (#1575), never the casing, and the casing is a stroke wider than the
+    // stripe it outlines.
     const svg = draw(<MapIcon type="closure" />)
     const edge = Number(
       part(svg, 'map-icon__closure-casing').getAttribute('stroke-width'),
     )
+    const rects = svg.querySelectorAll('rect')
 
-    expect(svg.querySelector('rect')).toBeNull()
+    expect(rects).toHaveLength(1)
+    expect(rects[0]?.getAttribute('class')).toBe('map-icon__closure-ground')
+    expect(rects[0]?.getAttribute('fill')).not.toBe(CLOSURE_CASING_COLOR)
     expect(edge).toBe(CLOSURE_TAPE_CADENCE.stripe + CLOSURE_STRIPE_EDGE * 2)
   })
 
-  it('leaves the ground between the stripes alone', () => {
-    // What the map does, restated in the legend: the tape's gaps are
-    // transparent, so nothing here may paint them either. A fill anywhere in
-    // this swatch would be a legend claiming the map hides the trail.
-    const svg = draw(<MapIcon type="closure" />)
-
-    for (const node of svg.querySelectorAll('*')) {
+  it('lays the sheet’s paper under the stripes, in the map’s own colour (#1575)', () => {
+    // What the map does, restated in the legend: since option E the tape's
+    // gaps hold the sheet's paper, so the swatch holds it too - the field day
+    // sheet's by default, and night ink beside a night map. Nothing else in
+    // the swatch carries a fill; the stripes are strokes.
+    const day = draw(<MapIcon type="closure" />)
+    expect(part(day, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+      mapBackdrop({ theme: 'light' }),
+    )
+    for (const node of day.querySelectorAll('*:not(.map-icon__closure-ground)')) {
       expect(node.getAttribute('fill')).toBeNull()
     }
+
+    const night = draw(<MapIcon type="closure" appearance={{ theme: 'dark' }} />)
+    expect(part(night, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+      MAP_BACKDROP.dark,
+    )
   })
 })
 

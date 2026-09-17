@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { buildClosureTape } from './closureTape'
+import { buildClosureTape, tapeGrounds } from './closureTape'
+import { MAP_BACKDROP, mapBackdrop } from './style'
 import {
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
   CLOSURE_TAPE_CADENCE,
   CLOSURE_TAPE_PIXEL_RATIO,
   CLOSURE_TAPE_WIDTH,
+  closureTapeImageId,
   tapeRedFraction,
 } from '../lib/closureStyle'
-import { ATC_UPDATE_TAPE_CADENCE } from '../lib/atcUpdateStyle'
+import { ATC_UPDATE_TAPE_CADENCE, atcTapeImageId } from '../lib/atcUpdateStyle'
 
 // What a hiker is owed by this image, checked in its bytes.
 //
@@ -17,8 +19,20 @@ import { ATC_UPDATE_TAPE_CADENCE } from '../lib/atcUpdateStyle'
 // gap with the darkest ink on the sheet. Nothing here would have caught that,
 // because nothing here existed - so these tests are written against the
 // properties that failure had, not only against the ones the new drawing has.
+//
+// SINCE #1575 THE GAPS HOLD THE SHEET'S PAPER rather than nothing (option E,
+// the maintainer's choice of 2026-09-17 - lib/closureStyle.ts's header). So
+// "the ground shows through" became "the ground IS the paper, in the map's
+// own colour": the tests below hold that it is paper and not casing, that it
+// is the right paper for the sheet, and that the casing still edges nothing
+// but a stripe.
 
-const tape = buildClosureTape()
+/** The field day sheet's paper and night_hike's ink - the two anchor
+ *  backdrops map/style.ts pins. */
+const PAPER = MAP_BACKDROP.light
+const INK = MAP_BACKDROP.dark
+
+const tape = buildClosureTape(PAPER)
 
 /** The four channels at one pixel. */
 function pixel(image: ReturnType<typeof buildClosureTape>, x: number, y: number) {
@@ -46,6 +60,14 @@ function allPixels(image: ReturnType<typeof buildClosureTape>) {
   return out
 }
 
+/** Pixels painted exactly `hex`, opaque. */
+function paintedIn(image: ReturnType<typeof buildClosureTape>, hex: string) {
+  const want = parseHex(hex)
+  return allPixels(image).filter(
+    (p) => p.a === 255 && p.r === want.r && p.g === want.g && p.b === want.b,
+  )
+}
+
 describe('the image MapLibre is handed', () => {
   it('is one pitch wide and one tape tall, at the ratio it declares', () => {
     // MapLibre scales a line-pattern so the image HEIGHT becomes the line
@@ -60,33 +82,42 @@ describe('the image MapLibre is handed', () => {
   })
 })
 
-describe('what is between the stripes', () => {
-  it('lets the ground through over most of its area', () => {
-    // THE TEST THE OLD BAND WOULD HAVE FAILED, and the reason this file
-    // exists. Its casing was opaque along its whole length - 100%, no
-    // exceptions - so a hiker could not see the trail through its own closure.
-    //
-    // Counted at half alpha rather than at zero because that is the question
-    // being asked: a pixel the ground shows through is one the tape does not
-    // own, and the stripes' anti-aliased edges are a couple of points either
-    // way. The fully-clear count is held separately below.
-    const open = allPixels(tape).filter((p) => (p.a ?? 0) < 128)
-
-    expect(open.length / (tape.width * tape.height)).toBeGreaterThan(0.5)
+describe('the ground between the stripes is the sheet’s paper (#1575, option E)', () => {
+  it('is the paper it was built on, opaque, over most of its area', () => {
+    // The same count the transparent tape used to make of its clear pixels,
+    // asked of the paper instead: most of the tape is ground, and the ground
+    // is the sheet's own paper rather than nothing. That is what stops a red
+    // line showing through the gaps as more of the same red - the reason the
+    // maintainer chose this treatment over the tape as it was. 0.4 is the
+    // bar the transparent tape's exactly-clear pixels were held to; measured
+    // 2026-09-17, exactly-paper pixels are 47.4% of the tile, the rest being
+    // stripe, edge and their one-pixel ramps into the paper.
+    expect(paintedIn(tape, PAPER).length / (tape.width * tape.height)).toBeGreaterThan(
+      0.4,
+    )
   })
 
-  it('is properly empty between the stripes, not merely faint', () => {
-    // A design that hit the number above with soft edges everywhere would pass
-    // it and look like a wash. Most of the open area has to be nothing at all.
-    const clear = allPixels(tape).filter((p) => p.a === 0)
+  it('has no transparent pixel anywhere, which is the whole change', () => {
+    expect(allPixels(tape).every((p) => p.a === 255)).toBe(true)
+  })
 
-    expect(clear.length / (tape.width * tape.height)).toBeGreaterThan(0.4)
+  it('is night ink on a night sheet, so the band never pales a dark map', () => {
+    // The ground is the sheet's, not a fixed paper: a cream band across
+    // night_hike's ink would be the brightest thing on a screen built to
+    // spare night vision.
+    const night = buildClosureTape(INK)
+
+    expect(paintedIn(night, INK).length / (night.width * night.height)).toBeGreaterThan(
+      0.4,
+    )
+    expect(paintedIn(night, PAPER)).toHaveLength(0)
   })
 
   it('never paints casing where there is no stripe to edge', () => {
     // The defect, stated as a property: dark pixels are permitted only beside
     // red ones. Scanned per row, because a stripe crosses every row exactly
-    // once and "beside" is a distance along that row.
+    // once and "beside" is a distance along that row. On the paper tape, so a
+    // ground pixel can never be mistaken for casing.
     const dark = parseHex(CLOSURE_CASING_COLOR)
     const near = (a: number, b: number) => Math.abs(a - b) <= 12
 
@@ -116,16 +147,7 @@ describe('what is between the stripes', () => {
 
 describe('the stripes themselves', () => {
   it('paints them in the closure red', () => {
-    const red = parseHex(CLOSURE_COLOR)
-    const opaque = allPixels(tape).filter((p) => p.a === 255)
-    const matching = opaque.filter(
-      (p) =>
-        Math.abs((p.r ?? 0) - red.r) <= 2 &&
-        Math.abs((p.g ?? 0) - red.g) <= 2 &&
-        Math.abs((p.b ?? 0) - red.b) <= 2,
-    )
-
-    expect(matching.length).toBeGreaterThan(0)
+    expect(paintedIn(tape, CLOSURE_COLOR).length).toBeGreaterThan(0)
   })
 
   it('covers about the fraction of the tape the spec computes', () => {
@@ -154,7 +176,7 @@ describe('the stripes themselves', () => {
 })
 
 describe('the ATC tape is the same tape, slower', () => {
-  const atc = buildClosureTape(ATC_UPDATE_TAPE_CADENCE)
+  const atc = buildClosureTape(PAPER, ATC_UPDATE_TAPE_CADENCE)
 
   it('is drawn at the same width', () => {
     // lib/atcUpdateStyle.ts refuses to say one barrier is softer than the
@@ -177,5 +199,37 @@ describe('the ATC tape is the same tape, slower', () => {
     // SOURCE_REGISTRY.md's show-one-disclose-the-other rule is answered by the
     // sheet, but the line may not be identical either).
     expect(atc.width).not.toBe(tape.width)
+  })
+
+  it('lies on the same paper', () => {
+    expect(paintedIn(atc, PAPER).length / (atc.width * atc.height)).toBeGreaterThan(0.5)
+  })
+})
+
+describe('one tape per paper (#1575)', () => {
+  it('lists every paper the sheet table can produce, once each, as a hex', () => {
+    // Ten today: four day sheets (night_hike has none), five night sheets
+    // and red light's - the figure the module comment carries, held here so
+    // a sheet added to liveTopo.ts's table moves it in the open.
+    const grounds = tapeGrounds()
+
+    expect(grounds).toHaveLength(10)
+    expect(new Set(grounds).size).toBe(grounds.length)
+    for (const ground of grounds) expect(ground).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+
+  it('includes both anchor backdrops and red light’s', () => {
+    expect(tapeGrounds()).toContain(MAP_BACKDROP.light)
+    expect(tapeGrounds()).toContain(MAP_BACKDROP.dark)
+    expect(tapeGrounds()).toContain(
+      mapBackdrop({ mapStyle: 'night_hike', redLight: true }),
+    )
+  })
+
+  it('names each paper’s tape apart from every other, and from the ATC’s', () => {
+    expect(closureTapeImageId(PAPER)).not.toBe(closureTapeImageId(INK))
+    expect(closureTapeImageId(PAPER)).not.toBe(atcTapeImageId(PAPER))
+    // Case does not make a second image: the same paper is the same id.
+    expect(closureTapeImageId('#FFFFFF')).toBe(closureTapeImageId('#ffffff'))
   })
 })

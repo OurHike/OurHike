@@ -58,6 +58,7 @@ import {
   SIDE_TRAIL_WIDTH,
   redLightActive,
   trailCasingColor,
+  mapBackdrop,
 } from './style'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
@@ -317,7 +318,7 @@ const CLOSURE_STRIPES = Array.from(
   (_, index) => (index - 1) * CLOSURE_TAPE_CADENCE.pitch,
 )
 
-function ClosureBand({ className }: { className?: string }) {
+function ClosureBand({ className, ground }: { className?: string; ground: string }) {
   // Every stripe drawn twice: the dark edge first, the red over it. The same
   // two passes map/closureTape.ts makes into its byte array, and the same
   // reason - the edge is what the stripe is outlined WITH, never a second
@@ -342,9 +343,20 @@ function ClosureBand({ className }: { className?: string }) {
       aria-hidden="true"
       focusable="false"
     >
-      {/* No background rect, which is the whole change: what shows between the
-          stripes on the map is the trail and the ground under it, so what
-          shows between them here has to be the legend's own paper. */}
+      {/* The sheet's paper under the stripes, exactly as map/closureTape.ts
+          bakes it under them (#1575, option E). There was no rect here from
+          2026-08-27, when the tape's gaps were transparent and the legend's
+          own paper showed through; now the map's paper does, in the map's own
+          colour, which on a dark sheet is ink - a legend that drew the panel's
+          surface instead would be teaching a mark the map does not draw. */}
+      <rect
+        className="map-icon__closure-ground"
+        x={0}
+        y={0}
+        width={CLOSURE_WIDTH}
+        height={CLOSURE_HEIGHT}
+        fill={ground}
+      />
       {CLOSURE_STRIPES.map((x) =>
         stripe(
           x,
@@ -465,6 +477,10 @@ export interface MapIconProps {
    *  on a tinted square, for lists (#1373). A closure and a warning have no
    *  tile form - a warning is its pin, a closure is its tape. */
   variant?: 'pin' | 'tile'
+  /** Which sheet the map is drawn in - read by the closure swatch alone, for
+   *  the paper its tape lies on (#1575). Defaults to the field day sheet, as
+   *  TrailLineSwatch does for the same reason; the pins ignore it. */
+  appearance?: SheetAppearance
 }
 
 export function MapIcon({
@@ -473,8 +489,11 @@ export function MapIcon({
   className,
   members,
   variant = 'pin',
+  appearance = { theme: 'light' },
 }: MapIconProps) {
-  if (type === CLOSURE_TYPE) return <ClosureBand className={className} />
+  if (type === CLOSURE_TYPE) {
+    return <ClosureBand className={className} ground={mapBackdrop(appearance)} />
+  }
 
   if (type === WARNING_ICON_ID) {
     // Drawn at the same size as every other icon here, which is the one place

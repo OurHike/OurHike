@@ -638,7 +638,13 @@ export function Legend({
                     not be a key. The rim still means what it means on the map,
                     one pin at a time, which is where it is a fact about
                     something rather than about a rectangle. */}
-                <MapIcon className="legend__icon" type={row.type} />
+                <MapIcon
+                  className="legend__icon"
+                  type={row.type}
+                  // For the closure row's tape, which lies on the sheet's
+                  // paper (#1575); every other row's pin ignores it.
+                  appearance={sheetAppearance}
+                />
                 <span className="legend__label">{label}</span>
                 {/* ONE SLOT, NOT TWO. This carried the count and then a second
                     `13 shown` badge beside it, and in a two-column grid at

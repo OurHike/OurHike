@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { atcTapeImageId } from '../lib/atcUpdateStyle'
+import { closureTapeImageId } from '../lib/closureStyle'
+import { tapeGrounds } from './closureTape'
 import { TRAILS } from '../lib/trails'
 import { PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import {
@@ -977,6 +980,22 @@ describe('POI pins', () => {
 
     expect(imageWasThere).toBe(true)
     expect(map.images.has(WARNING_ICON_ID)).toBe(true)
+  })
+
+  it('registers the barrier tape on every paper the sheet can be, up front (#1575)', () => {
+    // A tape layer whose `line-pattern` names an image the map has not been
+    // given draws nothing, so a sheet change may never be the first time a
+    // paper's tape is asked for: every paper's closure tape and ATC tape are
+    // there once the style is ready.
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    for (const ground of tapeGrounds()) {
+      expect(map.images.has(closureTapeImageId(ground)), ground).toBe(true)
+      expect(map.images.has(atcTapeImageId(ground)), ground).toBe(true)
+    }
   })
 
   it('draws the serious warnings it was given as pins', () => {

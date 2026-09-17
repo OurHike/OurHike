@@ -439,6 +439,8 @@ FieldNote                        (new — supersedes DATA_NUDGES.md's ConditionC
 
 NoteFlag
   id, note_id, flagged_by, reason, created_at
+  unique on (note_id, flagged_by): the queue counts accounts, not taps, and
+  since #1545 the database holds that line rather than the router alone
 
 POI                              (derived at render time, stored nowhere)
   last_confirmed_at              max(observed_at) over visible notes -> staleness.ts

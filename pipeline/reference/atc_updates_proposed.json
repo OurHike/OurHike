@@ -1,0 +1,94 @@
+{
+  "generated_at": "2026-09-17T07:37:45.378624Z",
+  "reviewed_at": "2026-08-24",
+  "candidates": [
+    {
+      "atc_id": "iron-mtn-gap-detour",
+      "title": "NC/TN: Iron Mtn Gap Reopened",
+      "category": "Detour",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "mile_references": [
+        {
+          "direction": "NOBO",
+          "start": 360.6,
+          "end": 364.8,
+          "raw": "NOBO mile 360.6 to 364.8"
+        },
+        {
+          "direction": "NOBO",
+          "start": 360.6,
+          "end": 366.1,
+          "raw": "NOBO miles 360.6 to 366.1"
+        },
+        {
+          "direction": "NOBO",
+          "start": 364.7,
+          "end": null,
+          "raw": "NOBO mile 364.7"
+        },
+        {
+          "direction": "NOBO",
+          "start": 360.6,
+          "end": 364.8,
+          "raw": "NOBO mile 360.6 to 364.8"
+        },
+        {
+          "direction": "NOBO",
+          "start": 364.8,
+          "end": 366.1,
+          "raw": "NOBO miles 364.8 to 366.1"
+        }
+      ],
+      "updated_at": "2026-08-27T13:58:38Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/iron-mtn-gap-detour/",
+      "reason_not_auto_published": "5 mile references that do not agree on one place"
+    },
+    {
+      "atc_id": "nc-tn-elk-river-area-debris-removal",
+      "title": "NC/TN: Elk River Area Debris Removal",
+      "category": "Construction",
+      "states": [
+        "NC",
+        "TN"
+      ],
+      "mile_references": [
+        {
+          "direction": "NOBO",
+          "start": 401.7,
+          "end": null,
+          "raw": "NOBO mile 401.7"
+        },
+        {
+          "direction": "NOBO",
+          "start": 402.0,
+          "end": null,
+          "raw": "NOBO mile 402"
+        },
+        {
+          "direction": "NOBO",
+          "start": 401.6,
+          "end": null,
+          "raw": "NOBO mile 401.6"
+        }
+      ],
+      "updated_at": "2026-09-15T13:28:30Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/nc-tn-elk-river-area-debris-removal/",
+      "reason_not_auto_published": "3 mile references that do not agree on one place"
+    },
+    {
+      "atc_id": "pennsylvania-missing-person-2",
+      "title": "Pennsylvania: Missing Person",
+      "category": "Alert",
+      "states": [
+        "PA"
+      ],
+      "mile_references": [],
+      "updated_at": "2026-09-03T12:57:04Z",
+      "source_url": "https://appalachiantrail.org/trail-updates/pennsylvania-missing-person-2/",
+      "reason_not_auto_published": "0 mile references that do not agree on one place"
+    }
+  ]
+}

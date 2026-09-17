@@ -557,18 +557,98 @@ def resolve_blaze(source: dict, properties: dict, mapping: dict | None) -> tuple
     return map_source_blaze(raw, mapping)
 
 
-def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str]) -> str | None:
+#: How much of a line has to fall inside `boundary_source`'s polygons before it
+#: counts as being in the park (#1533). @unvalidated as a threshold - what is
+#: measured is what it decides: at 0.8, the ten reviewed drive names keep 12.02
+#: miles inside Central and Prospect Park and drop the 0.39 miles of the same
+#: names that run on outside them. A whole-containment test (1.0) would throw
+#: away a drive whose last few metres cross the park edge at an entrance, and a
+#: mere-intersection test (anything at 0) would keep a city street that only
+#: clips a corner. What would settle it is a case where a real drive sits
+#: between the two, which none of the ten does.
+INSIDE_BOUNDARY_MIN_FRACTION = 0.8
+
+
+def inside_boundary(geometry, boundary) -> bool:
+    """Whether most of `geometry`'s length lies inside `boundary`.
+
+    Measured in DEGREES rather than projected metres, which is sound here and
+    would not be everywhere: the answer is a RATIO of two lengths of the same
+    line within one park, so the lon/lat scale factor divides out almost
+    exactly. It would not divide out if the two lengths came from different
+    latitudes, which over a few hundred metres they cannot.
+
+    A zero-length line is not inside anything - `_line_parts` already records
+    what a degenerate line does to a map - and saying so here keeps the
+    division below from being the thing that decides it.
+    """
+    length = geometry.length
+    if not length:
+        return False
+    return geometry.intersection(boundary).length / length >= INSIDE_BOUNDARY_MIN_FRACTION
+
+
+def load_boundary(source: dict):
+    """The polygons `source` names in `boundary_source`, unioned - or None
+    where it names none, which is every source but one today.
+
+    `boundary_names` narrows the layer to particular parks by the `signname`
+    its boundary layer publishes; without it the whole layer is the boundary.
+    A named layer that is not on disk is an error rather than an empty
+    boundary, for the reason export_nearby_poi.boundary_paths_for gives about
+    the same key: a boundary that silently resolves to nothing turns a
+    reviewed, narrow list into whatever the name filter happened to match.
+    """
+    key = source.get("boundary_source")
+    if not key:
+        return None
+
+    path = RAW_DIR / f"{key}.geojson"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} is missing, and {source['key']} names it in boundary_source - "
+            "run fetch_external_layers.py first. Without it this source cannot be cut to the parks it is about."
+        )
+
+    wanted = source.get("boundary_names")
+    polygons = [
+        shape(feature["geometry"])
+        for feature in json.loads(path.read_text(encoding="utf-8")).get("features", [])
+        if feature.get("geometry") and (wanted is None or (feature.get("properties") or {}).get("signname") in wanted)
+    ]
+    if not polygons:
+        raise SystemExit(
+            f"{source['key']} names boundary_source {key!r} with boundary_names {wanted!r}, "
+            f"and no polygon in {path} matches. Every row would be dropped."
+        )
+    return unary_union(polygons)
+
+
+def keep_reason(source: dict, properties: dict, geometry, owned: dict[str, str], boundary=None) -> str | None:
     """None if this feature ships, else the reason it does not - a short string
     main() counts and prints. Every drop is one of these; there is no path out
     of this function that discards a feature without naming why.
 
-    NOTHING IN HERE ASKS WHERE THE FEATURE IS, since #1019. Two tests used to:
-    a bounding box around New York City and an exclusion of OPRHP's `Long
+    NO SOURCE IS LIMITED BY GEOGRAPHY HERE, since #1019. Two tests used to: a
+    bounding box around New York City and an exclusion of OPRHP's `Long
     Island` region. Both are gone by the maintainer's decision of 2026-08-25
-    (quoted in this module's docstring), and the geometry argument survives
-    only as the emptiness check - a source that hands us nothing to draw."""
+    (quoted in this module's docstring), and nothing has brought them back.
+
+    `boundary` IS NOT THAT TEST COMING BACK, and the difference is worth
+    stating because the two look alike from outside (#1533). A geographic clip
+    asks "is this org's trail inside a region we chose to ship", and the answer
+    was that an organization's layer ships whole. This asks "is this row one of
+    the rows a reviewed list is ABOUT" - `nyc_park_drives` names ten street
+    names in two boroughs that are car-free park drives, and the same names
+    outside those two parks are ordinary city streets carrying cars. The
+    boundary is the list's own definition rather than a limit on it, which is
+    why it is set per source in `boundary_source` and why only a source that
+    names one is asked the question at all."""
     if geometry is None or geometry.is_empty:
         return "no geometry"
+
+    if boundary is not None and not inside_boundary(geometry, boundary):
+        return "outside the boundary its registry entry names"
 
     foot_field = source.get("foot_field")
     if foot_field and properties.get(foot_field) not in source.get("foot_allowed", FOOT_ALLOWED_DEFAULT):
@@ -638,7 +718,7 @@ def declared_name(source: dict, properties: dict):
     return raw
 
 
-def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> tuple[list[dict], dict]:
+def build_records(source: dict, features: list[dict], owned: dict[str, str], boundary=None) -> tuple[list[dict], dict]:
     """One source's shippable features as export_trails.py-shaped records
     (id/source/name/blaze_color/trail_status/wkt), plus a stats dict of what
     was dropped and why."""
@@ -655,7 +735,7 @@ def build_records(source: dict, features: list[dict], owned: dict[str, str]) -> 
         raw_geometry = feature.get("geometry")
         geometry = shape(raw_geometry) if raw_geometry else None
 
-        reason = keep_reason(source, properties, geometry, owned)
+        reason = keep_reason(source, properties, geometry, owned, boundary)
         if reason is not None:
             drops[reason] = drops.get(reason, 0) + 1
             continue
@@ -1309,7 +1389,7 @@ def main() -> dict:
                 f"({key} is registered as an external layer, so it is not part of fetch_all.py's A.T. fetch.)"
             )
         features = json.loads(raw_path.read_text(encoding="utf-8")).get("features", [])
-        records, stats = build_records(source, features, owned)
+        records, stats = build_records(source, features, owned, load_boundary(source))
 
         print(f"  {key}: {stats['kept']} of {len(features)} features kept")
         for reason, count in sorted(stats["dropped"].items(), key=lambda kv: -kv[1]):

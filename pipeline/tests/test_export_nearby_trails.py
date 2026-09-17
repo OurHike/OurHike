@@ -1873,3 +1873,153 @@ def test_every_feature_carries_its_own_length_so_a_phone_can_tell_partial_from_w
     # Two decimals, matching what the client reads and never more precision
     # than the clipped geometry earns.
     assert real["length_miles"] == round(real["length_miles"], 2)
+
+
+# --- The boundary a reviewed list is about (#1533) -------------------------
+#
+# `nyc_park_drives` names ten street names in two boroughs and calls them
+# car-free park drives. The SAME NAMES outside those two parks are ordinary
+# streets carrying cars, so the boundary is not a geographic limit on a source
+# - #1019 removed those and they stay removed - but the definition of which
+# rows the list is about. These pin that distinction, because a future reader
+# meeting `boundary_source` in keep_reason will reasonably wonder whether the
+# ring came back.
+
+# A square degree-ish "park" big enough to hold the fixture lines below.
+PARK_BOX = [(-73.98, 40.76), (-73.95, 40.76), (-73.95, 40.80), (-73.98, 40.80), (-73.98, 40.76)]
+
+
+def _boundary(ring=PARK_BOX):
+    return shape({"type": "Polygon", "coordinates": [[[lon, lat] for lon, lat in ring]]})
+
+
+def _drives_source(**extra):
+    """The shape of the real nyc_park_drives entry, minus the prose."""
+    return {"key": "nyc_park_drives", "name_field": "stname_label", "blaze_default": "Unknown", **extra}
+
+
+def test_a_drive_inside_the_park_is_kept():
+    line = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.79]]})
+    assert ex.keep_reason(_drives_source(), {"stname_label": "EAST DR"}, line, {}, _boundary()) is None
+
+
+def test_a_street_of_the_same_name_outside_the_park_is_dropped():
+    """The failure this boundary exists to prevent. Queens has its own EAST DR
+    and WEST DR; measured on the real layer, four of the ten reviewed names
+    also run on past the park edge - 0.30 miles of Brooklyn EAST DR alone.
+    Drawn as a car-free park drive, that is a city street with cars on it."""
+    elsewhere = shape({"type": "LineString", "coordinates": [[-73.85, 40.74], [-73.85, 40.75]]})
+    reason = ex.keep_reason(_drives_source(), {"stname_label": "EAST DR"}, elsewhere, {}, _boundary())
+    assert reason == "outside the boundary its registry entry names"
+
+
+def test_a_drive_leaving_the_park_at_an_entrance_is_still_kept():
+    """Most-of-it-inside rather than all-of-it-inside, and this is the case
+    that decides between them: a real drive whose last stretch crosses the
+    boundary at a park entrance must not be thrown away for it."""
+    crossing = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.799], [-73.97, 40.802]]})
+    assert ex.inside_boundary(crossing, _boundary()) is True
+    assert ex.keep_reason(_drives_source(), {"stname_label": "WEST DR"}, crossing, {}, _boundary()) is None
+
+
+def test_a_street_merely_clipping_the_park_corner_is_dropped():
+    """The other side of the same threshold. A line mostly outside does not
+    become a park drive by touching one."""
+    clipping = shape({"type": "LineString", "coordinates": [[-73.955, 40.799], [-73.90, 40.799]]})
+    assert ex.inside_boundary(clipping, _boundary()) is False
+
+
+def test_a_source_naming_no_boundary_is_asked_no_geography_question():
+    """#1019's decision, still in force: an organization's layer ships whole.
+    Only a source that names a boundary_source is cut to one."""
+    far_away = shape({"type": "LineString", "coordinates": list(PAST_THE_OLD_NORTH_CUT)})
+    assert ex.keep_reason(_oprhp_source(), _oprhp_properties(), far_away, {}) is None
+
+
+def test_inside_boundary_calls_a_zero_length_line_outside():
+    """A degenerate line is not inside anything, and saying so here keeps the
+    ratio from being what decides it."""
+    point = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.77]]})
+    assert ex.inside_boundary(point, _boundary()) is False
+
+
+def test_build_records_drops_the_outside_rows_and_counts_them_by_name():
+    inside = _feature([(-73.97, 40.77), (-73.97, 40.79)], {"stname_label": "EAST DR"}, feature_id=1)
+    outside = _feature([(-73.85, 40.74), (-73.85, 40.75)], {"stname_label": "EAST DR"}, feature_id=2)
+    records, stats = ex.build_records(_drives_source(), [inside, outside], {}, _boundary())
+
+    assert stats["kept"] == 1
+    assert stats["dropped"] == {"outside the boundary its registry entry names": 1}
+    assert [r["name"] for r in records] == ["EAST DR"]
+
+
+def test_load_boundary_returns_none_for_a_source_that_names_none(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    assert ex.load_boundary(_oprhp_source()) is None
+
+
+def test_load_boundary_unions_only_the_parks_boundary_names_asks_for(tmp_path, monkeypatch):
+    """`boundary_names` is what stops "a street inside any park is walkable",
+    which the real measurement refutes: 61.58 miles of park-interior street
+    across 79 parks is marked vehicular by the city, and includes a bus
+    terminal loop and two zoo service roads."""
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    (tmp_path / "nyc_park_polygons.geojson").write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"signname": "Central Park"},
+                        "geometry": {"type": "Polygon", "coordinates": [[[lon, lat] for lon, lat in PARK_BOX]]},
+                    },
+                    {
+                        "type": "Feature",
+                        "properties": {"signname": "Somebody Else's Park"},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[-73.80, 40.70], [-73.70, 40.70], [-73.70, 40.75], [-73.80, 40.70]]],
+                        },
+                    },
+                ],
+            }
+        )
+    )
+    source = _drives_source(boundary_source="nyc_park_polygons", boundary_names=["Central Park"])
+    boundary = ex.load_boundary(source)
+
+    inside = shape({"type": "LineString", "coordinates": [[-73.97, 40.77], [-73.97, 40.79]]})
+    in_the_other_park = shape({"type": "LineString", "coordinates": [[-73.78, 40.705], [-73.76, 40.709]]})
+    assert ex.inside_boundary(inside, boundary) is True
+    assert ex.inside_boundary(in_the_other_park, boundary) is False
+
+
+def test_load_boundary_refuses_a_name_that_matches_no_polygon(tmp_path, monkeypatch):
+    """Every row would be dropped, so this fails loudly rather than shipping an
+    empty source - the same argument export_nearby_poi makes for the key."""
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    (tmp_path / "nyc_park_polygons.geojson").write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"signname": "Central Park"},
+                        "geometry": {"type": "Polygon", "coordinates": [[[lon, lat] for lon, lat in PARK_BOX]]},
+                    }
+                ],
+            }
+        )
+    )
+    source = _drives_source(boundary_source="nyc_park_polygons", boundary_names=["A Park That Is Not There"])
+    with pytest.raises(SystemExit, match="no polygon"):
+        ex.load_boundary(source)
+
+
+def test_load_boundary_refuses_a_missing_layer(tmp_path, monkeypatch):
+    monkeypatch.setattr(ex, "RAW_DIR", tmp_path)
+    source = _drives_source(boundary_source="nyc_park_polygons")
+    with pytest.raises(FileNotFoundError, match="boundary_source"):
+        ex.load_boundary(source)

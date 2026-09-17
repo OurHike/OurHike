@@ -42,6 +42,7 @@ import pytest
 import export_nearby_poi
 from lib import corridor
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES
+from lib.poi_sites import group_place_sites, site_properties
 
 DEC_BIG = {
     "key": "dec_backcountry_features",
@@ -930,3 +931,74 @@ def test_a_held_back_source_never_enters_the_manifests_sources(tmp_path, monkeyp
     )
     assert set(manifest["sources"]) == {"dec_lean_tos"}
     assert manifest["held_back_sources"]["nynjtc_long_path_guide"]["reaches_hikers"] is False
+
+
+class TestTheFoldOnSharedPlaceNames:
+    """#1536's option 2, as the exporter wires it.
+
+    `group_place_sites` itself is covered in tests/test_poi_sites.py. What is
+    asserted here is the wiring: that the properties reach the artifact, and
+    that the fold runs on the records that SURVIVE the ring rather than on the
+    ones that went into it.
+    """
+
+    @staticmethod
+    def _fountains(count, *, metres_apart=30.0, name="Prospect Park"):
+        return [
+            {
+                "id": f"nyc_drinking_fountains:{i}",
+                "poi_type": "water",
+                "name": name,
+                "lat": 40.66 + (i * metres_apart) / 111_320.0,
+                "lon": -73.97,
+            }
+            for i in range(count)
+        ]
+
+    def test_the_artifact_carries_the_three_site_properties(self):
+        """`records_to_geojson` writes every non-null key, so this is really
+        asserting that the exporter put them on the records at all - the client
+        reads `site_id`, `site_role` and `site_name` by those exact names
+        (lib/trailData.ts) and a typo here is a silent no-op."""
+        records = self._fountains(3)
+        for record in records:
+            record.update(site_properties(group_place_sites(records)).get(record["id"], {}))
+
+        published = export_nearby_poi.records_to_geojson(records)["features"]
+        roles = sorted(f["properties"]["site_role"] for f in published)
+        assert roles == ["anchor", "member", "member"]
+        for feature in published:
+            assert feature["properties"]["site_name"] == "Prospect Park"
+            assert feature["properties"]["site_id"].startswith("nyc_drinking_fountains:")
+
+    def test_a_waypoint_in_no_site_carries_none_of_them(self):
+        """Additive, as POI_SITES.md §3 requires: a lone fountain is a lone
+        fountain, and writing site properties onto it would tell the client to
+        render a composition of one."""
+        alone = self._fountains(1)
+        for record in alone:
+            record.update(site_properties(group_place_sites(alone)).get(record["id"], {}))
+
+        [feature] = export_nearby_poi.records_to_geojson(alone)["features"]
+        assert "site_id" not in feature["properties"]
+        assert "site_role" not in feature["properties"]
+
+    def test_folding_after_the_ring_never_anchors_a_site_on_a_dropped_waypoint(self):
+        """THE ORDERING THIS TEST EXISTS FOR. The ring runs first and removes
+        waypoints; if the fold ran before it, a site could be anchored on a
+        fountain the ring then took out - and the members riding that pin would
+        reach the client pointing at a `site_id` no feature carries, so
+        composeSites draws each of them separately and the fold silently does
+        nothing.
+
+        Modelled here by folding the survivors, which is the order main() uses:
+        the anchor is always one of them.
+        """
+        everything = self._fountains(4)
+        survivors = everything[1:]
+
+        sites = group_place_sites(survivors)
+
+        assert len(sites) == 1
+        assert sites[0].anchor in survivors
+        assert all(member in survivors for member in sites[0].members)

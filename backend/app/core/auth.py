@@ -93,6 +93,10 @@ def verify_supabase_jwt(token: str) -> dict:
     does not accept is deliberately in that same family, so an unexpected
     signing algorithm reaches a hiker as "not signed in" rather than as a 500.
 
+    One subclass is not a verdict on the token: `PyJWKClientConnectionError`
+    means the JWKS could not be fetched, and `get_current_user` answers it
+    with a 503 rather than a 401 - see the branch there.
+
     The `audience` argument is load-bearing and not optional politeness.
     PyJWT refuses a token that carries an `aud` claim when the caller named
     no audience - `_validate_aud` raises `InvalidAudienceError` on exactly
@@ -127,9 +131,16 @@ def verify_supabase_jwt(token: str) -> dict:
         # one leaves no room for a token to be verified under an algorithm
         # other than the one it claims.
         algorithms=[algorithm],
-        # An empty setting means "this project's tokens are shaped some other
-        # way" - skip the check rather than demand a claim that is not there.
-        **({"audience": audience} if audience else {"options": {"verify_aud": False}}),
+        # `exp` is REQUIRED, not merely checked when present (#1545). PyJWT
+        # verifies an expiry it finds and says nothing about one it does not,
+        # so a token minted without the claim never expired here. Only
+        # forgeable with the signing key - defence in depth, not a hole - but
+        # every token Supabase issues carries one, so a token without it is
+        # not Supabase's. An empty audience setting means "this project's
+        # tokens are shaped some other way": skip that check rather than
+        # demand a claim that is not there.
+        options={"require": ["exp"], **({} if audience else {"verify_aud": False})},
+        **({"audience": audience} if audience else {}),
     )
 
 
@@ -196,6 +207,25 @@ def get_current_user(
 
     try:
         claims = verify_supabase_jwt(credentials.credentials)
+    except jwt.PyJWKClientConnectionError as exc:
+        # The token was never examined: this is `PyJWKClient` failing to
+        # FETCH the project's JWKS - a timeout, a DNS miss, Supabase's key
+        # endpoint answering 5xx - which it does synchronously on the first
+        # request after its five-minute cache lapses. It subclasses
+        # PyJWTError, so the branch below used to catch it and answer 401
+        # "Invalid or expired token" for a token that was neither, and the
+        # server log said the same. 503 is what happened: this service
+        # cannot verify anyone right now, and the client should keep the
+        # session and try again. The outbox already retries a 503. It also
+        # retries a 401 today, but for a reason that does not apply here -
+        # lib/api.ts lists 401 as retryable because "Supabase refreshes in
+        # the background" - so the honest status is what stops the client's
+        # correct behaviour being a coincidence.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The signing keys could not be fetched, so this token could not be checked. Try again shortly.",
+            headers={"Retry-After": "30"},
+        ) from exc
     except jwt.PyJWTError as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token") from exc
 
@@ -277,6 +307,11 @@ def get_current_user_optional(
     A bad or expired token is treated as no token rather than as an error,
     which is the behaviour both callers want: the request is one that works
     anonymously, so an unusable credential should not turn it into a 401.
+
+    The same holds for the 503 `get_current_user` answers when the JWKS
+    cannot be fetched: an anonymous read or an unattributed failure report
+    is the right degradation for a request that never needed the token,
+    where a 503 would take the public list down with the key server.
     """
     if credentials is None:
         return None

@@ -128,6 +128,7 @@ from lib.nynjtc_long_path_guide import SOURCE_KEY as GUIDE_KEY
 from lib.nynjtc_long_path_guide import Section
 from lib.nynjtc_long_path_guide import build_records as build_guide_records
 from lib.poi_schema import CONFIDENCE_HIGH, CONFIDENCE_LOW, POI_TYPES, unify_poi
+from lib.poi_sites import PLACE_PROXIMITY_RADIUS_M, group_place_sites, site_properties
 from lib.source_registry import find_source, load_registry
 
 ROOT = Path(__file__).parent
@@ -978,6 +979,27 @@ def main() -> dict:
             print(f"      dropped {count:>6,}  {key}")
     else:
         print(f"\n  ring: not applied - {ring.get('reason', 'no network artifact')}")
+
+    # AFTER the ring, and the order is the argument again: a site must be
+    # composed of waypoints that actually ship. Folding first would anchor a
+    # site on a fountain the ring then removed, and the client would draw
+    # nothing for the members riding a pin that is not in the artifact.
+    sites = group_place_sites(all_records)
+    site_props = site_properties(sites)
+    folded = sum(len(site.members) for site in sites)
+    for record in all_records:
+        record.update(site_props.get(record["id"], {}))
+    if sites:
+        by_type: dict[str, int] = {}
+        for site in sites:
+            by_type[site.anchor["poi_type"]] = by_type.get(site.anchor["poi_type"], 0) + 1
+        print(
+            f"\n  sites: {len(all_records) - folded:,} marks from {len(all_records):,} waypoints - "
+            f"{folded:,} fold onto {len(sites):,} pins at {PLACE_PROXIMITY_RADIUS_M:.0f} m "
+            f"on a shared place name {by_type}"
+        )
+        largest = max(sites, key=lambda s: s.size())
+        print(f"      largest: {largest.size()} at {largest.site_name!r}")
 
     manifest = write_artifact(all_records, per_source, ring, held_back_sources)
     size = Path(manifest["path"]).stat().st_size

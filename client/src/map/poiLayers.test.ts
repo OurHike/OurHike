@@ -16,11 +16,20 @@ import {
 import { poiIconImages } from './poiIconImages'
 import { SITE_ANCHOR_TYPES, SITE_MEMBERS_PROPERTY, siteMembersKey } from './poiSites'
 import {
+  BASE_PADDING_PX,
+  CROWDED_NEIGHBOURS,
+  CROWDING_PROPERTY,
+  POI_ICON_PADDING_EXPRESSION,
+  QUIET_NEIGHBOURS,
+} from './poiCrowding'
+import {
   attachPoiFilter,
   attachPoiData,
   attachPoiIcons,
   buildPoiDotLayer,
   buildPoiLayer,
+  buildPoiStalenessLayer,
+  NO_RING,
   poiFeatureCollection,
   poiFilter,
   POI_DOT_COLOR_EXPRESSION,
@@ -219,6 +228,22 @@ describe('density', () => {
     expect(near).toBe(1)
   })
 
+  it('lets each pin claim its own air, which a flat padding could not', () => {
+    // #1536. It used to be a flat 2 for every pin on every map. The corridor
+    // and a city are crowded at DIFFERENT zooms - a blanket 24 costs the A.T.
+    // half its pins at z9 - so the only scope that leaves the trail alone is
+    // per-feature, and `icon-padding` being data-driven is what permits it.
+    const layout = buildPoiLayer().layout as Record<string, unknown>
+
+    expect(layout['icon-padding']).toBe(POI_ICON_PADDING_EXPRESSION)
+    expect(
+      evaluate(POI_ICON_PADDING_EXPRESSION, { [CROWDING_PROPERTY]: QUIET_NEIGHBOURS }),
+    ).toBe(BASE_PADDING_PX)
+    expect(
+      evaluate(POI_ICON_PADDING_EXPRESSION, { [CROWDING_PROPERTY]: CROWDED_NEIGHBOURS }),
+    ).toBeGreaterThan(BASE_PADDING_PX)
+  })
+
   it('gives water the best sort key, so it is the pin that survives a collision', () => {
     // Not a visual preference. When two pins cannot both be placed, the one
     // that stays should be the one a hiker most needs to know about, and
@@ -320,6 +345,11 @@ describe('poiFeatureCollection', () => {
       // the site key above always is: the label layer's filter is then one
       // comparison rather than a `coalesce`.
       [POI_NAME_PROPERTY]: '',
+      // How crowded the ground is, which `icon-padding` interpolates on
+      // (#1536, map/poiCrowding.ts). Zero here because this fixture's
+      // waypoints are degrees apart; always a number for the same reason the
+      // two strings above are always strings.
+      [CROWDING_PROPERTY]: 0,
       // The day-one defaults with no note roll-up supplied: no ring, no fade
       // (#256's maintainer decision, lib/stalenessDisplay.ts).
       staleness_ring: 'none',
@@ -468,6 +498,130 @@ describe('poiFeatureCollection', () => {
 
   it('is empty for no POIs rather than undefined', () => {
     expect(poiFeatureCollection([])).toEqual({ type: 'FeatureCollection', features: [] })
+  })
+})
+
+describe('the staleness ring on crowded ground (#1536)', () => {
+  /** The ring's stroke opacity as MapLibre would compute it. */
+  function ringOpacity(ring: string, crowding: number): number {
+    const paint = buildPoiStalenessLayer().paint as Record<string, unknown>
+    return evaluate(paint['circle-stroke-opacity'] as unknown[], {
+      staleness_ring: ring,
+      [CROWDING_PROPERTY]: crowding,
+    }) as number
+  }
+
+  it('draws the ring at its full tier strength on quiet ground', () => {
+    // The corridor, where every waypoint measures under QUIET_NEIGHBOURS.
+    // Nothing about the A.T.'s rings changes.
+    expect(ringOpacity('green', 0)).toBeCloseTo(0.9, 5)
+    expect(ringOpacity('green', QUIET_NEIGHBOURS)).toBeCloseTo(0.9, 5)
+    expect(ringOpacity('faint-invite', QUIET_NEIGHBOURS)).toBeCloseTo(0.35, 5)
+  })
+
+  it('takes the ring away entirely where the ground is crowded', () => {
+    // 660 waypoints on one Brooklyn screen each wore a 42 px ring, which is
+    // the "nothing here is trustworthy" wash RING_OPACITIES is written to
+    // avoid. A circle layer joins no placement pass, so this is the only
+    // question the layer can ask about whether a ring is on a pin.
+    expect(ringOpacity('faint-invite', CROWDED_NEIGHBOURS)).toBe(0)
+    expect(ringOpacity('green', CROWDED_NEIGHBOURS * 3)).toBe(0)
+  })
+
+  it('fades rather than switching, so no hard edge runs across a park', () => {
+    const midpoint = (QUIET_NEIGHBOURS + CROWDED_NEIGHBOURS) / 2
+    const faded = ringOpacity('faint-invite', midpoint)
+
+    expect(faded).toBeGreaterThan(0)
+    expect(faded).toBeLessThan(0.35)
+  })
+
+  it('leaves the per-tier strengths as the one home for how loud a tier is', () => {
+    // A product, not a second `match`: this expression can only ever turn the
+    // tier values down, so a tier whose opacity changes changes in one place.
+    const quiet = ringOpacity('grey-dotted', QUIET_NEIGHBOURS)
+    expect(quiet).toBeCloseTo(0.55, 5)
+    expect(ringOpacity('grey-dotted', CROWDED_NEIGHBOURS)).toBeLessThan(quiet)
+  })
+
+  it('still draws nothing for a waypoint with no ring, at any crowding', () => {
+    expect(ringOpacity(NO_RING, 0)).toBe(0)
+    expect(ringOpacity(NO_RING, CROWDED_NEIGHBOURS)).toBe(0)
+  })
+})
+
+describe('how crowded the ground is, on the feature (#1536)', () => {
+  it('counts the marks that are drawn, so a site is one neighbour and not four', () => {
+    // Crowding is computed AFTER composeSites. A shelter whose privy and two
+    // campsites ride its pin competes for space once, and counting the folded
+    // members would report ground as crowded that the fold had uncrowded -
+    // buying air against pins that are not there.
+    const site = ['privy', 'campsite', 'campsite'].map((type, i) => ({
+      id: `${type}-${i}`,
+      type,
+      lat: 39.0004,
+      lon: -77 + i * 0.00001,
+      confidence: 'high' as const,
+      siteId: 'site_1',
+      siteRole: 'member',
+    }))
+    const pois = [
+      {
+        id: 'shelter',
+        type: 'shelter',
+        lat: 39,
+        lon: -77,
+        confidence: 'high' as const,
+        siteId: 'site_1',
+        siteRole: 'anchor',
+      },
+      ...site,
+      { id: 'spring', type: 'water', lat: 39.003, lon: -77, confidence: 'high' as const },
+    ]
+
+    const drawn = poiFeatureCollection(pois).features
+    expect(drawn.map((f) => f.id).sort()).toEqual(['shelter', 'spring'])
+    for (const feature of drawn) {
+      expect(feature.properties[CROWDING_PROPERTY]).toBe(1)
+    }
+  })
+
+  it('recounts when the hiker hides a category, so air is bought against pins that exist', () => {
+    // The thing a pipeline-computed figure could not do. Ten privies around
+    // one shelter make crowded ground; with privies hidden, the shelter is
+    // alone and should be padded as though it is.
+    const privies = Array.from({ length: 10 }, (_, i) => ({
+      id: `privy-${i}`,
+      type: 'privy',
+      lat: 39 + i * 0.0005,
+      lon: -77,
+      confidence: 'high' as const,
+    }))
+    const pois = [
+      { id: 'shelter', type: 'shelter', lat: 39, lon: -77, confidence: 'high' as const },
+      ...privies,
+    ]
+
+    const withPrivies = poiFeatureCollection(pois).features.find(
+      (f) => f.id === 'shelter',
+    )
+    expect(withPrivies?.properties[CROWDING_PROPERTY]).toBe(10)
+
+    const hidden = poiFeatureCollection(
+      pois.filter((poi) => poi.type !== 'privy'),
+    ).features.find((f) => f.id === 'shelter')
+    expect(hidden?.properties[CROWDING_PROPERTY]).toBe(0)
+  })
+
+  it('puts a number on every drawn feature, so the style never interpolates on a missing one', () => {
+    const features = poiFeatureCollection([
+      { id: 'a', type: 'water', lat: 39, lon: -77, confidence: 'high' },
+      { id: 'b', type: 'shelter', lat: 41, lon: -74, confidence: 'high' },
+    ]).features
+
+    for (const feature of features) {
+      expect(typeof feature.properties[CROWDING_PROPERTY]).toBe('number')
+    }
   })
 })
 

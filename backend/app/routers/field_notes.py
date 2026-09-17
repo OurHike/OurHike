@@ -235,15 +235,39 @@ def flag_field_note(
     if note is None or note.hidden_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
 
-    existing = db.query(NoteFlag).filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == current_user.id).first()
-    if existing is not None:
+    if _existing_flag(db, note_id, current_user.id) is not None:
         response.status_code = status.HTTP_200_OK
         return {"status": "already flagged"}
 
     flag = NoteFlag(note_id=note_id, flagged_by=current_user.id, reason=payload.reason)
     db.add(flag)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # The lookup above and this insert are two statements, so two
+        # concurrent flags from one account both see "not flagged yet" and
+        # both insert - the #265 shape, at the one seam where losing the race
+        # used to be silently counted rather than refused: before
+        # `uq_note_flags_note_flagger` (#1545) both rows landed and the queue
+        # sorted by taps. Now the loser's row is refused by the database, and
+        # the winner's is exactly the row this account wanted, so the answer
+        # is the same 200 a plain second tap gets.
+        db.rollback()
+        if _existing_flag(db, note_id, current_user.id) is None:
+            raise
+        response.status_code = status.HTTP_200_OK
+        return {"status": "already flagged"}
     return {"status": "flagged"}
+
+
+def _existing_flag(db: Session, note_id: str, flagger_id: str) -> NoteFlag | None:
+    """This account's flag on this note, if it already holds one.
+
+    A seam as much as a query: the race in `flag_field_note` is two requests
+    inside one round trip, which a test cannot stage, so the test makes this
+    lookup miss instead and lets the constraint refuse the insert for real.
+    """
+    return db.query(NoteFlag).filter(NoteFlag.note_id == note_id, NoteFlag.flagged_by == flagger_id).first()
 
 
 @router.get("/disputes", response_model=list[DisputeOut])
@@ -380,7 +404,9 @@ async def upload_note_photo(
     try:
         store_photo_object(note_photo_key(note.id), body)
     except PhotoStorageUnavailable as error:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)) from error
+        # `error.detail`, never `str(error)` - the message names the endpoint
+        # and the endpoint names the account (app/core/photos.py).
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=error.detail) from error
 
     note.photo_uploaded_at = utc_now()
     return FieldNoteOut.for_viewer(commit_and_refresh(db, note), current_user)

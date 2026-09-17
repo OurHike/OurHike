@@ -79,8 +79,11 @@ class PoiPhoto(Base):
     # EXIF capture date, claimed by the client from the original file before
     # its re-encode (client lib/exifDate.ts). Null when the original carried
     # none; the card then dates the photo by its share month. A claim, like
-    # `authored_at` on reports - the server has no way to check it, and the
-    # public read path coarsens it to a month either way.
+    # `authored_at` on reports - the server has no way to check it against
+    # the past, and the public read path coarsens it to a month either way.
+    # The future end it can check: a date past tomorrow is dropped at the
+    # wire and the photo dates by its share (schemas/poi_photo.py), because
+    # this column is also the rolling window's sort key.
     taken = Column(Date, nullable=True)
 
     # When the share landed (server truth). Replaced on self-replacement -

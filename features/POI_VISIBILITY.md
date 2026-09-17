@@ -381,6 +381,108 @@ picture of the current camera is not a preference.
   view is *a complete map of something else*. It now carries a second thing, and that claim is
   softer than it was. ~2,837 circles at z4 — cheap to draw (a `circle` layer runs no collision
   pass), but not free of meaning.
+- ~~**What a city does to this design.**~~ **Answered 2026-09-17 — the pins get
+  per-feature air and the city's co-located waypoints fold**, on the maintainer's
+  pick of options 1 and 2 from
+  [`features/mockups/city-water-density.html`](mockups/city-water-density.html)
+  ([#1536](https://github.com/OurHike/OurHike/issues/1536)). The question and its
+  measurements are kept below because the answer only makes sense against them.
+
+  **What scopes it turned out to be the whole of the design work, and neither
+  obvious answer survived measurement.** A blanket `icon-padding` costs the
+  Appalachian Trail half its pins at z9 — 20 down to 10 on the corridor's own
+  densest screen — because the city and the trail are crowded at *different*
+  zooms, so no zoom band is safe. A list of city source keys needs no
+  measurement and encodes *"New York"* where the truth is *"dense"*.
+
+  So `icon-padding` is per-feature, which `property-type: data-driven` in
+  maplibre-gl 6.7 permits without the second symbol layer
+  [`poiLayers.ts`](../client/src/map/poiLayers.ts)'s header forbids.
+  [`client/src/map/poiCrowding.ts`](../client/src/map/poiCrowding.ts) counts how
+  many drawn marks sit within 800 m and ramps the padding from 2 to 36 between 8
+  neighbours and 16. **Every number in it is derived and the file carries which
+  measurement each rests on.**
+
+  **The guarantee, stated the way it is actually true.** All 563 waypoints ATC
+  publishes on the Appalachian Trail measure 5 neighbours or fewer, so every one
+  of them sits under the ramp's low anchor and is padded exactly as it is today.
+  That is *not* the same as "nothing in `poi_*.geojson` changes": those files
+  also carry 185 OSM drinking-water points that reach the corridor through
+  [#1016](https://github.com/OurHike/OurHike/issues/1016)'s widened gate, and one
+  cluster of them in Chenango County, New York — 165 km from the A.T. — runs to
+  24 neighbours and does get air. That is the rule working. It is about density,
+  not about which file a waypoint arrived in.
+
+  **Crowding is computed on the client and the grouping is not**, which looks
+  like a contradiction of [POI_SITES.md](POI_SITES.md) and is not. That doc's
+  argument against computing on a phone is entirely about *grouping* — "no id
+  that survives a pan, re-clusters at every zoom, answers 'how many' when the
+  question at a shelter is 'is there a privy'." A scalar makes no mark, carries
+  no id, and is computed once over fixed coordinates. It also gets something the
+  pipeline could not: `poiFeatureCollection` rebuilds when the legend changes, so
+  the count is over the waypoints the hiker can actually see.
+
+  **The fold is the pipeline's**, as that doc requires:
+  `lib/poi_sites.group_place_sites` folds waypoints of one type that share a
+  place name and stand within 80 m — measured against the real spacing, where
+  the median gap between two fountains in one park is 41 m and the third
+  quartile is 73 m. **The anchor is always a real waypoint and never a
+  centroid**, because a hiker walks to the pin and the centroid of twelve
+  fountains is a point on a lawn.
+
+  **And a third change, which the camera found and no measurement would have.**
+  `client/preview-shots/city-waypoints-crowded.mjs` photographs the Brooklyn
+  frame, and the first picture of it showed the padding working — 24 pins where
+  63 used to pack — over a screen that was *still* a wash, because **all 660
+  waypoints wore a 42 px staleness ring**. The ring layer's own comment states
+  the rule it was breaking: *"rings exist to invite a tap, and only a pin can be
+  tapped — so they start where the pins do, not where the dots do."* Its
+  `minzoom` is the zoom half of that; the other half was never enforceable,
+  because a `circle` layer joins no placement pass and cannot ask which symbols
+  won. On the corridor it never showed — nearly every waypoint above the seam
+  *is* a pin, so ringing them all was very nearly ringing the pins.
+
+  So the ring now rides the same count the padding does and fades out across the
+  same anchors. `RING_OPACITIES`' own note is what makes this a defect rather
+  than a preference: a loud ring on everything is *"the 'nothing here is
+  trustworthy' opening #256 warns about"*, and subtle per ring is not subtle six
+  hundred times over. **It costs something real** — a pin that *is* drawn on
+  crowded ground loses its invitation to confirm along with its neighbours',
+  because the property cannot tell them apart. That is accepted against six
+  hundred rings nobody can read, and it is the expression to replace if MapLibre
+  ever exposes per-feature placement.
+
+  **And the badge does not say twelve.** The mockup drew a count on the pin and
+  this does not, which is a deliberate departure: every New York City fountain
+  ships at `confidence_floor: low` — `featuresta` reads *Active* on all 3,849
+  rows — so a mark decorated to say **12** offers reassurance the source cannot
+  supply. #524's strip says what *else* is at a place, and more of the same is
+  not something else. The pin says water is here, which is true; the count and
+  what is unknown about it belong on the card, where there is room for both.
+
+- **What a city does to this design, and it is not what the arithmetic above predicts.**
+  Every number in this doc is the A.T. corridor's, where the section above proves viewport
+  density is a marginal problem from z12 up and co-location is nearly the whole of it. New
+  York City inverts that. Measured 2026-09-17 against release `2026-09-16-4` by
+  [`pipeline/spike_city_poi_density.py`](../pipeline/spike_city_poi_density.py), the densest
+  z12 screen in the five boroughs — Red Hook to Prospect Park — holds **638 waypoints, and
+  the collision engine places 63 pins covering 30% of it**, over 575 dots. That is not the
+  screen this design was drawn for: `POI_PIN_MIN_SCALE`'s own table calls ~16 pins a full
+  column.
+
+  **The finding that matters is that folding does not fix it.** Site folding, park folding and
+  screen-space clustering were all run over that window and all land between 53 and 61 pins,
+  against today's 63 — because `icon-allow-overlap: false` packs pins until nothing more fits
+  and has no notion of *enough*. Withholding every fountain pin entirely leaves 50 restroom
+  pins in the same space. What folding moves is the dots (575 → 314, 217 or 58); what moves
+  the pins is spacing, and only spacing: `icon-padding` from 2 to 24 takes 63 to 22.
+
+  So the two levers are not alternatives and this doc's residue is bigger than it reads. Four
+  options are drawn on that real screen in
+  [`features/mockups/city-water-density.html`](mockups/city-water-density.html), with what each
+  costs. **Nothing is decided.** The maintainer's call of 2026-09-15, recorded in
+  [NEARBY_TRAILS.md](NEARBY_TRAILS.md) §10 with 233 pins in front of them, was that this is
+  normal for New York City; the mockup is the follow-up that call invites, not a reversal of it.
 - **Dot size, and whether it varies by `POI_PRIORITY`.** Built uniform — 2.5 px at the seam
   growing to 4 px by z16, the same for every category. A 4 px water dot and a 3 px vista dot would
   carry the priority ordering into the rank that has no ordering, and the argument for the rank is
@@ -420,6 +522,9 @@ waypoints are not what that map is for.
 inherits — the legend is a view onto categories that already exist, never a second taxonomy.
 
 [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) owns the *why* of `waypoint_types_shown`.
+
+[NEARBY_TRAILS.md](NEARBY_TRAILS.md) §10 owns the city's pin counts as a fact about the data
+that ships. This doc owns what the map does with them, which is the open question above.
 
 [DATA_NUDGES.md](DATA_NUDGES.md) plans to *boost* the prominence of stale POIs to solicit
 confirmations. Under two ranks that is a promotion rule — dot to pin — rather than a competing

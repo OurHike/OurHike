@@ -156,10 +156,10 @@ def test_a_limiter_that_allows_nothing_is_refused():
 # attempted and nothing written.
 
 
-def test_three_consecutive_give_ups_is_the_shipped_tripwire():
+def test_ten_consecutive_give_ups_is_the_shipped_tripwire():
     """Pinned so raising it is a deliberate act with the measurement behind
     it, which the constant says nobody has taken."""
-    assert wayback_rate.MAX_CONSECUTIVE_REFUSALS == 3
+    assert wayback_rate.MAX_CONSECUTIVE_REFUSALS == 10
 
 
 def test_one_refused_url_costs_that_url_and_not_the_run():

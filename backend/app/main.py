@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
 from app.routers import (
     app_failures,
     assist,
@@ -32,6 +33,13 @@ from app.routers import (
 )
 
 app = FastAPI(title="OurHike backend")
+
+# Added BEFORE the CORS middleware below, which matters: `add_middleware`
+# puts each new middleware outermost, so this one ends up inside CORS and a
+# 413 it answers on its own still carries the CORS headers a browser needs to
+# read it as a 413 rather than as a network error. app/core/body_limit.py is
+# the reasoning, and tests/test_body_limit.py pins the order.
+app.add_middleware(BodyLimitMiddleware, max_bytes=MAX_REQUEST_BODY_BYTES)
 
 # Browsing endpoints are meant to be reachable from the client PWA's own
 # origin (and, during local dev, from Vite's dev server) with no auth token

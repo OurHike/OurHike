@@ -53,6 +53,8 @@ def test_fixtures_load_through_the_real_loader(tmp_path):
             "raw_nyc_parks__nyc_drinking_fountains",
             "raw_nyc_parks__nyc_park_polygons",
             "raw_nyc_dot__nyc_dot_greenways",
+            "raw_nyc_dot__nyc_cscl_paths",
+            "raw_nyc_dot__nyc_park_drives",
             "raw_usfs__usfs_trails",
             "raw_usfs__usfs_rec_sites",
             "raw_granit__nh_granit_trails",

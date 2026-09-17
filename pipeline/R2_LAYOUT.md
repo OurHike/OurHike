@@ -83,6 +83,7 @@ data a phone is pinned to.
 | `photos/` | POI photos, one object per image, content-addressed | mutable: objects are added and deleted, never rewritten | yes |
 | `originals/` | full-resolution originals of the photos above, content-addressed | mutable: objects are added and deleted, never rewritten | **no** |
 | `conditions/` | published safety data — verified closures, verified reports, and the ATC's own trail updates | mutable: rewritten in place, daily | yes |
+| `archive/` | one-time snapshots of third-party data read once and possibly never again — today the footprint of each NYNJTC paper map sheet | mutable only by a person dispatching the one-off workflow that wrote it | yes |
 | `environments/` | one subtree per non-production environment, each holding a whole copy of this layout | as whatever it holds | to that environment's audience |
 
 `releases/` and `_internal/` are the layout [DATA_RELEASES.md](DATA_RELEASES.md) designs.
@@ -137,6 +138,19 @@ which POI_PHOTOS.md keeps off this project's disks entirely.
 
 `_internal/` is named to be obvious rather than to hide: on a public r2.dev bucket it is
 readable by anyone. It means "nothing here is a download", not "nobody can see this".
+
+`archive/` holds what this project read from a third party once and may not be able to read
+again ([#1574](https://github.com/OurHike/OurHike/issues/1574)). The first object is
+`archive/nynjtc_map_sheets.json`: the georeferenced footprint of each of NYNJTC's paper map
+sheets, read off the Avenza Map Store's product pages by `archive_nynjtc_sheet_extents.py` and
+written by `archive-nynjtc-sheets.yml`, which has no schedule. The maintainer's rule for it,
+2026-09-17: *"that will eventually go away. It shouldn't be a real pipeline that runs regularly.
+Just an archive that sits in its own folder."* So it is not under `releases/` — a release is
+rebuilt from the code, and this cannot be rebuilt once the store is gone — and not under
+`conditions/`, which is rewritten hourly by scheduled jobs. The client reads it at the root
+beside `conditions/` (`client/src/lib/mapSheets.ts`, `lib/dataRelease.ts`'s
+`ROOT_SCOPED_PREFIXES`). Retention is `conditions/`'s: one object per snapshot, overwritten in
+place by the next deliberate dispatch, never accumulating, so no prune job is needed.
 
 `environments/` is the one prefix that holds no objects of its own. `environments/ua/` is this
 whole page again — root keys, `releases/`, `photos/`, `conditions/`, all of it — belonging to

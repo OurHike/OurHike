@@ -436,10 +436,13 @@ export function Onboarding({
               Neither half of the replacement is newly invented, deliberately.
               "your money belongs with the people holding the tools" is already
               live on ourhike.org/support, and "OurHike takes no cut and holds
-              no money" is the sentence chrome/SourcesSection.tsx has been
-              holding back for want of a donate link to attach it to (#932 -
-              *sources.json can describe a steward but cannot say how to
-              support one*).
+              no money" is the sentence chrome/SourcesSection.tsx held back
+              from 2026-08-23 to 2026-09-17 for want of a link to attach it
+              to (#932 - *sources.json can describe a steward but cannot say
+              how to support one* - added the data; #1574 - *A hiker on NYNJTC
+              ground has nowhere to buy the paper map for where they are* -
+              rendered the org's own donate and store buttons, and the
+              sentence with them).
               One posture in two voices - the web attributes it as opinion
               ("we just think your money belongs..."), and here it is asserted,
               because a first-run screen has no room to hedge and the thing

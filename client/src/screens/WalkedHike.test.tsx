@@ -32,6 +32,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: [],
     keys: ['oprhp_trails'],
+    support: null,
+    store: null,
   },
   {
     provider: 'NYNJTC',
@@ -43,6 +45,8 @@ const STEWARDS: Stewards = [
     termsSource: null,
     layers: [],
     keys: ['nynjtc_long_path'],
+    support: null,
+    store: null,
   },
 ]
 

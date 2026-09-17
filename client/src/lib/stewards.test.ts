@@ -24,6 +24,8 @@ const ATC = {
   termsSource: null,
   layers: ['A.T. Centerline', 'A.T. Shelters'],
   keys: ['centerline'],
+  support: null,
+  store: null,
 }
 
 function only(value: unknown): Steward {
@@ -131,6 +133,8 @@ describe('orgLabelFrom, which frame 1j tallies with', () => {
       {
         name: 'NY–NJ Trail Conference',
         keys: ['nynjtc_long_path', 'nynjtc_highlands_trail'],
+        support: null,
+        store: null,
       },
       { name: 'Appalachian Trail Conservancy', keys: ['centerline', 'side_trails'] },
     ],
@@ -172,6 +176,8 @@ describe('the tapped-line sheet’s attribution table (#1142)', () => {
           'New York State Office of Parks, Recreation and Historic Preservation',
         layers: [],
         keys: ['oprhp_trails', 'oprhp_trail_closures'],
+        support: null,
+        store: null,
       },
     ])
 
@@ -198,6 +204,8 @@ describe('the tapped-line sheet’s attribution table (#1142)', () => {
         termsSource: null,
         layers: [],
         keys: ['centerline'],
+        support: null,
+        store: null,
       },
     ])
     expect(table['centerline']).toEqual({ attribution: null })
@@ -205,5 +213,132 @@ describe('the tapped-line sheet’s attribution table (#1142)', () => {
 
   it('is empty for an empty steward list', () => {
     expect(trailSourceTableFrom(EMPTY_STEWARDS)).toEqual({})
+  })
+})
+
+describe('the support and store records (#932, #1574)', () => {
+  const SUPPORT = {
+    donate_url: 'https://www.nynjtc.org/support/',
+    donate_cta: 'Donate Today',
+    donate_surfaces: ['sources_screen', 'trail_card'],
+  }
+  const STORE = {
+    store_url: 'https://store.nynjtc.org/collections/maps?utm_source=ourhike',
+    store_cta: 'Trail Maps',
+    store_surfaces: ['sources_screen', 'hike_detail', 'trail_sheet'],
+    paper_maps: [
+      {
+        handle: 'harriman-bear-mountain-trails-map',
+        title: 'Harriman-Bear Mountain Trails Map',
+        url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+        sheets: ['118', '119'],
+        covers: ['Harriman State Park'],
+        sheet_covers: {
+          '118': ['Southern Harriman State Park'],
+          '119': ['Bear Mountain State Park'],
+        },
+      },
+    ],
+  }
+
+  it('reads a support record whole: the url, the org’s own button, the screens and the recipient', () => {
+    const steward = only({
+      stewards: [
+        { ...ATC, support: { ...SUPPORT, donate_recipient: 'Natural Heritage Trust' } },
+      ],
+    })
+
+    expect(steward.support).toEqual({
+      donateUrl: 'https://www.nynjtc.org/support/',
+      donateCta: 'Donate Today',
+      donateRecipient: 'Natural Heritage Trust',
+      donateSurfaces: ['sources_screen', 'trail_card'],
+    })
+  })
+
+  it('reads support with no donate_recipient as recipient null, not as a missing record', () => {
+    expect(
+      only({ stewards: [{ ...ATC, support: SUPPORT }] }).support?.donateRecipient,
+    ).toBeNull()
+  })
+
+  it('drops a support record missing its button text or its screens, rather than half a button', () => {
+    const { donate_cta: _cta, ...withoutCta } = SUPPORT
+    const { donate_surfaces: _surfaces, ...withoutSurfaces } = SUPPORT
+
+    expect(only({ stewards: [{ ...ATC, support: withoutCta }] }).support).toBeNull()
+    expect(only({ stewards: [{ ...ATC, support: withoutSurfaces }] }).support).toBeNull()
+    expect(
+      only({ stewards: [{ ...ATC, support: { ...SUPPORT, donate_surfaces: [] } }] })
+        .support,
+    ).toBeNull()
+  })
+
+  it('refuses a donate_url that is not https', () => {
+    expect(
+      only({
+        stewards: [
+          { ...ATC, support: { ...SUPPORT, donate_url: 'javascript:alert(1)' } },
+        ],
+      }).support,
+    ).toBeNull()
+  })
+
+  it('reads a store record with its products, sheets and per-sheet covers, camel-cased', () => {
+    const steward = only({ stewards: [{ ...ATC, store: STORE }] })
+
+    expect(steward.store).toEqual({
+      storeUrl: 'https://store.nynjtc.org/collections/maps?utm_source=ourhike',
+      storeCta: 'Trail Maps',
+      storeSurfaces: ['sources_screen', 'hike_detail', 'trail_sheet'],
+      paperMaps: [
+        {
+          handle: 'harriman-bear-mountain-trails-map',
+          title: 'Harriman-Bear Mountain Trails Map',
+          url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+          sheets: ['118', '119'],
+          covers: ['Harriman State Park'],
+          sheetCovers: {
+            '118': ['Southern Harriman State Park'],
+            '119': ['Bear Mountain State Park'],
+          },
+        },
+      ],
+    })
+  })
+
+  it('drops a product with no sheets or no https url and keeps the store link', () => {
+    const steward = only({
+      stewards: [
+        {
+          ...ATC,
+          store: {
+            ...STORE,
+            paper_maps: [
+              { ...STORE.paper_maps[0], sheets: [] },
+              { ...STORE.paper_maps[0], url: 'http://store.nynjtc.org/x' },
+            ],
+          },
+        },
+      ],
+    })
+
+    expect(steward.store?.storeCta).toBe('Trail Maps')
+    expect(steward.store?.paperMaps).toEqual([])
+  })
+
+  it('reads a store record with no store_surfaces as no store at all', () => {
+    const { store_surfaces: _surfaces, ...withoutSurfaces } = STORE
+
+    expect(only({ stewards: [{ ...ATC, store: withoutSurfaces }] }).store).toBeNull()
+  })
+
+  it('reads a record that carries neither as null and null - the state before #932', () => {
+    const steward = only({
+      stewards: [{ provider: 'OSM', name: 'OpenStreetMap contributors' }],
+    })
+
+    expect(steward.support).toBeNull()
+    expect(steward.store).toBeNull()
   })
 })

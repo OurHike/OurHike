@@ -32,6 +32,7 @@ import type { LineClimb } from './lineClimb'
 import { describeSpur, type SpurRecord } from './spurDestination'
 import { displayTrailName, trailForName } from './trails'
 import { STANDARD_PACE, type PaceProfile } from './pace'
+import { paperMapLead, type PaperMapMatch } from './paperMaps'
 import type { StoredPoi } from './trailData'
 import { formatDistance, formatElevation } from './units'
 import type { UnitSystem } from './units'
@@ -103,6 +104,16 @@ export interface LineDetail {
   /** "From the Appalachian Trail Conservancy’s …" - the provenance line,
    *  same shape as PoiCard's. */
   sourceLine: string | null
+  /**
+   * Which paper maps hold the tapped point (#1574): for each, the words
+   * before the linked title ("This spot is on sheet 119 of the New York-New
+   * Jersey Trail Conference’s"), the product title verbatim, and its page on
+   * the organization's own store. Empty for a point outside every sheet, on
+   * a phone without the archive, and where the organization has not granted
+   * the trail sheet - each of which renders as no line. Usually one; two
+   * where two sets' footprints overlap at a margin, and both are true.
+   */
+  paperMaps: readonly { lead: string; title: string; url: string }[]
   /** "24.0 mi · Harriman State Park" - §2's length and park, on one line
    *  because they answer one question (what and where this trail is), and
    *  collapsing to whichever half is known when the other is not. */
@@ -306,6 +317,10 @@ export function buildLineDetail(
    *  Defaults to the absence every caller written before it had, so a sheet
    *  on a release with no elevation renders exactly as it did. */
   climb: LineClimb = { kind: 'none' },
+  /** The paper maps holding the tapped point (#1574), as lib/paperMaps.ts
+   *  resolved them in the shell. Defaults to none, which is what every
+   *  caller written before it passed by omission. */
+  paperMaps: readonly PaperMapMatch[] = [],
 ): LineDetail {
   const throughRoute = line.source !== null && THROUGH_ROUTE_SOURCES.includes(line.source)
   // Whether this line belongs to somebody else's network - the same question
@@ -539,6 +554,11 @@ export function buildLineDetail(
     roundTripLine: detail.roundTripLabel,
     junctionLine,
     sourceLine: source === null ? null : `From ${source}.`,
+    paperMaps: paperMaps.map((match) => ({
+      lead: paperMapLead(match, 'This spot'),
+      title: match.map.title,
+      url: match.map.url,
+    })),
     extentLine,
     climbLine,
     climbNote,

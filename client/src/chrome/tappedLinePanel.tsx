@@ -30,6 +30,9 @@ import { buildHighlightDetail, type HighlightDetail } from '../lib/highlightDeta
 import type { ClubRun, ClubSections } from '../lib/clubSections'
 import type { Highlight } from '../lib/highlights'
 import type { TappedLine } from '../map/lineTaps'
+import type { MapSheets } from '../lib/mapSheets'
+import { paperMapsAt, type PaperMapMatch } from '../lib/paperMaps'
+import type { Stewards } from '../lib/stewards'
 import type { SpurRecord } from '../lib/spurDestination'
 import type { StoredPoi } from '../lib/trailData'
 import type { TrailIndex } from '../lib/trailPosition'
@@ -61,6 +64,13 @@ export interface TappedLineInput {
    *  their own words. Empty until stewards load, which reads exactly as the
    *  sheet always read: sentences without a by-clause, never a made-up one. */
   trailSources: Readonly<Record<string, { attribution: string | null }>>
+  /** Who the map's data belongs to (lib/stewards.ts): the paper maps each
+   *  organization sells and which sheets they hold (#1574). Empty until the
+   *  stewards load, which reads as no paper map, exactly as before. */
+  stewards: Stewards
+  /** The sheet footprints from the bucket's archive (lib/mapSheets.ts), or
+   *  null while none has arrived - which reads as no paper map. */
+  mapSheets: MapSheets | null
   walked: readonly MileRange[]
   /** The centerline, or null before it has loaded. */
   trailIndex: TrailIndex | null
@@ -146,6 +156,8 @@ export function useTappedLinePanel({
   trailName,
   pace,
   trailSources,
+  stewards,
+  mapSheets,
   walked,
   trailIndex,
   belowSeam,
@@ -238,6 +250,25 @@ export function useTappedLinePanel({
    * `selectedPoi` is: the map reports what was drawn, and the shell is what
    * holds the spur records, the POI a spur leads to, and the hiker's units.
    */
+  /**
+   * Which paper maps hold the tapped point (#1574), resolved here for the
+   * reason the club sheet's mile is: the map reports where the tap landed,
+   * snapped to the line (map/lineTaps.ts), and the shell holds the stewards
+   * and the footprints. Every match rather than the first: two sets'
+   * footprints can overlap at a margin (Sterling Forest's box and Harriman's
+   * do, around Tuxedo), and a spot on both is on both.
+   */
+  const paperMaps: readonly PaperMapMatch[] = useMemo(() => {
+    if (selectedLine === null) return []
+    return paperMapsAt(
+      stewards,
+      mapSheets,
+      'trail_sheet',
+      selectedLine.at[0],
+      selectedLine.at[1],
+    )
+  }, [selectedLine, stewards, mapSheets])
+
   const lineDetail: LineDetail | null = useMemo(() => {
     if (selectedLine === null) return null
     return buildLineDetail(
@@ -249,8 +280,9 @@ export function useTappedLinePanel({
       pace,
       trailSources,
       climb,
+      paperMaps,
     )
-  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources, climb])
+  }, [selectedLine, spurs, pois, units, trailName, pace, trailSources, climb, paperMaps])
 
   const clubDetail: ClubDetail | null = useMemo(() => {
     if (!belowSeam || selectedLine === null || trailIndex === null) return null

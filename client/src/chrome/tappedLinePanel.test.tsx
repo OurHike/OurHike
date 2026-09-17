@@ -115,6 +115,10 @@ function panel(overrides: Partial<TappedLineInput> = {}) {
         trailName: 'Appalachian Trail',
         pace: STANDARD_PACE,
         trailSources: {},
+        // No stewards and no archive: the state every test here was written
+        // in, and the one that must still open the sheet with no paper map.
+        stewards: [],
+        mapSheets: null,
         walked: [],
         trailIndex: TRAIL_INDEX,
         belowSeam: false,

@@ -83,7 +83,20 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 # prefix count towards MAX_SEGMENTS, which would make UA's tree two levels
 # shallower than production's and a release folder legal in one environment and
 # illegal in the other.
-TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions", "originals"})
+# `archive/` holds one-time snapshots of third-party data this project reads
+# once and may never be able to read again (#1574). The first is
+# `archive/nynjtc_map_sheets.json`: the georeferenced footprint of each of
+# NYNJTC's paper map sheets, read from the Avenza Map Store's product pages
+# by archive_nynjtc_sheet_extents.py. The maintainer's rule for it, 2026-09-17:
+# "that will eventually go away. It shouldn't be a real pipeline that runs
+# regularly. Just an archive that sits in its own folder." So nothing under
+# this prefix is rewritten on a schedule and no publish step reads the
+# upstream: an object here is written by a person dispatching a one-off
+# workflow, and stays until a person replaces it. Hiker-facing (the phone
+# reads it at the root, beside `conditions/`), mutable only by that deliberate
+# act, and needing no prune job for the reason `conditions/` needs none - one
+# object per snapshot, overwritten in place, never accumulating.
+TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions", "originals", "archive"})
 
 # Keys that mean something specific and are therefore spelled exactly one
 # way. `latest.json` is the mutable pointer at the bucket root; the two under

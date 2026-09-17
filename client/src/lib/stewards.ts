@@ -65,6 +65,69 @@ export interface Steward {
   /** The registry keys behind those layers - what a graph edge's `source` is.
    *  NOT index-aligned with `layers`; both are sorted independently. */
   keys: readonly string[]
+  /**
+   * How to support the organization, in its own words, or null where it has
+   * not asked (#932). Null renders as nothing: no button, no empty section.
+   * Absent means the organization has not asked for support, which is not
+   * the same as an organization that wants none, and neither is a thing to
+   * guess at on a hiker's screen.
+   */
+  support: StewardSupport | null
+  /**
+   * Where to buy the organization's paper maps, and which map covers what,
+   * or null where none is recorded (#1574). Null renders as nothing, exactly
+   * as `support` does.
+   */
+  store: StewardStore | null
+}
+
+/** pipeline/export_sources.py's `support` record, field for field. */
+export interface StewardSupport {
+  /** The organization's own page. Opens in their site; OurHike holds nothing. */
+  donateUrl: string
+  /** Their own button, verbatim - "Become a Member", "Donate Today". Never
+   *  a house string: a trail conservancy and a state parks department do
+   *  not ask in the same voice. */
+  donateCta: string
+  /** Who actually receives the money, where that is not the steward the
+   *  card names - NYS OPRHP's link resolves to the Natural Heritage Trust,
+   *  a separate 501(c)(3). A surface rendering the button MUST render this
+   *  too, or it tells a hiker their money reaches an agency it does not. */
+  donateRecipient: string | null
+  /** The screens the organization granted the line on. Closed vocabulary
+   *  on the pipeline side; a surface checks itself against it. */
+  donateSurfaces: readonly string[]
+}
+
+/** One paper map product, as the reviewed table publishes it. */
+export interface PaperMap {
+  /** The store's product handle - its URL path, and the stable key. */
+  handle: string
+  /** The product's title, the organization's own words, printed verbatim. */
+  title: string
+  /** The product page, referral query included, exactly as published.
+   *  Copied, never composed. */
+  url: string
+  /** The sheet numbers the product holds - "118", "106A". */
+  sheets: readonly string[]
+  /** Place names the organization's own product description names, where it
+   *  names any. */
+  covers: readonly string[]
+  /** Per sheet, the parks and trails the organization lists on it, in its
+   *  own spelling - what lib/paperMaps.ts joins a hike's park against. */
+  sheetCovers: Readonly<Record<string, readonly string[]>>
+}
+
+/** pipeline/export_sources.py's `store` record, field for field. */
+export interface StewardStore {
+  /** The organization's own store page for its maps. */
+  storeUrl: string
+  /** Their own words for the link - "Trail Maps", read off their site. */
+  storeCta: string
+  /** The screens the organization granted the link on. A separate grant
+   *  from `donateSurfaces`: buying a thing is not giving. */
+  storeSurfaces: readonly string[]
+  paperMaps: readonly PaperMap[]
 }
 
 export type Stewards = readonly Steward[]
@@ -82,6 +145,72 @@ function stringList(value: unknown): readonly string[] {
   return value.filter(
     (entry): entry is string => typeof entry === 'string' && entry !== '',
   )
+}
+
+/** A link the app may open: https, and nothing else. A support or store
+ *  record carrying anything else is dropped whole rather than rendered with
+ *  a dead button - the same refusal lib/atcNoticeText.ts's isSafeLink makes
+ *  for a notice's link. */
+function httpsUrl(value: unknown): string | null {
+  const url = optionalString(value)
+  return url !== null && url.startsWith('https://') ? url : null
+}
+
+/**
+ * The support record, or null - whole or not at all. A record with a
+ * destination and no button text, or no list of screens, is not a record
+ * with fewer permissions; it is one whose permissions nobody wrote down, and
+ * the pipeline refuses to publish that shape (export_sources.py). Refusing
+ * it here too is what keeps an older artifact from rendering a button its
+ * organization never granted a screen for.
+ */
+function parseSupport(value: unknown): StewardSupport | null {
+  const record = value as Record<string, unknown> | null | undefined
+  if (record === null || record === undefined || typeof record !== 'object') return null
+  const donateUrl = httpsUrl(record.donate_url)
+  const donateCta = optionalString(record.donate_cta)
+  const donateSurfaces = stringList(record.donate_surfaces)
+  if (donateUrl === null || donateCta === null || donateSurfaces.length === 0) return null
+  return {
+    donateUrl,
+    donateCta,
+    donateRecipient: optionalString(record.donate_recipient),
+    donateSurfaces,
+  }
+}
+
+function parsePaperMap(value: unknown): PaperMap | null {
+  const record = value as Record<string, unknown> | null | undefined
+  if (record === null || record === undefined || typeof record !== 'object') return null
+  const handle = optionalString(record.handle)
+  const title = optionalString(record.title)
+  const url = httpsUrl(record.url)
+  const sheets = stringList(record.sheets)
+  if (handle === null || title === null || url === null || sheets.length === 0)
+    return null
+  const rawCovers = record.sheet_covers as Record<string, unknown> | null | undefined
+  const sheetCovers: Record<string, readonly string[]> = {}
+  for (const sheet of sheets) {
+    sheetCovers[sheet] = stringList(rawCovers?.[sheet])
+  }
+  return { handle, title, url, sheets, covers: stringList(record.covers), sheetCovers }
+}
+
+/** The store record, or null - the same whole-or-nothing rule as the
+ *  support record. A product that does not parse costs that product and
+ *  nothing else: the store link stands without it. */
+function parseStore(value: unknown): StewardStore | null {
+  const record = value as Record<string, unknown> | null | undefined
+  if (record === null || record === undefined || typeof record !== 'object') return null
+  const storeUrl = httpsUrl(record.store_url)
+  const storeCta = optionalString(record.store_cta)
+  const storeSurfaces = stringList(record.store_surfaces)
+  if (storeUrl === null || storeCta === null || storeSurfaces.length === 0) return null
+  const rawMaps = Array.isArray(record.paper_maps) ? record.paper_maps : []
+  const paperMaps = rawMaps
+    .map(parsePaperMap)
+    .filter((map): map is PaperMap => map !== null)
+  return { storeUrl, storeCta, storeSurfaces, paperMaps }
 }
 
 /**
@@ -116,6 +245,8 @@ export function parseStewards(value: unknown): Stewards {
       termsSource: optionalString(record?.terms_source),
       layers: stringList(record?.layers),
       keys: stringList(record?.keys),
+      support: parseSupport(record?.support),
+      store: parseStore(record?.store),
     })
   }
   return stewards

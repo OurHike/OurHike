@@ -28,7 +28,15 @@
  */
 
 import type { FinderHike } from './components'
-import type { AssistConsent, Org, OrgPark, OrgRole, RosterEntry, Workday } from './orgApi'
+import type {
+  AssistConsent,
+  Coverage,
+  Org,
+  OrgPark,
+  OrgRole,
+  RosterEntry,
+  Workday,
+} from './orgApi'
 
 export const DEMO_SLUG = 'central-park-throughikers'
 
@@ -582,6 +590,38 @@ export const DEMO_PROPOSED: OrgPark[] = [
     ],
   },
 ]
+
+/**
+ * The demo organization's coverage report, derived rather than written out.
+ *
+ * WHY IT MOVED HERE from OrgConsole.tsx on 2026-09-17: the marketing site's
+ * /for-orgs/demo/ page serves this same fixture to the three public embeds,
+ * through Astro endpoints at the paths the real API uses. Two derivations of
+ * "which sections nobody holds" would be two demo organizations wearing one
+ * name, and the first edit to `DEMO_COVERED` would make them disagree in
+ * public.
+ *
+ * A gap is a section no live role is attached to. `region` is null because
+ * this is the whole org rather than one region's slice - the endpoint takes
+ * `?region=` and the demo asks for everything.
+ */
+export const DEMO_COVERAGE: Coverage = {
+  club_id: DEMO_ORG.id,
+  region: null,
+  sections_total: DEMO_SECTIONS.length,
+  gaps: DEMO_SECTIONS.filter((section) => !DEMO_COVERED.has(section.id)).map(
+    (section) => ({
+      section_id: section.id,
+      section_name: section.name,
+      trail_name:
+        DEMO_REGISTRY[0].trails.find((trail) => trail.id === section.trail_id)?.name ??
+        null,
+      region: section.region,
+      miles: section.miles,
+      geometry: section.geometry,
+    }),
+  ),
+}
 
 export function isDemoOrg(slug: string): boolean {
   return slug === DEMO_SLUG

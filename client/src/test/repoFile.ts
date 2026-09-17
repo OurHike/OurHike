@@ -44,6 +44,15 @@ export const OUT_OF_TREE_READS = [
   'site/src/pages/for-orgs/nominate.astro',
   'site/src/pages/for-orgs/claim.astro',
   'site/src/components/OrgNav.astro',
+  // The demo org's data, served to the REAL public embeds at the four paths
+  // the API serves them at. Declared here because the failure is silent: an
+  // endpoint that stops being generated, or a page that stops setting the
+  // base, renders three empty boxes and nothing throws.
+  'site/src/lib/demoApi.ts',
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/index.html.ts',
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/registry.ts',
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/coverage.ts',
+  'site/src/pages/for-orgs/demo/api/workdays.ts',
   'site/src/pages/index.astro',
   'site/src/components/NavBar.astro',
   // The four embeds (#1542), which run on somebody ELSE's website. The

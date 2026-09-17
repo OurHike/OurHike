@@ -23,6 +23,7 @@
 // the widgets.
 import Base from '../../layouts/Base.astro'
 import OrgNav from '../../components/OrgNav.astro'
+import { DEMO_API_BASE } from '../../lib/demoApi'
 
 const title = 'OurHike — Central Park Throughikers, a demo org'
 const description =
@@ -164,5 +165,19 @@ const ORG_SLUG = 'central-park-throughikers'
     </div>
   </section>
 
+  {
+    /* WHERE THE EMBEDS READ FROM, set before the embed script loads.
+       `ourhike.js` takes `window.__OURHIKE_API__` and, with nothing set,
+       draws nothing - "an unconfigured page renders empty rather than
+       pointing at a guessed host", which is right everywhere except the one
+       page whose job is to show a whole published organization. So this
+       points at four generated endpoints under this page, at exactly the
+       paths the real API serves: see src/lib/demoApi.ts. The embed itself is
+       unchanged, so what a visitor sees here is what an org's own visitors
+       would see. */
+  }
+  <script is:inline define:vars={{ base: DEMO_API_BASE }}>
+    window.__OURHIKE_API__ = base
+  </script>
   <script src="/embed/v1/ourhike.js" defer is:inline></script>
 </Base>

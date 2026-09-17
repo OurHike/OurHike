@@ -138,3 +138,53 @@ describe('the four org pages reach each other', () => {
     }
   })
 })
+
+/**
+ * The demo organization has data behind it, and it is the console's data.
+ *
+ * /for-orgs/demo/ mounts the three REAL public embeds rather than drawing its
+ * own tables - the design's structural rule, and the reason it is worth
+ * keeping is that "the moment the demo gets its own copies it starts lying
+ * about the product". The cost of that rule is that the embeds read
+ * `window.__OURHIKE_API__` and draw NOTHING when it is unset, which is what
+ * the page did everywhere until 2026-09-17: three empty boxes on the page
+ * whose whole job is showing a published organization.
+ *
+ * Four generated endpoints under the page answer the four reads `ourhike.js`
+ * makes, from `client/src/org/demoOrg.ts` - the same fixture the console
+ * renders. This checks the wiring rather than the bytes: a page that stopped
+ * setting the base, or an endpoint that stopped being generated, is three
+ * empty boxes again and nothing else in the suite would notice.
+ */
+describe('the demo org has data behind it', () => {
+  it('points the embeds at the endpoints generated beside the page', () => {
+    const page = readRepoFile('site/src/pages/for-orgs/demo.astro')
+    expect(page).toContain('window.__OURHIKE_API__')
+    expect(page).toContain('DEMO_API_BASE')
+
+    const lib = readRepoFile('site/src/lib/demoApi.ts')
+    expect(lib).toContain("DEMO_API_BASE = '/for-orgs/demo/api'")
+    // The fixture is the console's, not a second copy of it.
+    expect(lib).toContain("from '../../../client/src/org/demoOrg'")
+  })
+
+  // Literal paths rather than a template, because `readRepoFile` only accepts
+  // paths declared in OUT_OF_TREE_READS and the type is what enforces it.
+  it.each([
+    [
+      'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/index.html.ts',
+      'DEMO_ORG',
+    ],
+    [
+      'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/registry.ts',
+      'DEMO_REGISTRY',
+    ],
+    [
+      'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/coverage.ts',
+      'DEMO_COVERAGE',
+    ],
+    ['site/src/pages/for-orgs/demo/api/workdays.ts', 'DEMO_WORKDAYS'],
+  ] as const)('%s answers with %s', (path, fixture) => {
+    expect(readRepoFile(path)).toContain(`served(${fixture})`)
+  })
+})

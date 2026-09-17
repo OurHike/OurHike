@@ -45,7 +45,7 @@ import type { OrgRoute } from '../lib/orgRoute'
 import type { UnitSystem } from '../lib/units'
 import {
   DEMO_ASSIST_CONSENT,
-  DEMO_COVERED,
+  DEMO_COVERAGE,
   DEMO_HIKES,
   DEMO_ORG,
   DEMO_PROPOSED,
@@ -117,7 +117,6 @@ const EMPTY: OrgData = {
 }
 
 function demoData(): OrgData {
-  const gaps = DEMO_SECTIONS.filter((section) => !DEMO_COVERED.has(section.id))
   return {
     org: DEMO_ORG,
     access: {
@@ -134,20 +133,9 @@ function demoData(): OrgData {
     roles: DEMO_ROLES,
     roster: DEMO_ROSTER,
     workdays: DEMO_WORKDAYS,
-    coverage: {
-      club_id: DEMO_ORG.id,
-      region: null,
-      sections_total: DEMO_SECTIONS.length,
-      gaps: gaps.map((section) => ({
-        section_id: section.id,
-        section_name: section.name,
-        trail_name:
-          DEMO_REGISTRY[0].trails.find((t) => t.id === section.trail_id)?.name ?? null,
-        region: section.region,
-        miles: section.miles,
-        geometry: section.geometry,
-      })),
-    },
+    // Derived in demoOrg.ts, because /for-orgs/demo/ serves the same object
+    // to the public embeds and two derivations would drift.
+    coverage: DEMO_COVERAGE,
     error: null,
     loading: false,
   }

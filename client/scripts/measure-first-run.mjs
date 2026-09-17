@@ -499,7 +499,7 @@ const paint = await page.evaluate(() =>
 for (const entry of paint) console.log(`${entry.name.padEnd(31)} ${entry.at} ms`)
 
 // The app's own marks (#1299, src/lib/launchMarks.ts), read from the page so
-// this prints the SAME five moments Settings -> About this build shows on a
+// this prints the SAME seven moments Settings -> About this build shows on a
 // phone and the bug-report prefill carries. That is the whole point of the
 // marks: a number from a hiker's device and a number from this profile name
 // the same events, so the two can finally be compared.
@@ -513,6 +513,10 @@ const marks = await page.evaluate(() =>
     ['ourhike:preferences', 'settings read'],
     ['ourhike:today', 'waypoints ready'],
     ['ourhike:index', 'trail index ready'],
+    // The map's own two (#1560): a phone landing on Today never reaches
+    // them, and prints "not reached" for both - which is the right answer.
+    ['ourhike:map', 'map built'],
+    ['ourhike:map-drawn', 'map drawn'],
   ].map(([name, label]) => {
     const entry = performance.getEntriesByName(name, 'mark')[0]
     return { label, at: entry === undefined ? null : Math.round(entry.startTime) }

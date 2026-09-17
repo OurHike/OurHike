@@ -55,6 +55,7 @@ import App from './App'
 import { appHarness, openMapTab, stubDesktop } from './test/appHarness'
 import { renderedMap } from './test/liveMap'
 import { MockMap } from './test/mocks/maplibre-gl'
+import { loadMapEngine } from './map/mapEngineLoader'
 import { POIS_KEY, TRAILS_BLOB_KEY } from './lib/trailData'
 import { readLaunchMirror, writeLaunchMirror } from './lib/launchMirror'
 import { PREFERENCES_KEY } from './lib/preferences'
@@ -67,6 +68,13 @@ import { mapPointsFrom } from './lib/legendContents'
 import { hikePlaces } from './lib/suggestedHikes'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
+// The engine seam, spied rather than replaced: every call goes through to the
+// real loader (which the harness has already pointed at the mock library), and
+// the count is what the two engine tests below are spelled in (#1560).
+vi.mock('./map/mapEngineLoader', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./map/mapEngineLoader')>()
+  return { ...actual, loadMapEngine: vi.fn(actual.loadMapEngine) }
+})
 vi.mock('idb-keyval', () => ({
   get: vi.fn(),
   getMany: vi.fn(),
@@ -416,6 +424,25 @@ describe('what the shell paints before the phone has answered (#1301)', () => {
     expect(vi.mocked(get).mock.calls.length).toBeGreaterThan(0)
   })
 
+  it('asks for the map engine zero times on a launch that stays on Today', async () => {
+    // A laptop warms the engine at the first frame now (#1560, the desktop
+    // block below), and this is the count that keeps #722's saving on a
+    // phone: the engine is 860 ms of parse on the throttled profile, and a
+    // launch that lands on Today and builds no map has no business fetching
+    // it. The harness primes the loader before every test, so the count
+    // starts at the render.
+    app.onboard()
+    app.putTrailData({ pois: POIS })
+    vi.mocked(loadMapEngine).mockClear()
+
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+    await settle()
+
+    expect(loadMapEngine).not.toHaveBeenCalled()
+    expect(MockMap.instances).toHaveLength(0)
+  })
+
   it('still waits for the record on a phone that holds no mirror of it', async () => {
     // The first launch after #1301 shipped, or storage that was cleared: the
     // slow path, and the honest one - a returning hiker must never see the
@@ -634,6 +661,26 @@ describe('what a desktop launch paints before the store has answered', () => {
     // answered nothing: every read is still hanging.
     expect(document.querySelector('.today')).not.toBe(null)
     expect(screen.queryByRole('region', { name: /trail map/i })).toBe(null)
+    expect(MockMap.instances).toHaveLength(0)
+  })
+
+  it('asks for the map engine before the store has answered', async () => {
+    // THE SERIAL LINK #1560 REMOVED. MapView asks for the engine in its mount
+    // effect, and MapView mounts only once the archive store has answered and
+    // MapScreen's chunk has landed - so on a cold cache the engine's 257 KB
+    // was fetched after both, measured 2026-09-17 at 1x CPU as the whole
+    // 0.85 s between the map screen appearing and the canvas existing. A
+    // laptop builds a map on every launch, so the fetch can start with the
+    // first frame. Proven the strong way, like the two tests above: every
+    // read hangs forever, and the engine has been asked for anyway - without
+    // a map being built, because the store has said nothing.
+    stallEveryRead()
+    vi.mocked(loadMapEngine).mockClear()
+
+    render(<App />)
+    await screen.findByRole('tab', { name: 'Today' })
+
+    await waitFor(() => expect(loadMapEngine).toHaveBeenCalled())
     expect(MockMap.instances).toHaveLength(0)
   })
 

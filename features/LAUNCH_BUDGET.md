@@ -233,6 +233,63 @@ One measurement nearby, for whoever picks this up: the map engine ships as
 eager closure — `scripts/check-build-output.mjs` holds that — and on a laptop it is
 in front of Today anyway, because Today is the map's child.
 
+### 1.4 After #1560: the map's own arrival, and the two frames on the way to it
+
+**#1560 — On a laptop the map arrives seconds after Today, and on the way the
+journal renders full-width, the whole page blanks, and the engine only starts
+loading once the gate has opened** measured the launch §1.3 left, on the
+maintainer's report of 2026-09-17 ("several seconds for the map to appear…
+makes the whole page look buggy on the first open"). Same shape as §1.3's
+profile with three differences, each stated because it changes what the numbers
+mean: 1× CPU rather than 4×, because the report was a laptop's; the release AND
+the three coverage-cell indexes on the machine (seeded, since the published
+indexes were being rejected — #1559); and a build of `main` at 596af5e served
+through `client/scripts/data-proxy.mjs`, which sends the app's own assets
+uncompressed, so every cold "network" figure below is pessimistic against
+production's gzip and comparable only to its neighbour in the table. Two runs a
+cell; a range is the two.
+
+| laptop, 1728×1080, 1× CPU | cold, before | cold, after | warm, before | warm, after |
+|---|---:|---:|---:|---:|
+| sidebar and Today's journal on screen | 452–471 ms | 440–448 ms | 47–89 ms | 50–63 ms |
+| the journal's width in that frame → once the map has it | **1,519 → 405 px** | 405 → 405 px | **1,519 → 405 px** | 405 → 405 px |
+| the whole page blank, sidebar included | **897 → 2,044 ms** | never | never | never |
+| map screen mounts (`.map-screen`) | 1,643–2,044 ms | 2,149–2,329 ms | 523–616 ms | 578–679 ms |
+| map canvas exists | 2,748–2,982 ms | 2,371–2,486 ms | 591–679 ms | 578–679 ms |
+| `ourhike:map` — the engine handed the shell a map | not instrumented | 2,705–2,808 ms | not instrumented | 578–679 ms |
+| first frame with the trail line drawn | 4,457–5,697 ms | 4,267–4,864 ms | 2,047–2,330 ms | 2,057–2,312 ms |
+
+What moved and what did not, read across the rows:
+
+- **The two frames that looked broken are gone**, and they were the report. The
+  journal is its 404 px column from its first frame (`desktop.css`, one rule at
+  the specificity App.css's phone rule had been winning on), and the pre-map
+  branch now stays up until `MapScreen.loaded()` says the deferred screen can
+  draw, so nothing blanks between the archive store answering and the chunk
+  landing. A first draft of that hold was a render late on a warm launch and put
+  two sidebars up for the length of the map's construction (250–310 ms); the
+  readiness is read during the render now, and `journalNode2` lands in the same
+  commit as `.map-screen` in every run above.
+- **The canvas comes 0.3–0.5 s sooner on a cold launch** because the engine's
+  chunk is fetched from the first frame on a laptop instead of after the map
+  screen has mounted. The map screen itself mounts 0.3–0.5 s *later* on this
+  profile, because the same 25 Mbps link now carries the engine beside
+  MapScreen's chunk and 37 others — a cost that is the proxy's uncompressed
+  bytes more than anything a laptop on production would pay, and the canvas
+  is the frame a hiker sees.
+- **The warm launch is unmoved, and it is already inside the maintainer's two
+  seconds for everything but the line**: map built at 0.6–0.7 s, the line at
+  2.1–2.3 s. The line's 1.4–1.6 s after the map is MapLibre's single worker
+  fetching and tiling the 11.5 MB trails blob, which no change here touches —
+  **#1564 — Research: the map on screen, trail line included, within two
+  seconds of opening the app** is about that.
+
+Two marks were added for this (`lib/launchMarks.ts`): `ourhike:map` and
+`ourhike:map-drawn`, the second on MapLibre's `load`. Settings → About build
+and the stopwatch print both, so the maintainer's own laptop can now say where
+its map arrives — the number this section could not give and §6's first bullet
+still asks for.
+
 ## 2. Where the time goes
 
 ### 2.1 Bytes before the first frame
@@ -402,6 +459,14 @@ release moved. The maintainer's "six seconds" gets a name on their own device, a
 the production-versus-`main` gap in §1 gets an answer.
 
 ### 4.2 The engine loads when a map is built, never before
+
+**One exception, stated so it stays one (#1560).** A laptop builds a map on
+every launch (`isDesktop` is in `mapNeededNow`), so above the breakpoint
+`App.tsx` calls `loadMapEngine()` at the first frame and the engine's fetch
+overlaps the archive sweep instead of following it — a dynamic import, so
+the eager closure is exactly what it was and `check-build-output.mjs` still
+walks it. Below the breakpoint nothing changed: a launch onto Today asks for
+the engine zero times, and `App.loadBudget.test.tsx` counts that.
 
 Nothing `App.tsx` imports statically may import `maplibre-gl` at module top. The
 corridor URL, the two cell registries and whatever else the shell needs from

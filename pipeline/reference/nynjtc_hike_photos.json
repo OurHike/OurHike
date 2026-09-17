@@ -1,0 +1,592 @@
+{
+  "_comment": "The hike -> photograph join, confirmed row by row. Every row rests on NYNJTC's OWN pairing rather than on a score: `basis` was `page + title`, meaning the archived write-up whose title is character-for-character this hike's name displayed this photograph in its markup. `credit` is read from that same page's img, which is the wording sources.json's nynjtc_hikes_licence makes a condition - 'the credit line the page carries'. Confirmed against run 35188460582's sheet (2026-09-17), which proposed 204 credited rows: the 6 carried by subject-text scoring alone, the 1 whose hike the export could not place, and the 32 placed by a NEARBY rather than an identical title are deliberately NOT here and remain for a person to work through. One photograph per hike, because a card shows one. Removing a row stops that photograph shipping AND stops its bytes reaching the bucket, because publish.py reads the same digests.",
+  "source_run": "https://github.com/OurHike/OurHike/actions/runs/35188460582",
+  "basis": "page + title",
+  "photos": [
+    {
+      "hike_id": "14",
+      "hike_name": "Bronx River Pathway",
+      "digest": "cefe8f9d545d96677a78c7c84ffa9375ac2d2be5f3a3b31c57337ec50253bbe4",
+      "credit": "Daniel Chazin",
+      "subject": "Tooley Bridge with Scarsdale Falls in the background200x150",
+      "page_url": "https://www.nynjtc.org/hike/bronx-river-parkway",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "17",
+      "hike_name": "Buttermilk Falls and Long Path in Rockland County",
+      "digest": "8c118f630534c91bb8daf6d9dad2c56bfc0c8e5439e296b5a6610f881c15e3bf",
+      "credit": "Daniel Chazin",
+      "subject": "Tappan Zee Bridge from the Long Path along the Palisades ridge",
+      "page_url": "https://www.nynjtc.org/hike/buttermilk-falls-and-long-path-rockland-county",
+      "metres_from_start": 7
+    },
+    {
+      "hike_id": "25",
+      "hike_name": "Hunter Mountain via Spruceton Trail",
+      "digest": "aa22fa1693093829b91589d184e4921ef5ab01afa14f5beebedc4ca51d0e0921",
+      "credit": "Daniel Chazin",
+      "subject": "View from the rock ledge near the junction of the Spruceton Trail with the Hunter Mountain Trail",
+      "page_url": "https://www.nynjtc.org/hike/hunter-mountain-fire-tower",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "29",
+      "hike_name": "Devils Path East Section",
+      "digest": "f2e914ff52ddc130b610053973a8d1cb9c9f1f9942f1816b7d855152af8913c3",
+      "credit": "Jeff Senterman",
+      "subject": "Mink Hollow Trail Junction DSCF1777",
+      "page_url": "https://www.nynjtc.org/hike/devils-path-east-section",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "34",
+      "hike_name": "Long Path over Romer Mountain",
+      "digest": "41364be88cc50308489954f03dd301ddba5548c5de281c086877c58b80dac7f9",
+      "credit": "Daniel Chazin",
+      "subject": "Interesting boulder with striations in various directions,on the way up Romer Mountain",
+      "page_url": "https://www.nynjtc.org/hike/long-path-over-romer-mountain",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "35",
+      "hike_name": "Catskill Escarpment Loop (South) from Scutt Road (North/South Lake)",
+      "digest": "c2586a4cbc4a25ff31a1ff0b1e9069e430bbe3e4c0a32967c65b5cdde7b316f7",
+      "credit": "Daniel Chazin",
+      "subject": "East facing view from Escarpment Trail just beyond Inspiration Point",
+      "page_url": "https://www.nynjtc.org/hike/catskill-escarpment-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "46",
+      "hike_name": "Long Island Greenbelt Trail",
+      "digest": "eb2c5459cf927437e357caeba4cc197430259fc10fcd9632a3464d7e42f00371",
+      "credit": "Daniel Chazin",
+      "subject": "The trail as it passes through a pine grove between Union Boulevard and Montauk Highway",
+      "page_url": "https://www.nynjtc.org/hike/long-island-greenbelt-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "47",
+      "hike_name": "Cranberry Lake Preserve Loop",
+      "digest": "c986e12aeb8afc8132119a9c1f420d40619d8fa986730e225b2ae990f4c306ee",
+      "credit": "Daniel Chazin",
+      "subject": "Concrete wall along Red Trail250x188",
+      "page_url": "https://www.nynjtc.org/hike/cranberry-lake-preserve",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "50",
+      "hike_name": "Charcoal Burners/Cabot/Perkins/Fahnestock Trail Loop",
+      "digest": "675d8adcea51c1fd5925c69ff10438b57cd78d599870aec310ebdd827fb4af24",
+      "credit": "Daniel Chazin",
+      "subject": "Large pond along Fahnestock Trail",
+      "page_url": "https://www.nynjtc.org/hike/charcoal-burnerscabotperkinsfahnestock-trail-loop",
+      "metres_from_start": 218
+    },
+    {
+      "hike_id": "52",
+      "hike_name": "Catfish Loop Trail",
+      "digest": "d8be54b867f9fb3b853f85331f34739304523652781dc9128e6fa664087c49ac",
+      "credit": "Daniel Chazin",
+      "subject": "Catfish Loop Trail as it goes a narrow passage between large lichen covered boulders. 2",
+      "page_url": "https://www.nynjtc.org/hike/catfish-loop-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "59",
+      "hike_name": "Diamond Mountain/Stony Brook Loop",
+      "digest": "8553b1f1c987fcb88c206bc1b52d6eb465179fc42a132f9431f4badc631b898e",
+      "credit": "Daniel Chazinl",
+      "subject": "Footbridge over Pine Meadow Brook just above the Cascade of Slid",
+      "page_url": "https://www.nynjtc.org/hike/diamond-mountainstony-brook-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "61",
+      "hike_name": "Suffern to Sloatsburg via S-BM, Kakiat and Pine Meadow Trails",
+      "digest": "e483fa6d127b6862c2f679f0d0f6b0c24b279eb79dd98843231f4aab7a907ceb",
+      "credit": "Daniel Chazin",
+      "subject": "Slanted split rock along the Kakiat Trail just past the crossing of Torne Brook",
+      "page_url": "https://www.nynjtc.org/hike/harriman-state-park",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "62",
+      "hike_name": "Bald Mountain/Doodletown Loop from Route 9W",
+      "digest": "117340a0386a1d0d4002cb727b79990c779ee9c4d83fb0ec1990c93c0158fd13",
+      "credit": "Daniel Chazin",
+      "subject": "Bear Mountain Bridge from Bald Mountain Summit 1",
+      "page_url": "https://www.nynjtc.org/hike/bear-mountainharriman-state-parks-0",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "70",
+      "hike_name": "Green Pond/Boston Mine Longer Loop from Elk Pen",
+      "digest": "98c028c009e4badcd2827c861b7dd3850859d978bbb8e53502ea193d0d97b906",
+      "credit": "Daniel Chazin",
+      "subject": "Northern end of the Boston Mine",
+      "page_url": "https://www.nynjtc.org/hike/green-pondboston-mine-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "71",
+      "hike_name": "Bear Mountain Loop via Major Welch Trail and Appalachian Trail",
+      "digest": "c5833fafbbf4f7ab5a375b35a25a66674548575b77eb8264f7e7029c4b24cf5e",
+      "credit": "Daniel Chazin",
+      "subject": "Anthony's Nose from the Major Welch Trail along Hessian Lake",
+      "page_url": "https://www.nynjtc.org/hike/bear-mountain-state-park-0",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "72",
+      "hike_name": "Goshen and Stevens Mountains",
+      "digest": "10c42944fe27e2d45baad0ff054b625af673ea33959736075b1e37d4634b8255",
+      "credit": "Daniel Chazin",
+      "subject": "View of Fingerboard Mountain from Stevens Mountain",
+      "page_url": "https://www.nynjtc.org/hike/goshen-and-stevens-mountains",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "83",
+      "hike_name": "Bear Mountain Summit Loop",
+      "digest": "c1f36f24df47590884a387fed29ef9847db7f04a680ca1c86b3e430d55a23c4c",
+      "credit": "Daniel Chazin",
+      "subject": "Accessible Trail Along Huge Boulder Just Before Major Welch Junction 0",
+      "page_url": "https://www.nynjtc.org/hike/bear-mountain-summit-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "87",
+      "hike_name": "Iron Mines Short Loop",
+      "digest": "e2b658401a2be6c1c4330678e3464bbdc60a414f4be743465e92b3e493a34ba5",
+      "credit": "Daniel Chazin",
+      "subject": "Large rectangular cut of the Pine Swamp Mine in the hillside to the left of the A SB Trail",
+      "page_url": "https://www.nynjtc.org/hike/iron-mines-short-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "93",
+      "hike_name": "Claudius Smith Rock Loop from Tuxedo",
+      "digest": "05df527dad8489073c67e699c42903364b8755ddf84e9396b80144bd834a4bc2",
+      "credit": "Daniel Chazin",
+      "subject": "Panoramic view from the top of Almost Perpendicular",
+      "page_url": "https://www.nynjtc.org/hike/Claudius-Smiths-Rock",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "114",
+      "hike_name": "South Beacon Mountain Firetower and Scofield Ridge",
+      "digest": "6c2a477578631dd4baec7be55e64562e2d924aee5c34a6684cbcbf65403fb46b",
+      "credit": "Daniel Chazin",
+      "subject": "Hudson River and the Newburgh Beacon Bridge from the viewpoint at the old casino site",
+      "page_url": "https://www.nynjtc.org/hike/east-hudson-highlands-beacon-ny",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "115",
+      "hike_name": "Sugarloaf Hill and Osborn Loop Trail",
+      "digest": "856e2555b4e29133b6553e57e5c70f97b66c2e437ed53016ad4a1ee28718c2ea",
+      "credit": "Daniel Chazin",
+      "subject": "Hudson Rivver from Sugarloaf Hill",
+      "page_url": "https://www.nynjtc.org/hike/east-hudson-highlands-5",
+      "metres_from_start": 1
+    },
+    {
+      "hike_id": "117",
+      "hike_name": "Bull Hill (Mt. Taurus) via Lone Star/Nelsonville/Washburn/Undercliff Trails Loop",
+      "digest": "e8d3cf5d66af66c9bd7b58f744757c8aaceda613c2995eb44d70947b91bbed96",
+      "credit": "Daniel Chazin",
+      "subject": "South over West Point and Constitution Island",
+      "page_url": "https://www.nynjtc.org/hike/east-hudson-highlands-2",
+      "metres_from_start": 104
+    },
+    {
+      "hike_id": "122",
+      "hike_name": "Appalachian Trail /Osborn Loop Trail from Route 9",
+      "digest": "5fb5dcf8b28ec6700fcf6ed86f4257d031f18ad794d8e7e4d37381ab0ccdc8dc",
+      "credit": "Daniel Chazin",
+      "subject": "Gazebo on Osborn Loop Trail 1 0",
+      "page_url": "https://www.nynjtc.org/hike/east-hudson-highlands-0",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "133",
+      "hike_name": "Kennedy Dells County Park Loop Hike",
+      "digest": "6caaa1bba9ad5a608b439ad3a1210ca5367fbdba9b9dc8a26804c12a674426d8",
+      "credit": "Daniel Chazin",
+      "subject": "Stone building that formerly housed pumping equipment",
+      "page_url": "https://www.nynjtc.org/hike/kennedy-dells-county-park-loop-hike",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "136",
+      "hike_name": "Manitoga to Appalachian Trail Circuit",
+      "digest": "88181b8afe2514ef4dd96b331e7480ac6c9525d84a689eabac3fa904fad45fc3",
+      "credit": "Daniel Chazin",
+      "subject": "First section of the trail up towards Lost Pond",
+      "page_url": "https://www.nynjtc.org/hike/manitoga",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "141",
+      "hike_name": "Gertrude's Nose Loop/Millbrook Mountain",
+      "digest": "c36270434f171e1da49b5a4ac8c86deb9560461e989af08dbe851642efae1ed8",
+      "credit": "Daniel Chazin",
+      "subject": "Outcrop of fractured conglomerate along the Gertrude's Nose Trail",
+      "page_url": "https://www.nynjtc.org/hike/gertrudes-nose-loopmillbrook-mountain",
+      "metres_from_start": 8
+    },
+    {
+      "hike_id": "144",
+      "hike_name": "Castle Point Carriage Road/Lake Awosting Carriage Road/Upper Awosting Carriage Road Loop",
+      "digest": "4af5e8e6670dec23ce115330f82762ff6b90dfc207f9debded00a0f016b73131",
+      "credit": "Daniel Chazin",
+      "subject": "Minnewaska February4",
+      "page_url": "https://www.nynjtc.org/hike/castle-point-carriagewaylake-awosting-carriagewayupper-awosting-carriageway-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "152",
+      "hike_name": "Millbrook Mountain via Millbrook Ridge Trail",
+      "digest": "7ea4f1860af88715a9f6d15292ae0a084d02fe4e23dc7530678468240f7a87f9",
+      "credit": "Daniel Chazin",
+      "subject": "View from Millbrook Mountain 0",
+      "page_url": "https://www.nynjtc.org/hike/millbrook-mountain-millbrook-ridge-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "154",
+      "hike_name": "Dickie Barre, Peters Kill and Awosting Falls Loop",
+      "digest": "5481ca68047c7a4baf42cf0f4709ce85b1cbc6fd105544d8f5af4a57a1f899ed",
+      "credit": "Daniel Chazin",
+      "subject": "The Catskills from the rock slabs with pitch pines along the Peters Kill Trail as it descends from Dickie Barre to the Peters Kill. I",
+      "page_url": "https://www.nynjtc.org/hike/dickie-barre-peters-kill-and-awosting-falls-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "172",
+      "hike_name": "Long Path on Schunemunk Mountain",
+      "digest": "4ec9ae9743d38a353b526afca14e612e5c8dceda29235ce847e739de93409cc8",
+      "credit": "Daniel Chazin",
+      "subject": "Souith View from High Know with Pitch Pines",
+      "page_url": "https://www.nynjtc.org/hike/long-path-schunemunk-mountain",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "191",
+      "hike_name": "Butter Hill/Stillman/By-Pass Trail Loop from Route 9W",
+      "digest": "100d1ba2e0f5c583f533d7c0091a2e70c92b834e068798441ffddcde9e432d44",
+      "credit": "Daniel Chazin",
+      "subject": "Village of Cornwall, on the west side of the Hudson River, from the viewpoint on the Stillman Trail just beyond the summit of Storm King Mountain",
+      "page_url": "https://www.nynjtc.org/hike/butter-hillstillmanbypass-trail-loop-route-9w",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "200",
+      "hike_name": "Vernay Lake/Hidden Valley Loop",
+      "digest": "f7f266f8d6c9c0a20286ac7c7e2eaab6326f96384ea59bf04bd88c361d351895",
+      "credit": "Daniel Chazin",
+      "subject": "Boardwalk On Hidden Valley Trail300x420",
+      "page_url": "https://www.nynjtc.org/hike/croft-trail-vernay-lake-teatown",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "218",
+      "hike_name": "State Line Trail/Ernest Walter Trail/A.T. Loop from Greenwood Lake Marina",
+      "digest": "4cc2b706fb57bc744fac6746aeef145f12260b377dc1d402d1a5cd3b9f03c5c2",
+      "credit": "Dan Chazin",
+      "subject": "Pitch pines at the junction of the Ernest Walter Trail with the Bearfort Ridge Trail 300c225",
+      "page_url": "https://www.nynjtc.org/hike/abram-s-hewitt-state-forest",
+      "metres_from_start": 26
+    },
+    {
+      "hike_id": "222",
+      "hike_name": "Allaire State Park",
+      "digest": "c376116af42a79ffce470db2bdfb0623bf24d70b24d5a74321cee7a55de37735",
+      "credit": "Daniel Chazin",
+      "subject": "Blacksmiths Shop",
+      "page_url": "https://www.nynjtc.org/hike/allaire-state-park",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "226",
+      "hike_name": "Southern Loop at Apshawa Preserve",
+      "digest": "7b384bf5145b22d1947b80e37151251e082461abf9cb6292b58c67c97b8da860",
+      "credit": "Daniel Chazin",
+      "subject": "Rusted Tanks 0",
+      "page_url": "https://www.nynjtc.org/hike/history-and-views-apshawa-preserve",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "236",
+      "hike_name": "Cattus Island",
+      "digest": "a9d16d4b1751838dd4bd61a2b56717b77053447c0a1d8ffa4d0657ddb1068cbd",
+      "credit": "Daniel Chazin",
+      "subject": "Salt Marsh",
+      "page_url": "https://www.nynjtc.org/hike/cattus-island",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "237",
+      "hike_name": "Celery Farm Natural Area",
+      "digest": "e26c8fd34a80871555763449ddf2f02bf7fca9a0a2f8606c80e1a0a23cfab63f",
+      "credit": "Daniel Chazin",
+      "subject": "Old farm machinery at Butterfly Garden",
+      "page_url": "https://www.nynjtc.org/hike/celery-farm-natural-area",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "244",
+      "hike_name": "Kingston to Rocky Hill Loop",
+      "digest": "eb386782e856307d3725cf05a6f79e36aab679a2329af549be7567d6a48bd694",
+      "credit": "Daniel Chazin",
+      "subject": "Towpath and Spillway",
+      "page_url": "https://www.nynjtc.org/hike/delaware-and-raritan-canal-state-park",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "248",
+      "hike_name": "Coppermines Trail to Kittatinny Ridge",
+      "digest": "795491a82969c05dbe050fbcd20cb330aae14964ae23c7292892fc63b965dbdc",
+      "credit": "Daniel Chazin",
+      "subject": "Footbridge Over Gorge Below Cascade140x105",
+      "page_url": "https://www.nynjtc.org/hike/coppermines-trail-kittatinny-ridge",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "255",
+      "hike_name": "Flat Rock Brook Loop Hike #1",
+      "digest": "a0b35a8f3853737948acc0eb7b7955c3fb527025da4342bd1775afdee9558df5",
+      "credit": "Daniel Chazin",
+      "subject": "Crossing Rocks Yellow Green Loop I188x250",
+      "page_url": "https://www.nynjtc.org/hike/flat-rock-brook-nature-center",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "265",
+      "hike_name": "Hedden County Park (Randolph, N.J.)",
+      "digest": "1e1f6f9736ed9d108621c333bf29268cbc22c33693d770cc5f54e23df94a7ee7",
+      "credit": "Daniel Chazin",
+      "subject": "Indian Falls where water falls on either side of a large boulder",
+      "page_url": "https://www.nynjtc.org/hike/hedden-county-park-randolph-nj",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "270",
+      "hike_name": "Lake Rutherford Loop via Appalachian Trail and Iris Trail",
+      "digest": "69c85c55f51e0ed6e1244221674ed8a5c6720ba030b683b860555c95b49cfffd",
+      "credit": "Daniel Chazin",
+      "subject": "Hiker along the Iris Trail",
+      "page_url": "https://www.nynjtc.org/hike/lake-rutherford-loop-via-appalachian-trail-iris-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "272",
+      "hike_name": "Holmdel Park Southern Section",
+      "digest": "e8b82a63152f812a72eae9cc45b643839c55bed1ad560a334815b42707bdf7ca",
+      "credit": "Daniel Chazin",
+      "subject": "Holmdel Park Along Ramanessin Trail450x300",
+      "page_url": "https://www.nynjtc.org/hike/holmdel-park-southern-section",
+      "metres_from_start": 5
+    },
+    {
+      "hike_id": "276",
+      "hike_name": "Hugh Force Canal Park",
+      "digest": "a9b0821a2908071633402d6b7acba5d6e6d4d44cfa851a1e3d1238994f96c93a",
+      "credit": "Daniel Chazin",
+      "subject": "Retaining wall for railroad support 0",
+      "page_url": "https://www.nynjtc.org/hike/hugh-force-canal-park",
+      "metres_from_start": 32
+    },
+    {
+      "hike_id": "281",
+      "hike_name": "Jenny Jump Mountain Short Loop Hike",
+      "digest": "a75af5671625236c705e1213f3cca39b96d6e67d0c333703240c9084573c40df",
+      "credit": "Daniel Chazin",
+      "subject": "Both Glacial Erratics Along Summit Trail140x105",
+      "page_url": "https://www.nynjtc.org/hike/jenny-jump-mountain",
+      "metres_from_start": 176
+    },
+    {
+      "hike_id": "283",
+      "hike_name": "Kittatinny Valley State Park",
+      "digest": "828be2f319f21aee6f7f17213bb65aba8cee369c159d34b5a418562ae5dec75f",
+      "credit": "Daniel Chazin",
+      "subject": "Ruin of a stone building formerly used by Camp Wawayanda",
+      "page_url": "https://www.nynjtc.org/hike/kittatinny-valley-state-park",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "284",
+      "hike_name": "Lewis Morris County Park",
+      "digest": "eee150e9bfe3ea6307bc835da1da5f1830ae0d6a4d3f08de7cb1da319c36612a",
+      "credit": "Daniel Chazin",
+      "subject": "Wooden footbridge over a stream on the Yellow Trail",
+      "page_url": "https://www.nynjtc.org/hike/lewis-morris-county-park",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "285",
+      "hike_name": "Loantaka Brook Reservation",
+      "digest": "b4643311d60d5e050b478b0f8c75beb6d4ca19bebca2c12a0c152676a26d632e",
+      "credit": "Daniel Chazin",
+      "subject": "Gibbons Horse Barn 2",
+      "page_url": "https://www.nynjtc.org/hike/loantaka-brook-reservation",
+      "metres_from_start": 247
+    },
+    {
+      "hike_id": "291",
+      "hike_name": "Highlands Trail/Pine Swamp Trail/Ogden Mine Railbed Loop",
+      "digest": "fc9cedb1e42675a7345d2794110fb28510e9bdb21368cc76d178410a63339b2c",
+      "credit": "Daniel Chazin",
+      "subject": "High point of Morris County from the Ogden Mine Railroad railbed",
+      "page_url": "https://www.nynjtc.org/hike/highlands-trailpine-swamp-circular-trailogden-mine-railbed-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "297",
+      "hike_name": "Merrill Creek Reservoir Perimeter Hike",
+      "digest": "3090bdca253f36d6a94febf442bafd83d6523473b485aa46fd89f3f656655d71",
+      "credit": "Daniel Chazin",
+      "subject": "Lime Kiln Ruins",
+      "page_url": "https://www.nynjtc.org/hike/merrill-creek-reservoir-perimeter-hike",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "299",
+      "hike_name": "Mills Reservation with New York City View",
+      "digest": "b0961f44d60530645c2baf16d1f478e3a4788050cb76be59b9df4d1407df1bad",
+      "credit": "Daniel Chazin",
+      "subject": "Typical Watchung Igneous Basalt allong yellow trail",
+      "page_url": "https://www.nynjtc.org/hike/mills-reservation-new-york-city-view",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "302",
+      "hike_name": "Grand Loop Trail",
+      "digest": "0d236eea703a52c88ddbd0c53be86e7f1581f7f8b07efe0144ebc33334f30ef8",
+      "credit": "Daniel Chazin",
+      "subject": "Soldiers Huts 2",
+      "page_url": "https://www.nynjtc.org/hike/grand-loop-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "313",
+      "hike_name": "Buck Mountain Loop from Otter Hole",
+      "digest": "9cb002751001509ad236945d251e2a78ffa79a1bba0be425d8c57fd198a2f605",
+      "credit": "Daniel Chazin",
+      "subject": "Reaching summit of Buck Mountain on Wyanokie Crest Trail 0",
+      "page_url": "https://www.nynjtc.org/hike/buck-mountain-loop-otter-hole",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "319",
+      "hike_name": "Carris Hill and Wyanokie High Point Loop from the New Weis Center",
+      "digest": "f123515a63e45eccdf312426d91bb37504f6f5848871fe11a42236fd53170218",
+      "credit": "Daniel Chazin",
+      "subject": "Wyanokie High Point from Yoo Hoo Point",
+      "page_url": "https://www.nynjtc.org/hike/carris-hill-and-wyanokie-high-point-loop-weis-ecology-center",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "324",
+      "hike_name": "Lake Sonoma/Overlook Rock/Manaticut Point Short Loop from Crescent Drive",
+      "digest": "f6eb8f5724179a082e90504626ed65e592b4ddd516b08b32416d92c639df9db0",
+      "credit": "Daniel Chazin",
+      "subject": "Lake Sonoma",
+      "page_url": "https://www.nynjtc.org/hike/lake-sonoma-and-overlook-rock-manaticut-point-trail",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "326",
+      "hike_name": "Loop Hike South of State Line Lookout",
+      "digest": "98f000cef6916fb24ca1b7a6f4cfee93a0d4afd178bc63fdcc46e351dfcf60c6",
+      "credit": "Daniel Chazin",
+      "subject": "Tappan Zee Bridge from State Line Lookout",
+      "page_url": "https://www.nynjtc.org/hike/loop-hike-south-state-line-lookout",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "329",
+      "hike_name": "Loop Hike North of State Line Lookout",
+      "digest": "4254492c41b3aa0a19233fafc34655b1d5f23bbbea7d5fde0974453ca0d3a4ff",
+      "credit": "Daniel Chazin",
+      "subject": "South along the Hudson River from the Long Path south of High Gutter Point",
+      "page_url": "https://www.nynjtc.org/hike/loop-hike-north-state-line-lookout",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "330",
+      "hike_name": "Giant Stairs/Long Path Loop from State Line Lookout",
+      "digest": "7439dc61bbc7fe0fde3596dd774a574b3241150605bc7fa156617879ef6b5db2",
+      "credit": "Daniel Chazin",
+      "subject": "South View from High Gutter Point PAA3 A3~1",
+      "page_url": "https://www.nynjtc.org/hike/giant-stairslong-path-loop-state-line-lookout",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "331",
+      "hike_name": "Forest View Trail/Closter Dock Trail Loop from Alpine Headquarters",
+      "digest": "c097228d496c59ea79a23fecc0cb0a6db94bcb6a2d659db6ec687b30b6dbe9ba",
+      "credit": "Daniel Chazin",
+      "subject": "Grafitti from the Nineteenth Century",
+      "page_url": "https://www.nynjtc.org/hike/forest-view-trailcloster-dock-trail-loop-alpine-headquarters",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "332",
+      "hike_name": "Huyler's Landing Trail/Dyckman Hill Trail Loop from Englewood Boat Basin",
+      "digest": "d7087b1dacbd6a06f3fa1d48f925ef5398b5ac001ca88e4515101af6d9549dd7",
+      "credit": "Daniel Chazin",
+      "subject": "Ruins Of The Undercliff Bathhous At North End Of Englewood Boat Basin140x105",
+      "page_url": "https://www.nynjtc.org/hike/huylers-landing-traildyckman-hill-trail-loop-englewood-boat-basin",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "334",
+      "hike_name": "Huyler's Landing Trail/Closter Dock Trail Loop from Alpine Headquarters",
+      "digest": "23091b06a16711ca6c3bc64deeaf0b70a6aa0df6ec0eea8a6691ed7a1a580cc5",
+      "credit": "Daniel Chazin",
+      "subject": "Cliff Dale along the Long Path 2",
+      "page_url": "https://www.nynjtc.org/hike/huylers-landing-trailcloster-dock-trail-loop-alpine-headquarters",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "349",
+      "hike_name": "Pyramid Mountain Loop #1 (Tripod Rock, Bear Rock, New York City Skyline viewpoint)",
+      "digest": "dbef049f62796db5c1dca3827584e3c229fb630004bc75d8636923e5b7af66c1",
+      "credit": "Daniel Chazin",
+      "subject": "Footbridge over Bear House Brook",
+      "page_url": "https://www.nynjtc.org/hike/manhattan-skyline-pyramid-mountain",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "376",
+      "hike_name": "Manor Trail from Ringwood Manor",
+      "digest": "d52b7757eadf2ba935cc86a205fd34023daf86d22b09487bc73155accc5f049b",
+      "credit": "Daniel Chazin",
+      "subject": "Graves of Rober Erskine and his assistant",
+      "page_url": "https://www.nynjtc.org/hike/manor-trail-loop",
+      "metres_from_start": 0
+    },
+    {
+      "hike_id": "390",
+      "hike_name": "Falling Waters and Grand Loop Trails",
+      "digest": "54036931c4efeff9b9ab0af3d2d226351a96f6f279e47ca3bf89e18428fbf810",
+      "credit": "Daniel Chazin",
+      "subject": "Falling Waters Trail along Electric Brook",
+      "page_url": "https://www.nynjtc.org/hike/falling-waters-and-grand-loop-trails",
+      "metres_from_start": 66
+    },
+    {
+      "hike_id": "435",
+      "hike_name": "Devil’s Den Preserve (Weston, CT)",
+      "digest": "37036b97067176c065f1f131a362a19b7fb89817b35ee527e7bc322b017e7bd3",
+      "credit": "Daniel Chazin",
+      "subject": "Rusted boiler of along the Godfrey Trail 0",
+      "page_url": "https://www.nynjtc.org/hike/devil%E2%80%99s-den-preserve-weston-ct",
+      "metres_from_start": 0
+    }
+  ]
+}

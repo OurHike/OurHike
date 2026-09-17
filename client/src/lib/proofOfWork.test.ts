@@ -101,7 +101,9 @@ describe('solving', () => {
   it('stops when it is cancelled', async () => {
     const controller = new AbortController()
     controller.abort()
-    await expect(solve(challenge(24), { signal: controller.signal })).rejects.toThrow(/cancelled/i)
+    await expect(solve(challenge(24), { signal: controller.signal })).rejects.toThrow(
+      /cancelled/i,
+    )
   })
 
   it('refuses a challenge that does not say how much work to do', async () => {
@@ -126,7 +128,14 @@ describe('the fast path agrees with the tested one', () => {
   it('finishInto digests what digest() digests', () => {
     // The new path is pinned to the one the NIST vectors cover, rather than
     // being trusted because it was written carefully.
-    for (const text of ['', 'abc', 'a'.repeat(55), 'a'.repeat(56), 'a'.repeat(64), 'a'.repeat(200)]) {
+    for (const text of [
+      '',
+      'abc',
+      'a'.repeat(55),
+      'a'.repeat(56),
+      'a'.repeat(64),
+      'a'.repeat(200),
+    ]) {
       const message = encoder.encode(text)
       const words = new Sha256().update(message).finishInto(new Uint32Array(8))
       const hex = [...words].map((word) => word.toString(16).padStart(8, '0')).join('')
@@ -137,8 +146,13 @@ describe('the fast path agrees with the tested one', () => {
   it('a reset fold hashes as a fresh one does', () => {
     const reused = new Sha256()
     reused.update(encoder.encode('something else')).finishInto(new Uint32Array(8))
-    const after = reused.reset().update(encoder.encode('abc')).finishInto(new Uint32Array(8))
-    const fresh = new Sha256().update(encoder.encode('abc')).finishInto(new Uint32Array(8))
+    const after = reused
+      .reset()
+      .update(encoder.encode('abc'))
+      .finishInto(new Uint32Array(8))
+    const fresh = new Sha256()
+      .update(encoder.encode('abc'))
+      .finishInto(new Uint32Array(8))
     expect([...after]).toEqual([...fresh])
   })
 })

@@ -147,7 +147,10 @@ export interface SolveOptions {
  *  Rejects on abort rather than resolving with nothing, so a caller cannot
  *  mistake "you cancelled" for "there was no answer" - there is always an
  *  answer, it is only ever a question of how long. */
-export async function solve(challenge: Challenge, options: SolveOptions = {}): Promise<string> {
+export async function solve(
+  challenge: Challenge,
+  options: SolveOptions = {},
+): Promise<string> {
   const { onProgress, signal } = options
   if (!Number.isInteger(challenge.difficulty) || challenge.difficulty < 1) {
     throw new Error('That challenge does not say how much work to do.')

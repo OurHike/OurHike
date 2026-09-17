@@ -639,6 +639,13 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
       why: 'A glyph. ModeIcon.test.tsx draws it; a flow test would be a slower way to look at the same SVG.',
     },
   },
+  'chrome/ProviderMark.tsx': {
+    step: 'shared',
+    flow: {
+      status: 'unit-only',
+      why: "A glyph per sign-in provider - Google's G, GitHub's mark, the OurHike icon - drawn inside SignInPrompt's buttons (#1572). SignInPrompt.test.tsx pins the colours and that each stays out of the accessible name; e2e/identityRooms.spec.ts finds the buttons by that name.",
+    },
+  },
   'chrome/PoiRow.tsx': {
     step: 'shared',
     flow: {

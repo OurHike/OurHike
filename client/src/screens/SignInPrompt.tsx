@@ -13,6 +13,8 @@
 //    still have what they wrote. The flow saves before asking (see
 //    lib/contributionFlow.ts); this is where that promise gets made out loud.
 
+import { ProviderMark } from '../chrome/ProviderMark'
+
 export type AuthProvider = 'google' | 'apple' | 'github' | 'email'
 
 export interface SignInPromptProps {
@@ -108,15 +110,21 @@ export function SignInPrompt({
       )}
 
       <div className="reporting__actions">
+        {/* Each door in its provider's own colours, with its own mark
+            (chrome/ProviderMark.tsx, #1572): Google's and GitHub's brand
+            pages say what their buttons may look like, and a sign-in button
+            that does not look like the provider's is one a hiker hesitates
+            over. The label stays the accessible name; the mark is decoration. */}
         {providers.map((provider) => (
           <button
             key={provider}
             type="button"
-            className="reporting__primary"
+            className={`reporting__provider reporting__provider--${provider}`}
             onClick={() => onSignIn(provider)}
             disabled={held.includes(provider)}
           >
-            {LABELS[provider]}
+            <ProviderMark provider={provider} />
+            <span>{LABELS[provider]}</span>
           </button>
         ))}
         <button type="button" className="reporting__secondary" onClick={onCancel}>

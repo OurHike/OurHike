@@ -89,6 +89,69 @@ describe('SignInPrompt', () => {
   })
 })
 
+describe('the marks on the doors (#1572)', () => {
+  // Google's and GitHub's brand pages say what their buttons may look like,
+  // and the tests pin the parts a reviewer cannot see in a diff: the G is
+  // the standard four-colour one and not a recolour, the GitHub mark takes
+  // the button's own colour, the email door carries OurHike's icon - and
+  // none of it changes what a screen reader hears.
+
+  it.each(['Continue with Google', 'Continue with GitHub', 'Continue with email'])(
+    'keeps "%s" as the whole accessible name, so the mark adds nothing a screen reader hears',
+    (name) => {
+      render(<SignInPrompt {...PROPS} />)
+
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    },
+  )
+
+  it("draws Google's G in its four brand colours, in order, and hides it from assistive tech", () => {
+    render(<SignInPrompt {...PROPS} />)
+    const button = screen.getByRole('button', { name: 'Continue with Google' })
+    const svg = button.querySelector('svg')
+    const fills = Array.from(button.querySelectorAll('svg path')).map((path) =>
+      path.getAttribute('fill'),
+    )
+
+    // Red, blue, yellow, green - the standard G, never a monochrome one
+    // (developers.google.com/identity/branding-guidelines).
+    expect(fills).toEqual(['#EA4335', '#4285F4', '#FBBC05', '#34A853'])
+    expect(svg).toHaveAttribute('aria-hidden', 'true')
+    expect(button).toHaveClass('reporting__provider--google')
+  })
+
+  it("draws GitHub's mark in currentColor, so it is white on the black button and black on the white one", () => {
+    render(<SignInPrompt {...PROPS} />)
+    const button = screen.getByRole('button', { name: 'Continue with GitHub' })
+    const svg = button.querySelector('svg')
+
+    expect(svg).toHaveAttribute('fill', 'currentColor')
+    expect(svg).toHaveAttribute('aria-hidden', 'true')
+    expect(svg?.querySelector('path')).not.toBeNull()
+    expect(button).toHaveClass('reporting__provider--github')
+  })
+
+  it('puts the OurHike icon on the email door as a decorative image', () => {
+    render(<SignInPrompt {...PROPS} />)
+    const button = screen.getByRole('button', { name: 'Continue with email' })
+    const img = button.querySelector('img')
+
+    expect(img).toHaveAttribute('alt', '')
+    // Vite hands a small SVG import back as a data: URL in this environment
+    // and as a hashed /assets/ path in a build, so the assertion accepts the
+    // shape rather than the name; what it pins is that an image is there.
+    expect(img?.getAttribute('src')).toMatch(/^data:image\/svg\+xml|logo-icon/)
+    expect(button).toHaveClass('reporting__provider--email')
+  })
+
+  it('draws no mark for Apple, whose asset ships with the provider (#92)', () => {
+    render(<SignInPrompt {...PROPS} providers={['apple']} />)
+    const button = screen.getByRole('button', { name: 'Continue with Apple' })
+
+    expect(button.querySelector('svg, img')).toBeNull()
+  })
+})
+
 describe('the providers a build can actually complete', () => {
   // The three do not cost the same to switch on - Apple needs a $99/yr
   // membership Google and email do not - so which appear is build

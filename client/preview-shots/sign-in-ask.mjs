@@ -12,9 +12,9 @@
 // address to show, and the ask is reached from Settings rather than after a
 // report, so it makes no promise about one being saved.
 export const caption =
-  'The sign-in ask from More → You: one "Continue with …" per provider this build offers (#1572)'
+  'The sign-in ask from More → You: one door per provider this build offers, each in its own colours — the Google G on white, the GitHub mark on black, the OurHike blaze on pine (#1572)'
 export const alt =
-  'A "Sign in" screen with a "Continue with …" button for each configured provider, a "Not now" button, and the note that reading the map never needs an account'
+  'A "Sign in" screen with a "Continue with …" button for each configured provider - Google\'s white button with the multicolour G, GitHub\'s black button with its mark, and OurHike\'s pine button with the app icon for email - a "Not now" button, and the note that reading the map never needs an account'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'More' }).click()

@@ -4,7 +4,8 @@
 // TWO TRUE FRAMES, and the caption names both. "Continue with email" exists
 // only when the build offers email - the AUTH_PROVIDERS repository
 // variable, which #1572 switches on as its last step. Until then this drive
-// stops at the sign-in ask, the same screen sign-in-ask.mjs shows. After it,
+// stops at the sign-in ask, the same screen sign-in-ask.mjs shows, with its
+// branded doors. After it,
 // the frame is the address step: one email field, "Email me a code", and
 // the sentence that a new address also creates the account.
 //

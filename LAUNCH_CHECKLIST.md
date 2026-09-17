@@ -283,11 +283,12 @@ Custom SMTP is included on Supabase's Free plan; nothing here needs Pro.
 Authentication → Emails → **Templates**, both "Magic Link" and "Confirm sign up": subject `{{ .Token }} is your OurHike sign-in code`; body along the lines of
 
 ```html
+<p><img src="https://ourhike.org/app/icons/icon-192.png" width="48" height="48" alt="OurHike"></p>
 <p>Your OurHike sign-in code is <strong>{{ .Token }}</strong>.</p>
 <p>Type it into the app. It expires in an hour. If you did not ask for it, ignore this email.</p>
 ```
 
-No `{{ .ConfirmationURL }}` alongside it — that reintroduces the link. Leave "Email OTP expiration" at Supabase's default of 3,600 s (a hiker on one bar needs the hour, and the security advisor flags anything longer) and the length at 6, which `CODE_LENGTH` in `EmailSignIn.tsx` and the config check both assume.
+The image is the app's own icon, served by the same deployment as the app (`client/public/icons/icon-192.png`, at that URL since #733; it answered `200 image/png` on 2026-09-17), so there is nothing to host and nothing to keep in step. Mail clients commonly hold remote images until the reader allows them, which is why the code line never depends on the image and the `alt` carries the name. No `{{ .ConfirmationURL }}` alongside it — that reintroduces the link. Leave "Email OTP expiration" at Supabase's default of 3,600 s (a hiker on one bar needs the hour, and the security advisor flags anything longer) and the length at 6, which `CODE_LENGTH` in `EmailSignIn.tsx` and the config check both assume.
 
 **4.4 The JWT verification method — settled.** This was the open question here, flagged as the one thing that could not be answered without a real project. There is one now, and it answered: a token it issued carries `{"alg": "ES256", "kid": "..."}` — **asymmetric, with the public half published as a JWKS.** A backend verifying HS256 against a shared secret would have returned 401 to every signed-in hiker, with the token, the signature and the secret all perfectly correct.
 

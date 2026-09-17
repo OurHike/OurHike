@@ -1,0 +1,83 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Your roster
+        [svg]
+            VOLUNTEERS · 1,104 ACTIVE · 37 INACTIVE
+        [h1] Your roster
+    The whole roster in one table, and three ways to add to it — none of which ever overwrite a person. Somebody who leaves your feed goes inactive and keeps their history; somebody new gets added.
+    [button] All volunteers
+    [button] Add a person
+    [button] Upload a list
+    [button] Live connection
+            Live connection
+            For whoever runs your IT. Point us at an endpoint that returns your active volunteers and we read it nightly — so the roster maintains itself.
+              not connected
+            Endpoint URL
+          [input text] https://members.ramapotrails.org/api/active-volunteers value=
+              Authentication
+            [select] Bearer token | Basic auth | API key header | None — it's public
+              Token
+            [input text] •••••••••••••••• value=
+            Read it
+          [select] Every night at 4am | Once a week, Mondays | Only when an admin asks
+          [button] Test and connect
+          We'll show you the diff from the first run before it applies.
+          RECENT RUNS
+                Today, 4:02am
+                Added 14 · marked 3 inactive · 1,104 active
+                Sep 15, 4:02am
+                Added 2 · no departures · 1,093 active
+                Sep 14, 4:02am
+                First run · imported 1,091 people
+            The sync only ever adds or deactivates
+            People who disappear from your feed are marked inactive and their roles are released so a section never looks covered when it isn't. Nothing is deleted, no record is overwritten, and their hours and reports stay attached to them.
+          WHAT WE NEED BACK
+          Any JSON or CSV with a name and an email per person. Extra columns are kept and ignored; we'll map whatever you send.
+          [{ "name": "Ana Reyes", "email": "ana@…", "active": true }]

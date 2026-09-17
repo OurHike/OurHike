@@ -1,0 +1,101 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Settings
+        ›
+          The three emails
+        [svg]
+            WHAT WE SEND ON YOUR BEHALF
+        [h1] The three emails
+    Every email we send in your name, in full. Each one has a job and stops — no newsletters, no re-engagement, no unsubscribe-to-escape. These are the only three.
+          1 · Admin approval
+          to 3 people, once
+        Sent the moment somebody registers the org. This is the first thing most admins ever see of OurHike, so it has to survive being read by a sceptical volunteer on a phone.
+            Maria named you an admin of Ramapo Trail Conference
+            hello@ourhike.org → dana@ramapotrails.org
+            Dana — Maria Alvarez has put the Conference's trails on OurHike, a free offline trail map built by volunteers, and named you one of three admins. Nothing is public yet. It needs all three of you to agree.
+              WHAT YOU ARE AGREEING TO
+              · ramapotrails.org is ours, and we can speak for it
+              · three admins: Maria, Joseph, you — any of us can propose changes, all three approve them
+              · our own membership and donation pages get linked from our sections
+              · no money passes through OurHike, and there is no payout programme to join
+              [button] Approve
+              [button] Something's wrong
+              Declining is a real option.
+            It pauses the org rather than deleting anything, and you can say why — "our board hasn't voted" is a perfectly good answer.
+            Whoever approves first picks up the next step, so there is a mild advantage to being quick. We will remind you once, in a week, and then never again.
+          2 · Registry sign-off
+          to the other 2 admins
+        Sent when the first admin finishes the registry. It is asking somebody to vouch for 312 sections, so it leads with the summary and the exceptions rather than a wall of rows.
+            312 sections are ready for you to check
+            hello@ourhike.org → joseph@ramapotrails.org
+            Joseph — Maria has built the Conference's hike registry from your ArcGIS server. Before it reaches hikers, all three admins confirm it is accurate. You are the second.
+              WHAT CAME OUT OF YOUR OWN FILES
+                  Sections read
+                  312
+                  Clean, no questions
+                  294
+                  Maria answered a question on
+                  18
+                  Featured hikes
+                  41
+              Read the 18 first.
+            Those are the ones where a name was missing or two lines looked like duplicates — Maria made a call on each and her reasoning is attached. The other 294 came straight from your SECT_NAME field.
+              [button] Check the 18
+              [button] See all 312
+            Flagging a line sends it back with your note attached — it does not start the registry over. Nothing publishes on two approvals; we need yours and Dana's.
+          3 · Volunteer welcome
+          to 1,104 people, once
+        The one a thousand people read. Designed in full on the Welcome screen — it carries each person's own section and supervisor, and the three things they can do this week.
+          Rather than duplicate it here, it lives where you send it from — with the roster counts and the privacy note beside it.
+          [button] Open the welcome screen
+            RULES ALL THREE FOLLOW
+            · Plain text works. Every one reads fine with images blocked.
+            · One action per email. No digests, no bundling.
+            · One reminder at most, then silence.
+            · Nobody's name appears in an email to somebody outside the org.
+            · Replies reach a person, not a no-reply void.

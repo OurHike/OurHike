@@ -1,0 +1,265 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Manage volunteers
+        ›
+          Roles and sections
+          [svg]
+              MANAGE VOLUNTEERS · ROLES
+          [h1] Who looks after which section
+        [button] + New role
+        [button] Assign in bulk with Claude
+    First define the roles your club actually has, then attach each one to a section. A section can carry as many roles and as many people as it needs — co-maintainers, a sawyer crew and a corridor monitor on the same miles is normal. Assignments are dated, so June's maintainer stays June's maintainer.
+      Define your roles
+      A name, the kind of work it belongs to, and who it answers to. The hierarchy on the right is drawn from what you enter.
+            12 roles defined · 4 required
+            Your reporting tree is on the right. Add another whenever your club changes shape.
+            [button] + Define a role
+            DEFINED ROLES
+            A role nobody holds can be removed outright. One in use is
+              retired
+            instead — it stops being assignable and everyone who held it keeps their history. A mandated role cannot be removed while the requirement stands.
+                    Trails chair
+                      optional
+                    1 person holds this
+                  · →
+                    —
+                [button] retire
+                  All trails
+                    Supervisor
+                      required
+                    12 hold this
+                  · →
+                    Trails chair
+                [button] mandated
+                  All trails
+                    Maintainer
+                      required
+                    41 hold this
+                  · →
+                    Supervisor
+                [button] mandated
+                  All trails
+                    Sawyer crew
+                      optional
+                    18 hold this
+                  · →
+                    Supervisor
+                [button] retire
+                  All trails
+                    Corridor monitor
+                      required
+                    6 hold this
+                  · →
+                    Supervisor
+                [button] mandated
+                  Appalachian Trail
+                    Bridge repair
+                      optional
+                    9 hold this
+                  · →
+                    Supervisor
+                [button] retire
+                  All trails
+                    Steward chair
+                      optional
+                    1 person holds this
+                  · →
+                    —
+                [button] retire
+                  All trails
+                    Trailhead steward
+                      optional
+                    22 hold this
+                  · →
+                    Steward chair
+                [button] retire
+                  All trails
+                    Summit steward
+                      required
+                    4 hold this
+                  · →
+                    Steward chair
+                [button] mandated
+                  Appalachian Trail
+                    Conservation lead
+                      optional
+                    1 person holds this
+                  · →
+                    —
+                [button] retire
+                  All trails
+                    Invasives crew
+                      optional
+                    14 hold this
+                  · →
+                    Conservation lead
+                [button] retire
+                  All trails
+                    Water monitor
+                      optional
+                    3 hold this
+                  · →
+                    Conservation lead
+                [button] retire
+                  Long Path
+                Trail Maintenance
+                6 roles
+                  Trails chair
+                  Supervisor
+                  Maintainer
+                  Sawyer crew
+                  Corridor monitor
+                  Bridge repair
+                Stewards
+                3 roles
+                  Steward chair
+                  Trailhead steward
+                  Summit steward
+                Environmental
+                3 roles
+                  Conservation lead
+                  Invasives crew
+                  Water monitor
+    Attach roles to sections
+    Each row is one job on one stretch of trail, with the person who supervises it.
+        [button] All roles9
+        [button] Gaps only2
+        [button] No supervisor2
+        [button] Required roles4
+              Supervisor
+            [select] Any supervisor | Maria Alvarez | Joseph Okafor | Steward chair | Conservation lead
+              Park or trail
+            [select] Any park or trail | Harriman State Park | Bear Mountain State Park | Ramapo Mountain State Forest | Palisades Interstate Park
+            ROLE
+            SECTION
+            WHO
+            SUPERVISOR
+            STATUS
+              Maintainer
+                Pine Meadow North
+                MM 11.0 → 14.3
+                3 roles here
+                Ana Reyes, Dev Patel
+                2 people
+              Joseph Okafor
+                assigned
+              Sawyer crew
+                Pine Meadow North
+                MM 11.0 → 14.3
+                3 roles here
+                Tuesday crew
+                5 people
+              Joseph Okafor
+                assigned
+              Corridor monitor
+                Pine Meadow North
+                MM 11.0 → 14.3
+                3 roles here
+                Ruth Kelley
+                1 person
+              Maria Alvarez
+                assigned
+              Sawyer crew
+                Timp–Torne South
+                Shelter → MM 19.8
+                Saturday saw crew
+                6 people
+              Joseph Okafor
+                assigned
+              Maintainer
+                Ramapo–Dunderberg East
+                MM 4.1 → Lot 7
+                Maria Alvarez, Leah Quinn, Sam Oyelaran
+                3 people
+              Maria Alvarez
+                assigned
+              Invasives crew
+                Suffern–Bear Mountain
+                MM 0.0 → MM 6.5
+                Tom Boyd, Priya Raman
+                2 people
+              —
+                no super.
+              Blaze painter
+                Long Path · north
+                MM 31.0 → 35.6
+                Dana Whitfield
+                1 person
+              Maria Alvarez
+                assigned
+              Maintainer
+                Timp–Torne North
+                unassigned
+                nobody yet
+                needs somebody
+              —
+                no section
+              Bridge repair
+                Pine Meadow connector
+                MM 14.3 → 16.0
+                Bridge crew
+                5 people
+              Joseph Okafor
+                assigned
+              Showing 9 of 96 roles
+            [button] Previous
+                Page 1 of 14
+            [button] Next
+            COVERAGE
+              275
+            /
+              312
+          [svg]
+            assigned
+            no role
+            no supervisor
+            [button] Open the coverage report
+          CLAUDE · BULK ASSIGN
+            Describe your crews in plain language and Claude drafts the roles, sections and supervisors for you to check.
+          "Everyone on the Tuesday crew covers Pine Meadow, Joseph supervises"
+        [button] Continue to volunteers

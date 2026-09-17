@@ -139,6 +139,15 @@ Known gaps.
 
 ---
 
+## The handoff this was built from
+
+[`org-onboarding-handoff/`](org-onboarding-handoff/) holds the design as it was given:
+`SPEC.md`'s argument, the handoff README's map of the 23 screens, and 27 per-screen extracts
+of the prototype's own rendered text. It is source material and is never edited to match what
+shipped — a handoff corrected after the fact stops being evidence. **This file stays the
+design's one home**; that folder is the record of where it started, and its own README says
+what it does and does not carry.
+
 ## Where this lives
 
 None of this replaces the hiker-facing homepage. The consumer front door stays as it is and gains two

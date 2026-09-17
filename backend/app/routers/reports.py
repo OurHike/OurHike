@@ -288,6 +288,11 @@ def create_report(
         # re-derive it against (#244). A client that omits it leaves the
         # column null, which is the honest answer for an off-trail fix.
         mile=payload.mile,
+        # Stored as sent, like the mile, and for the same reason: the fix
+        # these describe was seen by the phone and by nothing here (#1563).
+        location_source=payload.location_source,
+        location_accuracy_m=payload.location_accuracy_m,
+        location_fix_age_s=payload.location_fix_age_s,
         reporter_type=payload.reporter_type,
         note=payload.note,
         # Stored as prose and resolved to nothing (#1439). A report that

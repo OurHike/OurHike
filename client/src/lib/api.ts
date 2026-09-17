@@ -900,6 +900,17 @@ export interface QueuedReport extends ReportSummary {
    * reads the words and places it, and the app does not guess.
    */
   place_words?: string | null
+  /**
+   * How the report came by its coordinates (#1563), or null for a row an
+   * older client filed: `poi` for a named waypoint, `gps` for the phone's own
+   * fix, `map` for a spot marked by hand. Optional as well as nullable, for
+   * `photo_count`'s reason: a server on the previous release does not send it.
+   */
+  location_source?: 'poi' | 'gps' | 'map' | null
+  /** The platform's stated radius for a `gps` fix, metres, or null. */
+  location_accuracy_m?: number | null
+  /** How many seconds old a `gps` fix was when the report took it, or null. */
+  location_fix_age_s?: number | null
   reporter_id: string | null
 }
 

@@ -68,11 +68,14 @@ export interface SearchOptions {
 /** Enough to scan without scrolling past the point of usefulness. */
 export const SEARCH_RESULT_LIMIT = 25
 
-export function searchPois(
+export function searchPois<T extends SearchablePoi>(
   query: string,
-  pois: SearchablePoi[],
+  // Generic so a caller offering a richer row - the report picker's
+  // candidates carry coordinates (lib/reportLocation.ts) - gets its own rows
+  // back rather than the narrowed view, and one name match serves both.
+  pois: readonly T[],
   { type }: SearchOptions = {},
-): SearchablePoi[] {
+): T[] {
   const needle = query.trim().toLowerCase()
   // An empty query means "you haven't asked anything yet", not "show me all
   // 4,000 waypoints on the trail".

@@ -42,9 +42,30 @@
 // tap" is a claim about what a hiker has READ and a notice under a scroll has
 // not been read. What is inside the body is everything a tap can act on; what
 // is pinned around it is what the window says about itself.
+//
+// AND THE TAP NEEDS A PLACE (#1563). Under 1a a tap files, and a tap on a
+// phone with no fix used to file a blowdown with no location of any kind -
+// not even the hiker's words, which only the long form asked for. So the
+// window carries the same location control the long form and the closure
+// form carry (reporting/LocationPicker.tsx): the place is STATED in the
+// header, as it always was, and CHANGEABLE under it to a named place nearby,
+// the phone's own fix with its radius and age printed, or a spot marked on
+// the map. A tap on a tile with nothing to place the report at is refused -
+// the picker opens instead, and the tile files once it has an answer. That
+// refusal is the one exception to "one tap files" and it is deliberate: 1a's
+// argument was that the tap should cost the hiker nothing, which is not the
+// same as costing the reader everything, and a report a moderator cannot
+// place is a report they cannot act on.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { formatDistance, type UnitSystem } from '../lib/units'
+import {
+  hasPlace,
+  locationWords,
+  type FixSnapshot,
+  type LocationChoice,
+  type NearbyPlace,
+} from '../lib/reportLocation'
+import type { UnitSystem } from '../lib/units'
 import {
   CLOSURE_ROW,
   EMERGENCY_NOTICE,
@@ -55,6 +76,7 @@ import {
   type ReportTypeId,
 } from './categories'
 import { REPORT_ICONS, type ReportIconName } from './icons'
+import { LocationPicker } from './LocationPicker'
 import './reportWindow.css'
 
 /**
@@ -69,90 +91,64 @@ import './reportWindow.css'
  */
 export const UNDO_WINDOW_MS = 8_000
 
-/** Where the report lands, and how the header says so.
- *
- *  Named apart from chrome/FieldNoteSection.tsx's `ReportAnchor`, which App.tsx
- *  already imports, because they are not the same thing: that one is the place
- *  a report is ABOUT, and this one is that plus the words the header prints.
- *  One name for both would make the header's `label` look optional on a type
- *  where it is the whole reason this interface exists. */
-export interface ReportWindowAnchor {
-  /** The POI this is about, when it started from a place card. */
-  poiId?: string
-  lat?: number
-  lon?: number
-  mile?: number
-  /** What the header prints - "Bailey Gap Shelter", "mi 628.4", or "here".
-   *  The caller knows which; this file must not guess a place's name from a
-   *  mile. */
-  label: string
-  /**
-   * The same place as a phrase the receipt can end a sentence with - "at
-   * Bailey Gap Shelter", "at mi 628.4", or plain "here".
-   *
-   * A SECOND FIELD RATHER THAN `at ${label}`, because "here" is an adverb and
-   * the other two are nouns. Composing the preposition here produced "Filed —
-   * blow down at here", which is what the first photograph of this screen
-   * showed and no test had caught: every test used a mile anchor, where the
-   * naive version reads perfectly.
-   *
-   * Supplied rather than derived, for `label`'s reason: sniffing for the
-   * string "here" would be this file guessing at a distinction the caller
-   * already knows.
-   */
-  phrase: string
-}
-
-/** One place this hiker walked past today, as the picker lists it.
- *
- *  CARRIES ITS OWN COORDINATES, which this file never reads - the window
- *  renders a name and a distance back, and hands the whole place to
- *  `onPickAnchor`. The fields are here for that callback's contract: an
- *  anchor needs a lat and a lon, so the place a picker offers has to be able
- *  to become one.
- *
- *  Requiring them is what stops the tempting fill. An earlier cut passed
- *  `{ id, name, mile }` and let the caller look the coordinates up at pick
- *  time, which puts an `undefined` in front of somebody at exactly the moment
- *  `lat: 0, lon: 0` looks like a reasonable default - and 0,0 is the Atlantic
- *  off West Africa, the substitution this app already refuses in two other
- *  places (chrome/Header.tsx on the mile readout, screens/ReportForm.tsx on
- *  the location line). With the fields required, the lookup happens where the
- *  list is built and there is no gap left to fill. */
-export interface PassedPlace {
-  id: string
-  name: string
-  mile: number
-  lat: number
-  lon: number
-}
-
 export interface ReportWindowProps {
-  anchor: ReportWindowAnchor
   /**
-   * Where else this report could be anchored: the places today's walked miles
-   * covered (lib/passedToday.ts). Empty is an ordinary state - an early start
-   * has passed nothing - and the option is withheld rather than shown empty.
+   * Where the report is - as the door supplied it, or as the hiker changed
+   * it (lib/reportLocation.ts). The caller owns it, so the window asks
+   * rather than deciding: `onChooseLocation` is the only way it moves.
    */
-  passedPlaces?: readonly PassedPlace[]
-  /** The hiker's own mile, for ordering the list by how far back each place
-   *  is. Absent when there is no fix, which is when the list cannot be
-   *  ordered that way and says so by not offering itself. */
-  fixMile?: number
-  /** Re-anchor. The caller owns the anchor, so the window asks rather than
-   *  deciding. */
-  onPickAnchor?: (place: PassedPlace) => void
-  /** The hiker's own unit system, for the distance each place is written at
-   *  (lib/units.ts, features/UX_CUSTOMIZATION.md). */
+  location: LocationChoice
+  /** The phone's fix as it is right now, or null. What a `fix` choice files
+   *  at, and what the header prints for one - radius and age included. */
+  fix: FixSnapshot | null
+  /**
+   * Named places worth offering, nearest first (lib/reportLocation.ts's
+   * `nearbyPlaces`). Empty is an ordinary state - a fixless phone is near
+   * nothing and an early start has passed nothing - and the picker draws no
+   * list for it rather than an empty one.
+   */
+  places: readonly NearbyPlace[]
+  /** Places found by name across everything on the phone, for the picker's
+   *  search box. Absent draws no box. */
+  onSearchPlaces?: (query: string) => readonly NearbyPlace[]
+  /** Whether a trail index is on the phone - what tells "this spot" from
+   *  "more than 3 mi off the trail" on a marked point. */
+  knowsTrail: boolean
+  /** The hiker's own unit system, for every distance and radius the picker
+   *  writes (lib/units.ts, features/UX_CUSTOMIZATION.md). */
   units: UnitSystem
+  onChooseLocation: (choice: LocationChoice) => void
+  /**
+   * Hand the hiker the map to aim at. The shell answers by standing this
+   * window aside (`standingAside`) and, on Keep, by changing `location` to
+   * the marked point. Absent draws no map row - a control that opens nothing
+   * is worse than none.
+   */
+  onPointOnMap?: () => void
+  /**
+   * True while the crosshair is out over the map. The window is hidden and
+   * inert rather than unmounted, holding every piece of its state - the note,
+   * the words, which report is filed - exactly as the long form does for the
+   * same tap (#1439).
+   */
+  standingAside?: boolean
   /** Signed exactly as every other contribution is - the floor in
    *  lib/reporterIdentity.ts applies, and the caller has already applied it. */
   reporterType: 'thru' | 'section' | 'day' | 'maintainer'
   /**
    * Write the report and hand back the outbox id, so Undo has something to
    * delete. Held back for {@link UNDO_WINDOW_MS} by the caller.
+   *
+   * `placeWords` is the hiker's own words for where this was, trimmed, and
+   * empty unless nothing else could place the report. The caller sends them
+   * only in that case (lib/reportLocation.ts's `reportLocationFields`).
    */
-  onFile: (type: ReportTypeId, note: string, holdUntil: Date) => Promise<string>
+  onFile: (
+    type: ReportTypeId,
+    note: string,
+    holdUntil: Date,
+    placeWords: string,
+  ) => Promise<string>
   /** Take it back out of the queue. The same `removeQueued` everything else
    *  uses - see lib/outbox.ts on why this is not a special withdrawal path. */
   onUndo: (outboxId: string) => Promise<void>
@@ -204,11 +200,15 @@ function Icon({ name }: { name: ReportIconName }) {
 }
 
 export function ReportWindow({
-  anchor,
-  passedPlaces = [],
-  fixMile,
-  onPickAnchor,
+  location,
+  fix,
+  places,
+  onSearchPlaces,
+  knowsTrail,
   units,
+  onChooseLocation,
+  onPointOnMap,
+  standingAside = false,
   reporterType,
   onFile,
   onUndo,
@@ -219,13 +219,17 @@ export function ReportWindow({
 }: ReportWindowProps) {
   const titleId = useId()
   const dialogRef = useRef<HTMLDivElement | null>(null)
+  const pickerRef = useRef<HTMLDivElement | null>(null)
 
   // What has been filed, if anything. `outboxId` is what Undo deletes;
-  // `undoUntil` is when the button stops being offered.
+  // `undoUntil` is when the button stops being offered; `phrase` is where it
+  // went, captured at the tap - the fix can move after a report has filed at
+  // it, and a receipt that moved with it would describe a report that did not.
   const [filed, setFiled] = useState<{
     type: ReportTypeId
     outboxId: string
     undoUntil: number
+    phrase: string
   } | null>(null)
   const [note, setNote] = useState('')
   // Everything filed by this window and not taken back. A list rather than a
@@ -233,12 +237,33 @@ export function ReportWindow({
   // report without clearing the first, and Undo removes one without
   // necessarily emptying the set.
   const [standing, setStanding] = useState<readonly string[]>([])
-  // Whether the anchor list is open, and what is typed into its filter.
-  const [picking, setPicking] = useState(false)
-  const [placeFilter, setPlaceFilter] = useState('')
+  // The hiker's own words for where this was, asked for by the picker only
+  // when nothing else can place the report, and sent only then.
+  const [placeWords, setPlaceWords] = useState('')
+  // Whether a tap was just refused for want of a place. What turns the
+  // picker's opening from an offer into an alert.
+  const [refused, setRefused] = useState(false)
+  // Whether the location picker is open. OPENS BY ITSELF when the door
+  // supplied nothing the report can be placed at - no fix, no card, no press -
+  // because every tile below it is about to refuse until it is answered, and
+  // a control a hiker has to find is a control they meet after the refusal.
+  const [picking, setPicking] = useState(() => !hasPlace(location, fix))
   // Ticks only while an undo window is open, so a window sitting on the tiles
   // costs no timer at all.
   const [remaining, setRemaining] = useState(0)
+
+  // A point kept on the map arrives as a new `location` from the shell, and
+  // the picker closes on it the way it closes on one of its own rows.
+  // Adjusted during render rather than in an effect, which is React's own
+  // pattern for reacting to a prop change without a wasted paint.
+  const [seenLocation, setSeenLocation] = useState(location)
+  if (seenLocation !== location) {
+    setSeenLocation(location)
+    if (location.kind === 'point') {
+      setPicking(false)
+      setRefused(false)
+    }
+  }
 
   // FOCUS RETURNS WHERE IT CAME FROM. Captured on mount rather than passed in:
   // this window opens from four places and every one of them would otherwise
@@ -257,6 +282,13 @@ export function ReportWindow({
     }
   }, [])
 
+  // Back from the map with the dialog's focus where the crosshair left it -
+  // on nothing, since the window was inert. The dialog takes it again, for
+  // the reason above: never a tile.
+  useEffect(() => {
+    if (!standingAside) dialogRef.current?.focus()
+  }, [standingAside])
+
   // `standing` rather than a ref: the identity of this callback changing when
   // it changes is what keeps the Escape handler below closing over the right
   // answer instead of the one from the render it was installed on.
@@ -269,22 +301,27 @@ export function ReportWindow({
   // report is already in the outbox. The only unsaved thing is the note, and
   // it is optional detail on a report that already stands.
   //
-  // ESCAPE PEELS ONE LAYER, and the anchor picker is the layer. Closing the
-  // whole window from inside an open list would lose the screen behind it,
-  // which is the single thing this change exists to prevent - and it is what
-  // a hiker gets by reflex, because Escape is how you back out of a list.
+  // ESCAPE PEELS ONE LAYER, and the picker is the layer. Closing the whole
+  // window from inside an open list would lose the screen behind it, which
+  // is the single thing this change exists to prevent - and it is what a
+  // hiker gets by reflex, because Escape is how you back out of a list.
   //
-  // The filter compounds it: `<input type="search">` clears itself on Escape
-  // in WebKit and Blink, so somebody who typed three letters and pressed
-  // Escape expecting the field to empty would instead lose the window. Both
-  // are the same fix.
+  // The search box compounds it: `<input type="search">` clears itself on
+  // Escape in WebKit and Blink, so somebody who typed three letters and
+  // pressed Escape expecting the field to empty would instead lose the
+  // window. Both are the same fix.
+  //
+  // NOTHING WHILE STANDING ASIDE. The window is inert and the map has the
+  // keys: an Escape meant for the crosshair bar must not close a window the
+  // hiker cannot see.
   useEffect(() => {
+    if (standingAside) return
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation()
         if (picking) {
           setPicking(false)
-          setPlaceFilter('')
+          setRefused(false)
           return
         }
         close()
@@ -315,7 +352,7 @@ export function ReportWindow({
 
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [close, picking])
+  }, [close, picking, standingAside])
 
   // The countdown. Re-read from the clock each tick rather than decremented,
   // so a tab that was backgrounded comes back with the right answer instead of
@@ -334,6 +371,10 @@ export function ReportWindow({
     return () => clearInterval(timer)
   }, [filed])
 
+  // What the header states, resolved against the fix as it is right now.
+  const words = locationWords(location, fix, units, knowsTrail, now, placeWords)
+  const placed = hasPlace(location, fix) || placeWords.trim() !== ''
+
   const file = async (type: ReportTypeId) => {
     // The two that never one-tap. Checked here as well as being drawn as rows,
     // because the drawing is a promise and this is the enforcement: a future
@@ -342,10 +383,22 @@ export function ReportWindow({
       onReportUnsafe()
       return
     }
+    // THE TAP NEEDS A PLACE (#1563). Nothing to file it at - no fix, no named
+    // place, no marked spot, not even words - and the tap opens the picker
+    // instead of writing a report a moderator would read as "no location".
+    // Focus goes into the picker so the refusal is heard as well as seen.
+    if (!placed) {
+      setPicking(true)
+      setRefused(true)
+      setTimeout(() => {
+        pickerRef.current?.querySelector<HTMLElement>('input, textarea, button')?.focus()
+      }, 0)
+      return
+    }
     const holdUntil = undoWindowFromNow()
-    const outboxId = await onFile(type, note.trim(), holdUntil)
+    const outboxId = await onFile(type, note.trim(), holdUntil, placeWords.trim())
     setStanding((current) => [...current, outboxId])
-    setFiled({ type, outboxId, undoUntil: holdUntil.getTime() })
+    setFiled({ type, outboxId, undoUntil: holdUntil.getTime(), phrase: words.phrase })
   }
 
   const undo = async () => {
@@ -356,104 +409,43 @@ export function ReportWindow({
     setRemaining(0)
   }
 
-  /**
-   * The places today covered, NEAREST FIRST.
-   *
-   * ORDERED HERE RATHER THAN IN lib/passedToday.ts, which sorts ascending by
-   * mile and keeps doing so. That is right for its two other readers - Today's
-   * "Today so far" and the Volunteer tab both read the day as a list of places
-   * - and it is wrong for a picker, because the two orders are only the same
-   * thing walking north. A SOBO's day runs the other way, so mile-ascending
-   * puts the place they passed an hour ago at the BOTTOM of the list they are
-   * scrolling to find it in.
-   *
-   * Distance back from the fix is direction-free and is what a hiker
-   * re-anchoring is actually thinking in ("that blow-down a mile back"). The
-   * design handoff asked for it; what it did not have to weigh is that the
-   * function it would have changed has two other callers, and this list is the
-   * only one that wants it.
-   *
-   * NO COUNT, ANYWHERE. lib/passedToday.ts's own rule - the list "never
-   * counts, and never mentions what was skipped" - because a number here is a
-   * scoreboard of places a hiker walked past without reporting, which is the
-   * guilt mechanic DATA_NUDGES.md rules out four times.
-   */
-  const nearbyFirst: readonly { place: PassedPlace; back: number }[] =
-    fixMile === undefined
-      ? []
-      : passedPlaces
-          .map((place) => ({ place, back: Math.abs(place.mile - fixMile) }))
-          .sort((a, b) => a.back - b.back)
-
-  const needle = placeFilter.trim().toLowerCase()
-  const shownPlaces =
-    needle === ''
-      ? nearbyFirst
-      : nearbyFirst.filter((row) => row.place.name.toLowerCase().includes(needle))
-
-  const canRepick = onPickAnchor !== undefined && nearbyFirst.length > 0
-
   const undoable = filed !== null && remaining > 0
 
-  /* The anchor list, when the header's Change is open. Above the tiles rather
-     than below them: it answers "where", and a hiker who opened it is not
-     looking at the categories until they have. */
-  const anchorPicker = !picking ? null : (
-    <div className="report-window__places" data-testid="report-places">
-      {/* Offered past roughly half a dozen rows, which is where scanning a
-          list stops being faster than typing three letters of a name. Below
-          that it is a control in the way. */}
-      {nearbyFirst.length > 6 && (
-        <input
-          type="search"
-          className="report-window__filter"
-          data-testid="report-place-filter"
-          value={placeFilter}
-          placeholder="Filter places"
-          aria-label="Filter the places you passed"
-          onChange={(event) => setPlaceFilter(event.target.value)}
-        />
-      )}
-      <ul className="report-window__place-list" aria-label="Somewhere you passed today">
-        {shownPlaces.map(({ place, back }) => (
-          <li key={place.id}>
-            <button
-              type="button"
-              className="report-window__place"
-              data-testid={`report-place-${place.id}`}
-              onClick={() => {
-                onPickAnchor?.(place)
-                setPicking(false)
-                setPlaceFilter('')
-              }}
-            >
-              <span className="report-window__place-name">{place.name}</span>
-              {/* Tabular figures so a scrolling list does not jitter, and the
-                  distance never truncates - it is the thing being sorted on,
-                  so it is the thing a hiker is comparing.
-
-                  A DIFFERENCE OF TWO MILES, not a mile marker, which is the
-                  distinction #986 was: `formatDistance(place.mile, ...)`
-                  would print a metric hiker's "757.7 km" for a place the row
-                  above calls mi 470.8, and both are positions on this trail.
-                  The subtraction happens here so that what reaches the
-                  formatter is a distance. */}
-              <span className="report-window__place-back">
-                {`${formatDistance(back, units)} back`}
-              </span>
-            </button>
-          </li>
-        ))}
-        {shownPlaces.length === 0 && (
-          <li className="report-window__place-empty">Nothing by that name today.</li>
-        )}
-      </ul>
+  /* The picker, when the header's Change is open or nothing has placed the
+     report yet. Above the tiles rather than below them: it answers "where",
+     and a hiker who opened it is not looking at the categories until they
+     have. */
+  const locationPicker = !picking ? null : (
+    <div ref={pickerRef} data-testid="report-places">
+      <LocationPicker
+        choice={location}
+        fix={fix}
+        places={places}
+        onSearch={onSearchPlaces}
+        units={units}
+        knowsTrail={knowsTrail}
+        onChoose={(choice) => {
+          onChooseLocation(choice)
+          setPicking(false)
+          setRefused(false)
+        }}
+        onPointOnMap={onPointOnMap}
+        words={{
+          value: placeWords,
+          onChange: (value) => {
+            setPlaceWords(value)
+            setRefused(false)
+          },
+        }}
+        needed={refused}
+        now={now}
+      />
     </div>
   )
 
   const tiles = (
     <>
-      {anchorPicker}
+      {locationPicker}
       <div className="report-window__grid">
         {REPORT_CATEGORIES.map((category) => (
           <button
@@ -532,7 +524,7 @@ export function ReportWindow({
           Polite rather than assertive - it is confirmation, not an alarm. */}
         <div className="report-window__receipt" role="status" aria-live="polite">
           <p className="report-window__receipt-headline">
-            {`Filed — ${categoryLabel(filed.type).toLowerCase()} ${anchor.phrase}`}
+            {`Filed — ${categoryLabel(filed.type).toLowerCase()} ${filed.phrase}`}
           </p>
           <p className="report-window__receipt-sub">
             {`It waits in your outbox and sends itself, keeping ${now.toLocaleTimeString(
@@ -575,7 +567,7 @@ export function ReportWindow({
             className="report-window__again"
             data-testid="report-again"
             onClick={() => {
-              // Back to the tiles with the anchor intact - the real multi-report
+              // Back to the tiles with the place intact - the real multi-report
               // case, which is a hiker clearing a campsite finding three things.
               // The note is cleared with it: it described the report that was
               // just filed, and carrying it onto the next one would attach
@@ -592,8 +584,19 @@ export function ReportWindow({
 
   return (
     <div
-      className="report-window__scrim"
+      className={
+        standingAside
+          ? 'report-window__scrim report-window__scrim--stood-aside'
+          : 'report-window__scrim'
+      }
       data-testid="report-window-scrim"
+      // Out of reach as well as out of sight while the crosshair is out, for
+      // the reason App.tsx gives about the long form: this window has a Close
+      // and so does the pick bar in front of it, and two controls of the same
+      // name - one of them the wrong one - is a worse thing to hand a screen
+      // reader than a hidden subtree.
+      inert={standingAside || undefined}
+      aria-hidden={standingAside || undefined}
       // The scrim is not a control and takes no focus; it is the dialog's
       // backdrop, and closing on it is a convenience the close button and
       // Escape both also provide.
@@ -617,33 +620,50 @@ export function ReportWindow({
             <h2 className="report-window__title" id={titleId}>
               {filed === null ? 'What did you find?' : 'Anything to add?'}
             </h2>
-            {/* The anchor, STATED RATHER THAN ASKED. Under 1a it is not a
+            {/* The place, STATED RATHER THAN ASKED. Under 1a it is not a
                 question: every entry point supplies one, and the hiker is
                 standing at it. `Change` is the escape hatch for the case that
-                is not that - a blow-down noticed and remembered a mile later
-                - and it is deliberately the smaller of the two, because the
-                stated anchor is right nearly every time. */}
+                is not that - a blow-down noticed and remembered a mile later,
+                or a fix the picker's own radius line shows to be poor - and it
+                is deliberately the smaller of the two, because the stated
+                place is right nearly every time.
+
+                OFFERED WHENEVER THERE IS A REPORT TO PLACE, which is a change
+                from the passed-places list it replaces (#1563). That list was
+                withheld without walked miles and a fix; the picker always has
+                something to offer - the map at least, and words when nothing
+                else can say - so a control that opens onto nothing is no
+                longer a state this can be in. Taken away once the report is
+                filed: re-placing from a receipt would move a record already
+                written. */}
             <p className="report-window__anchor" data-testid="report-anchor">
-              {anchor.label}
-              {/* CHANGE IS OFFERED ONLY WHEN THERE IS SOMETHING TO CHANGE TO.
-                  A picker that opens onto an empty list is a control that
-                  taught a hiker not to trust its labels - and an empty list is
-                  an ORDINARY state here, not an error: an early start has
-                  walked past nothing yet, and a phone with no fix cannot order
-                  what it has. Withheld in both cases rather than shown
-                  disabled. */}
-              {canRepick && filed === null && (
+              {words.label}
+              {filed === null && (
                 <button
                   type="button"
                   className="report-window__change"
                   data-testid="report-change-anchor"
-                  onClick={() => setPicking((open) => !open)}
+                  onClick={() => {
+                    setPicking((open) => !open)
+                    setRefused(false)
+                  }}
                   aria-expanded={picking}
                 >
                   {picking ? 'Done' : 'Change'}
                 </button>
               )}
             </p>
+            {/* HOW the place is known - the provenance the wire carries, in
+                words, so a ±800 ft fix from twelve minutes ago reads as
+                exactly that before anybody files under it. */}
+            {filed === null && words.detail !== null && (
+              <p
+                className="report-window__anchor-detail"
+                data-testid="report-anchor-detail"
+              >
+                {words.detail}
+              </p>
+            )}
           </div>
           <button
             type="button"

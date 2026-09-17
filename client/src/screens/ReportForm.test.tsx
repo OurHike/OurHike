@@ -3,6 +3,7 @@ import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReportForm } from './ReportForm'
 import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
+import { AT_THE_FIX, type FixSnapshot } from '../lib/reportLocation'
 
 // The shrink itself is doubled here and tested for real in
 // lib/reportPhoto.test.ts. What this file is about is the FORM's half: that
@@ -29,11 +30,28 @@ const PREPARED = new Blob([new Uint8Array([9, 9, 9])], { type: 'image/jpeg' })
 // is when they saw the thing, and for a queued offline report the send may be
 // days away. The matching server field is `authored_at` (see the reports API).
 
+/** A fix at mi 1,043.2, thirty seconds old as the form's clock reads it. */
+const FIX: FixSnapshot = {
+  lat: 35.6,
+  lon: -83.5,
+  mile: 1043.2,
+  accuracyM: 5,
+  fixedAt: new Date('2026-07-29T11:59:30Z'),
+}
+
+/** The same fix off the corridor - coordinates, no mile. */
+const { mile: _offCorridor, ...FIX_NO_MILE } = FIX
+
 const PROPS = {
   type: 'blowdown' as const,
   trailName: 'Switchback',
   reporterType: 'thru' as const,
-  location: { lat: 35.6, lon: -83.5, mile: 1043.2 },
+  location: AT_THE_FIX,
+  fix: FIX,
+  places: [],
+  knowsTrail: true,
+  units: 'imperial' as const,
+  onChooseLocation: vi.fn(),
   onSubmit: vi.fn(),
   onCancel: vi.fn(),
   now: new Date('2026-07-29T12:00:00Z'),
@@ -92,14 +110,21 @@ describe('ReportForm', () => {
     )
   })
 
-  it('carries the location it was given', async () => {
+  it('carries the fix it was given, with its source, radius and age (#1563)', async () => {
     const user = userEvent.setup()
     render(<ReportForm {...PROPS} />)
 
     await user.click(screen.getByRole('button', { name: /send|save/i }))
 
     expect(PROPS.onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ lat: 35.6, lon: -83.5 }),
+      expect.objectContaining({
+        lat: 35.6,
+        lon: -83.5,
+        location_source: 'gps',
+        location_accuracy_m: 5,
+        // Thirty seconds between the fix's own stamp and the form's clock.
+        location_fix_age_s: 30,
+      }),
     )
   })
 
@@ -109,29 +134,41 @@ describe('ReportForm', () => {
     expect(screen.getByText(/1,043\.2/)).toBeInTheDocument()
   })
 
-  it('files no coordinates at all rather than 0,0 when there is no fix', async () => {
-    // The bug: the shell passed lat 0 / lon 0 / mile 0 whenever the GPS had not
-    // reported yet, so a report written at a trailhead with no sky view was
-    // filed at Null Island - and, by its mile, at Springer Mountain. Both are
-    // confident, checkable-looking answers, which is what makes them worse
-    // than an absent one. The reports API takes lat and lon as optional.
+  it('refuses to send a report nothing can place, and files it as words once it has them', async () => {
+    // The bug this grew out of: the shell passed lat 0 / lon 0 / mile 0
+    // whenever the GPS had not reported yet, so a report written at a
+    // trailhead with no sky view was filed at Null Island - and, by its mile,
+    // at Springer Mountain. Both are confident, checkable-looking answers,
+    // which is what makes them worse than an absent one. And since #1563 an
+    // absent one is not filed either: a blowdown a moderator cannot place is
+    // a blowdown they cannot act on, so Send waits for the hiker's words.
     const user = userEvent.setup()
-    render(<ReportForm {...PROPS} location={null} />)
+    render(<ReportForm {...PROPS} fix={null} />)
 
+    await user.click(screen.getByRole('button', { name: /send|save/i }))
+    expect(PROPS.onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('Say where this is first')
+
+    await user.type(screen.getByTestId('location-words'), 'the ford below the gap')
     await user.click(screen.getByRole('button', { name: /send|save/i }))
 
     const submission = vi.mocked(PROPS.onSubmit).mock.calls[0][0]
     expect(submission.lat).toBeUndefined()
     expect(submission.lon).toBeUndefined()
+    expect(submission.mile).toBeUndefined()
+    expect(submission.location_source).toBeUndefined()
+    expect(submission.place_words).toBe('the ford below the gap')
     // Still a report worth filing: a blowdown with no coordinates is a real
     // contribution, and dropping it would cost more than the missing pin.
     expect(submission.type).toBe('blowdown')
   })
 
   it('says the location is unknown instead of showing mile zero', () => {
-    render(<ReportForm {...PROPS} location={null} />)
+    render(<ReportForm {...PROPS} fix={null} />)
 
-    expect(screen.getByText(/no gps fix/i)).toBeInTheDocument()
+    expect(screen.getByTestId('report-form-location')).toHaveTextContent(
+      'No location yet',
+    )
     expect(screen.queryByText(/mi 0\.0/)).not.toBeInTheDocument()
   })
 
@@ -140,15 +177,16 @@ describe('ReportForm', () => {
     // says nothing about the fix itself - it is the mile alone that cannot be
     // worked out, and a maintainer can still find the spot from lat/lon.
     const user = userEvent.setup()
-    render(<ReportForm {...PROPS} location={{ lat: 35.6, lon: -83.5 }} />)
+    render(<ReportForm {...PROPS} fix={FIX_NO_MILE} />)
 
-    expect(screen.getByText(/not matched to a trail mile/i)).toBeInTheDocument()
+    expect(screen.getByTestId('report-form-location')).toHaveTextContent('Where you are')
 
     await user.click(screen.getByRole('button', { name: /send|save/i }))
 
     expect(PROPS.onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({ lat: 35.6, lon: -83.5 }),
     )
+    expect(vi.mocked(PROPS.onSubmit).mock.calls[0][0].mile).toBeUndefined()
   })
 
   it('sends the trail mile it just showed, rather than computing and dropping it', async () => {
@@ -162,18 +200,6 @@ describe('ReportForm', () => {
     await user.click(screen.getByRole('button', { name: /send|save/i }))
 
     expect(PROPS.onSubmit).toHaveBeenCalledWith(expect.objectContaining({ mile: 1043.2 }))
-  })
-
-  it('omits the mile rather than zeroing it when there is no fix', async () => {
-    // Mile 0 is Springer Mountain - the same reason 0,0 is not a stand-in for
-    // missing coordinates. A zeroed mile would put every fixless report on the
-    // banner of every hiker starting the trail.
-    const user = userEvent.setup()
-    render(<ReportForm {...PROPS} location={null} />)
-
-    await user.click(screen.getByRole('button', { name: /send|save/i }))
-
-    expect(vi.mocked(PROPS.onSubmit).mock.calls[0][0].mile).toBeUndefined()
   })
 
   it('shows how the report will be signed', () => {
@@ -396,45 +422,112 @@ describe('ReportForm', () => {
     })
   })
 
-  describe('where this was (#1439, D16)', () => {
+  describe('where this was (#1439, D16; #1563)', () => {
     const send = () => screen.getByRole('button', { name: /send|save/i })
 
-    it('offers a way to correct every one of the three states', () => {
+    it('always offers Change, and the picker it opens draws the map row only when the shell has a map', async () => {
       // `describeLocation` had exactly three answers and no way to change any
       // of them, so a hiker who walked on before filing could not say where
-      // the tree actually is. The wording of all three is unchanged; what is
-      // new is that each is correctable.
-      for (const location of [
-        { lat: 35.6, lon: -83.5, mile: 1043.2 },
-        { lat: 35.6, lon: -83.5 },
-        null,
-      ]) {
-        render(<ReportForm {...PROPS} location={location} onChangeLocation={vi.fn()} />)
-        expect(screen.getByRole('button', { name: /change/i })).toBeInTheDocument()
-        cleanup()
-      }
-    })
+      // the tree actually is. The picker is offered in every state now; what
+      // is still gated is the map row, because a control that opens nothing
+      // is worse than none (D10).
+      const user = userEvent.setup()
+      render(<ReportForm {...PROPS} onPointOnMap={vi.fn()} />)
+      await user.click(screen.getByRole('button', { name: /change/i }))
+      expect(screen.getByTestId('location-map')).toBeInTheDocument()
+      cleanup()
 
-    it('draws no Change where the shell has no map to offer', () => {
-      // D10 again: a control that opens nothing is worse than no control.
       render(<ReportForm {...PROPS} />)
-
-      expect(screen.queryByRole('button', { name: /change/i })).toBeNull()
+      await user.click(screen.getByRole('button', { name: /change/i }))
+      expect(screen.getByTestId('location-picker')).toBeInTheDocument()
+      expect(screen.queryByTestId('location-map')).toBeNull()
     })
 
-    it('asks for a place in words only when nothing else can say where', async () => {
+    it('hands a chosen place to the shell rather than deciding for itself', async () => {
+      const user = userEvent.setup()
+      const onChooseLocation = vi.fn()
+      render(
+        <ReportForm
+          {...PROPS}
+          onChooseLocation={onChooseLocation}
+          places={[
+            {
+              id: 'atc_shelters:12',
+              name: 'Bailey Gap Shelter',
+              type: 'shelter',
+              mile: 628.4,
+              lat: 37.4,
+              lon: -80.4,
+              awayMiles: 0.3,
+            },
+          ]}
+        />,
+      )
+      await user.click(screen.getByRole('button', { name: /change/i }))
+      await user.click(screen.getByTestId('location-place-atc_shelters:12'))
+
+      expect(onChooseLocation).toHaveBeenCalledWith({
+        kind: 'poi',
+        poiId: 'atc_shelters:12',
+        name: 'Bailey Gap Shelter',
+        lat: 37.4,
+        lon: -80.4,
+        mile: 628.4,
+      })
+    })
+
+    it('files a report anchored to a waypoint with its id, coordinates and source', async () => {
+      const user = userEvent.setup()
+      render(
+        <ReportForm
+          {...PROPS}
+          fix={null}
+          location={{
+            kind: 'poi',
+            poiId: 'atc_shelters:12',
+            name: 'Bailey Gap Shelter',
+            lat: 37.4,
+            lon: -80.4,
+            mile: 628.4,
+          }}
+        />,
+      )
+      expect(screen.getByTestId('report-form-location')).toHaveTextContent(
+        'Bailey Gap Shelter · A named place · mi 628.4',
+      )
+
+      await user.click(send())
+
+      expect(PROPS.onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          poi_id: 'atc_shelters:12',
+          lat: 37.4,
+          lon: -80.4,
+          mile: 628.4,
+          location_source: 'poi',
+        }),
+      )
+    })
+
+    it('asks for a place in words only when nothing else can say where', () => {
       // No fix AND no waypoint behind the report. With either, the question
       // would collect prose nobody needs beside a location the report has.
-      render(<ReportForm {...PROPS} location={null} />)
-      expect(screen.getByText('Where was this?')).toBeInTheDocument()
+      render(<ReportForm {...PROPS} fix={null} />)
+      expect(screen.getByTestId('location-words')).toBeInTheDocument()
       cleanup()
 
-      render(<ReportForm {...PROPS} location={null} poiId="atc_shelters:12" />)
-      expect(screen.queryByText('Where was this?')).toBeNull()
+      render(
+        <ReportForm
+          {...PROPS}
+          fix={null}
+          location={{ kind: 'poi', poiId: 'atc_shelters:12', name: 'X', lat: 1, lon: 1 }}
+        />,
+      )
+      expect(screen.queryByTestId('location-words')).toBeNull()
       cleanup()
 
       render(<ReportForm {...PROPS} />)
-      expect(screen.queryByText('Where was this?')).toBeNull()
+      expect(screen.queryByTestId('location-words')).toBeNull()
     })
 
     it("sends the hiker's words and NO coordinates", async () => {
@@ -443,13 +536,10 @@ describe('ReportForm', () => {
       // would be a confident wrong dot on every phone that downloads it.
       const user = userEvent.setup()
       const onSubmit = vi.fn()
-      render(<ReportForm {...PROPS} location={null} onSubmit={onSubmit} />)
+      render(<ReportForm {...PROPS} fix={null} onSubmit={onSubmit} />)
 
       await user.type(
-        // A regex, because the field's accessible name is the whole label -
-        // the question AND the line under it, which is what a screen reader
-        // should hear and what the form deliberately keeps together.
-        screen.getByLabelText(/Where was this\?/),
+        screen.getByTestId('location-words'),
         'The brook crossing north of Fitzgerald Falls',
       )
       await user.click(send())
@@ -461,16 +551,40 @@ describe('ReportForm', () => {
       expect(submitted.mile).toBeUndefined()
     })
 
-    it('sends no place key at all when the question went unanswered', async () => {
-      // Absent, never an empty string - which would be a claim that somebody
-      // answered.
+    it('sends a thanks with no place at all, since a thanks is not a problem', async () => {
+      // A thanks with no fix is still a complete thanks - the server resolves
+      // who it is for from what it has, and inventing a position would credit
+      // a volunteer for a stretch nobody said this was about. No place key,
+      // never an empty string, which would be a claim that somebody answered.
       const user = userEvent.setup()
       const onSubmit = vi.fn()
-      render(<ReportForm {...PROPS} location={null} onSubmit={onSubmit} />)
+      render(<ReportForm {...PROPS} type="thanks" fix={null} onSubmit={onSubmit} />)
 
       await user.click(send())
 
+      expect(onSubmit).toHaveBeenCalled()
       expect('place_words' in onSubmit.mock.calls[0][0]).toBe(false)
+      expect(onSubmit.mock.calls[0][0].lat).toBeUndefined()
+    })
+
+    it('closes the picker when the shell hands back a marked point', async () => {
+      const user = userEvent.setup()
+      const { rerender } = render(<ReportForm {...PROPS} onPointOnMap={vi.fn()} />)
+      await user.click(screen.getByRole('button', { name: /change/i }))
+      expect(screen.getByTestId('location-picker')).toBeInTheDocument()
+
+      rerender(
+        <ReportForm
+          {...PROPS}
+          onPointOnMap={vi.fn()}
+          location={{ kind: 'point', lat: 36.1, lon: -81.7, mile: 630 }}
+        />,
+      )
+
+      expect(screen.queryByTestId('location-picker')).toBeNull()
+      expect(screen.getByTestId('report-form-location')).toHaveTextContent(
+        'mi 630.0 · Marked on the map',
+      )
     })
   })
 

@@ -111,6 +111,8 @@ describe('useGeolocation', () => {
       { status: 'located' }
     >
     expect(located.accuracyFeet).toBeCloseTo(32.8084, 3)
+    // The platform's own figure, unconverted - what a report records (#1563).
+    expect(located.accuracyM).toBe(10)
     expect(located.fixedAt).toEqual(new Date(1_700_000_000_000))
   })
 
@@ -334,6 +336,7 @@ describe('a fix that says the phone has not moved (#1090)', () => {
       status: 'located',
       at: { lon: -77, lat: 39 },
       accuracyFeet: 5 * 3.28084,
+      accuracyM: 5,
       fixedAt: new Date(0),
     })
   })

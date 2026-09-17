@@ -169,6 +169,9 @@ describe('Try again, on a report the server refused', () => {
         await screen.findByRole('button', { name: /^volunteer & report/i }),
       )
       await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+      // No GPS here, so the tap is refused until the report has a place
+      // (#1563) - words, with nothing else to place it by.
+      await user.type(await screen.findByTestId('location-words'), 'by the gap')
       await user.click(await screen.findByRole('button', { name: /blow down/i }))
       await user.click(screen.getByTestId('report-done'))
 

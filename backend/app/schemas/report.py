@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.core.time import UtcDatetime
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import (
+    LocationSource,
     Report,
     ReporterType,
     ReportStatus,
@@ -89,6 +90,29 @@ class ReportCreate(BaseModel):
     # The form has been computing it all along and dropping it at submit,
     # which is what made this a defect rather than a missing feature.
     mile: FiniteFloat | None = None
+
+    # WHERE THE COORDINATES CAME FROM, AND HOW FAR TO TRUST THEM (#1563).
+    #
+    # The fourth, fifth and sixth sanctioned client claims, for the reason the
+    # third exists: each is knowable on the phone at the moment of filing and
+    # nowhere else. `location_source` says whether `lat`/`lon` are a named
+    # waypoint's, the phone's own fix, or a spot marked by hand on the map;
+    # the other two are stated only for a fix - the platform's accuracy radius
+    # in metres, and how many seconds old the fix was when the report took it.
+    # app/models/report.py's column comment is the full reasoning.
+    #
+    # Bounded at the one end this server can bound, exactly as `mile` is: a
+    # negative radius or a negative age is a bug or a lie either way and is
+    # refused rather than stored. No upper bound on either - a 3 km radius is
+    # a real thing a phone reports indoors, and a fix a day old is a real
+    # thing a phone in a pack carries out onto the ridge.
+    #
+    # An unknown `location_source` is refused by the enum, like an unknown
+    # `type`. Growing this vocabulary means a server release before the client
+    # release that sends the new value, which is RELEASING.md's ordinary order.
+    location_source: LocationSource | None = None
+    location_accuracy_m: FiniteFloat | None = None
+    location_fix_age_s: int | None = None
 
     reporter_type: ReporterType
     note: NoteText | None = None
@@ -187,6 +211,35 @@ class ReportCreate(BaseModel):
             raise ValueError("mile cannot be negative")
         return value
 
+    @field_validator("location_accuracy_m")
+    @classmethod
+    def _reject_a_negative_radius(cls, value: float | None) -> float | None:
+        """A radius below zero is not a radius (#1563).
+
+        `FiniteFloat` has already refused NaN and the infinities at the type,
+        so this is the one check left: the platform's `coords.accuracy` is
+        defined as non-negative, and a client sending less is a client with a
+        bug, which is better found here than stored as a claim of
+        better-than-perfect knowledge.
+        """
+        if value is not None and value < 0:
+            raise ValueError("location_accuracy_m cannot be negative")
+        return value
+
+    @field_validator("location_fix_age_s")
+    @classmethod
+    def _reject_a_negative_age(cls, value: int | None) -> int | None:
+        """A fix from the future is a clock problem, not a fact about the fix.
+
+        The client computes the age as filing time minus the fix's own
+        timestamp and floors it at zero, so a negative here means something
+        other than that client wrote the field. Refused for the same reason a
+        negative mile is: it would sort under every honest row.
+        """
+        if value is not None and value < 0:
+            raise ValueError("location_fix_age_s cannot be negative")
+        return value
+
 
 class ReportOut(BaseModel):
     """One report, as much of it as the caller is entitled to (#252).
@@ -223,6 +276,17 @@ class ReportOut(BaseModel):
     # it from them anyway. Withholding it would hide it from the app while
     # leaving it computable with the trail file and a script.
     mile: float | None
+
+    # How the coordinates were arrived at, and how far to trust them (#1563).
+    # Public alongside `lat`/`lon`, and for their reason: a radius and an age
+    # say LESS about the reporter than the coordinates beside them already
+    # do - they widen the claim rather than narrowing it - and a hiker or a
+    # moderator reading a pin is owed the difference between a surveyed
+    # waypoint, a ±5 m fix and a ±800 m one. Defaulted so a document baked or
+    # served before the columns existed still parses.
+    location_source: LocationSource | None = None
+    location_accuracy_m: float | None = None
+    location_fix_age_s: int | None = None
 
     reporter_type: ReporterType
     timestamp: UtcDatetime
@@ -312,6 +376,9 @@ class ReportOut(BaseModel):
             lat=report.lat,
             lon=report.lon,
             mile=report.mile,
+            location_source=report.location_source,
+            location_accuracy_m=report.location_accuracy_m,
+            location_fix_age_s=report.location_fix_age_s,
             reporter_type=report.reporter_type,
             timestamp=report.timestamp,
             note=report.note,

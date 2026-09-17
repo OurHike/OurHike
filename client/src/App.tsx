@@ -107,11 +107,7 @@ import { disputeFor } from './lib/disputes'
 import { useWorkdayPanel } from './chrome/workdayPanel'
 import type { DisputePoint } from './map/disputeLayers'
 import type { ReportFormSubmission } from './screens/ReportForm'
-import {
-  ReportWindow,
-  UNDO_WINDOW_MS,
-  type ReportWindowAnchor,
-} from './reporting/ReportWindow'
+import { ReportWindow, UNDO_WINDOW_MS } from './reporting/ReportWindow'
 import { type ReportTypeId } from './reporting/categories'
 import { FIT_PADDING } from './map/fitPadding'
 import { trailIdForSource } from './map/trailBadges'
@@ -518,6 +514,16 @@ import {
   warningsOnRoute,
 } from './lib/seriousWarnings'
 import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
+import {
+  AT_THE_FIX,
+  nearbyPlaces,
+  placesByName,
+  reportLocationFields,
+  type FixSnapshot,
+  type LocationChoice,
+  type NearbyPlace,
+  type PlaceCandidate,
+} from './lib/reportLocation'
 import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
 import './App.css'
@@ -621,10 +627,16 @@ function cardDetail(poi: StoredPoi, searchable: readonly SearchablePoi[]): PoiDe
   return { ...poi, mile: searchable.find((candidate) => candidate.id === poi.id)?.mile }
 }
 
+// ONE PLACE PER REPORT (#1563), owned here rather than by the surface: the
+// window's picker rows, the long form's picker rows and the map's Keep all
+// change this one field, so a report that leaves the window for the long form
+// keeps the place it had, and the window standing aside for the crosshair
+// comes back to the same answer. Every door supplies one - `AT_THE_FIX` when
+// it has nothing better, which resolves against the live fix at filing.
 type ReportingState =
   | null
-  | { step: 'window'; anchor?: ReportAnchor }
-  | { step: 'form'; type: ReportTypeId; anchor?: ReportAnchor }
+  | { step: 'window'; location: LocationChoice }
+  | { step: 'form'; type: ReportTypeId; location: LocationChoice }
 
 // Sign-in is its own flow rather than another step of the reporting one,
 // because it is reachable from two places that want different things back:
@@ -646,13 +658,15 @@ function dayHikeName(route: {
 }
 
 /**
- * The anchor a press hands to the report flow (#1137).
+ * The place a press - or the crosshair's Keep - hands to the report flow
+ * (#1137, #1439): a marked point, `location_source: 'map'` on the wire.
  *
  * ALWAYS CARRIES THE COORDINATES, and carries a mile only when the index has
  * one. A press is the one entry point whose point may be nowhere near the
- * hiker, so an anchor without a mile must NOT fall back to theirs - see
- * `reportAnchorWords` for the sentence that would otherwise be printed over a
- * report filed somewhere else.
+ * hiker, so a point without a mile must NOT fall back to theirs -
+ * lib/reportLocation.ts's `locationWords` prints "This spot" for it rather
+ * than the sentence that would otherwise be printed over a report filed
+ * somewhere else.
  *
  * `mile` is optional on a report by design (features/REPORT_A_PROBLEM.md:
  * "Null off-trail, and for a phone with no trail index yet"), which is why an
@@ -661,13 +675,14 @@ function dayHikeName(route: {
  * position on the trail and is meaningless without a mile, while a report is
  * an observation at a place and a lat/lon locates it perfectly well.
  */
-function pressAnchor(
+function pressPoint(
   at: { lat: number; lon: number },
   trailIndex: TrailIndex | null,
-): ReportAnchor {
+): LocationChoice {
   const mile = trailIndex === null ? null : mileOnTrail(trailIndex, at)
   return {
-    // No `poiId`: the whole point of a press is that there is no waypoint here.
+    // No waypoint: the whole point of a press is that there is none here.
+    kind: 'point',
     lat: at.lat,
     lon: at.lon,
     ...(mile === null ? {} : { mile }),
@@ -682,6 +697,8 @@ const NO_MAP_POINTS: MapPoint[] = []
 const NO_DISPUTED_POINTS: DisputePoint[] = []
 const NO_HIKE_PLACES: ReturnType<typeof hikePlaces> = []
 const NO_PASSED_PLACES: { id: string; name: string; type: string; mile: number }[] = []
+const NO_PLACE_CANDIDATES: PlaceCandidate[] = []
+const NO_NEARBY_PLACES: NearbyPlace[] = []
 
 function App() {
   // Two pieces of state rather than one nullable, because null only ever meant
@@ -920,7 +937,10 @@ function App() {
    * something else, and answering the reporter-type question for a record
    * with nowhere to put the answer.
    */
-  const [reportingClosure, setReportingClosure] = useState(false)
+  // The closure form, open with the place the report flow left it at - a
+  // shelter's card, a pressed point - or `AT_THE_FIX` from a door that
+  // supplied nothing (#1563). Null is closed.
+  const [reportingClosure, setReportingClosure] = useState<LocationChoice | null>(null)
   const [authFlow, setAuthFlow] = useState<AuthFlowState>(null)
   /**
    * The day hike being built (#978, frame `1j`), or null when that builder
@@ -2172,7 +2192,7 @@ function App() {
     authFlow !== null ||
     collectingIdentity ||
     reportingFailure ||
-    reportingClosure ||
+    reportingClosure !== null ||
     reporting !== null
   // STEP 1 BESIDE THE MAP on a laptop (the review of #1374; the design's
   // R2, "the map never leaves"): the Plan tab's step 1 is the map with the
@@ -2703,6 +2723,25 @@ function App() {
   // recomputes everything keyed here - that is a changed input, and how often
   // it happens under canopy is #1100's unmeasured radius question.
   const fixMile = fix?.mile ?? null
+
+  /**
+   * The fix as the report path reads it (lib/reportLocation.ts, #1563): the
+   * coordinates, the snapped mile, the platform's own radius and when it was
+   * produced. Null with no fix - never a stale point, never Springer. Keyed
+   * on the mile rather than on `fix` for #1111's reason: a jittering fix
+   * makes a fresh `fix` object per callback, and the report surfaces should
+   * re-render for a moved fix, not for a re-measured offset.
+   */
+  const currentFix = useMemo<FixSnapshot | null>(() => {
+    if (gps.status !== 'located') return null
+    return {
+      lat: gps.at.lat,
+      lon: gps.at.lon,
+      ...(fixMile !== null ? { mile: fixMile } : {}),
+      accuracyM: gps.accuracyM,
+      fixedAt: gps.fixedAt,
+    }
+  }, [gps, fixMile])
 
   /** The hike a card is showing: the unsaved review outranks the store's
    *  open one - they cannot both be on screen, and the review is newer. */
@@ -7489,7 +7528,7 @@ function App() {
   const handleSubmitClosure = useCallback(
     async ({ authoredAt, ...fields }: ClosureFormSubmission) => {
       await enqueueClosure(closureDraft(fields, trailIndex), authoredAt)
-      setReportingClosure(false)
+      setReportingClosure(null)
 
       // Explicitly, for #640's reason: useOutboxSync fires on a CHANGE to
       // `online` or the account, and filing this changes neither.
@@ -7507,8 +7546,9 @@ function App() {
    * `reportPointOnMap` - the hiker took "Change" on the form's location line
    * and is aiming at the map. `reportAiming` - the point they have tapped,
    * not yet kept, which is what lets the bar NAME THE MILE BEFORE IT IS KEPT
-   * rather than committing on the first touch. `reportPlacedAt` - the answer,
-   * which overrides whatever the form would otherwise have said.
+   * rather than committing on the first touch. The answer goes into the
+   * reporting state's own `location` (#1563), which is what the form and the
+   * window both read - so there is no third copy of where the report is.
    *
    * THE SAME SHAPE AS THE HIKE SET-UP'S MAP PICK (#1329), and for the same
    * reason: the form is holding a typed note and attached photos, so it
@@ -7522,9 +7562,15 @@ function App() {
   const [reportAiming, setReportAiming] = useState<{ lat: number; lon: number } | null>(
     null,
   )
-  const [reportPlacedAt, setReportPlacedAt] = useState<ReportAnchor | null>(null)
 
-  const handleReportChangeLocation = useCallback(() => {
+  /** Where the report is, changed by the hiker - from a picker row on either
+   *  surface, or from the map's Keep below. The reporting state owns it, so
+   *  both surfaces read one answer (#1563). */
+  const handleChooseReportLocation = useCallback((location: LocationChoice) => {
+    setReporting((current) => (current === null ? null : { ...current, location }))
+  }, [])
+
+  const handleReportPointOnMap = useCallback(() => {
     setReportPointOnMap(true)
     setReportAiming(null)
     // The map is drawn where nothing else has taken the screen, so a "tap the
@@ -7542,10 +7588,10 @@ function App() {
    *  back with its note and its photos exactly as they were. */
   const handleKeepReportPoint = useCallback(() => {
     if (reportAiming === null) return
-    setReportPlacedAt(pressAnchor(reportAiming, trailIndex))
+    handleChooseReportLocation(pressPoint(reportAiming, trailIndex))
     setReportPointOnMap(false)
     setReportAiming(null)
-  }, [reportAiming, trailIndex])
+  }, [reportAiming, trailIndex, handleChooseReportLocation])
 
   /**
    * THE PICK DIES WITH THE FORM IT BELONGS TO.
@@ -7558,17 +7604,22 @@ function App() {
    * hidden behind a crosshair on a tab the hiker was not looking at. Found by
    * review, and asserted now in App.reportPlace.test.tsx.
    *
-   * Keyed on the form alone and deliberately NOT on the tab. `handleReportChangeLocation`
-   * sets this flag and selects the map in one handler, so both land in one
-   * render - but keying the reset on the tab as well would still be one
-   * ordering assumption away from disarming the pick the hiker just asked for.
-   * The tab belongs in the derivation, which is a render and cannot race.
+   * Keyed on the report flow alone and deliberately NOT on the tab.
+   * `handleReportPointOnMap` sets this flag and selects the map in one
+   * handler, so both land in one render - but keying the reset on the tab as
+   * well would still be one ordering assumption away from disarming the pick
+   * the hiker just asked for. The tab belongs in the derivation, which is a
+   * render and cannot race.
+   *
+   * The window takes the crosshair too since #1563, so the flow as a whole is
+   * what the pick belongs to, not the form alone.
    */
+  const reportFlowOpen = reporting !== null
   useEffect(() => {
-    if (reporting?.step === 'form') return
+    if (reportFlowOpen) return
     setReportPointOnMap(false)
     setReportAiming(null)
-  }, [reporting?.step])
+  }, [reportFlowOpen])
 
   /**
    * Open the six-tile report window (#1438, D15).
@@ -7584,7 +7635,10 @@ function App() {
    * report started from a card. A door that asked "where?" before "what?"
    * would be a new step in front of a flow that already has the answer.
    */
-  const handleStartReport = useCallback(() => setReporting({ step: 'window' }), [])
+  const handleStartReport = useCallback(
+    () => setReporting({ step: 'window', location: AT_THE_FIX }),
+    [],
+  )
 
   /**
    * Ask who is reporting, at most once a session and never twice over.
@@ -7611,11 +7665,9 @@ function App() {
       // are pulled out of the draft here and stored as bytes beside it
       // (#234, and #1439 for why there is more than one).
       await beginContribution(draft, authoredAt, photos)
+      // The place goes with the report: the next one opened starts from its
+      // own door's answer, never pinned where the last one was.
       setReporting(null)
-      // The crosshair's answer belongs to the report that has just been
-      // filed, so it goes with it. Left standing, the NEXT report opened
-      // without a fix would start life pinned where the last one was.
-      setReportPlacedAt(null)
 
       const next = stepAfterSaving({
         hasAccount: account !== null,
@@ -7726,91 +7778,6 @@ function App() {
   )
 
   /**
-   * A report that starts from a place card carries the place (FIELD_NOTES.md
-   * step 1): the escalation after a problem-shaped tap, and the card's own
-   * "report a problem here". With a type it goes straight to the form -
-   * `trash` names the report type of the same name (#1122) - and without one
-   * it opens the picker, because no report type is "a dry spring" and
-   * pre-picking a wrong one would file a flooding report about the absence of
-   * water.
-   *
-   * `damaged` used to be the other one that named a type, and #1140 took that
-   * away with the word: the button now reads "Problem", which covers mice and
-   * a fouled privy as well as a hole in the roof, so `shelter_repair` stopped
-   * being a safe guess. It reaches this function without a type now, like
-   * `dry`. The parameter keeps `shelter_repair` in its union because the
-   * picker still offers it and the form still takes it - what changed is that
-   * nothing pre-picks it.
-   */
-  const handleReportFromPoi = useCallback(
-    (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => {
-      setSelectedPoiId(null)
-      setReporting(
-        type === undefined ? { step: 'window', anchor } : { step: 'form', type, anchor },
-      )
-    },
-    [],
-  )
-
-  /**
-   * A thanks from a place's card (#1133).
-   *
-   * STRAIGHT TO THE FORM, not through the window, for the reason
-   * reporting/categories.ts states as `filesOnTap`: a thanks is one of the two
-   * things that must never be filed by a tap. It is a message to a person, and
-   * an empty one sent by accident is worse than none - so it gets the form,
-   * where there is something to write and a Cancel to change your mind with.
-   *
-   * The anchor is the card's own, so the club lookup has a `poiId` to work
-   * from. Same shape as `handleReportFromPoi`'s escalation arm, deliberately:
-   * this is that path with the type already picked.
-   */
-  const handleThanksFromPoi = useCallback((anchor: ReportAnchor) => {
-    setSelectedPoiId(null)
-    setReporting({ step: 'form', type: 'thanks', anchor })
-  }, [])
-
-  /**
-   * What the report window's header prints for where this is going (#1133).
-   *
-   * A place's NAME when the report started from its card, because that is
-   * what a hiker is looking at; otherwise the mile, because that is what they
-   * can check against the header. "here" only when neither is known, which is
-   * a real state - no fix yet, no trail index downloaded - and one the window
-   * has to be able to say rather than printing "mi 0.0", which is Springer
-   * Mountain (chrome/Header.tsx keeps the same rule about the mile readout).
-   */
-  const reportAnchorWords = useCallback(
-    (anchor?: ReportAnchor): { label: string; phrase: string } => {
-      if (anchor?.poiId !== undefined) {
-        const place = searchablePois.find((poi) => poi.id === anchor.poiId)
-        if (place !== undefined) return { label: place.name, phrase: `at ${place.name}` }
-      }
-      // THE FALLBACK IS FOR HAVING NO ANCHOR, NOT FOR AN ANCHOR WITH NO MILE.
-      // `anchor?.mile ?? fix?.mile` reads the same and is wrong in the one
-      // case #1137 introduced: a press held on the map two miles up the trail
-      // has a place but may have no mile - the trail index is not downloaded,
-      // or the point is off the corridor - and borrowing the HIKER's mile
-      // there would print "Filed - blow down at mi 628.4" over a report filed
-      // somewhere else entirely. A mile is a position claim; the wrong one
-      // resolves, which is what makes it worse than none.
-      const mile = anchor === undefined ? fix?.mile : anchor.mile
-      // "here" is an adverb where the other two are nouns, which is why the
-      // window takes both forms rather than composing `at ${label}` itself.
-      // That naive version reads perfectly for a mile and produced "Filed —
-      // blow down at here" the first time anybody photographed the screen
-      // with no fix.
-      if (mile === undefined) return { label: 'here', phrase: 'here' }
-      const shown = `mi ${mile.toLocaleString('en-US', {
-        minimumFractionDigits: 1,
-        maximumFractionDigits: 1,
-      })}`
-      return { label: shown, phrase: `at ${shown}` }
-    },
-    [searchablePois, fix?.mile],
-  )
-
-  /**
    * File a report from the window, held back for its undo window (#1133).
    *
    * `beginContribution` first and always, exactly as `handleSubmitReport`
@@ -7826,47 +7793,44 @@ function App() {
    * remove. They are asked when the window closes instead.
    */
   const handleFileFromWindow = useCallback(
-    async (type: ReportTypeId, note: string, holdUntil: Date): Promise<string> => {
-      const anchor = reporting !== null ? reporting.anchor : undefined
-      // WHERE THE REPORT SAYS IT IS, and the rule is `ReportForm`'s own,
-      // carried over rather than reinvented: the ANCHOR when the report
-      // started from a place card, and otherwise the hiker's own fix.
+    async (
+      type: ReportTypeId,
+      note: string,
+      holdUntil: Date,
+      placeWords: string,
+    ): Promise<string> => {
+      // WHERE THE REPORT SAYS IT IS, spelled by the one function every filing
+      // surface uses (lib/reportLocation.ts, #1563): a waypoint's id and
+      // coordinates, a marked spot's coordinates, or the fix as it is at THIS
+      // moment - with the radius the platform stated and how old the fix was
+      // when the tap took it. The hiker's words travel only when nothing else
+      // can say, and the window has already refused a tap that had neither.
       //
-      // Dropping the second half is a regression that looks like nothing -
-      // the report still files, the receipt still says "Filed" - and leaves a
+      // Dropping the fix half is a regression that looks like nothing - the
+      // report still files, the receipt still says "Filed" - and leaves a
       // maintainer a blow-down with no location. App.flows.test.tsx names the
       // behaviour exactly ("files the report at the position the hiker is
       // actually standing"), which is how it was caught here.
-      //
-      // The mile is separately unknown from the coordinates: a fix off the
-      // centerline, or a trail index not downloaded yet, has one and not the
-      // other. Absent rather than zero, always - "mi 0.0" is Springer
-      // Mountain and 0,0 is the Atlantic off West Africa, so neither is a
-      // stand-in for "we do not know".
-      const at =
-        anchor?.lat !== undefined && anchor.lon !== undefined
-          ? { lat: anchor.lat, lon: anchor.lon }
-          : gps.status === 'located'
-            ? { lat: gps.at.lat, lon: gps.at.lon }
-            : null
-      const mile = anchor?.mile ?? fix?.mile
-
+      const now = new Date()
       const item = await beginContribution(
         {
           type,
           reporter_type: signReportAs(preferences.reporter_type),
           ...(note === '' ? {} : { note }),
-          ...(anchor?.poiId !== undefined ? { poi_id: anchor.poiId } : {}),
-          ...(at !== null ? at : {}),
-          ...(mile !== undefined ? { mile } : {}),
+          ...reportLocationFields(
+            reporting?.location ?? AT_THE_FIX,
+            currentFix,
+            now,
+            placeWords,
+          ),
         },
-        new Date(),
+        now,
         undefined,
         holdUntil,
       )
       return item.id
     },
-    [reporting, preferences.reporter_type, gps, fix?.mile],
+    [reporting, preferences.reporter_type, currentFix],
   )
 
   /** Undo: the same `removeQueued` everything else uses. There is no second
@@ -7946,6 +7910,89 @@ function App() {
    * written against.
    */
   const poiById = useMemo(() => new Map(pois.map((poi) => [poi.id, poi])), [pois])
+
+  /**
+   * A card's anchor as a place the report flow can hold (#1563): the waypoint
+   * by id, with its name looked up here because the card hands over the id
+   * and the shell holds the row. A press has no waypoint and is a marked
+   * point, exactly as `pressPoint` makes one.
+   *
+   * A card's id is a `pois` id by construction, so the name lookup cannot
+   * miss in practice; the fallback is for TypeScript, and it is honest -
+   * "This place" rather than a guessed name.
+   */
+  const choiceFromAnchor = useCallback(
+    (anchor: ReportAnchor): LocationChoice => {
+      if (anchor.poiId === undefined) {
+        return {
+          kind: 'point',
+          lat: anchor.lat,
+          lon: anchor.lon,
+          ...(anchor.mile !== undefined ? { mile: anchor.mile } : {}),
+        }
+      }
+      return {
+        kind: 'poi',
+        poiId: anchor.poiId,
+        name: poiById.get(anchor.poiId)?.name ?? 'This place',
+        lat: anchor.lat,
+        lon: anchor.lon,
+        ...(anchor.mile !== undefined ? { mile: anchor.mile } : {}),
+      }
+    },
+    [poiById],
+  )
+
+  /**
+   * A report that starts from a place card carries the place (FIELD_NOTES.md
+   * step 1): the escalation after a problem-shaped tap, and the card's own
+   * "report a problem here". With a type it goes straight to the form -
+   * `trash` names the report type of the same name (#1122) - and without one
+   * it opens the picker, because no report type is "a dry spring" and
+   * pre-picking a wrong one would file a flooding report about the absence of
+   * water.
+   *
+   * `damaged` used to be the other one that named a type, and #1140 took that
+   * away with the word: the button now reads "Problem", which covers mice and
+   * a fouled privy as well as a hole in the roof, so `shelter_repair` stopped
+   * being a safe guess. It reaches this function without a type now, like
+   * `dry`. The parameter keeps `shelter_repair` in its union because the
+   * picker still offers it and the form still takes it - what changed is that
+   * nothing pre-picks it.
+   */
+  const handleReportFromPoi = useCallback(
+    (anchor: ReportAnchor, type?: 'shelter_repair' | 'trash') => {
+      setSelectedPoiId(null)
+      const location = choiceFromAnchor(anchor)
+      setReporting(
+        type === undefined
+          ? { step: 'window', location }
+          : { step: 'form', type, location },
+      )
+    },
+    [choiceFromAnchor],
+  )
+
+  /**
+   * A thanks from a place's card (#1133).
+   *
+   * STRAIGHT TO THE FORM, not through the window, for the reason
+   * reporting/categories.ts states as `filesOnTap`: a thanks is one of the two
+   * things that must never be filed by a tap. It is a message to a person, and
+   * an empty one sent by accident is worse than none - so it gets the form,
+   * where there is something to write and a Cancel to change your mind with.
+   *
+   * The anchor is the card's own, so the club lookup has a `poiId` to work
+   * from. Same shape as `handleReportFromPoi`'s escalation arm, deliberately:
+   * this is that path with the type already picked.
+   */
+  const handleThanksFromPoi = useCallback(
+    (anchor: ReportAnchor) => {
+      setSelectedPoiId(null)
+      setReporting({ step: 'form', type: 'thanks', location: choiceFromAnchor(anchor) })
+    },
+    [choiceFromAnchor],
+  )
   const poiMileById = useMemo(
     () => new Map(searchablePois.map((poi) => [poi.id, poi.mile])),
     [searchablePois],
@@ -8332,6 +8379,60 @@ function App() {
       NOTE_SCOPED_TYPES,
     )
   }, [passedToday.ranges, searchablePois])
+
+  /**
+   * THE NAMED PLACES A REPORT CAN BE ATTACHED TO (#1563, lib/reportLocation.ts).
+   *
+   * Built only while a report surface is up - the window, the long form or
+   * the closure form - which is #1303's rule for every full pass over the
+   * 16,949 waypoints: a launch that lands on Today runs none of them, and
+   * App.loadBudget.test.tsx counts. The candidates pair search's view of a
+   * waypoint (its mile, from the index) with the row's own coordinates, so
+   * the picker offers exactly the place the map would draw.
+   *
+   * The list is measured from the report's own place when it has one, else
+   * the fix, ROUNDED to about ten metres: a jittering fix under canopy would
+   * otherwise re-sort the rows under a thumb on every GPS callback.
+   */
+  const placingReport = reporting !== null || reportingClosure !== null
+  const reportPlaceCandidates = useMemo<PlaceCandidate[]>(() => {
+    if (!placingReport) return NO_PLACE_CANDIDATES
+    return searchablePois.flatMap((poi) => {
+      const found = poiById.get(poi.id)
+      return found === undefined ? [] : [{ ...poi, lat: found.lat, lon: found.lon }]
+    })
+  }, [placingReport, searchablePois, poiById])
+  const passedTodayIds = useMemo(
+    () => new Set(passedPlacesToday.map((place) => place.id)),
+    [passedPlacesToday],
+  )
+  const reportPlace = reporting?.location ?? reportingClosure
+  const reportMeasuredFrom =
+    reportPlace !== null && reportPlace !== undefined && reportPlace.kind !== 'fix'
+      ? reportPlace
+      : currentFix
+  const reportRefLat =
+    reportMeasuredFrom === null ? null : Math.round(reportMeasuredFrom.lat * 1e4) / 1e4
+  const reportRefLon =
+    reportMeasuredFrom === null ? null : Math.round(reportMeasuredFrom.lon * 1e4) / 1e4
+  const reportNearbyPlaces = useMemo<NearbyPlace[]>(() => {
+    if (!placingReport) return NO_NEARBY_PLACES
+    const reference =
+      reportRefLat === null || reportRefLon === null
+        ? null
+        : { lat: reportRefLat, lon: reportRefLon }
+    return nearbyPlaces(reportPlaceCandidates, reference, passedTodayIds)
+  }, [placingReport, reportPlaceCandidates, reportRefLat, reportRefLon, passedTodayIds])
+  const searchReportPlaces = useCallback(
+    (query: string) => {
+      const reference =
+        reportRefLat === null || reportRefLon === null
+          ? null
+          : { lat: reportRefLat, lon: reportRefLon }
+      return placesByName(query, reportPlaceCandidates, reference)
+    },
+    [reportPlaceCandidates, reportRefLat, reportRefLon],
+  )
 
   /**
    * A tap on a passed place opens its card, on the map, framed - the exact
@@ -8777,16 +8878,24 @@ function App() {
         onClose={() => setReportingFailure(false)}
       />
     )
-  } else if (reportingClosure) {
+  } else if (reportingClosure !== null) {
     flowScreen = (
       <ClosureForm
         // The snapped mile the header is already showing, or null when there
         // is no fix or it could not be placed on the centerline. Never zero:
         // mi 0.0 is Springer Mountain, not "we do not know".
         hereMile={fix?.mile ?? null}
+        // The place the report flow left for this form at (#1563) - a
+        // shelter's card starts the closure at the shelter - and the named
+        // places the picker can fill the near end from.
+        startFrom={reportingClosure}
+        fix={currentFix}
+        places={reportNearbyPlaces}
+        onSearchPlaces={searchReportPlaces}
+        units={units}
         online={online}
         onSubmit={(submission) => void handleSubmitClosure(submission)}
-        onCancel={() => setReportingClosure(false)}
+        onCancel={() => setReportingClosure(null)}
       />
     )
   } else if (reporting !== null) {
@@ -8823,49 +8932,25 @@ function App() {
           // queue claimed to be from a thru-hiker - see lib/reporterIdentity.ts
           // for why the fallback is the weakest claim rather than that one.
           reporterType={signReportAs(preferences.reporter_type)}
-          // Anchored reports carry the PLACE (FIELD_NOTES.md step 1): the
-          // POI's own coordinates and mile, which need no GPS fix - it is the
-          // place being reported on, not the hiker's position. Un-anchored
-          // ones keep the fix: null with no fix, rather than 0,0 - a real
-          // place in the Atlantic a maintainer cannot tell from a missing
-          // location. The mile is separately unknown when the fix is off the
-          // centerline or the trail index has not been downloaded yet.
-          location={
-            // THE CROSSHAIR'S ANSWER OUTRANKS BOTH (#1439): a hiker who took
-            // "Change" and kept a point has said where this is, and neither
-            // the card it started from nor the fix underneath them is a
-            // better answer than the one they just gave.
-            reportPlacedAt !== null
-              ? {
-                  lat: reportPlacedAt.lat,
-                  lon: reportPlacedAt.lon,
-                  ...(reportPlacedAt.mile !== undefined
-                    ? { mile: reportPlacedAt.mile }
-                    : {}),
-                }
-              : reporting.anchor !== undefined
-                ? {
-                    lat: reporting.anchor.lat,
-                    lon: reporting.anchor.lon,
-                    ...(reporting.anchor.mile !== undefined
-                      ? { mile: reporting.anchor.mile }
-                      : {}),
-                  }
-                : gps.status === 'located'
-                  ? { lat: gps.at.lat, lon: gps.at.lon, mile: fix?.mile }
-                  : null
-          }
-          poiId={reporting.anchor?.poiId}
+          // Where the report is, owned by the reporting state so the picker's
+          // rows and the map's Keep change one answer (#1563). A card's
+          // waypoint needs no GPS fix - it is the place being reported on -
+          // and the fix is resolved live at Send, never frozen: null with no
+          // fix, rather than 0,0.
+          location={reporting.location}
+          fix={currentFix}
+          places={reportNearbyPlaces}
+          onSearchPlaces={searchReportPlaces}
+          knowsTrail={trailIndex !== null}
+          units={units}
+          onChooseLocation={handleChooseReportLocation}
           online={online}
           // The crosshair (#1439, D16). Offered whatever the location line
           // currently says: a mile can be the wrong mile, and a hiker who
           // walked on before filing is the case this exists for.
-          onChangeLocation={handleReportChangeLocation}
+          onPointOnMap={handleReportPointOnMap}
           onSubmit={(submission) => void handleSubmitReport(submission)}
-          onCancel={() => {
-            setReporting(null)
-            setReportPlacedAt(null)
-          }}
+          onCancel={() => setReporting(null)}
         />
       )
     }
@@ -8944,7 +9029,9 @@ function App() {
           photos={[]}
           crews={null}
           units={units}
-          onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
+          onSayThanks={() =>
+            setReporting({ step: 'form', type: 'thanks', location: AT_THE_FIX })
+          }
           onShare={() => setFinishScreen('share')}
           onKeepTheRecord={() => setFinishScreen('record')}
         />
@@ -9143,7 +9230,13 @@ function App() {
    * effect beside `handleKeepReportPoint` is the other half - this keeps the
    * render honest, that keeps the flag from outliving its form.
    */
-  const reportCrosshairOut = reportPointOnMap && reportFormOpen && activeTab === 'map'
+  // THE WINDOW TAKES THE CROSSHAIR TOO (#1563), on the same terms: only while
+  // it is actually drawn, which for the window means no full-screen flow and
+  // no hike window over it - the same guard its own mount below keeps.
+  const reportWindowOpen =
+    flowScreen === null && !hikeWindowOpen && reporting?.step === 'window'
+  const reportCrosshairOut =
+    reportPointOnMap && (reportFormOpen || reportWindowOpen) && activeTab === 'map'
   const reportFormHidesMap = reportFormOpen && !reportCrosshairOut
 
   const hikeWindow = hikeWindowOpen ? (
@@ -9454,7 +9547,9 @@ function App() {
       // is not a problem, and the window is a list of problems
       // (features/SAYING_THANKS.md). Skipping the picker is the whole point of
       // splitting it out of one.
-      onSayThanks={() => setReporting({ step: 'form', type: 'thanks' })}
+      onSayThanks={() =>
+        setReporting({ step: 'form', type: 'thanks', location: AT_THE_FIX })
+      }
       // ONLY WHAT IS STILL AHEAD (#982, the maintainer's decision of
       // 2026-08-27: "Today shouldn't have other day hikes. I think the
       // previous hikes need to live on a different screen"). Today is the day
@@ -9772,7 +9867,7 @@ function App() {
                 // Replaces More rather than covering it, for the same reason
                 // HikePicker does: it is reached from here and nowhere else,
                 // so there is nothing behind it worth keeping visible.
-                <Moderation onClose={() => setModerating(false)} />
+                <Moderation units={units} onClose={() => setModerating(false)} />
               ) : pickingHike ? (
                 // Replaces More rather than covering it. The picker is reached
                 // from here and nowhere else, so there is nothing behind it
@@ -10586,7 +10681,7 @@ function App() {
                       setPressPlate(null)
                       setReporting({
                         step: 'window',
-                        anchor: pressAnchor(pressPlate.at, trailIndex),
+                        location: pressPoint(pressPlate.at, trailIndex),
                       })
                     }}
                     onThanks={() => {
@@ -10594,7 +10689,7 @@ function App() {
                       setReporting({
                         step: 'form',
                         type: 'thanks',
-                        anchor: pressAnchor(pressPlate.at, trailIndex),
+                        location: pressPoint(pressPlate.at, trailIndex),
                       })
                     }}
                     onClose={() => setPressPlate(null)}
@@ -11037,69 +11132,37 @@ function App() {
         reporting !== null &&
         reporting.step === 'window' && (
           <ReportWindow
-            anchor={
-              {
-                ...(reporting.anchor ?? {}),
-                ...reportAnchorWords(reporting.anchor),
-              } satisfies ReportWindowAnchor
-            }
-            // Re-anchoring, from today's own walked miles (#1133). The window
-            // orders them by how far back each one is; `passedPlaces` itself
-            // keeps sorting by mile, which is what its two other readers want.
-            //
-            // Each one is resolved against `pois` HERE rather than at pick time,
-            // so the picker only ever offers a place that can become a real
-            // anchor. Nothing is dropped by that in practice and the `flatMap`
-            // is not a filter in disguise: `passedPlacesToday` comes from
-            // `searchablePois`, which is `pois.map(...)` a few thousand lines
-            // up, so every id in this list is a `pois` id by construction. The
-            // empty arm exists because that fact lives in another `useMemo` and
-            // TypeScript cannot see it - not because a place might be missing.
-            passedPlaces={passedPlacesToday.flatMap((place) => {
-              const found = poiById.get(place.id)
-              return found === undefined || place.mile === undefined
-                ? []
-                : [
-                    {
-                      id: place.id,
-                      name: place.name,
-                      mile: place.mile,
-                      lat: found.lat,
-                      lon: found.lon,
-                    },
-                  ]
-            })}
-            {...(fix?.mile !== undefined ? { fixMile: fix.mile } : {})}
+            location={reporting.location}
+            fix={currentFix}
+            // The named places worth offering, nearest first, and search by
+            // name across everything on the phone (#1563). Built only while a
+            // report surface is up - see `reportPlaceCandidates`.
+            places={reportNearbyPlaces}
+            onSearchPlaces={searchReportPlaces}
+            knowsTrail={trailIndex !== null}
             units={units}
-            onPickAnchor={(place) =>
-              setReporting({
-                step: 'window',
-                anchor: {
-                  poiId: place.id,
-                  lat: place.lat,
-                  lon: place.lon,
-                  mile: place.mile,
-                },
-              })
-            }
+            onChooseLocation={handleChooseReportLocation}
+            onPointOnMap={handleReportPointOnMap}
+            standingAside={reportCrosshairOut}
             reporterType={signReportAs(preferences.reporter_type)}
             onFile={handleFileFromWindow}
             onUndo={handleUndoFromWindow}
             // A closure leaves the report flow rather than continuing it: it is
             // a different record with a different form (#832), and it is not a
-            // `ReportTypeId` at all.
+            // `ReportTypeId` at all. It takes the place with it (#1563), so a
+            // closure opened from a shelter's card starts at the shelter.
             onReportClosure={() => {
+              setReportingClosure(reporting.location)
               setReporting(null)
-              setReportingClosure(true)
             }}
-            // And something unsafe leaves for the long form, keeping the anchor.
+            // And something unsafe leaves for the long form, keeping the place.
             // Private to moderators, never a public pin, and never filed by a
             // thumb brushing a tile.
             onReportUnsafe={() =>
               setReporting({
                 step: 'form',
                 type: 'bad_hikers',
-                ...(reporting.anchor !== undefined ? { anchor: reporting.anchor } : {}),
+                location: reporting.location,
               })
             }
             onClose={handleCloseWindow}

@@ -135,7 +135,15 @@ export const BYTE_BUDGET = 1_200_000
  *  keeps `ourhike:preferences`. Named here rather than imported because this
  *  script runs as plain node against an already-built page, with no bundler
  *  to resolve TypeScript for it. */
-const IDB = { database: 'keyval-store', store: 'keyval', key: 'ourhike:preferences' }
+/** Where the app keeps its preferences - idb-keyval's own defaults and
+ *  lib/preferences.ts's PREFERENCES_KEY. Exported for a recipe that has to
+ *  seed a preference the way `skipFirstRun` does (preview-shots/
+ *  report-window-place.mjs), so there is one copy of the three names. */
+export const IDB = {
+  database: 'keyval-store',
+  store: 'keyval',
+  key: 'ourhike:preferences',
+}
 
 export function usage() {
   return [

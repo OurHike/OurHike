@@ -31,8 +31,16 @@
 import drive from './report-window.mjs'
 
 export const small = true
+// TOUCHED BY #1563, and the claim in the caption changed with it. With no fix
+// the window opens on its location picker above the tiles, which is a taller
+// frame than the one #1480 measured: the body scrolls again at 375x667. What
+// this frame now holds to is the property that survives a scroll - the 911
+// band pinned under the header, outside the scrolling body - and not "no
+// scroll at all", which was true of the tile frame and is not true of this
+// one. e2e/reportingDoors.spec.ts measures both: the tile frame with a fix
+// (no scroll), and this one (the band whole in the viewport).
 export const caption =
-  'The same window at 375×667 — the whole of it on screen, the 911 band under the header and the unsafe row whole at the bottom, where it scrolled by 184px and buried the 911 line 170px down (#1480)'
+  'The same window at 375×667 with no fix — the picker open above the tiles makes the body scroll again on the smallest phone, and the 911 band stays pinned under the header where a scroll cannot hide it (#1480, #1563)'
 export const alt =
-  'The report window on a small phone, over a dimmed Today screen. Its dark header reads “Report a problem / What did you find?”, a full-width pale band in red type directly beneath it reads “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.”, and below that six category tiles two per row, a “The trail is closed” row and a “Something unsafe happened” row — the last of them complete, with its full description, above the window’s bottom edge and with no scrollbar anywhere.'
+  'The report window on a small phone, over a dimmed Today screen. Its dark header reads “Report a problem / What did you find?” with the place line “No location yet”, a full-width pale band in red type directly beneath it reads “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.”, and below that the location picker — a find-by-name box, a “Mark it on the map ›” row and an “Or say where in words” text box — then the top of the six category tiles, with the rest of the body cut off at the window’s bottom edge and scrollable.'
 export default drive

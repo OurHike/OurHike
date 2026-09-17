@@ -93,6 +93,27 @@ class Severity(str, enum.Enum):
     serious = "serious"
 
 
+class LocationSource(str, enum.Enum):
+    """How a report came by its `lat`/`lon` (#1563).
+
+    Three ways the client can place a report, and a moderator reads each one
+    differently: `poi` is a named waypoint the hiker chose, so the coordinates
+    are the waypoint's and the report is ABOUT that place; `gps` is the phone's
+    own fix at the moment of filing, with `location_accuracy_m` and
+    `location_fix_age_s` saying how much to trust it; `map` is a spot the hiker
+    marked by hand on the map, which is as exact as their finger at that zoom
+    and carries no radius at all.
+
+    Null on every row filed before this existed and on a report with no
+    coordinates. A row with coordinates and no source is a row from an older
+    client, not a fourth kind of placement.
+    """
+
+    poi = "poi"
+    gps = "gps"
+    map = "map"
+
+
 class Report(Base):
     __tablename__ = "reports"
 
@@ -143,6 +164,44 @@ class Report(Base):
     # the pipeline share, not a table here. That is why carrying it costs a
     # column rather than a function.
     mile = Column(Float, nullable=True)
+
+    # HOW THE COORDINATES WERE ARRIVED AT, AND HOW FAR TO TRUST THEM (#1563).
+    #
+    # `lat`/`lon` alone cannot say whether they are a waypoint's surveyed
+    # position, a GPS fix, or a thumb on a map - and a moderator weighing a
+    # blowdown at 35.6123, -83.4987 needs to know which. So the source travels
+    # with the coordinates, and for a fix so do the two things that bound it:
+    #
+    # `location_accuracy_m` - the radius the platform stated for the fix, in
+    # metres, as `position.coords.accuracy` gives it. The W3C Geolocation
+    # definition is a 95% confidence radius; the client records only the web
+    # watch here (lib/useGeolocation.ts), never the native plugin's 68% figure
+    # that lib/gpsTrace.ts keeps apart for exactly this reason, so one column
+    # is honest. Metres rather than feet because that is the unit the platform
+    # hands over - CONTRIBUTING.md's store-canonical rule.
+    #
+    # `location_fix_age_s` - how many seconds old the fix was when the report
+    # was filed with it. The client's watch deliberately keeps the last fix
+    # through a pocketed pause (#313), so a report filed the moment the phone
+    # comes out of a pack can carry a fix from a mile back; a radius of 5 m on
+    # a fix from forty minutes ago is not 5 m of anything. The age is what
+    # lets a reader tell those two apart.
+    #
+    # **All three are client claims, stored as sent.** Nothing server-side can
+    # check a radius against a fix it never saw, and the same trust posture as
+    # `mile` and `authored_at` applies: bounded at the one end that can be
+    # bounded (a negative radius or age is refused at the wire, see
+    # ReportCreate), and never re-derived.
+    #
+    # **Nullable, and null is the ordinary state rather than a gap.** Every
+    # row filed before this existed has none; a report anchored to a waypoint
+    # or marked on the map has a source and no radius, because there was no
+    # fix to state one for. Zero is not the default for the reason `mile`
+    # gives: a 0 m radius is a claim of perfect knowledge, which no phone has
+    # ever made, and an age of 0 s says the fix arrived as the tap landed.
+    location_source = Column(Enum(LocationSource, native_enum=False, length=20), nullable=True)
+    location_accuracy_m = Column(Float, nullable=True)
+    location_fix_age_s = Column(Integer, nullable=True)
 
     reporter_type = Column(Enum(ReporterType, native_enum=False, length=20), nullable=False)
 

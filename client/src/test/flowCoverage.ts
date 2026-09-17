@@ -361,6 +361,12 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
+  // The picker is driven where the window is: the "no fix" state opens it
+  // by itself, and the spec files a report by the words it collects (#1563).
+  'reporting/LocationPicker.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
 
   // ---- F12 the map --------------------------------------------------------

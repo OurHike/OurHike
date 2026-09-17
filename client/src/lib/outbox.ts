@@ -92,6 +92,39 @@ export interface ReportDraft {
    * `mile` stay absent beside it and a moderator places it.
    */
   place_words?: string
+  /**
+   * How the report came by its coordinates (#1563): a named waypoint the
+   * hiker chose, the phone's own fix, or a spot marked by hand on the map.
+   * lib/reportLocation.ts is the one writer, so the three surfaces that let
+   * somebody place a report cannot come to spell this differently.
+   *
+   * The wire's vocabulary is the backend's `LocationSource`
+   * (backend/app/models/report.py), and
+   * backend/tests/test_client_report_contract.py holds the two together.
+   * Absent on a report with no coordinates, and on every report filed before
+   * this existed.
+   */
+  location_source?: 'poi' | 'gps' | 'map'
+  /**
+   * The radius the platform stated for the fix, in metres, exactly as
+   * `position.coords.accuracy` gave it - a 95% radius under the W3C
+   * definition. Sent only with a `gps` source: the coordinates of a waypoint
+   * or of a marked spot have no fix to state one for. Metres rather than feet
+   * because that is the unit the platform hands over; the display converts.
+   *
+   * NO APOSTROPHES IN THIS COMMENT OR THE NEXT, on purpose: the contract test
+   * reads the literals between one field and the next as the union of the
+   * field above, and a possessive would read as a quoted arm.
+   */
+  location_accuracy_m?: number
+  /**
+   * How many seconds old the fix was when the report took it. The watch keeps
+   * the last fix through a pocketed pause (lib/useGeolocation.ts, #313), so a
+   * report filed as the phone comes out of a pack can carry a fix from a mile
+   * back - and a radius of five metres on a fix that old is not five metres of
+   * anything. Floored at zero on the phone. Sent only with a `gps` source.
+   */
+  location_fix_age_s?: number
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server
    *  resolves it from location and authored date instead. */

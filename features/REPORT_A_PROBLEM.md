@@ -34,6 +34,25 @@ from the map — and:
    resolves to somewhere real and wrong, which is worse than no mile at all.
    Off the corridor the report keeps its coordinates and drops the mile, which
    is what the data model below has always allowed ("Null off-trail").
+
+   **Revised 2026-09-17 (#1563): the place is changeable to anything, and a
+   report with no place does not file.** `Change` used to list the places
+   today's walked miles covered and was withheld without walked miles and a
+   fix, so an early start, a day hiker, or a phone under canopy got no control
+   at all - and a tap with no fix filed a blowdown with no location of any
+   kind. Every report surface now shares one control
+   (`client/src/reporting/LocationPicker.tsx`, vocabulary in
+   `client/src/lib/reportLocation.ts`) offering, in this order of preference:
+   a **named place** nearby or found by name (the report is *about* that
+   waypoint, and carries its id and its coordinates); **where you are**, with
+   the fix's radius and age printed beside it so a ±800 ft fix from twelve
+   minutes ago reads as exactly that; **a spot marked on the map**, through
+   the same crosshair the long form has had since #1439; and, only when none
+   of those can place the report, the hiker's **own words**, sent as prose and
+   never geocoded. A tap on a type with none of the four is refused - the
+   picker opens and says why - and files once it has an answer. That is the
+   one exception to "one tap files": a report a moderator cannot place is a
+   report they cannot act on. A thanks is exempt; it is not a problem.
 3. **One tap on a type files the report**, into the outbox, at once. There is
    no submit button and nothing to abandon.
 4. **An 8-second `Undo` stands where the Cancel used to.** The report is held
@@ -127,8 +146,21 @@ Report
   type: blowdown | trash | bad_hikers | flooding | shelter_repair | animals
       | invasive_species | thanks
   location reference:
-    - existing POI id, OR
+    - existing POI id (sent WITH its coordinates, so a phone whose data
+      release has since dropped the waypoint still has a pin to draw), OR
     - a dropped/GPS pin (lat/lon)
+  location_source: poi | gps | map (2026-09-17, #1563 - how the coordinates
+        were arrived at: a named waypoint the hiker chose, the phone's own
+        fix, or a spot marked by hand. Null on rows filed before it existed
+        and on a report with no coordinates)
+  location_accuracy_m (gps only - the radius the platform stated for the
+        fix, in metres, a 95% radius under the W3C definition; the client
+        records the web watch only, never the native plugin's 68% figure)
+  location_fix_age_s (gps only - how many seconds old the fix was when the
+        report took it. The watch keeps the last fix through a pocketed pause
+        (#313), so a report filed as the phone comes out of a pack can carry
+        a fix from a mile back; a 5 m radius on a fix that old is not 5 m of
+        anything, and the age is what lets a reader tell)
   mile (optional - where along the centerline, as the reporting phone
         measured it; the backend holds no trail geometry to derive one.
         Null off-trail, and for a phone with no trail index yet)

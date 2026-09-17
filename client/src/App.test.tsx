@@ -870,6 +870,10 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // No GPS in jsdom, so the window opens on its picker and a tap is refused
+    // until the report has a place (#1563) - words, when there is nothing
+    // else. The same words a hiker with no fix would type.
+    await user.type(await screen.findByTestId('location-words'), 'by the gap')
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     // The tap files (#1133); this closes the window, which is when the
     // account question is asked rather than during the receipt's undo.
@@ -896,6 +900,10 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+    // No GPS in jsdom, so the window opens on its picker and a tap is refused
+    // until the report has a place (#1563) - words, when there is nothing
+    // else. The same words a hiker with no fix would type.
+    await user.type(await screen.findByTestId('location-words'), 'by the gap')
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     // The tap files (#1133); this closes the window, which is when the
     // account question is asked rather than during the receipt's undo.
@@ -903,11 +911,13 @@ describe('App shell', () => {
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{
-        payload: { lat?: number; lon?: number }
+        payload: { lat?: number; lon?: number; place_words?: string }
       }>
       expect(queued).toHaveLength(1)
       expect(queued[0].payload.lat).toBeUndefined()
       expect(queued[0].payload.lon).toBeUndefined()
+      // The words travel instead, as prose (#1563) - never a pin.
+      expect(queued[0].payload.place_words).toBe('by the gap')
     })
   })
 

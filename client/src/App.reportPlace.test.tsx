@@ -9,8 +9,15 @@
 // same call #1329 made for the hike set-up window, which is holding a draft
 // for the same reason.
 //
-// The component's own half - the three location states, the Change control,
-// "Where was this?" and what it sends - is screens/ReportForm.test.tsx.
+// The component's own half - the location line, the picker behind Change,
+// the words field and what it sends - is screens/ReportForm.test.tsx.
+//
+// SINCE #1563 "Change" OPENS THE PICKER, not the map: the map is one row in
+// it ("Mark it on the map"), beside a named place and where you are. This
+// harness has no GPS fix, so every form here opens with the picker already
+// expanded - nothing has placed the report - and the drives below tap the
+// map row directly. The window takes the crosshair too, and the last block
+// here is that.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -61,7 +68,10 @@ describe('the report form keeps what is in it while the crosshair is out', () =>
     const note = screen.getByRole('textbox', { name: /note/i })
     await user.type(note, 'Followed for two miles north of the gap.')
 
-    await user.click(screen.getByRole('button', { name: /change/i }))
+    // No fix in this harness, so the picker is already open under the
+    // location line (the button beside it reads Done, not Change) and the map
+    // row is right there.
+    await user.click(await screen.findByTestId('location-map'))
 
     // The form is still mounted - stood aside, not unmounted - so the words
     // are still in it. Hidden by `visibility`, which jsdom reports as
@@ -88,7 +98,10 @@ describe('the report form keeps what is in it while the crosshair is out', () =>
     render(<App />)
 
     await openTheLongForm(user)
-    await user.click(screen.getByRole('button', { name: /change/i }))
+    // No fix in this harness, so the picker is already open under the
+    // location line (the button beside it reads Done, not Change) and the map
+    // row is right there.
+    await user.click(await screen.findByTestId('location-map'))
 
     const bar = await screen.findByRole('dialog', { name: 'Say where this was' })
     expect(bar).toHaveTextContent('Tap the map where this was.')
@@ -119,7 +132,10 @@ describe('leaving the crosshair by a tab', () => {
       screen.getByRole('textbox', { name: /note/i }),
       'Two trunks across the tread.',
     )
-    await user.click(screen.getByRole('button', { name: /change/i }))
+    // No fix in this harness, so the picker is already open under the
+    // location line (the button beside it reads Done, not Change) and the map
+    // row is right there.
+    await user.click(await screen.findByTestId('location-map'))
     await screen.findByRole('dialog', { name: 'Say where this was' })
 
     await user.click(screen.getByRole('tab', { name: 'Today' }))
@@ -143,7 +159,10 @@ describe('leaving the crosshair by a tab', () => {
     render(<App />)
 
     await openTheLongForm(user)
-    await user.click(screen.getByRole('button', { name: /change/i }))
+    // No fix in this harness, so the picker is already open under the
+    // location line (the button beside it reads Done, not Change) and the map
+    // row is right there.
+    await user.click(await screen.findByTestId('location-map'))
     await screen.findByRole('dialog', { name: 'Say where this was' })
     await user.click(screen.getByRole('tab', { name: 'Today' }))
     await user.click(screen.getByRole('button', { name: 'Cancel' }))
@@ -161,5 +180,43 @@ describe('leaving the crosshair by a tab', () => {
     expect(
       screen.getByRole('heading', { name: 'Something unsafe happened' }),
     ).toBeInTheDocument()
+  })
+})
+
+// THE WINDOW TAKES THE CROSSHAIR TOO (#1563). The six-tile window used to
+// offer only the places walked past today; its picker now has the same map
+// row the long form's has, and the same property has to hold: standing aside
+// for the map must not cost the hiker the window's state.
+describe('the report window stands aside for the map and comes back', () => {
+  it('hides the window while the crosshair is out, and brings it back with the same place', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    // No fix in this harness, so the picker is open by itself and the map
+    // row is the way out of "No location yet".
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('button', { name: /^Volunteer & report/ }))
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    await screen.findByRole('dialog', { name: 'What did you find?' })
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
+
+    await user.click(screen.getByTestId('location-map'))
+
+    // The bar is up over the map, and the window is stood aside - hidden and
+    // inert - rather than unmounted.
+    expect(
+      await screen.findByRole('dialog', { name: 'Say where this was' }),
+    ).toBeInTheDocument()
+    const scrim = screen.getByTestId('report-window-scrim')
+    expect(scrim).toHaveClass('report-window__scrim--stood-aside')
+    expect(scrim.hasAttribute('inert')).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByTestId('report-window-scrim')).not.toHaveClass(
+      'report-window__scrim--stood-aside',
+    )
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
+    expect(screen.queryByRole('dialog', { name: 'Say where this was' })).toBeNull()
   })
 })

@@ -93,11 +93,15 @@ import {
   type VolunteerHoursQueueEntry,
 } from '../lib/api'
 import { observationLabel } from '../lib/fieldNotes'
+import { feetFromMetres, formatShortDistance, type UnitSystem } from '../lib/units'
 import { ACTIVITY_LABELS } from '../lib/volunteerHours'
 import './moderation.css'
 
 export interface ModerationProps {
   onClose: () => void
+  /** The moderator's unit system, for the radius a GPS-placed report carries
+   *  (lib/units.ts) - the one length this screen prints. */
+  units: UnitSystem
 }
 
 /** How long ago, in the coarsest unit that is still useful.
@@ -113,9 +117,49 @@ export function ageOf(iso: string, now: Date = new Date()): string {
   return `${Math.floor(minutes / (60 * 24))}d`
 }
 
-/** Where a report happened, in the words the form used - see ReportForm's
- *  `describeLocation` for why 0,0 is never a stand-in for "unknown". */
-function placeOf(report: QueuedReport): string {
+/** A fix's age as a moderator reads it beside the radius: "40 s", "12 min",
+ *  "3 h" - the coarsest unit that is still useful, like `ageOf`. */
+function fixAgeOf(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min`
+  return `${Math.floor(seconds / 3600)} h`
+}
+
+/**
+ * How a report came by its coordinates (#1563), as a suffix to the place.
+ *
+ * THE PROVENANCE REACHES THE PERSON READING IT, which is the whole point of
+ * carrying it: a blowdown at 35.6123, -83.4987 is a different claim when the
+ * phone said ±16 ft a moment earlier than when it said ±800 ft forty minutes
+ * before, or when a thumb put it there on a map. Nothing for a row filed by
+ * an older client, which said nothing - an absent claim is not "GPS".
+ */
+function provenanceOf(report: QueuedReport, units: UnitSystem): string {
+  switch (report.location_source) {
+    case 'gps': {
+      const radius =
+        report.location_accuracy_m === null || report.location_accuracy_m === undefined
+          ? null
+          : `±${formatShortDistance(feetFromMetres(report.location_accuracy_m), units)}`
+      const age =
+        report.location_fix_age_s === null || report.location_fix_age_s === undefined
+          ? null
+          : `fix ${fixAgeOf(report.location_fix_age_s)} old`
+      const parts = [radius, age].filter((part): part is string => part !== null)
+      return parts.length === 0 ? ' · GPS' : ` · GPS ${parts.join(', ')}`
+    }
+    case 'map':
+      return ' · marked on the map'
+    case 'poi':
+      return ' · a named place'
+    default:
+      return ''
+  }
+}
+
+/** Where a report happened, in the words the form used - see
+ *  lib/reportLocation.ts for why 0,0 is never a stand-in for "unknown". */
+function placeOf(report: QueuedReport, units: UnitSystem): string {
   if (report.poi_id !== null) return `at ${report.poi_id}`
   if (report.lat === null || report.lon === null) {
     // THE HIKER'S OWN WORDS, when they are the only thing that can say where
@@ -127,7 +171,7 @@ function placeOf(report: QueuedReport): string {
     const words = report.place_words ?? null
     return words === null || words.trim() === '' ? 'no location' : `“${words}”`
   }
-  return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}`
+  return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}${provenanceOf(report, units)}`
 }
 
 /** Where a field note was written, in the same order of preference the
@@ -376,7 +420,7 @@ function NoteQueuePhoto({
   )
 }
 
-export function Moderation({ onClose }: ModerationProps) {
+export function Moderation({ onClose, units }: ModerationProps) {
   const [queue, setQueue] = useState<ModerationQueue | null>(null)
   // Three states, not two. An empty queue and a queue that could not be read
   // draw the same screen and mean opposite things - and here the wrong one
@@ -481,7 +525,7 @@ export function Moderation({ onClose }: ModerationProps) {
       <p className="moderation__headline">
         <span className="moderation__type">{TYPE_WORDS[report.type] ?? report.type}</span>
         <span className="moderation__meta">
-          {`${report.reporter_type} · ${placeOf(report)} · ${ageOf(report.timestamp)}`}
+          {`${report.reporter_type} · ${placeOf(report, units)} · ${ageOf(report.timestamp)}`}
         </span>
       </p>
       {report.note !== null && <p className="moderation__note">{report.note}</p>}

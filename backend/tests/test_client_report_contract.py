@@ -50,7 +50,7 @@ import pytest
 
 from app.core.photos import MAX_PHOTO_BYTES
 from app.models.app_failure import Harm
-from app.models.report import ReporterType, ReportStatus, ReportType
+from app.models.report import LocationSource, ReporterType, ReportStatus, ReportType
 from app.schemas.app_failure import (
     SHORT_FIELD_MAX_CHARS,
     WHAT_HAPPENED_MAX_CHARS,
@@ -233,6 +233,45 @@ def test_the_client_refuses_a_photo_at_the_same_size_the_server_does():
         f"the photo cap: client {client:,} bytes, server {MAX_PHOTO_BYTES:,}. "
         "The client's comment says it is restating the server's limit so it "
         "can refuse locally with no signal."
+    )
+
+
+def test_every_field_the_client_queues_on_a_report_is_one_the_server_accepts():
+    """Every field on `ReportDraft` names one on `ReportCreate` (#1563).
+
+    The same guard `AppFailureDraft` has below, now that the report draft has
+    grown fields a screen never shows. Pydantic ignores a field the schema has
+    no home for rather than refusing the request, so a field only the client
+    knows would arrive, be dropped, and leave a row that looks complete - which
+    for the fix's radius means a moderator reading a ±800 m fix as a good one.
+    """
+    body = re.search(r"export interface ReportDraft \{\n(.*?)\n\}", _read(OUTBOX), re.DOTALL)
+    assert body is not None, "Could not find `export interface ReportDraft { ... }`"
+
+    client_fields = set(re.findall(r"^  (\w+)\??:", body.group(1), re.MULTILINE))
+
+    assert client_fields <= set(ReportCreate.model_fields), (
+        "client/src/lib/outbox.ts queues a field backend/app/schemas/report.py "
+        "does not accept, and pydantic drops it silently: "
+        f"{sorted(client_fields - set(ReportCreate.model_fields))}"
+    )
+
+
+def test_both_halves_spell_the_location_sources_the_same_way():
+    """`poi`, `gps`, `map` - written in `ReportDraft` and in `LocationSource`.
+
+    Set equality, both directions. A source only the client sends is a 422 the
+    outbox marks failed and stops retrying, on every report placed that way; a
+    source only the server knows is a provenance no phone can ever state.
+    """
+    client = _interface_field_union(_read(OUTBOX), "ReportDraft", "location_source")
+    server = {member.value for member in LocationSource}
+
+    assert client == server, (
+        "client/src/lib/outbox.ts and app/models/report.py disagree about "
+        "where a report's coordinates can come from.\n"
+        f"  only in the client: {sorted(client - server)}\n"
+        f"  only in the server: {sorted(server - client)}"
     )
 
 

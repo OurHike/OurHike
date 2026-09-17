@@ -29,10 +29,16 @@
 // No trail data needed. No account - the sign-in gate is at SEND, not here,
 // which is itself the decision frame 9e records.
 
+// TOUCHED BY #1563: the location line and the "Where was this?" field are the
+// shared picker's now (reporting/LocationPicker.tsx). With no fix the line
+// reads "No location yet" with Done beside it, because the picker is open
+// under it - a named place to find by name, the map row, and the words field
+// - and Send is refused until one of them has placed the report.
+
 export const caption =
-  'The report form — a tile per photo, and a location line you can correct (#1439)'
+  'The report form — a tile per photo, and a place you can correct or give in words through the same picker the window uses (#1439, #1563)'
 export const alt =
-  'The report form headed “Something unsafe happened”: a Note textarea, then a “Photos” field showing a single dashed square tile with a plus and “Add a photo”, then a row reading “No GPS fix — this report will have no location” with a “Change ›” control beside it, then a “Where was this?” field with the hint “A landmark, a road, a shelter you passed — however you would say it to somebody.”, and “Save to outbox” and “Cancel” at the foot.'
+  'The report form headed “Something unsafe happened”: a Note textarea, then a “Photos” field showing a single dashed square tile with a plus and “Add a photo”, then a row reading “No location yet” with a “Done” control beside it and, under it, the location picker — a “Find a place by name” box, a “Mark it on the map ›” row, and “Or say where in words” over a text box with the hint “A landmark, a road, a shelter you passed — however you would say it to somebody. It travels as your words; nobody turns it into a pin.” — and “Save to outbox” and “Cancel” at the foot.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Today' }).click()

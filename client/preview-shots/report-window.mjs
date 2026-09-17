@@ -35,20 +35,38 @@
 //     room from, and it rendered its description 15 px outside its own
 //     border - visible in the photograph that opened #1480.
 //
+// WHAT #1563 CHANGED IN THIS FRAME, which is why the recipe was touched: the
+// camera has no GPS fix, so this is the "No location yet" state, and the
+// window now opens with its LOCATION PICKER above the tiles rather than a
+// grid that would file a blowdown nobody could place. What to look at:
+//
+//   - the header's place line reads "No location yet" with a Done control
+//     beside it (the picker is open), where it used to read "here";
+//   - the picker itself: "A named place" with a find-by-name box, the
+//     "Mark it on the map ›" row, and "Or say where in words" with a
+//     textarea and the line "It travels as your words; nobody turns it into
+//     a pin." There is no "Where you are" row, because there is no fix - a
+//     row that cannot do anything is not drawn;
+//   - the 911 band is still directly under the header, above all of that.
+//     The body scrolls again in this state on a small phone (see
+//     report-window-small.mjs), and the band is pinned outside the scroll,
+//     which is the property #1480 fixed by position rather than arithmetic.
+//
 // THIS ONE NEEDS NO TRAIL DATA, which is worth saying because the other
 // recipes in this directory spend most of their comments on it. The window
 // opens from Today's own button and renders entirely from the app's own
-// vocabulary, so the frame is the same whether or not the bucket answered.
-// There is no second honest frame here and no branch in the drive.
+// vocabulary, so the frame is the same whether or not the bucket answered -
+// with one honest difference: with the release's waypoints on the phone the
+// find-by-name box has something to find, and without them it says so.
 //
 // Nobody's data is in it: no account, no reports seeded, no location fix, and
 // the report window itself is a list of categories rather than of anything
 // anyone has filed.
 
 export const caption =
-  'Report a problem — the 911 line pinned under the header, and a window that no longer scrolls (#1480). It is still a window over Today rather than a page instead of it (#1133).'
+  'Report a problem with no GPS fix — the window opens on its location picker (#1563): a named place, the map, or your own words, above the tiles that will not file until one is given. The 911 line stays pinned under the header (#1480).'
 export const alt =
-  'A centred dialog over a dimmed Today screen, its header on dark pine reading “Report a problem / What did you find?” and, immediately under it, a full-width pale band in red type reading “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.” Below the band, six left-aligned category tiles two per row, each with a line icon beside its label and a description underneath, then two full-width rows — “The trail is closed” and “Something unsafe happened” — both showing their full two-line descriptions inside their own borders. The whole window is on screen with nothing cut off and no scrollbar. The tab bar is still visible at the foot of the screen behind the scrim.'
+  'A centred dialog over a dimmed Today screen, its header on dark pine reading “Report a problem / What did you find?” with the place line “No location yet” and a “Done” control, and immediately under it a full-width pale band in red type reading “Call 911 if you are in danger now. This reaches volunteers, sometimes days later.” Below the band, a sunken location picker: a small heading “A named place” over a “Find a place by name” box, a “Mark it on the map ›” row, and “Or say where in words” over an empty text box with the hint “A landmark, a road, a shelter you passed — however you would say it to somebody. It travels as your words; nobody turns it into a pin.” Below the picker, six left-aligned category tiles two per row, then the “The trail is closed” and “Something unsafe happened” rows. The tab bar is still visible at the foot of the screen behind the scrim.'
 
 export default async function drive(page) {
   // Today is where the app opens (#1054), and where the report entry now
@@ -81,4 +99,7 @@ export default async function drive(page) {
   // "the whole window is up" actually means here - and it is the element this
   // frame is for a reviewer to look at.
   await page.getByRole('button', { name: /^Something unsafe happened/ }).waitFor()
+  // And the picker, which is the thing this frame is for since #1563: open
+  // by itself because nothing has placed the report.
+  await page.getByTestId('location-picker').waitFor()
 }

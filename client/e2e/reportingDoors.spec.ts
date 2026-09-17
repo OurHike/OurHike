@@ -36,6 +36,7 @@ import { test, expect, type Page } from '@playwright/test'
 import {
   seedPreferences,
   seedHikerMode,
+  seedFixAtMile,
   bootFreshPage,
   type HikerMode,
 } from './support/seed'
@@ -43,10 +44,22 @@ import { seedDayHikes } from '../preview-shots/fixtures/dayHike.mjs'
 
 /** More → "Volunteer & report", which is where every reporting door lives.
  *  The row, not the page bar under it — the same narrowing more.spec.ts
- *  makes, for the same collisions. */
-async function openContribute(page: Page, mode: HikerMode = 'day'): Promise<void> {
+ *  makes, for the same collisions.
+ *
+ *  `fix` seeds a real GPS position through Playwright's own geolocation
+ *  before the app boots (#1563). WITHOUT ONE THE WINDOW OPENS ON ITS PICKER
+ *  and a tile refuses to file until the report has a place, which is the
+ *  state one spec below is about and the state every other spec here must
+ *  not be in by accident: the "one tap files" claim is a claim about a phone
+ *  that knows where it is. */
+async function openContribute(
+  page: Page,
+  mode: HikerMode = 'day',
+  { fix = false }: { fix?: boolean } = {},
+): Promise<void> {
   await seedPreferences(page)
   await seedHikerMode(page, mode)
+  if (fix) await seedFixAtMile(page, 5)
   await page.goto('/')
   await page.getByRole('tab', { name: 'More' }).click()
   await page
@@ -122,7 +135,13 @@ test.describe('the reporting doors', () => {
     // window was 184 px over rather than 53. Set here rather than left to the
     // project's viewport, because the `phone` project is 390x844 and the
     // claim that matters is the one made on the smaller screen.
-    await openContribute(page)
+    //
+    // WITH A FIX, since #1563: this measures the TILE frame, and without a
+    // fix the window opens on its location picker above the tiles, which is
+    // a taller frame by design. The picker's own frame is measured in the
+    // no-fix spec below - and what it holds to is the one thing that must
+    // survive any scroll, the 911 line, not "no scroll at all".
+    await openContribute(page, 'day', { fix: true })
 
     for (const size of [
       { width: 390, height: 844 },
@@ -203,8 +222,12 @@ test.describe('the reporting doors', () => {
     // asserted here as a control that exists, is labelled with its remaining
     // time, and WORKS — a countdown that ran out silently on a tap nobody
     // meant would put a false report in a club's queue.
-    await openContribute(page)
+    // A phone that knows where it is (#1563): the tap has a place to file
+    // at, so it files. With no trail data on this phone the fix has no mile,
+    // and the header says "Where you are" rather than inventing one.
+    await openContribute(page, 'day', { fix: true })
     const window_ = await openReportWindow(page)
+    await expect(window_.getByTestId('report-anchor')).toContainText('Where you are')
 
     await window_.getByRole('button', { name: /^Blow down/ }).click()
 
@@ -231,6 +254,50 @@ test.describe('the reporting doors', () => {
     await expect(window_.getByText('Report · filed')).toHaveCount(0)
     await expect(window_.getByText('Report a problem')).toBeVisible()
     await expect(window_.getByRole('button', { name: /^Blow down/ })).toBeVisible()
+  })
+
+  test('states: with no fix, a kind does not file until the report has a place - and the words file it', async ({
+    page,
+  }) => {
+    // THE GAP #1563 CLOSED. A one-tap report from a phone with no fix used to
+    // file with no location of any kind - a blowdown a moderator reads as
+    // "no location" and cannot act on. The window now opens on its location
+    // picker (reporting/LocationPicker.tsx), the tile refuses until the
+    // report has a place, and the hiker's own words are the last resort:
+    // sent as prose, never turned into a pin.
+    //
+    // Measured on the small phone, because the picker makes this frame
+    // taller and the one thing that must survive that is the 911 line.
+    await page.setViewportSize({ width: 375, height: 667 })
+    await openContribute(page)
+    const window_ = await openReportWindow(page)
+
+    await expect(window_.getByTestId('report-anchor')).toContainText('No location yet')
+    const picker = window_.getByTestId('location-picker')
+    await expect(picker).toBeVisible()
+    // The map row is offered - the shell always has a map - and the words
+    // field, because nothing else can place this report.
+    await expect(picker.getByTestId('location-map')).toBeVisible()
+    await expect(picker.getByTestId('location-words')).toBeVisible()
+    // No fix, no "where you are": a row that cannot do anything is not drawn.
+    await expect(picker.getByTestId('location-fix')).toHaveCount(0)
+    // The 911 line is pinned outside the body, so the taller frame does not
+    // push it below the fold.
+    await expect(window_.getByRole('note')).toBeInViewport({ ratio: 1 })
+
+    await window_.getByRole('button', { name: /^Blow down/ }).click()
+
+    // Refused, and said so. Nothing filed: the eyebrow still reads the
+    // before-state and there is no receipt to undo.
+    await expect(window_.getByRole('alert')).toContainText('Say where this is first')
+    await expect(window_.getByText('Report · filed')).toHaveCount(0)
+    await expect(window_.getByRole('button', { name: /^Undo/ })).toHaveCount(0)
+
+    await picker.getByTestId('location-words').fill('The ford below the gap')
+    await window_.getByRole('button', { name: /^Blow down/ }).click()
+
+    await expect(window_.getByText('Report · filed')).toBeVisible()
+    await expect(window_.getByText(/Filed — blow down where you described/)).toBeVisible()
   })
 
   test('entrance: the closure door opens the closure form, which is a different form', async ({
@@ -357,12 +424,17 @@ test.describe('the form for the kinds you have to write', () => {
 
     // THE TWO PROVENANCE LINES, both of which are about not overclaiming.
     //
-    // With no fix the form says the report will carry no location — it does
-    // not quietly send 0,0, which the submit handler's own comment calls "a
-    // confident, wrong place in the Atlantic" rather than a missing one.
-    await expect(
-      page.getByText(/No GPS fix — this report will have no location/),
-    ).toBeVisible()
+    // With no fix the form says the report has no place yet — it does not
+    // quietly send 0,0, which lib/reportLocation.ts calls "a confident,
+    // wrong place in the Atlantic" rather than a missing one. Since #1563 the
+    // line is the shared picker's, open under it because nothing has placed
+    // the report: a named place to find, the map, and the words a thanks may
+    // leave empty (a thanks is not a problem, and files without a place).
+    await expect(page.getByTestId('report-form-location')).toContainText(
+      'No location yet',
+    )
+    await expect(page.getByTestId('location-picker')).toBeVisible()
+    await expect(page.getByTestId('location-words')).toBeVisible()
 
     // And the signature falls back to the WEAKEST claim rather than the
     // strongest: "day", not "thru" (lib/reporterIdentity.ts). A form that

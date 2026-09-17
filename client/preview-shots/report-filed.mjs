@@ -49,15 +49,26 @@
 // finished until a recipe reaches the screen it changed; this is that recipe,
 // and this paragraph is what re-points the camera at it.
 
+// AND SINCE #1563 THE TAP NEEDS A PLACE. The camera has no fix, so the window
+// opens on its picker and a bare tap on Blow down would be refused - the state
+// report-window.mjs photographs. This drive gives the report the last-resort
+// place, words, before the tap, which is what a hiker with no fix does; the
+// receipt therefore reads "where you described" rather than "here", and that
+// wording is the visible trace of the change in this frame.
+
 export const caption =
-  'One tap files it — and the Undo that makes that safe to do (#1133)'
+  'One tap files it — and the Undo that makes that safe to do (#1133). With no fix the tap needs a place first, here the hiker’s own words (#1563).'
 export const alt =
-  'The report window after tapping Blow down: a green-tinted receipt reading “Filed — blow down at here” over “It waits in your outbox and sends itself”, with an “Undo · 7s” button counting down beside it; below a rule, an optional note field labelled “Add detail — optional”, a filled “Done” button and an outlined “Note something else”. No Cancel.'
+  'The report window after tapping Blow down: a green-tinted receipt reading “Filed — blow down where you described” over “It waits in your outbox and sends itself”, with an “Undo · 7s” button counting down beside it; below a rule, an optional note field labelled “Add detail — optional”, a filled “Done” button and an outlined “Note something else”. No Cancel.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Today' }).click()
   await page.getByRole('button', { name: 'Report a problem' }).click()
   await page.getByRole('dialog', { name: 'What did you find?' }).waitFor()
+
+  // No fix, so the picker is open and the tile would refuse: the words are
+  // the place (#1563). Fixture-shaped prose, nobody's actual report.
+  await page.getByTestId('location-words').fill('The ford below the gap')
 
   // A blow-down, because it is the plainest of the six and the one the
   // receipt's own copy uses as its example.

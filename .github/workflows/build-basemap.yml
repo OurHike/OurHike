@@ -267,7 +267,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           df -h /
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: basemap-archives
           path: |
@@ -281,7 +281,7 @@ jobs:
       # it ships and not the source build beside it. The coverage cells and
       # their manifest ride here too - publish.py's collect_artifacts reads
       # at_basemap_cells_manifest.json out of PROCESSED_DIR (#1175).
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: basemap-package
           path: |

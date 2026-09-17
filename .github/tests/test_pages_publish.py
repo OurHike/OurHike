@@ -503,6 +503,11 @@ class TestTheDeployWorkflows:
         assemble = next(step for step in steps if step.get("name") == "Assemble the preview")
         assert "_site/_redirects" in assemble["run"], "a preview needs the app's deep links to resolve"
         assert "/app/index.html  200" in assemble["run"]
+        # The one that actually fires. Pages resolves a not-found path against
+        # its own fallback before reading `_redirects` - measured on run
+        # 8d649163, where the rule was uploaded and did nothing - and a
+        # `404.html` is what displaces that fallback.
+        assert "cp _site/app/index.html _site/404.html" in assemble["run"]
         # And production keeps its own answer, whatever that turns out to be.
         assert "_redirects" not in (WORKFLOW_DIR / "pages.yml").read_text(encoding="utf-8")
 

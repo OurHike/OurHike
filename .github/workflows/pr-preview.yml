@@ -588,6 +588,26 @@ jobs:
           # it is a change to how hikers are served - so it is the
           # maintainer's, not this workflow's.
           printf '/app/*  /app/index.html  200\n' > _site/_redirects
+          # AND THE FALLBACK PAGES ACTUALLY HONOURS, because `_redirects`
+          # alone did not. Measured on this workflow's own first run
+          # (8d649163): wrangler logged `Uploading _redirects`, and
+          # /app/org/<slug>/setup still answered 200 with the SITE's landing
+          # page. Pages resolves a not-found path against its own fallback
+          # before it consults `_redirects`, so the rule never ran - and that
+          # same fallback is the whole reason console deep links appeared to
+          # work before this change, when the app WAS the root index.html.
+          #
+          # A `404.html` is what displaces that fallback. It is the app's own
+          # shell, so an unmatched path boots the app and `orgRoute.ts` reads
+          # the real address off `location`. The cost is that a mistyped
+          # MARKETING path boots the app too rather than showing a not-found
+          # page; in a preview that is a trade worth making, and it is the
+          # only one of the two that a reviewer would ever hit.
+          #
+          # The rule above stays: it costs one file, it is the mechanism that
+          # SHOULD do this, and if Pages ever resolves the two in the other
+          # order this keeps working without the 404 status.
+          cp _site/app/index.html _site/404.html
           # /status/ keeps its `__DATA_BASE_URL__` placeholder here, which
           # pages.yml substitutes and this deliberately does not: the page
           # reads the placeholder and says it is not configured rather than

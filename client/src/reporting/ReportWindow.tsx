@@ -68,6 +68,16 @@
 // which name the report is signed with and whether the hiker may be
 // contacted (reporting/ReporterDetails.tsx). Asked AFTER the tap, on the
 // receipt, because under 1a nothing may stand between a hiker and the tile.
+//
+// AND THE CATEGORY IS ASKED ONCE. A tap refused for want of a place is
+// remembered (`pending`), and the moment the place arrives - a row in the
+// sheet, the words with the sheet closed, or a spot kept on the map - the
+// remembered tap files, receipt and Undo and all. The first version asked
+// for the tile again after the place, which the maintainer read as being
+// asked the category twice (2026-09-17). A tap nobody answered is dropped
+// when the sheet is dismissed with nothing in it: the hiker changed their
+// mind, and a report filing itself a minute later would be the wrong kind
+// of surprise.
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { ReportAmendment } from '../lib/outbox'
@@ -106,6 +116,10 @@ import './reportWindow.css'
  * window only knows what the hiker chose.
  */
 export interface FiledExtras {
+  /** Where the report is, as the window has it at the moment of filing -
+   *  handed over rather than read back out of the shell's own state, so a
+   *  file that follows a choice by one render cannot see the place before. */
+  location: LocationChoice
   /** Trimmed, and empty unless nothing else could place the report. */
   placeWords: string
   signature: Signature
@@ -306,11 +320,16 @@ export function ReportWindow({
   // a hiker who never touches the block signs exactly as before this existed.
   const [signedAs, setSignedAs] = useState<SignedAs>('trail')
   const [contactOk, setContactOk] = useState(false)
-  // The real name as this window knows it: the preference on open, then
-  // whatever the receipt's field last held when it was left. Kept here as
-  // well as sent up through `onRealName`, so the amendment below does not
-  // wait on the preference round trip.
-  const [realName, setRealName] = useState(names.real)
+  // The real name as typed on the receipt, kept HERE rather than inside the
+  // field's own component: the window has to know it at Escape, which
+  // closes without a blur (review of #1571), and at Done and "Note
+  // something else", which settle the report on the way out. Seeded from
+  // the preference; sent up through `onRealName` when the field is left and
+  // whenever the receipt is left with the real name chosen.
+  const [realNameDraft, setRealNameDraft] = useState(names.real ?? '')
+  // The tile tapped and refused for want of a place, filed by itself once
+  // the place arrives - see the header. Null when no tap is waiting.
+  const [pending, setPending] = useState<ReportTypeId | null>(null)
   // Whether something typed on the receipt failed to reach the report,
   // because the report had already sent. Said on the receipt rather than
   // swallowed: a note the hiker believes is attached and is not is the kind
@@ -359,8 +378,10 @@ export function ReportWindow({
   /**
    * The name the report is signed with, as the hiker has it set right now.
    * Resolved here rather than in lib/reporterSignature.ts's `reportSignature`
-   * because the real name may be newer than the preferences.
+   * because the real name may be newer than the preferences: it is whatever
+   * the receipt's field holds, trimmed, and empty is no name.
    */
+  const realName = realNameDraft.trim() === '' ? null : realNameDraft.trim()
   const signatureFor = (kind: SignedAs): Signature => ({
     kind,
     name: kind === 'real' ? realName : names.trail,
@@ -376,38 +397,76 @@ export function ReportWindow({
   }
 
   /**
-   * Write the receipt's note to the report it describes, on the way out of
-   * the receipt. Once, at Done, Close or "Note something else", rather than
-   * per keystroke: the queue is on disk, and nothing reads it back while
-   * this window is open. True when there was nothing to write.
+   * Write everything the receipt collected to the report it describes, on
+   * the way out of the receipt - Done, Close, Escape, "Note something else".
+   * The note goes only here, once, rather than per keystroke: the queue is
+   * on disk, and nothing reads it back while this window is open. The
+   * signature and the consent go again here even though they went as they
+   * changed, because a real name typed and then closed over by Escape has
+   * had no blur to send it (review of #1571). Nothing is written when
+   * nothing was changed. True unless something was changed and the report
+   * had already gone.
    */
-  const settleNote = async () => {
+  const receiptChanged = note.trim() !== '' || signedAs !== 'trail' || contactOk
+  const settle = useCallback(async (): Promise<boolean> => {
+    if (filed === null || !receiptChanged) return true
     const trimmed = note.trim()
-    if (trimmed === '') return true
-    return amend({ note: trimmed })
-  }
+    const name = realNameDraft.trim() === '' ? null : realNameDraft.trim()
+    if (signedAs === 'real') onRealName(realNameDraft)
+    const fields = signatureFields({
+      kind: signedAs,
+      name: signedAs === 'real' ? name : names.trail,
+    })
+    const found = await onAmend(filed.outboxId, {
+      ...(trimmed === '' ? {} : { note: trimmed }),
+      signed_name: fields.signed_name,
+      signed_name_kind: fields.signed_name_kind,
+      contact_ok: contactOk || undefined,
+    })
+    return found
+  }, [
+    filed,
+    receiptChanged,
+    note,
+    realNameDraft,
+    signedAs,
+    contactOk,
+    names.trail,
+    onRealName,
+    onAmend,
+  ])
 
   // `standing` rather than a ref: the identity of this callback changing when
   // it changes is what keeps the Escape handler below closing over the right
   // answer instead of the one from the render it was installed on.
   //
-  // THE NOTE GOES FIRST, and a note that could not go holds the window open
-  // once, with the line under the receipt saying why. The second press
-  // closes regardless: the hiker has read the line, and there is nothing
-  // this window can still do about a report that has sent.
+  // THE RECEIPT SETTLES FIRST, and a settle that found the report gone holds
+  // the window open once, with the line under the receipt saying why. The
+  // second press closes regardless: the hiker has read the line, and there
+  // is nothing this window can still do about a report that has sent. Only
+  // awaited when there is something to settle, so a window with nothing
+  // filed - or a receipt nobody touched - closes in the same tick as the
+  // tap, which is what the shell and the tests both expect of it.
   const close = useCallback(async () => {
-    if (filed !== null && !lost) {
-      const trimmed = note.trim()
-      if (trimmed !== '') {
-        const found = await onAmend(filed.outboxId, { note: trimmed })
-        if (!found) {
-          setLost(true)
-          return
-        }
-      }
+    if (!lost && filed !== null && receiptChanged && !(await settle())) {
+      setLost(true)
+      return
     }
     onClose(standing.length > 0)
-  }, [filed, lost, note, onAmend, onClose, standing])
+  }, [lost, filed, receiptChanged, settle, onClose, standing])
+
+  // What the header states, resolved against the fix as it is right now.
+  const words = locationWords(location, fix, units, knowsTrail, now, placeWords)
+  const placed = hasPlace(location, fix) || placeWords.trim() !== ''
+
+  /** The sheet, closed without a choice. A refused tap waiting on it is
+   *  kept only if the sheet leaves something to place the report at - the
+   *  words - and dropped otherwise: see the header. */
+  const dismissSheet = useCallback(() => {
+    setPicking(false)
+    setRefused(false)
+    if (!placed) setPending(null)
+  }, [placed])
 
   // Escape closes, and the scrim does too. Safe under 1a in a way it is not
   // under the other two variants: by the time there is anything to lose, the
@@ -435,8 +494,7 @@ export function ReportWindow({
       if (event.key === 'Escape') {
         event.stopPropagation()
         if (picking) {
-          setPicking(false)
-          setRefused(false)
+          dismissSheet()
           return
         }
         void close()
@@ -470,7 +528,7 @@ export function ReportWindow({
 
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [close, picking, standingAside])
+  }, [close, dismissSheet, picking, standingAside])
 
   // The countdown. Re-read from the clock each tick rather than decremented,
   // so a tab that was backgrounded comes back with the right answer instead of
@@ -489,9 +547,6 @@ export function ReportWindow({
     return () => clearInterval(timer)
   }, [filed])
 
-  // What the header states, resolved against the fix as it is right now.
-  const words = locationWords(location, fix, units, knowsTrail, now, placeWords)
-  const placed = hasPlace(location, fix) || placeWords.trim() !== ''
   // Whether the provenance gets a line of its own under the place. Only for
   // a fix that is stale or coarse: the line costs height that the tile frame
   // does not have on the smallest phone (#1480; lib/reportLocation.ts's
@@ -500,33 +555,71 @@ export function ReportWindow({
   const warnAboutFix =
     location.kind === 'fix' && fix !== null && filed === null && fixNeedsAWord(fix, now)
 
+  /**
+   * The write itself: the report to the outbox, then the receipt. Every
+   * piece of state it touches is set after the write returns, which is what
+   * lets the effect below call it - an effect may not set state in the same
+   * tick it runs, and the shell's write is an IndexedDB round trip anyway.
+   */
+  const writeReport = useCallback(
+    async (type: ReportTypeId) => {
+      const holdUntil = undoWindowFromNow()
+      const outboxId = await onFile(type, note.trim(), holdUntil, {
+        location,
+        placeWords: placeWords.trim(),
+        signature,
+        contactOk,
+      })
+      setPending(null)
+      setStanding((current) => [...current, outboxId])
+      setLost(false)
+      setFiled({ type, outboxId, undoUntil: holdUntil.getTime(), phrase: words.phrase })
+    },
+    [onFile, note, location, placeWords, signature, contactOk, words.phrase],
+  )
+
   const file = async (type: ReportTypeId) => {
-    // The two that never one-tap. Checked here as well as being drawn as rows,
-    // because the drawing is a promise and this is the enforcement: a future
-    // refactor that renders one of them as a tile would otherwise file it.
+    // The two that never one-tap. Checked here as well as being drawn as
+    // rows, because the drawing is a promise and this is the enforcement: a
+    // future refactor that renders one of them as a tile would otherwise
+    // file it.
     if (!filesOnTap(type)) {
       onReportUnsafe()
       return
     }
-    // THE TAP NEEDS A PLACE (#1563). Nothing to file it at - no fix, no named
-    // place, no marked spot, not even words - and the tap opens the sheet
-    // instead of writing a report a moderator would read as "no location".
-    // The sheet takes focus on open, so the refusal is heard as well as seen.
+    // THE TAP NEEDS A PLACE (#1563). Nothing to file it at - no fix, no
+    // named place, no marked spot, not even words - and the tap opens the
+    // sheet instead of writing a report a moderator would read as "no
+    // location". The sheet takes focus on open, so the refusal is heard as
+    // well as seen; the tap is remembered and files once the place arrives.
     if (!placed) {
+      setPending(type)
       setPicking(true)
       setRefused(true)
       return
     }
-    const holdUntil = undoWindowFromNow()
-    const outboxId = await onFile(type, note.trim(), holdUntil, {
-      placeWords: placeWords.trim(),
-      signature,
-      contactOk,
-    })
-    setStanding((current) => [...current, outboxId])
-    setLost(false)
-    setFiled({ type, outboxId, undoUntil: holdUntil.getTime(), phrase: words.phrase })
+    await writeReport(type)
   }
+
+  // THE REMEMBERED TAP FILES when the place arrives and the sheet is down:
+  // a row chosen in the sheet, the words with Done pressed, a spot kept on
+  // the map. An effect rather than a call inside each of those handlers,
+  // because the place arrives as a prop from the shell one render after the
+  // handler runs, and this is the one place that sees the render it arrives
+  // in. Not while the window stands aside for the crosshair, and not over
+  // a receipt. `writing` is the guard against the effect re-running while
+  // the write is still out - `writeReport` changes identity with every
+  // keystroke in the note, and `pending` is only cleared once the write
+  // has returned.
+  const writing = useRef(false)
+  useEffect(() => {
+    if (pending === null || picking || standingAside || filed !== null || !placed) return
+    if (writing.current) return
+    writing.current = true
+    void writeReport(pending).finally(() => {
+      writing.current = false
+    })
+  }, [pending, picking, standingAside, filed, placed, writeReport])
 
   const undo = async () => {
     if (filed === null) return
@@ -534,6 +627,12 @@ export function ReportWindow({
     setStanding((current) => current.filter((id) => id !== filed.outboxId))
     setFiled(null)
     setRemaining(0)
+    // The note described the report just taken back. Left in place it would
+    // ride onto the next tile tapped, on a report of a different kind, and
+    // since the receipt's note is a real write now it would reach a
+    // moderator (review of #1571). "Note something else" clears it for the
+    // same reason.
+    setNote('')
   }
 
   const undoable = filed !== null && remaining > 0
@@ -575,10 +674,7 @@ export function ReportWindow({
         }}
         needed={refused}
         now={now}
-        onClose={() => {
-          setPicking(false)
-          setRefused(false)
-        }}
+        onClose={dismissSheet}
       />
     )
 
@@ -698,19 +794,18 @@ export function ReportWindow({
               queued report as each answer changes, not at Done, so a receipt
               left open still carries them. */}
           <ReporterDetails
-            names={{ trail: names.trail, real: realName }}
+            trailName={names.trail}
             signedAs={signedAs}
             onSignedAs={(kind) => {
               setSignedAs(kind)
               void amend(signerAmendment(signatureFor(kind), contactOk))
             }}
-            onRealName={(typed) => {
-              const trimmed = typed.trim()
-              const next = trimmed === '' ? null : trimmed
-              setRealName(next)
-              onRealName(typed)
+            realName={realNameDraft}
+            onRealNameChange={setRealNameDraft}
+            onRealNameSettle={() => {
+              onRealName(realNameDraft)
               if (signedAs === 'real') {
-                void amend(signerAmendment({ kind: 'real', name: next }, contactOk))
+                void amend(signerAmendment(signatureFor('real'), contactOk))
               }
             }}
             contactOk={contactOk}
@@ -741,7 +836,9 @@ export function ReportWindow({
               // The note goes to the report it described first, and is cleared
               // with it: carrying it onto the next one would attach somebody's
               // words to the wrong thing. The signature and the consent stay.
-              void settleNote()
+              void settle().then((found) => {
+                if (!found) setLost(true)
+              })
               setFiled(null)
               setNote('')
             }}

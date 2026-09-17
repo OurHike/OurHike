@@ -166,8 +166,17 @@ function provenanceOf(report: QueuedReport, units: UnitSystem): string {
 function signerOf(report: QueuedReport): string {
   const parts: string[] = []
   if (report.signed_name !== null && report.signed_name !== undefined) {
-    const kind = report.signed_name_kind === 'real' ? 'real name' : 'trail name'
-    parts.push(`signed ${report.signed_name} (${kind})`)
+    // The kind only when the row states one. The router drops a kind
+    // without a name and not the reverse, so a name with no kind is a row
+    // the server can hold; calling it a trail name would be this screen
+    // claiming what the row does not (review of #1571).
+    const kind =
+      report.signed_name_kind === 'real'
+        ? ' (real name)'
+        : report.signed_name_kind === 'trail'
+          ? ' (trail name)'
+          : ''
+    parts.push(`signed ${report.signed_name}${kind}`)
   }
   if (report.contact_ok === true) parts.push('may be contacted')
   return parts.map((part) => ` · ${part}`).join('')

@@ -8,14 +8,17 @@ afterEach(() => {
 
 // Who a report is signed by, and whether they may be asked more (#1563).
 // The wire shape is lib/reporterSignature.ts's; this is the block both
-// filing surfaces render, so the words are tested once.
+// filing surfaces render, so the words are tested once. The real name is
+// the host's draft, handed down - see the header of ReporterDetails.tsx.
 
 function setup(overrides: Partial<ReporterDetailsProps> = {}) {
   const props: ReporterDetailsProps = {
-    names: { trail: 'Switchback', real: null },
+    trailName: 'Switchback',
     signedAs: 'trail',
     onSignedAs: vi.fn(),
-    onRealName: vi.fn(),
+    realName: '',
+    onRealNameChange: vi.fn(),
+    onRealNameSettle: vi.fn(),
     contactOk: false,
     onContactOk: vi.fn(),
     reporterType: 'section',
@@ -40,7 +43,7 @@ describe('ReporterDetails', () => {
   })
 
   it('says "not set" for a trail name nobody has given, rather than inventing one', () => {
-    setup({ names: { trail: null, real: null } })
+    setup({ trailName: null })
     expect(screen.getByTestId('report-signature')).toHaveTextContent(
       'Signed as not set (trail name) · section',
     )
@@ -58,27 +61,27 @@ describe('ReporterDetails', () => {
     )
   })
 
-  it('keeps a typed real name when the field is left, not per keystroke', () => {
+  it('hands every keystroke to the host and says when the field is left, which is when the host persists', () => {
     const { props } = setup({ signedAs: 'real' })
     const field = screen.getByTestId('reporter-real-name')
     fireEvent.change(field, { target: { value: 'Jane' } })
-    expect(props.onRealName).not.toHaveBeenCalled()
-    // The summary follows the draft, so the hiker sees what will be sent.
-    expect(screen.getByTestId('report-signature')).toHaveTextContent(
-      'Signed as Jane (real name) · section',
-    )
+    expect(props.onRealNameChange).toHaveBeenCalledWith('Jane')
+    expect(props.onRealNameSettle).not.toHaveBeenCalled()
 
     fireEvent.blur(field)
-    expect(props.onRealName).toHaveBeenCalledWith('Jane')
+    expect(props.onRealNameSettle).toHaveBeenCalledTimes(1)
   })
 
-  it('offers a real name already known, and treats a name of spaces as none', () => {
-    setup({ signedAs: 'real', names: { trail: 'Switchback', real: 'Jane Doe' } })
+  it('shows the draft it is handed, so the summary reads what will be sent', () => {
+    setup({ signedAs: 'real', realName: 'Jane Doe' })
     expect(screen.getByTestId('reporter-real-name')).toHaveValue('Jane Doe')
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Jane Doe (real name) · section',
+    )
+    cleanup()
 
-    fireEvent.change(screen.getByTestId('reporter-real-name'), {
-      target: { value: '   ' },
-    })
+    // A name of spaces is none.
+    setup({ signedAs: 'real', realName: '   ' })
     expect(screen.getByTestId('report-signature')).toHaveTextContent(
       'Signed as not set (real name) · section',
     )

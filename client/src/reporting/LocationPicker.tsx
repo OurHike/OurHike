@@ -43,8 +43,14 @@ import { placeWords } from '../lib/placement'
 import type { UnitSystem } from '../lib/units'
 import './locationPicker.css'
 
-/** Past this many rows a filter beats a scroll; below it the box is a
- *  control in the way. The report window's own line, carried over. */
+/**
+ * Past this many rows a filter beats a scroll; below it the box is a control
+ * in the way. The report window's own line, carried over.
+ *
+ * @unvalidated - seven is the number the passed-places list used and nobody
+ * measured it there either. What would settle it is the row count at which a
+ * hiker starts typing rather than scrolling, which needs a hand on a phone.
+ */
 const FILTER_FROM_ROWS = 7
 
 export interface LocationPickerProps {

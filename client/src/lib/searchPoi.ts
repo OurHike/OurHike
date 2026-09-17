@@ -63,6 +63,11 @@ export interface SearchablePoi {
 
 export interface SearchOptions {
   type?: string
+  /** How many rows to hand back, by match position then name. A caller
+   *  that sorts the matches by something else - the report sheet's
+   *  distance - asks for all of them and caps afterwards, or it caps the
+   *  wrong list (lib/reportLocation.ts's `placesByName`). */
+  limit?: number
 }
 
 /** Enough to scan without scrolling past the point of usefulness. */
@@ -74,7 +79,7 @@ export function searchPois<T extends SearchablePoi>(
   // candidates carry coordinates (lib/reportLocation.ts) - gets its own rows
   // back rather than the narrowed view, and one name match serves both.
   pois: readonly T[],
-  { type }: SearchOptions = {},
+  { type, limit = SEARCH_RESULT_LIMIT }: SearchOptions = {},
 ): T[] {
   const needle = query.trim().toLowerCase()
   // An empty query means "you haven't asked anything yet", not "show me all
@@ -88,7 +93,7 @@ export function searchPois<T extends SearchablePoi>(
 
   return scored
     .sort((a, b) => a.at - b.at || a.poi.name.localeCompare(b.poi.name))
-    .slice(0, SEARCH_RESULT_LIMIT)
+    .slice(0, limit)
     .map(({ poi }) => poi)
 }
 

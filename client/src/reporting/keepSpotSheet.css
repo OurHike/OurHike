@@ -1,0 +1,48 @@
+/* The keep-this-spot window (#1563, reporting/KeepSpotSheet.tsx): a
+   reporting/Sheet.tsx frame around one answer and two buttons. Tokens only. */
+.keep-spot .sheet__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.keep-spot__words {
+  margin: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--fg-1);
+}
+
+.keep-spot__hint {
+  margin: 0 0 var(--space-2, 8px);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--fg-2);
+}
+
+.keep-spot__keep {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 0;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--brand-primary);
+  color: var(--fg-on-brand);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.keep-spot__again {
+  min-height: var(--min-touch-target, 44px);
+  padding: 0 var(--space-4, 16px);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-pill, 999px);
+  background: none;
+  color: var(--fg-1);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}

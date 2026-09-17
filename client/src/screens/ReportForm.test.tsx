@@ -216,10 +216,10 @@ describe('ReportForm', () => {
     )
   })
 
-  it('sends neither a name nor a consent unless the hiker changed the block above Send', async () => {
-    // A report nobody touched has the shape every report had before #1563:
-    // the trail name is the server-side identity already, and an unticked
-    // box is a no that needs no key.
+  it('signs with the trail name and sends no consent key unless the block above Send was changed', async () => {
+    // A report nobody touched carries the trail name the block shows - both
+    // signature keys, since the wire sends both or neither - and no
+    // `contact_ok` at all: an unticked box is a no that needs no key.
     const user = userEvent.setup()
     const onSubmit = vi.fn()
     render(<ReportForm {...PROPS} onSubmit={onSubmit} />)
@@ -257,6 +257,28 @@ describe('ReportForm', () => {
         signed_name_kind: 'real',
         contact_ok: true,
       }),
+    )
+  })
+
+  it('keeps a real name typed and sent without ever leaving the field', async () => {
+    // Send is a click, and a click on a button does blur the field - but a
+    // keyboard Enter on Send does not, and the form must not depend on it
+    // (review of #1571): the draft is the form's, and Send persists it.
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    const onRealName = vi.fn()
+    render(<ReportForm {...PROPS} onSubmit={onSubmit} onRealName={onRealName} />)
+    await user.click(screen.getByRole('radio', { name: /real name/i }))
+    await user.type(screen.getByTestId('reporter-real-name'), 'Jane Doe')
+    await user.keyboard('{Enter}')
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    screen.getByRole('button', { name: /send/i }).focus()
+    await user.keyboard('{Enter}')
+
+    expect(onRealName).toHaveBeenLastCalledWith('Jane Doe')
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ signed_name: 'Jane Doe', signed_name_kind: 'real' }),
     )
   })
 

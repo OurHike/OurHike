@@ -85,6 +85,7 @@ import {
   Registry,
   ReportForm,
   ReportWindow,
+  KeepSpotSheet,
   ShareHike,
   SignInPrompt,
   TripList,
@@ -527,8 +528,10 @@ import {
   type LocationChoice,
   type NearbyPlace,
   type PlaceCandidate,
+  type SearchPlacesOptions,
 } from './lib/reportLocation'
 import { namesOnOffer, signatureFields } from './lib/reporterSignature'
+import { placeWords } from './lib/placement'
 import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
 import './App.css'
@@ -7589,6 +7592,12 @@ function App() {
     setReportAiming(null)
   }, [])
 
+  /** The keep window dismissed: the aim is cleared and the map is the
+   *  hiker's to tap again (reporting/KeepSpotSheet.tsx). */
+  const handleAimReportPointAgain = useCallback(() => {
+    setReportAiming(null)
+  }, [])
+
   /** Kept: the aimed point becomes the report's location, and the form comes
    *  back with its note and its photos exactly as they were. */
   const handleKeepReportPoint = useCallback(() => {
@@ -7822,12 +7831,10 @@ function App() {
           type,
           reporter_type: signReportAs(preferences.reporter_type),
           ...(note === '' ? {} : { note }),
-          ...reportLocationFields(
-            reporting?.location ?? AT_THE_FIX,
-            currentFix,
-            now,
-            extras.placeWords,
-          ),
+          // Where the window says the report is - handed over with the tap
+          // rather than read out of `reporting`, which is one render behind
+          // a choice made in the sheet (reporting/ReportWindow.tsx).
+          ...reportLocationFields(extras.location, currentFix, now, extras.placeWords),
           // WHO SIGNED IT, as the receipt's block has it at the tap - the
           // trail name unless the hiker chose otherwise for an earlier report
           // in this same window - and whether they may be contacted. Both
@@ -7843,7 +7850,7 @@ function App() {
       )
       return item.id
     },
-    [reporting, preferences.reporter_type, currentFix],
+    [preferences.reporter_type, currentFix],
   )
 
   /**
@@ -8468,12 +8475,17 @@ function App() {
     return nearbyPlaces(reportPlaceCandidates, reference, passedTodayIds)
   }, [placingReport, reportPlaceCandidates, reportRefLat, reportRefLon, passedTodayIds])
   const searchReportPlaces = useCallback(
-    (query: string) => {
+    (query: string, { withMile = false }: SearchPlacesOptions = {}) => {
       const reference =
         reportRefLat === null || reportRefLon === null
           ? null
           : { lat: reportRefLat, lon: reportRefLon }
-      return placesByName(query, reportPlaceCandidates, reference)
+      // The closure form's ask, applied to the candidates so the cap in
+      // `placesByName` counts rows it can use (review of #1571).
+      const candidates = withMile
+        ? reportPlaceCandidates.filter((place) => place.mile !== undefined)
+        : reportPlaceCandidates
+      return placesByName(query, candidates, reference)
     },
     [reportPlaceCandidates, reportRefLat, reportRefLon],
   )
@@ -9278,6 +9290,12 @@ function App() {
   // THE WINDOW TAKES THE CROSSHAIR TOO (#1563), on the same terms: only while
   // it is actually drawn, which for the window means no full-screen flow and
   // no hike window over it - the same guard its own mount below keeps.
+  /** What the aimed point is called, for the crosshair's bar and the keep
+   *  window at once - one answer, so they cannot disagree. */
+  const reportAimMile =
+    reportAiming === null || trailIndex === null
+      ? null
+      : mileOnTrail(trailIndex, reportAiming)
   const reportWindowOpen =
     flowScreen === null && !hikeWindowOpen && reporting?.step === 'window'
   const reportCrosshairOut =
@@ -10752,14 +10770,9 @@ function App() {
                   // agree to it.
                   <ReportPickBar
                     aiming={reportAiming}
-                    mile={
-                      reportAiming === null || trailIndex === null
-                        ? null
-                        : mileOnTrail(trailIndex, reportAiming)
-                    }
+                    mile={reportAimMile}
                     knowsTrail={trailIndex !== null}
                     units={units}
-                    onKeep={handleKeepReportPoint}
                     onCancel={handleCancelReportPoint}
                   />
                 ) : hikePointOnMap ? (
@@ -11216,6 +11229,20 @@ function App() {
             onClose={handleCloseWindow}
           />
         )}
+
+      {/* KEEPING A SPOT IS A WINDOW (#1563): the tap on the map aims, and
+          this says what the tap got and takes the Keep. At the shell rather
+          than in the map screen's sheet slot, so it sits over the tab bar
+          and the map chrome exactly as the location sheet does over the
+          report window. */}
+      {reportCrosshairOut && reportAiming !== null && (
+        <KeepSpotSheet
+          words={placeWords(reportAimMile, trailIndex !== null, units)}
+          onKeep={handleKeepReportPoint}
+          onTapAgain={handleAimReportPointAgain}
+          onCancel={handleCancelReportPoint}
+        />
+      )}
     </>
   )
 }

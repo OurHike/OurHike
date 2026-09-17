@@ -37,6 +37,7 @@ import {
   type FixSnapshot,
   type LocationChoice,
   type NearbyPlace,
+  type SearchPlacesOptions,
 } from '../lib/reportLocation'
 import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
 import type { UnitSystem } from '../lib/units'
@@ -113,7 +114,10 @@ export interface ReportFormProps {
   fix: FixSnapshot | null
   /** Named places worth offering, nearest first. Empty is ordinary. */
   places: readonly NearbyPlace[]
-  onSearchPlaces?: (query: string) => readonly NearbyPlace[]
+  onSearchPlaces?: (
+    query: string,
+    options?: SearchPlacesOptions,
+  ) => readonly NearbyPlace[]
   /** Whether a trail index is on the phone, for the words a marked spot gets. */
   knowsTrail: boolean
   /** The hiker's unit system, for the picker's distances and the fix's radius. */
@@ -176,10 +180,11 @@ export function ReportForm({
    *  who never touches the block sends exactly what they sent before. */
   const [signedAs, setSignedAs] = useState<SignedAs>('trail')
   const [contactOk, setContactOk] = useState(false)
-  /** The real name as this form knows it: the preference on mount, then
-   *  whatever the field last held when it was left - sent from here rather
-   *  than waited for from the preferences, which sync on their own time. */
-  const [realName, setRealName] = useState(names.real)
+  /** The real name as typed, seeded from the preference. The draft is the
+   *  form's rather than the field's so Send can read it whether or not the
+   *  field was ever left (review of #1571); it is persisted when the field
+   *  is left and again at Send. */
+  const [realName, setRealName] = useState(names.real ?? '')
 
   // A point kept on the map arrives as a new `location` from the shell, and
   // the picker closes on it as it closes on one of its own rows. Adjusted
@@ -292,16 +297,25 @@ export function ReportForm({
       setRefused(true)
       return
     }
+    // A real name typed and sent without leaving the field is still the
+    // name: kept for next time here, since no blur will.
+    if (signedAs === 'real') onRealName(realName)
     onSubmit({
       type,
       reporter_type: reporterType,
       note: note.trim() === '' ? undefined : note.trim(),
       // Who signed it, as the block above Send has it: both keys or neither
-      // (lib/reporterSignature.ts), and the consent only when given, so a
-      // report nobody touched has the shape every report had before #1563.
+      // (lib/reporterSignature.ts), and the consent only when given. A
+      // report nobody touched is signed with the trail name, which is what
+      // the block shows, and carries no consent key at all.
       ...signatureFields({
         kind: signedAs,
-        name: signedAs === 'real' ? realName : names.trail,
+        name:
+          signedAs === 'real'
+            ? realName.trim() === ''
+              ? null
+              : realName.trim()
+            : names.trail,
       }),
       ...(contactOk ? { contact_ok: true } : {}),
       // The place, as one function spells it for every surface that files
@@ -494,14 +508,12 @@ export function ReportForm({
       {/* WHO SIGNED IT (#1563) - the whole signature in one sentence, as the
           static line here used to say it, and the two choices under it. */}
       <ReporterDetails
-        names={{ trail: names.trail, real: realName }}
+        trailName={names.trail}
         signedAs={signedAs}
         onSignedAs={setSignedAs}
-        onRealName={(typed) => {
-          const trimmed = typed.trim()
-          setRealName(trimmed === '' ? null : trimmed)
-          onRealName(typed)
-        }}
+        realName={realName}
+        onRealNameChange={setRealName}
+        onRealNameSettle={() => onRealName(realName)}
         contactOk={contactOk}
         onContactOk={setContactOk}
         reporterType={reporterType}

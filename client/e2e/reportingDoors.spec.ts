@@ -47,9 +47,9 @@ import { seedDayHikes } from '../preview-shots/fixtures/dayHike.mjs'
  *  makes, for the same collisions.
  *
  *  `fix` seeds a real GPS position through Playwright's own geolocation
- *  before the app boots (#1563). WITHOUT ONE THE WINDOW OPENS ON ITS PICKER
- *  and a tile refuses to file until the report has a place, which is the
- *  state one spec below is about and the state every other spec here must
+ *  before the app boots (#1563). WITHOUT ONE A TILE REFUSES TO FILE and
+ *  opens the location sheet until the report has a place, which is the
+ *  state two specs below are about and the state every other spec here must
  *  not be in by accident: the "one tap files" claim is a claim about a phone
  *  that knows where it is. */
 async function openContribute(
@@ -136,11 +136,11 @@ test.describe('the reporting doors', () => {
     // project's viewport, because the `phone` project is 390x844 and the
     // claim that matters is the one made on the smaller screen.
     //
-    // WITH A FIX, since #1563: this measures the TILE frame, and without a
-    // fix the window opens on its location picker above the tiles, which is
-    // a taller frame by design. The picker's own frame is measured in the
-    // no-fix spec below - and what it holds to is the one thing that must
-    // survive any scroll, the 911 line, not "no scroll at all".
+    // WITH A FIX, since #1563, so that the tile frame is the frame filed
+    // from: without one a tap is refused and the location sheet opens over
+    // the window, which the no-fix spec below drives. The sheet is a window
+    // of its own, so this frame is the same size either way; what the
+    // no-fix spec holds to besides is the 911 line whole in the viewport.
     await openContribute(page, 'day', { fix: true })
 
     for (const size of [
@@ -298,8 +298,9 @@ test.describe('the reporting doors', () => {
     await sheet.getByRole('button', { name: 'Done' }).click()
     await expect(sheet).toHaveCount(0)
     await expect(window_.getByTestId('report-anchor')).toContainText('In your words')
-    await window_.getByRole('button', { name: /^Blow down/ }).click()
 
+    // No second tap on the tile: the tap that was refused files the moment
+    // the place is given (the category is asked once, 2026-09-17).
     await expect(window_.getByText('Report · filed')).toBeVisible()
     await expect(window_.getByText(/Filed — blow down where you described/)).toBeVisible()
     // The receipt asks who signed it and whether they may be contacted,
@@ -310,6 +311,49 @@ test.describe('the reporting doors', () => {
     await expect(
       window_.getByRole('checkbox', { name: /you can contact me/i }),
     ).not.toBeChecked()
+  })
+
+  test('states: marking the spot on the map hands over the map with nothing to keep yet, and the window stands aside', async ({
+    page,
+  }) => {
+    // THE MAINTAINER'S TWO ASKS OF 2026-09-17 ON THIS PATH: Keep is a window
+    // over the map rather than a button on the crosshair's bar, and the tile
+    // tapped before the map is not asked for again once the spot is kept.
+    //
+    // WHAT THIS SPEC CAN AND CANNOT DRIVE. Up to the bar, everything: the
+    // refused tap, the sheet's map row, the window standing aside, the bar
+    // saying what a tap will do with no Keep on it. Not the tap itself - the
+    // map engine is not live under this runner (the status line reads "No
+    // live map"; no spec here taps the canvas), so the tap, the keep window
+    // and the filing are App.reportPlace.test.tsx's, against the mock map,
+    // and preview-shots/report-keep-spot.mjs photographs the window in CI,
+    // where the map is real.
+    await openContribute(page)
+    const window_ = await openReportWindow(page)
+    await window_.getByRole('button', { name: /^Blow down/ }).click()
+    const sheet = page.getByRole('dialog', { name: 'Where is this?' })
+    await sheet.getByTestId('location-map').click()
+
+    // The window stands aside - hidden and inert, not closed - and the map
+    // has the crosshair's bar, with no Keep on it and no keep window up:
+    // there is nothing to keep until there is something to keep.
+    const bar = page.getByRole('dialog', { name: 'Say where this was' })
+    await expect(bar).toContainText('Tap the map where this was.')
+    await expect(bar.getByRole('button', { name: /keep/i })).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: 'Keep this spot?' })).toHaveCount(0)
+    await expect(page.getByTestId('report-window-scrim')).toHaveAttribute('inert', '')
+    await expect(page.getByRole('tab', { name: 'Map' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+
+    // Cancel on the bar is the way back: the window returns, still with
+    // nothing filed and its place still to give.
+    await bar.getByRole('button', { name: 'Cancel' }).click()
+    await expect(bar).toHaveCount(0)
+    await expect(window_).toBeVisible()
+    await expect(window_.getByTestId('report-anchor')).toContainText('No location yet')
+    await expect(window_.getByText('Report · filed')).toHaveCount(0)
   })
 
   test('entrance: the closure door opens the closure form, which is a different form', async ({

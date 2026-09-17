@@ -296,10 +296,16 @@ class ReportOut(BaseModel):
     # How the coordinates were arrived at, and how far to trust them (#1563).
     # Public alongside `lat`/`lon`, and for their reason: a radius and an age
     # say LESS about the reporter than the coordinates beside them already
-    # do - they widen the claim rather than narrowing it - and a hiker or a
-    # moderator reading a pin is owed the difference between a surveyed
-    # waypoint, a ±5 m fix and a ±800 m one. Defaulted so a document baked or
-    # served before the columns existed still parses.
+    # do - they widen the claim rather than narrowing it - and whoever reads
+    # a pin is owed the difference between a surveyed waypoint, a ±5 m fix
+    # and a ±800 m one. Today only a moderator gets it: the moderation queue
+    # prints all three, while the baked conditions artifact does not carry
+    # them and the client's ReportSummary does not declare them, so a hiker's
+    # pin reads the same whichever it was. That gap is #1584 - "A pin baked
+    # from a ±800 m fix reads like one at a surveyed shelter: the provenance
+    # stops at the moderation queue" - and serving the fields here is the
+    # half of it that is done. Defaulted so a document baked or served
+    # before the columns existed still parses.
     location_source: LocationSource | None = None
     location_accuracy_m: float | None = None
     location_fix_age_s: int | None = None

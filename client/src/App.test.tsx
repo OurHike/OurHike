@@ -870,16 +870,16 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-    // No GPS in jsdom, so the first tap is refused and opens the location
-    // sheet (#1563) - words are the place, when there is nothing else, the
-    // same words a hiker with no fix would type - and the second tap files.
+    // No GPS in jsdom, so the tap is refused and opens the location sheet
+    // (#1563) - words are the place, when there is nothing else, the same
+    // words a hiker with no fix would type - and the tap that was refused
+    // files by itself when the sheet closes.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.type(await screen.findByTestId('location-words'), 'by the gap')
     await user.click(screen.getByTestId('location-sheet-done'))
-    await user.click(await screen.findByRole('button', { name: /blow down/i }))
     // The tap files (#1133); this closes the window, which is when the
     // account question is asked rather than during the receipt's undo.
-    await user.click(screen.getByTestId('report-done'))
+    await user.click(await screen.findByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{ payload: { type: string } }>
@@ -902,16 +902,16 @@ describe('App shell', () => {
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
     await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-    // No GPS in jsdom, so the first tap is refused and opens the location
-    // sheet (#1563) - words are the place, when there is nothing else, the
-    // same words a hiker with no fix would type - and the second tap files.
+    // No GPS in jsdom, so the tap is refused and opens the location sheet
+    // (#1563) - words are the place, when there is nothing else, the same
+    // words a hiker with no fix would type - and the tap that was refused
+    // files by itself when the sheet closes.
     await user.click(await screen.findByRole('button', { name: /blow down/i }))
     await user.type(await screen.findByTestId('location-words'), 'by the gap')
     await user.click(screen.getByTestId('location-sheet-done'))
-    await user.click(await screen.findByRole('button', { name: /blow down/i }))
     // The tap files (#1133); this closes the window, which is when the
     // account question is asked rather than during the receipt's undo.
-    await user.click(screen.getByTestId('report-done'))
+    await user.click(await screen.findByTestId('report-done'))
 
     await waitFor(() => {
       const queued = store.get('ourhike:outbox') as Array<{

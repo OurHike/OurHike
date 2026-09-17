@@ -89,6 +89,10 @@ export const ReporterDetails = screen(
   () => import('../reporting/ReporterDetails').then((m) => m.ReporterDetails),
   'ReporterDetails',
 )
+export const KeepSpotSheet = screen(
+  () => import('../reporting/KeepSpotSheet').then((m) => m.KeepSpotSheet),
+  'KeepSpotSheet',
+)
 export const GroupScreen = screen(
   () => import('./GroupScreen').then((m) => m.GroupScreen),
   'GroupScreen',

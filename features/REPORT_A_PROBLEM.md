@@ -60,7 +60,17 @@ from the map — and:
    alike, and never by itself. Its first version was a drawer inside the
    window, above the tiles, and the small-phone frame #1480 had just made fit
    scrolled again the moment it opened; a sheet covers the tiles instead of
-   pushing them.
+   pushing them. **And the refused tap is asked once** (same day, same
+   steer: "it asks what the category is twice, only ask once"): the tile
+   tapped is remembered, and the moment the place arrives - a row in the
+   sheet, the words with the sheet closed, a spot kept on the map - it files,
+   receipt and Undo and all. A sheet dismissed with nothing in it drops the
+   remembered tap. **Keeping a spot on the map is a window too**
+   (`client/src/reporting/KeepSpotSheet.tsx`, "the Keep this should be an
+   emergent window"): the tap on the map opens it with the answer the tap
+   got - a mile, "This spot", or more than 3 mi off the trail - and Keep
+   under it; dismissing it means tap again, and its Cancel is the way back
+   without a place. The crosshair's bar keeps only the aiming.
 3. **One tap on a type files the report**, into the outbox, at once. There is
    no submit button and nothing to abandon.
 4. **An 8-second `Undo` stands where the Cancel used to.** The report is held

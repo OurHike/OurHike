@@ -16,24 +16,34 @@
 // `reporter_id` - and the hint under the block says so where the choice is
 // made rather than in a policy nobody opens.
 //
+// THE DRAFT IS THE HOST'S. The real name being typed lives in the surface
+// that renders this, not here, because that surface has to know it at
+// moments this component never sees: the report window's Escape, which
+// closes without a blur, and the long form's Send. `onRealNameSettle` is the
+// blur, for the host to persist on; `onRealNameChange` is every keystroke,
+// for the host's own state only (review of #1571).
+//
 // THE CONSENT IS A CHECKBOX AND NOTHING MORE. "You can contact me for more
 // information" carries no address: the account is how a club reaches them,
 // and an unticked box is a no.
 
-import { useState } from 'react'
 import { SIGNED_NAME_MAX_CHARS } from '../lib/outbox'
 import { signatureWords, type SignedAs } from '../lib/reporterSignature'
 import type { ReporterType } from '../lib/userPreferences'
 import './reporterDetails.css'
 
 export interface ReporterDetailsProps {
-  /** The two names on offer, from the preferences - null where none is set. */
-  names: Record<SignedAs, string | null>
+  /** The trail name from the preferences, or null where none is set. */
+  trailName: string | null
   signedAs: SignedAs
   onSignedAs: (kind: SignedAs) => void
-  /** Keep a real name the hiker types here. Called when the field is left,
-   *  not per keystroke: it is a preference write, and a sync. */
-  onRealName: (name: string) => void
+  /** The real name as typed so far - the host's draft, seeded from the
+   *  preference. Trimmed and empty is no name. */
+  realName: string
+  onRealNameChange: (value: string) => void
+  /** The field was left. The host persists the draft here; a keystroke is
+   *  not a preference write, and a preference write is a sync. */
+  onRealNameSettle: () => void
   contactOk: boolean
   onContactOk: (ok: boolean) => void
   /** The kind of hiker the report is signed as - the one attribution other
@@ -45,26 +55,19 @@ export interface ReporterDetailsProps {
 }
 
 export function ReporterDetails({
-  names,
+  trailName,
   signedAs,
   onSignedAs,
-  onRealName,
+  realName,
+  onRealNameChange,
+  onRealNameSettle,
   contactOk,
   onContactOk,
   reporterType,
   name = 'signed-as',
 }: ReporterDetailsProps) {
-  // Typed here, kept on blur. Local so a keystroke is not a preference write.
-  const [realNameDraft, setRealNameDraft] = useState(names.real ?? '')
-  const shown = {
-    kind: signedAs,
-    name:
-      signedAs === 'real'
-        ? realNameDraft.trim() === ''
-          ? null
-          : realNameDraft.trim()
-        : names.trail,
-  }
+  const typed = realName.trim() === '' ? null : realName.trim()
+  const shown = { kind: signedAs, name: signedAs === 'real' ? typed : trailName }
 
   return (
     <fieldset className="reporter-details" data-testid="reporter-details">
@@ -85,7 +88,7 @@ export function ReporterDetails({
         />
         <span>
           <span className="reporter-details__choice-label">Trail name</span>
-          <span className="reporter-details__meta">{names.trail ?? 'not set'}</span>
+          <span className="reporter-details__meta">{trailName ?? 'not set'}</span>
         </span>
       </label>
       <label className="reporter-details__choice">
@@ -99,7 +102,7 @@ export function ReporterDetails({
         <span>
           <span className="reporter-details__choice-label">Real name</span>
           <span className="reporter-details__meta">
-            {names.real ?? 'not set — type it below'}
+            {typed ?? 'not set — type it below'}
           </span>
         </span>
       </label>
@@ -110,11 +113,11 @@ export function ReporterDetails({
             type="text"
             className="reporter-details__input"
             data-testid="reporter-real-name"
-            value={realNameDraft}
+            value={realName}
             maxLength={SIGNED_NAME_MAX_CHARS}
             autoComplete="name"
-            onChange={(event) => setRealNameDraft(event.target.value)}
-            onBlur={() => onRealName(realNameDraft)}
+            onChange={(event) => onRealNameChange(event.target.value)}
+            onBlur={onRealNameSettle}
           />
         </label>
       )}

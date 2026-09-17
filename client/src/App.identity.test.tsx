@@ -49,9 +49,9 @@ async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
   }
   await user.click(await screen.findByRole('button', { name: /report a problem/i }))
-  // No GPS in this harness, so the first tap is refused and opens the
-  // location sheet (#1563): words are the place, with nothing else, and
-  // Done hands the tiles back.
+  // No GPS in this harness, so the tap is refused and opens the location
+  // sheet (#1563): words are the place, with nothing else, and the tap that
+  // was refused files by itself when the sheet closes.
   await user.click(await screen.findByRole('button', { name: /blow down/i }))
   await user.type(await screen.findByTestId('location-words'), 'by the gap')
   await user.click(screen.getByTestId('location-sheet-done'))
@@ -59,8 +59,7 @@ async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
   // writes to the outbox on the tap itself, and what the next click does now
   // is CLOSE the window - which is when the identity question gets asked,
   // rather than interrupting the receipt and its undo.
-  await user.click(await screen.findByRole('button', { name: /blow down/i }))
-  await user.click(screen.getByTestId('report-done'))
+  await user.click(await screen.findByTestId('report-done'))
 }
 
 function queued() {

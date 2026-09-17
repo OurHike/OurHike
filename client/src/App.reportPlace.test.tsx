@@ -20,10 +20,11 @@
 // here is that.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness } from './test/appHarness'
+import { MockMap } from './test/mocks/maplibre-gl'
 
 vi.mock('maplibre-gl', () => import('./test/mocks/maplibre-gl'))
 vi.mock('idb-keyval', () => ({
@@ -219,5 +220,92 @@ describe('the report window stands aside for the map and comes back', () => {
     )
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
     expect(screen.queryByRole('dialog', { name: 'Say where this was' })).toBeNull()
+  })
+})
+
+// KEEPING A SPOT IS A WINDOW (#1563, the maintainer's steer of 2026-09-17).
+// The crosshair's bar carried the Keep button beside its answer; the tap
+// opens a window now, with the answer said large and Keep under it, and the
+// tile that was refused for want of a place files the moment the spot is
+// kept - the category is asked once.
+describe('keeping a spot marked on the map', () => {
+  /** The live map with its tap listener attached - a wait on something
+   *  observable that proves the wiring, never on a tick. */
+  async function liveMap() {
+    await waitFor(() => {
+      expect(MockMap.live.length).toBeGreaterThan(0)
+      expect(MockMap.live[0].listenerCount('click')).toBeGreaterThan(0)
+    })
+    return MockMap.live[0]
+  }
+
+  /** Report a problem, tap Blow down with no fix (refused), and take the
+   *  sheet's map row: the window stands aside and the crosshair is out. */
+  async function aimFromTheWindow(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('tab', { name: 'More' }))
+    await user.click(screen.getByRole('button', { name: /^Volunteer & report/ }))
+    await user.click(screen.getByRole('button', { name: 'Report a problem' }))
+    await screen.findByRole('dialog', { name: 'What did you find?' })
+    await user.click(await screen.findByRole('button', { name: /blow down/i }))
+    await user.click(await screen.findByTestId('location-map'))
+    await screen.findByRole('dialog', { name: 'Say where this was' })
+    expect(screen.queryByRole('dialog', { name: 'Keep this spot?' })).toBeNull()
+    return liveMap()
+  }
+
+  it('opens the keep window on a tap, naming what the tap got, and Keep files the tile that was refused', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const map = await aimFromTheWindow(user)
+
+    await act(async () => {
+      map.emit('click', { lngLat: { lng: -80.35, lat: 37.35 } })
+    })
+    const keep = await screen.findByRole('dialog', { name: 'Keep this spot?' })
+    // No trail index in this harness, so the honest answer is the second of
+    // lib/placement.ts's three - not a mile, and not "off the trail".
+    expect(screen.getByTestId('keep-spot-words')).toHaveTextContent('This spot')
+    expect(keep).toHaveFocus()
+
+    await user.click(screen.getByTestId('keep-spot-keep'))
+
+    // Back to the window, which files the Blow down that was waiting - no
+    // second tap on the tile - and the receipt names the kept spot.
+    expect(screen.queryByRole('dialog', { name: 'Keep this spot?' })).toBeNull()
+    expect(await screen.findByText(/Filed — blow down/)).toBeInTheDocument()
+    expect(screen.getByTestId('report-window-scrim')).not.toHaveClass(
+      'report-window__scrim--stood-aside',
+    )
+    expect(screen.queryByTestId('report-tile-blowdown')).toBeNull()
+  })
+
+  it('"Tap again" clears the aim and leaves the map up, and the header Cancel goes back with nothing kept', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const map = await aimFromTheWindow(user)
+
+    await act(async () => {
+      map.emit('click', { lngLat: { lng: -80.35, lat: 37.35 } })
+    })
+    await screen.findByRole('dialog', { name: 'Keep this spot?' })
+    await user.click(screen.getByTestId('keep-spot-again'))
+    expect(screen.queryByRole('dialog', { name: 'Keep this spot?' })).toBeNull()
+    expect(screen.getByRole('dialog', { name: 'Say where this was' })).toHaveTextContent(
+      'Tap the map where this was.',
+    )
+
+    await act(async () => {
+      map.emit('click', { lngLat: { lng: -80.36, lat: 37.36 } })
+    })
+    await screen.findByRole('dialog', { name: 'Keep this spot?' })
+    await user.click(screen.getByTestId('keep-spot-cancel'))
+
+    // The window is back with the sheet it left open, and nothing filed.
+    expect(screen.queryByRole('dialog', { name: 'Say where this was' })).toBeNull()
+    expect(screen.getByTestId('report-window-scrim')).not.toHaveClass(
+      'report-window__scrim--stood-aside',
+    )
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
+    expect(screen.queryByText(/Filed —/)).toBeNull()
   })
 })

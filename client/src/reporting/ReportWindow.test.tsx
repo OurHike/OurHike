@@ -221,6 +221,7 @@ describe('filing on the tap', () => {
     // nothing else can (lib/reportLocation.ts). Signed with the trail name
     // and not contactable, because nothing was asked before the tap.
     expect(extras).toEqual({
+      location: AT_THE_FIX,
       placeWords: '',
       signature: { kind: 'trail', name: 'Switchback' },
       contactOk: false,
@@ -508,15 +509,18 @@ describe('changing where the report lands (#1563)', () => {
     fireEvent.change(screen.getByTestId('location-words'), {
       target: { value: 'the ford below the gap' },
     })
-    // Done hands back the tiles with the words kept; the header says so.
-    fireEvent.click(screen.getByTestId('location-sheet-done'))
+    // Done closes the sheet with the words kept, and the tap that was
+    // refused files by itself: the category is asked once (the
+    // maintainer's steer of 2026-09-17), and the receipt's Undo is the
+    // hiker's way back.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('location-sheet-done'))
+    })
     expect(screen.queryByTestId('location-sheet')).toBeNull()
     expect(screen.getByTestId('report-anchor')).toHaveTextContent('In your words')
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
-    })
 
     expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[0]).toBe('blowdown')
     expect(vi.mocked(props.onFile).mock.calls[0]?.[3]?.placeWords).toBe(
       'the ford below the gap',
     )
@@ -708,9 +712,10 @@ describe('the receipt writes back (#1563)', () => {
       fireEvent.click(screen.getByTestId('report-done'))
     })
 
-    expect(props.onAmend).toHaveBeenCalledWith('outbox-1', {
-      note: 'Big oak, step over the top.',
-    })
+    expect(props.onAmend).toHaveBeenCalledWith(
+      'outbox-1',
+      expect.objectContaining({ note: 'Big oak, step over the top.' }),
+    )
     expect(props.onClose).toHaveBeenCalledWith(true)
   })
 
@@ -805,8 +810,12 @@ describe('the receipt writes back (#1563)', () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-again'))
     })
-    // The note went to the first report on the way out.
-    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', { note: 'three trunks' })
+    // The note went to the first report on the way out, with the signature
+    // and the consent as they stood - a receipt settles whole.
+    expect(props.onAmend).toHaveBeenLastCalledWith(
+      'outbox-1',
+      expect.objectContaining({ note: 'three trunks', contact_ok: true }),
+    )
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-trash'))
@@ -814,10 +823,52 @@ describe('the receipt writes back (#1563)', () => {
     const [, note, , extras] = vi.mocked(props.onFile).mock.calls[1] ?? []
     expect(note).toBe('')
     expect(extras).toEqual({
+      location: AT_THE_FIX,
       placeWords: '',
       signature: { kind: 'trail', name: 'Switchback' },
       contactOk: true,
     })
+  })
+
+  it('keeps a real name typed and then closed over by Escape, which never blurs the field', async () => {
+    // Escape runs the window's own close, and removing a focused field fires
+    // no blur, so the name would have been shown on the summary and stored
+    // nowhere (review of #1571). The receipt settles from its own draft.
+    const { props } = await filed()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /real name/i }))
+    })
+    fireEvent.change(screen.getByTestId('reporter-real-name'), {
+      target: { value: 'Jane Doe' },
+    })
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+
+    expect(props.onRealName).toHaveBeenCalledWith('Jane Doe')
+    expect(props.onAmend).toHaveBeenLastCalledWith(
+      'outbox-1',
+      expect.objectContaining({ signed_name: 'Jane Doe', signed_name_kind: 'real' }),
+    )
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('clears the note with an Undo, so it cannot ride onto the next tile', async () => {
+    // "Note something else" already cleared it; Undo left it in place, and
+    // a note about a blowdown then filed under whichever tile came next
+    // (review of #1571).
+    const { props } = await filed()
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: 'Big oak across the tread' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-undo'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-flooding'))
+    })
+    const [, note] = vi.mocked(props.onFile).mock.calls[1] ?? []
+    expect(note).toBe('')
   })
 
   it('offers a real name already in the preferences without asking for it again', async () => {
@@ -829,5 +880,101 @@ describe('the receipt writes back (#1563)', () => {
       'Signed as Jane Doe (real name) · thru',
     )
     expect(screen.getByTestId('reporter-real-name')).toHaveValue('Jane Doe')
+  })
+})
+
+describe('the refused tap files by itself once the place arrives (#1563)', () => {
+  const NIDAY = {
+    kind: 'poi' as const,
+    poiId: 'p-near',
+    name: 'Niday Shelter',
+    lat: 37.3,
+    lon: -80.3,
+    mile: 627.8,
+  }
+
+  /** Taps Blow down with nothing to place it at, which opens the sheet. */
+  async function refused(overrides: Partial<ReportWindowProps> = {}) {
+    const result = setup({ fix: null, places: PLACES, ...overrides })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    expect(result.props.onFile).not.toHaveBeenCalled()
+    expect(screen.getByTestId('location-sheet')).toBeInTheDocument()
+    return result
+  }
+
+  it('files the tapped tile when a row in the sheet places the report, without a second tap', async () => {
+    const { props, rerender } = await refused()
+    fireEvent.click(screen.getByTestId('location-place-p-near'))
+    expect(props.onChooseLocation).toHaveBeenCalledWith(NIDAY)
+    // The shell answers with the new place; the tap that was waiting files
+    // in the render it arrives in, at that place.
+    await act(async () => {
+      rerender(<ReportWindow {...props} location={NIDAY} />)
+    })
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    const [type, , , extras] = vi.mocked(props.onFile).mock.calls[0] ?? []
+    expect(type).toBe('blowdown')
+    expect(extras?.location).toEqual(NIDAY)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Filed — blow down at Niday Shelter',
+    )
+  })
+
+  it('files the tapped tile when a spot kept on the map comes back, and not while the window stands aside', async () => {
+    const { props, rerender } = await refused({ onPointOnMap: vi.fn() })
+    fireEvent.click(screen.getByTestId('location-map'))
+    expect(props.onPointOnMap).toHaveBeenCalled()
+    await act(async () => {
+      rerender(
+        <ReportWindow {...props} onPointOnMap={props.onPointOnMap} standingAside />,
+      )
+    })
+    expect(props.onFile).not.toHaveBeenCalled()
+
+    await act(async () => {
+      rerender(
+        <ReportWindow
+          {...props}
+          onPointOnMap={props.onPointOnMap}
+          location={{ kind: 'point', lat: 37.4, lon: -80.4, mile: 630 }}
+        />,
+      )
+    })
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[0]).toBe('blowdown')
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 630.0')
+  })
+
+  it('drops the tapped tile when the sheet is dismissed with nothing in it', async () => {
+    // The hiker changed their mind. A report filing itself a minute later,
+    // once they pick a place for a different reason, would be the wrong
+    // kind of surprise.
+    const { props, rerender } = await refused()
+    fireEvent.click(screen.getByTestId('location-sheet-done'))
+    expect(props.onFile).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    fireEvent.click(screen.getByTestId('location-place-p-near'))
+    await act(async () => {
+      rerender(<ReportWindow {...props} location={NIDAY} />)
+    })
+    expect(props.onFile).not.toHaveBeenCalled()
+    expect(screen.getByTestId('report-tile-blowdown')).toBeInTheDocument()
+  })
+
+  it('keeps the tapped tile when the sheet is dismissed by Escape with the words typed', async () => {
+    const { props } = await refused()
+    fireEvent.change(screen.getByTestId('location-words'), {
+      target: { value: 'the ford below the gap' },
+    })
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[3]?.placeWords).toBe(
+      'the ford below the gap',
+    )
   })
 })

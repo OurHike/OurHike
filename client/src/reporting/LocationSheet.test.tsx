@@ -95,6 +95,20 @@ describe('LocationSheet', () => {
     expect(under).not.toHaveBeenCalled()
   })
 
+  it('returns focus to whatever opened it when it closes', () => {
+    // The long form and the closure form have no focus management of their
+    // own, so without this a closed sheet dropped focus to the body and the
+    // next Tab started from the top of the page (review of #1571).
+    const opener = document.createElement('button')
+    document.body.appendChild(opener)
+    opener.focus()
+    const { unmount } = setup()
+    expect(screen.getByTestId('location-sheet')).toHaveFocus()
+    unmount()
+    expect(opener).toHaveFocus()
+    opener.remove()
+  })
+
   it('hands a row to onChoose exactly as the picker would', () => {
     const { props } = setup()
     fireEvent.click(screen.getByTestId('location-fix'))

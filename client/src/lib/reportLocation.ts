@@ -357,8 +357,22 @@ export interface NearbyPlace extends PlaceCandidate {
  */
 export const NEARBY_WITHIN_MILES = 2
 
-/** Enough rows to scan without scrolling; the filter reaches the rest. */
+/**
+ * How many nearby rows the sheet draws unasked; the filter reaches the rest.
+ *
+ * @unvalidated - eight is a guess at what a hand scans without scrolling on
+ * a phone, not a measurement. What would settle it is how often the place a
+ * hiker actually chooses sits past the cut, which `location_source: 'poi'`
+ * rows make countable against the nearest-first order once they exist.
+ */
 export const NEARBY_LIMIT = 8
+
+/** What a by-name search may be asked to leave out. */
+export interface SearchPlacesOptions {
+  /** Only places that carry a mile - the closure form's ask, applied before
+   *  the cap rather than after it. */
+  withMile?: boolean
+}
 
 export function awayMiles(place: LonLat, reference: LonLat | null): number | null {
   return reference === null ? null : metresToMiles(straightLineMetres(reference, place))
@@ -411,10 +425,17 @@ export function placesByName(
   reference: LonLat | null,
   limit = NEARBY_LIMIT,
 ): NearbyPlace[] {
-  const found = searchPois(query, candidates).map((place) => ({
-    ...place,
-    awayMiles: awayMiles(place, reference),
-  }))
+  // Every match, not the search box's own first 25: that cap is applied
+  // after a sort by where the word sits in the name, so with it in place
+  // the nearest shelter to a hiker who typed "shelter" was usually not in
+  // the result at all, and a row hundreds of miles off read as nearest
+  // (review of #1571). The cap belongs after the distance sort, below.
+  const found = searchPois(query, candidates, { limit: Number.POSITIVE_INFINITY }).map(
+    (place) => ({
+      ...place,
+      awayMiles: awayMiles(place, reference),
+    }),
+  )
   return (reference === null ? found : found.sort(nearestFirst)).slice(0, limit)
 }
 

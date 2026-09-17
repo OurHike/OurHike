@@ -55,6 +55,7 @@ import {
   type FixSnapshot,
   type LocationChoice,
   type NearbyPlace,
+  type SearchPlacesOptions,
 } from '../lib/reportLocation'
 import type { UnitSystem } from '../lib/units'
 import { LocationSheet } from './deferred'
@@ -93,7 +94,13 @@ export interface ClosureFormProps {
   /** Named places worth offering, nearest first. Only those with a mile are
    *  drawn. */
   places?: readonly NearbyPlace[]
-  onSearchPlaces?: (query: string) => readonly NearbyPlace[]
+  /** Search by name across the phone. Asked with `withMile`, so the rows
+   *  that come back are ones this form can use and the cap is applied to
+   *  those, not to a list the mile filter then empties (review of #1571). */
+  onSearchPlaces?: (
+    query: string,
+    options?: SearchPlacesOptions,
+  ) => readonly NearbyPlace[]
   /** The hiker's unit system, for the picker's distances (lib/units.ts). */
   units: UnitSystem
   onSubmit: (submission: ClosureFormSubmission) => void
@@ -263,7 +270,7 @@ export function ClosureForm({
             onSearch={
               onSearchPlaces === undefined
                 ? undefined
-                : (query) => withMile(onSearchPlaces(query))
+                : (query) => withMile(onSearchPlaces(query, { withMile: true }))
             }
             units={units}
             knowsTrail={true}

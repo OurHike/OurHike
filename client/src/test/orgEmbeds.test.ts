@@ -111,3 +111,47 @@ describe('the coverage badge answers #1542 open question 3', () => {
     expect(body).not.toMatch(/for \(.*gaps/)
   })
 })
+
+/**
+ * The workdays widget says whether a workday is full.
+ *
+ * The design's Workdays Widget draws a `spots` field on every card
+ * (features/org-onboarding-handoff - the component prototype), and the built
+ * widget had none: a visitor read a title, a date, a meet point and a signup
+ * line, and could not tell a workday with two places left from one with
+ * none until they had followed the link.
+ *
+ * ABSENT MEANS UNKNOWN, which is the constraint that shapes this. A workday
+ * with no `cap` has no published ceiling, and CLAUDE.md's rule for the
+ * safety-adjacent surfaces applies here too: a made-up number is worse than
+ * no number. So the pill appears only when the organization published a cap.
+ *
+ * And it counts CONFIRMED rather than interested, because SPEC.md is explicit
+ * that "a signup is an introduction, not an enrolment" and the app "must
+ * never leave somebody believing they are on a roster when they are not".
+ */
+describe('the workdays widget and a workday that is full', () => {
+  const body = () => {
+    const start = CODE.indexOf('function mountWorkdays')
+    const end = CODE.indexOf('function mountCoverage')
+    return CODE.slice(start, end === -1 ? undefined : end)
+  }
+
+  it('shows how full a workday is when the organization published a cap', () => {
+    expect(body()).toMatch(/workday\.cap/)
+    expect(body()).toMatch(/confirmed_count/)
+  })
+
+  it('shows nothing at all when no cap was published', () => {
+    // The guard rather than the happy path: a widget that rendered "0 of 0"
+    // or "unlimited" would be inventing a fact about somebody else's crew.
+    expect(body()).toMatch(/cap\s*(!==|!=)\s*null|typeof workday\.cap|workday\.cap\s*&&/)
+  })
+
+  it('counts confirmed places and never interested ones', () => {
+    // An introduction is not an enrolment. Counting `interested_count` here
+    // would tell a visitor a workday is full when nobody has been confirmed.
+    const pill = body().slice(body().indexOf('cap'))
+    expect(pill).not.toContain('interested_count')
+  })
+})

@@ -131,6 +131,9 @@
     '.ourhike button[disabled]{opacity:.45;cursor:default}',
     '.ourhike__name{font-weight:600}',
     '.ourhike__meta{font-size:.85em;opacity:.72}',
+    // No colour value of ours: the whole embed inherits the host page's,
+    // which is one of the four promises the console makes about this file.
+    '.ourhike__spots{font-size:.85em;font-weight:600;margin-top:2px}',
     '.ourhike__foot{display:flex;flex-wrap:wrap;gap:10px;align-items:center;' +
       'justify-content:space-between;margin-top:12px;font-size:.85em;opacity:.75}',
     '.ourhike__card{border:1px solid rgba(128,128,128,.28);border-radius:8px;padding:12px;margin-bottom:10px}',
@@ -458,6 +461,30 @@
             }
             if (workday.meet_point) meta += ' · ' + workday.meet_point
             card.appendChild(el('div', 'ourhike__meta', meta))
+            // HOW FULL IT IS, and only when the organization said. The
+            // design's Workdays Widget draws a `spots` field on every card;
+            // without it a visitor cannot tell a workday with places left
+            // from one with none until they have followed the link.
+            //
+            // A workday with no `cap` published has no ceiling we know of, so
+            // nothing is drawn - absent means unknown here as everywhere
+            // else, and "0 of 0" would be a number nobody stands behind.
+            //
+            // CONFIRMED, never interested. A signup is an introduction and
+            // not an enrolment: counting the people who said "maybe" would
+            // tell a visitor a workday is full when nobody is on the crew.
+            if (typeof workday.cap === 'number' && workday.cap > 0) {
+              var taken = typeof workday.confirmed_count === 'number' ? workday.confirmed_count : 0
+              card.appendChild(
+                el(
+                  'div',
+                  'ourhike__spots',
+                  taken >= workday.cap
+                    ? 'Full \u2014 ' + workday.cap + ' confirmed'
+                    : taken + ' of ' + workday.cap + ' places confirmed',
+                ),
+              )
+            }
             if (workday.description) {
               card.appendChild(el('p', null, workday.description))
             }

@@ -507,6 +507,7 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // artifact is published, so there is nothing for a flow to drive them with.
   'chrome/CrewsSection.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/WorkdayRow.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
+  'chrome/CrewContactLink.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/WorkdayCalendar.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/workdayPanel.tsx': { step: 'F14 volunteering', flow: { status: 'planned' } },
   'chrome/ClubSheet.tsx': {

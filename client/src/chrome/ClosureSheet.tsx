@@ -14,6 +14,7 @@
 // this copy was made. That is a fact about THIS closure, so it is shown here.
 
 import { closureReasonLabel, type Closure } from '../lib/closureBanner'
+import { isSafeLink } from '../lib/safeLink'
 import { syncAgeLabel } from '../lib/syncAge'
 
 // The three extras beyond the shared `Closure` shape, each backed by a
@@ -96,7 +97,7 @@ export function ClosureSheet({
         </p>
       )}
 
-      {closure.reroute_url !== null && (
+      {closure.reroute_url !== null && isSafeLink(closure.reroute_url) && (
         <a
           className="closure-sheet__link"
           href={closure.reroute_url}
@@ -112,8 +113,13 @@ export function ClosureSheet({
         on the ground.
       </p>
 
+      {/* Two sentences rather than one with the label dropped in: the label
+          is written for the status strip, and "is never synced" read as a
+          claim about this closure rather than about this phone (#1578). */}
       <p className="closure-sheet__age">
-        {`Your copy of this closure is ${syncAgeLabel(lastSyncedAt, now)}.`}
+        {lastSyncedAt === null
+          ? 'Your copy of this closure has never synced.'
+          : `Your copy of this closure synced ${syncAgeLabel(lastSyncedAt, now)}.`}
       </p>
     </div>
   )

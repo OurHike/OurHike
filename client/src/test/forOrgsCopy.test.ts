@@ -95,3 +95,46 @@ describe('the nav link this page was waiting for', () => {
     expect(nav).not.toMatch(/label: 'Explore/)
   })
 })
+
+/**
+ * The four public org doors reach each other from the top of each of them.
+ *
+ * The app's console already did this - `org/OrgShell.tsx` puts the same four
+ * links across the top of every console screen - and the marketing pages did
+ * not, until 2026-09-17. The site nav offers `For clubs` and the footer
+ * offers `Claim your org`, so three of the four doors were reachable from
+ * /for-orgs/ only through a section most of a page down. Four doors are worth
+ * nothing if three of them are below the fold.
+ *
+ * Read off the pages rather than the component, because the failure this
+ * catches is a page that forgot to mount it rather than a component that
+ * lost a link.
+ */
+describe('the four org pages reach each other', () => {
+  const PAGES = ['index', 'demo', 'nominate', 'claim'] as const
+
+  it.each(PAGES)('/for-orgs/%s mounts the shared door row', (name) => {
+    const source = readRepoFile(`site/src/pages/for-orgs/${name}.astro`)
+    expect(source).toContain("import OrgNav from '../../components/OrgNav.astro'")
+    expect(source).toContain('<OrgNav />')
+  })
+
+  it('names all four doors, each with the address it opens', () => {
+    // The console's half of this pair is asserted in org/OrgShell.test.tsx,
+    // which renders the shell and reads THIS file for the labels - so the row
+    // has one source of truth rather than two lists that can drift apart
+    // while both stay green.
+    const nav = readRepoFile('site/src/components/OrgNav.astro')
+    for (const label of ['For orgs', 'Demo org', 'Nominate an org', 'Claim your org']) {
+      expect(nav, `OrgNav.astro is missing "${label}"`).toContain(label)
+    }
+    for (const href of [
+      '/for-orgs/',
+      '/for-orgs/demo/',
+      '/for-orgs/nominate/',
+      '/for-orgs/claim/',
+    ]) {
+      expect(nav, `OrgNav.astro is missing ${href}`).toContain(href)
+    }
+  })
+})

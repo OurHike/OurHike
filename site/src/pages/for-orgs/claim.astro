@@ -22,6 +22,7 @@
 // VICTIM: a disputed claim is frozen for a person, with no automatic exit. A
 // timer would resolve a contested claim in favour of whoever was patient.
 import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
 
 const title = 'OurHike — Claim your org'
 const description =
@@ -29,6 +30,7 @@ const description =
 ---
 
 <Base title={title} description={description}>
+  <OrgNav />
   <section class="section">
     <div class="wrap wrap--narrow">
       <span class="org-eyebrow">ALREADY ON OURHIKE · NO ADMINS YET</span>

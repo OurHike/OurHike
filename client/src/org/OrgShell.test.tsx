@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { OrgShell } from './OrgShell'
 import type { OrgAccess } from './orgApi'
 import type { OrgRoute } from '../lib/orgRoute'
+import { readRepoFile } from '../test/repoFile'
 
 const SLUG = 'ramapo-trail-conference'
 
@@ -190,5 +191,39 @@ describe('the crumbs say where you are', () => {
     expect(document.querySelector('.org-crumbs__here')).toHaveTextContent(
       'Ridge Runner At-Large',
     )
+  })
+})
+
+/**
+ * The console and the marketing site offer the same four doors.
+ *
+ * They did not until 2026-09-17: the shell put For orgs, Demo org, Nominate
+ * an org and Claim your org across the top of every console screen, and
+ * /for-orgs/ reached its three siblings only through a section most of a page
+ * down. `site/src/components/OrgNav.astro` is the row that closed it, and it
+ * is read here rather than duplicated so the two surfaces cannot drift apart
+ * with both suites green.
+ *
+ * A person crossing between them should not have to work out that two labels
+ * are the same door, which is why the LABELS are compared and not only the
+ * addresses.
+ */
+describe('the four public doors', () => {
+  it('names each door in the console exactly as the site names it', () => {
+    const nav = readRepoFile('site/src/components/OrgNav.astro')
+    const doors = [...nav.matchAll(/href: '([^']+)', label: '([^']+)'/g)].map(
+      ([, href, label]) => ({ href, label }),
+    )
+    expect(doors.length, 'OrgNav.astro should declare four doors').toBe(4)
+
+    draw(access({ is_admin: true }))
+
+    for (const door of doors) {
+      const link = screen.getByRole('link', { name: door.label })
+      expect(link, `${door.label} should open ${door.href}`).toHaveAttribute(
+        'href',
+        door.href,
+      )
+    }
   })
 })

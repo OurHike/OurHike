@@ -35,6 +35,15 @@ export const OUT_OF_TREE_READS = [
   // last time a value-prop screen claimed OurHike funds anybody.
   'site/src/lib/orgOnboarding.mjs',
   'site/src/pages/for-orgs/index.astro',
+  // The other three doors, and the row that reaches all four. The console
+  // already put these four links across the top of every one of its screens
+  // (org/OrgShell.tsx) while the marketing pages reached each other only
+  // through a section most of a page down - so the guard compares the two
+  // surfaces' labels rather than trusting either alone.
+  'site/src/pages/for-orgs/demo.astro',
+  'site/src/pages/for-orgs/nominate.astro',
+  'site/src/pages/for-orgs/claim.astro',
+  'site/src/components/OrgNav.astro',
   'site/src/pages/index.astro',
   'site/src/components/NavBar.astro',
   // The four embeds (#1542), which run on somebody ELSE's website. The

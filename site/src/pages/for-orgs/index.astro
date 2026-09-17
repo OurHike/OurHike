@@ -25,6 +25,7 @@
 import { Image } from 'astro:assets'
 
 import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
 import Contours from '../../components/Contours.astro'
 import heroPhoto from '../../../../client/src/design-system/assets/photos/heroes/05-blue-folds.jpg'
 import { STAGES, REASONS } from '../../lib/orgOnboarding.mjs'
@@ -35,6 +36,7 @@ const description =
 ---
 
 <Base title={title} description={description}>
+  <OrgNav />
   <header class="hero hero--org">
     {
       /* THE PHOTOGRAPH, AND ITS CREDIT PILL, WHICH IS A LICENCE CONDITION

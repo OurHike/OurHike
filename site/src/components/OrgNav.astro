@@ -1,0 +1,76 @@
+---
+// The four public org doors, across the top of each of them.
+//
+// WHY THIS EXISTS: THE TWO SURFACES DISAGREED, and the app was the one that
+// had it right. `client/src/org/OrgShell.tsx` puts these same four links in a
+// row across the top of every console screen - For orgs, Demo org, Nominate
+// an org, Claim your org - so somebody inside the console can reach any of
+// them from where they are. The marketing pages carried none of it: the site
+// nav offers `For clubs` and nothing else, the footer offers `Claim your org`
+// alone, and the only route from /for-orgs/ to its three siblings was a
+// section most of a page down. Four doors are worth nothing if three of them
+// are below the fold.
+//
+// NOT IN NavBar.astro, and that is the judgement call. That row is a hiker's
+// navigation and `Support the trail` is deliberately the only call to action
+// on it - NavBar.astro says so in its own words, "an organization arriving is
+// not the primary action here and should not outrank donating". Four more
+// links there would spend a hiker's attention on a page they will never need.
+// This row only appears on the pages an organization is already reading.
+//
+// The labels are OrgShell.tsx's exactly, because a person crossing between
+// the site and the console should not have to work out that "Demo org" and
+// "Central Park Throughikers" are the same door.
+const here = Astro.url.pathname
+
+const doors = [
+  { href: '/for-orgs/', label: 'For orgs' },
+  { href: '/for-orgs/demo/', label: 'Demo org' },
+  { href: '/for-orgs/nominate/', label: 'Nominate an org' },
+  { href: '/for-orgs/claim/', label: 'Claim your org' },
+]
+---
+
+<nav class="wrap org-nav" aria-label="For organizations">
+  {
+    doors.map((door) => (
+      <a
+        class="org-nav__link"
+        href={door.href}
+        aria-current={here === door.href ? 'page' : undefined}
+      >
+        {door.label}
+      </a>
+    ))
+  }
+</nav>
+
+<style>
+  .org-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 18px;
+    align-items: center;
+    padding-block: 10px 0;
+    font-size: 0.92rem;
+  }
+
+  .org-nav__link {
+    color: var(--fg-2);
+    text-decoration: none;
+    padding: 4px 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  .org-nav__link:hover {
+    color: var(--brand-primary);
+  }
+
+  /* The page you are on, marked for a reader rather than only for a screen
+     reader - `aria-current` carries it either way, and this is what makes it
+     visible without adding a second source of truth. */
+  .org-nav__link[aria-current='page'] {
+    color: var(--brand-primary);
+    border-bottom-color: var(--brand-primary);
+  }
+</style>

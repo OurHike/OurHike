@@ -22,6 +22,7 @@
 // enough to judge. The two real things are the coordinates and the shape of
 // the widgets.
 import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
 
 const title = 'OurHike — Central Park Throughikers, a demo org'
 const description =
@@ -31,6 +32,7 @@ const ORG_SLUG = 'central-park-throughikers'
 ---
 
 <Base title={title} description={description}>
+  <OrgNav />
   <div class="org-demo-banner" role="note">
     <div class="wrap">
       <p>

@@ -19,6 +19,7 @@
 // person reading this is about to go and ask a club for something. "Ask them
 // for the layer behind it" is the sentence that makes that ask possible.
 import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
 
 const title = 'OurHike — Put a club on the map for them'
 const description =
@@ -26,6 +27,7 @@ const description =
 ---
 
 <Base title={title} description={description}>
+  <OrgNav />
   <section class="section">
     <div class="wrap wrap--narrow">
       <span class="org-eyebrow">ANY SIGNED-IN HIKER CAN DO THIS</span>

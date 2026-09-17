@@ -29,7 +29,8 @@
  */
 
 import { useState } from 'react'
-import { PageHeader } from '../components'
+import { PageHeader, SectionMap } from '../components'
+import type { OrgSection } from '../orgApi'
 import { formatDistance, type UnitSystem } from '../../lib/units'
 
 export type PoiAge = 'current' | 'needs a look'
@@ -123,6 +124,9 @@ export interface YourTreadProps {
   readonly questions: readonly TreadQuestion[]
   readonly hoursConfirmed: number
   readonly hoursClaimed: number
+  /** The stretch they hold, and the rest of the trail around it. */
+  readonly mine?: readonly OrgSection[]
+  readonly others?: readonly OrgSection[]
   readonly onRole: (roleId: string | null) => void
   readonly onPeriod: (period: TreadWindow) => void
   readonly onConfirmPoi: (poi: TreadPoi) => void
@@ -154,6 +158,8 @@ export function YourTread({
   questions,
   hoursConfirmed,
   hoursClaimed,
+  mine = [],
+  others = [],
   onRole,
   onPeriod,
   onConfirmPoi,
@@ -237,6 +243,49 @@ export function YourTread({
             </button>
           ))}
         </div>
+      </section>
+
+      <section className="org-panel">
+        <div className="org-panel__head">
+          <h2>What happened where</h2>
+          <span className="org-panel__count">{period}</span>
+        </div>
+        {mine.length === 0 ? (
+          <div className="org-empty">
+            <h3>Nothing drawn yet</h3>
+            <p>
+              Your stretch is described but not drawn. A section carries its name and its
+              anchors before its line arrives, and everything else on this screen works
+              either way.
+            </p>
+          </div>
+        ) : (
+          <>
+            <SectionMap
+              sections={[...others, ...mine]}
+              legend={{
+                covered: 'yours',
+                gap: 'closed',
+                vacant: "somebody else's",
+              }}
+              // The pale line is the rest of the trail. Drawing only the
+              // stretch somebody holds would show a maintainer their miles
+              // floating in nothing, and the question this map answers is
+              // where their work sits in the trail around it.
+              tone={(section) =>
+                mine.some((candidate) => candidate.id === section.id)
+                  ? 'covered'
+                  : 'vacant'
+              }
+              caption={`One continuous stretch. The pale line is the rest of the trail, maintained by others. ${openIssues.length} open ${openIssues.length === 1 ? 'issue' : 'issues'} and ${alerts.length} ${alerts.length === 1 ? 'alert' : 'alerts'} sit on it — each one is a panel below rather than a pin, because a pin says where and not what.`}
+            />
+            <p className="org-mono">
+              Drawn from the geometry your organization published, not from a survey.
+              Where a section carries no line it is absent here and present everywhere
+              else on this screen.
+            </p>
+          </>
+        )}
       </section>
 
       <section className="org-panel">

@@ -95,3 +95,19 @@ describe('the embeds keep the four promises the console prints', () => {
     expect(CODE).not.toMatch(/https:\/\/[a-z0-9.-]*ourhike\.org/)
   })
 })
+
+describe('the coverage badge answers #1542 open question 3', () => {
+  it('counts the gaps and never names one', () => {
+    // The endpoint returns the gaps WITH their section names. Rendering them
+    // would turn a recruiting line into a list of miles to avoid, which is
+    // the one thing the design says a hiker must never be told.
+    const badge = CODE.slice(CODE.indexOf('function mountCoverage'))
+    const end = badge.indexOf('function mountConsole')
+    const body = badge.slice(0, end === -1 ? undefined : end)
+
+    expect(body).toContain('coverage.gaps.length')
+    expect(body).not.toContain('section_name')
+    expect(body).not.toMatch(/gaps\s*\.\s*map/)
+    expect(body).not.toMatch(/for \(.*gaps/)
+  })
+})

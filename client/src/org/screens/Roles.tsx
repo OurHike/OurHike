@@ -29,6 +29,37 @@ export interface RoleHolders {
   readonly [roleId: string]: number
 }
 
+/** One job, on one stretch, with the person who supervises it. */
+export interface RoleOnSection {
+  readonly id: string
+  readonly roleName: string
+  readonly sectionName: string
+  /** The anchors, as the row prints them. Absent for a whole-trail role. */
+  readonly where: string | null
+  /** Who holds it. Empty is a gap, and the point of the screen. */
+  readonly who: readonly string[]
+  /** Who they answer to, or null - which is its own kind of gap. */
+  readonly supervisor: string | null
+  readonly required: boolean
+}
+
+export type RoleFilter = 'all' | 'gaps' | 'no supervisor' | 'required'
+
+/** Which rows a filter keeps.
+ *
+ *  Split out because the four are easy to get subtly wrong in a way no
+ *  screenshot shows: "gaps only" means nobody holds it, and "no supervisor"
+ *  means somebody does and answers to nobody. Those are different problems
+ *  and an organization acts on them differently - the first is recruiting,
+ *  the second is a reporting line that never got drawn.
+ */
+export function keepsRow(row: RoleOnSection, filter: RoleFilter): boolean {
+  if (filter === 'gaps') return row.who.length === 0
+  if (filter === 'no supervisor') return row.supervisor === null
+  if (filter === 'required') return row.required
+  return true
+}
+
 export interface RolesProps {
   readonly roles: readonly OrgRole[]
   readonly holders: RoleHolders
@@ -39,6 +70,8 @@ export interface RolesProps {
     reportsTo: string | null
   }) => void
   readonly onRetire: (role: OrgRole) => void
+  /** Every role attached to a section, for the second half of the screen. */
+  readonly attached?: readonly RoleOnSection[]
 }
 
 const CATEGORY_LABEL: Record<RoleCategory, string> = {
@@ -47,8 +80,17 @@ const CATEGORY_LABEL: Record<RoleCategory, string> = {
   environmental: 'Environmental',
 }
 
-export function Roles({ roles, holders, canEdit, onCreate, onRetire }: RolesProps) {
+export function Roles({
+  roles,
+  holders,
+  canEdit,
+  onCreate,
+  onRetire,
+  attached = [],
+}: RolesProps) {
   const [adding, setAdding] = useState(false)
+  const [filter, setFilter] = useState<RoleFilter>('all')
+  const [supervisor, setSupervisor] = useState('')
   const [name, setName] = useState('')
   const [category, setCategory] = useState<RoleCategory>('trail_maintenance')
   const [reportsTo, setReportsTo] = useState('')
@@ -274,6 +316,170 @@ export function Roles({ roles, holders, canEdit, onCreate, onRetire }: RolesProp
               </div>
             ))
         )}
+      </section>
+
+      <section className="org-panel">
+        <div className="org-panel__head">
+          <h2>By kind of work</h2>
+          <span className="org-panel__count">{live.length} live</span>
+        </div>
+        <div className="org-grid org-grid--three">
+          {grouped.map((group) => (
+            <div className="org-tile" key={`summary-${group.key}`}>
+              <span className="org-tile__label">{CATEGORY_LABEL[group.key]}</span>
+              <span className="org-tile__value">{group.roles.length}</span>
+              <span className="org-tile__meta">
+                {group.roles.length === 0
+                  ? 'none defined'
+                  : group.roles.map((role) => role.name).join(' · ')}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="org-panel">
+        <div className="org-panel__head">
+          <h2>Attach roles to sections</h2>
+          <span className="org-panel__count">{attached.length} attached</span>
+        </div>
+        <p className="org-panel__note">
+          Each row is one job on one stretch of trail, with the person who supervises it.
+          A row with nobody on it is the coverage report's raw material; a row with
+          somebody and no supervisor is a different problem — their reports reach a
+          maintainer and stop there.
+        </p>
+
+        <div className="org-chips">
+          {(
+            [
+              ['all', 'All roles'],
+              ['gaps', 'Gaps only'],
+              ['no supervisor', 'No supervisor'],
+              ['required', 'Required roles'],
+            ] as [RoleFilter, string][]
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              className="org-chip"
+              aria-pressed={filter === key}
+              onClick={() => setFilter(key)}
+            >
+              {label} {attached.filter((row) => keepsRow(row, key)).length}
+            </button>
+          ))}
+        </div>
+
+        <label className="org-field" style={{ maxWidth: 280 }}>
+          <span className="org-field__label">Supervisor</span>
+          <select
+            className="org-select"
+            value={supervisor}
+            onChange={(event) => setSupervisor(event.target.value)}
+          >
+            <option value="">Any supervisor</option>
+            {[...new Set(attached.map((row) => row.supervisor).filter(Boolean))].map(
+              (name) => (
+                <option key={name as string} value={name as string}>
+                  {name}
+                </option>
+              ),
+            )}
+          </select>
+        </label>
+
+        {(() => {
+          const rows = attached.filter(
+            (row) =>
+              keepsRow(row, filter) &&
+              (supervisor === '' || row.supervisor === supervisor),
+          )
+          if (rows.length === 0) {
+            return (
+              <div className="org-empty">
+                <h3>
+                  {attached.length === 0
+                    ? 'Nothing attached yet'
+                    : 'Nothing matches those filters'}
+                </h3>
+                <p>
+                  {attached.length === 0
+                    ? 'Define the roles above first, then attach each one to the stretch it covers. A section can carry as many as it needs.'
+                    : 'Which is an answer rather than an empty table — there is no row in this organization that is both of those things.'}
+                </p>
+              </div>
+            )
+          }
+          return (
+            <div className="org-card org-card--flush">
+              <div className="org-table__scroll">
+                <table className="org-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Role</th>
+                      <th scope="col">Section</th>
+                      <th scope="col">Who</th>
+                      <th scope="col">Supervisor</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <span className="org-table__name">{row.roleName}</span>
+                          {row.required ? <div className="org-mono">required</div> : null}
+                        </td>
+                        <td>
+                          <span className="org-table__name">{row.sectionName}</span>
+                          {row.where ? <div className="org-mono">{row.where}</div> : null}
+                        </td>
+                        <td>
+                          {row.who.length === 0 ? (
+                            <span className="org-mono">nobody yet</span>
+                          ) : (
+                            <>
+                              {row.who.join(', ')}
+                              <div className="org-mono">
+                                {row.who.length === 1
+                                  ? '1 person'
+                                  : `${row.who.length} people`}
+                              </div>
+                            </>
+                          )}
+                        </td>
+                        <td>
+                          {row.supervisor ?? (
+                            <span className="org-mono">nobody above them</span>
+                          )}
+                        </td>
+                        <td>
+                          <span
+                            className="org-pill"
+                            data-tone={
+                              row.who.length === 0
+                                ? 'stopped'
+                                : row.supervisor === null
+                                  ? 'waiting'
+                                  : 'done'
+                            }
+                          >
+                            {row.who.length === 0
+                              ? 'gap'
+                              : row.supervisor === null
+                                ? 'no supervisor'
+                                : 'assigned'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
+        })()}
       </section>
 
       <div className="org-callout" data-tone="info">

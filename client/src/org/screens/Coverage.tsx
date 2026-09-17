@@ -262,7 +262,7 @@ export function Coverage({
           `${gaps.length} of ${sectionsTotal} sections have no role attached${region ? ` in ${region}` : ''}.`,
           ...gaps.map(
             (gap) =>
-              `- ${gap.section_name}${gap.trail_name ? ` on ${gap.trail_name}` : ''}${gap.miles === null ? '' : `, ${gap.miles} miles`}`,
+              `- ${gap.section_name}${gap.trail_name ? ` on ${gap.trail_name}` : ''}${gap.miles === null ? '' : `, ${formatDistance(gap.miles, units)}`}`,
           ),
           unfilled.length === 0
             ? 'Every required role is filled.'

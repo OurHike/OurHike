@@ -506,6 +506,31 @@ Header · Phone Frame.
 
 What this design does not answer, stated plainly.
 
+- **An organization has not consented to their registry reaching a third party, and the assist
+  panels send it.** `POST /clubs/{slug}/assist` puts section names, trail names, mileages and the
+  coverage gap list in front of a model at `api.anthropic.com`. The panel says on screen that what
+  goes over is what is on the screen, which is true and is not consent — nobody at the organization
+  was asked. It ships inert (`assist_enabled` defaults false) so nothing has been sent, and the
+  three public embeds do not touch it. **What would settle it:** a per-organization opt-in stored
+  beside the org record, shown at registration and revocable from Settings. That is a schema
+  decision for the maintainer rather than one to slip into the branch that found it.
+- **Whose credentials open the pull request at registry sign-off is undecided, and the endpoint no
+  longer pretends otherwise.** Three codeowners signing produces three rows in `registry_signoffs`
+  and nothing else; no code in this repository opens a pull request. It must not be an admin's
+  credentials — an org admin has no GitHub account here, and giving one the power to cause a push
+  would make every org admin a committer to a public repository. The shape that survives review is
+  a service identity with write scoped to the registry path and a person still merging, but that is
+  a decision rather than a detail.
+- **No screen has ever rendered a real API response.** Every one of the seventeen renders from
+  `client/src/org/demoOrg.ts` and `demoVolunteer.ts`, because #600 leaves the production backend
+  unbuilt. The endpoints have their own tests and the screens have theirs; what nothing on this
+  branch can catch is a mismatch between `orgApi.ts`'s types and what the server actually sends.
+  This is the largest untested seam in the work.
+- **The public assist budget is one bucket for every caller behind an address-stripping proxy.**
+  `client_fingerprint(null)` hashes the word "unknown", so they share a day. It fails in the safe
+  direction — the spend stays bounded — and it means one person can exhaust the free lookup for
+  everybody behind that proxy. The nominate form works without the panel.
+
 - **The 10% deactivation hold is `@unvalidated`.** Picked, not measured. What would settle it: one
   real roster sync against an org's live feed, and the distribution of how much a normal run actually
   changes. A threshold below the normal churn of a seasonal roster would hold every run for an admin,

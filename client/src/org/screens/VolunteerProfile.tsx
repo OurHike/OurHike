@@ -119,12 +119,28 @@ export function VolunteerProfile({
         eyebrow={`Volunteer since ${joined} · ${hoursLogged} hours logged`}
         title={displayName}
         sub={
-          <>
-            <strong>{displayName} sees this same page.</strong> They can change their own
-            name, contact details and notification settings; you can additionally change
-            their roles and status. Whoever edits a field, the change is dated and
-            attributed — nothing here is overwritten silently.
-          </>
+          // SECOND PERSON WHEN IT IS YOUR OWN PAGE. The screen is one
+          // component with two readers, and the first version told somebody
+          // about themselves in the third person - "Alex Mercer sees this
+          // same page" on Alex's own profile. The sentence an admin reads is
+          // the one that has work to do (it is what makes "there is no
+          // admin-only view of you" a promise), so the self version is
+          // shorter rather than a mirror of it.
+          isSelf ? (
+            <>
+              <strong>This is the page your organization sees too.</strong> Your name,
+              contact details and notification settings are yours to change here; your
+              roles and status are an admin's. Every edit is dated and attributed either
+              way — nothing here is overwritten silently.
+            </>
+          ) : (
+            <>
+              <strong>{displayName} sees this same page.</strong> They can change their
+              own name, contact details and notification settings; you can additionally
+              change their roles and status. Whoever edits a field, the change is dated
+              and attributed — nothing here is overwritten silently.
+            </>
+          )
         }
         glyph={
           <>
@@ -137,7 +153,7 @@ export function VolunteerProfile({
 
       <section className="org-card org-panel">
         <div className="org-panel__head">
-          <h2>Their details</h2>
+          <h2>{isSelf ? 'Your details' : 'Their details'}</h2>
           {!isSelf ? <span className="org-panel__count">theirs to edit</span> : null}
         </div>
         <div className="org-row">
@@ -216,7 +232,9 @@ export function VolunteerProfile({
           </span>
         </div>
         <p className="org-panel__note">
-          {displayName} can see these; only an admin can change them.
+          {isSelf
+            ? 'You can see these; only an admin can change them.'
+            : `${displayName} can see these; only an admin can change them.`}
         </p>
         {roles.length === 0 ? (
           <div className="org-empty">
@@ -269,7 +287,7 @@ export function VolunteerProfile({
 
       <section className="org-panel">
         <div className="org-panel__head">
-          <h2>Their record</h2>
+          <h2>{isSelf ? 'Your record' : 'Their record'}</h2>
         </div>
         <div className="org-grid org-grid--three">
           <div className="org-tile">

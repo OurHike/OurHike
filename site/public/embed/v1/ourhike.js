@@ -508,6 +508,15 @@
    * flagged and never escalated. No visitor is told a section is
    * unmaintained, because a hiker reading "unmaintained" makes a routing
    * decision out of an organization's staffing problem.
+   *
+   * **A COUNT, AND NEVER A LIST**, which is this file's answer to the third
+   * open question on #1542 - "whether a coverage badge says anything a hiker
+   * should not see". The endpoint returns the gaps with their section names;
+   * this reads `.length` and discards the rest, so the badge can say "nine
+   * sections are looking for somebody" and cannot say WHICH nine. The first
+   * is a recruiting line and the second is a list of miles to avoid, and the
+   * difference is one property access - which is why it is written down here
+   * rather than left to whoever edits this next.
    */
   function mountCoverage(host) {
     var slug = host.getAttribute('data-org')

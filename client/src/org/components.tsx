@@ -276,7 +276,12 @@ export function SectionMap({
   caption?: string
   /** Colour per section. Omitted means every drawn line is the same. */
   tone?: (section: OrgSection) => SectionTone
-  legend?: boolean
+  /** Draw the key. `true` uses the coverage report's words; pass three of
+   *  your own where the same three colours mean something else - on Your
+   *  Tread the pale line is "somebody else's", not "supervisor vacant", and
+   *  a shared legend would have told a maintainer the wrong thing about
+   *  every mile they do not hold. */
+  legend?: boolean | { covered: string; gap: string; vacant: string }
 }) {
   const drawn = sections
     .map((section) => ({ section, points: parseLine(section.geometry) }))
@@ -338,13 +343,13 @@ export function SectionMap({
       {legend ? (
         <div className="org-inline">
           <span className="org-mono" style={{ color: TONE_STROKE.covered }}>
-            — role assigned
+            — {legend === true ? 'role assigned' : legend.covered}
           </span>
           <span className="org-mono" style={{ color: TONE_STROKE.gap }}>
-            — no role assigned
+            — {legend === true ? 'no role assigned' : legend.gap}
           </span>
           <span className="org-mono" style={{ color: TONE_STROKE.vacant }}>
-            -- supervisor vacant
+            -- {legend === true ? 'supervisor vacant' : legend.vacant}
           </span>
         </div>
       ) : null}

@@ -22,6 +22,7 @@
 
 import { useState } from 'react'
 import { AssistPanel } from '../AssistPanel'
+import { formatDistance, type UnitSystem } from '../../lib/units'
 import { PageHeader, RegistryTable, SectionMap } from '../components'
 import type { OrgPark } from '../orgApi'
 
@@ -37,6 +38,8 @@ export interface AddTrailProps {
   /** Junctions reused rather than duplicated, where the read found any. */
   readonly junctionsReused?: number
   readonly slug: string
+  /** The hiker's own choice, from Settings. Never assumed - #619. */
+  readonly units: UnitSystem
 }
 
 export function AddTrail({
@@ -48,6 +51,7 @@ export function AddTrail({
   onBack,
   junctionsReused = 0,
   slug,
+  units,
 }: AddTrailProps) {
   const [pointer, setPointer] = useState('')
 
@@ -129,7 +133,7 @@ export function AddTrail({
               </div>
               <div className="org-tile">
                 <span className="org-tile__label">Miles added</span>
-                <span className="org-tile__value">+{miles.toFixed(1)}</span>
+                <span className="org-tile__value">{formatDistance(miles, units)}</span>
               </div>
               <div className="org-tile">
                 <span className="org-tile__label">Existing sections changed</span>
@@ -195,7 +199,13 @@ export function AddTrail({
         context={
           proposed === null
             ? `${liveSections} sections already published. Nothing has been read yet.`
-            : `${liveSections} sections already published, untouched. Proposed: ${added.length} sections, ${miles.toFixed(1)} miles, ${junctionsReused} junctions reused.`
+            : // THROUGH `formatDistance` EVEN THOUGH NOBODY READS THIS
+              // DIRECTLY. It is the model's context, and the model's answer
+              // is rendered on the screen beside it - so a context in miles
+              // produces a suggestion in miles next to a table in
+              // kilometres. The unit a hiker chose has to reach the whole
+              // screen, not the visible half of it.
+              `${liveSections} sections already published, untouched. Proposed: ${added.length} sections, ${formatDistance(miles, units)}, ${junctionsReused} junctions reused.`
         }
       />
 

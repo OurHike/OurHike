@@ -47,6 +47,7 @@ import {
   DEMO_COVERED,
   DEMO_HIKES,
   DEMO_ORG,
+  DEMO_PROPOSED,
   DEMO_REGISTRY,
   DEMO_ROLES,
   DEMO_ROSTER,
@@ -63,7 +64,7 @@ import { AddTrail } from './screens/AddTrail'
 import { Embeds } from './screens/Embeds'
 import { OrgEmails } from './screens/OrgEmails'
 import { OrgSettings } from './screens/OrgSettings'
-import { Roles } from './screens/Roles'
+import { Roles, type RoleOnSection } from './screens/Roles'
 import { Workdays } from './screens/Workdays'
 import { Coverage as CoverageScreen } from './screens/Coverage'
 import { Roster } from './screens/Roster'
@@ -231,13 +232,22 @@ function useOrgData(slug: string | null): OrgData {
   return data
 }
 
-/** A no-op for an action whose endpoint is not wired yet.
+/**
+ * An action whose endpoint is not wired up yet, said out loud.
  *
- *  Named rather than an inline arrow so a reader can grep for what is still
- *  a stub, and so nothing here quietly looks finished. Every caller of this
- *  is listed in the pull request.
+ * **A BUTTON THAT SILENTLY DOES NOTHING IS THE WORST OF THE THREE OPTIONS.**
+ * The other two are removing it - which would make these screens a different
+ * and smaller design than the one under review - and disabling it, which says
+ * "not for you" rather than "not built". So the button works, and what it
+ * does is tell the truth about itself.
+ *
+ * This matters most to the person reading a preview deployment: seventeen
+ * screens of finished-looking console with forty-nine dead controls is a
+ * demo that lies by omission, and a reviewer who clicks three of them and
+ * gets nothing learns the wrong thing about what this branch contains.
  */
-const notWiredYet = () => {}
+const NOT_WIRED =
+  'That is not wired up yet. The reads on these screens are real; every write is the next piece of work, and this button is here so the design can be reviewed rather than because it does anything.'
 
 /**
  * App.tsx owns the one `useOrgRoute()` and hands it down.
@@ -293,6 +303,8 @@ export function OrgConsole({
   const [freshSecret, setFreshSecret] = useState<string | null>(null)
   const [summaryShown, setSummaryShown] = useState(true)
   const [askingOn, setAskingOn] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const notWiredYet = () => setNotice(NOT_WIRED)
 
   if (route === null) return null
 
@@ -311,6 +323,80 @@ export function OrgConsole({
       const match = data.roles.find((candidate) => candidate.name === role)
       if (match) holders[match.id] = (holders[match.id] ?? 0) + 1
     }
+  }
+
+  // NAMES, FROM THE ROSTER, BECAUSE A PERSON ID IS NOT AN ANSWER.
+  //
+  // Several screens take an optional `names` map and fall back to the raw id
+  // when it is absent - a deliberate fallback, because an org that invited
+  // somebody who has never signed in HAS an address and no name, and the row
+  // should say so rather than invent one. Not passing the map at all turned
+  // that fallback into the ordinary case, and the approval screen read
+  // "demo-person-sam APPROVED" to anybody who opened it. The roster is where
+  // a name lives, so this is that lookup rather than a second source.
+  const names: Record<string, string> = {}
+  for (const entry of data.roster) {
+    if (entry.person_id) {
+      names[entry.person_id] = entry.full_name ?? entry.display_name ?? entry.person_id
+    }
+  }
+
+  // EVERY ROLE ON EVERY SECTION, built from the roster rather than fetched.
+  //
+  // The roster already carries who holds what and where - it is the same
+  // rows, shaped per job-on-a-stretch instead of per person. Fetching a
+  // second list would give the roles screen and the roster screen two ways to
+  // disagree about the same fact, and the one they would disagree about is
+  // whether a section has somebody on it.
+  //
+  // A ROLE WITH NOBODY IS A ROW, NOT AN ABSENCE. That is the whole point of
+  // the table: a defined role that no assignment mentions is exactly the gap
+  // an organization is looking for, so it is synthesised here rather than
+  // left out.
+  const attached: RoleOnSection[] = []
+  const supervisorOf = (roleName: string): string | null => {
+    const role = data.roles.find((candidate) => candidate.name === roleName)
+    const parentId = role?.reports_to_role_id ?? null
+    if (parentId === null) return null
+    return data.roles.find((candidate) => candidate.id === parentId)?.name ?? null
+  }
+  const seen = new Set<string>()
+  for (const entry of data.roster) {
+    entry.roles.forEach((roleName, index) => {
+      const where = entry.sections[index] ?? entry.sections[0] ?? 'the whole trail'
+      const key = `${roleName}::${where}`
+      const already = attached.find((row) => row.id === key)
+      const holder = entry.full_name ?? entry.display_name ?? entry.email ?? 'somebody'
+      if (already) {
+        attached[attached.indexOf(already)] = {
+          ...already,
+          who: [...already.who, holder],
+        }
+      } else {
+        attached.push({
+          id: key,
+          roleName,
+          sectionName: where,
+          where: null,
+          who: [holder],
+          supervisor: supervisorOf(roleName),
+          required: data.roles.find((r) => r.name === roleName)?.required ?? false,
+        })
+      }
+      seen.add(roleName)
+    })
+  }
+  for (const role of data.roles) {
+    if (role.retired_at !== null || seen.has(role.name)) continue
+    attached.push({
+      id: `${role.name}::unattached`,
+      roleName: role.name,
+      sectionName: 'not attached to a stretch yet',
+      where: null,
+      who: [],
+      supervisor: supervisorOf(role.name),
+      required: role.required,
+    })
   }
 
   const waiting: Record<string, number> = {}
@@ -357,6 +443,7 @@ export function OrgConsole({
               onDecline={notWiredYet}
               onRemind={notWiredYet}
               onContinue={() => go({ kind: 'setup', slug: route.slug, page: 'registry' })}
+              names={names}
             />
           ) : null
         case 'registry':
@@ -387,6 +474,7 @@ export function OrgConsole({
               onConfirm={notWiredYet}
               onFlag={notWiredYet}
               units={units}
+              names={names}
             />
           ) : null
         case 'addtrail':
@@ -394,7 +482,9 @@ export function OrgConsole({
             <AddTrail
               orgName={orgName}
               liveSections={sections.length}
-              proposed={null}
+              junctionsReused={demo ? 1 : 0}
+              units={units}
+              proposed={demo ? DEMO_PROPOSED : null}
               onRead={notWiredYet}
               onPropose={notWiredYet}
               slug={route.slug}
@@ -484,6 +574,7 @@ export function OrgConsole({
               onProposeRemoval={notWiredYet}
               onUnpublish={notWiredYet}
               onProposeDeletion={notWiredYet}
+              names={names}
             />
           ) : null
         default:
@@ -654,6 +745,7 @@ export function OrgConsole({
               canEdit={data.access?.can_manage_volunteers ?? false}
               onCreate={notWiredYet}
               onRetire={notWiredYet}
+              attached={attached}
             />
           )
       }
@@ -809,6 +901,12 @@ export function OrgConsole({
             questions={demo ? DEMO_QUESTIONS : []}
             hoursConfirmed={demo ? 34 : 0}
             hoursClaimed={demo ? 4 : 0}
+            // The Ramble is the stretch this person holds; everything else
+            // the organization publishes is the pale line around it.
+            mine={demo ? DEMO_SECTIONS.filter((s) => s.id === 'demo-sec-ramble') : []}
+            others={
+              demo ? DEMO_SECTIONS.filter((s) => s.id !== 'demo-sec-ramble') : sections
+            }
             onRole={notWiredYet}
             onPeriod={setPeriod}
             onConfirmPoi={notWiredYet}
@@ -839,6 +937,16 @@ export function OrgConsole({
       waiting={waiting}
       onboarded={onboarded}
     >
+      {notice ? (
+        <div className="org-callout" data-tone="warn">
+          <span>
+            <strong>Nothing happened, and that is the honest answer.</strong> {notice}{' '}
+            <button type="button" className="org-link" onClick={() => setNotice(null)}>
+              dismiss
+            </button>
+          </span>
+        </div>
+      ) : null}
       {demo ? (
         <div className="org-callout" data-tone="info">
           <span>

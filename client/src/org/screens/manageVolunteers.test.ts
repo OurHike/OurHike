@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import { lastReadLabel } from './Workdays'
 import { matchesRoster } from './Roster'
+import { keepsRow, type RoleOnSection } from './Roles'
 import { snippetFor } from './Embeds'
 import type { RosterEntry } from '../orgApi'
 
@@ -116,5 +117,47 @@ describe('snippetFor', () => {
     expect(snippetFor('workdays', 'x', 'u')).toContain('id="ourhike-workdays"')
     expect(snippetFor('coverage', 'x', 'u')).toContain('id="ourhike-coverage"')
     expect(snippetFor('console', 'x', 'u')).toContain('id="ourhike-console"')
+  })
+})
+
+describe('keepsRow', () => {
+  const row = (over: Partial<RoleOnSection> = {}): RoleOnSection => ({
+    id: 'r1',
+    roleName: 'Maintainer',
+    sectionName: 'Pine Meadow North',
+    where: null,
+    who: ['Ana Reyes'],
+    supervisor: 'the trails chair',
+    required: false,
+    ...over,
+  })
+
+  it('keeps everything under "all"', () => {
+    expect(keepsRow(row(), 'all')).toBe(true)
+    expect(keepsRow(row({ who: [] }), 'all')).toBe(true)
+  })
+
+  it('reads a gap as nobody holding it, not as nobody supervising it', () => {
+    expect(keepsRow(row({ who: [] }), 'gaps')).toBe(true)
+    expect(keepsRow(row({ supervisor: null }), 'gaps')).toBe(false)
+  })
+
+  it('reads "no supervisor" as somebody holding it who answers to nobody', () => {
+    // The two filters are different problems an organization acts on
+    // differently: the first is recruiting, the second is a reporting line
+    // that never got drawn.
+    expect(keepsRow(row({ supervisor: null }), 'no supervisor')).toBe(true)
+    expect(keepsRow(row(), 'no supervisor')).toBe(false)
+  })
+
+  it('counts an unheld row with no supervisor under both', () => {
+    const both = row({ who: [], supervisor: null })
+    expect(keepsRow(both, 'gaps')).toBe(true)
+    expect(keepsRow(both, 'no supervisor')).toBe(true)
+  })
+
+  it('keeps only mandated rows under "required"', () => {
+    expect(keepsRow(row({ required: true }), 'required')).toBe(true)
+    expect(keepsRow(row(), 'required')).toBe(false)
   })
 })

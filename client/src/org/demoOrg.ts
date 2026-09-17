@@ -493,6 +493,74 @@ export const DEMO_COVERED = new Set([
   'demo-sec-reservoir',
 ])
 
+/**
+ * A trail the demo organization is proposing to add, as a registry fragment.
+ *
+ * WHY THIS EXISTS AT ALL. Add-a-trail's whole content - the diff, the map, the
+ * "existing sections changed: 0" tile - is behind a read, so the screen with
+ * nothing read is an empty state and that is all anybody looking at the demo
+ * ever saw. A screen whose argument nobody can reach has not been shown.
+ *
+ * The North Meadow paths are real ground in the same park, at the same
+ * @unvalidated standard as everything else here: the coordinates are the
+ * place, the mileages are invented to make a diff worth reading.
+ */
+export const DEMO_PROPOSED: OrgPark[] = [
+  {
+    id: 'demo-park-proposed',
+    club_id: DEMO_ORG.id,
+    name: 'Central Park',
+    kind: 'park',
+    created_at: '2026-03-01T00:00:00Z',
+    trails: [
+      {
+        id: 'demo-trail-north-meadow',
+        park_id: 'demo-park-proposed',
+        name: 'North Meadow paths',
+        blaze_value_raw: 'GRN',
+        blaze_mapped: 'Green',
+        miles: 2.2,
+        sections: [
+          {
+            id: 'demo-sec-north-meadow',
+            trail_id: 'demo-trail-north-meadow',
+            name: 'North Meadow loop',
+            start_anchor: 'W 97th entrance',
+            end_anchor: 'W 97th entrance',
+            start_mile: 0,
+            end_mile: 1.4,
+            miles: 1.4,
+            region: 'North end',
+            geometry: line([
+              [40.79449, -73.9589],
+              [40.79661, -73.95672],
+              [40.79535, -73.95398],
+              [40.79312, -73.95633],
+              [40.79449, -73.9589],
+            ]),
+          },
+          {
+            id: 'demo-sec-pool-path',
+            trail_id: 'demo-trail-north-meadow',
+            name: 'The Pool path',
+            start_anchor: 'W 100th entrance',
+            end_anchor: 'The Loch',
+            start_mile: 0,
+            end_mile: 0.8,
+            miles: 0.8,
+            region: 'North end',
+            geometry: line([
+              [40.79704, -73.9601],
+              [40.79821, -73.95826],
+              [40.79879, -73.9566],
+            ]),
+          },
+        ],
+      },
+    ],
+  },
+]
+
 export function isDemoOrg(slug: string): boolean {
   return slug === DEMO_SLUG
 }

@@ -15,7 +15,7 @@ from app.models.club import Club
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
-from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import (
@@ -45,6 +45,7 @@ __all__ = [
     "Hike",
     "MaintainerAssignment",
     "PoiPhoto",
+    "PoiPhotoDismissal",
     "PoiPhotoStatus",
     "UserPreferences",
     "Profile",

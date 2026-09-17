@@ -40,6 +40,9 @@ SECTION_FOR_TABLE = {
     "note_flags": "notes_you_flagged",
     "closures": "closures_you_reported",
     "poi_photos": "photos_you_shared",
+    # A moderation record about the hiker, not a contribution by them; theirs
+    # to see for exactly that reason (#1551).
+    "poi_photo_dismissals": "community_photos_of_yours_a_moderator_took_down",
     "profiles": "your_account",
 }
 

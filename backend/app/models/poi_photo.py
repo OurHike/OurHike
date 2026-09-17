@@ -41,7 +41,7 @@ and the moderation surface: vocabulary held open, honestly documented.
 import enum
 import uuid
 
-from sqlalchemy import Column, Date, DateTime, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Column, Date, DateTime, Enum, ForeignKey, Index, String, UniqueConstraint
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -152,3 +152,45 @@ class PoiPhoto(Base):
     # takes the row out of the queue's attention without touching the photo.
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+
+
+class PoiPhotoDismissal(Base):
+    """One takedown, kept after the photo it was about is gone (#1551).
+
+    `dismiss_photo` records its decision on the `poi_photos` row - `status`,
+    `dismissed_at`, `dismissed_by` - and that row is not a record. A re-share
+    upserts over it, because a replacement is a different photograph and
+    nothing decided about the old one carries; a withdrawal deletes it,
+    because that is the contributor's own act and the promise the sheet
+    made. Both are right for the row and wrong for the question a moderator
+    asks the next time this person's photo of this place comes up: has this
+    happened before, and who decided?
+
+    So the ledger is its own table, written once per takedown by
+    `routers/moderation.py` and never updated or deleted by anything a hiker
+    can do. It is keyed by the same (place, contributor) pair the store is
+    keyed by, because that pair is the identity of "this person's photo of
+    this place" across every replacement. `photo_id` is the row's id at the
+    time, a plain string rather than a foreign key precisely because the row
+    may not exist by the time anyone reads this. `reported_reason` and
+    `flagged` are what the queue showed the moderator as they decided - the
+    context of the decision, not a claim about the photograph.
+
+    A moderation record, like `reports.dismissed_by`, and not a contribution:
+    account deletion leaves it (core/account_deletion.py) and the export hands
+    a hiker their own rows from it (core/account_export.py). The maintainer
+    chose this shape on 2026-09-17 over a count on the photo row, which the
+    row's deletion would have taken with it, and over leaving the gap.
+    """
+
+    __tablename__ = "poi_photo_dismissals"
+    __table_args__ = (Index("ix_poi_photo_dismissals_place_contributor", "poi_id", "contributor_id"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    poi_id = Column(String, nullable=False)
+    contributor_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
+    photo_id = Column(String, nullable=False)
+    dismissed_by = Column(String, ForeignKey("profiles.id"), nullable=False)
+    dismissed_at = Column(DateTime, nullable=False, default=utc_now)
+    reported_reason = Column(String, nullable=True)
+    flagged = Column(String, nullable=True)

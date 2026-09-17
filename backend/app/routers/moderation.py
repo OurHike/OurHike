@@ -17,7 +17,7 @@ require first - that's left to the human doing the verifying.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import case
+from sqlalchemy import case, exists, func, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_role
@@ -32,7 +32,7 @@ from app.core.photos import (
 from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.closure import Closure, ModerationStatus
-from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.profile import MODERATOR_ROLES, Profile
 from app.models.report import Report, ReportStatus, ReportType
 from app.routers.poi_photos import PINNED_MAX
@@ -252,8 +252,39 @@ def dismiss_closure(
 # straight up and come down when somebody reports one. What sorts to the
 # top is what needs a person soonest: a nudity hold (nothing is public
 # while it waits), then a report that somebody in the photo did not agree,
-# then other reports; below that, recency orders the list and never
-# promotes anything.
+# then other reports, then a share from somebody whose photo of this place
+# has come down before (#1551); below that, recency orders the list and
+# never promotes anything.
+
+
+def _dismissal_counts(db: Session, photos: list[PoiPhoto]) -> dict[tuple[str, str], int]:
+    """Takedowns on record per (place, contributor), for the rows given.
+
+    One grouped query for the whole page rather than one per row: the queue
+    lists up to two hundred, and the ledger is read by the pair the store
+    is keyed by, which is what its composite index is for.
+    """
+    pairs = {(photo.poi_id, photo.contributor_id) for photo in photos}
+    if not pairs:
+        return {}
+    rows = (
+        db.query(PoiPhotoDismissal.poi_id, PoiPhotoDismissal.contributor_id, func.count())
+        .filter(tuple_(PoiPhotoDismissal.poi_id, PoiPhotoDismissal.contributor_id).in_(list(pairs)))
+        .group_by(PoiPhotoDismissal.poi_id, PoiPhotoDismissal.contributor_id)
+        .all()
+    )
+    return {(poi_id, contributor_id): count for poi_id, contributor_id, count in rows}
+
+
+def _moderation_row(db: Session, photo: PoiPhoto) -> PoiPhotoModerationOut:
+    """One queue row, with its signed URL and its takedown count - the shape
+    every moderator verb answers with, spelled once."""
+    counts = _dismissal_counts(db, [photo])
+    return PoiPhotoModerationOut.from_moderation_row(
+        photo,
+        url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id)),
+        dismissal_count=counts.get((photo.poi_id, photo.contributor_id), 0),
+    )
 
 
 @router.get("/moderation/poi-photos", response_model=list[PoiPhotoModerationOut])
@@ -277,11 +308,20 @@ def read_photo_queue(
     if not photo_storage_configured():
         return []
 
+    # A share from somebody whose photo of this same place a moderator has
+    # taken down before (#1551). Ranked below a live report - a report is
+    # somebody saying something about THIS photograph - and above the
+    # unreported tail, where recency would otherwise bury it.
+    taken_down_here_before = exists().where(
+        PoiPhotoDismissal.poi_id == PoiPhoto.poi_id,
+        PoiPhotoDismissal.contributor_id == PoiPhoto.contributor_id,
+    )
     attention = case(
         ((PoiPhoto.flagged == "nudity") & PoiPhoto.reviewed_at.is_(None), 0),
         (PoiPhoto.reported_at.isnot(None) & (PoiPhoto.reported_reason == "person") & PoiPhoto.reviewed_at.is_(None), 1),
         (PoiPhoto.reported_at.isnot(None) & PoiPhoto.reviewed_at.is_(None), 2),
-        else_=3,
+        (taken_down_here_before, 3),
+        else_=4,
     )
     photos = (
         db.query(PoiPhoto)
@@ -290,10 +330,12 @@ def read_photo_queue(
         .limit(max(1, min(limit, 200)))
         .all()
     )
+    counts = _dismissal_counts(db, photos)
     return [
         PoiPhotoModerationOut.from_moderation_row(
             photo,
             url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id)),
+            dismissal_count=counts.get((photo.poi_id, photo.contributor_id), 0),
         )
         for photo in photos
     ]
@@ -341,9 +383,7 @@ def pin_photo(
         photo.reviewed_by = current_user.id
 
     commit_and_refresh(db, photo)
-    return PoiPhotoModerationOut.from_moderation_row(
-        photo, url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id))
-    )
+    return _moderation_row(db, photo)
 
 
 @router.post("/moderation/poi-photos/{photo_id}/unpin", response_model=PoiPhotoModerationOut)
@@ -359,9 +399,7 @@ def unpin_photo(
     photo.pinned_at = None
     photo.pinned_by = None
     commit_and_refresh(db, photo)
-    return PoiPhotoModerationOut.from_moderation_row(
-        photo, url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id))
-    )
+    return _moderation_row(db, photo)
 
 
 @router.post("/moderation/poi-photos/{photo_id}/review", response_model=PoiPhotoModerationOut)
@@ -378,9 +416,7 @@ def review_photo(
     photo.reviewed_at = utc_now()
     photo.reviewed_by = current_user.id
     commit_and_refresh(db, photo)
-    return PoiPhotoModerationOut.from_moderation_row(
-        photo, url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id))
-    )
+    return _moderation_row(db, photo)
 
 
 @router.post("/moderation/poi-photos/{photo_id}/dismiss", response_model=PoiPhotoModerationOut)
@@ -399,9 +435,28 @@ def dismiss_photo(
     record. Latest-wins on the trail columns, same as every dismissal.
     """
     photo = get_or_404(db, PoiPhoto, photo_id, detail="Photo not found")
+    now = utc_now()
+
+    # The ledger line (#1551), and only for a photograph that was live: a
+    # second dismissal of the same row is a retry, or a second moderator
+    # agreeing, not a second takedown, and the count has to say how many
+    # photographs came down rather than how many times a button was
+    # pressed. What the queue showed the moderator rides with the line.
+    if photo.status is PoiPhotoStatus.live:
+        db.add(
+            PoiPhotoDismissal(
+                poi_id=photo.poi_id,
+                contributor_id=photo.contributor_id,
+                photo_id=photo.id,
+                dismissed_by=current_user.id,
+                dismissed_at=now,
+                reported_reason=photo.reported_reason,
+                flagged=photo.flagged,
+            )
+        )
 
     photo.status = PoiPhotoStatus.dismissed
-    photo.dismissed_at = utc_now()
+    photo.dismissed_at = now
     photo.dismissed_by = current_user.id
     photo.pinned_at = None
     photo.pinned_by = None
@@ -414,6 +469,4 @@ def dismiss_photo(
         # dismissed; the object is an orphan for the sweep.
         pass
 
-    return PoiPhotoModerationOut.from_moderation_row(
-        photo, url=presigned_object_url(poi_photo_key(photo.poi_id, photo.contributor_id))
-    )
+    return _moderation_row(db, photo)

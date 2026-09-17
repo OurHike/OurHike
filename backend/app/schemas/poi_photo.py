@@ -140,9 +140,15 @@ class PoiPhotoModerationOut(PoiPhotoOut):
     held: bool
     reported_reason: str | None
     reported_at: UtcDatetime | None
+    # How many times a moderator has taken down this contributor's photo of
+    # this place (#1551): the ledger's count for the pair, which outlives the
+    # row being replaced or withdrawn. Zero for a first-time share; on the
+    # answer to a dismissal it counts that dismissal too. Additive on the
+    # wire, so a client that does not read it is unaffected.
+    dismissal_count: int = 0
 
     @classmethod
-    def from_moderation_row(cls, photo: PoiPhoto, url: str) -> "PoiPhotoModerationOut":
+    def from_moderation_row(cls, photo: PoiPhoto, url: str, dismissal_count: int = 0) -> "PoiPhotoModerationOut":
         base = PoiPhotoOut.from_row(photo, url)
         return cls(
             **base.model_dump(),
@@ -152,4 +158,5 @@ class PoiPhotoModerationOut(PoiPhotoOut):
             held=photo.flagged == "nudity" and photo.reviewed_at is None,
             reported_reason=photo.reported_reason,
             reported_at=photo.reported_at,
+            dismissal_count=dismissal_count,
         )

@@ -62,6 +62,11 @@ import {
   UNKNOWN_POI_TYPE,
   type PoiConfidence,
 } from './poiIcons'
+import {
+  CROWDING_PROPERTY,
+  POI_ICON_PADDING_EXPRESSION,
+  crowdingByPoi,
+} from './poiCrowding'
 import { whenStyleReady } from './styleReady'
 
 export const POI_SOURCE_ID = 'pois'
@@ -280,8 +285,14 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       // omitted: it is the entire density story, and an `icon-allow-overlap:
       // true` added later for one screenshot would silently undo it.
       'icon-allow-overlap': false,
-      // A little air, so two pins that merely touch are treated as colliding.
-      'icon-padding': 2,
+      // How much air each pin claims, which used to be a flat 2 - "a little
+      // air, so two pins that merely touch are treated as colliding" - and is
+      // now per-feature (#1536). A waypoint on quiet ground still claims
+      // exactly 2 and is placed exactly as it was; one on crowded ground
+      // claims more, so the collision engine stops packing pins edge to edge
+      // in a city. map/poiCrowding.ts owns every number in it and the
+      // measurement each rests on.
+      'icon-padding': POI_ICON_PADDING_EXPRESSION as unknown as number,
       // No `text-field` anywhere in this layer, and the reason has shifted
       // slightly rather than gone away. It used to be that the style had no
       // `glyphs` URL at all; the live background added one (map/style.ts), so
@@ -533,6 +544,9 @@ export interface PoiFeatureCollection {
       [SITE_MEMBERS_PROPERTY]: string
       staleness_ring: string
       staleness_faded: boolean
+      /** How many other drawn marks sit within map/poiCrowding.ts's radius -
+       *  what `icon-padding` interpolates on (#1536). */
+      [CROWDING_PROPERTY]: number
     }
   }>
 }
@@ -578,6 +592,13 @@ export function poiFeatureCollection(
   // rather than a rule.
   const { drawn, membersFor } = composeSites(pois, visibility)
 
+  // AFTER the fold, and that is the point of where this sits: what competes
+  // for a pin is the drawn mark, so a shelter riding one pin with its privy
+  // and two campsites is one neighbour to the marks around it rather than
+  // four. Counting before folding would report ground as crowded that the
+  // fold had already uncrowded, and buy air nobody needed.
+  const crowding = crowdingByPoi(drawn)
+
   return {
     type: 'FeatureCollection',
     features: drawn.map((poi) => {
@@ -600,6 +621,7 @@ export function poiFeatureCollection(
           [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
           staleness_ring: condition.ring,
           staleness_faded: condition.faded,
+          [CROWDING_PROPERTY]: crowding.get(poi.id) ?? 0,
         },
       }
     }),

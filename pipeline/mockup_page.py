@@ -205,10 +205,44 @@ def render(frames: dict, ground: list[str], camera, window: list, zooms: list[di
     <span class="docket__item">Release <b>2026-09-16-4</b></span>
     <span class="docket__item"><b>nearby_poi.geojson</b> · 20,444 features</span>
     <span class="docket__item"><b>3,148</b> fountains · <b>758</b> restrooms</span>
+    <span class="docket__item"><a
+      href="https://github.com/OurHike/OurHike/issues/1534">#1534</a> · decided</span>
     <span class="docket__item docket__item--open"><a
-      href="https://github.com/OurHike/OurHike/issues/1534">#1534</a> · open</span>
+      href="https://github.com/OurHike/OurHike/issues/1536">#1536</a> · building 1 + 2</span>
   </div>
 </header>
+
+<hr class="rule">
+
+<section class="spine">
+  <div class="spine__rail"><p class="spine__mark"><strong>§0</strong>what shipped</p></div>
+  <div class="spine__body">
+    <div class="callout">
+      <h3>The maintainer took options 1 and 2 on 2026-09-17, and two things changed on the way in</h3>
+      <p><strong>This page is the record of the options, not of the build.</strong> Its frames
+      and figures are left exactly as they were when the decision was made;
+      <strong>#1536 — Give the pins air and fold New York City's co-located fountains, which
+      is the maintainer's pick of options 1 and 2</strong> is what was actually built, and
+      <code>features/POI_VISIBILITY.md</code>'s open question carries the reasoning. Two
+      departures are worth reading here, beside the pictures that prompted them.</p>
+      <p><strong>Option 1's padding is 36, not the 24 drawn below, and it ramps.</strong> This
+      page applies one flat padding to every mark on the screen. Measured afterwards, a
+      blanket padding costs the Appalachian Trail half its pins at z9 — 20 down to 10 — so the
+      shipped rule is per-feature, off until a waypoint has more neighbours than anything on
+      the A.T. has, and a ramp that leaves the trail alone has to spend more at its top to
+      reach the same place. End to end the real figures are <strong>374 marks, 32 pins, 15% of
+      the screen under pin</strong>, against this page's 375 / 23 / 11%.</p>
+      <p><strong>The pins below wear a count and the shipped ones do not.</strong> Every New
+      York City fountain ships at <code>confidence_floor: low</code>, so a mark decorated to
+      say <strong>12</strong> offers reassurance the source cannot supply. The pin says water
+      is here; the count and what is unknown about it belong on the card. {GRADE["reasoned"]}</p>
+      <p><strong>One thing the drawing got wrong and the build does not:</strong> the folded
+      marks here sit at their group's centroid. A centroid of twelve fountains is a point on a
+      lawn with no fountain on it, and a hiker walks to the pin — so the shipped fold anchors
+      on the most central fountain that actually exists.</p>
+    </div>
+  </div>
+</section>
 
 <hr class="rule">
 
@@ -465,11 +499,11 @@ def render(frames: dict, ground: list[str], camera, window: list, zooms: list[di
       the A.T., and options 1 and 3 both need a scope — by zoom, by source, or by measured
       local density — that keeps it that way. That scope is unspecified here and is real
       design work. {GRADE["reasoned"]}</li>
-      <li><strong>Nothing here is decided.</strong> The maintainer's call of 2026-09-15,
-      recorded in <code>features/NEARBY_TRAILS.md</code> §10, was that 233 pins is "normal
-      for New York City" — this page is the follow-up that call invites, not a reversal of it.
-      <strong>#1534 — Sixty-three pins cover a third of a New York City screen, and folding
-      them together does not fix it</strong> is where it lives.</li>
+      <li><strong>Decided 2026-09-17: options 1 and 2, in that order</strong> — see §0. The
+      maintainer's earlier call of 2026-09-15, recorded in
+      <code>features/NEARBY_TRAILS.md</code> §10, was that 233 pins is "normal for New York
+      City"; this page was the follow-up that call invited rather than a reversal of it, and
+      the decision on it came with these numbers in view.</li>
     </ul>
   </div>
 </section>

@@ -381,6 +381,63 @@ picture of the current camera is not a preference.
   view is *a complete map of something else*. It now carries a second thing, and that claim is
   softer than it was. ~2,837 circles at z4 — cheap to draw (a `circle` layer runs no collision
   pass), but not free of meaning.
+- ~~**What a city does to this design.**~~ **Answered 2026-09-17 — the pins get
+  per-feature air and the city's co-located waypoints fold**, on the maintainer's
+  pick of options 1 and 2 from
+  [`features/mockups/city-water-density.html`](mockups/city-water-density.html)
+  ([#1536](https://github.com/OurHike/OurHike/issues/1536)). The question and its
+  measurements are kept below because the answer only makes sense against them.
+
+  **What scopes it turned out to be the whole of the design work, and neither
+  obvious answer survived measurement.** A blanket `icon-padding` costs the
+  Appalachian Trail half its pins at z9 — 20 down to 10 on the corridor's own
+  densest screen — because the city and the trail are crowded at *different*
+  zooms, so no zoom band is safe. A list of city source keys needs no
+  measurement and encodes *"New York"* where the truth is *"dense"*.
+
+  So `icon-padding` is per-feature, which `property-type: data-driven` in
+  maplibre-gl 6.7 permits without the second symbol layer
+  [`poiLayers.ts`](../client/src/map/poiLayers.ts)'s header forbids.
+  [`client/src/map/poiCrowding.ts`](../client/src/map/poiCrowding.ts) counts how
+  many drawn marks sit within 800 m and ramps the padding from 2 to 36 between 8
+  neighbours and 16. **Every number in it is derived and the file carries which
+  measurement each rests on.**
+
+  **The guarantee, stated the way it is actually true.** All 563 waypoints ATC
+  publishes on the Appalachian Trail measure 5 neighbours or fewer, so every one
+  of them sits under the ramp's low anchor and is padded exactly as it is today.
+  That is *not* the same as "nothing in `poi_*.geojson` changes": those files
+  also carry 185 OSM drinking-water points that reach the corridor through
+  [#1016](https://github.com/OurHike/OurHike/issues/1016)'s widened gate, and one
+  cluster of them in Chenango County, New York — 165 km from the A.T. — runs to
+  24 neighbours and does get air. That is the rule working. It is about density,
+  not about which file a waypoint arrived in.
+
+  **Crowding is computed on the client and the grouping is not**, which looks
+  like a contradiction of [POI_SITES.md](POI_SITES.md) and is not. That doc's
+  argument against computing on a phone is entirely about *grouping* — "no id
+  that survives a pan, re-clusters at every zoom, answers 'how many' when the
+  question at a shelter is 'is there a privy'." A scalar makes no mark, carries
+  no id, and is computed once over fixed coordinates. It also gets something the
+  pipeline could not: `poiFeatureCollection` rebuilds when the legend changes, so
+  the count is over the waypoints the hiker can actually see.
+
+  **The fold is the pipeline's**, as that doc requires:
+  `lib/poi_sites.group_place_sites` folds waypoints of one type that share a
+  place name and stand within 80 m — measured against the real spacing, where
+  the median gap between two fountains in one park is 41 m and the third
+  quartile is 73 m. **The anchor is always a real waypoint and never a
+  centroid**, because a hiker walks to the pin and the centroid of twelve
+  fountains is a point on a lawn.
+
+  **And the badge does not say twelve.** The mockup drew a count on the pin and
+  this does not, which is a deliberate departure: every New York City fountain
+  ships at `confidence_floor: low` — `featuresta` reads *Active* on all 3,849
+  rows — so a mark decorated to say **12** offers reassurance the source cannot
+  supply. #524's strip says what *else* is at a place, and more of the same is
+  not something else. The pin says water is here, which is true; the count and
+  what is unknown about it belong on the card, where there is room for both.
+
 - **What a city does to this design, and it is not what the arithmetic above predicts.**
   Every number in this doc is the A.T. corridor's, where the section above proves viewport
   density is a marginal problem from z12 up and co-location is nearly the whole of it. New

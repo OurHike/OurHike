@@ -258,6 +258,19 @@ export function composeSites(
       // poiLayers.ts's header comment makes a structural property of the
       // one-layer design rather than a nicety.
       if (!isPointDrawn(member, visibility)) continue
+      // A BADGE SAYS WHAT ELSE IS THERE, AND MORE OF THE SAME IS NOT SOMETHING
+      // ELSE (#1536). #524 built this strip to answer "is there a privy at
+      // this shelter"; New York City's fountains fold TWELVE FOUNTAINS onto one
+      // water pin, and a water glyph badged onto a water pin would answer
+      // "water, and also water".
+      //
+      // It is also the honest reading. Every New York City fountain ships at
+      // low confidence - `featuresta` says Active on all 3,849 rows, so the
+      // source carries nothing about whether any one works - and a mark
+      // decorated to say TWELVE reads as reassurance the data cannot supply.
+      // The pin says water is here, which is true; the count and what is
+      // unknown about it belong on the card, where there is room to say both.
+      if (member.type === carrier.type) continue
       carried.add(member.type)
     }
     if (carried.size === 0) continue

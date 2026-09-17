@@ -22,17 +22,17 @@ and the research's own caveat is that `inferred` rows were never opened.
 The maintainer's constraint was *"without me having to review 400 PRs."* The useful finding is that
 the number was never near 400, and seeing why is most of the plan.
 
-Measured against the catalogue, 2026-09-17, across its 168 rows:
+Measured against the catalogue, 2026-09-17, across its 172 rows:
 
 | `load` verdict | rows | what it costs to load |
 | --- | ---: | --- |
-| `via` — geometry arrives through another row | 70 | **nothing.** No entry, no fetch, no bytes. |
-| `hold` — recorded, `reaches_hikers: false` | 49 | nothing. A row in a file. |
+| `via` — geometry arrives through another row | 79 | **nothing.** No entry, no fetch, no bytes. |
+| `hold` — recorded, `reaches_hikers: false` | 40 | nothing. A row in a file. |
 | `none` — no geometry exists, now or later | 25 | nothing. |
 | `refuse` — stated commercial or waiver-gated terms | 4 | nothing. |
-| `ship` — open terms and a usable endpoint | 20 | a fetch, a clip, and download budget |
+| `ship` — open terms and a usable endpoint | 24 | a fetch, a clip, and download budget |
 
-Of the 20 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
+Of the 24 `ship` rows, **9 are already registered** — USFS, ATC, OpenStreetMap and NJDEP all have
 entries in `sources.json` today. So the work this whole catalogue produces is:
 
 > **11 new endpoints.**
@@ -237,11 +237,45 @@ That is a download-budget number rather than a detail — see #1231.
 match on either `TRAILNAME` or `TRAILSYS` across the 19,877-segment state layer. The row stays
 `hold`, but now on evidence rather than on nobody having looked.
 
-**The load after probing: 90 organizations reachable, from the same 11 new fetches.** Every one of
-the sixteen came from data already on disk.
+**After the first probe round: 90 organizations reachable, from the same 11 new fetches.** Every one
+of the sixteen came from data already on disk.
 
 
-## Filling the form: one run, not 168 people typing
+### Round two: eight state clearinghouses
+
+The first round asked "is this already in a layer we pull". The second asked "does a state publish
+this at all", against the eight clearinghouses the catalogue's own notes kept naming. **Four more
+organizations the research pass omitted, and nine more rows off `hold`:**
+
+- **MassGIS** — a `Long Distance Trails` layer of 32 features across 7 named trails, and a
+  `DCR Roads and Trails` layer of 36,859. It answers the Blue Hills and the Trustees. **It also holds
+  the Bay Circuit Trail at 241.8 miles, which appears in no row of the research pass at all** — a long
+  trail with published open geometry that the survey simply missed.
+- **CT DEEP** — `BlueBlazedHikingTrails`, 351 features, carrying `TrailName`, `Par_Name`, `Blaze`,
+  `Map_Color`, `Length`, `Gains` and `Losses`. A blaze column *and* an elevation column, which is more
+  than most already-registered sources publish. This is the Connecticut Forest & Park Association's
+  825-mile network published as open state data, and CFPA was a gap only because nobody looked here.
+- **PASDA / PA DCNR** — `DCNR Statewide Land Trails 2023`, 684 features, carrying Mid State, Laurel
+  Highlands, Mason-Dixon, Standing Stone and Baker; PA DCNR's State Forest layer adds Loyalsock, Donut
+  Hole and Quehanna. **Eight Keystone-affiliated long trails, none of which any organization publishes
+  itself.**
+- **North Carolina** — a `Mountains_to_Sea_Trail` FeatureServer of 328 polylines. The catalogue had
+  the 1,175-mile trail as blocked on a URL nobody had found.
+- **Utah SGID** — the endpoint was a Hub page and is now the queryable layer: 47,986 features,
+  carrying the Bonneville Shoreline Trail at 281 and the Wasatch Mountain Club's ground at 40.
+
+**Two cheap answers were ruled out by measurement rather than left unexamined.** The Superior Hiking
+Trail is *not* in MN DNR's state trails layer — zero features match across its 978 rows, so the 42
+Duluth miles remain the only published portion anybody here has found and the other 267 are a real
+gap. And NC OneMap's own recreation service holds only paddle trails, so looking there first would
+have confirmed the Mountains-to-Sea gap rather than closed it.
+
+**The load after both rounds: 103 organizations reachable, against 15 new fetches** — up from 74
+reachable when the catalogue was first written. `hold` fell from 58 to 40, and **every row that moved
+did so on a feature count anybody can re-run.**
+
+
+## Filling the form: one run, not 172 people typing
 
 [ORG_ONBOARDING.md](ORG_ONBOARDING.md)'s `/for-orgs/nominate/` screen is not a blank form. It reports
 what OurHike **found** about an organization — each endpoint with what is in it, the licence

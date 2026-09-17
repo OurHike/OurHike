@@ -238,6 +238,13 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
     unlinked = 0
     for model, column in (
         (Club, Club.created_by),
+        # The organization's agreement that a model may read its data
+        # survives the admin who recorded it - it was the organization's
+        # decision, and it does not lapse because one person closed their
+        # account. Their id does not survive it: `assist_opted_in_at` stays
+        # where it is and the name beside it goes, which is the same trade
+        # every row in this loop makes.
+        (Club, Club.assist_opted_in_by),
         (WorkProject, WorkProject.created_by),
         (ConsoleKey, ConsoleKey.created_by),
         (RosterSyncRun, RosterSyncRun.run_by),

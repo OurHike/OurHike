@@ -30,6 +30,20 @@ budgets in two minutes. A rolling window has neither property and is one
 attempt on a timeout. A retry against a paid API is how one stuck request
 becomes ten, and the panels are all a convenience over something an
 organization can do by hand.
+
+**AN ORGANIZATION'S DATA DOES NOT LEAVE WITHOUT THAT ORGANIZATION'S CONSENT,
+AND THE CHECK IS HERE RATHER THAN AT THE ROUTE.** `ask` takes the `Club`
+itself and not its id, which is what makes the gate unavoidable: there is no
+argument shaped like "an org, but skip the check", so a route added next year
+that wants to ask a question about an organization has to hand over the row
+that carries the answer. A check in `routers/assist.py` would have been a
+check the next router forgets.
+
+The consent is the org's and not the admin's, so nothing in the request can
+satisfy it - an admin's seat says they may spend the budget, not that the
+board agreed their trail data may be read by a third party. See
+`Club.assist_opted_in` for what standing consent is, and #1547's
+ORG_ONBOARDING.md entry for what is actually sent.
 """
 
 from __future__ import annotations
@@ -45,6 +59,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.core.time import utc_now
 from app.models.assist import AssistUsage
+from app.models.club import Club
 
 ANTHROPIC_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
@@ -65,6 +80,17 @@ BUDGET_WINDOW = timedelta(hours=24)
 
 class AssistUnavailable(RuntimeError):
     """No key, or the deployment has not switched the panels on."""
+
+
+class AssistNotConsented(RuntimeError):
+    """This organization has not agreed that a model may read its data.
+
+    Distinct from `AssistUnavailable` because the two have different people
+    behind them: "not switched on" is a deployment the organization cannot
+    change, and this is a switch one of their own admins can throw in
+    Settings. A screen that showed the same sentence for both would tell an
+    organization to go and ask us for something they already have.
+    """
 
 
 class AssistBudgetSpent(RuntimeError):
@@ -123,20 +149,36 @@ def ask(
     panel: str,
     system: str,
     prompt: str,
-    club_id: str | None = None,
+    club: Club | None = None,
     client_address: str | None = None,
 ) -> AssistAnswer:
     """One question, one answer, one row of accounting.
 
+    `club` is the row rather than its id, and that is the consent gate - see
+    the module header. `None` is the public nominate panel, which carries no
+    organization's data and has nobody to ask.
+
     Raises rather than returning a sentinel, because every caller here has a
     different thing to say to the person on the other end: "not switched on"
-    is a deployment note, "budget spent" is a fact about today, and "failed"
-    is a shrug. Collapsing them into `None` would make all three read as the
-    same shrug.
+    is a deployment note, "your org has not agreed to this" is a switch they
+    own, "budget spent" is a fact about today, and "failed" is a shrug.
+    Collapsing them into `None` would make all four read as the same shrug.
     """
     if not settings.assist_enabled or not settings.anthropic_api_key:
         raise AssistUnavailable("The assist panels are not switched on for this deployment.")
 
+    # Before the budget read and before anything is composed, because a
+    # refusal that has already touched the database is a refusal that took
+    # longer than "no" needs to, and because the order is what a reader
+    # checks first when they ask whether this gate can be got around.
+    if club is not None and not club.assist_opted_in:
+        raise AssistNotConsented(
+            "This organization has not turned the assistant on. An admin can, in Settings - "
+            "it is off until somebody there decides otherwise, because it sends your registry "
+            "to a third party."
+        )
+
+    club_id = club.id if club is not None else None
     client_hash = None if club_id is not None else client_fingerprint(client_address)
     already = spent_today(db, club_id=club_id, client_hash=client_hash)
     budget = budget_for(club_id)

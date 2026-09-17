@@ -63,6 +63,23 @@ const description =
             looking for a maps page, a GIS server, a downloads link, or a data
             portal.
           </p>
+          {
+            /* WHO DOES THE READING, said before the button rather than after.
+               The address goes to a model at Anthropic's API, which is a
+               third party and is not us. An organization gets asked this
+               question properly - `Club.assist_opted_in`, off until one of
+               their admins turns it on - and nobody can be asked here,
+               because the organization this is about does not exist in our
+               database yet and a hiker cannot agree on their behalf. So what
+               is owed on this page is the plain sentence, and the smallest
+               thing sent that could do the job: one public web address, and
+               nothing about the person typing it. */
+          }
+          <p class="org-help">
+            The address goes to a model at Anthropic's API to do the reading —
+            just the address, nothing about you. Skip this and fill the form in
+            yourself if you would rather it did not.
+          </p>
           <div class="org-inline" style="margin-top: 10px">
             <button class="btn btn--ghost" type="button" id="nominate-look">
               Have a look at their site

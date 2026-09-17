@@ -21,6 +21,20 @@ gap list an admin is looking at; the registry panel gets the source they
 typed. Nothing reaches the API that the person asking could not already read
 on their own screen, which is the smallest version of "what did you send
 about us" an organization can be given.
+
+**AND NONE OF IT IS SENT UNTIL THE ORGANIZATION SAYS SO.** The three console
+panels are refused - 409, before anything is composed - for an org whose
+admins have not turned them on, which is every org by default. The switch is
+`PUT /clubs/{slug}/assist-consent` below and the gate is in
+`app/core/assist.py` rather than in this file, so a route added here later
+cannot forget it. Saying on screen what goes over is true and is not consent;
+this is the consent.
+
+The public nominate panel is outside that, deliberately: it sends a website
+address a hiker typed into a public form and carries nothing of any
+organization's - there is no org record to consent, and no organization's
+data to protect. Asking a hiker to agree on an organization's behalf would be
+a consent worth less than none.
 """
 
 from __future__ import annotations
@@ -31,14 +45,24 @@ from sqlalchemy.orm import Session
 from app.core.assist import (
     AssistBudgetSpent,
     AssistFailed,
+    AssistNotConsented,
     AssistUnavailable,
     ask,
     budget_for,
     spent_today,
 )
 from app.core.org_access import OrgAccess, require_org_admin
+from app.core.time import utc_now
 from app.db.session import get_db
-from app.schemas.assist import AssistAsk, AssistOut, AssistPanel, NominateAsk
+from app.models.club import Club
+from app.schemas.assist import (
+    AssistAsk,
+    AssistConsentOut,
+    AssistConsentUpdate,
+    AssistOut,
+    AssistPanel,
+    NominateAsk,
+)
 
 router = APIRouter(tags=["assist"])
 
@@ -84,26 +108,37 @@ def _answer(
     *,
     panel: AssistPanel,
     prompt: str,
-    club_id: str | None,
+    club: Club | None,
     address: str | None,
 ) -> AssistOut:
-    """The three failures, each with the sentence that belongs to it."""
+    """The four failures, each with the sentence that belongs to it.
+
+    **409 FOR "THIS ORGANIZATION HAS NOT TURNED IT ON", AND NOT 403.** A 403
+    is already what an authorization failure answers here - a supervisor
+    reaching an admin-only panel gets one - and a screen cannot tell two 403s
+    apart. Telling a supervisor their organization has not consented, when
+    what actually happened is that they are not an admin, would be a screen
+    lying about somebody else's decision.
+    """
     try:
         result = ask(
             db,
             panel=panel,
             system=SYSTEM_PROMPTS[panel],
             prompt=prompt,
-            club_id=club_id,
+            club=club,
             client_address=address,
         )
     except AssistUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except AssistNotConsented as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except AssistBudgetSpent as exc:
         raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     except AssistFailed as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
+    club_id = club.id if club is not None else None
     budget = budget_for(club_id)
     return AssistOut(
         panel=panel,
@@ -141,7 +176,7 @@ def assist_org(
         db,
         panel=payload.panel,
         prompt=payload.question,
-        club_id=access.club.id,
+        club=access.club,
         address=None,
     )
 
@@ -170,6 +205,74 @@ def assist_nominate(
         db,
         panel="nominate",
         prompt=f"Their website is {payload.website}. What can you tell about their trail data?",
-        club_id=None,
+        club=None,
         address=address,
     )
+
+
+def _consent_of(club: Club) -> AssistConsentOut:
+    """The row's three columns as the one question and its answer."""
+    return AssistConsentOut(
+        opted_in=club.assist_opted_in,
+        opted_in_at=club.assist_opted_in_at,
+        opted_in_by=club.assist_opted_in_by,
+        opted_out_at=club.assist_opted_out_at,
+    )
+
+
+@router.get("/clubs/{slug}/assist-consent", response_model=AssistConsentOut)
+def read_assist_consent(
+    slug: str,
+    access: OrgAccess = Depends(require_org_admin),
+) -> AssistConsentOut:
+    """Where this organization's consent stands, and who put it there.
+
+    Admin-gated rather than public, though `OrgOut.assist_opted_in` is not.
+    The boolean is a fact about the organization; the admin who set it and
+    the afternoon they did it are a fact about a person, and a hiker reading
+    an org's page has no use for either.
+    """
+    return _consent_of(access.club)
+
+
+@router.put("/clubs/{slug}/assist-consent", response_model=AssistConsentOut)
+def set_assist_consent(
+    slug: str,
+    payload: AssistConsentUpdate,
+    access: OrgAccess = Depends(require_org_admin),
+    db: Session = Depends(get_db),
+) -> AssistConsentOut:
+    """Turn the assistant on for this organization, or turn it off again.
+
+    **ADMIN, NOT `can_manage_volunteers`.** A supervisor runs crews; this
+    decides whether the organization's registry may be read by a third party,
+    which is the organization's decision and not a crew-running one. It is
+    the same gate the panels themselves sit behind, so nobody can consent to
+    a thing they could not then use.
+
+    **ONE ADMIN RATHER THAN THREE CODEOWNERS**, which is the one judgement
+    call here worth disagreeing with. Three-codeowner approval is the rule
+    for changing what reaches a hiker's phone; this changes nothing a hiker
+    sees and is reversible in one request by any admin, so it takes the
+    ordinary admin gate that `membership_url` takes. An organization that
+    wants it to be a board decision can make it one - what this records is
+    who clicked and when, so that conversation has something to point at.
+
+    **TURNING IT OFF DOES NOT ERASE THAT IT WAS ON.** `assist_opted_in_at`
+    stays where it was and `assist_opted_out_at` is written beside it, so an
+    organization asking "was our data ever sent, and between which dates" has
+    an answer. The rows in `assist_usage` carry the other half - how many
+    tokens, on which panel, and nothing about what was asked.
+    """
+    now = utc_now()
+    if payload.opted_in:
+        access.club.assist_opted_in_at = now
+        access.club.assist_opted_in_by = access.person_id
+        # Cleared rather than kept, because `assist_opted_in` compares the
+        # two and an old withdrawal sitting in the future of a new consent
+        # would read as still withdrawn.
+        access.club.assist_opted_out_at = None
+    else:
+        access.club.assist_opted_out_at = now
+    db.commit()
+    return _consent_of(access.club)

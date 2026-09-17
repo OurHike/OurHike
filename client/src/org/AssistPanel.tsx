@@ -14,17 +14,24 @@
  * which sentences on the screen came from their own files and which came from
  * a model reading them.
  *
- * **THE THREE FAILURES READ DIFFERENTLY, BECAUSE THEY ARE DIFFERENT.** Not
+ * **THE FOUR FAILURES READ DIFFERENTLY, BECAUSE THEY ARE DIFFERENT.** Not
  * switched on (503) is a deployment note and says the screen works without
  * it; budget spent (429) is a fact about today and says what to do instead;
- * a failed call (502) is a shrug and says so. Collapsing them into one
- * "something went wrong" would make the first two look like the third, and
- * the first two have answers.
+ * not opted in (409) is this organization's own decision and says where it
+ * is made; a failed call (502) is a shrug and says so. Collapsing them into
+ * one "something went wrong" would make the first three look like the last,
+ * and the first three have answers.
  *
  * **NOTHING IS SENT THAT THE PERSON ASKING CANNOT ALREADY SEE.** The caller
  * passes the context, and on every screen that context is what is rendered
  * above the panel. That is the smallest honest answer to "what did you send
  * about us".
+ *
+ * **AND NOTHING IS SENT AT ALL UNTIL THE ORGANIZATION SAYS SO.** `consented`
+ * is `Org.assist_opted_in` handed down, and a `false` takes the question box
+ * off the screen rather than letting somebody type into a box that answers
+ * 409. The server still refuses on its own - the panel not offering the box
+ * is a courtesy, never the gate.
  */
 
 import { useState } from 'react'
@@ -43,6 +50,11 @@ export interface AssistPanelProps {
   readonly title: string
   /** The opening line, before anybody has asked anything. */
   readonly opening: string
+  /** Whether the organization has turned the assistant on, from
+   *  `Org.assist_opted_in`. `false` takes the question box away entirely;
+   *  `undefined` means the caller did not say, and the server is still the
+   *  gate - `POST /assist` answers 409 before anything is sent. */
+  readonly consented?: boolean
   /** Swapped out in tests. Real callers leave it. */
   readonly ask?: (body: { panel: AssistPanelKind; question: string }) => Promise<{
     answer: string
@@ -58,15 +70,21 @@ type Standing =
   | { readonly state: 'off' }
   | { readonly state: 'spent'; readonly detail: string }
   | { readonly state: 'failed' }
+  | { readonly state: 'needsconsent' }
 
-/** Which of the four outcomes a response is.
+/** Which of the five outcomes a response is.
  *
  *  Split out because the mapping is the part worth testing: a 503 and a 502
  *  differ by one digit and by whether there is anything the reader can do.
+ *  A 409 is the fifth and reads differently again - the deployment has the
+ *  assistant, and this organization has not said yes to it.
  */
-export function standingFor(status: number): 'off' | 'spent' | 'failed' | 'answered' {
+export function standingFor(
+  status: number,
+): 'off' | 'spent' | 'failed' | 'answered' | 'needsconsent' {
   if (status === 503) return 'off'
   if (status === 429) return 'spent'
+  if (status === 409) return 'needsconsent'
   // A thrown fetch carries no status, and 0 arriving here means exactly that.
   // Answering 'answered' for it and relying on the caller to undo the mistake
   // would be a trap for whoever calls this next.
@@ -81,6 +99,7 @@ export function AssistPanel({
   placeholder,
   title,
   opening,
+  consented,
   ask,
 }: AssistPanelProps) {
   const [question, setQuestion] = useState('')
@@ -122,14 +141,22 @@ export function AssistPanel({
             ? String((error.detail as { detail?: unknown }).detail ?? '')
             : ''
         setStanding({ state: 'spent', detail })
+      } else if (where === 'off' || where === 'needsconsent') {
+        setStanding({ state: where })
       } else {
-        // 'answered' and 'spent' both carry a field, and neither can be
-        // reached here: 'answered' means a 2xx that did not throw, and
-        // 'spent' is handled above.
-        setStanding({ state: where === 'off' ? 'off' : 'failed' })
+        // 'answered' cannot be reached here and is not passed through: it
+        // means a 2xx, which did not throw, and it carries a field this has
+        // nothing to put in.
+        setStanding({ state: 'failed' })
       }
     }
   }
+
+  // Two ways to learn the same fact about the same organization, so one
+  // notice: `consented === false` arrives with the org and takes the question
+  // box away before anything can be typed, and 'needsconsent' is the server
+  // saying it at the 409 when the caller passed nothing.
+  const notConsented = consented === false || standing.state === 'needsconsent'
 
   return (
     <section className="org-card org-panel">
@@ -190,34 +217,50 @@ export function AssistPanel({
         </div>
       ) : null}
 
-      <div className="org-row">
-        <label className="org-field">
-          <span className="org-field__label">Ask about what is on this screen</span>
-          <input
-            className="org-input"
-            value={question}
-            placeholder={placeholder}
-            disabled={standing.state === 'asking'}
-            onChange={(event) => setQuestion(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') void send()
-            }}
-          />
-        </label>
-        <button
-          type="button"
-          className="org-btn org-btn--small"
-          disabled={standing.state === 'asking' || !question.trim()}
-          onClick={() => void send()}
-        >
-          {standing.state === 'asking' ? 'Reading…' : 'Ask'}
-        </button>
-      </div>
-      <p className="org-mono">
-        What goes over is what is on this screen and what you type. Your question and its
-        answer are not stored — we keep a count of tokens, a date and which panel spent
-        them, and nothing else.
-      </p>
+      {notConsented ? (
+        <div className="org-callout" data-tone="info">
+          <span>
+            <strong>This organization has not turned the assistant on.</strong> Everything
+            on this screen works without it. Until an admin turns it on in Settings,
+            nothing about your trails leaves OurHike — the panel would send the section
+            names, trail names, mileages and gap lists on this screen to Anthropic, and
+            that is your organization's decision rather than ours.
+          </span>
+        </div>
+      ) : null}
+
+      {consented === false ? null : (
+        <div className="org-row">
+          <label className="org-field">
+            <span className="org-field__label">Ask about what is on this screen</span>
+            <input
+              className="org-input"
+              value={question}
+              placeholder={placeholder}
+              disabled={standing.state === 'asking'}
+              onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void send()
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="org-btn org-btn--small"
+            disabled={standing.state === 'asking' || !question.trim()}
+            onClick={() => void send()}
+          >
+            {standing.state === 'asking' ? 'Reading…' : 'Ask'}
+          </button>
+        </div>
+      )}
+      {consented === false ? null : (
+        <p className="org-mono">
+          What goes over is what is on this screen and what you type. Your question and
+          its answer are not stored — we keep a count of tokens, a date and which panel
+          spent them, and nothing else.
+        </p>
+      )}
     </section>
   )
 }

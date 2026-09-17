@@ -324,6 +324,41 @@ def test_spending_the_assist_budget_is_an_admins_act(client, org_world, who, mon
     assert response.status_code == (503 if expected is None else expected)
 
 
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_deciding_whether_a_model_may_read_the_registry_is_an_admins_act(client, org_world, who):
+    """The same gate as spending the budget, for the decision behind it.
+
+    A supervisor runs crews. Whether this organization's section names, trail
+    names and mileages may be read by a third party is the organization's
+    decision, and it sits with the people whose seat says they speak for it.
+    """
+    response = _call(
+        client,
+        org_world,
+        who,
+        "put",
+        "/clubs/{slug}/assist-consent",
+        {"opted_in": True},
+    )
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
+@pytest.mark.parametrize("who", EVERYBODY)
+def test_who_agreed_to_the_assistant_is_not_a_public_reading(client, org_world, who):
+    """The boolean is public on the org; the name and the date are not.
+
+    `GET /clubs/{slug}` carries `assist_opted_in` to anybody, because whether
+    an organization uses the panels is a fact about the organization. Which of
+    its admins clicked the button on which afternoon is a fact about a person.
+    """
+    response = _call(client, org_world, who, "get", "/clubs/{slug}/assist-consent")
+    expected = _expected({ADMIN, CODEOWNER}, who)
+
+    assert response.status_code == (200 if expected is None else expected)
+
+
 # ------------------------------------------------------------------ #
 # The outsider, on their own
 # ------------------------------------------------------------------ #

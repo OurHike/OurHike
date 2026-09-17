@@ -17,9 +17,10 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from sqlalchemy import inspect
+from sqlalchemy import inspect, or_
 
 from app.core.account_deletion import delete_account
+from app.core.time import utc_now
 from app.db.base import Base
 from app.models.app_failure import AppFailure
 from app.models.closure import Closure, ClosureApproval
@@ -136,6 +137,12 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
         )
     )
     club.created_by = profile_id
+    # The other profile column on `clubs`: whoever agreed that a model may
+    # read this organization's data. Furnished so the completeness guard
+    # above has something to see on it, and so the unlink is checked rather
+    # than assumed.
+    club.assist_opted_in_at = utc_now()
+    club.assist_opted_in_by = profile_id
     db.commit()
 
 
@@ -304,7 +311,16 @@ def test_every_table_that_names_a_profile_is_accounted_for(db_session, hiker):
                 # Zero rows means "deleted"; rows means "kept", and either is
                 # a decision. What fails is a table nobody furnished, because
                 # then this test never saw it at all.
-                table.c[columns[0]] == hiker.id
+                #
+                # EVERY such column, not `columns[0]`. This read the first one
+                # only until 2026-09-17, when `clubs` gained a second
+                # (`assist_opted_in_by`) that sorts ahead of `created_by` -
+                # which silently moved the question this guard was asking
+                # about `clubs` from a furnished column to an unfurnished one,
+                # and the test stayed green while seeing nothing. A guard that
+                # can be blinded by declaration order is a guard about
+                # declaration order.
+                or_(*[table.c[column] == hiker.id for column in columns])
             )
         ).fetchall()
         if not rows and name not in _TABLES_EMPTIED:
@@ -424,6 +440,25 @@ def test_the_scrub_clears_every_column_that_says_who_it_was(db_session, hiker):
                 f"{column.key} survived the scrub - either clear it in scrub_profile, "
                 "or add it to `survives` here with a reason it is not identifying"
             )
+
+
+def test_an_organization_keeps_its_agreement_and_forgets_who_gave_it(db_session, hiker):
+    """Deleting an account does not withdraw an organization's consent.
+
+    The two are different people's decisions. The admin closed their OurHike
+    account; the organization did not change its mind about whether a model
+    may read its registry, and an opt-in that lapsed when one admin left
+    would switch a working console off for reasons nobody at the
+    organization could see. What goes is the name beside the date - the same
+    trade `Club.created_by` makes one line above it.
+    """
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    club = db_session.query(Club).filter(Club.id == f"club-{hiker.id}").one()
+    assert club.assist_opted_in_by is None
+    assert club.assist_opted_in_at is not None
+    assert club.assist_opted_in is True
 
 
 def test_an_organization_keeps_everything_that_is_its_own(db_session, hiker):

@@ -38,6 +38,10 @@ export interface AddTrailProps {
   /** Junctions reused rather than duplicated, where the read found any. */
   readonly junctionsReused?: number
   readonly slug: string
+  /** Whether the organization has turned the assistant on, for the panel
+   *  below. Undefined until the org has been read; the server is the gate
+   *  either way. */
+  readonly assistConsented?: boolean
   /** The hiker's own choice, from Settings. Never assumed - #619. */
   readonly units: UnitSystem
 }
@@ -52,6 +56,7 @@ export function AddTrail({
   junctionsReused = 0,
   slug,
   units,
+  assistConsented,
 }: AddTrailProps) {
   const [pointer, setPointer] = useState('')
 
@@ -191,6 +196,7 @@ export function AddTrail({
       )}
 
       <AssistPanel
+        consented={assistConsented}
         kind="addtrail"
         slug={slug}
         title="Adding to an existing registry"

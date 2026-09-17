@@ -49,6 +49,10 @@ export interface HikeRegistryProps {
   readonly onAddSource: (url: string, kind: string) => Promise<string>
   readonly onSendForSignoff: () => void
   readonly slug: string
+  /** Whether the organization has turned the assistant on, for the panel
+   *  below. Undefined until the org has been read; the server is the gate
+   *  either way. */
+  readonly assistConsented?: boolean
 }
 
 /** What we can read again tomorrow, which is the whole criterion. */
@@ -68,6 +72,7 @@ export function HikeRegistry({
   onAddSource,
   onSendForSignoff,
   slug,
+  assistConsented,
 }: HikeRegistryProps) {
   const [url, setUrl] = useState('')
   const [kind, setKind] = useState(SOURCE_KINDS[0].value)
@@ -115,6 +120,7 @@ export function HikeRegistry({
       />
 
       <AssistPanel
+        consented={assistConsented}
         kind="registry"
         slug={slug}
         title="Registry assistant"

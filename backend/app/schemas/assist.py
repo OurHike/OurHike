@@ -19,6 +19,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
+from app.core.time import UtcDatetime
+
 AssistPanel = Literal["registry", "addtrail", "coverage", "nominate"]
 
 # Long enough for a paragraph about a GIS server and a list of a dozen gap
@@ -77,3 +79,37 @@ class AssistOut(BaseModel):
     # spend, which is a different sentence from the one an organization reads
     # about its own.
     tokens_left_today: int | None = None
+
+
+class AssistConsentUpdate(BaseModel):
+    """An organization saying yes or no to the panels reading its data.
+
+    One boolean, and deliberately nothing else. Not part of
+    `OrgSettingsUpdate` for two reasons worth stating: that model is a PATCH
+    whose fields are written straight onto the row, which cannot record
+    *who* agreed or *when*; and burying consent among the website and
+    donation links would make it one more field somebody tabs through rather
+    than a decision they took.
+    """
+
+    opted_in: bool
+
+
+class AssistConsentOut(BaseModel):
+    """Where an organization's consent stands, and who put it there.
+
+    Behind the admin gate rather than on `OrgOut`, which is public. That an
+    organization uses the panels is a fact about the organization; which of
+    its admins clicked the button on which afternoon is a fact about a
+    person, and it does not need to be on a page a hiker can read.
+
+    Built field by field in the router rather than validated off the row:
+    the column names carry an `assist_` prefix the response does not need,
+    and a silent name mismatch under `from_attributes` would answer `false`
+    for an org that had agreed.
+    """
+
+    opted_in: bool
+    opted_in_at: UtcDatetime | None = None
+    opted_in_by: str | None = None
+    opted_out_at: UtcDatetime | None = None

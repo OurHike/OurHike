@@ -44,6 +44,10 @@ export interface CoverageProps {
   readonly onEditRegions?: () => void
   readonly onExport: (format: 'csv' | 'geojson') => void
   readonly slug: string
+  /** Whether the organization has turned the assistant on, for the panel
+   *  below. Undefined until the org has been read; the server is the gate
+   *  either way. */
+  readonly assistConsented?: boolean
   readonly onBackToRoles: () => void
   /** The hiker's own choice, from Settings. Never assumed - #619. */
   readonly units: UnitSystem
@@ -65,6 +69,7 @@ export function Coverage({
   slug,
   onBackToRoles,
   units,
+  assistConsented,
 }: CoverageProps) {
   const [selected, setSelected] = useState<string | null>(null)
 
@@ -253,6 +258,7 @@ export function Coverage({
       </section>
 
       <AssistPanel
+        consented={assistConsented}
         kind="coverage"
         slug={slug}
         title="Read the gaps with me"

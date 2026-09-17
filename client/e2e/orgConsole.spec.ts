@@ -250,6 +250,24 @@ test.describe('what the screens refuse to do', () => {
 
     await expect(page.getByText('suggestions, not changes')).toBeVisible()
   })
+
+  test("Settings names where the assistant sends an org's data, and who it goes to", async ({
+    page,
+  }) => {
+    // The consent is worth nothing if the sentence it rests on is vague. An
+    // admin deciding this is entitled to read the third party's own name on
+    // the screen where they decide it, not a link to a policy page.
+    await openOrg(page, `/org/${DEMO}/setup?page=leaving`)
+
+    const assistant = page
+      .locator('section.org-panel')
+      .filter({ has: page.getByRole('heading', { name: 'The assistant' }) })
+    await expect(assistant).toContainText('api.anthropic.com')
+    await expect(assistant).toContainText('off until you turn it on')
+    await expect(
+      assistant.getByRole('button', { name: /Turn the assistant o(n|ff)/ }),
+    ).toBeVisible()
+  })
 })
 
 test.describe('the console at desk width', () => {

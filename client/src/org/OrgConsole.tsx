@@ -54,6 +54,7 @@ import {
   DEMO_SECTIONS,
   DEMO_SLUG,
   DEMO_WORKDAYS,
+  demoAssistConsent,
   isDemoOrg,
 } from './demoOrg'
 import { SetupHub } from './screens/SetupHub'
@@ -455,6 +456,7 @@ export function OrgConsole({
               featuredHikes={demo ? DEMO_HIKES.length : 0}
               needsAnEye={sections.filter((section) => section.miles === null).length}
               slug={route.slug}
+              assistConsented={org?.assist_opted_in}
               onAddSource={async () => 'Nothing read — the reader is not wired up yet.'}
               onSendForSignoff={() =>
                 go({ kind: 'setup', slug: route.slug, page: 'signoff' })
@@ -488,6 +490,7 @@ export function OrgConsole({
               onRead={notWiredYet}
               onPropose={notWiredYet}
               slug={route.slug}
+              assistConsented={org?.assist_opted_in}
               onBack={() => go({ kind: 'setup', slug: route.slug, page: 'home' })}
             />
           )
@@ -574,6 +577,12 @@ export function OrgConsole({
               onProposeRemoval={notWiredYet}
               onUnpublish={notWiredYet}
               onProposeDeletion={notWiredYet}
+              // The demo's record only. A real organization's consent record
+              // comes from `GET /clubs/{slug}/assist-consent`, which nothing
+              // here reads yet - Settings says so rather than inventing a
+              // date and a name for it.
+              assistConsent={demo ? demoAssistConsent : undefined}
+              onSetAssistConsent={notWiredYet}
               names={names}
             />
           ) : null
@@ -636,6 +645,7 @@ export function OrgConsole({
               onExport={notWiredYet}
               units={units}
               slug={route.slug}
+              assistConsented={org?.assist_opted_in}
               onBackToRoles={() =>
                 go({ kind: 'volunteers', slug: route.slug, page: 'roles' })
               }

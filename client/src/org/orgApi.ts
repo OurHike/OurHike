@@ -77,6 +77,8 @@ export interface Org {
   donation_url: string | null
   created_at: string
   admins: OrgAdmin[]
+  /** The server's answer on whether the assist panels may send. Never inferred here. */
+  assist_opted_in: boolean
 }
 
 /** What the server says this person may do here. Never inferred locally. */
@@ -248,6 +250,20 @@ export interface ConsoleKey {
   secret?: string
 }
 
+/**
+ * Whether an organization has turned the assist panels on, and who did.
+ *
+ * `opted_in_at` and `opted_in_by` are null until somebody has; `opted_out_at`
+ * carries the last time somebody turned it back off, so a record of both
+ * directions survives rather than only the current state.
+ */
+export interface AssistConsent {
+  opted_in: boolean
+  opted_in_at: string | null
+  opted_in_by: string | null
+  opted_out_at: string | null
+}
+
 const org = (slug: string) => `/clubs/${encodeURIComponent(slug)}`
 
 export const orgApi = {
@@ -359,6 +375,20 @@ export const orgApi = {
     }>(`${org(slug)}/assist`, {
       method: 'POST',
       body: JSON.stringify({ panel, question }),
+    }),
+  /** Whether this organization has opted in, for the panel and for Settings.
+   *
+   *  A read through `readOrg` even though the endpoint is admin-only: the
+   *  server is the gate here as everywhere (`app/routers/assist.py` refuses
+   *  both this and `/assist` on its own), and a token rides along when there
+   *  is one, which is all an admin's browser has to offer.
+   */
+  assistConsent: (slug: string, signal?: AbortSignal) =>
+    readOrg<AssistConsent>(`${org(slug)}/assist-consent`, signal),
+  setAssistConsent: (slug: string, optedIn: boolean) =>
+    writeOrg<AssistConsent>(`${org(slug)}/assist-consent`, {
+      method: 'PUT',
+      body: JSON.stringify({ opted_in: optedIn }),
     }),
   exportOrg: (slug: string) => writeOrg<Record<string, unknown>>(`${org(slug)}/export`),
   deleteOrg: (slug: string) => writeOrg<void>(org(slug), { method: 'DELETE' }),

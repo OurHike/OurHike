@@ -22,7 +22,7 @@
 
 import { useState } from 'react'
 import { PageHeader } from '../components'
-import type { Org } from '../orgApi'
+import type { AssistConsent, Org } from '../orgApi'
 
 export interface ExportPiece {
   readonly key: string
@@ -38,6 +38,11 @@ export interface OrgSettingsProps {
   readonly onProposeRemoval: (adminId: string) => void
   readonly onUnpublish: () => void
   readonly onProposeDeletion: () => void
+  /** Who turned the assistant on and when, from
+   *  `GET /clubs/{slug}/assist-consent`. Absent while nobody has asked the
+   *  server; `org.assist_opted_in` is the on/off answer either way. */
+  readonly assistConsent?: AssistConsent
+  readonly onSetAssistConsent: (optedIn: boolean) => void
   readonly names?: Readonly<Record<string, string>>
   /** Roles each admin holds that would need reassigning, not deleting. */
   readonly heldRoles?: Readonly<Record<string, number>>
@@ -50,6 +55,8 @@ export function OrgSettings({
   onProposeRemoval,
   onUnpublish,
   onProposeDeletion,
+  assistConsent,
+  onSetAssistConsent,
   names = {},
   heldRoles = {},
 }: OrgSettingsProps) {
@@ -57,6 +64,16 @@ export function OrgSettings({
   const codeowners = org.admins.filter(
     (seat) => seat.is_codeowner && seat.approved_at,
   ).length
+  // Both null when the consent record has not been read, which is a different
+  // thing from nobody having turned it on - `org.assist_opted_in` answers
+  // that, and the line below says which of the two it is rather than filling
+  // the gap with a date nobody stands behind.
+  const assistOnDate = assistConsent?.opted_in_at
+    ? new Date(assistConsent.opted_in_at).toLocaleDateString()
+    : null
+  const assistOnBy = assistConsent?.opted_in_by
+    ? (names[assistConsent.opted_in_by] ?? assistConsent.opted_in_by)
+    : null
 
   return (
     <>
@@ -100,6 +117,57 @@ export function OrgSettings({
             Download everything
           </button>
         </div>
+      </section>
+
+      {/* THE ASSISTANT'S SWITCH LIVES ON THE SETTINGS SCREEN, beside taking
+          your data and leaving, because it is the same kind of decision: what
+          of yours goes where. The three panels answer 409 until this is on
+          (`app/routers/assist.py`), so the screen and the server agree without
+          this screen being the gate. */}
+      <section className="org-panel">
+        <div className="org-panel__head">
+          <h2>The assistant</h2>
+          <span className="org-panel__count">{org.assist_opted_in ? 'on' : 'off'}</span>
+        </div>
+        <p className="org-panel__note">
+          Turned on, the three assistant panels — on Hike registry, Add a trail and
+          Coverage — send what is already on those screens: the section names, the trail
+          names, the mileages and the coverage gap lists, plus whatever an admin types
+          into the box. That goes to Anthropic's API at api.anthropic.com. OurHike stores
+          neither the question nor the answer — only a token count, a date and which panel
+          spent them. It is off until you turn it on, and every screen here works without
+          it.
+        </p>
+        {org.assist_opted_in ? (
+          <>
+            <p className="org-mono">
+              {assistOnDate === null && assistOnBy === null
+                ? 'On. This screen has not read who turned it on, or when.'
+                : `Turned on${assistOnDate === null ? '' : ` ${assistOnDate}`}${
+                    assistOnBy === null ? '' : ` by ${assistOnBy}`
+                  }.`}
+            </p>
+            <div className="org-inline">
+              <button
+                type="button"
+                className="org-btn org-btn--ghost"
+                onClick={() => onSetAssistConsent(false)}
+              >
+                Turn the assistant off
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="org-inline">
+            <button
+              type="button"
+              className="org-btn"
+              onClick={() => onSetAssistConsent(true)}
+            >
+              Turn the assistant on
+            </button>
+          </div>
+        )}
       </section>
 
       <section className="org-panel">

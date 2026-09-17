@@ -28,7 +28,7 @@
  */
 
 import type { FinderHike } from './components'
-import type { Org, OrgPark, OrgRole, RosterEntry, Workday } from './orgApi'
+import type { AssistConsent, Org, OrgPark, OrgRole, RosterEntry, Workday } from './orgApi'
 
 export const DEMO_SLUG = 'central-park-throughikers'
 
@@ -77,6 +77,11 @@ export const DEMO_ORG: Org = {
   membership_url: 'https://cpthroughikers.example/join',
   donation_url: 'https://cpthroughikers.example/give',
   created_at: '2026-03-02T09:00:00Z',
+  // The demo organization has agreed, so the three assist panels draw the way
+  // the wireframes show them rather than drawing their own refusal. `false` is
+  // what every real organization starts at - the server defaults to it and
+  // `POST /assist` answers 409 until an admin turns it on in Settings.
+  assist_opted_in: true,
   admins: [
     {
       id: 'demo-admin-1',
@@ -109,6 +114,23 @@ export const DEMO_ORG: Org = {
       decline_reason: null,
     },
   ],
+}
+
+/**
+ * Who turned the demo organization's assistant on, and when.
+ *
+ * Invented like every other date in this file, and written as a fixed ISO
+ * timestamp for the same reason the admins' `invited_at` is: a demo that
+ * moved every time somebody opened it would make a screenshot impossible to
+ * compare with the last one. `opted_in_by` is Sam Ortiz's id, who is in
+ * DEMO_ROSTER, so Settings resolves a name rather than printing an id at
+ * somebody.
+ */
+export const demoAssistConsent: AssistConsent = {
+  opted_in: true,
+  opted_in_at: '2026-08-19T15:40:00Z',
+  opted_in_by: 'demo-person-sam',
+  opted_out_at: null,
 }
 
 const SECTIONS: readonly {

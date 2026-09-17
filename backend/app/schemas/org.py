@@ -91,6 +91,17 @@ class OrgOut(BaseModel):
     created_at: UtcDatetime
     admins: list[OrgAdminOut] = []
 
+    # Whether the org has agreed that a model may read its registry, read off
+    # `Club.assist_opted_in` - the derived property, never the raw dates.
+    # Public because it is a fact about the organization and the console
+    # needs it to decide whether to draw an assist panel at all; the dates
+    # and the admin who set them stay behind `GET .../assist-consent`.
+    #
+    # Defaulted to False rather than left required, because an `OrgOut` built
+    # from anything other than a live row - a fixture, a future projection -
+    # must not be able to claim a consent nobody gave by forgetting a field.
+    assist_opted_in: bool = False
+
 
 class OrgAdminInvite(BaseModel):
     """One of the three people named at registration.

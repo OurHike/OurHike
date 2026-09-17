@@ -9,6 +9,12 @@ supplied by a caller, the budget is enforced before the call rather than
 after, and the public panel is counted per address because it has no account
 behind it.
 
+The fifth thing is not about money and lives in its own file -
+tests/test_assist_consent.py, on whether the organization agreed to any of
+this. What it leaves here is the reason `_opt_in` is written out in every
+test below that reaches the API: a call that went out and an organization
+that agreed to it are now the same sentence.
+
 Nothing in this file reaches the network. `httpx.post` is patched in every
 test that gets far enough to call it; a test that made a real request would
 spend real tokens on every CI run, which is the exact failure the budget
@@ -23,6 +29,7 @@ import pytest
 
 from app.config import settings
 from app.core import assist as assist_core
+from app.core.time import utc_now
 from app.models.assist import AssistUsage
 from app.models.club import OrgState
 from tests.factories import make_admin, make_org, make_profile
@@ -59,10 +66,24 @@ def captured(monkeypatch):
 
 
 def _org_with_admin(db_session):
+    """A claimed org with one approved admin, and no consent to the panels.
+
+    No consent because that is the state of every organization that has not
+    said otherwise - see tests/test_assist_consent.py. A helper that opted in
+    quietly would let the gate be deleted without a test here going red.
+    """
     org = make_org(db_session, state=OrgState.claimed)
     person = make_profile(db_session)
     make_admin(db_session, org, person)
     return org, person
+
+
+def _opt_in(db_session, org, person):
+    """This organization agreeing that a model may read its data."""
+    org.assist_opted_in_at = utc_now()
+    org.assist_opted_in_by = person.id
+    db_session.commit()
+    return org
 
 
 def test_the_panels_are_inert_until_a_deployment_switches_them_on(client, db_session):
@@ -86,6 +107,7 @@ def test_the_model_comes_from_settings_and_never_from_the_request(client, db_ses
     """The whole abuse story. A caller who could name the model could name
     the expensive one and bill an organization for it."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
 
     response = client.post(
         f"/clubs/{org.slug}/assist",
@@ -105,6 +127,7 @@ def test_a_caller_cannot_supply_the_system_prompt(client, db_session, assist_on,
     """Supplying it would make this a general-purpose model endpoint on
     somebody else's key."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
 
     client.post(
         f"/clubs/{org.slug}/assist",
@@ -124,6 +147,7 @@ def test_the_system_prompt_tells_it_to_say_what_it_cannot_tell(client, db_sessio
     """These panels talk to people deciding what goes on a map a hiker walks
     by, so a guess presented as a reading is the failure mode."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
 
     client.post(
         f"/clubs/{org.slug}/assist",
@@ -138,6 +162,7 @@ def test_the_system_prompt_tells_it_to_say_what_it_cannot_tell(client, db_sessio
 def test_what_was_spent_is_recorded_from_the_api_not_estimated(client, db_session, assist_on, captured):
     """A budget enforced against a guess is wrong in the expensive direction."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
 
     body = client.post(
         f"/clubs/{org.slug}/assist",
@@ -153,6 +178,7 @@ def test_what_was_spent_is_recorded_from_the_api_not_estimated(client, db_sessio
 def test_an_organization_that_has_spent_its_day_is_refused_before_the_call(client, db_session, assist_on, monkeypatch):
     """Before, not after. A budget enforced afterwards is a bill already spent."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
     monkeypatch.setattr(settings, "assist_daily_token_budget", 100)
     db_session.add(AssistUsage(club_id=org.id, panel="registry", input_tokens=90, output_tokens=20))
     db_session.commit()
@@ -173,6 +199,7 @@ def test_an_organization_that_has_spent_its_day_is_refused_before_the_call(clien
 
 def test_one_organizations_spending_does_not_touch_anothers(client, db_session, assist_on, captured, monkeypatch):
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
     other = make_org(db_session, slug="another-club", state=OrgState.claimed)
     monkeypatch.setattr(settings, "assist_daily_token_budget", 100)
     db_session.add(AssistUsage(club_id=other.id, panel="registry", input_tokens=500, output_tokens=0))
@@ -310,6 +337,7 @@ def test_a_question_longer_than_the_cap_is_refused(client, db_session, assist_on
 def test_an_upstream_failure_is_never_retried(client, db_session, assist_on, monkeypatch):
     """A retry against a paid API is how one stuck request becomes ten."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
     calls = {"n": 0}
 
     def fail(*args, **kwargs):
@@ -331,6 +359,7 @@ def test_an_upstream_failure_is_never_retried(client, db_session, assist_on, mon
 def test_an_upstream_error_body_never_reaches_the_caller(client, db_session, assist_on, monkeypatch):
     """It can carry a key fragment or an account detail."""
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
 
     monkeypatch.setattr(
         assist_core.httpx,
@@ -347,6 +376,9 @@ def test_an_upstream_error_body_never_reaches_the_caller(client, db_session, ass
         headers=auth_headers(person.id),
     )
 
+    # The status as well as the body: a refusal that never reached the API
+    # also has no key fragment in it, and this test is about the one that did.
+    assert response.status_code == 502
     assert "sk-ant" not in response.text
 
 
@@ -357,6 +389,7 @@ def test_the_prompt_and_the_answer_are_not_stored(client, db_session, assist_on,
     cannot quietly become a transcript.
     """
     org, person = _org_with_admin(db_session)
+    _opt_in(db_session, org, person)
 
     client.post(
         f"/clubs/{org.slug}/assist",

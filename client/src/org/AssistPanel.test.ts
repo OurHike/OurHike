@@ -20,6 +20,13 @@ describe('standingFor', () => {
     expect(standingFor(429)).toBe('spent')
   })
 
+  it('reads a 409 as "this organization has not opted in", not as an outage', () => {
+    // The deployment has the assistant; the organization has not said yes to
+    // it. Reading this as 'off' would tell an admin to talk to us, when the
+    // switch is on their own Settings screen.
+    expect(standingFor(409)).toBe('needsconsent')
+  })
+
   it('reads a 502 as a shrug, because that is what it is', () => {
     expect(standingFor(502)).toBe('failed')
   })

@@ -409,6 +409,13 @@ def upgrade() -> None:
     )
     op.add_column("clubs", sa.Column("membership_url", sa.String(), nullable=True))
     op.add_column("clubs", sa.Column("donation_url", sa.String(), nullable=True))
+    # Consent to the assist panels. Nullable with no server_default, and that
+    # is the decision rather than an omission: null means "never agreed", so
+    # every row that predates this column - and every row created after it -
+    # starts with the panels refusing. See `Club.assist_opted_in`.
+    op.add_column("clubs", sa.Column("assist_opted_in_at", sa.DateTime(), nullable=True))
+    op.add_column("clubs", sa.Column("assist_opted_in_by", sa.String(), nullable=True))
+    op.add_column("clubs", sa.Column("assist_opted_out_at", sa.DateTime(), nullable=True))
     op.add_column("clubs", sa.Column("created_by", sa.String(), nullable=True))
     op.add_column(
         "clubs",
@@ -422,6 +429,7 @@ def upgrade() -> None:
 
     op.create_index(op.f("ix_clubs_slug"), "clubs", ["slug"], unique=True)
     op.create_foreign_key("fk_clubs_created_by_profiles", "clubs", "profiles", ["created_by"], ["id"])
+    op.create_foreign_key("fk_clubs_assist_opted_in_by_profiles", "clubs", "profiles", ["assist_opted_in_by"], ["id"])
 
     op.add_column("maintainer_assignments", sa.Column("role_id", sa.String(), nullable=True))
     op.add_column("maintainer_assignments", sa.Column("section_id", sa.String(), nullable=True))
@@ -523,10 +531,14 @@ def downgrade() -> None:
     op.drop_column("maintainer_assignments", "section_id")
     op.drop_column("maintainer_assignments", "role_id")
 
+    op.drop_constraint("fk_clubs_assist_opted_in_by_profiles", "clubs", type_="foreignkey")
     op.drop_constraint("fk_clubs_created_by_profiles", "clubs", type_="foreignkey")
     op.drop_index(op.f("ix_clubs_slug"), table_name="clubs")
     op.drop_column("clubs", "created_at")
     op.drop_column("clubs", "created_by")
+    op.drop_column("clubs", "assist_opted_out_at")
+    op.drop_column("clubs", "assist_opted_in_by")
+    op.drop_column("clubs", "assist_opted_in_at")
     op.drop_column("clubs", "donation_url")
     op.drop_column("clubs", "membership_url")
     op.drop_column("clubs", "state")

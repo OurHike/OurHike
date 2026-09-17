@@ -263,11 +263,17 @@ Org                         (repo: clubs — the table keeps its name, conflict 
   id · slug · name · domain · website · verified_by (dns|email)
   state (unclaimed|claimed|frozen|deleted)
   membership_url · donation_url · created_by
+  assist_opted_in_at · assist_opted_in_by · assist_opted_out_at
 ```
 
 Renamed from Club **in the UI only** — not every org is a club, and the ones that are not are land
 trusts and agencies. `state` drives Claim your org: an unclaimed org has live trails and no admins,
 which is exactly what a source registered by a maintainer looks like today.
+
+The three `assist_*` columns are the org's answer to "may a model read our registry" — dated and
+attributed rather than a flag, because an organization asking six months later who agreed to this
+needs a name and a date, and a boolean has neither. Null means never agreed, which is every row.
+See **The assist panels** below.
 
 ```
 OrgAdmin                    (new: club_admins)
@@ -390,6 +396,10 @@ GET    /maintainer-assignments           EXISTS — read-only today; see conflic
 GET    /profiles/me/export               EXISTS — the volunteer half of "take your data"
 DELETE /profiles/me                      EXISTS — a person leaving is not an org leaving
 POST   /console/session                  NEW — secret key + signed-in email → 15-min scoped token
+POST   /clubs/:id/assist                 The three console panels. 409 until the org has opted in
+POST   /assist/nominate                  The public one. No account, no org, smaller budget
+GET    /clubs/:id/assist-consent         Admin only — where consent stands, who set it, when
+PUT    /clubs/:id/assist-consent         Admin only — `{opted_in}`. The whole of the switch
 ```
 
 ### Console embed auth
@@ -502,18 +512,69 @@ Header · Phone Frame.
 
 ---
 
+## The assist panels
+
+Four of them, drawn by the wireframes: the registry assistant, add-a-trail, "read the gaps" on the
+coverage report, and the public one on the nominate form. Sonnet, and **the model is a setting rather
+than a request parameter** — a caller who can name the model can name the expensive one and bill
+somebody who did not choose it. The system prompt is looked up by panel for the same reason.
+They suggest and never decide: nothing a panel returns writes a section, creates a role or registers
+a source, because a registry is what reaches a hiker's phone and a model's reading of a GIS layer is
+a suggestion to check.
+
+### The organization decides, not us
+
+**An organization's data does not leave without that organization's consent, and the gate is in
+`app/core/assist.py` rather than at the route.** `ask` takes the `Club` row and not its id, so there
+is no argument shaped like "an org, but skip the check": a route added next year has to hand over
+the row that carries the answer. The panel saying on screen what goes over is true and is not
+consent.
+
+- **Off for every organization until an admin turns it on**, in Settings, where the sentence naming
+  what leaves can be read. `assist_opted_in_at` null is the state of every row.
+- **Nothing is asked before the organization exists.** Registration collects no consent — there is
+  nobody at an organization that does not exist yet to give it, and a checkbox on a sign-up form is
+  the weakest place to collect a decision about somebody else's data. A field smuggled into the
+  registration body is ignored rather than honoured.
+- **The refusal is 409**, not 403. A 403 is already what an authorization failure answers here, and
+  a screen cannot tell two 403s apart — telling a supervisor their organization has not agreed, when
+  what happened is that they are not an admin, would be a screen reporting somebody else's decision.
+- **Turning it off does not erase that it was on.** `assist_opted_in_at` stays and
+  `assist_opted_out_at` is written beside it, so "was our data ever sent, and between which dates"
+  has an answer. `assist_usage` carries the other half — tokens, a day and a panel, never a prompt.
+- **A tie reads as off.** Two timestamps equal to the microsecond is a row somebody edited or a clock
+  that went backwards, and of the two ways to be wrong, sending a registry to a third party that
+  never agreed is the one that cannot be taken back.
+- **The public nominate panel is outside all of this**, deliberately. It runs before any org record
+  exists, sends a website address a hiker typed into a public form, and carries nothing of any
+  organization's. Asking a hiker to agree on an organization's behalf would be a consent worth less
+  than none.
+- **Deleting the admin's account does not withdraw it.** The agreement was the organization's; the
+  name beside the date goes with the person, the date stays, the panels keep working.
+
+Budgeted per organization per rolling day, counted from the usage the API itself reports rather than
+an estimate, and checked before the call rather than after. The public panel is two orders of
+magnitude smaller and counted per address.
+
+---
+
 ## Known gaps
 
 What this design does not answer, stated plainly.
 
-- **An organization has not consented to their registry reaching a third party, and the assist
-  panels send it.** `POST /clubs/{slug}/assist` puts section names, trail names, mileages and the
-  coverage gap list in front of a model at `api.anthropic.com`. The panel says on screen that what
-  goes over is what is on the screen, which is true and is not consent — nobody at the organization
-  was asked. It ships inert (`assist_enabled` defaults false) so nothing has been sent, and the
-  three public embeds do not touch it. **What would settle it:** a per-organization opt-in stored
-  beside the org record, shown at registration and revocable from Settings. That is a schema
-  decision for the maintainer rather than one to slip into the branch that found it.
+- **One admin's click is the whole of an organization's consent, and that is a judgement call rather
+  than a finding.** Three codeowners approve a registry change because a registry reaches a hiker's
+  phone; agreeing that a model may read that registry takes the ordinary admin gate that
+  `membership_url` takes, on the argument that it changes nothing a hiker sees and any admin can
+  reverse it in one request. An organization that wants it to be a board decision has to make it one
+  off-app — what the columns record is who clicked and when, so that conversation has something to
+  point at. **What would settle it:** an org telling us they wanted the stronger gate. Nobody has
+  been asked, because no organization has used this yet.
+- **Nothing has told an organization what a model did with their registry, because none has sent
+  one.** `assist_usage` records tokens, a day and a panel; it does not record what was asked, by
+  design. An organization auditing a month of use can see how much and on which screens, and cannot
+  see what was said. That is the trade taken deliberately — a transcript we kept would be a
+  transcript we would then have to protect — and it is worth stating rather than discovering.
 - **Whose credentials open the pull request at registry sign-off is undecided, and the endpoint no
   longer pretends otherwise.** Three codeowners signing produces three rows in `registry_signoffs`
   and nothing else; no code in this repository opens a pull request. It must not be an admin's

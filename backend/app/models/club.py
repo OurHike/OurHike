@@ -36,6 +36,12 @@ built, and these are the columns it needs:
   ONBOARDING.md records the maintainer's 2026-08-27 correction - *"There is
   no funding model today for the orgs"* - so OurHike holds nothing, takes
   nothing and links to theirs.
+- `assist_opted_in_at`, `assist_opted_in_by` and `assist_opted_out_at` are
+  one organization's answer to "may a model read our registry". The assist
+  panels send section names, trail names, mileages and the coverage gap list
+  to a third party at api.anthropic.com, and until 2026-09-17 nothing here
+  recorded whether anybody had agreed to that. Off is the state of every row
+  that has not said otherwise, including every row that predates the column.
 """
 
 import enum
@@ -93,11 +99,46 @@ class Club(Base):
     membership_url = Column(String, nullable=True)
     donation_url = Column(String, nullable=True)
 
+    # WHETHER THIS ORGANIZATION HAS AGREED THAT A MODEL MAY READ ITS OWN
+    # REGISTRY. Three columns rather than one boolean, and the extra two are
+    # the point: a flag says what is true now and nothing about who decided
+    # it, so an organization asking "who agreed to this, and when" would get
+    # an answer nobody could produce. The shape is `OrgAdmin`'s - two
+    # timestamps, the later one standing, both kept so the sequence reads.
+    #
+    # Nullable and null by default, which is the whole of the default: an
+    # organization that has never been asked has not agreed.
+    assist_opted_in_at = Column(DateTime, nullable=True)
+    assist_opted_in_by = Column(String, ForeignKey("profiles.id"), nullable=True)
+    assist_opted_out_at = Column(DateTime, nullable=True)
+
     # Who registered or claimed it. Null for the orgs that got here because a
     # maintainer wrote a row in pipeline/sources.json, which is most of them.
     created_by = Column(String, ForeignKey("profiles.id"), nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=utc_now)
+
+    @property
+    def assist_opted_in(self) -> bool:
+        """Has this organization agreed, and not since withdrawn.
+
+        Read by `app/core/assist.py`'s `ask` before any request leaves this
+        process, and published as one boolean on `OrgOut`. The two dates and
+        the person stay behind the admin gate - what an organization
+        publishes about itself is public, and which of its admins clicked
+        which button on which day is not.
+
+        **A TIE IS OFF.** Two timestamps equal to the microsecond is not a
+        state anybody reaches by clicking, so it means a row edited by hand
+        or a clock that went backwards. Of the two ways to be wrong here,
+        sending an organization's registry to a third party that never agreed
+        to it is the one that cannot be taken back.
+        """
+        if self.assist_opted_in_at is None:
+            return False
+        if self.assist_opted_out_at is None:
+            return True
+        return self.assist_opted_out_at < self.assist_opted_in_at
 
 
 class OrgAdmin(Base):

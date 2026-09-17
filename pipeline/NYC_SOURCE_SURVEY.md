@@ -40,6 +40,9 @@ marked **NEEDS REVIEW**, and §10 gathers every one of them in one place.
 | OpenStreetMap | ✓ | ✓ | | ✓ | continuous | gap-filler question, measured in #771 — §7 |
 | **NYC Parks Trails** (five boroughs) | ✓ 7,059 | | | ✓ Socrata | **2026-09-03** | **registered, ships** (#1432, statutory terms — no ask needed); §12 |
 | **NYC DOT greenways** (off-street) | ✓ 3,039 of 29,695 | | | ✓ Socrata | **2026-07-24** | **registered, ships** filtered (#1432); §12 |
+| **NYC CSCL Centerline** (pedestrian classes) | ✓ 6,498 | | | ✓ Socrata | **2026-09-12** | **registered, ships** as `nyc_cscl_paths` (#1533) — path/boardwalk/step-street plus the doubly-asserted non-vehicular streets; holds the 97% of Central Park's path the trails layer does not; §12f |
+| **NYC CSCL Centerline** (car-free park drives) | ✓ 124 | | | ✓ Socrata | **2026-09-12** | **registered, ships** as `nyc_park_drives` (#1533) — a reviewed ten-name list in two parks, boundary-clipped; the one entry that contradicts its own source; §12f |
+| **NYC Planimetric Sidewalk** | polygons | | | ✓ Socrata | **2025-12-10** | **area, not line** — 80.7 acres inside Central Park, and centerline extraction is what it would take; §12f |
 | NYC DCP's ArcGIS bike mirror | stale | | | ✓ | **2017-03-08** | not a source — nine years stale, no greenway column; §12 |
 
 PIPC appears in no row of its own: its NY parks (Harriman, Bear Mountain, Sterling Forest)
@@ -520,6 +523,32 @@ reason every count here was read from the data rather than from the page. The de
 says *"paths or trails in designated Forever Wild areas"*; Central Park and Prospect Park
 are neither Forever Wild nor absent, and are the fourth and fifth largest parks in it.
 
+**That paragraph was a count and it got read as coverage**, which
+[#1530](https://github.com/OurHike/OurHike/issues/1530) opened on and this correction
+answers. 312 segments is a big number and 6.98 miles is not. Measured 2026-09-16 by
+`spike_central_park_paths.py`, clipping this layer to NYC Parks' own boundary polygons:
+
+| park | segments | miles inside the boundary | acres | mi/acre | of its own paved walkway |
+|---|---:|---:|---:|---:|---:|
+| Central Park | 312 | **6.98** | 839 | 0.0083 | **10–17%** |
+| Prospect Park | 376 | 14.32 | 478 | 0.0299 | 48–80% |
+
+**A factor of 3.6 out of one layer surveyed by one steward**, which is what makes this a
+fact about Central Park rather than about the dataset — and the reason Prospect Park is the
+right control and not merely a second example. The walkway column is an independent check
+against the city's planimetric sidewalk polygons (`52n9-sdep`): 80.7 acres of paved surface
+inside Central Park, 35.4 inside Prospect, divided by an assumed 3–5 m width. That band is
+picked rather than surveyed — `@unvalidated`, and the spike's `WALKWAY_WIDTH_BAND_M` says
+what would settle it — but it does not need to be precise to separate a tenth from a half.
+
+So **the description was closer to right than this survey gave it credit for.** What the
+layer holds in Central Park is roughly its Forever-Wild-shaped corners — the Ramble, the
+North Woods, the Hallett sanctuary — plus paved fragments. *Not absent* and *covered* are
+different claims, and only the first one was ever checked here.
+
+Where the rest of the park is, and what it would cost, is §12f; the decisions it raises are
+[#1533](https://github.com/OurHike/OurHike/issues/1533).
+
 Three things the registration carries that a reader should know before trusting a line:
 
 - **There is no blaze field, and the colour is in the name.** `trail_name` reads `Blue
@@ -662,6 +691,135 @@ Two riders travel with it:
   maintainer can actually stand on, which is the whole reason it exists — Van Cortlandt and
   Pelham Bay are a subway ride, and a single afternoon would settle (c), (d) and the 2013
   survey dates in 12b better than any amount of further probing.
+- **(g) Central Park is a tenth drawn**, 12b's corrected table, and §12f is where the rest
+  of it lives.
+
+### 12f. The rest of Central Park, and the rest of the city — CSCL registered (#1530, #1533)
+
+12b establishes the hole: 6.98 miles drawn inside an 839-acre park whose own paved walkway
+implies 41–68. This section is what fills it. It began as a survey of two unregistered
+candidates; the maintainer took all three of its decisions on 2026-09-17 and **two of them
+are now registered entries**, so what follows is what shipped and on what evidence.
+
+#### The data dictionary, which turned a reading into a quotation
+
+§12f's first draft tagged `rw_type='6'` `@unvalidated` and said reading NYC's published
+definition was what would settle it. **It is published, and it is settled.** Not on the
+column descriptions, which are empty, and not at NYC Planning's PDF URL, which answers 403
+— it is an **attachment on the dataset itself** (`Centerline.pdf`, assetId
+`4cff63bb-aeb0-4ca3-adb5-d6027dc133d5`), reachable through Socrata's own file endpoint.
+Quoted:
+
+> `RW_TYPE` — 1 Street, 2 Highway, 3 Bridge, 4 Tunnel, **5 Boardwalk**, **6 Path/Trail**,
+> **7 StepStreet**, 8 Driveway, 9 Ramp, 10 Alley, 11 Unknown, 12 Non-Physical Street
+> Segment, 13 U Turn, 14 Ferry Route
+>
+> `TRAFDIR` — FT With, TF Against, TW Two-Way, **NV Non-Vehicular**
+>
+> `STATUS` — 1 Planned Private, **2 Constructed**, 3 Paper, 4 Under Construction,
+> 5 Demapped, 9 Paper Street Coincident with Boundary
+
+The lesson generalises past this layer and is worth carrying: **a Socrata dataset can
+publish its dictionary as an attachment**, and `api/views/<id>.json`'s `metadata.attachments`
+is where to look before concluding a vocabulary is undocumented. `nyc_drinking_fountains`'
+own dictionary link is dead (`nyc_water_holdback`), so this is not a rule — but it is a
+place to check that this survey had not checked.
+
+#### `nyc_cscl_paths` — the three pedestrian classes, 6,498 rows citywide
+
+`status='2'` and `rw_type` in 5/6/7, plus a fourth clause below. **Registered and shipping**,
+on the maintainer's decision of 2026-09-17 taken with the counts in front of them.
+
+| class | rows | what it is |
+|---|---:|---|
+| 6 Path/Trail | 5,990 | the park and greenway network — 3,041 names ending in PATH, 1,023 GREENWAY, 250 LINK, 197 TRL, 129 WALK, 71 ESPL, 61 TRAIL |
+| 7 StepStreet | 246 | the Bronx and upper Manhattan public stairways, plus 40 rows named PEDESTRIAN PATH — on some hillsides the only pedestrian route there is |
+| 5 Boardwalk | 101 | Coney Island, Rockaway, Orchard Beach, Jacob Riis, the Manhattan Beach promenade |
+| 1 Street, doubly non-vehicular | 162 | see below |
+
+Inside Central Park this is **13.75 miles across 172 features, of which 13.29 — 97% — lie
+more than 25 m from anything the build already drew**. Not §13's question arriving a third
+time: not the same tread digitised twice, but path nobody had. BRIDLE PATH 3.01 mi,
+RESERVOIR LOOP 1.59, N MEADOW PATH 1.58, BRIDLE PATH W 1.52, HECKSCHER BALLFIELDS PATH 1.29.
+
+**It is not a Central Park fix, which is why it went in citywide.** The same clip over
+Prospect Park returns 0.67 miles — because NYC Parks' own layer already covers Prospect at
+96% of the two layers' combined mileage. This layer is thick exactly where that one is thin,
+and neither substitutes for the other.
+
+**The fourth clause needed a second witness.** `trafdir='NV'` is the city's own
+non-vehicular assertion, and alone it is 580 rows that cannot be trusted: **119 of them
+carry a posted speed**, which contradicts the assertion, and the names include HILLSIDE AVE,
+W END AVE and REID AVE. Requiring `posted_speed` **and** `number_travel_lanes` to be absent
+as well cuts it to 162, and what survives reads right — CENTRAL PARK GREAT HL 19, OCEAN PROM
+15, UNION TURNPIKE PED AND BIKE PATH 13, BRUCKNER BOULEVARD BIKE PATH 11, CHERRY HILL PATH 4,
+COLUMBIA STREET ESPL 2, BAYONNE BR PED AND BIKE PATH 2. **Two independent assertions
+agreeing is the bar**, and one of them alone was measured not to clear it.
+
+#### `nyc_park_drives` — 12.02 miles, and the one place a display outruns its source
+
+The maintainer's second decision was the car-free park drives, **excluding Central Park's
+transverses in as many words**, and then: *"I really want every park. Cant you help figure
+out which onces are driveable and exclude?"*
+
+**The mechanical answer does not exist, and that is the finding.** Everything that could
+have supplied it was tried:
+
+| tried | result |
+|---|---|
+| CSCL `trafdir='NV'` inside a park | **3.59 miles across 14 parks** — and **none of Central Park's four drives**, against **61.58 miles** of park-interior street the city marks vehicular |
+| CSCL `posted_speed` / `number_travel_lanes` | EAST DR reads **20 mph, one travel lane**; WEST DR 25; TERRACE DR 25 with three lanes — CSCL still models the drives as vehicular streets |
+| `nyc_dot_greenways` | carries none of these drives |
+| Open Streets (`uiay-nctu`, 391 rows) | a **per-day schedule** of temporary closures on ordinary streets — reading a Sunday-morning closure as a walkable path would be worse than omitting one |
+
+So **no NYC dataset says which park drives are car-free**, and the entry ships a reviewed
+list of ten street names in two boroughs instead: Central Park 6.61 mi (EAST DR 2.90, WEST DR
+2.73, CENTER DR 0.58, TERRACE DR 0.40) and Prospect Park 5.41 mi (WEST DR 1.96, EAST DR 1.46,
+CENTER DR 0.68, WELLHOUSE DR 0.60, S LAKE DR 0.48, E LAKE DR 0.11).
+
+**This entry contradicts its own source, and the registry says so in its own note.** Both
+parks' drives closed to cars in 2018 and the street file has not caught up. The evidence is
+**the maintainer's decision of 2026-09-17**, recorded as that — somebody who lives in the
+city and named this park as the ground they can test on (#1432). `@unvalidated` against any
+published document: the city's own pages answer 403 from an agent sandbox, so nobody here has
+read a primary source saying these are car-free. What would settle it is a DOT or NYC Parks
+page cited by URL and date, or a CSCL republication setting these rows to `NV`.
+
+**A name list alone was measured to be insufficient**, which is why `boundary_source` exists
+on the entry. Queens has its own EAST DR, WEST DR and CENTER DR in Flushing Meadows — hence
+the borough clause — and even within the right borough four of the ten names run on past the
+park edge: Brooklyn EAST DR by 0.30 mi over 7 segments, Manhattan TERRACE DR by 0.03,
+Brooklyn WEST DR by 0.02, Brooklyn CENTER DR by 0.04. Small, and on a safety path a tenth of
+a mile of city street drawn as a car-free park drive is exactly the failure the entry exists
+to avoid. `export_nearby_trails.load_boundary` does the final cut against NYC Parks' own
+polygons, and `keep_reason` drops what falls outside.
+
+**Why every other park is out**, which was the maintainer's actual question. A rule admitting
+any street inside a park boundary takes **61.58 miles across 79 parks**, and the measurement
+says what that buys: Pelham Bay's ORCHARD BEACH BUS TERMINAL LOOP and ORCHARD BEACH ROAD,
+Bronx Park's JUNGLE WORLD RD and BOTANICAL GARDEN RD (zoo and botanical-garden service roads),
+Flushing Meadows' SHEA RD and MERIDIAN RD, Forest Park's FOREST PARK DR, Highland Park's
+HIGHLAND BLVD. **Those carry cars**, and a hiker walked onto one is CLAUDE.md's third way
+this app can hurt somebody. Adding a park is one reviewed row plus its measurement, and the
+entry is built so that is cheap.
+
+#### Still open
+
+- **The walkway polygons.** `52n9-sdep` holds 80.7 acres of paved surface inside Central Park
+  (35.4 inside Prospect) — the whole network, in the wrong shape. Centerline extraction is
+  something this pipeline has never done, and it is the one decision of the three that was
+  not taken.
+- **The greenway overlap.** 1,023 of the 5,990 `rw_type='6'` names end in GREENWAY, so
+  `nyc_cscl_paths` and `nyc_dot_greenways` plainly describe some of the same tread.
+  `duplicate_of` takes one senior key and this entry spends it on `nyc_parks_trails` — and
+  that choice is now measured rather than argued. From the export's own dedupe line,
+  2026-09-17: the parks pair removes **698 records, 71.3 miles**, against the greenway pair's
+  427 and 30.4. The larger of the two by both counts, which is what the guess was. **The
+  greenway pair remains unmeasured** — §13's shape, a third time.
+- **Nobody has walked one.** The same `(e)` that closes §12e, and it bears hardest here: the
+  drives entry rests on a decision rather than a document.
+
+`spike_central_park_paths.py` is the measurement behind every figure above and is re-runnable.
 
 ## 13. The two city agencies do draw the same tread — a quarter of it (#1453)
 

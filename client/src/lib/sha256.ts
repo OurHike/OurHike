@@ -125,6 +125,59 @@ export class Sha256 {
     return this
   }
 
+  /** Returns this fold to its initial state, so one instance can hash many
+   *  short messages without allocating a fold per message.
+   *
+   *  Added for proofOfWork.ts, which hashes a quarter of a million candidates
+   *  to solve one challenge (see backend/app/core/challenge.py). The archive
+   *  path never wants this - it hashes one message, once - which is why the
+   *  class had no reset until something needed it. */
+  reset(): this {
+    this.h.set(INITIAL_H)
+    this.bufferedLength = 0
+    this.byteLength = 0
+    return this
+  }
+
+  /** The digest as eight words, written into `out`, CONSUMING the fold.
+   *
+   *  `digest()` is the one to use for a stream. This exists because
+   *  `digest()`'s two guarantees - non-destructive, and hex - cost three
+   *  allocations and a 64-character string per call, which is the right trade
+   *  for one 1.18 GB archive and the wrong one for 262,144 eleven-byte
+   *  messages. MEASURED 2026-09-17: a proof of work at difficulty 18 built on
+   *  `sha256Hex` ran to a 3.1 second median and a 7.6 second p90, the spread
+   *  coming from the garbage rather than from the search.
+   *
+   *  The padding is applied to this accumulator rather than to a copy, so the
+   *  fold is finished afterwards and `reset()` is the only legal next call.
+   *  Nothing about the compression changes - there is still exactly one
+   *  implementation of it in this file, which is the property the header asks
+   *  for and the reason this is not a second copy of SHA-256 living in
+   *  proofOfWork.ts. */
+  finishInto(out: Uint32Array): Uint32Array {
+    const bitLength = this.byteLength * 8
+    const remainder = this.bufferedLength
+    const padding = new Uint8Array(
+      (remainder < BLOCK_BYTES - 8 ? BLOCK_BYTES : BLOCK_BYTES * 2) - remainder,
+    )
+    padding[0] = 0x80
+    const lengthAt = padding.length - 8
+    const high = Math.floor(bitLength / 0x100000000)
+    const low = bitLength >>> 0
+    padding[lengthAt] = (high >>> 24) & 0xff
+    padding[lengthAt + 1] = (high >>> 16) & 0xff
+    padding[lengthAt + 2] = (high >>> 8) & 0xff
+    padding[lengthAt + 3] = high & 0xff
+    padding[lengthAt + 4] = (low >>> 24) & 0xff
+    padding[lengthAt + 5] = (low >>> 16) & 0xff
+    padding[lengthAt + 6] = (low >>> 8) & 0xff
+    padding[lengthAt + 7] = low & 0xff
+    this.update(padding)
+    out.set(this.h)
+    return out
+  }
+
   /** The digest of everything fed so far, lowercase hex.
    *
    *  Non-destructive: padding happens on a copy, so the accumulator can keep

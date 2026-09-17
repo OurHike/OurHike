@@ -64,7 +64,7 @@ from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.nomination import OrgNomination
 from app.models.org_registry import RegistrySignoff
 from app.models.org_role import RoleInvite, RosterSyncRun
-from app.models.poi_photo import PoiPhoto
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile
 from app.models.report import Report
@@ -175,6 +175,14 @@ def build_export(db: Session, profile: Profile) -> dict[str, Any]:
         "photos_you_shared": [
             {**_row(photo), "storage_key": poi_photo_key(photo.poi_id, photo.contributor_id)} for photo in photos
         ],
+        # The takedown ledger (#1551): a moderation record about the hiker
+        # rather than a contribution by them, and theirs to see for exactly
+        # that reason. Rows they wrote as a moderator (`dismissed_by`) are
+        # not here, on the precedent that the reports they verified are not
+        # either - the archive is what is held ABOUT the account.
+        "community_photos_of_yours_a_moderator_took_down": _rows(
+            db, PoiPhotoDismissal, PoiPhotoDismissal.contributor_id == profile_id
+        ),
         "volunteer_hours": _rows(db, VolunteerHoursRecord, VolunteerHoursRecord.user_id == profile_id),
         "trail_sections_you_maintain": _rows(db, MaintainerAssignment, MaintainerAssignment.maintainer_id == profile_id),
         "app_problems_you_reported": _rows(db, AppFailure, AppFailure.reporter_id == profile_id),

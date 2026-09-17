@@ -26,13 +26,16 @@ which is called out where it happens below:
 3. **`slug` is backfilled from `name`.** It is unique and it is in every
    route, so existing rows cannot be left without one. See `_SLUG_BACKFILL`.
 
-**This revision was re-parented after it was written.** It was authored against
-`c9d1a7f48b62` and `b1e4c7a9d2f6` (one flag per account per note) landed on
-`main` against the same parent while this branch was open - two heads, which
-`alembic upgrade head` refuses to resolve and which every Postgres test in
-tests/test_migrations.py and tests/test_schema_drift_check.py failed on. It
-stacks on that revision instead, which is the linear answer and costs nothing
-here because nothing had applied this revision yet.
+**This revision has been re-parented twice, for the same reason both times.**
+It was authored against `c9d1a7f48b62`; `b1e4c7a9d2f6` (one flag per account
+per note) landed on `main` against that same parent, and then
+`c3a8f1d6e2b7` (the poi-photo dismissals ledger) landed against `b1e4c7a9d2f6`
+- each time producing two heads, which `alembic upgrade head` refuses to
+resolve and which every Postgres test in tests/test_migrations.py and
+tests/test_schema_drift_check.py fails on. Stacking on whatever `main` has is
+the linear answer and costs nothing here, because a long-lived branch is the
+only thing that ever sees this revision before it merges. Expect to do it
+again if this branch stays open.
 
 4. **Foreign keys added to existing tables are named.** Autogenerate emits
    `op.create_foreign_key(None, ...)` and then a matching
@@ -50,7 +53,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "d1c4f8a06b93"
-down_revision: Union[str, Sequence[str], None] = "b1e4c7a9d2f6"
+down_revision: Union[str, Sequence[str], None] = "c3a8f1d6e2b7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

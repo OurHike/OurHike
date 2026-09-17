@@ -181,6 +181,41 @@ class Page:
 PeerReader = Callable[[httpx.Response], "str | None"]
 
 
+def reader(*, trust_env: bool = False) -> httpx.Client:
+    """The client this module is meant to be driven with.
+
+    **`trust_env` IS FALSE BY DEFAULT AND THAT IS A SECURITY DECISION, not a
+    convenience.** With it on, httpx picks up `HTTPS_PROXY` from the
+    environment and hands the URL to the proxy - which then resolves the
+    hostname itself. Every address decision `urlguard.py` made is discarded at
+    that moment, and the peer this module checks becomes the proxy rather than
+    the site. A deployment that genuinely must egress through a proxy turns
+    this on and turns `site_fetch_require_peer_match` off, and knows it has
+    traded away the rebinding guarantee.
+
+    Redirects are not followed by the client, because `read_page` follows them
+    itself through `urlguard.follow` - a client that followed them would check
+    the first address and open the rest.
+    """
+    return httpx.Client(
+        timeout=TIMEOUT,
+        follow_redirects=False,
+        trust_env=trust_env,
+        headers={"user-agent": USER_AGENT},
+    )
+
+
+def peer_unchecked(response: httpx.Response) -> str | None:
+    """Deliberately reports the peer as unknown, which `read_page` refuses.
+
+    Here so that the name appears in a grep for what turns the check off, and
+    so that turning it off cannot be done by passing `None` and hoping. It is
+    not a bypass: `peer_is_expected` treats an unknown peer as a failure, so
+    this makes the fetcher refuse rather than proceed unchecked.
+    """
+    return None
+
+
 def peer_from_response(response: httpx.Response) -> str | None:
     """What this connection really reached, or None when we cannot tell.
 

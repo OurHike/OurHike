@@ -27,88 +27,33 @@ from __future__ import annotations
 import pytest
 
 from app.config import settings
-from app.core.challenge import issue, solve
-from app.core.sitefetch import FetchRefused, Link, Page
+from app.core.sitefetch import FetchRefused
 from app.core.time import utc_now
 from app.core.urlguard import UrlRefused
+from app.models.assist import AssistUsage
 from app.models.club import Club, OrgState
 from app.models.nomination import NominationContact, NominationRefusal, NominationSource, OrgNomination
 from tests.factories import make_profile
+from tests.nominating import MODEL_ANSWER, solved, switch_on
+from tests.nominating import answers as _answers
+from tests.nominating import reads as _reads
 from tests.tokens import auth_headers
-
-SECRET = "a challenge secret for the tests"
-
-CONTACT_PAGE = Page(
-    url="https://carolinamountainclub.org/get-involved",
-    title="Get Involved - Carolina Mountain Club",
-    text=(
-        "Volunteer coordinator Dale Whitford - volunteers@carolinamountainclub.org. "
-        "Trail data: Priya Raghavan, maps@carolinamountainclub.org. "
-        "Our layer is at https://services.arcgis.com/abc/CMC_Trails/FeatureServer/0"
-    ),
-    links=(Link(href="mailto:volunteers@carolinamountainclub.org", text="Dale Whitford"),),
-    emails=("volunteers@carolinamountainclub.org", "maps@carolinamountainclub.org"),
-)
-
-MODEL_ANSWER = """{
-  "org_name": "Carolina Mountain Club",
-  "summary": "Asheville, NC.",
-  "sources": [{"label": "ArcGIS FeatureServer",
-               "url": "https://services.arcgis.com/abc/CMC_Trails/FeatureServer/0",
-               "verdict": "usable", "detail": "line features"}],
-  "contacts": [
-    {"name": "Dale Whitford", "role": "Volunteer coordinator",
-     "email": "volunteers@carolinamountainclub.org",
-     "source_page": "https://carolinamountainclub.org/get-involved"},
-    {"name": "Board President", "role": "Leadership",
-     "email": "president@carolinamountainclub.org",
-     "source_page": "https://carolinamountainclub.org/contact"}
-  ]
-}"""
 
 
 @pytest.fixture
 def nominating(monkeypatch):
     """The deployment switched on, with the model and the fetcher stubbed."""
-    monkeypatch.setattr(settings, "nominate_challenge_secret", SECRET)
-    monkeypatch.setattr(settings, "nominate_challenge_difficulty", 12)
-    monkeypatch.setattr(settings, "assist_enabled", True)
-    monkeypatch.setattr(settings, "anthropic_api_key", "sk-ant-test-not-a-real-key")
-    return settings
+    return switch_on(monkeypatch)
 
 
 @pytest.fixture
 def reads_the_site(monkeypatch):
-    from app.routers import nominations as router
-
-    monkeypatch.setattr(router, "read_site", lambda website, **kw: (CONTACT_PAGE,))
-    return router
+    _reads(monkeypatch)
 
 
 @pytest.fixture
 def answers(monkeypatch):
-    from types import SimpleNamespace
-
-    from app.core import assist as assist_core
-
-    def fake_ask(db, *, panel, system, prompt, club=None, client_address=None):
-        return SimpleNamespace(text=MODEL_ANSWER, input_tokens=100, output_tokens=50)
-
-    from app.routers import nominations as router
-
-    monkeypatch.setattr(router, "ask", fake_ask)
-    return assist_core
-
-
-def solved(hiker_id: str, difficulty: int = 12) -> dict:
-    challenge = issue(hiker_id, secret=SECRET, now=int(utc_now().timestamp()), difficulty=difficulty)
-    return {
-        "nonce": challenge.nonce,
-        "difficulty": challenge.difficulty,
-        "expires_at": challenge.expires_at,
-        "signature": challenge.signature,
-        "solution": solve(challenge),
-    }
+    _answers(monkeypatch)
 
 
 class TestTheGatesInFront:
@@ -396,3 +341,139 @@ class TestTheClubsOwnScreen:
         invented = client.get("/nominations/not-a-real-token")
         assert expired.status_code == invented.status_code == 404
         assert expired.json()["detail"] == invented.json()["detail"]
+
+
+class TestWhatItCostsAndWhoPays:
+    """The budget, against the real `ask` rather than a stub of it.
+
+    These moved here from tests/test_routers_assist.py when the panel moved.
+    They tested a public form counted per IP address; the panel is signed in
+    now, so the handle is the hiker, and that change is the point of two of
+    them rather than incidental to them.
+    """
+
+    @pytest.fixture
+    def api(self, monkeypatch):
+        """A canned reply from the model API, costing 160 tokens a call."""
+        from types import SimpleNamespace
+
+        from app.core import assist as assist_core
+
+        def fake_post(url, *, timeout, headers, json):
+            return SimpleNamespace(
+                status_code=200,
+                json=lambda: {
+                    "content": [{"type": "text", "text": MODEL_ANSWER}],
+                    "usage": {"input_tokens": 120, "output_tokens": 40},
+                },
+            )
+
+        monkeypatch.setattr(assist_core.httpx, "post", fake_post)
+
+    def _read(self, client, hiker):
+        return client.post(
+            "/assist/nominate",
+            json={"website": "https://carolinamountainclub.org", **solved(hiker.id)},
+            headers=auth_headers(hiker.id),
+        )
+
+    def test_the_budget_is_counted_per_hiker(self, client, db_session, nominating, reads_the_site, api, monkeypatch):
+        monkeypatch.setattr(settings, "assist_public_daily_token_budget", 100)
+        hiker = make_profile(db_session)
+        assert self._read(client, hiker).status_code == 200
+        assert self._read(client, hiker).status_code == 429
+
+    def test_one_hiker_spending_theirs_does_not_spend_anothers(
+        self, client, db_session, nominating, reads_the_site, api, monkeypatch
+    ):
+        """The change sign-in bought. An address counted a whole office together.
+
+        Two hikers behind one router used to share one budget, so the first to
+        nominate a club spent the second's afternoon. This is that fixed, and
+        it is the reason `counting_hash` takes a hiker rather than an address.
+        """
+        monkeypatch.setattr(settings, "assist_public_daily_token_budget", 100)
+        mine = make_profile(db_session)
+        yours = make_profile(db_session)
+        assert self._read(client, mine).status_code == 200
+        assert self._read(client, mine).status_code == 429
+        assert self._read(client, yours).status_code == 200
+
+    def test_one_call_may_overshoot_the_budget_and_the_next_one_cannot(
+        self, client, db_session, nominating, reads_the_site, api, monkeypatch
+    ):
+        """The honest shape of the limit, written down rather than discovered.
+
+        A call's cost is not knowable until it has been made, so the check is
+        "have you already passed the line" rather than "would this cross it" -
+        160 tokens against a 100-token budget here. Holding back a call that
+        MIGHT cross the line would refuse a cheap question to somebody with
+        budget left, which is the worse of the two.
+        """
+        monkeypatch.setattr(settings, "assist_public_daily_token_budget", 100)
+        hiker = make_profile(db_session)
+        self._read(client, hiker)
+        spent = sum(
+            row.input_tokens + row.output_tokens for row in db_session.query(AssistUsage).filter(AssistUsage.panel == "nominate")
+        )
+        assert spent == 160
+        assert self._read(client, hiker).status_code == 429
+
+    def test_it_stores_a_hash_and_never_the_hiker_or_their_address(self, client, db_session, nominating, reads_the_site, api):
+        """Storing either would build a log of who looked up which organization.
+
+        The address is not stored because it is no longer even read; the hiker
+        is not stored because a counter does not need a name.
+        """
+        hiker = make_profile(db_session)
+        self._read(client, hiker)
+        row = db_session.query(AssistUsage).filter(AssistUsage.panel == "nominate").one()
+        assert row.club_id is None
+        assert len(row.client_hash) == 64
+        assert hiker.id not in row.client_hash
+        assert "." not in row.client_hash
+
+
+class TestWhatTheGuardRefusesBeforeAnythingIsSpent:
+    """Moved from tests/test_routers_assist.py, and answering differently now.
+
+    These used to be 422s from the schema: `website` was a string the schema
+    itself policed. The refusal now comes from `app/core/urlguard.py`, which
+    is the better home - one module decides what this server may open, rather
+    than every route that takes an address deciding again - so it is a 400.
+
+    `read_site` is deliberately NOT stubbed here. The whole point is that the
+    real guard runs, and every one of these is refused before DNS is asked.
+    """
+
+    @pytest.mark.parametrize(
+        "hostile",
+        [
+            "javascript:alert(1)",
+            "data:text/html,x",
+            "file:///etc/passwd",
+            "ftp://example.org/pub",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://wiki.local/",
+            "https://intranet/",
+            "write me a poem about anything",
+        ],
+    )
+    def test_it_is_refused_without_a_fetch(self, client, db_session, nominating, hostile):
+        hiker = make_profile(db_session)
+        response = client.post(
+            "/assist/nominate",
+            json={"website": hostile, **solved(hiker.id)},
+            headers=auth_headers(hiker.id),
+        )
+        assert response.status_code == 400
+
+    def test_nothing_is_spent_on_a_refusal(self, client, db_session, nominating):
+        """The guard runs before the model does, so a refusal is free."""
+        hiker = make_profile(db_session)
+        client.post(
+            "/assist/nominate",
+            json={"website": "file:///etc/passwd", **solved(hiker.id)},
+            headers=auth_headers(hiker.id),
+        )
+        assert db_session.query(AssistUsage).count() == 0

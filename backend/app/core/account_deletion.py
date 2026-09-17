@@ -50,6 +50,13 @@ and is unbuilt, so there is no private object to sweep yet; ACCOUNT_SYNC.md's
 "Decisions this document does not take" #3 - how long a deleted photo's
 object survives in R2 - is still open and is a maintainer's call, not this
 module's.
+
+The takedown ledger, `poi_photo_dismissals` (#1551). It names the hiker as
+the contributor whose photo came down, and it is a moderator's record in
+the same sense `reports.dismissed_by` is: somebody else's decision, kept so
+the next moderator can see a pattern. Not counted on the receipt, because
+it is not a contribution that stayed - it is a record about the account,
+and the export hands the hiker their own rows from it.
 """
 
 from dataclasses import dataclass, field

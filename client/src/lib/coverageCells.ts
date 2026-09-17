@@ -243,11 +243,23 @@ export const STRETCH_MARGIN_KM = 3
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 
-function boundsOf(raw: unknown): Bounds | null {
+/** Four finite numbers in the index's [west, south, east, north] order: the
+ *  SHAPE of a box, before asking whether it holds any ground. */
+function boxOf(raw: unknown): Bounds | null {
   if (!Array.isArray(raw) || raw.length !== 4 || !raw.every(isFiniteNumber)) return null
   const [west, south, east, north] = raw as number[]
-  if (!(west < east) || !(south < north)) return null
   return [west, south, east, north]
+}
+
+/** Whether a box holds any ground at all: west strictly before east, south
+ *  strictly before north. */
+function hasArea([west, south, east, north]: Bounds): boolean {
+  return west < east && south < north
+}
+
+function boundsOf(raw: unknown): Bounds | null {
+  const box = boxOf(raw)
+  return box !== null && hasArea(box) ? box : null
 }
 
 /**
@@ -256,6 +268,12 @@ function boundsOf(raw: unknown): Bounds | null {
  * Whole or nothing, deliberately. A row with no key is a piece that cannot be
  * fetched; a row with no bounds is one that cannot be placed; keeping the rest
  * would offer a stretch missing a cell in its middle and call it complete.
+ *
+ * One row is left out rather than refused, and it is not an exception to that
+ * rule but the same reasoning read the other way: a cell whose `covered` box
+ * is readable and holds no ground is a piece that can be fetched and placed
+ * and draws nothing inside its own square. Leaving it out loses no coverage;
+ * refusing the index over it loses all of it (#1559, below).
  */
 export function parseCellIndex(raw: unknown): CellIndex | null {
   if (typeof raw !== 'object' || raw === null) return null
@@ -279,11 +297,29 @@ export function parseCellIndex(raw: unknown): CellIndex | null {
     if (typeof key !== 'string' || key === '') return null
     if (box === null) return null
     // Absent is ordinary - every index published before #1458 - and means
-    // "no better answer than the square". Present and malformed is a corrupt
-    // row, refused like every other, because a coverage claim that parsed
-    // half-way is the thing this function exists to not produce.
-    const drawn = covered === undefined ? box : boundsOf(covered)
+    // "no better answer than the square". Present and unreadable - not four
+    // finite numbers - is a corrupt row, refused like every other, because a
+    // coverage claim that parsed half-way is the thing this function exists
+    // to not produce.
+    if (covered === undefined) {
+      cells.push({ name, key, bounds: box, covered: box })
+      continue
+    }
+    const drawn = boxOf(covered)
     if (drawn === null) return null
+    // Present, readable and EMPTY - west at or past east, or south at or past
+    // north - is neither of those (#1559). It is what cut_cells.py wrote for a
+    // cell whose every tile lay outside its own square, routed in by the seam
+    // margin from a neighbour: release 2026-09-16-4 carried 22 of them
+    // (n38w082's box was [-81.21, 38.0, -81.0, 37.996], south above north),
+    // and refusing the three indexes over them switched every stretch download
+    // off on every phone. Such a cell draws nothing inside the square it
+    // names - its tiles are the neighbour's, and the neighbour's own cell
+    // holds them - so the honest reading is that it covers nothing here, and
+    // it is left out. Falling back to the square would claim ground with no
+    // tile in it, which is the #1458 failure exactly. The cutter no longer
+    // builds these; the tolerance stays for the indexes already published.
+    if (!hasArea(drawn)) continue
     cells.push({ name, key, bounds: box, covered: drawn })
   }
 

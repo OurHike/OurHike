@@ -7,8 +7,9 @@ import { ErrorBoundary, ScreenFailed } from './chrome/ErrorBoundary'
 import { applyTheme, systemPrefersDark } from './lib/theme'
 import { LAUNCH_MARKS, markLaunch } from './lib/launchMarks'
 
-// The first line of this app's own code to run, and the first of the five
-// moments features/LAUNCH_BUDGET.md §3 budgets (#1299, lib/launchMarks.ts).
+// The first line of this app's own code to run, and the first of the seven
+// moments features/LAUNCH_BUDGET.md §3 budgets (#1299, lib/launchMarks.ts;
+// the map's own two came with #1560).
 // Everything before it - the document, this module's download and parse - is
 // the half a hiker waits through that a laptop never sees, and marking here
 // against `performance.timeOrigin` is what keeps it in the number.

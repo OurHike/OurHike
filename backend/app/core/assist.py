@@ -108,16 +108,24 @@ class AssistAnswer:
     output_tokens: int
 
 
-def client_fingerprint(address: str | None) -> str:
-    """A caller's address as something to compare, never to read.
+def counting_hash(handle: str | None) -> str:
+    """Whatever the budget counts by, as something to compare and never to read.
 
-    Storing the address would build a log of who looked up which
-    organization - a thing this project has no use for and would then have to
-    protect. A missing address hashes like any other string rather than
-    raising: a caller behind a proxy that strips it still gets counted, and
-    counted together, which is the conservative direction.
+    THE HANDLE USED TO BE AN IP ADDRESS AND IS NOW A HIKER. The nominate panel
+    was public - anybody on the internet could reach it - so the only thing
+    there was to count by was the caller's address. The maintainer's
+    2026-09-17 decision made it signed-in, and a signed-in caller is a better
+    handle in both directions: an address counts a whole office together and
+    counts one person on two networks twice, and it is a record of who looked
+    up which organization, which is a thing this project has no use for and
+    would then have to protect.
+
+    Hashed either way, because what the budget needs is a counter and not a
+    name. A missing handle hashes like any other string rather than raising,
+    so a caller we cannot identify is still counted - and counted together,
+    which is the conservative direction.
     """
-    return hashlib.sha256((address or "unknown").encode("utf-8")).hexdigest()
+    return hashlib.sha256((handle or "unknown").encode("utf-8")).hexdigest()
 
 
 def spent_today(db: Session, *, club_id: str | None, client_hash: str | None) -> int:
@@ -150,7 +158,7 @@ def ask(
     system: str,
     prompt: str,
     club: Club | None = None,
-    client_address: str | None = None,
+    counted_as: str | None = None,
 ) -> AssistAnswer:
     """One question, one answer, one row of accounting.
 
@@ -179,7 +187,7 @@ def ask(
         )
 
     club_id = club.id if club is not None else None
-    client_hash = None if club_id is not None else client_fingerprint(client_address)
+    client_hash = None if club_id is not None else counting_hash(counted_as)
     already = spent_today(db, club_id=club_id, client_hash=client_hash)
     budget = budget_for(club_id)
     if already >= budget:

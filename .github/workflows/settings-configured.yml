@@ -3,10 +3,10 @@
 # answer about itself. A GitHub Actions secret is write-only once set: the API
 # will not read one back, and neither will the maintainer who set it.
 #
-# Read-only in the strongest sense available: it resolves the secrets and vars
-# contexts, immediately reduces them to the names whose values came back
-# non-empty, and passes only those names to pytest. No value reaches the test
-# process, so there is nothing for a failure message to leak.
+# Read-only in the strongest sense available: it reads each declared setting
+# under its own name, immediately reduces them to the names whose values came
+# back non-empty, and passes only those names to pytest. No value reaches the
+# test process, so there is nothing for a failure message to leak.
 #
 # THE WEEKLY RUN IS THE POINT OF THE WHOLE THING. An R2 token can be revoked or
 # expire without anyone touching this repository, and the next thing to notice
@@ -50,6 +50,10 @@ jobs:
     # string.
     name: Settings are configured
     runs-on: ubuntu-latest
+    # Ten minutes for a pip install and one pytest run; the Monday fire is a
+    # PyPI fetch and nothing else that waits on a network, and GitHub's default
+    # is six hours.
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: .github/tests
@@ -63,10 +67,30 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      # The whole security argument for this workflow lives in this step. The
-      # contexts arrive whole, and leave as two JSON arrays of names - `.key`
-      # only, never `.value`. Everything downstream sees names, so a test that
-      # prints its inputs prints nothing worth masking.
+      # The whole security argument for this workflow lives in this step. Each
+      # setting arrives under its own name, and leaves as two JSON arrays of
+      # names - never a value. Everything downstream sees names, so a test
+      # that prints its inputs prints nothing worth masking.
+      #
+      # ONE ENTRY PER SETTING, NEVER `toJSON(secrets)`. This step used to
+      # resolve the whole context with `toJSON(secrets)` and `toJSON(vars)`,
+      # and GitHub refuses to run a workflow that does: every run of this file
+      # since the #679 split - the four Monday fires from 2026-08-24 to
+      # 2026-09-14 and a manual dispatch on 2026-09-17 (run 35225565659) -
+      # concluded `action_required` within a second of being created, with
+      # zero jobs. So the weekly check that exists to notice a revoked R2
+      # token before a publish fails on it had never once run. BRANCHING.md
+      # recorded the same signature on pull requests and read it as a gate on
+      # editing a secrets-reading workflow; the dispatch on `main` is what
+      # showed the gate belongs to the expression, not to the pull request.
+      # Every other workflow here reads secrets one name at a time and runs,
+      # which is the form this takes now.
+      #
+      # The list below is `.github/expected-settings.yml`'s, entry for entry
+      # (GITHUB_TOKEN excepted: it is minted per run, not configured),
+      # and .github/tests/test_settings_configured_workflow.py holds the two
+      # to the same names, so a setting declared there and not here is a red
+      # test rather than a check that quietly stopped covering it.
       #
       # Empty values are dropped rather than counted as present: a repository
       # variable set to "" exists as far as the settings page is concerned and
@@ -77,13 +101,42 @@ jobs:
       - name: Reduce the settings to their names
         id: names
         env:
-          SECRETS_JSON: ${{ toJSON(secrets) }}
-          VARS_JSON: ${{ toJSON(vars) }}
+          OURHIKE_SECRET__R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          OURHIKE_SECRET__R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          OURHIKE_SECRET__R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          OURHIKE_SECRET__R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          OURHIKE_SECRET__HIKEFINDER_PASSWORD: ${{ secrets.HIKEFINDER_PASSWORD }}
+          OURHIKE_VARIABLE__DATA_BASE_URL: ${{ vars.DATA_BASE_URL }}
+          OURHIKE_SECRET__DATA_BASE_URL: ${{ secrets.DATA_BASE_URL }}
+          OURHIKE_VARIABLE__SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          OURHIKE_SECRET__SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          OURHIKE_VARIABLE__SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          OURHIKE_SECRET__SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          OURHIKE_VARIABLE__AUTH_PROVIDERS: ${{ vars.AUTH_PROVIDERS }}
+          OURHIKE_VARIABLE__API_BASE_URL: ${{ vars.API_BASE_URL }}
+          OURHIKE_VARIABLE__UA_DATA_BASE_URL: ${{ vars.UA_DATA_BASE_URL }}
+          OURHIKE_VARIABLE__UA_SUPABASE_URL: ${{ vars.UA_SUPABASE_URL }}
+          OURHIKE_VARIABLE__UA_SUPABASE_ANON_KEY: ${{ vars.UA_SUPABASE_ANON_KEY }}
+          OURHIKE_VARIABLE__UA_API_BASE_URL: ${{ vars.UA_API_BASE_URL }}
+          OURHIKE_SECRET__CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          OURHIKE_SECRET__CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OURHIKE_VARIABLE__CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          OURHIKE_SECRET__UA_MIGRATION_DATABASE_URL: ${{ secrets.UA_MIGRATION_DATABASE_URL }}
+          OURHIKE_SECRET__PRODUCTION_MIGRATION_DATABASE_URL: ${{ secrets.PRODUCTION_MIGRATION_DATABASE_URL }}
+          OURHIKE_SECRET__PRODUCTION_CONDITIONS_DATABASE_URL: ${{ secrets.PRODUCTION_CONDITIONS_DATABASE_URL }}
+          OURHIKE_SECRET__UA_CONDITIONS_DATABASE_URL: ${{ secrets.UA_CONDITIONS_DATABASE_URL }}
+          OURHIKE_SECRET__PROTECTIONS_READ_TOKEN: ${{ secrets.PROTECTIONS_READ_TOKEN }}
         run: |
-          {
-            echo "secrets=$(jq -c '[to_entries[] | select(.value != "") | .key]' <<<"$SECRETS_JSON")"
-            echo "variables=$(jq -c '[to_entries[] | select(.value != "") | .key]' <<<"$VARS_JSON")"
-          } >> "$GITHUB_OUTPUT"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import os
+
+          def names(prefix):
+              return sorted(key[len(prefix):] for key, value in os.environ.items() if key.startswith(prefix) and value != "")
+
+          print("secrets=" + json.dumps(names("OURHIKE_SECRET__")))
+          print("variables=" + json.dumps(names("OURHIKE_VARIABLE__")))
+          PY
 
       - name: Check them against expected-settings.yml
         env:

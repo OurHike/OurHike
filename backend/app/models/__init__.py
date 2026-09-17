@@ -53,7 +53,7 @@ from app.models.org_role import (
     RoleInvite,
     RosterSyncRun,
 )
-from app.models.poi_photo import PoiPhoto, PoiPhotoStatus
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import (
@@ -98,6 +98,7 @@ __all__ = [
     "Hike",
     "MaintainerAssignment",
     "PoiPhoto",
+    "PoiPhotoDismissal",
     "PoiPhotoStatus",
     "UserPreferences",
     "Profile",

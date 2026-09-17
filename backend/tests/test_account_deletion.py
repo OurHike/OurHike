@@ -31,7 +31,7 @@ from app.models.hike import Hike
 from app.models.maintainer_assignment import MaintainerAssignment
 from app.models.nomination import OrgNomination
 from app.models.org_role import RoleInvite, RosterSyncRun
-from app.models.poi_photo import PoiPhoto
+from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
 from app.models.report import Report
@@ -118,6 +118,16 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
     note = FieldNote(id=f"note-{profile_id}", reporter_id=profile_id, reporter_type="thru", note="water is flowing")
     db.add(note)
     db.add(PoiPhoto(poi_id="shelter-1", contributor_id=profile_id, attribution_name="Switchback"))
+    # A takedown on record against them (#1551): a moderator's decision, kept
+    # on deletion like `reports.dismissed_by` is - see account_deletion.py.
+    db.add(
+        PoiPhotoDismissal(
+            poi_id="shelter-2",
+            contributor_id=profile_id,
+            photo_id=f"photo-{profile_id}",
+            dismissed_by=profile_id,
+        )
+    )
     db.commit()
     # A flag has to point at a note that already exists.
     db.add(NoteFlag(note_id=note.id, flagged_by=profile_id))

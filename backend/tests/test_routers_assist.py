@@ -237,62 +237,16 @@ def test_a_signed_out_caller_cannot_spend_it_either(client, db_session, assist_o
     assert response.status_code == 401
 
 
-def test_the_public_panel_is_counted_by_address_rather_than_account(client, db_session, assist_on, captured, monkeypatch):
-    """It is the one assist surface anybody on the internet can reach."""
-    monkeypatch.setattr(settings, "assist_public_daily_token_budget", 100)
-
-    first = client.post("/assist/nominate", json={"website": "https://example.org"})
-    assert first.status_code == 200
-
-    second = client.post("/assist/nominate", json={"website": "https://example.org"})
-
-    assert second.status_code == 429
-
-
-def test_one_call_may_overshoot_the_budget_and_the_next_one_cannot(client, db_session, assist_on, captured, monkeypatch):
-    """The honest shape of the limit, written down rather than discovered.
-
-    A call's cost is not knowable until it has been made, so the check is
-    "have you already passed the line" rather than "would this cross it".
-    That means the budget can be overshot by at most one call - here 160
-    tokens against a 100-token budget - and cannot be overshot twice. Holding
-    back a call that MIGHT cross the line would refuse a cheap question to an
-    organization with budget left, which is the worse of the two.
-    """
-    monkeypatch.setattr(settings, "assist_public_daily_token_budget", 100)
-
-    client.post("/assist/nominate", json={"website": "https://example.org"})
-
-    spent = sum(
-        row.input_tokens + row.output_tokens for row in db_session.query(AssistUsage).filter(AssistUsage.panel == "nominate")
-    )
-    assert spent == 160
-    assert client.post("/assist/nominate", json={"website": "https://example.org"}).status_code == 429
-
-
-def test_the_public_panel_stores_a_hash_rather_than_the_address(client, db_session, assist_on, captured):
-    """Storing it would build a log of who looked up which organization."""
-    client.post("/assist/nominate", json={"website": "https://example.org"})
-
-    row = db_session.query(AssistUsage).filter(AssistUsage.panel == "nominate").one()
-    assert row.club_id is None
-    assert row.client_hash is not None
-    assert len(row.client_hash) == 64
-    assert "." not in row.client_hash
-
-
-def test_the_public_panel_takes_a_web_address_and_not_free_text(client, db_session, assist_on):
-    """Free text here would be the internet's own prompt box on our key."""
-    response = client.post("/assist/nominate", json={"website": "write me a poem about anything"})
-
-    assert response.status_code == 422
-
-
-@pytest.mark.parametrize("hostile", ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd"])
-def test_the_public_panel_refuses_a_scheme_that_is_not_the_web(client, db_session, assist_on, hostile):
-    response = client.post("/assist/nominate", json={"website": hostile})
-
-    assert response.status_code == 422
+# THE PUBLIC PANEL'S OWN TESTS MOVED WITH THE PANEL, to
+# tests/test_routers_nominations.py, when the maintainer's 2026-09-17 decision
+# made it signed-in. Five of them - the budget, the overshoot, the stored hash
+# and the hostile schemes - are still there and two now assert something
+# different, because the budget's handle changed from an IP address to the
+# hiker and the scheme refusals moved from this schema into
+# app/core/urlguard.py.
+#
+# The one below stays here, because it is about THIS endpoint refusing to
+# spend under the other one's name.
 
 
 def test_the_console_endpoint_refuses_the_public_panel_by_name(client, db_session, assist_on):

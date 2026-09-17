@@ -93,22 +93,32 @@ jobs:
       - name: Fetch ArcGIS sources
         run: python fetch_all.py
 
+      # Through env, never pasted into the script: a free-text dispatch input
+      # interpolated into `run:` is shell the dispatcher wrote (#660's rule,
+      # held by .github/tests/test_run_steps_take_inputs_through_env.py).
       - name: Build the DEM archive
+        env:
+          VARIANT: ${{ inputs.variant }}
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          QUANTIZE_STEP: ${{ inputs.quantize_step }}
+          TILE_LIMIT: ${{ inputs.tile_limit }}
         run: |
           python export_dem.py \
-            --variant "${{ inputs.variant }}" \
-            --max-zoom "${{ inputs.max_zoom }}" \
-            --quantize-step "${{ inputs.quantize_step }}" \
-            --limit "${{ inputs.tile_limit }}"
+            --variant "$VARIANT" \
+            --max-zoom "$MAX_ZOOM" \
+            --quantize-step "$QUANTIZE_STEP" \
+            --limit "$TILE_LIMIT"
 
       # The exporter tolerates a tile the source bucket lacks; shipping must
       # not. Runs on every build, not only publishing ones, so a measure run
       # that would have been refused says so while it is cheap to rerun.
       - name: Verify the archive is shippable
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
         run: |
           python check_dem_archive.py \
             --archive "data/processed/${{ inputs.variant == 'light' && 'dem_light.pmtiles' || 'dem.pmtiles' }}" \
-            --max-zoom "${{ inputs.max_zoom }}"
+            --max-zoom "$MAX_ZOOM"
 
       # To the log AND the summary: a number that exists only in a rendered
       # summary cannot be quoted by anything reading the logs later.
@@ -117,6 +127,10 @@ jobs:
         # this step's exit status from `tee`, so a crashed measurement would
         # report success on a build that produced nothing (#514).
         shell: bash
+        env:
+          VARIANT: ${{ inputs.variant }}
+          QUANTIZE_STEP: ${{ inputs.quantize_step }}
+          MAX_ZOOM: ${{ inputs.max_zoom }}
         run: |
           ARCHIVE="data/processed/${{ inputs.variant == 'light' && 'dem_light.pmtiles' || 'dem.pmtiles' }}"
           python -c "
@@ -126,7 +140,7 @@ jobs:
           report_archive(Path(sys.argv[1]))
           " "$ARCHIVE" | tee measure.txt
           {
-            echo "## DEM build (${{ inputs.variant }}, quantize ${{ inputs.quantize_step }} m, z0-${{ inputs.max_zoom }})"
+            echo "## DEM build ($VARIANT, quantize $QUANTIZE_STEP m, z0-$MAX_ZOOM)"
             echo '```'
             cat measure.txt
             echo '```'
@@ -205,8 +219,11 @@ jobs:
       - name: Refuse a non-canonical shape
         if: inputs.max_zoom != '13' || inputs.quantize_step != '0.5'
         working-directory: .
+        env:
+          MAX_ZOOM: ${{ inputs.max_zoom }}
+          QUANTIZE_STEP: ${{ inputs.quantize_step }}
         run: |
-          echo "::error::publish is only for a canonical DEM (z0-13, 0.5 m quantize); this run built z0-${{ inputs.max_zoom }} at ${{ inputs.quantize_step }} m"
+          echo "::error::publish is only for a canonical DEM (z0-13, 0.5 m quantize); this run built z0-$MAX_ZOOM at $QUANTIZE_STEP m"
           exit 1
 
       - uses: actions/checkout@v7

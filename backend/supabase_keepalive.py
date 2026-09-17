@@ -112,24 +112,25 @@ KEEPALIVE_TABLES: tuple[str, ...] = (
     # exactly the kind of "who maintains which mile" rule 4 keeps unpublished.
     "registry_signoffs",
     "note_flags",
-    # An organization's own registry (features/ORG_ONBOARDING.md, #1540).
-    # Not yet published to anybody when it is written, which is the whole
-    # point of the sign-off: a readable one would serve an org's
-    # unpublished sections to anyone holding the anon key.
     # A hiker offering somebody else's trails, and what the reading found
     # (features/ORG_ONBOARDING.md). `nomination_contacts` is the one that
     # matters most on this whole list: it holds named people's work email
     # addresses, lifted off their organization's own pages, for an
-    # organization that has not yet agreed to any of this. A readable one
-    # is a contact database of volunteers who never heard of us.
+    # organization that has not yet agreed to any of this. A readable one is a
+    # contact database of volunteers who never heard of us.
     "nomination_contacts",
     "nomination_refusals",
     "nomination_sources",
     "org_nominations",
+    # An organization's own registry (features/ORG_ONBOARDING.md, #1540).
+    # Not yet published to anybody when it is written, which is the whole
+    # point of the sign-off: a readable one would serve an org's unpublished
+    # sections to anyone holding the anon key.
     "org_parks",
     "org_roles",
     "org_sections",
     "org_trails",
+    "poi_photo_dismissals",
     "poi_photos",
     "profiles",
     "reports",

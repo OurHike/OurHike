@@ -95,6 +95,7 @@ The contract, everything optional but the file:
 | `alt` | the image's alt text (default: the caption) |
 | `entry` | `true` keeps first run on screen; the runner skips it otherwise |
 | `wait` | settle in ms after load, and again after the drive (default 3500) |
+| `before` | a function of the page, run before the app is loaded - for a `page.route` that holds a chunk back, which is the only way to photograph a frame the launch passes through on its own (`today-desktop-before-the-map.mjs`) |
 | default export | the drive: Playwright taps from the loaded app to the state worth photographing. Omit it for a screen the app opens on by itself |
 
 `pr-preview.yml` hands the runner

@@ -30,6 +30,7 @@ from app.core import assist as assist_core
 from app.core.time import utc_now
 from app.models.club import Club, OrgState
 from tests.factories import make_admin, make_assignment, make_org, make_profile, make_role
+from tests.nominating import answers, reads, solved, switch_on
 from tests.tokens import auth_headers
 
 
@@ -347,23 +348,47 @@ def test_reading_where_consent_stands_needs_an_admin_too(client, db_session):
     assert "opted_in_by" not in client.get(f"/clubs/{org.slug}").text
 
 
-def test_the_public_nominate_panel_runs_before_any_organization_exists(client, db_session, assist_on, answered):
+def test_the_nominate_panel_runs_before_any_organization_exists(client, db_session, assist_on, monkeypatch):
     """The user-facing half of "nothing is asked before the org is created".
 
-    A hiker on the marketing site nominating their local club is looking at a
-    website that is already public, and there is no org record to consent -
-    the organization has not been created, which is the point of the form.
-    Asking the hiker to agree on the organization's behalf would be a consent
-    worth less than none.
+    A hiker nominating their local club is looking at a website that is
+    already public, and there is no org record to consent - the organization
+    has not been created, which is the point of the form. Asking the hiker to
+    agree on the organization's behalf would be a consent worth less than
+    none.
+
+    The panel stopped being public on 2026-09-17 and this test grew three
+    gates because of it, but the thing it asserts did not change: the consent
+    gate in app/core/assist.py is reached with `club=None` and lets the call
+    through, because there is nobody to ask.
     """
-    response = client.post("/assist/nominate", json={"website": "https://example.org"})
+    switch_on(monkeypatch)
+    reads(monkeypatch)
+    answers(monkeypatch)
+    hiker = make_profile(db_session)
+
+    response = client.post(
+        "/assist/nominate",
+        json={"website": "https://carolinamountainclub.org", **solved(hiker.id)},
+        headers=auth_headers(hiker.id),
+    )
 
     assert response.status_code == 200
 
 
-def test_an_org_that_said_no_does_not_switch_off_the_public_panel(client, db_session, assist_on, answered):
+def test_an_org_that_said_no_does_not_switch_off_the_nominate_panel(client, db_session, assist_on, monkeypatch):
     """Two different surfaces, two different questions, no shared switch."""
     org, person = _org_with_admin(db_session)
     _set_consent(client, org, person, False)
+    switch_on(monkeypatch)
+    reads(monkeypatch)
+    answers(monkeypatch)
+    hiker = make_profile(db_session)
 
-    assert client.post("/assist/nominate", json={"website": "https://example.org"}).status_code == 200
+    response = client.post(
+        "/assist/nominate",
+        json={"website": "https://carolinamountainclub.org", **solved(hiker.id)},
+        headers=auth_headers(hiker.id),
+    )
+
+    assert response.status_code == 200

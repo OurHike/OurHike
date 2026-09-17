@@ -61,6 +61,11 @@ diff rather than a disappearance.
 
 A `Proximity_Water_ft` of 0 (35 of the 1,013) resolves to nothing published:
 zero reads as at-the-source or as unmeasured, and the row does not say which.
+A negative value resolves to nothing for the plainer reason that it is not a
+distance - GIS tables often spell unknown as -1 or -999, and rounding one up
+to a foot would put water at the shelter door. None exists in the layer
+today (measured 2026-09-17 on the checked-in file: the smallest listed value
+is 0.77 ft), which is why the refusal is written down before it is needed.
 A distance a hiker plans an evening around has to be a statement, not a shrug.
 
 ## The provenance rule: an allowlist, and how the FarOut rows joined it
@@ -415,6 +420,16 @@ def resolve_layer(layer: str, features: list[dict], csi_rows: list[dict]) -> lis
             record["unresolved"] = "the CSI row carries no distance"
         elif listed == 0:
             record["unresolved"] = "the CSI row gives 0 ft, which reads as at-the-source or unmeasured, and does not say which"
+        elif listed < 0:
+            # A negative distance is not a distance. GIS attribute tables often
+            # spell "unknown" as -1 or -999, and `max(1, round(listed))` below
+            # would have read any of those as one foot from water - the
+            # confident wrong answer on the path this file exists to keep
+            # honest. None exists today (measured 2026-09-17 on the checked-in
+            # file: the smallest listed value is 0.77 ft); the evidence stays
+            # listed so the row can be looked at, and nothing publishes.
+            record["listed_distance_ft"] = listed
+            record["unresolved"] = f"the CSI row gives {listed} ft, which is a sentinel or an entry error rather than a distance"
         elif provenance not in PUBLISHABLE_PROVENANCES:
             # The join evidence and the listed value stay - the holdback has
             # to be reviewable, and the value is public on ATC's own service
@@ -450,7 +465,8 @@ README = [
     "",
     "A null distance always carries an `unresolved` reason - no CSI row near",
     "the feature (most of Maine), a 0 ft value that reads as at-the-source or",
-    "unmeasured without saying which, or a provenance value this build does",
+    "unmeasured without saying which, a negative value that is a sentinel",
+    "rather than a distance, or a provenance value this build does",
     "not know (an allowlist: FarOut joined it 2026-08-13 on the maintainer's",
     "authorisation, #688; anything newer waits for a human). None is a guess:",
     "where water is matters more than most numbers here, so a blank beats an",

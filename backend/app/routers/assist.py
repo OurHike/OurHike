@@ -108,7 +108,7 @@ def _answer(
     panel: AssistPanel,
     prompt: str,
     club: Club | None,
-    address: str | None,
+    handle: str | None,
 ) -> AssistOut:
     """The four failures, each with the sentence that belongs to it.
 
@@ -126,7 +126,7 @@ def _answer(
             system=SYSTEM_PROMPTS[panel],
             prompt=prompt,
             club=club,
-            client_address=address,
+            counted_as=handle,
         )
     except AssistUnavailable as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
@@ -176,7 +176,7 @@ def assist_org(
         panel=payload.panel,
         prompt=payload.question,
         club=access.club,
-        address=None,
+        handle=None,
     )
 
 

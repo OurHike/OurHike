@@ -345,18 +345,12 @@ def test_the_export_is_not_a_public_read(client, db_session):
     assert response.status_code == 403
 
 
-def test_a_nomination_creates_an_unclaimed_org_for_a_person_to_read(client, db_session):
-    hiker = make_profile(db_session)
-
-    response = client.post(
-        "/clubs/nominations",
-        json={"name": "Hudson Highlands Land Trust", "website": "https://hhlt.org"},
-        headers=auth_headers(hiker.id),
-    )
-
-    assert response.status_code == 202
-    nominated = db_session.query(Club).filter(Club.name == "Hudson Highlands Land Trust").one()
-    assert nominated.state == OrgState.unclaimed
+# NOMINATING AN ORG IS TESTED WHERE IT LIVES NOW,
+# tests/test_routers_nominations.py. This asserted that `POST /clubs/nominations`
+# created an unclaimed org a maintainer could read; it now also reads the
+# club's own pages, lets the hiker review what was found, stores only what the
+# hiker kept, and refuses outright for a club that has said never again -
+# none of which this file is the home for.
 
 
 def test_an_unclaimed_organization_still_appears_in_the_list(client, db_session):

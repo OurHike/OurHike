@@ -36,7 +36,7 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -50,7 +50,13 @@ from app.core.assist import (
 from app.core.auth import get_current_user
 from app.core.challenge import Challenge, ChallengeRefused, issue, verify
 from app.core.nominate import ReadingFailed, reading_from
-from app.core.sitefetch import FetchRefused, read_site
+from app.core.sitefetch import (
+    FetchRefused,
+    peer_from_response,
+    peer_unchecked,
+    read_site,
+    reader,
+)
 from app.core.time import utc_now
 from app.core.urlguard import UrlRefused
 from app.db.session import get_db
@@ -148,7 +154,6 @@ def nominate_challenge(current_user: Profile = Depends(get_current_user)) -> Cha
 @router.post("/assist/nominate", response_model=NominateReading)
 def nominate_read(
     payload: NominateRead,
-    request: Request,
     current_user: Profile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> NominateReading:
@@ -176,8 +181,12 @@ def nominate_read(
     except ChallengeRefused as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-    address = request.client.host if request.client else None
-
+    # THE BUDGET COUNTS THIS HIKER, NOT THEIR ADDRESS. When the panel was
+    # public there was nothing else to count by; now there is, and it is
+    # better in both directions - an address counts a whole office together
+    # and counts one person on two networks twice. It also means no address is
+    # stored at all, hashed or otherwise, so this endpoint stops being a
+    # record of who looked up which organization.
     def asker(prompt: str, system: str) -> tuple[str, int]:
         result = ask(
             db,
@@ -185,12 +194,25 @@ def nominate_read(
             system=system,
             prompt=prompt,
             club=None,
-            client_address=address,
+            counted_as=f"hiker:{current_user.id}",
         )
         return result.text, result.input_tokens + result.output_tokens
 
     try:
-        pages = read_site(payload.website)
+        # A client per request rather than one shared for the process. The
+        # handshake costs a moment and the alternative is a cookie jar and a
+        # connection pool shared across every organization anybody nominates -
+        # see this module's note on what must not leave with the request.
+        with reader() as client:
+            pages = read_site(
+                payload.website,
+                client=client,
+                # OFF means REFUSE, not "skip the check" - `peer_unchecked`
+                # reports the peer as unknown and `read_page` treats unknown as
+                # a failure. A deployment behind an egress proxy has to turn the
+                # whole reading off rather than run it unverified.
+                read_peer=peer_from_response if settings.site_fetch_require_peer_match else peer_unchecked,
+            )
     except UrlRefused as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except FetchRefused as exc:

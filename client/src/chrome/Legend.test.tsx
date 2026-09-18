@@ -1381,32 +1381,12 @@ describe('below the zoom waypoints are drawn at', () => {
     // describes (#528, then #603's dots, now the trails-only corridor view).
     // Both ranks stop at the seam again, so "appear from a closer zoom" is
     // the true sentence, and "pan or zoom out" stays the wrong direction.
-    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    // Both halves since #1585: the dots ARE drawn down here, the pins are
+    // not. "Appear from a closer zoom" alone was false about the first of
+    // them, and "pan or zoom out" is still the wrong direction.
+    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
+    expect(screen.getByText(/pins appear from a closer zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
-  })
-
-  it('names the three types the planning band draws, and still sends the rest closer (#1585)', () => {
-    render(
-      <Legend
-        open
-        bbox={bbox}
-        points={[]}
-        hiddenTypes={new Set()}
-        onToggleType={() => {}}
-        onClose={() => {}}
-        belowPoiZoom
-        planningBand
-      />,
-    )
-
-    expect(
-      screen.getByText(/shelters, water and resupply towns show at this zoom/i),
-    ).toBeInTheDocument()
-    // The second half is the plain below-seam sentence's, so a hiker who
-    // learned one form reads the other; and no fit fraction, because down
-    // here "drawn" would measure the band's type gate, not the collision.
-    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
-    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
   })
 
   it('says it over a viewport full of waypoints too, because none of them draw', () => {
@@ -1429,7 +1409,7 @@ describe('below the zoom waypoints are drawn at', () => {
       />,
     )
 
-    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.getByText(/show as dots at this zoom/i)).toBeInTheDocument()
     expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
     // Plain names, no "none of 1 shown" fractions: the fraction is the
     // collision engine's report, and it was not consulted. (Two shelter

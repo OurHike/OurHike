@@ -77,9 +77,17 @@ describe('attachMapChrome', () => {
     // a few metres across - so one tap flew from the corridor view to
     // roughly z15 and traded the whole picture of where somebody is going
     // for the answer to where they are. The cap moved to #315's fix and
-    // survives the control's retirement: the zoom the waypoint pins start
-    // drawing at, asserted against the constant so the two cannot drift.
-    expect(LOCATE_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
+    // survives the control's retirement.
+    //
+    // IT IS NO LONGER THE PIN SEAM, and that separation is what this now
+    // holds (#1585). The two were one number while the seam was the zoom a
+    // DAY fits; the seam moved out to the zoom a five-day resupply carry
+    // fits - 80 x 144 miles of ground - and a "where am I" tap answered with
+    // a screen that wide is not an answer. So locate keeps a day's ground
+    // and the constant says so, which is a camera choice and never a filter:
+    // every waypoint is drawn at every zoom either way.
+    expect(LOCATE_MIN_ZOOM).toBe(9)
+    expect(LOCATE_MIN_ZOOM).toBeGreaterThan(POI_PIN_MIN_ZOOM)
   })
 
   it('shows zoom buttons on web, where there is no pinch gesture', () => {

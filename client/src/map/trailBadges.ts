@@ -66,7 +66,7 @@ import { TRAILS } from '../lib/trails'
 import { LABEL_TIER } from './labelLadder'
 import { sheetVariant, type SheetAppearance } from './liveTopo'
 import { CHOSEN_SYSTEM_SOURCES, nearbyTrailOpacityExpression } from './nearbyTrails'
-import { POI_PLANNING_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { parseHex, POI_PIN_PIXEL_RATIO, type PoiIconImage } from './poiIcons'
 import { whenStyleReady } from './styleReady'
 
@@ -704,14 +704,13 @@ export function buildTrailBadgeLayer(
     // something else" and starts being the map a hiker walks with. The pill
     // belongs to the first of those, not the second.
     //
-    // The PIN floor itself rather than a number that happens to agree - and
-    // since #1585 that floor is the planning band's, a zoom below the seam:
-    // shelters, water and towns take pins from there, and a badge ceiling
-    // that stayed at the seam would put pills on a map that had just filled
-    // with them, which is the drift this line exists to refuse. maplibre
-    // reads `maxzoom` as exclusive, so the badge is gone on the first frame
-    // a pin can draw rather than sharing that frame with it.
-    maxzoom: POI_PLANNING_PIN_MIN_ZOOM,
+    // POI_PIN_MIN_ZOOM itself rather than a 9 that happens to agree, for the
+    // reason POI_DOT_MIN_ZOOM is that constant too: the corridor view has ONE
+    // seam for waypoints, and a badge ceiling that drifted from it would put
+    // pills back on a map that had just filled with pins. maplibre reads
+    // `maxzoom` as exclusive, so the badge is gone on the first frame a
+    // waypoint can draw rather than sharing that frame with it.
+    maxzoom: POI_PIN_MIN_ZOOM,
     filter: ['!=', ['to-string', ['get', BADGE_NAME_PROPERTY]], ''] as never,
     layout: {
       'symbol-placement': 'point',

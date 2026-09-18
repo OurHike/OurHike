@@ -156,35 +156,28 @@ export const ON_THE_TRAIL: readonly [number, number] = [-83.4821, 35.6012]
 export const ABOVE_THE_SEAM_ZOOM = 12.5
 
 /**
- * The same window, BELOW the pin seam — where a tap on the A.T. asks who
- * maintains it instead of what the line is (chrome/tappedLinePanel.tsx: "one
- * tap asks one question, and which question depends on the zoom").
+ * The same window, BELOW the pin seam — where the map stops drawing waypoints
+ * and a tap on the A.T. asks who maintains it instead of what the line is
+ * (chrome/tappedLinePanel.tsx: "one tap asks one question, and which question
+ * depends on the zoom").
  *
- * NOT "where the map stops drawing waypoints" any more (#1585 — A hundred-mile
- * resupply carry fits a phone at z8, and the map draws no waypoint until z9):
- * z8 is inside the planning band, so the A.T.'s shelters, water and resupply
- * towns draw here as pins and dots, and the legend's sentence here is the
- * band's ("Shelters, water and resupply towns show at this zoom; the rest
- * appear from a closer zoom."). The seam and the club-sheet rule are exactly
- * where they were, which is why the camera stays at 8 rather than dropping
- * under the band's 7.5 floor: the sweep in e2e/data/mapSheets.spec.ts now
- * proves a line tap still finds the club with band pins around it, and it
- * closes a waypoint card it opens on the way. A camera below the band would
- * have kept the old sentence true and the measurement below valid at the cost
- * of never testing that.
- *
- * 8 rather than 8.9: `map/poiLayers.ts`'s `POI_PIN_MIN_ZOOM` is 9 and
- * `belowSeam` is `zoom < POI_PIN_MIN_ZOOM`, so anything under 9 is below the
+ * 7 rather than 7.4: `map/poiLayers.ts`'s `POI_PIN_MIN_ZOOM` is 7.5 and
+ * `belowSeam` is `zoom < POI_PIN_MIN_ZOOM`, so anything under 7.5 is below the
  * seam — but a value that sits on the boundary would turn a one-line change to
  * that constant into a mystifying spec failure rather than an obvious one.
+ * It was 8 while the seam was 9, and moved with it (#1585, 2026-09-18).
+ *
+ * WHAT IS DRAWN HERE IS NOT NOTHING, and the sweep below depends on knowing
+ * it: the dot rank reaches every zoom since #1585, so this camera carries a
+ * stipple of waypoints even though no pin is placed. The legend's sentence
+ * here is "Waypoints show as dots at this zoom; pins appear from a closer
+ * zoom.
  *
  * Measured 2026-09-11 against release 2026-09-10, sweeping the whole frame
  * below the header at this camera: 21 of 247 taps open the club sheet and 28
  * open a side trail's line sheet, so the A.T. is comfortably findable here —
  * far more so than at ABOVE_THE_SEAM_ZOOM, where the same sweep finds the line
- * at one point only. (Measured before the band drew here; some of those 247
- * taps now open a waypoint card first, which the sweep closes and passes
- * over, so the club count still holds as a floor and not as the exact
- * figure.)
+ * at one point only. The legend confirms the zoom from the app's own side:
+ * "Waypoints appear from a closer zoom."
  */
-export const BELOW_THE_SEAM_ZOOM = 8
+export const BELOW_THE_SEAM_ZOOM = 7

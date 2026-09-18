@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   computeLegendContents,
   legendDropSummary,
-  mapPointsFrom,
   SAFETY_LAYERS,
   withEveryType,
   withSafetyKey,
@@ -450,29 +449,5 @@ describe('legendDropSummary', () => {
       present: 2,
       drawn: 0,
     })
-  })
-})
-
-describe('mapPointsFrom', () => {
-  const stored = {
-    id: 'atc_shelters:1',
-    type: 'shelter',
-    lat: 35.5,
-    lon: -83.5,
-    confidence: 'high' as const,
-    name: 'Springer Mountain Shelter',
-  }
-
-  it('carries the network flag through for the planning band, and only where it is set (#1585)', () => {
-    const [ours, theirs] = mapPointsFrom([
-      stored,
-      { ...stored, id: 'oprhp_facilities:2', network: true as const },
-    ])
-
-    // No key at all on the A.T.'s own, rather than one holding undefined -
-    // the same rule the site keys follow, so a snapshot cannot read a claim
-    // about the network into an A.T. waypoint.
-    expect('network' in ours).toBe(false)
-    expect(theirs.network).toBe(true)
   })
 })

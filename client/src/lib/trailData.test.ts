@@ -384,15 +384,10 @@ describe('trail data', () => {
         confidence: 'high',
         source: 'dec_lean_tos',
         description: 'Lean-To in Saranac Lakes Wild Forest.',
-        // Flagged as the network's at the fetch (#1585), so the planning
-        // band below the seam can leave it out while drawing the A.T.'s.
-        network: true,
       })
       // Beside the A.T.'s, not instead of them. The whole point of the merge is
       // that both end up in one collision pass.
       expect(pois.some((poi) => poi.id === 'atc_shelters:abc')).toBe(true)
-      // And the A.T.'s own carry no flag at all - absent is what "ours" is.
-      expect(pois.find((poi) => poi.id === 'atc_shelters:abc')?.network).toBeUndefined()
     })
 
     it('carries the low confidence OPRHP rows arrive at, so the map can draw the broken rim', async () => {
@@ -419,7 +414,6 @@ describe('trail data', () => {
         (poi) => poi.id === 'oprhp_facilities:2035',
       )
       expect(oprhp?.confidence).toBe('low')
-      expect(oprhp?.network).toBe(true)
       // 82% of OPRHP's rows publish no name, which the card already renders as
       // "Unnamed" - the pipeline refuses to put the PARK's name on a feature
       // inside it, so this is the honest arrival shape rather than a gap.

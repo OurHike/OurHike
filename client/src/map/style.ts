@@ -112,6 +112,12 @@ import { buildClosureSource, CLOSURE_SOURCE_ID } from './closureLayers'
 import {
   buildCorridorLayers,
   buildCorridorSource,
+  // Every seam in THIS file is a line's, and a line's seam is where the
+  // corridor sketch hands over to the tiled network - not where the waypoints
+  // start. The two were one number until #1585 moved the pins to z8 and left
+  // the trails where they were; naming the right one here is what kept a band
+  // of ground from losing every trail but the A.T.
+  CORRIDOR_MAX_ZOOM,
   CORRIDOR_SOURCE_ID,
 } from './corridorLayers'
 import {
@@ -144,7 +150,6 @@ import {
   buildPoiLayer,
   buildPoiSource,
   buildPoiStalenessLayer,
-  POI_PIN_MIN_ZOOM,
   POI_SOURCE_ID,
 } from './poiLayers'
 import { buildPoiLabelLayer } from './poiLabels'
@@ -1250,7 +1255,7 @@ function buildNetworkOverviewLayer(
     filter: (side === 'chosen'
       ? chosenSystemFilter(chosen)
       : nearbyTrailFilter(chosen)) as never,
-    maxzoom: POI_PIN_MIN_ZOOM,
+    maxzoom: CORRIDOR_MAX_ZOOM,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
       // Uncased, so a near-white line is inked dark on a day sheet
@@ -1521,7 +1526,7 @@ export const OVERVIEW_FAR_ZOOM = 4
 
 /**
  * One line-width taper across the representational band: `far` at the
- * continental camera, `atSeam` at POI_PIN_MIN_ZOOM, linear between.
+ * continental camera, `atSeam` at CORRIDOR_MAX_ZOOM, linear between.
  *
  * Written once because three layers take it and they have to agree to the
  * pixel: the network overview sketch, the A.T.'s own sketch while it is
@@ -1543,7 +1548,7 @@ function overviewTaper(far: unknown, atSeam: unknown): unknown[] {
     ['zoom'],
     OVERVIEW_FAR_ZOOM,
     far,
-    POI_PIN_MIN_ZOOM,
+    CORRIDOR_MAX_ZOOM,
     atSeam,
   ]
 }
@@ -2142,7 +2147,7 @@ export function buildMapStyle({
       ...buildClosureLayers(NETWORK_OVERVIEW_SOURCE_ID, {
         bandId: NETWORK_OVERVIEW_CLOSURE_LAYER_ID,
         filter: LONG_TERM_CLOSED_FILTER,
-      }).map((layer) => ({ ...layer, maxzoom: POI_PIN_MIN_ZOOM })),
+      }).map((layer) => ({ ...layer, maxzoom: CORRIDOR_MAX_ZOOM })),
       {
         // The corridor-view sketch (#869), UNDER the real trail's casing, so
         // on the one frame where both exist the real line is what a hiker
@@ -2162,7 +2167,7 @@ export function buildMapStyle({
         id: TRAIL_OVERVIEW_LAYER_ID,
         type: 'line',
         source: TRAIL_OVERVIEW_SOURCE_ID,
-        maxzoom: POI_PIN_MIN_ZOOM,
+        maxzoom: CORRIDOR_MAX_ZOOM,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           // The same expressions the real line is painted with, off the same
@@ -2222,7 +2227,7 @@ export function buildMapStyle({
           // exists. Until it does, the Long Path is absent below z9 rather than
           // drawn at the wrong prominence. Cutting the smear is the half worth
           // having first; the other half is #557's ground.
-          POI_PIN_MIN_ZOOM,
+          CORRIDOR_MAX_ZOOM,
           chosen,
         ),
         NETWORK_TILES_LAYER,
@@ -2259,7 +2264,7 @@ export function buildMapStyle({
       // trail rather than draw it. Nothing until a release carries the
       // pairs - map/sharedGround.ts, "guarded on absence".
       ...onSourceLayer(
-        buildSharedGroundLayers(appearance, POI_PIN_MIN_ZOOM, chosen),
+        buildSharedGroundLayers(appearance, CORRIDOR_MAX_ZOOM, chosen),
         NETWORK_TILES_LAYER,
       ),
       // Trail names (#930), directly over the lines they name and UNDER every

@@ -26,7 +26,7 @@ import {
   trailMarkImageId,
   WHITE_CHIP_GROUND,
 } from './trailBadges'
-import { POI_PIN_MIN_ZOOM, POI_PLANNING_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_PIN_MIN_ZOOM } from './poiLayers'
 import { PRIMARY_TRAIL_SOURCES } from './style'
 import { THROUGH_ROUTE_SOURCES } from './trailLabels'
 import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from '../lib/blaze'
@@ -284,20 +284,16 @@ describe('registryNameForSource', () => {
     }
   })
 
-  it('stands down where the pins arrive, so a pill never competes with a pin', () => {
+  it('stands down at the waypoint seam, so a pill never competes with a pin', () => {
     // The maintainer, 2026-09-14: "when a user zooms in close enough to see a
     // POI, the trail pills (AT & LP) should hide." The ceiling is the seam
     // constant itself and not a literal, so the two cannot drift apart and
     // leave pills on a map that has just filled with pins.
     const layer = buildTrailBadgeLayer({ theme: 'light' })
 
-    // Since #1585 the first frame a pin can draw is the planning band's pin
-    // floor, below the seam - so that is the ceiling. Held against the seam
-    // too, so a badge can never outlive the pins' arrival whichever of the
-    // two floors moves next.
-    expect(layer.maxzoom).toBe(POI_PLANNING_PIN_MIN_ZOOM)
+    expect(layer.maxzoom).toBe(POI_PIN_MIN_ZOOM)
     // maplibre reads `maxzoom` as exclusive: the badge is gone on the FIRST
-    // frame a pin can draw, rather than sharing that frame with it.
+    // frame a waypoint can draw, rather than sharing that frame with it.
     expect(layer.maxzoom).not.toBeGreaterThan(POI_PIN_MIN_ZOOM)
     // And it still has no floor of its own - the line layers' floors are the
     // badge's (the review of #1374), which this must not quietly reintroduce.

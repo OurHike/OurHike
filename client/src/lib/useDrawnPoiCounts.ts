@@ -14,7 +14,7 @@ import { useEffect, useState } from 'react'
 import { drawnPoiCounts, type DrawnPoiMap } from '../map/drawnPois'
 import { drawsNearbyTrails } from '../map/drawnBlazes'
 import { CHOSEN_SYSTEM_SOURCES } from '../map/nearbyTrails'
-import { POI_PIN_MIN_ZOOM, POI_PLANNING_MIN_ZOOM } from '../map/poiLayers'
+import { POI_PIN_MIN_ZOOM } from '../map/poiLayers'
 
 /** The real MapLibre map - see map/drawnPois.ts for why this is not a
  *  structural stand-in. */
@@ -34,13 +34,6 @@ export interface DrawnPois {
   /** Whether the settled camera is below the zoom the pin layer draws at, so
    *  the panel can say which of two very different things is true. */
   belowPoiZoom: boolean
-  /**
-   * Whether the settled camera is in the planning band (#1585): below the
-   * seam, where `belowPoiZoom` is also true, but at or above the floor from
-   * which the map draws the A.T.'s shelters, water and towns. The legend's
-   * below-seam sentence has a band form, and this is what picks it.
-   */
-  planningBand: boolean
   /**
    * Whether any line on screen belongs to a network other than the chosen
    * trail's (#783), which is what the legend's ghosting sentence explains.
@@ -62,7 +55,6 @@ export function useDrawnPoiCounts(
   const [drawn, setDrawn] = useState<DrawnPois>({
     counts: undefined,
     belowPoiZoom: false,
-    planningBand: false,
     ghostedTrailsDrawn: false,
   })
 
@@ -73,21 +65,17 @@ export function useDrawnPoiCounts(
       setDrawn({
         counts: undefined,
         belowPoiZoom: false,
-        planningBand: false,
         ghostedTrailsDrawn: false,
       })
       return
     }
 
-    const measure = () => {
-      const zoom = map.getZoom()
+    const measure = () =>
       setDrawn({
         counts: drawnPoiCounts(map),
-        belowPoiZoom: zoom < POI_PIN_MIN_ZOOM,
-        planningBand: zoom >= POI_PLANNING_MIN_ZOOM && zoom < POI_PIN_MIN_ZOOM,
+        belowPoiZoom: map.getZoom() < POI_PIN_MIN_ZOOM,
         ghostedTrailsDrawn: drawsNearbyTrails(map, chosen),
       })
-    }
 
     // Once up front: the map may already be idle by the time this runs, and
     // waiting for the next `idle` would leave the panel unmeasured until the

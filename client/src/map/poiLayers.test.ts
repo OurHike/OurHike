@@ -3,12 +3,7 @@ import { createExpression, featureFilter } from '@maplibre/maplibre-gl-style-spe
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
-import {
-  hiddenTypesFrom,
-  onlyType,
-  showAllTypes,
-  PLANNING_POI_TYPES,
-} from '../lib/waypointVisibility'
+import { hiddenTypesFrom, onlyType, showAllTypes } from '../lib/waypointVisibility'
 import {
   buildPoiIcons,
   POI_FALLBACK_COLOR,
@@ -48,10 +43,6 @@ import {
   POI_NAME_PROPERTY,
   POI_LAYER_ID,
   POI_PIN_MIN_ZOOM,
-  POI_PLANNING_MIN_ZOOM,
-  POI_PLANNING_PIN_MIN_ZOOM,
-  POI_NETWORK_PROPERTY,
-  PLANNING_BAND_FILTER,
   POI_SORT_KEY_EXPRESSION,
   POI_SOURCE_ID,
 } from './poiLayers'
@@ -112,6 +103,11 @@ describe('the icon expression', () => {
   })
 })
 
+/** `source` off the union, which also holds background layers that have none. */
+function sourceOfLayer(layer: LayerSpecification): string | undefined {
+  return 'source' in layer ? layer.source : undefined
+}
+
 describe('the dot rank', () => {
   it('is a CIRCLE layer, which is the entire mechanism', () => {
     // THE test in this file. MapLibre's collision engine is a property of
@@ -123,37 +119,37 @@ describe('the dot rank', () => {
     expect(buildPoiDotLayer().type).toBe('circle')
   })
 
-  it('starts at the planning band floor, below the pins and below the seam (#1585)', () => {
-    // The third reversal of this test, and the history is still the point of
-    // pinning it: both ranks at the seam (pre-#603) left the opening view
-    // empty; the dot rank at z0 (#603) put a stipple on it that #1097 then
-    // quietly broke, 8,480 network waypoints joining this source while their
-    // trails' lines draw only from the seam up; #1135 floored both ranks at
-    // the seam again. #1585 lowers the dot rank to the planning band's floor
-    // and answers #1097's objection by SCOPE rather than by floor - which is
-    // what the band-filter tests below hold. The three floors are held in
-    // order because that order is the band's whole design: dots first, pins
-    // for the band's three types next, everything else at the seam.
+  it('reaches every zoom, so no waypoint is ever undrawn (#1585)', () => {
+    // THE THIRD TURN OF THIS TEST, and the history is the point of pinning it:
+    // both ranks at the seam (pre-#603) left the opening view empty; the dot
+    // rank at z0 (#603) put a stipple on it; #1135 floored both at the seam
+    // again, because #1097's network waypoints were being stippled onto trails
+    // the view refused to draw. #1585 reverses that once more, on the
+    // maintainer's rule that the map may never hide a waypoint from a hiker -
+    // and #1135's objection is answered rather than overruled, because #1135
+    // itself put every organization's trails on this camera.
+    //
+    // At or below the pin floor, always: this is what makes "a pin or a dot
+    // and never neither" true at EVERY zoom rather than only above the seam.
     expect(buildPoiDotLayer().minzoom).toBe(POI_DOT_MIN_ZOOM)
-    expect(POI_DOT_MIN_ZOOM).toBe(POI_PLANNING_MIN_ZOOM)
-    expect(buildPoiLayer().minzoom).toBe(POI_PLANNING_PIN_MIN_ZOOM)
-    expect(POI_PLANNING_MIN_ZOOM).toBeLessThan(POI_PLANNING_PIN_MIN_ZOOM)
-    expect(POI_PLANNING_PIN_MIN_ZOOM).toBeLessThan(POI_PIN_MIN_ZOOM)
+    expect(POI_DOT_MIN_ZOOM).toBeLessThanOrEqual(POI_PIN_MIN_ZOOM)
+    expect(POI_DOT_MIN_ZOOM).toBe(0)
+    expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
   })
 
-  it('opens its radius ramp at the shared seam, with no stop below it', () => {
-    // The 1.2 px corridor stop went with the below-seam dots it sized
-    // (#1135), and #1585 lowered the floor WITHOUT putting a stop back: the
-    // planning band's dots are the clamped 2.5 px, a size decided rather
-    // than inherited (POI_DOT_RADIUS_EXPRESSION's docstring). A stop below
-    // the seam appearing here again would be somebody re-sizing the band
-    // without saying so.
+  it('opens its radius ramp at the corridor stop, below the seam (#1585)', () => {
+    // The 1.2 px stop came back with the dots it sizes. A ramp that still
+    // opened AT the seam would leave every dot below it at the clamped 2.5 px,
+    // which on the whole-corridor camera is a smear rather than a stipple -
+    // and nothing would have said so.
     const ramp = POI_DOT_RADIUS_EXPRESSION
     const firstStop = ramp[3] as number
+    const firstRadius = ramp[4] as number
     const atSeam = ramp[ramp.indexOf(POI_PIN_MIN_ZOOM) + 1] as number
 
-    expect(firstStop).toBe(POI_PIN_MIN_ZOOM)
-    expect(atSeam).toBeGreaterThan(0)
+    expect(firstStop).toBe(POI_DOT_MIN_ZOOM)
+    expect(firstRadius).toBeGreaterThan(0)
+    expect(firstRadius).toBeLessThan(atSeam)
   })
 
   it('reads the same source as the pins, which is what makes it site-correct', () => {
@@ -206,6 +202,146 @@ describe('the dot rank', () => {
 })
 
 describe('density', () => {
+  // THE RULE THIS BLOCK EXISTS FOR, in the maintainer's words on 2026-09-18:
+  // "Don't auto hide the POIs ever. It's a safety thing, hikers need to know
+  // that info."
+  //
+  // The first build of #1585 broke it. Reaching for a way to put a resupply
+  // carry's shelters and water on a hundred-mile screen, it gated the map by
+  // TYPE below the seam - three categories drawn, six not - so a hiker at z8
+  // saw no campsite, no privy, no parking and no crossing, and nothing on the
+  // screen said they were there. A hiker cannot ask about a mark that is not
+  // drawn. That is the failure mode CLAUDE.md's "four ways this app can hurt
+  // somebody" is written against, and none of it looked wrong from the outside.
+  //
+  // So: the seam decides WHERE waypoints start and never WHICH. These tests are
+  // the difference between those two sentences, held where a future change has
+  // to walk past them.
+  describe('the map never hides a category of its own accord (#1585)', () => {
+    function drawnAt(zoom: number, type: string, hidden: string[] = []): boolean {
+      const { filter } = featureFilter(
+        poiFilter(new Set(hidden)) as never,
+        'layers[0].filter',
+      )
+      return filter(
+        { zoom } as never,
+        { properties: poi(type), type: 1 } as never,
+        null as never,
+      )
+    }
+
+    // EVERY zoom a waypoint can be drawn at, and the ones BELOW the seam are
+    // the point of the list: down there the dot rank is the only thing saying
+    // a place is there at all, and it is exactly where the first build of
+    // #1585 hid six categories. A gate that bit in one band only is how that
+    // shipped - it looked right at every zoom anybody happened to check.
+    const EVERY_ZOOM = [
+      0,
+      4.9, // the opening camera, the whole corridor
+      6,
+      7,
+      POI_PIN_MIN_ZOOM,
+      8,
+      9,
+      10,
+      12,
+      14,
+      16,
+      18,
+      22,
+    ]
+
+    it('draws every published category at every zoom, including below the seam', () => {
+      for (const zoom of EVERY_ZOOM) {
+        for (const type of POI_TYPES) {
+          expect({ zoom, type, drawn: drawnAt(zoom, type) }).toEqual({
+            zoom,
+            type,
+            drawn: true,
+          })
+        }
+      }
+    })
+
+    it('carries no zoom term at all, so no zoom can ever decide a category', () => {
+      // The strongest form of the rule, and the one that cannot be satisfied by
+      // a gate that merely happens to be off today: `zoom` does not appear in
+      // this filter. A type clause keyed on the camera is the defect itself,
+      // not a tuning of it.
+      expect(JSON.stringify(poiFilter(new Set()))).not.toContain('zoom')
+      expect(JSON.stringify(poiFilter(new Set(['privy']), true))).not.toContain('zoom')
+    })
+
+    it('takes a category off the map only where the hiker asked for it', () => {
+      // The one honest subtraction, and it is the hiker's own (#530, #865): a
+      // row they switched off. Asserted beside the rule above so the two are
+      // read together - "never hides" is about the MAP deciding, never about a
+      // control the hiker can see and reverse.
+      for (const zoom of EVERY_ZOOM) {
+        expect(drawnAt(zoom, 'privy', ['privy'])).toBe(false)
+        expect(drawnAt(zoom, 'shelter', ['privy'])).toBe(true)
+      }
+    })
+
+    it('gives both ranks the same filter, so a category cannot be on one and off the other', () => {
+      // attachPoiFilter computes it once and sets it on both; this is that
+      // property from the layers' side. A type drawn as a dot and refused a pin
+      // - or the reverse - would be the same hiding, one rank down.
+      const hidden = new Set(['viewpoint'])
+      const pins = poiFilter(hidden)
+      const dots = poiFilter(hidden)
+
+      expect(pins).toEqual(dots)
+      expect(sourceOfLayer(buildPoiDotLayer())).toBe(sourceOfLayer(buildPoiLayer()))
+    })
+
+    it('never leaves a zoom where a waypoint is neither a pin nor a dot', () => {
+      // "A pin or a dot and never neither" (#597) is the promise, and what
+      // keeps it is that the dot rank's floor is never ABOVE the pin rank's.
+      // The other way round is a band of ground where a waypoint that loses
+      // its collision has nothing left to be drawn as - which is the deletion
+      // the two ranks exist to end.
+      expect(POI_DOT_MIN_ZOOM).toBeLessThanOrEqual(POI_PIN_MIN_ZOOM)
+      expect(buildPoiDotLayer().minzoom).toBeLessThanOrEqual(
+        buildPoiLayer().minzoom as number,
+      )
+    })
+
+    it('puts every category into the source, so the filter is the only gate there is', () => {
+      // One rank up from the filter: a type dropped on the way INTO the source
+      // would be hidden with no filter to blame, and nothing above would catch
+      // it. poiFeatureCollection emits one feature per drawn mark, whatever it
+      // is.
+      const one = POI_TYPES.map((type, index) => ({
+        id: `p${index}`,
+        type,
+        // Degrees apart, so site folding has nothing to fold and the count is
+        // the collection's own answer rather than a fold's.
+        lat: 35 + index,
+        lon: -84 + index,
+        confidence: 'high' as const,
+      }))
+
+      const drawn = poiFeatureCollection(one).features
+
+      expect(drawn.map((feature) => feature.properties.poi_type).sort()).toEqual(
+        [...POI_TYPES].sort(),
+      )
+    })
+
+    it('sits at the zoom a resupply carry fits, which is what moved it (#1585)', () => {
+      // Measured on the calibrated mile axis: 100-120 trail miles fit a
+      // 390x700 phone at a median z8.1-8.4, and fewer than one window in ten
+      // fits at 9 (the constant carries the table). Held as a bound rather than
+      // as the figure, so re-measuring against fresher data can move it without
+      // this test becoming a second home for the number.
+      expect(POI_PIN_MIN_ZOOM).toBeLessThanOrEqual(8)
+      // And not so far out that the corridor view stops being a view of the
+      // corridor: below the opening camera there is no walk to be about.
+      expect(POI_PIN_MIN_ZOOM).toBeGreaterThan(5)
+    })
+  })
+
   it('draws no pins at all above the whole-corridor view', () => {
     // The opening camera frames 2,197 miles. Eight hundred pins on it is a
     // texture, not information, and letting the collision engine thin them
@@ -220,13 +356,13 @@ describe('density', () => {
     // drew nothing below itself, this one hands over to the corridor view. 9
     // is the bound either way, because below it the corridor is a texture
     // (POI_MIN_ZOOM's own argument, which was right about that).
-    //
-    // Since #1585 the pin layer's own floor is the planning band's, one zoom
-    // below the seam and still three above the opening camera: a floor
-    // exists, it is just no longer the seam.
-    expect(buildPoiLayer().minzoom).toBe(POI_PLANNING_PIN_MIN_ZOOM)
-    expect(POI_PLANNING_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(8)
-    expect(POI_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(9)
+    expect(buildPoiLayer().minzoom).toBe(POI_PIN_MIN_ZOOM)
+    // `>= 8` since #1585 moved the seam out to the zoom a hundred-mile
+    // resupply carry fits. What this still holds is that a floor EXISTS and
+    // sits three zooms above the opening camera, which is the whole of the
+    // "eight hundred pins is a texture" argument; the block below holds the
+    // other half, that the floor never decides which categories draw.
+    expect(POI_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(7.5)
   })
 
   it('leaves the collision engine switched on, which is the whole density story', () => {
@@ -354,9 +490,6 @@ describe('poiFeatureCollection', () => {
       poi_type: 'shelter',
       confidence: 'low',
       [POI_ID_PROPERTY]: 's1',
-      // The network flag (#1585): false for an A.T. waypoint and always a
-      // boolean, so the planning band's filter is one comparison.
-      [POI_NETWORK_PROPERTY]: false,
       // Always present, empty where the pin carries nothing (#524). Asserted
       // exactly rather than loosely, which is why this test had to change when
       // the property arrived - a `toMatchObject` here would have let a fourth
@@ -682,82 +815,6 @@ describe('hiding a category', () => {
     expect(poiFilter(new Set(['water', 'campsite']))).toEqual(
       poiFilter(new Set(['campsite', 'water'])),
     )
-  })
-})
-
-describe('the planning band below the seam (#1585)', () => {
-  function passesAt(
-    zoom: number,
-    type: string,
-    options: {
-      hidden?: string[]
-      network?: boolean
-      verifiedOnly?: boolean
-      confidence?: 'high' | 'low'
-    } = {},
-  ): boolean {
-    const {
-      hidden = [],
-      network = false,
-      verifiedOnly = false,
-      confidence = 'high',
-    } = options
-    const { filter } = featureFilter(
-      poiFilter(new Set(hidden), verifiedOnly) as never,
-      'layers[0].filter',
-    )
-    return filter(
-      { zoom } as never,
-      {
-        properties: { ...poi(type, confidence), [POI_NETWORK_PROPERTY]: network },
-        type: 1,
-      } as never,
-      null as never,
-    )
-  }
-  const band = POI_PLANNING_PIN_MIN_ZOOM
-  // `filter` off the union, as `sourceOf` above narrows `source`: a
-  // background layer has neither, and the union says so.
-  const filterOf = (layer: LayerSpecification): unknown =>
-    'filter' in layer ? layer.filter : undefined
-
-  it('admits exactly the three types a carry is planned around, below the seam', () => {
-    for (const type of PLANNING_POI_TYPES) expect(passesAt(band, type)).toBe(true)
-    for (const type of POI_TYPES.filter((each) => !PLANNING_POI_TYPES.includes(each))) {
-      expect(passesAt(band, type)).toBe(false)
-    }
-  })
-
-  it("draws a town in the band although resupply starts hidden, which is the maintainer's call", () => {
-    // lib/waypointVisibility.ts's DEFAULT_SHOWN_TYPES leaves resupply off; a
-    // carry ends at a town, so the band does not consult the hidden set.
-    expect(passesAt(band, 'resupply', { hidden: ['resupply'] })).toBe(true)
-    expect(passesAt(band, 'shelter', { hidden: ['shelter'] })).toBe(true)
-  })
-
-  it("keeps the network's waypoints off the band, which answers #1135's objection by scope", () => {
-    expect(passesAt(band, 'shelter', { network: true })).toBe(false)
-    // And on the map from the seam up as before - the flag gates the band only.
-    expect(passesAt(POI_PIN_MIN_ZOOM, 'shelter', { network: true })).toBe(true)
-  })
-
-  it('hands the hidden set back at the seam, so the walking map is untouched', () => {
-    expect(passesAt(POI_PIN_MIN_ZOOM, 'resupply', { hidden: ['resupply'] })).toBe(false)
-    expect(passesAt(POI_PIN_MIN_ZOOM, 'privy')).toBe(true)
-    expect(passesAt(band, 'privy')).toBe(false)
-  })
-
-  it('still honours "Verified?" in the band', () => {
-    // An unconfirmed spring a hiker asked not to see is not what a carry
-    // should be planned around either.
-    expect(passesAt(band, 'water', { verifiedOnly: true, confidence: 'low' })).toBe(false)
-    expect(passesAt(band, 'water', { verifiedOnly: true, confidence: 'high' })).toBe(true)
-  })
-
-  it('carries the gate in both built layers, so the first frame is not a beat of every type', () => {
-    expect(filterOf(buildPoiLayer())).toEqual(poiFilter(new Set()))
-    expect(filterOf(buildPoiDotLayer())).toEqual(poiFilter(new Set()))
-    expect(PLANNING_BAND_FILTER[0]).toBe('all')
   })
 })
 

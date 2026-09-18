@@ -38,6 +38,18 @@ waypoint lanes](https://github.com/OurHike/OurHike/issues/532), and answers it w
 > sheet and the tap path stay in the code, reachable from no mark: whether highlights get a band
 > above the seam or are retired is still the maintainer's to decide.
 
+>
+> **And reopened, 2026-09-18 ([#1585](https://github.com/OurHike/OurHike/issues/1585) — A
+> hundred-mile resupply carry fits a phone at z8, and the map draws no waypoint until z9).**
+> The dot rank is back at `POI_DOT_MIN_ZOOM = 0`, so this view carries the stipple again
+> alongside the trails, the clubs and the highlights — and the pin seam moved to **7.5**, so
+> this view now owns z0–z7.5 rather than z0–z8. What changed since #1135 is that its own
+> objection had been answered by #1135 itself: the network's waypoints are drawn onto lines
+> this view draws now, because it carries every organization's trails. What decided it is a
+> safety rule rather than a density one — the maintainer's *"Don't auto hide the POIs ever"* —
+> and the honest cost is the one #603's docstring already stated: "below the seam the map is a
+> complete map of something else" is softer while a stipple of places is on it.
+
 `CORRIDOR_BOUNDS` in [`App.tsx`](../client/src/App.tsx):240 opens the app on the whole 2,197-mile
 corridor, which lands at **z4.87** on a phone — `fitBounds` over `[[-84.73, 34.2], [-68.3, 46.34]]`
 on a 390 × 700 canvas with `FIT_PADDING = 24`, Web Mercator, measured 2026-08-19 (#598). It is
@@ -66,15 +78,6 @@ around it, and a phone map covers 50.9 miles at z9. Below it, this doc. Above it
 screen holding roughly 57 × 102 miles — four days of walking. That is the range in which somebody
 is choosing *where to go* rather than looking at where they are, which is the right span for a
 screen about exploring.
-
-> **Amended 2026-09-17 ([#1585 — A hundred-mile resupply carry fits a phone at z8, and the map
-> draws no waypoint until z9](https://github.com/OurHike/OurHike/issues/1585)) — the top of this
-> view is shared.** From z7.5 the planning band draws the A.T.'s shelters, water and resupply
-> towns as dots over this view's lines, and from z8 as pins where they fit; the seam, the club
-> sections and everything else here stand. The band is scoped to the A.T. export, so what it
-> draws sits on the one line this view does draw — [POI_VISIBILITY.md](POI_VISIBILITY.md)'s seam
-> section has the measurement and the decision, and the reason the "four days of walking" above
-> turned out to be the screen a hiker plans a carry from.
 
 **It was z12, then z10, before settling here on 2026-08-13**, and the corrections all ran the same
 way: each earlier number handed this view more of the map than it should have had, on a criterion

@@ -62,7 +62,6 @@ export function mapPointsFrom(
     name: string
     siteId?: string
     siteRole?: string
-    network?: true
   }[],
 ): MapPoint[] {
   const points: MapPoint[] = new Array<MapPoint>(pois.length)
@@ -86,10 +85,6 @@ export function mapPointsFrom(
       // show up in a snapshot as a claim about a site.
       ...(poi.siteId !== undefined ? { siteId: poi.siteId } : {}),
       ...(poi.siteRole !== undefined ? { siteRole: poi.siteRole } : {}),
-      // The network flag (#1585), for the planning band's filter. Conditional
-      // for the reason the site keys are: an A.T. waypoint has no key at all
-      // rather than a key holding undefined.
-      ...(poi.network === true ? { network: true as const } : {}),
     }
   }
   return points
@@ -125,13 +120,6 @@ export interface MapPoint {
    */
   siteId?: string
   siteRole?: string
-  /**
-   * Set on another organization's waypoint (lib/trailData.ts's
-   * StoredPoi.network); absent on the A.T. export's. map/poiLayers.ts writes
-   * it onto the feature so the planning band below the seam can draw the
-   * A.T.'s shelters, water and towns and not the network's (#1585).
-   */
-  network?: true
 }
 
 /**

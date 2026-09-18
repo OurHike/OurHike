@@ -139,33 +139,57 @@ The absence of a pin is the strongest statement this map makes about a place. So
 One zoom, `POI_PIN_MIN_ZOOM`, replacing `POI_MIN_ZOOM`. Below it the map is about the trail and
 is [CORRIDOR_VIEW.md](CORRIDOR_VIEW.md)'s; above it the map is about places and is this doc's.
 
-> **Amended 2026-09-17 ([#1585 — A hundred-mile resupply carry fits a phone at z8, and the map
-> draws no waypoint until z9](https://github.com/OurHike/OurHike/issues/1585)) — a planning band
-> under the seam.** The seam stays at 9 and this section stands; what changed is that the two
-> ranks no longer stop there. A thru-hiker walking twenty miles a day plans one resupply at a
-> time, 100–120 trail miles, and measured on the calibrated mile axis that section fits a
-> 390 × 700 phone map at **z8** (median 110-mile window z8.26, p10 7.73, p90 8.77; fewer than one
-> window in ten fits at the seam; the desktop's map tab frames it at z9.6 and needs nothing). So
-> from `POI_PLANNING_MIN_ZOOM = 7.5` the dot rank draws **shelters, water and resupply towns** —
-> those three types only (`lib/waypointVisibility.ts`'s `PLANNING_POI_TYPES`), and only the A.T.
-> export's waypoints, never `nearby_poi.geojson`'s — and from `POI_PLANNING_PIN_MIN_ZOOM = 8` the
-> same three take collision-placed pins at the seam's 0.8 scale, their losers staying dots. Towns
-> draw although `resupply` starts hidden ([#865 — Default the map to shelter, campsite, water and
-> privy, not every category on first run](https://github.com/OurHike/OurHike/issues/865)): a carry
-> ends at a town, and the hidden set applies from the seam up. Measured with
-> `spike_poi_seam.py`'s model over the 1,387 waypoints a fresh install draws, a z8 phone holds a
-> median 44 waypoints (p90 82) against room for about 20 pins, and 23% of shelters and 28% of
-> water reach one — the quarter the band has to be honest about, and the dots are how. Two things
-> the measurement turned up are recorded here rather than lost: the z9 shelter figure in the
-> table below (83%) was taken without water, which the spike's docstring says, and with the 559
-> water points the app publishes taking the first claim on space it is **49%**; and the trail
-> walks about 1.9 miles for every straight-line mile, which is why a hundred miles is one z8
-> screen and not two z9 ones. Not taken: moving the seam itself (one constant, eight importing
-> modules and the network's 20,444 waypoints move with it), and a trip plan's own stops as pins
-> below the seam, which needs a plan and is a companion for later. The legend's below-seam
-> sentence has a band form, and the trail badge's ceiling follows the pin floor per its own rule.
-
 **`POI_PIN_MIN_ZOOM = 9`, with pins drawn at 0.8 rather than 0.6 to suit it.**
+
+> **Amended 2026-09-18 ([#1585 — A hundred-mile resupply carry fits a phone at z8, and the map
+> draws no waypoint until z9](https://github.com/OurHike/OurHike/issues/1585)) — the seam is
+> `7.5`, the dot rank reaches every zoom again, and the map hides nothing.** Three things, and
+> the last one is the rule the other two serve.
+>
+> **The seam.** A day's hike was the criterion and it is still a good one; it is not the only
+> walk. A thru-hiker plans one *resupply* at a time — five or six days at twenty miles, so
+> 100–120 trail miles. Measured 2026-09-17 on the calibrated mile axis the app's own mile
+> numbers come from (`export_elevation.calibrated_trail_axis`), every window of that length from
+> Springer to Katahdin, stepped every two miles, fitted the way `App.tsx` fits a stretch:
+>
+> | window | phone fit zoom, p10 / median / p90 | straight-line span, median |
+> |---|---|---|
+> | 100 mi | 7.82 / **8.39** / 8.95 | 54 mi |
+> | 110 mi | 7.73 / **8.26** / 8.77 | 59 mi |
+> | 120 mi | 7.61 / **8.14** / 8.59 | 65 mi |
+>
+> Fewer than one window in ten fitted at z9, so a section hiker could never see their section.
+> The maintainer took **7.5** rather than the median 8 from three drawn options: nine in ten
+> 120-mile windows fit at z7.61 or nearer, so 7.5 is where essentially *every* carry fits rather
+> than half of them. The cost was drawn beside it and taken knowingly — a z7.5 screen is
+> 80 × 144 miles and holds a median 64 waypoints against room for about 26 pins, so a smaller
+> share wear one. **The pin's size did not move with it**, from the same three options:
+> `POI_PIN_MIN_SCALE` stays 0.8, the figure #617 measured as the difference between a mark you
+> can identify and one you can only locate. A 0.6 ramp was offered — about a quarter more pins —
+> and not taken.
+>
+> **The dot rank goes back down to every zoom** (`POI_DOT_MIN_ZOOM = 0`), which is #603's floor
+> reinstated and #1135's reversed. Its objection is answered rather than overruled: #1135 removed
+> the stipple because #1097's 8,480 network waypoints were being drawn onto trails the view
+> refused to draw, and #1135 itself then put every organization's trails on that camera. A dot
+> down there now sits on a line the map draws.
+>
+> **And the rule both of those serve, which is this doc's own principle stated once more
+> and harder.** The first build of this change put a *type gate* below the seam — shelters,
+> water and towns drawn, campsites, privies, parking, crossings, viewpoints and trailheads not —
+> so a hiker at z8 saw no privy and nothing on the screen saying one was there. The maintainer,
+> 2026-09-18: *"Don't auto hide the POIs ever. It's a safety thing, hikers need to know that
+> info."* So **the seam decides where waypoints start and never which**: `poiFilter` carries no
+> zoom term at all, and the only thing that ever takes a category off this map is the hiker's own
+> toggle. `poiLayers.test.ts`'s *"the map never hides a category of its own accord"* block holds
+> it at thirteen zooms from 0 to 22, which is the half of this design that had no test until a
+> build shipped without it.
+>
+> Two things also recorded on the way: the z9 shelter figure in the table below (83%) was
+> measured on the five ATC layers *without* water, which its spike's docstring says — with the
+> 559 water points the app publishes taking the first claim on space it is **49%**; and the
+> corridor sketch's ceiling and the locate camera both stopped deriving from this seam, because a
+> planning zoom is the wrong number for a trail archive's cut and for *where am I*.
 
 A day on the A.T. is 16–24 miles, and the window is **twice that**, so the day has ground around
 it rather than filling the screen edge to edge. A 390 × 700 phone map covers **50.9 miles at z9**

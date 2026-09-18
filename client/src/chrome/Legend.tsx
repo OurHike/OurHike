@@ -317,14 +317,6 @@ export interface LegendProps {
    * reason is now the seam rather than one layer's floor.
    */
   belowPoiZoom?: boolean
-  /**
-   * Whether that below-seam camera is inside the planning band (#1585),
-   * where the map draws the A.T.'s shelters, water and resupply towns and
-   * nothing else. Picks the band form of the sentence below; `drawnCounts`
-   * stays withheld, as it is everywhere below the seam, because down here
-   * "drawn" would measure the band's type gate and not the collision engine.
-   */
-  planningBand?: boolean
   /** Opens the download window, from the link at the foot of the panel.
    *  Passed straight through: this panel has no opinion about downloads, it is
    *  just the piece of chrome the link ended up in. Omitted, no link is drawn
@@ -426,7 +418,6 @@ export function Legend({
   offlineBackgroundAvailable = true,
   drawnCounts,
   belowPoiZoom = false,
-  planningBand = false,
   maintainerLine = null,
   onOpenDownloads,
   hasDownload = false,
@@ -547,15 +538,17 @@ export function Legend({
           rectangle: the waypoints a hiker can see counted in the grid are
           all of what this zoom declines to draw.
 
-          A fourth form since #1585, for the planning band: down there the
-          map does draw three categories, so the sentence names them and
-          sends only the rest closer. The two forms share their second half
-          on purpose - a hiker who learned one reads the other. */}
+          FOURTH FLIP, #1585: the dot rank went back down to every zoom, so
+          "appear from a closer zoom" was false about the map in front of the
+          hiker - there ARE waypoints on it, as dots. What is true down here is
+          both halves at once, which is why the sentence now carries both: the
+          dots are drawn, the pins are not yet. The counts stay withheld for
+          #1135's reason, unchanged - "drawn" is a query against the PIN layer,
+          so below this floor it measures the floor rather than the collision
+          engine, and every row would read 0/N over a map with dots on it. */}
       {belowPoiZoom && (
         <p className="legend__empty">
-          {planningBand
-            ? 'Shelters, water and resupply towns show at this zoom; the rest appear from a closer zoom.'
-            : 'Waypoints appear from a closer zoom.'}
+          Waypoints show as dots at this zoom; pins appear from a closer zoom.
         </p>
       )}
 

@@ -26,7 +26,9 @@
 //
 // WHY THESE LAYERS STOP AT THE SEAM
 //
-// `maxzoom: POI_PIN_MIN_ZOOM` on every one of them. Above the seam a hiker is
+// `maxzoom: CORRIDOR_MAX_ZOOM` on every one of them - the zoom the tiled
+// network begins at, which is what this ceiling has meant since #1585 took
+// the waypoints out to z8 and left the trails here. Above it a hiker is
 // navigating by the line, and map/style.test.ts's "a blaze never changes colour
 // where a hiker is navigating by it" is the assertion that keeps this layer out
 // of that. Below it the line is representational - 2.5 px standing for 2,197
@@ -84,7 +86,7 @@ import { clubBoundaryMiles, clubTimeline, type ClubSections } from '../lib/clubS
 import { PROFILED_TRAIL } from '../lib/highlightDetail'
 import type { Highlight } from '../lib/highlights'
 import { trailPointAtMile, trailSlice, type TrailIndex } from '../lib/trailPosition'
-import { POI_PIN_MIN_ZOOM } from './poiLayers'
+import { NEARBY_TRAILS_TILES_MIN_ZOOM } from '../lib/config'
 import { whenStyleReady } from './styleReady'
 
 export const CORRIDOR_SOURCE_ID = 'corridor'
@@ -109,14 +111,24 @@ export const HIGHLIGHT_KIND = 'highlight'
 export const HIGHLIGHT_ID_PROPERTY = 'highlight_id'
 
 /**
- * Where the corridor view gives way to the waypoint map.
+ * Where the corridor view's drawn trails give way to the tiled ones.
  *
- * Its own name rather than POI_PIN_MIN_ZOOM inline, because the two are the
- * same number for one reason and could stop being: the seam is where the map
- * changes subject (features/POI_VISIBILITY.md), and both halves are keyed to
- * it so neither can drift alone.
+ * THEY HAVE STOPPED BEING THE SAME NUMBER (#1585, 2026-09-18), which is what
+ * the previous version of this docstring said would eventually happen: "the
+ * two are the same number for one reason and could stop being". The waypoint
+ * seam moved out to z8, where a hundred-mile resupply carry fits a phone
+ * (map/poiLayers.ts's POI_PIN_MIN_ZOOM); this ceiling did not move, and must
+ * not, because it is answering a different question.
+ *
+ * WHAT IT IS ANSWERING is where the SKETCH hands the other organizations'
+ * trails over to the real tiles. `nearby_trails.pmtiles` is cut from
+ * NEARBY_TRAILS_TILES_MIN_ZOOM (lib/config.ts) and a vector source asked for a
+ * zoom its archive does not hold draws nothing, silently - so a ceiling one
+ * zoom below the cut would leave a whole band of ground with no trails on it
+ * but the A.T.'s. That is the failure this constant now exists to refuse, and
+ * it is why it is keyed to the publish contract rather than to a number.
  */
-export const CORRIDOR_MAX_ZOOM = POI_PIN_MIN_ZOOM
+export const CORRIDOR_MAX_ZOOM = NEARBY_TRAILS_TILES_MIN_ZOOM
 
 /**
  * The dash rhythm on an unattributed run, in multiples of the line's width -
@@ -137,7 +149,8 @@ export const BOUNDARY_RADIUS = 2.6
  *
  * Bigger than a boundary tick and smaller than a waypoint pin: it is the one
  * thing on this map a hiker is meant to want to tap, and it competes with
- * nothing - the pins do not draw down here at all (POI_PIN_MIN_ZOOM).
+ * nothing - no waypoint draws below the pin seam (map/poiLayers.ts's
+ * POI_PIN_MIN_ZOOM), and this view's own band sits under it.
  *
  * @unvalidated Picked against the approved mock-up rather than measured. What
  * would settle it is the same outdoor pass #105 owes the rest of the chrome.

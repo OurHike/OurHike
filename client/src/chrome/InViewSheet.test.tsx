@@ -194,11 +194,14 @@ describe('what is in view', () => {
     expect(list.querySelectorAll('li')).toHaveLength(rows.length + 1)
   })
 
-  it('says when the map is drawing none of the rows, rather than letting "in view" claim a pin', () => {
-    render(<InViewSheet {...PROPS} drawnNone />)
+  it('says the rows are dots down here, rather than letting "in view" claim a pin (#1585)', () => {
+    // It used to say the map drew NONE of them, which was true while both
+    // ranks stopped at the seam and is false now that the dot rank reaches
+    // every zoom. Both halves, because both are true: drawn, and not as pins.
+    render(<InViewSheet {...PROPS} drawnAsDots />)
 
     expect(
-      screen.getByText(/the map draws none of these at this zoom/i),
+      screen.getByText(/the map draws these as dots at this zoom/i),
     ).toBeInTheDocument()
     // The rows are still listed: the frame holds them, the zoom hides them.
     expect(screen.getByRole('button', { name: /Murray spring/ })).toBeInTheDocument()

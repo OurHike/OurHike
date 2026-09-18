@@ -43,8 +43,14 @@ export interface EmbedsProps {
   readonly scriptOrigin: string
   readonly hikes: readonly FinderHike[]
   readonly workdays: readonly Workday[]
-  readonly gaps: number
-  readonly sectionsTotal: number
+  /** The three public counts the badge draws, from
+   *  `GET /clubs/{slug}/scoreboard`. Not the coverage report: that one is
+   *  gated, and this preview is of something anybody can see. */
+  readonly scoreboard: {
+    readonly miles_maintained: number
+    readonly active_volunteers: number
+    readonly hours_this_season: number
+  }
   readonly keys: readonly ConsoleKey[]
   /** The secret, on the one render that created it. Never stored. */
   readonly freshSecret: string | null
@@ -93,7 +99,7 @@ const WHAT_IT_DOES: Record<EmbedKind, string> = {
   workdays:
     'Your upcoming work. A workday mirrored from your own calendar sends its signup to your form and says so; one made in OurHike uses ours. A visitor cannot tell which is which, and should not have to.',
   coverage:
-    'The small one, for a sidebar. It counts sections with nobody assigned — a recruiting line, not an alarm. No visitor is told a section is unmaintained.',
+    'Three counts for a donate page or a footer: the miles you maintain, how many people hold them today, and the hours confirmed this season. Counts only — no visitor is ever shown which miles have nobody on them. Two shapes off the same paste, with data-shape.',
   console:
     'The management console, inside your own members area. Same paste, plus one call from your server to vouch for whoever is signed in over there.',
 }
@@ -104,8 +110,7 @@ export function Embeds({
   scriptOrigin,
   hikes,
   workdays,
-  gaps,
-  sectionsTotal,
+  scoreboard,
   keys,
   freshSecret,
   consoleEnabled,
@@ -376,7 +381,11 @@ export function Embeds({
             </>
           ) : (
             <div style={{ maxWidth: 340 }}>
-              <CoverageBadge gaps={gaps} total={sectionsTotal} />
+              <CoverageBadge
+                miles={scoreboard.miles_maintained}
+                volunteers={scoreboard.active_volunteers}
+                hours={scoreboard.hours_this_season}
+              />
             </div>
           )}
           <p className="org-mono">

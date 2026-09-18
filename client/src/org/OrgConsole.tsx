@@ -47,6 +47,7 @@ import {
   DEMO_ASSIST_CONSENT,
   DEMO_COVERAGE,
   DEMO_HIKES,
+  DEMO_SCOREBOARD,
   DEMO_ORG,
   DEMO_PROPOSED,
   DEMO_REGISTRY,
@@ -504,8 +505,12 @@ export function OrgConsole({
               }
               hikes={demo ? DEMO_HIKES : []}
               workdays={data.workdays}
-              gaps={data.coverage?.gaps.length ?? 0}
-              sectionsTotal={data.coverage?.sections_total ?? sections.length}
+              // The demo figures, like every other read on this console
+              // (`features/ORG_ONBOARDING.md`, Known gaps): there is no
+              // scoreboard on `data` because nothing here has ever rendered a
+              // real API response. Zeros would be worse than demo figures -
+              // "0 active volunteers" is a claim, and absent means unknown.
+              scoreboard={DEMO_SCOREBOARD}
               keys={keys}
               freshSecret={freshSecret}
               consoleEnabled={consoleEnabled}

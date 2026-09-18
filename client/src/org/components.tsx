@@ -429,38 +429,55 @@ export function ConsoleTiles({ tiles }: { tiles: readonly ConsoleTile[] }) {
  * trains people to ignore the report. The wording follows - "looking for" and
  * not "unmaintained" - and no hiker is ever shown it.
  */
+/**
+ * The coverage badge, as `site/public/embed/v1/ourhike.js` draws it.
+ *
+ * THIS IS THE CONSOLE'S PREVIEW OF AN EMBED, so what it may draw is decided
+ * by what the embed draws and not by what reads well here. It used to draw a
+ * gap count - "3 of 12 sections looking for somebody" - which was wrong twice
+ * over by 2026-09-18: the embed had been rebuilt as the design's scoreboard,
+ * and the gap count had never worked in public anyway, because it read the
+ * gated `/clubs/{slug}/coverage` and an anonymous visitor got a 401.
+ *
+ * It stays a gap count nowhere. `features/ORG_ONBOARDING.md` has the reason
+ * the coverage report is gated: a public list of which miles nobody is
+ * looking after is a list of miles to avoid. A preview offering one teaches
+ * an organization to expect it on their own homepage.
+ *
+ * The three figures come from the public `GET /clubs/{slug}/scoreboard`.
+ * `screens/embedsCoverage.test.tsx` holds this to the embed, and
+ * `test/orgEmbeds.test.ts` holds the embed to the same three labels.
+ */
 export function CoverageBadge({
-  gaps,
-  total,
-  region,
-  onOpen,
+  miles,
+  volunteers,
+  hours,
 }: {
-  gaps: number
-  total: number
-  region?: string | null
-  onOpen?: () => void
+  /** Miles maintained, summed from the org's own registry. */
+  miles: number
+  /** How many people hold an assignment today - a count, never a list. */
+  volunteers: number
+  /** Confirmed hours since the season started. Confirmed, not logged: an
+   *  hour nobody stood behind is not a figure to print on a donate page. */
+  hours: number
 }) {
-  const covered = total - gaps
   return (
     <div className="org-tile">
-      <span className="org-tile__label">Coverage{region ? ` · ${region}` : ''}</span>
+      <span className="org-tile__label">Miles maintained</span>
       <span className="org-tile__value">
-        <strong>{gaps}</strong> of {total} sections looking for somebody
+        <strong>{miles}</strong>
+      </span>
+      <span className="org-tile__label">Active volunteers</span>
+      <span className="org-tile__value">
+        <strong>{volunteers}</strong>
+      </span>
+      <span className="org-tile__label">Hours this season</span>
+      <span className="org-tile__value">
+        <strong>{hours}</strong>
       </span>
       <span className="org-tile__meta">
-        {covered} held today. A gap is flagged here and nowhere a hiker can see it.
+        Counted from their own registry when this page loaded.
       </span>
-      {onOpen ? (
-        <span className="org-tile__action">
-          <button
-            type="button"
-            className="org-btn org-btn--ghost org-btn--small"
-            onClick={onOpen}
-          >
-            Read the report
-          </button>
-        </span>
-      ) : null}
     </div>
   )
 }

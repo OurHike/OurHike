@@ -8,7 +8,9 @@ user-invocable: true
 
 An unattended session working the backlog. The maintainer is asleep; nothing
 here waits for an answer, and nothing here does anything a wrong answer cannot
-be reverted from with one click.
+be reverted from with one click. That includes the picture-carrying poll
+CLAUDE.md asks for under "Show the maintainer what you mean, and keep showing
+it": that rule says how to ask, and an unattended session does not ask.
 
 [CLAUDE.md](../../../CLAUDE.md) applies in full and wins wherever this file
 could be read as disagreeing with it — the evidence grades, the claim rule,

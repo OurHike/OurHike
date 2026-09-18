@@ -151,12 +151,15 @@ about an in-memory index read identically.
 
 ### anchor
 
-1. **Where a report lands and how the header says so** — `ReportWindowAnchor` in
-   `reporting/ReportWindow.tsx`. `label` and `phrase` are required; `lat`, `lon`, `mile`
-   and `poiId` are all optional, because a build with no GPS fix anchors to "here".
-2. **The place a report is about** — `chrome/FieldNoteSection.tsx`'s `ReportAnchor`.
-   Sense 1's own docstring says these are **not the same thing**: "that one is the place
-   a report is ABOUT, and this one is that plus the words the header prints."
+1. **Where a report is, as the hiker chose it** — `LocationChoice` in
+   `lib/reportLocation.ts` (#1563): a named waypoint (`poi`), the phone's own fix
+   resolved at filing (`fix`), or a spot marked on the map (`point`). `locationWords`
+   turns one into the `label` and `phrase` the window's header and receipt print;
+   `ReportWindowAnchor`, which used to carry those words itself, is gone.
+2. **The place a report is about, as a card hands it over** —
+   `chrome/FieldNoteSection.tsx`'s `ReportAnchor`: a waypoint's id and coordinates, or
+   a pressed point's. The shell turns one into sense 1 (`choiceFromAnchor` in
+   `App.tsx`), looking the waypoint's name up on the way.
 3. **A POI type that can hold a site** — `pipeline/lib/poi_sites.py`'s
    `ANCHOR_TYPES = ("shelter", "campsite")`, and `map/poiIcons.ts`'s "a viewpoint never
    anchors a site".
@@ -247,6 +250,15 @@ screen. **A shot** is the picture it takes. Recipes are committed; pixels never 
 [`.claude/skills/pr-screenshot/SKILL.md`](.claude/skills/pr-screenshot/SKILL.md).
 
 For **the camera**, which is not one thing, see the dangerous list above.
+
+### mock
+
+**A rendered page of a screen as it would be**, drawn in the design system's tokens and
+sent to the maintainer's side panel before a poll about it — the default picture since
+**#1566 — A session's questions to the maintainer carry no wireframe or screenshot, so the
+plan cannot be seen from the words**. Not a shot: nothing in a mock was photographed, and
+its caption says so. See
+[`.claude/skills/visual-poll/SKILL.md`](.claude/skills/visual-poll/SKILL.md).
 
 ### UA
 

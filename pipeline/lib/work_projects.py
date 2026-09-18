@@ -38,6 +38,7 @@ cover it for real.
 from __future__ import annotations
 
 from datetime import date
+from urllib.parse import urlsplit
 
 # lib/atc_updates.py's trail extent, for the same reason it records: a mile
 # outside the trail is not a location, it is a mistake with a decimal point.
@@ -63,6 +64,15 @@ SIGNUP_MODES = ("contact", "in_app")
 
 REQUIRED_FIELDS = ("id", "club_name", "title", "starts_on", "ends_on", "signup_mode")
 
+# What `signup_contact` may be: an address, a number, or a page. The client
+# renders it as a link a hiker taps (chrome/CrewContactLink.tsx), and until
+# #1578 this module promised this list in its error message and checked only
+# that the value was a string - so a reviewed row could carry any scheme a
+# phone would act on. The list is the message's own, kept as written since
+# #760: `https:` and not `http:`, so a club page offered without a
+# certificate is refused and a reviewer looks at it rather than a hiker.
+CONTACT_SCHEMES = ("mailto", "tel", "https")
+
 
 def _date_problem(row: dict, field: str) -> str | None:
     value = row.get(field)
@@ -73,6 +83,10 @@ def _date_problem(row: dict, field: str) -> str | None:
     except ValueError:
         return f"{field} is not a date: {value!r}"
     return None
+
+
+def _is_contact(value: object) -> bool:
+    return isinstance(value, str) and urlsplit(value).scheme.lower() in CONTACT_SCHEMES
 
 
 def row_problems(row: dict) -> list[str]:
@@ -98,8 +112,8 @@ def row_problems(row: dict) -> list[str]:
         problems.append(f"{row_id}: status must be one of {STATUSES}")
 
     if row.get("signup_mode") not in SIGNUP_MODES:
-        problems.append(f"{row_id}: signup_mode must be one of {SIGNUP_MODES}")
-    if row.get("signup_mode") == "contact" and not isinstance(row.get("signup_contact"), str):
+        problems.append(f"{row_id}: signup_mode must be one of {SIGNUP_MODES} - `in_app` arrives with the signup backend (#762)")
+    if row.get("signup_mode") == "contact" and not _is_contact(row.get("signup_contact")):
         problems.append(f"{row_id}: a contact-mode row needs signup_contact (a mailto: or tel: or https: string)")
 
     # A workday somebody might travel to needs a place: coordinates, or a

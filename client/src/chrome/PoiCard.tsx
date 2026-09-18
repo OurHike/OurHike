@@ -109,6 +109,7 @@ import { MapIcon } from '../map/MapIcon'
 import { siteDistanceFeet } from '../map/poiSites'
 import { describeNearby, type NearbyPart } from '../lib/nearbyClause'
 import { waypointDistance } from '../lib/waypointDistance'
+import { isSafeLink } from '../lib/safeLink'
 import type { HikeDirection } from './Header'
 import { formatShortDistance, MIN_STATED_FEET, type UnitSystem } from '../lib/units'
 import { PhotoUnusable, preparePhoto } from '../lib/reportPhoto'
@@ -1423,13 +1424,13 @@ export function PoiCard({
 
                 {/* The credit rides the photo, never the placeholder: it is a fact
                   about a photo on screen, and the licence's price for it being
-                  there. A link when the file page is known - full terms live
-                  there - and plain text when it is not, because a credit is owed
-                  either way. */}
+                  there. A link when the file page is known and is a web page -
+                  full terms live there - and plain text when it is not, because a
+                  credit is owed either way. */}
                 {review === null &&
                   showPhoto &&
                   credit !== null &&
-                  (current.page !== undefined ? (
+                  (current.page !== undefined && isSafeLink(current.page) ? (
                     <a
                       className="poi-card__credit"
                       href={current.page}

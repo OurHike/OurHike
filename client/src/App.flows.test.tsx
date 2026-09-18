@@ -753,6 +753,9 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
+    // A fix to attach - the tap needs a place since #1563, and this block
+    // is about a phone that knows where it is.
+    await reportFix()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
@@ -779,6 +782,9 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
+    // A fix to attach - the tap needs a place since #1563, and this block
+    // is about a phone that knows where it is.
+    await reportFix()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
@@ -803,6 +809,9 @@ describe('reporting, with a fix to attach', () => {
     render(<App />)
     await openMapTab()
     await screen.findByRole('region', { name: /trail map/i })
+    // A fix to attach - the tap needs a place since #1563, and this block
+    // is about a phone that knows where it is.
+    await reportFix()
 
     await user.click(screen.getByRole('tab', { name: 'More' }))
     await user.click(await screen.findByRole('button', { name: /^volunteer & report/i }))
@@ -889,8 +898,10 @@ describe('pressing and holding a spot on the map', () => {
 
     await user.click(screen.getByRole('button', { name: 'Report a problem' }))
 
+    // lib/reportLocation.ts prints a marked point through lib/placement.ts's
+    // three answers, and this is the third - never the hiker's own mile.
     const anchor = await screen.findByTestId('report-anchor')
-    expect(anchor).toHaveTextContent('here')
+    expect(anchor).toHaveTextContent(/off the trail/i)
     expect(anchor).not.toHaveTextContent('mi 5.0')
   })
 
@@ -1711,6 +1722,9 @@ describe('who a report says it is from (#233)', () => {
   // tested, and imported by nothing.
 
   async function fileAReport(user: ReturnType<typeof userEvent.setup>) {
+    // The tap needs a place (#1563); these tests are about who signs it,
+    // so give it the fix a hiker on the trail has.
+    await reportFix()
     await user.click(screen.getByRole('tab', { name: 'More' }))
     // More keeps its page across trips (App holds it), so this may land on
     // home, on the volunteer page, or wherever the last trip ended - walk to

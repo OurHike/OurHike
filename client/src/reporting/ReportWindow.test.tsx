@@ -1,8 +1,32 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
-import { ReportWindow, UNDO_WINDOW_MS, type ReportWindowProps } from './ReportWindow'
+import userEvent from '@testing-library/user-event'
+import { ReportWindow, type ReportWindowProps } from './ReportWindow'
+import { UNDO_WINDOW_MS } from './undoWindow'
+import { preloadScreens } from '../screens/deferred'
 import { EMERGENCY_NOTICE } from './categories'
 import { MAX_UNDO_HOLD_MS } from '../lib/outbox'
+import {
+  AT_THE_FIX,
+  STALE_FIX_SECONDS,
+  type FixSnapshot,
+  type NearbyPlace,
+} from '../lib/reportLocation'
+import { prepareReportPhoto } from '../lib/reportPhoto'
+
+// The shrink is doubled the way ReportForm.test.tsx doubles it: the canvas
+// work is lib/reportPhoto.test.ts's, and what this file asks is that the
+// bytes it returns reach `onAttachPhotos` when the receipt is left.
+vi.mock('../lib/reportPhoto', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/reportPhoto')>()),
+  prepareReportPhoto: vi.fn(),
+}))
+
+const mockPrepare = vi.mocked(prepareReportPhoto)
+
+// The sheet and the reporter block are deferred (screens/deferred.ts);
+// loaded ahead so they render synchronously here, as they do in the shell.
+beforeAll(() => preloadScreens())
 
 afterEach(() => {
   cleanup()
@@ -20,12 +44,50 @@ afterEach(() => {
 
 const NOW = new Date('2026-08-27T07:42:00Z')
 
+/** A fix at mi 628.4, twenty seconds old, ±5 m - what "here" resolves to. */
+const FIX: FixSnapshot = {
+  lat: 37.35,
+  lon: -80.35,
+  mile: 628.4,
+  accuracyM: 5,
+  fixedAt: new Date(NOW.getTime() - 20_000),
+}
+
+const PLACES: NearbyPlace[] = [
+  {
+    id: 'p-near',
+    name: 'Niday Shelter',
+    type: 'shelter',
+    mile: 627.8,
+    lat: 37.3,
+    lon: -80.3,
+    awayMiles: 0.6,
+  },
+  {
+    id: 'p-mid',
+    name: 'Craig Creek',
+    type: 'water',
+    mile: 624.0,
+    lat: 37.35,
+    lon: -80.35,
+    awayMiles: 1.2,
+  },
+]
+
 function setup(overrides: Partial<ReportWindowProps> = {}) {
   const props: ReportWindowProps = {
-    anchor: { label: 'mi 628.4', phrase: 'at mi 628.4', mile: 628.4 },
+    location: AT_THE_FIX,
+    fix: FIX,
+    places: [],
+    knowsTrail: true,
+    onChooseLocation: vi.fn(),
     units: 'imperial',
     reporterType: 'thru',
+    names: { trail: 'Switchback', real: null },
+    onRealName: vi.fn(),
     onFile: vi.fn().mockResolvedValue('outbox-1'),
+    onAmend: vi.fn().mockResolvedValue(true),
+    onAttachPhotos: vi.fn().mockResolvedValue(true),
     onUndo: vi.fn().mockResolvedValue(undefined),
     onReportClosure: vi.fn(),
     onReportUnsafe: vi.fn(),
@@ -164,10 +226,19 @@ describe('filing on the tap', () => {
     })
 
     expect(props.onFile).toHaveBeenCalledTimes(1)
-    const [type, note, holdUntil] = vi.mocked(props.onFile).mock.calls[0] ?? []
+    const [type, note, holdUntil, extras] = vi.mocked(props.onFile).mock.calls[0] ?? []
     expect(type).toBe('blowdown')
     expect(note).toBe('')
     expect(holdUntil).toBeInstanceOf(Date)
+    // No words: the fix placed it, and the shell sends words only when
+    // nothing else can (lib/reportLocation.ts). Signed with the trail name
+    // and not contactable, because nothing was asked before the tap.
+    expect(extras).toEqual({
+      location: AT_THE_FIX,
+      placeWords: '',
+      signature: { kind: 'trail', name: 'Switchback' },
+      contactOk: false,
+    })
 
     expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 628.4')
     // And the tiles are gone: there is nothing left to tap by accident on a
@@ -175,14 +246,41 @@ describe('filing on the tap', () => {
     expect(screen.queryByTestId('report-tile-flooding')).toBeNull()
   })
 
-  it('says "Filed — blow down here" for a here anchor, never "at here"', async () => {
+  it('files once however many taps land while the first is still being written (#1578)', async () => {
+    // onFile is an IndexedDB write; the tiles stay drawn until it resolves.
+    // Two taps in that window used to queue two reports, and the receipt's
+    // Undo reached only the second.
+    let release: (id: string) => void = () => {}
+    const { props } = setup({
+      onFile: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            release = resolve
+          }),
+      ),
+    })
+
+    fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    fireEvent.click(screen.getByTestId('report-tile-flooding'))
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      release('outbox-1')
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 628.4')
+  })
+
+  it('says "Filed — blow down here" for a fix with no mile, never "at here"', async () => {
     // THE FIRST PHOTOGRAPH OF THIS SCREEN CAUGHT THIS, and no test had.
-    // Every case above uses a mile anchor, where composing `at ${label}` reads
-    // perfectly - and a build with no GPS fix anchors to "here", where it
-    // reads "Filed — blow down at here". "here" is an adverb; the other two
-    // forms are nouns. So the window takes the finished phrase rather than
-    // building one, and this is the case that says why.
-    setup({ anchor: { label: 'here', phrase: 'here' } })
+    // Every case above uses a fix with a mile, where composing `at ${label}`
+    // reads perfectly - and a fix off the corridor resolves to "here", where
+    // it would read "Filed — blow down at here". "here" is an adverb; the
+    // other forms are nouns. So lib/reportLocation.ts hands over the finished
+    // phrase rather than the window building one, and this is the case that
+    // says why.
+    const { mile: _offCorridor, ...noMile } = FIX
+    setup({ fix: noMile })
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('report-tile-blowdown'))
@@ -393,197 +491,687 @@ describe('getting out', () => {
 // the tests below hold is that the way back to it is honest - offered only
 // when it leads somewhere, ordered by what a hiker is actually thinking in,
 // and silent about how many places they walked past without reporting.
-describe('changing where the report lands', () => {
-  const PLACES = [
-    { id: 'p-far', name: 'Sarver Hollow Shelter', mile: 620.1, lat: 37.4, lon: -80.4 },
-    { id: 'p-near', name: 'Niday Shelter', mile: 627.8, lat: 37.3, lon: -80.3 },
-    { id: 'p-mid', name: 'Craig Creek', mile: 624.0, lat: 37.35, lon: -80.35 },
-  ]
+describe('changing where the report lands (#1563)', () => {
+  it('states the fix in the header as its mile, and offers Change', () => {
+    setup()
 
-  it('hides Change when passedPlaces is empty', () => {
-    // An early start has walked past nothing yet. The control is WITHHELD
-    // rather than shown disabled: a picker that opens onto an empty list
-    // teaches a hiker that this window's labels are decorative.
-    setup({ passedPlaces: [], fixMile: 628.4, onPickAnchor: vi.fn() })
-    expect(screen.queryByTestId('report-change-anchor')).toBeNull()
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('mi 628.4')
+    // A fresh, tight fix gets no second line: the line costs height the tile
+    // frame does not have at 375x667 (#1480 - CI on WebKit measured the body
+    // scrolling by 7 px with it always drawn), and the radius and age are one
+    // tap away in the picker's own row.
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
+    // OFFERED WHATEVER THE PLACES LIST HOLDS, which is the change from the
+    // passed-places control this replaces: the picker always has the words
+    // and the map to offer, so there is no empty list to open onto.
+    expect(screen.getByTestId('report-change-anchor')).toBeInTheDocument()
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
   })
 
-  it('hides Change without fixMile, even with places to offer', () => {
-    // The list's whole ordering is "how far back", and a phone with no fix
-    // cannot compute it. Offering the places in some other order would be
-    // answering a question nobody asked with a list nobody can scan.
-    setup({ passedPlaces: PLACES, onPickAnchor: vi.fn() })
-    expect(screen.queryByTestId('report-change-anchor')).toBeNull()
-  })
-
-  it('orders the places by how far back they are, not by mile', () => {
-    // The distinction is the test: sorted by mile these read 620.1, 624.0,
-    // 627.8, which is the order `passedPlaces()` itself returns and the order
-    // Today's own list wants. Nearest-first is 627.8, 624.0, 620.1 - the
-    // reverse - so a suite that only checked "the list has three rows" would
-    // pass on either.
-    setup({ passedPlaces: PLACES, fixMile: 628.4, onPickAnchor: vi.fn() })
-    fireEvent.click(screen.getByTestId('report-change-anchor'))
-
-    const names = screen
-      .getAllByRole('button', { name: /Shelter|Creek/ })
-      .map((button) => button.textContent)
-    expect(names[0]).toContain('Niday Shelter')
-    expect(names[1]).toContain('Craig Creek')
-    expect(names[2]).toContain('Sarver Hollow Shelter')
-  })
-
-  it('writes each distance as a distance, in the units the hiker chose', () => {
-    // 628.4 - 627.8 is 0.6 mi, and lib/units.ts drops under a kilometre into
-    // metres, so a metric hiker reads "970 m back".
-    //
-    // THE SECOND ASSERTION IS THE LOAD-BEARING ONE and it is #986: the same
-    // place through `formatDistance(place.mile, 'metric')` reads "1,010.4 km",
-    // which is not a wrong-looking number - it is a position on this trail,
-    // naming somewhere else entirely. A marker and a distance are different
-    // quantities and only one of them converts.
-    setup({
-      passedPlaces: PLACES,
-      fixMile: 628.4,
-      units: 'metric',
-      onPickAnchor: vi.fn(),
-    })
-    fireEvent.click(screen.getByTestId('report-change-anchor'))
-
-    const nearest = screen.getByTestId('report-place-p-near')
-    expect(nearest).toHaveTextContent('970 m back')
-    expect(nearest).not.toHaveTextContent('1,010')
-  })
-
-  it('never counts the places, or says what was skipped', () => {
-    // lib/passedToday.ts's rule, carried into the one surface that could most
-    // easily break it. A count here is a scoreboard of places somebody walked
-    // past without reporting - the guilt mechanic DATA_NUDGES.md rules out.
-    setup({ passedPlaces: PLACES, fixMile: 628.4, onPickAnchor: vi.fn() })
-    fireEvent.click(screen.getByTestId('report-change-anchor'))
-
-    // Matched as the SHAPES a count takes rather than as bare digits: every
-    // row legitimately carries a number, so "no digits" would fail on "8.3 mi
-    // back" and prove nothing. These are the phrasings that would creep in -
-    // a total, a remainder, a "you passed N places today".
-    const picker = screen.getByTestId('report-places')
-    expect(picker.textContent).not.toMatch(
-      /\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+(more|others?|places?|shown|of)\b/i,
-    )
-    expect(picker.textContent).not.toMatch(/\b(others?|all|total|showing)\b/i)
-  })
-
-  it('calls onPickAnchor with the whole picked place, and closes the picker', () => {
-    // The coordinates are the point: an anchor needs a lat and a lon, and the
-    // alternative to carrying them is inventing them at pick time.
-    const onPickAnchor = vi.fn()
-    setup({ passedPlaces: PLACES, fixMile: 628.4, onPickAnchor })
-    fireEvent.click(screen.getByTestId('report-change-anchor'))
-    fireEvent.click(screen.getByTestId('report-place-p-mid'))
-
-    expect(onPickAnchor).toHaveBeenCalledWith({
-      id: 'p-mid',
-      name: 'Craig Creek',
-      mile: 624.0,
-      lat: 37.35,
-      lon: -80.35,
-    })
-    expect(screen.queryByTestId('report-places')).toBeNull()
-  })
-
-  it('shows the place filter at seven places, hides it at six', () => {
-    // Six rows is the line. Below it the input is a control in the way; above
-    // it, three letters of a name beats a scroll.
-    const many = Array.from({ length: 7 }, (_, index) => ({
-      id: `p-${index}`,
-      name: `Place ${index}`,
-      mile: 600 + index,
-      lat: 37,
-      lon: -80,
-    }))
+  it('spends a line under the place on a fix that is stale or coarse, with the words a hiker should hesitate over', () => {
     const { unmount } = setup({
-      passedPlaces: many.slice(0, 6),
-      fixMile: 628.4,
-      onPickAnchor: vi.fn(),
+      fix: { ...FIX, fixedAt: new Date(NOW.getTime() - (STALE_FIX_SECONDS + 30) * 1000) },
     })
-    fireEvent.click(screen.getByTestId('report-change-anchor'))
-    expect(screen.queryByTestId('report-place-filter')).toBeNull()
+    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
+      'Your position · ±16 ft · 5 min ago — you may have moved since',
+    )
     unmount()
 
-    setup({ passedPlaces: many, fixMile: 628.4, onPickAnchor: vi.fn() })
-    fireEvent.click(screen.getByTestId('report-change-anchor'))
-    expect(screen.getByTestId('report-place-filter')).toBeTruthy()
+    setup({ fix: { ...FIX, accuracyM: 250 } })
+    expect(screen.getByTestId('report-anchor-detail')).toHaveTextContent(
+      '±820 ft · just now',
+    )
   })
 
-  it('says so when a filter matches nothing, rather than emptying silently', () => {
-    const many = Array.from({ length: 7 }, (_, index) => ({
-      id: `p-${index}`,
-      name: `Place ${index}`,
-      mile: 600 + index,
-      lat: 37,
-      lon: -80,
-    }))
-    setup({ passedPlaces: many, fixMile: 628.4, onPickAnchor: vi.fn() })
+  it('refuses a tap with nothing to place the report at, opening the sheet with the reason, and files once answered', async () => {
+    // THE GAP THIS CHANGE CLOSES. No fix, no card, no press: the old window
+    // filed a blowdown here with no location of any kind. Now the tap is
+    // refused, the sheet opens saying why, and the tile files once the hiker
+    // has said where - in words, when there is nothing else.
+    const { props } = setup({ fix: null })
+
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('No location yet')
+    // Nothing opens by itself: the sheet is modal, and the tiles come first.
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    expect(props.onFile).not.toHaveBeenCalled()
+    // A window of its own over the tiles (reporting/LocationSheet.tsx), and
+    // it has focus: the refusal is heard as well as seen.
+    expect(screen.getByTestId('location-sheet')).toHaveFocus()
+    expect(screen.getByRole('alert')).toHaveTextContent('Say where this is first')
+    expect(screen.queryByTestId('report-undo')).toBeNull()
+
+    fireEvent.change(screen.getByTestId('location-words'), {
+      target: { value: 'the ford below the gap' },
+    })
+    // Done closes the sheet with the words kept, and the tap that was
+    // refused files by itself: the category is asked once (the
+    // maintainer's steer of 2026-09-17), and the receipt's Undo is the
+    // hiker's way back.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('location-sheet-done'))
+    })
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('In your words')
+
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[0]).toBe('blowdown')
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[3]?.placeWords).toBe(
+      'the ford below the gap',
+    )
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Filed — blow down where you described',
+    )
+  })
+
+  it('hands a chosen place to the shell and closes the picker', () => {
+    const onChooseLocation = vi.fn()
+    setup({ places: PLACES, onChooseLocation })
     fireEvent.click(screen.getByTestId('report-change-anchor'))
-    fireEvent.change(screen.getByTestId('report-place-filter'), {
-      target: { value: 'katahdin' },
+    fireEvent.click(screen.getByTestId('location-place-p-mid'))
+
+    // The whole place, coordinates included: an anchor needs a lat and a
+    // lon, and the alternative to carrying them is inventing them at pick
+    // time. The shell owns the answer, so the window asks rather than
+    // deciding - it does not re-label itself until the prop comes back.
+    expect(onChooseLocation).toHaveBeenCalledWith({
+      kind: 'poi',
+      poiId: 'p-mid',
+      name: 'Craig Creek',
+      lat: 37.35,
+      lon: -80.35,
+      mile: 624.0,
+    })
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+  })
+
+  it('states a named place, and files under its phrase', async () => {
+    const { props } = setup({
+      location: {
+        kind: 'poi',
+        poiId: 'p-near',
+        name: 'Niday Shelter',
+        lat: 37.3,
+        lon: -80.3,
+        mile: 627.8,
+      },
+    })
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('Niday Shelter')
+    // The name says what it is; no second line.
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-trash'))
     })
 
-    expect(screen.getByText('Nothing by that name today.')).toBeTruthy()
+    expect(props.onFile).toHaveBeenCalled()
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — trash at Niday Shelter')
   })
 
-  it('closes the picker on Escape, and the window only on the second one', async () => {
+  it('offers the map only when the shell has one to aim at, and closes the picker on a kept point', () => {
+    const { rerender, props } = setup({ onPointOnMap: vi.fn() })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    fireEvent.click(screen.getByTestId('location-map'))
+    expect(props.onPointOnMap).toHaveBeenCalled()
+
+    // The shell answers Keep by changing the location. The window sees the
+    // new prop, closes the picker, and states the marked spot.
+    rerender(
+      <ReportWindow
+        {...props}
+        location={{ kind: 'point', lat: 37.4, lon: -80.4, mile: 630 }}
+      />,
+    )
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(screen.getByTestId('report-anchor')).toHaveTextContent('mi 630.0')
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
+  })
+
+  it('stands aside for the crosshair: hidden, inert, and deaf to Escape', () => {
+    const onClose = vi.fn()
+    setup({ standingAside: true, onClose })
+
+    const scrim = screen.getByTestId('report-window-scrim')
+    expect(scrim).toHaveClass('report-window__scrim--stood-aside')
+    expect(scrim.hasAttribute('inert')).toBe(true)
+
+    // An Escape meant for the pick bar must not close a window the hiker
+    // cannot see.
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('closes the sheet on Escape, and the window only on the second one', async () => {
     // THE REFLEX THIS PROTECTS. Escape is how a person backs out of a list,
     // and closing the whole window from inside one would lose the screen
-    // behind it - the single thing this change exists to prevent. The filter
-    // compounds it: `<input type="search">` clears itself on Escape in WebKit
-    // and Blink, so somebody expecting an empty field would instead lose the
-    // window.
+    // behind it - the single thing this change exists to prevent. The search
+    // box compounds it: `<input type="search">` clears itself on Escape in
+    // WebKit and Blink, so somebody expecting an empty field would instead
+    // lose the window.
     const onClose = vi.fn()
-    setup({ passedPlaces: PLACES, fixMile: 628.4, onPickAnchor: vi.fn(), onClose })
+    setup({ places: PLACES, onClose })
     fireEvent.click(screen.getByTestId('report-change-anchor'))
-    expect(screen.getByTestId('report-places')).toBeTruthy()
+    expect(screen.getByTestId('location-sheet')).toBeTruthy()
 
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByTestId('report-places')).toBeNull()
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
     expect(onClose).not.toHaveBeenCalled()
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalled()
   })
 
-  it('forgets a typed filter when the picker is dismissed', async () => {
+  it('forgets a typed search when the sheet is dismissed', async () => {
     // Reopening onto somebody's abandoned three letters is a list that looks
     // short for a reason nobody can see.
-    const many = Array.from({ length: 7 }, (_, index) => ({
-      id: `p-${index}`,
-      name: `Place ${index}`,
-      mile: 600 + index,
-      lat: 37,
-      lon: -80,
-    }))
-    setup({ passedPlaces: many, fixMile: 628.4, onPickAnchor: vi.fn() })
+    setup({ places: PLACES, onSearchPlaces: () => [] })
     fireEvent.click(screen.getByTestId('report-change-anchor'))
-    fireEvent.change(screen.getByTestId('report-place-filter'), {
-      target: { value: 'Place 3' },
+    fireEvent.change(screen.getByTestId('location-search'), {
+      target: { value: 'Craig' },
     })
     fireEvent.keyDown(document, { key: 'Escape' })
 
     fireEvent.click(screen.getByTestId('report-change-anchor'))
-    expect(screen.getByTestId('report-place-filter')).toHaveValue('')
-    expect(screen.getByTestId('report-place-p-0')).toBeTruthy()
+    expect(screen.getByTestId('location-search')).toHaveValue('')
+    expect(screen.getByTestId('location-place-p-near')).toBeTruthy()
   })
 
   it('takes Change away once the report is filed', async () => {
     // After a tap the window is a receipt, and the report it describes is
-    // already in the outbox at the anchor it was filed with. Re-anchoring
-    // from here would move a record that has already been written.
-    setup({ passedPlaces: PLACES, fixMile: 628.4, onPickAnchor: vi.fn() })
+    // already in the outbox at the place it was filed with. Re-placing from
+    // here would move a record that has already been written.
+    setup({ places: PLACES })
     expect(screen.getByTestId('report-change-anchor')).toBeTruthy()
 
     fireEvent.click(screen.getByTestId('report-tile-blowdown'))
     await screen.findByTestId('report-undo')
 
     expect(screen.queryByTestId('report-change-anchor')).toBeNull()
+    expect(screen.queryByTestId('report-anchor-detail')).toBeNull()
+  })
+})
+
+describe('the sheet over the window (#1563)', () => {
+  it('is a dialog of its own that Done closes without closing the window', () => {
+    const onClose = vi.fn()
+    setup({ places: PLACES, onClose })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+
+    const sheet = screen.getByTestId('location-sheet')
+    expect(sheet).toHaveAttribute('role', 'dialog')
+    expect(sheet).toHaveTextContent('Where is this?')
+    expect(sheet).toHaveFocus()
+    // The picker is the same one the long form renders, inside it.
+    expect(screen.getByTestId('location-picker')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('location-sheet-done'))
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+    // Focus comes back to the window, and to the dialog rather than a tile.
+    expect(screen.getByTestId('report-window')).toHaveFocus()
+  })
+
+  it('does not let a tap on its own scrim reach the scrim under it', () => {
+    // The sheet sits inside the window's scrim, whose click closes the whole
+    // window. A tap beside the sheet must close the sheet and nothing else.
+    const onClose = vi.fn()
+    setup({ places: PLACES, onClose })
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    fireEvent.click(screen.getByTestId('location-sheet-scrim'))
+
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('the receipt writes back (#1563)', () => {
+  /** Files a blowdown and waits for the receipt. */
+  async function filed(overrides: Partial<ReportWindowProps> = {}) {
+    const result = setup(overrides)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    await screen.findByTestId('report-note')
+    return result
+  }
+
+  it('writes the note to the filed report at Done, and only then closes', async () => {
+    // "Add detail - optional" used to be a textarea nothing read.
+    const { props } = await filed()
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: '  Big oak, step over the top.  ' },
+    })
+    expect(props.onAmend).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    expect(props.onAmend).toHaveBeenCalledWith(
+      'outbox-1',
+      expect.objectContaining({ note: 'Big oak, step over the top.' }),
+    )
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('writes nothing at Done when no note was typed', async () => {
+    const { props } = await filed()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+    expect(props.onAmend).not.toHaveBeenCalled()
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('says so and stays open once when the report had already sent, then closes', async () => {
+    // A note the hiker believes is attached and is not would be a confident
+    // wrong display; the window says it instead, once, and the second Done
+    // closes because there is nothing left it can do.
+    const { props } = await filed({ onAmend: vi.fn().mockResolvedValue(false) })
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: 'the ford was waist deep' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    expect(screen.getByTestId('report-lost')).toHaveTextContent('had already sent')
+    expect(props.onClose).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('signs with the trail name by default, and writes a change of name or consent to the report as it is made', async () => {
+    const { props } = await filed()
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Switchback (trail name) · thru',
+    )
+
+    // The consent, written at once rather than at Done: a receipt left open
+    // still carries it.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reporter-contact-ok'))
+    })
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', {
+      signed_name: 'Switchback',
+      signed_name_kind: 'trail',
+      contact_ok: true,
+    })
+
+    // A real name that is not set yet reads as exactly that, and clears the
+    // signature on the report rather than sending a kind with no name.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /real name/i }))
+    })
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as not set (real name) · thru',
+    )
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', {
+      signed_name: undefined,
+      signed_name_kind: undefined,
+      contact_ok: true,
+    })
+
+    // Typed and kept on leaving the field: to the preferences through
+    // onRealName, and to the report without waiting for them.
+    fireEvent.change(screen.getByTestId('reporter-real-name'), {
+      target: { value: 'Jane Doe' },
+    })
+    await act(async () => {
+      fireEvent.blur(screen.getByTestId('reporter-real-name'))
+    })
+    expect(props.onRealName).toHaveBeenCalledWith('Jane Doe')
+    expect(props.onAmend).toHaveBeenLastCalledWith('outbox-1', {
+      signed_name: 'Jane Doe',
+      signed_name_kind: 'real',
+      contact_ok: true,
+    })
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Jane Doe (real name) · thru',
+    )
+  })
+
+  it('carries the signature and the consent onto the next report, and the note only to the one it described', async () => {
+    const { props } = await filed()
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: 'three trunks' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('reporter-contact-ok'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-again'))
+    })
+    // The note went to the first report on the way out, with the signature
+    // and the consent as they stood - a receipt settles whole.
+    expect(props.onAmend).toHaveBeenLastCalledWith(
+      'outbox-1',
+      expect.objectContaining({ note: 'three trunks', contact_ok: true }),
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-trash'))
+    })
+    const [, note, , extras] = vi.mocked(props.onFile).mock.calls[1] ?? []
+    expect(note).toBe('')
+    expect(extras).toEqual({
+      location: AT_THE_FIX,
+      placeWords: '',
+      signature: { kind: 'trail', name: 'Switchback' },
+      contactOk: true,
+    })
+  })
+
+  it('keeps a real name typed and then closed over by Escape, which never blurs the field', async () => {
+    // Escape runs the window's own close, and removing a focused field fires
+    // no blur, so the name would have been shown on the summary and stored
+    // nowhere (review of #1571). The receipt settles from its own draft.
+    const { props } = await filed()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /real name/i }))
+    })
+    fireEvent.change(screen.getByTestId('reporter-real-name'), {
+      target: { value: 'Jane Doe' },
+    })
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+
+    expect(props.onRealName).toHaveBeenCalledWith('Jane Doe')
+    expect(props.onAmend).toHaveBeenLastCalledWith(
+      'outbox-1',
+      expect.objectContaining({ signed_name: 'Jane Doe', signed_name_kind: 'real' }),
+    )
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('clears the note with an Undo, so it cannot ride onto the next tile', async () => {
+    // "Note something else" already cleared it; Undo left it in place, and
+    // a note about a blowdown then filed under whichever tile came next
+    // (review of #1571).
+    const { props } = await filed()
+    fireEvent.change(screen.getByTestId('report-note'), {
+      target: { value: 'Big oak across the tread' },
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-undo'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-flooding'))
+    })
+    const [, note] = vi.mocked(props.onFile).mock.calls[1] ?? []
+    expect(note).toBe('')
+  })
+
+  it('offers a real name already in the preferences without asking for it again', async () => {
+    await filed({ names: { trail: 'Switchback', real: 'Jane Doe' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('radio', { name: /real name/i }))
+    })
+    expect(screen.getByTestId('report-signature')).toHaveTextContent(
+      'Signed as Jane Doe (real name) · thru',
+    )
+    expect(screen.getByTestId('reporter-real-name')).toHaveValue('Jane Doe')
+  })
+})
+
+describe('the refused tap files by itself once the place arrives (#1563)', () => {
+  const NIDAY = {
+    kind: 'poi' as const,
+    poiId: 'p-near',
+    name: 'Niday Shelter',
+    lat: 37.3,
+    lon: -80.3,
+    mile: 627.8,
+  }
+
+  /** Taps Blow down with nothing to place it at, which opens the sheet. */
+  async function refused(overrides: Partial<ReportWindowProps> = {}) {
+    const result = setup({ fix: null, places: PLACES, ...overrides })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    expect(result.props.onFile).not.toHaveBeenCalled()
+    expect(screen.getByTestId('location-sheet')).toBeInTheDocument()
+    return result
+  }
+
+  it('files the tapped tile when a row in the sheet places the report, without a second tap', async () => {
+    const { props, rerender } = await refused()
+    fireEvent.click(screen.getByTestId('location-place-p-near'))
+    expect(props.onChooseLocation).toHaveBeenCalledWith(NIDAY)
+    // The shell answers with the new place; the tap that was waiting files
+    // in the render it arrives in, at that place.
+    await act(async () => {
+      rerender(<ReportWindow {...props} location={NIDAY} />)
+    })
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    const [type, , , extras] = vi.mocked(props.onFile).mock.calls[0] ?? []
+    expect(type).toBe('blowdown')
+    expect(extras?.location).toEqual(NIDAY)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Filed — blow down at Niday Shelter',
+    )
+  })
+
+  it('files the tapped tile when a spot kept on the map comes back, and not while the window stands aside', async () => {
+    const { props, rerender } = await refused({ onPointOnMap: vi.fn() })
+    fireEvent.click(screen.getByTestId('location-map'))
+    expect(props.onPointOnMap).toHaveBeenCalled()
+    await act(async () => {
+      rerender(
+        <ReportWindow {...props} onPointOnMap={props.onPointOnMap} standingAside />,
+      )
+    })
+    expect(props.onFile).not.toHaveBeenCalled()
+
+    await act(async () => {
+      rerender(
+        <ReportWindow
+          {...props}
+          onPointOnMap={props.onPointOnMap}
+          location={{ kind: 'point', lat: 37.4, lon: -80.4, mile: 630 }}
+        />,
+      )
+    })
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[0]).toBe('blowdown')
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 630.0')
+  })
+
+  it('keeps the sheet and the tapped tile through an Escape pressed while the window stands aside', async () => {
+    // The window is hidden behind the map's crosshair with the sheet still
+    // mounted under it and the tap waiting on the sheet. Escape there is the
+    // pick bar's own way back, and the sheet used to hear it first, close,
+    // and drop the tap (review of #1571). Nothing under the map hears a key
+    // now until the window is back.
+    const { props, rerender } = await refused({ onPointOnMap: vi.fn() })
+    fireEvent.click(screen.getByTestId('location-map'))
+    await act(async () => {
+      rerender(
+        <ReportWindow {...props} onPointOnMap={props.onPointOnMap} standingAside />,
+      )
+    })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByTestId('location-sheet')).toBeInTheDocument()
+    expect(props.onClose).not.toHaveBeenCalled()
+
+    // Keep on the crosshair: the spot comes back, the sheet goes down, and
+    // the tap that waited files at it.
+    await act(async () => {
+      rerender(
+        <ReportWindow
+          {...props}
+          onPointOnMap={props.onPointOnMap}
+          location={{ kind: 'point', lat: 37.4, lon: -80.4, mile: 630 }}
+        />,
+      )
+    })
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 630.0')
+  })
+
+  it('drops the tapped tile when the sheet is dismissed with nothing in it', async () => {
+    // The hiker changed their mind. A report filing itself a minute later,
+    // once they pick a place for a different reason, would be the wrong
+    // kind of surprise.
+    const { props, rerender } = await refused()
+    fireEvent.click(screen.getByTestId('location-sheet-done'))
+    expect(props.onFile).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTestId('report-change-anchor'))
+    fireEvent.click(screen.getByTestId('location-place-p-near'))
+    await act(async () => {
+      rerender(<ReportWindow {...props} location={NIDAY} />)
+    })
+    expect(props.onFile).not.toHaveBeenCalled()
+    expect(screen.getByTestId('report-tile-blowdown')).toBeInTheDocument()
+  })
+
+  it('keeps the tapped tile when the sheet is dismissed by Escape with the words typed', async () => {
+    const { props } = await refused()
+    fireEvent.change(screen.getByTestId('location-words'), {
+      target: { value: 'the ford below the gap' },
+    })
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(props.onFile).mock.calls[0]?.[3]?.placeWords).toBe(
+      'the ford below the gap',
+    )
+  })
+})
+
+describe('photos on the receipt (#1563)', () => {
+  const PREPARED = new Blob([new Uint8Array([9, 9, 9])], { type: 'image/jpeg' })
+  const A_PHOTO = new File(['pretend jpeg'], 'blowdown.jpg', { type: 'image/jpeg' })
+
+  beforeEach(() => {
+    mockPrepare.mockReset()
+    mockPrepare.mockResolvedValue(PREPARED)
+  })
+
+  /** Files a blowdown and waits for the receipt. */
+  async function filed(overrides: Partial<ReportWindowProps> = {}) {
+    const result = setup(overrides)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    await screen.findByTestId('report-note')
+    return result
+  }
+
+  /** Picks one file and waits for its tile to settle, the way
+   *  ReportForm.test.tsx does: the summary line counting it is what proves
+   *  the shrink finished. */
+  async function attach(user: ReturnType<typeof userEvent.setup>) {
+    await user.upload(screen.getByLabelText(/add a photo/i), A_PHOTO)
+    await screen.findByText(/1 photo ·/)
+  }
+
+  it('offers the tiles above the note, and claims nothing about photos until one is picked', async () => {
+    // "Above the note" is the maintainer's placement (2026-09-18), and it is
+    // the same `+` tile the long form draws (reporting/PhotoTiles.tsx): no
+    // count and no summary line with nothing picked, both being claims about
+    // attachments there are none of.
+    await filed()
+    const label = screen.getByText('Add a photo — optional')
+    const note = screen.getByTestId('report-note')
+    expect(
+      label.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(screen.getByLabelText(/add a photo/i)).toBeInTheDocument()
+    expect(screen.queryByText(/photos? · \d+ KB so far/)).toBeNull()
+  })
+
+  it('attaches the shrunk bytes to the filed report at Done, and only then closes', async () => {
+    const user = userEvent.setup()
+    const { props } = await filed()
+    await attach(user)
+    expect(props.onAttachPhotos).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    // The PREPARED bytes, not the file the hiker picked - what the outbox
+    // stores is what came back from lib/reportPhoto.ts.
+    expect(props.onAttachPhotos).toHaveBeenCalledWith('outbox-1', [PREPARED])
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('attaches nothing at Done when no photo was picked', async () => {
+    const { props } = await filed()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+    expect(props.onAttachPhotos).not.toHaveBeenCalled()
+  })
+
+  it('holds Done while a photo is still shrinking, and frees it once the tile settles', async () => {
+    // Leaving mid-shrink would file a receipt whose picture arrives nowhere;
+    // the long form holds Send for the same reason.
+    const user = userEvent.setup()
+    let release: (value: Blob) => void = () => {}
+    mockPrepare.mockReturnValueOnce(
+      new Promise<Blob>((resolve) => {
+        release = resolve
+      }),
+    )
+    await filed()
+
+    await user.upload(screen.getByLabelText(/add a photo/i), A_PHOTO)
+    expect(screen.getByTestId('report-done')).toBeDisabled()
+
+    await act(async () => {
+      release(PREPARED)
+    })
+    await screen.findByText(/1 photo ·/)
+    expect(screen.getByTestId('report-done')).toBeEnabled()
+  })
+
+  it('says so and stays open when the report had already sent before the photo could reach it', async () => {
+    // The same sentence the note gets: a photo the hiker believes is attached
+    // and is not would be a confident wrong display.
+    const user = userEvent.setup()
+    const { props } = await filed({ onAttachPhotos: vi.fn().mockResolvedValue(false) })
+    await attach(user)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    expect(screen.getByTestId('report-lost')).toHaveTextContent('had already sent')
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('gives the photos to the report they were picked for, and starts the next one with none', async () => {
+    // "Note something else" is a hiker clearing a campsite finding three
+    // things; a photo of the first riding onto the second would attach
+    // somebody's evidence to the wrong report.
+    const user = userEvent.setup()
+    const { props } = await filed()
+    await attach(user)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-again'))
+    })
+    expect(props.onAttachPhotos).toHaveBeenCalledWith('outbox-1', [PREPARED])
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-trash'))
+    })
+    await screen.findByTestId('report-note')
+    expect(screen.queryByText(/1 photo ·/)).toBeNull()
+    expect(screen.getByLabelText(/add a photo/i)).toBeInTheDocument()
   })
 })

@@ -114,7 +114,7 @@ async function shown(queue: Partial<api.ModerationQueue> = {}) {
     closures: [],
     ...queue,
   })
-  render(<Moderation onClose={vi.fn()} />)
+  render(<Moderation units="imperial" onClose={vi.fn()} />)
   await screen.findByRole('heading', { level: 1 })
   await waitFor(() => expect(screen.queryByText(/reading the queue/i)).toBeNull())
 }
@@ -168,7 +168,7 @@ describe('the moderation queue', () => {
 
   it('says a queue it could not read is not a queue of nothing', async () => {
     mocked.fetchModerationQueue.mockRejectedValue(new Error('no signal'))
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/not a list of nothing waiting/i)
@@ -180,7 +180,7 @@ describe('the moderation queue', () => {
     const user = userEvent.setup()
     mocked.fetchModerationQueue.mockRejectedValueOnce(new Error('no signal'))
     mocked.fetchModerationQueue.mockResolvedValue({ reports: [aReport()], closures: [] })
-    render(<Moderation onClose={vi.fn()} />)
+    render(<Moderation units="imperial" onClose={vi.fn()} />)
     await screen.findByRole('alert')
 
     await user.click(screen.getByRole('button', { name: /try again/i }))
@@ -376,6 +376,70 @@ describe('the photo the decision turns on', () => {
     expect(
       await screen.findByText(/The brook crossing north of Fitzgerald Falls/),
     ).toBeInTheDocument()
+  })
+
+  it('prints the hiker\u2019s words beside the coordinates when they typed them anyway (#1563)', async () => {
+    // A ±800 m fix and "the ford below the gap" place a report better than
+    // either alone, which is why lib/reportLocation.ts sends both since the
+    // review of #1571. A queue that dropped the sentence for having
+    // coordinates would be back to a coarse pin with nothing to place it.
+    await shown({
+      reports: [
+        aReport({
+          location_source: 'gps',
+          location_accuracy_m: 800,
+          location_fix_age_s: 2400,
+          place_words: 'the ford below the gap',
+        }),
+      ],
+    })
+
+    expect(
+      await screen.findByText(
+        /35\.6000, -83\.5000 · GPS ±2,625 ft, fix 40 min old — “the ford below the gap”/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('names a waypoint-anchored row by its waypoint and adds nothing about how (#1563)', async () => {
+    // `placeOf` answers with the waypoint before the provenance is asked,
+    // so a `poi` source has nothing left to say: the review of #1571 found
+    // the arm that used to print "a named place" unreachable, and it is
+    // gone rather than kept as a claim nothing could make.
+    await shown({
+      reports: [aReport({ poi_id: 'atc_shelters:12', location_source: 'poi' })],
+    })
+
+    expect(await screen.findByText(/at atc_shelters:12/)).toBeInTheDocument()
+    expect(screen.queryByText(/named place/)).toBeNull()
+  })
+
+  it('says how a GPS-placed report was placed - the radius and the age of the fix (#1563)', async () => {
+    // The provenance reaches the person reading it: a ±800 m fix forty
+    // minutes old is a different claim from a surveyed waypoint, and the
+    // radius is printed in the moderator's own units.
+    await shown({
+      reports: [
+        aReport({
+          location_source: 'gps',
+          location_accuracy_m: 800,
+          location_fix_age_s: 2400,
+        }),
+      ],
+    })
+
+    expect(await screen.findByText(/GPS ±2,625 ft, fix 40 min old/)).toBeInTheDocument()
+  })
+
+  it('says when a report was placed by hand on the map, and nothing for a row that said nothing', async () => {
+    await shown({ reports: [aReport({ location_source: 'map' })] })
+    expect(await screen.findByText(/marked on the map/)).toBeInTheDocument()
+    cleanup()
+
+    // An older client stated no source - an absent claim is not "GPS".
+    await shown({ reports: [aReport({ location_source: null })] })
+    expect(await screen.findByText(/35\.6000, -83\.5000/)).toBeInTheDocument()
+    expect(screen.queryByText(/GPS/)).toBeNull()
   })
 
   it('still says "no location" when there are no words either', async () => {

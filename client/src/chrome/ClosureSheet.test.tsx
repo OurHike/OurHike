@@ -94,6 +94,21 @@ describe('ClosureSheet', () => {
     )
   })
 
+  it('renders no reroute link for a URL that is not a web page, and still warns (#1578)', () => {
+    // React blocks `javascript:` on its own; `data:` reaches the anchor
+    // unchanged, and in the Android shell a tapped data: link replaces the
+    // app with the linked document. The sheet's own check is what stops it.
+    render(
+      <ClosureSheet
+        {...PROPS}
+        closure={{ ...CLOSURE, reroute_url: 'data:text/html,<p>reroute</p>' }}
+      />,
+    )
+
+    expect(screen.queryByRole('link', { name: /reroute/i })).toBeNull()
+    expect(screen.getByText(/does not.*detour|no detour/i)).toBeInTheDocument()
+  })
+
   it('states plainly that OurHike does not compute detours', () => {
     render(<ClosureSheet {...PROPS} />)
 
@@ -109,13 +124,19 @@ describe('ClosureSheet', () => {
   it('carries its own sync age, not just a global one', () => {
     render(<ClosureSheet {...PROPS} />)
 
-    expect(screen.getByText(/3d ago|3 days/i)).toBeInTheDocument()
+    expect(
+      screen.getByText('Your copy of this closure synced 3d ago.'),
+    ).toBeInTheDocument()
   })
 
   it('says the copy has never synced rather than implying it is current', () => {
     render(<ClosureSheet {...PROPS} lastSyncedAt={null} />)
 
-    expect(screen.getByText(/never synced/i)).toBeInTheDocument()
+    // A sentence about this phone, not about the closure: "is never synced"
+    // read as the closure's own state (#1578).
+    expect(
+      screen.getByText('Your copy of this closure has never synced.'),
+    ).toBeInTheDocument()
   })
 
   it('offers no way to hide the closure', () => {

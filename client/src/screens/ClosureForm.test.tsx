@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, afterEach } from 'vitest'
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest'
 import { render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ClosureForm } from './ClosureForm'
+import { preloadScreens } from './deferred'
+
+// The location sheet is deferred (screens/deferred.ts); loaded ahead so it
+// renders synchronously here, as it does in the shell.
+beforeAll(() => preloadScreens())
 
 // The closure form (#832). Three properties, and the first one is the whole
 // design decision:
@@ -25,6 +30,7 @@ function shown(over: Partial<Parameters<typeof ClosureForm>[0]> = {}) {
   render(
     <ClosureForm
       hereMile={1408.63}
+      units="imperial"
       onSubmit={onSubmit}
       onCancel={vi.fn()}
       now={new Date('2026-08-21T14:00:00.000Z')}
@@ -32,6 +38,15 @@ function shown(over: Partial<Parameters<typeof ClosureForm>[0]> = {}) {
     />,
   )
   return onSubmit
+}
+
+const SHELTER = {
+  kind: 'poi' as const,
+  poiId: 'atc_shelters:12',
+  name: 'Bailey Gap Shelter',
+  lat: 37.4,
+  lon: -80.4,
+  mile: 628.4,
 }
 
 describe('the closure form', () => {
@@ -127,5 +142,100 @@ describe('the closure form', () => {
 
     expect(screen.getByRole('button', { name: /save to outbox/i })).toBeTruthy()
     expect(screen.getByRole('status').textContent).toMatch(/wait in your outbox/i)
+  })
+})
+
+// THE NEAR END AS A PLACE (#1563). The same picker the report window and the
+// long form use, offering only what carries a mile - a closure is two miles
+// by definition, and a place with none is a place this form would have to
+// guess a mile for.
+describe('starting a closure at a place', () => {
+  it('prefills the near end from the place the report flow arrived with, and names it', () => {
+    // A closure opened from a shelter's card starts at the shelter, not at
+    // wherever the hiker happens to be standing.
+    shown({ startFrom: SHELTER })
+
+    expect(screen.getByLabelText(/shut from mile/i)).toHaveValue('628.4')
+    expect(screen.getByTestId('closure-start-hint')).toHaveTextContent(
+      'Bailey Gap Shelter — mi 628.4',
+    )
+  })
+
+  it('ignores an arriving place with no mile rather than guessing one', () => {
+    // A pressed point off the corridor has coordinates and no mile. The box
+    // falls back to the fix the header already shows - never to zero.
+    shown({ startFrom: { kind: 'point', lat: 37.4, lon: -80.4 } })
+
+    expect(screen.getByLabelText(/shut from mile/i)).toHaveValue('1408.6')
+    expect(screen.getByTestId('closure-start-hint')).toHaveTextContent(
+      'Where you are now',
+    )
+  })
+
+  it('fills the near end from a picked place, and offers only places with a mile', async () => {
+    const user = userEvent.setup()
+    const onSubmit = shown({
+      hereMile: null,
+      places: [
+        { ...SHELTER, id: SHELTER.poiId, type: 'shelter', awayMiles: 0.3 },
+        {
+          id: 'atc_water:9',
+          name: 'Unplaced Spring',
+          type: 'water',
+          lat: 37.5,
+          lon: -80.5,
+          awayMiles: 0.5,
+        },
+      ],
+    })
+
+    await user.click(screen.getByTestId('closure-pick-place'))
+    // The spring has no mile, so it is not on offer - a closure cannot start
+    // at a place with no mile.
+    expect(screen.queryByTestId('location-place-atc_water:9')).toBeNull()
+    // And no map row, ever: a marked spot may have no mile either.
+    expect(screen.queryByTestId('location-map')).toBeNull()
+
+    await user.click(screen.getByTestId('location-place-atc_shelters:12'))
+
+    expect(screen.getByLabelText(/shut from mile/i)).toHaveValue('628.4')
+    expect(screen.getByTestId('closure-start-hint')).toHaveTextContent(
+      'Bailey Gap Shelter',
+    )
+
+    await user.click(screen.getByRole('button', { name: /send|save/i }))
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ startMile: 628.4, endMile: 628.4 }),
+    )
+  })
+
+  it('offers the fix only when it has a snapped mile', async () => {
+    const user = userEvent.setup()
+    const fixedAt = new Date('2026-08-21T13:59:00.000Z')
+
+    shown({ fix: { lat: 37.4, lon: -80.4, accuracyM: 5, fixedAt } })
+    await user.click(screen.getByTestId('closure-pick-place'))
+    expect(screen.queryByTestId('location-fix')).toBeNull()
+    cleanup()
+
+    shown({
+      hereMile: null,
+      fix: { lat: 37.4, lon: -80.4, mile: 630.25, accuracyM: 5, fixedAt },
+    })
+    await user.click(screen.getByTestId('closure-pick-place'))
+    await user.click(screen.getByTestId('location-fix'))
+    expect(screen.getByLabelText(/shut from mile/i)).toHaveValue('630.3')
+  })
+
+  it('stops naming the place once the mile is typed over', async () => {
+    const user = userEvent.setup()
+    shown({ startFrom: SHELTER })
+
+    await user.clear(screen.getByLabelText(/shut from mile/i))
+    await user.type(screen.getByLabelText(/shut from mile/i), '629.0')
+
+    expect(screen.getByTestId('closure-start-hint')).not.toHaveTextContent(
+      'Bailey Gap Shelter',
+    )
   })
 })

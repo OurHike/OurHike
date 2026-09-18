@@ -121,6 +121,23 @@ on exactly the trails a hiker might be thinking of taking. Two things recover it
 is dimmed, never removed (the maintainer's rule: _"the color of the trail blazes should be
 the color on the map"_), and the tap sheet below shows the blaze at full strength.
 
+_(Amended 2026-09-17, [#1575](https://github.com/OurHike/OurHike/issues/1575): the hue is off the map's lines by default now — every trail is one red until the hiker switches "Blaze colors" on in the legend, the maintainer's request of that day: "Showing the blaze color can be distracting and feel like I'm living in a rainbow". Ghosting is unchanged, because it is an opacity fact: under the one red it is opacity and width that separate the chosen system from the rest, exactly as under red light. The tap sheet and the legend's "Trails in view" rows show the blaze at full strength whichever way the switch is set.)_
+- **Every badged trail takes the A.T.'s prominence below the seam (2026-09-18,
+  [#1586](https://github.com/OurHike/OurHike/issues/1586))** — a casing under the corridor-view
+  sketch's through-routes, the A.T.'s own far weight, and a seam handoff at the line's own
+  tier (WIREFRAMES.md §3's amendment of that date has the rule and what "long-distance"
+  means to the map: _"those named with pills showing"_). Ghosting is untouched: the Long
+  Path outside the chosen system is a cased, ghosted line, which is exactly what the untaken
+  A.T. is at the opening camera — the parity the maintainer asked for.
+- **Under the default the context trails are a light dashed red and the badged trails a
+  plain solid red (2026-09-18, [#1588](https://github.com/OurHike/OurHike/issues/1588))** —
+  the maintainer's pick from mock-ups, WIREFRAMES.md §3's amendment of that date. Ghosting is
+  still the third channel and still opacity: a context trail's lightness is a tint baked
+  into its hex (`contextTrailColor`) precisely so the two compose rather than collide, and a
+  taken trail still ghosts everything outside its system, dashed lines included. The
+  casings, this section's "hairline casing", draw with the hues on and under red light and
+  are hidden under the default.
+
 ## 2. Tapping a nearby trail — a sheet that informs and does not switch
 
 Tapping any line already opens a sheet naming the blaze and its source (WIREFRAMES.md §3;
@@ -204,6 +221,8 @@ unknown status drawn as walkable is a guess (omit rather than guess).
 The maintainer's decision, verbatim: _"we will need to bring in more colors for the blazes.
 Long [Path] is indeed aqua. Some way to stop sprawl is needed, but the color of the trail
 blazes should be the color on the map."_
+
+_(Superseded in part 2026-09-17, [#1575](https://github.com/OurHike/OurHike/issues/1575): the colour is on the map while the legend's "Blaze colors" switch is on, and the map ships with it off — one red line for every trail. The palette, its governance and the mapping table below are untouched; what changed is whether the map's lines wear the hue by default. §1's amendment has the rest.)_
 
 The need is measured: OPRHP's statewide layer carries **Aqua (166), Pink (171), Light Blue
 (115), Teal (80), Brown (116), Black (50), Lime (35)** beyond the client's seven paints —

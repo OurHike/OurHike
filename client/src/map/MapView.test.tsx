@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { atcTapeImageId } from '../lib/atcUpdateStyle'
+import { closureTapeImageId } from '../lib/closureStyle'
+import { tapeGrounds } from './closureTape'
 import { TRAILS } from '../lib/trails'
 import {
   CHOSEN_SYSTEM_SOURCES,
@@ -22,6 +25,7 @@ import {
   BLAZE_UNTAKEN_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
+  plainLineColor,
 } from './style'
 import {
   blazeChipImageId,
@@ -389,6 +393,40 @@ describe('MapView', () => {
     expect(map.paintProperties.get(`${BACKDROP_LAYER_ID}/background-color`)).toBe(
       TOPO_PALETTE_RED.labelHalo,
     )
+  })
+
+  it('repaints for a blaze-colours change without rebuilding the map (#1575)', () => {
+    // The switch rides the appearance effect, so flipping it in the legend
+    // repaints every blaze layer's line-color in place - the same promise
+    // red light keeps, and for the same reason: a hiker tapping a switch
+    // while walking must not lose the map they were reading.
+    const { rerender } = render(<MapView {...PROPS} blazeColorsShown />)
+    const builtInitially = MockMap.instances.length
+    const [map] = MockMap.live
+
+    act(() => map.emit('load'))
+    rerender(<MapView {...PROPS} blazeColorsShown={false} />)
+
+    expect(MockMap.instances).toHaveLength(builtInitially)
+    expect(MockMap.live).toHaveLength(1)
+    expect(map.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toEqual(
+      plainLineColor({ theme: 'light', blazeColorsShown: false }),
+    )
+  })
+
+  it('seeds a cold start with blaze colours off as one red in its first frame (#1575)', () => {
+    // The shipped default is off, so this is the frame every hiker sees on
+    // launch: seeded into the built style rather than left to the repaint,
+    // or the first frame would be a flash of hues.
+    render(<MapView {...PROPS} blazeColorsShown={false} />)
+    const [map] = MockMap.live
+    const style = map.options.style as {
+      layers: Array<{ id: string; paint?: Record<string, unknown> }>
+    }
+
+    expect(
+      style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color'],
+    ).toEqual(plainLineColor({ theme: 'light', blazeColorsShown: false }))
   })
 
   it('rewires visibility for a detail change without rebuilding the map', () => {
@@ -947,6 +985,22 @@ describe('POI pins', () => {
     expect(map.images.has(WARNING_ICON_ID)).toBe(true)
   })
 
+  it('registers the barrier tape on every paper the sheet can be, up front (#1575)', () => {
+    // A tape layer whose `line-pattern` names an image the map has not been
+    // given draws nothing, so a sheet change may never be the first time a
+    // paper's tape is asked for: every paper's closure tape and ATC tape are
+    // there once the style is ready.
+    render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    loadStyle(map)
+
+    for (const ground of tapeGrounds()) {
+      expect(map.images.has(closureTapeImageId(ground)), ground).toBe(true)
+      expect(map.images.has(atcTapeImageId(ground)), ground).toBe(true)
+    }
+  })
+
   it('draws the serious warnings it was given as pins', () => {
     render(<MapView {...PROPS} warnings={WARNINGS} />)
     const [map] = MockMap.live
@@ -1308,6 +1362,7 @@ describe("the hiker's position (#1581)", () => {
     status: 'located' as const,
     at: { lon: -73.9888, lat: 41.27444 },
     accuracyFeet: 32.8,
+    accuracyM: 10,
     fixedAt: new Date('2026-09-17T12:00:00Z'),
   }
 

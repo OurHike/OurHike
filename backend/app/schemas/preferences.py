@@ -209,6 +209,12 @@ class PreferencesIn(BaseModel):
 
     # Identity
     trail_name: str | None = None
+    # The hiker's real name, given only if they choose to sign a report with
+    # it (#1563; client/src/lib/reporterSignature.ts). None until they do, and
+    # nothing reads it here: it travels in this blob so a second phone offers
+    # the same choice, and reaches a report only as `signed_name` when the
+    # hiker picks it for that report.
+    real_name: str | None = None
     # None until the hiker says, and deliberately not defaulted to a type
     # (#233). Every report used to be filed as `thru` from a hardcoded literal
     # in the client, and `reporter_type` is the one attribution that survives
@@ -240,6 +246,15 @@ class PreferencesIn(BaseModel):
     # not just by type - a hiker who never touched the switch syncs the same
     # thing whichever side answers first.
     drought_layer_shown: bool = False
+    # Whether the map's trail lines are drawn in their blaze colours, or every
+    # one in the same red (OurHike/OurHike#1575). Defaulted False like
+    # drought_layer_shown above and for the same two reasons: False is the
+    # client's own default (lib/userPreferences.ts's DEFAULT_PREFERENCES - the
+    # maintainer's "a red line, like the nynjtc has on their maps"), so a hiker
+    # who never touched the legend's switch syncs the same answer whichever
+    # side answers first; and every row written before this key existed reads
+    # back as that default rather than as a ValidationError.
+    blaze_colors_shown: bool = False
     # Mirrors client/src/lib/userPreferences.ts's DEFAULT_PREFERENCES exactly:
     # the curated subset a maintainer decision (#865) chose over every
     # category, resolving the open question IDENTITY_AND_PRIVACY.md used to

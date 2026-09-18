@@ -26,6 +26,7 @@ def _valid_preferences(**overrides) -> dict:
         "red_light_enabled": False,
         "show_roads": False,
         "drought_layer_shown": False,
+        "blaze_colors_shown": False,
         "waypoint_types_shown": ["water", "shelter"],
         "layer_detail_level": "standard",
         "auto_rotate_enabled": False,
@@ -339,6 +340,46 @@ def test_put_preferences_round_trips_night_hike_with_red_light(client):
     get_response = client.get("/preferences/me", headers=auth_headers(user_id))
     assert get_response.json()["map_style"] == "night_hike"
     assert get_response.json()["red_light_enabled"] is True
+
+
+def test_get_defaults_blaze_colors_for_a_blob_written_before_it_existed(client, db_session):
+    """Rows synced before the legend's Blaze colors switch existed
+    (OurHike/OurHike#1575) carry no `blaze_colors_shown`, and the read side
+    answers False - one red line for every trail, the client's own default -
+    rather than a ValidationError."""
+    from datetime import UTC, datetime
+
+    from app.models.profile import Profile, Role
+
+    user_id = "15751575-1575-4575-8575-157515751575"
+    legacy = _valid_preferences()
+    del legacy["blaze_colors_shown"]
+    db_session.add(Profile(id=user_id, role=Role.hiker))
+    db_session.commit()
+    db_session.add(UserPreferences(profile_id=user_id, data=legacy, updated_at=datetime.now(UTC)))
+    db_session.commit()
+
+    response = client.get("/preferences/me", headers=auth_headers(user_id))
+
+    assert response.status_code == 200
+    assert response.json()["blaze_colors_shown"] is False
+
+
+def test_put_preferences_round_trips_blaze_colors_shown(client):
+    """A hiker who switched the hues on syncs that, and reads it back on the
+    next device (OurHike/OurHike#1575)."""
+    user_id = "15751575-1575-4575-8575-157515751576"
+
+    put_response = client.put(
+        "/preferences/me",
+        json=_valid_preferences(blaze_colors_shown=True),
+        headers=auth_headers(user_id),
+    )
+    assert put_response.status_code == 200
+    assert put_response.json()["blaze_colors_shown"] is True
+
+    get_response = client.get("/preferences/me", headers=auth_headers(user_id))
+    assert get_response.json()["blaze_colors_shown"] is True
 
 
 def test_get_before_any_put_is_a_404_naming_the_state(client):

@@ -37,6 +37,8 @@
  * through it is a router every future branch fights.
  */
 
+import { basePath, segments } from './orgEntry'
+
 /** Which management page of an org's volunteer surface is open.
  *
  *  A query parameter rather than a path segment, deliberately: the six pages
@@ -136,28 +138,10 @@ export type OrgRoute =
  *  these two were caught. */
 export type ConsoleRoute = Extract<OrgRoute, { kind: 'setup' | 'volunteers' | 'tread' }>
 
-/** The app's base path, with exactly one trailing slash. */
-export function basePath(base: string = import.meta.env.BASE_URL): string {
-  const trimmed = base.replace(/\/+$/, '')
-  return `${trimmed}/`
-}
-
-/**
- * `pathname` with the basename taken off, as segments.
- *
- * Returns null when the path is not under the base at all, which is what
- * makes a router mounted at `/OurHike/` ignore `/somewhere-else` rather than
- * misreading its first segment as a route.
- */
-function segments(pathname: string, base: string): string[] | null {
-  const prefix = basePath(base)
-  const path = pathname.endsWith('/') ? pathname : `${pathname}/`
-  if (!path.startsWith(prefix)) return null
-  return path
-    .slice(prefix.length)
-    .split('/')
-    .filter((segment) => segment !== '')
-}
+// `basePath` and `segments` live in `orgEntry.ts` - the eager half - and are
+// re-exported here because this is where the rest of the app has always asked
+// for them.
+export { basePath }
 
 function asSetupPage(value: string | null): SetupPage {
   return SETUP_PAGES.includes(value as SetupPage) ? (value as SetupPage) : 'home'

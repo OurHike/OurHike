@@ -530,31 +530,25 @@ import {
 import { mapPointsFrom, type BoundingBox, type MapPoint } from './lib/legendContents'
 import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
-import { useOrgRoute } from './lib/useOrgRoute'
+import { useOrgEntry } from './lib/useOrgEntry'
 
-/* THE CONSOLE IS LAZY, AND THE BUDGET IS WHY.
+/* THE ORGANIZATION SURFACE IS LAZY, AND THE BUDGET IS WHY.
  *
- * Imported eagerly it put the launch bundle 37,336 bytes over
+ * Imported eagerly the console alone put the launch bundle 37,336 bytes over
  * features/LAUNCH_BUDGET.md §3's 256,000-byte ceiling (measured 2026-09-17:
  * 293,336 compressed against 256,000). Every one of those bytes is parsed
- * before a hiker's first frame, for a surface almost no hiker opens - the
- * console is for the handful of people running an organization, reached by
- * typing a URL. `import()` is what §3 asks for by name, and it costs the
- * console one frame of "Opening the console" on a screen nobody reaches by
- * accident. */
-const OrgConsole = lazy(() =>
-  import('./org/OrgConsole').then((module) => ({ default: module.OrgConsole })),
-)
-// The two org routes that are NOT the console: a hiker nominating somebody
-// else's club, and the club's own answer. Split from OrgConsole rather than
-// folded into it because neither has an organization behind it - no slug, no
-// seat, and in the club's case no account at all - and the console's whole
-// shell is a rail for somebody who has one.
-const Nominate = lazy(() =>
-  import('./org/screens/Nominate').then((module) => ({ default: module.Nominate })),
-)
-const Proposal = lazy(() =>
-  import('./org/screens/Proposal').then((module) => ({ default: module.Proposal })),
+ * before a hiker's first frame, for a surface almost no hiker opens - it is
+ * for the handful of people running an organization, reached by typing a URL.
+ * `import()` is what §3 asks for by name, and it costs one frame of "Opening"
+ * on a screen nobody reaches by accident.
+ *
+ * WHAT MOVED BEHIND IT SECOND (2026-09-18). The screens were lazy and the
+ * router that picks between them was not, which cost 1,255 eager bytes
+ * against 624 of headroom once `main` at 57868716 was merged in. So
+ * `org/OrgEntry.tsx` now holds the route hook and the three screens, and what
+ * is left here is one boolean - lib/orgEntry.ts has the measurement. */
+const OrgEntry = lazy(() =>
+  import('./org/OrgEntry').then((module) => ({ default: module.OrgEntry })),
 )
 import './App.css'
 // Last, and entirely inside media queries - see the file header. Nothing in it
@@ -729,7 +723,7 @@ function App() {
   // only be one: two instances would each keep their own copy of the route,
   // and a `go` inside the console would move the URL while this file carried
   // on rendering the map.
-  const orgRouting = useOrgRoute()
+  const inOrgSurface = useOrgEntry()
 
   // Two pieces of state rather than one nullable, because null only ever meant
   // "not read off the phone yet" - and saying that with a boolean keeps the
@@ -10335,20 +10329,10 @@ function App() {
   // returns instead of rendering beside anything. Every hook above has
   // already run, which is why this sits here and not at the top of the
   // function.
-  if (orgRouting.route !== null) {
-    const orgRoute = orgRouting.route
+  if (inOrgSurface) {
     return (
       <Suspense fallback={<div className="app__screen">Opening…</div>}>
-        {orgRoute.kind === 'nominate' ? (
-          <Nominate onLeave={() => orgRouting.go(null)} />
-        ) : orgRoute.kind === 'proposal' ? (
-          <Proposal
-            token={orgRoute.token}
-            {...(orgRoute.refusing ? { refusing: true } : {})}
-          />
-        ) : (
-          <OrgConsole routing={orgRouting} units={units} />
-        )}
+        <OrgEntry units={units} />
       </Suspense>
     )
   }

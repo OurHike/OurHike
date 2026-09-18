@@ -717,6 +717,15 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
   // the entrance claim is real for all of them; what is still `planned` for
   // most is driving their controls, which cannot mean much until the writes
   // behind them exist (all forty-nine are stubs today).
+  // OrgEntry IS the entrance claim, which is why it is `covered` rather than
+  // passed through: its whole surface is "the address opened the right one of
+  // three screens", and every assertion below that a screen landed on its own
+  // heading is an assertion that this switch chose it. It draws nothing else
+  // but the "Opening" frame while a chunk arrives.
+  'org/OrgEntry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
   'org/OrgConsole.tsx': {
     step: 'F14 org console',
     flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },

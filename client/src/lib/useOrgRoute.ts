@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { parseOrgRoute, type OrgRoute } from './orgRoute'
+import { ORG_ROUTE_CHANGED } from './useOrgEntry'
 
 export interface OrgRouting {
   /** The route the URL names, or null when the app is anywhere else. */
@@ -81,6 +82,11 @@ export function useOrgRoute(): OrgRouting {
         : orgRoutePath(next)
     window.history[mode === 'push' ? 'pushState' : 'replaceState'](null, '', url)
     setRoute(next)
+    // `pushState` fires no `popstate`, so the eager half of the router - the
+    // one that decides whether this whole surface is on screen - would never
+    // learn that the console just navigated out of itself. See
+    // lib/useOrgEntry.ts.
+    window.dispatchEvent(new Event(ORG_ROUTE_CHANGED))
   }, [])
 
   // `void` rather than returning the promise: `go` is a navigation, and a

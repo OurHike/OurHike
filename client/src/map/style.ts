@@ -152,6 +152,14 @@ import { buildWarningLayer, buildWarningSource, WARNING_SOURCE_ID } from './warn
 import { buildWorkdayLayer, buildWorkdaySource, WORKDAY_SOURCE_ID } from './workdayLayers'
 import { buildDisputeLayer, buildDisputeSource, DISPUTE_SOURCE_ID } from './disputeLayers'
 import {
+  applyPositionInk,
+  buildPositionAccuracyLayer,
+  buildPositionLayer,
+  buildPositionSource,
+  POSITION_SOURCE_ID,
+} from './positionLayers'
+import type { PositionInk } from './positionMark'
+import {
   CHOSEN_SYSTEM_SOURCES,
   chosenSystemFilter,
   chosenSystemSources,
@@ -446,6 +454,17 @@ export function redLightActive(appearance: SheetAppearance): boolean {
 }
 
 /**
+ * Which ink family the hiker's mark is drawn in (#1581, map/positionMark.ts):
+ * red light's one hue where it is in force, bone on every other dark sheet,
+ * the pins' own hairline on the day sheets. Defined off the two predicates
+ * above so it cannot drift from what "dark" and "red light" mean here.
+ */
+export function positionInkFor(appearance: SheetAppearance): PositionInk {
+  if (redLightActive(appearance)) return 'red'
+  return sheetIsDark(appearance) ? 'night' : 'day'
+}
+
+/**
  * The backdrop, per theme.
  *
  * chrome.css paints `.map-view` with the same pair as its pre-WebGL fallback,
@@ -718,6 +737,12 @@ export function attachMapAppearance(
           mapBackdrop(appearance) as never,
         )
       }
+
+      // The hiker's mark and its accuracy ring (#1581), re-inked for the
+      // sheet family the way the badge is: a mark left in the day's ink on a
+      // night sheet is a dark ring on dark ground, which is the one thing on
+      // this map that must not be hard to find.
+      applyPositionInk(map, positionInkFor(appearance))
     },
     'Map appearance',
   )
@@ -1990,6 +2015,10 @@ export function buildMapStyle({
       [WARNING_SOURCE_ID]: buildWarningSource(),
       [WORKDAY_SOURCE_ID]: buildWorkdaySource(),
       [DISPUTE_SOURCE_ID]: buildDisputeSource(),
+      // The hiker's own position (#1581): empty until the shell hands a fix
+      // over, and no `attribution` for the plainest reason of all - it is
+      // where somebody is standing, and nobody's data.
+      [POSITION_SOURCE_ID]: buildPositionSource(),
       // Each of these carries its own credit (OpenFreeMap's terms, the AWS
       // Terrain Tiles requirement), like the three above - a source names the
       // data IT is, and map/credits.ts assembles the corner out of whichever
@@ -2410,6 +2439,17 @@ export function buildMapStyle({
       // distinction at length - but because a band is not a dot, so it does
       // not have the problem this move fixes, and re-ordering a layer nobody
       // reported a fault with is how a fix turns into two.
+      // THE HIKER, OVER EVERY PLACE (#1581). Every layer above draws a place
+      // or a claim about one; this draws the viewer, and a viewer under a
+      // place is a hiker who cannot find themselves. So it sits over the pins,
+      // the warnings and the workdays - the accuracy ring first, the mark
+      // over it - and UNDER the ATC's notices below, whose rule ("nothing on
+      // this map can cover one", held by src/test/atcAlertProminence.test.ts)
+      // outranks it. The mark is hollow and 36 px, so a notice drawn over it
+      // hides its centre and nothing else: the ring and the ticks still say
+      // where the hiker is, and the notice says what is there.
+      buildPositionAccuracyLayer(positionInkFor(appearance)),
+      buildPositionLayer(positionInkFor(appearance)),
       ...buildAtcUpdateLayers(ATC_UPDATE_SOURCE_ID),
     ],
   }

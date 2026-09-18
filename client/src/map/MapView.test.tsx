@@ -53,6 +53,9 @@ import {
   type WarningPoint,
 } from './warningLayers'
 import { WARNING_ICON_ID } from './warningPin'
+import { POSITION_SOURCE_ID, type PositionFeatureCollection } from './positionLayers'
+import { positionMarkId } from './positionMark'
+import { LocateControl } from './mapChrome'
 import {
   CORRIDOR_KIND_PROPERTY,
   CORRIDOR_SOURCE_ID,
@@ -1297,5 +1300,55 @@ describe('the taken trail (#1306)', () => {
     expect(map.paintProperties.get(`${TRAIL_OVERVIEW_LAYER_ID}/line-width`)).toEqual(
       sketchWidthExpression(CHOSEN_SYSTEM_SOURCES),
     )
+  })
+})
+
+describe("the hiker's position (#1581)", () => {
+  const LOCATED = {
+    status: 'located' as const,
+    at: { lon: -73.9888, lat: 41.27444 },
+    accuracyFeet: 32.8,
+    accuracyM: 10,
+    fixedAt: new Date('2026-09-17T12:00:00Z'),
+  }
+
+  it('draws a live fix from the state the header reads, and nothing for none', () => {
+    const { rerender } = render(<MapView {...PROPS} fix={LOCATED} />)
+    const [map] = MockMap.live
+
+    const drawn = map.sourceData.get(POSITION_SOURCE_ID) as PositionFeatureCollection
+    expect(drawn.features).toHaveLength(1)
+    expect(drawn.features[0].geometry.coordinates).toEqual([-73.9888, 41.27444])
+    expect(drawn.features[0].properties.stale).toBe(false)
+
+    rerender(<MapView {...PROPS} fix={{ status: 'unavailable' }} />)
+
+    const gone = map.sourceData.get(POSITION_SOURCE_ID) as PositionFeatureCollection
+    expect(gone.features).toHaveLength(0)
+  })
+
+  it('registers the mark images when the first fix lands, and not before', () => {
+    // Six images cost a measured 53 ms to rasterise, and the map mounts
+    // seconds before the first fix - so the cost lands off the launch path,
+    // and never at all with location off.
+    const { rerender } = render(<MapView {...PROPS} />)
+    const [map] = MockMap.live
+
+    expect(map.images.has(positionMarkId('day', false))).toBe(false)
+
+    rerender(<MapView {...PROPS} fix={LOCATED} />)
+
+    expect(map.images.has(positionMarkId('day', false))).toBe(true)
+    expect(map.images.has(positionMarkId('night', true))).toBe(true)
+  })
+
+  it('hands the chrome a fix to wake the locate button on', () => {
+    const onLocate = vi.fn()
+    render(<MapView {...PROPS} locationEnabled fix={LOCATED} onLocate={onLocate} />)
+    const [map] = MockMap.live
+    const locate = map.controls.find((c) => c.control instanceof LocateControl)
+
+    const button = (locate?.control as LocateControl).container?.querySelector('button')
+    expect(button?.disabled).toBe(false)
   })
 })

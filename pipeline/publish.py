@@ -571,6 +571,31 @@ ARCHIVE_PHOTOS_CLEARED_NAME = "nynjtc_hike_photos.json"
 #: it from `fetch_wayback_hike_photos` would depend on a fetcher to publish.
 ARCHIVE_STORE_DIRNAME = "wayback_photos"
 
+#: Where the WHOLE recovered corpus is parked, once, so the Internet Archive
+#: is never asked for it again (#1567).
+#:
+#: THE ARCHIVE IS THE ARTIFACT, NOT A CACHE, and treating it as one is what
+#: this fixes. #1550 left 284 of the 403 recovered photographs living only in
+#: a 14-day workflow artifact and a branch cache that the merge deleted -
+#: measured 2026-09-17, all three spot-checked digests 404 in production - so
+#: confirming any of them after the artifact expired would have meant
+#: re-crawling a host that already refused this client once.
+#:
+#: ALL 403, not the 119 a person has confirmed, because the point is the
+#: bytes surviving rather than the bytes shipping. What may reach a CARD is
+#: still decided by `reference/nynjtc_hike_photos.json` alone, through
+#: `cleared_archive_photos` - parking a digest here gives it no route into
+#: `photos/` and none into an artifact.
+#:
+#: THE MAINTAINER CHOSE THE PUBLIC BUCKET AND THIS NAME (2026-09-17), knowing
+#: what #1504 established: a key here is a permanent public URL, `u26` is a
+#: site-wide upload folder wider than `sources.json`'s `nynjtc_hikes_licence`
+#: covers, and "unreferenced is not private". No published artifact
+#: references these digests, so nothing advertises them, but that is a
+#: mitigation rather than the licence. Recorded here because a decision this
+#: shape should be findable from the code that carries it out.
+ARCHIVE_PARK_PREFIX = "archive__nynjtc_photos__do_not_delete"
+
 
 def archive_photos_awaiting_review(recovered_path: Path | None = None, cleared_path: Path | None = None) -> tuple[set[str], int]:
     """Digests the archive recovery fetched that nobody has cleared to publish,
@@ -728,6 +753,32 @@ def cleared_archive_photos(held: set[str] | None = None, cleared_path: Path | No
     return offered
 
 
+def archive_park_objects() -> dict[str, str]:
+    """Every recovered photograph on this runner, keyed for the park, as
+    {bucket key: local path}.
+
+    THE WHOLE STORE, unfiltered - the one place in this file that does not
+    consult `reference/nynjtc_hike_photos.json`, and deliberately. The confirm
+    file answers "may a hiker see this photograph", and the answer for 284 of
+    the 403 is no. This answers "do these bytes still exist anywhere", and the
+    answer has to be yes for all of them or the recovery was not one-time
+    after all (#1567).
+
+    Parking a digest here gives it no route to a card: `photo_for()` reads the
+    confirm file, `cleared_archive_photos()` reads the confirm file, and
+    neither looks at this prefix. A row added to the confirm file later is
+    what promotes bytes out of here, and that is still a person's decision.
+
+    Empty on every runner that did not carry the store, which is every routine
+    publish since `carry_archive_photos` defaults to false - so this costs one
+    listing and nothing else once the park is full.
+    """
+    store = RAW_DIR / ARCHIVE_STORE_DIRNAME
+    if not store.is_dir():
+        return {}
+    return {f"{ARCHIVE_PARK_PREFIX}/{path.name}": str(path) for path in sorted(store.glob(f"*.{PHOTO_EXTENSION}"))}
+
+
 def collect_photos() -> dict[str, str]:
     """Every cached POI photo, as {bucket key: local path}.
 
@@ -783,9 +834,16 @@ def collect_photos() -> dict[str, str]:
     return photos
 
 
-def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
+def published_photo_keys(s3_client, bucket: str, prefix: str = "", store: str = PHOTO_PREFIX) -> set[str]:
     """Every photo object this environment's prefix already holds, as unscoped
     keys - one paginated listing rather than a question per photo.
+
+    `store` is which prefix to list and defaults to the hiker-facing one, so
+    every existing caller reads exactly as before. The archive park
+    (`ARCHIVE_PARK_PREFIX`) is listed through the same function because the
+    question is identical - which of these content-addressed keys does the
+    bucket already hold - and a second walker would be a second place for the
+    pagination to be got wrong.
 
     WHY A LISTING. The two callers below both used to ask the bucket object by
     object, and the corpus is now large enough that the question costs more
@@ -811,7 +869,7 @@ def published_photo_keys(s3_client, bucket: str, prefix: str = "") -> set[str]:
     while True:
         page = s3_client.list_objects_v2(
             Bucket=bucket,
-            Prefix=f"{prefix}{PHOTO_PREFIX}/",
+            Prefix=f"{prefix}{store}/",
             **({"ContinuationToken": token} if token else {}),
         )
         keys.update(item["Key"][len(prefix) :] for item in page.get("Contents", []))
@@ -1559,6 +1617,9 @@ def publish(
         sidecars = collect_sidecars()
     if photos is None:
         photos = collect_photos()
+    # Read before the key check below, so a malformed digest in the store
+    # fails by name rather than mid-upload.
+    parked = archive_park_objects()
 
     # Before anything is uploaded, not per-object: a name that breaks the
     # layout (pipeline/R2_LAYOUT.md) must fail the whole run rather than
@@ -1575,7 +1636,7 @@ def publish(
         [
             manifest_key,
             data_env.scope_key(environment, releases.RELEASE_INDEX_KEY),
-            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos)),
+            *(f"{prefix}{name}" for name in (*artifacts, *sidecars, *photos, *parked)),
         ]
     )
 
@@ -1619,6 +1680,19 @@ def publish(
     # local store, so nothing the listing missed can be read as absent.
     published_photos = published_photo_keys(s3_client, bucket, prefix)
     uploaded_photos = upload_photos(s3_client, bucket, photos, prefix, published=published_photos)
+    # The park, on the same trip and by the same rule: the key is the hash,
+    # so a digest the prefix already holds is the bytes we were about to
+    # send. Its own listing, because it is its own prefix - and a cheap one,
+    # since a routine publish carries no store and sends nothing.
+    uploaded_parked = upload_photos(
+        s3_client,
+        bucket,
+        parked,
+        prefix,
+        published=published_photo_keys(s3_client, bucket, prefix, ARCHIVE_PARK_PREFIX) if parked else set(),
+    )
+    if uploaded_parked:
+        print(f"{len(uploaded_parked)} recovered photograph(s) parked under {ARCHIVE_PARK_PREFIX}/ (#1567).")
     # And immediately settle every photo promise the artifacts make - the
     # loud half of #465's trust-the-record design; see verify_photo_promises.
     verify_photo_promises(s3_client, bucket, prefix, artifacts, photos, published=published_photos)

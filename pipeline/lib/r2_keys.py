@@ -83,7 +83,17 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 # prefix count towards MAX_SEGMENTS, which would make UA's tree two levels
 # shallower than production's and a release folder legal in one environment and
 # illegal in the other.
-TOP_LEVEL_PREFIXES = frozenset({"releases", "_internal", "photos", "conditions", "originals"})
+#: `archive__nynjtc_photos__do_not_delete` is the odd one and is spelled to be
+#: obvious rather than tidy (#1567). It holds the whole Internet Archive
+#: recovery of NYNJTC's Drupal-era photographs - a FINISHED corpus of frozen
+#: captures that cannot change - parked once so the archive is never asked
+#: for them a second time. The shouting name is a tripwire: no prune job
+#: exists yet (DATA_RELEASES.md, Phase 7 - retention is "keep everything"),
+#: and the one that gets written will be scoped to `releases/`, so this
+#: prefix is untouched by design AND by the name whoever writes it reads.
+TOP_LEVEL_PREFIXES = frozenset(
+    {"releases", "_internal", "photos", "conditions", "originals", "archive__nynjtc_photos__do_not_delete"}
+)
 
 # Keys that mean something specific and are therefore spelled exactly one
 # way. `latest.json` is the mutable pointer at the bucket root; the two under

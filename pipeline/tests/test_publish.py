@@ -23,6 +23,7 @@ from moto import mock_aws
 import publish
 from lib import data_change, data_env
 from lib.photo_store import PHOTOS_DIRNAME, photo_digest, photo_key
+from lib.r2_keys import assert_valid_keys
 
 BUCKET = "ourhike-test-bucket"
 
@@ -741,6 +742,60 @@ class TestTheArchiveReviewGate:
         monkeypatch.setattr(publish, "unpublishable_digests", lambda *_: {digests["confirmed"]})
 
         assert publish.collect_photos() == {}
+
+    def test_the_park_takes_the_whole_store_including_what_nobody_confirmed(self, tmp_path, monkeypatch):
+        """#1567, and the one place in publish.py that ignores the confirm
+        file on purpose. 284 of the 403 recovered photographs are unconfirmed;
+        if the park took only the cleared ones it would preserve 119 and lose
+        the rest, which is the state that made a one-time crawl repeatable."""
+        digests = self._store(tmp_path, {"confirmed": b"\xff\xd8 confirmed", "unreviewed": b"\xff\xd8 unreviewed"})
+        self._recovered(tmp_path, digests.values(), cleared=[digests["confirmed"]])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+
+        parked = publish.archive_park_objects()
+
+        assert set(parked) == {
+            f"{publish.ARCHIVE_PARK_PREFIX}/{digests['confirmed']}.jpg",
+            f"{publish.ARCHIVE_PARK_PREFIX}/{digests['unreviewed']}.jpg",
+        }
+
+    def test_parking_a_photograph_does_not_put_it_on_a_card(self, tmp_path, monkeypatch):
+        """The two halves must stay independent, because the park is the
+        permissive one. A digest in the park and not in the confirm file is
+        preserved bytes and nothing else - collect_photos() still refuses it,
+        so it reaches no artifact and no hiker."""
+        digests = self._store(tmp_path, {"unreviewed": b"\xff\xd8 unreviewed"})
+        self._recovered(tmp_path, digests.values(), cleared=[])
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+        monkeypatch.setattr(publish, "ROOT", tmp_path)
+        monkeypatch.setattr(publish, "load_decisions", dict)
+
+        assert publish.archive_park_objects() != {}
+        assert publish.collect_photos() == {}
+
+    def test_a_runner_that_carried_no_store_parks_nothing(self, tmp_path, monkeypatch):
+        """Every routine publish, once the park is full. `carry_archive_photos`
+        defaults to false, so the store is absent and this must be an empty
+        dict rather than an error - the publish path is shared with every
+        other run."""
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        assert publish.archive_park_objects() == {}
+
+    def test_the_parks_keys_are_legal_in_both_environments(self, tmp_path, monkeypatch):
+        """`assert_valid_keys` refuses an undeclared top-level prefix, so the
+        park is only publishable because lib/r2_keys.py declares it. Checked
+        scoped as well as bare: a UA publish writes
+        `environments/ua/<prefix>/...` and would fail there first."""
+        digests = self._store(tmp_path, {"one": b"\xff\xd8 one"})
+        monkeypatch.setattr(publish, "RAW_DIR", tmp_path)
+
+        keys = list(publish.archive_park_objects())
+        assert keys and all(key.startswith(f"{publish.ARCHIVE_PARK_PREFIX}/") for key in keys)
+        assert_valid_keys(keys)
+        assert_valid_keys([f"environments/ua/{key}" for key in keys])
+        assert digests
 
     def test_cleared_archive_digests_reads_the_shape_the_confirm_file_is_written_in(self, tmp_path):
         """The same three shapes _digests_in accepts, through the name the

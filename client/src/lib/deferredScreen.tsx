@@ -28,6 +28,14 @@
 // honest; a placeholder screen would be a second thing to design and keep in
 // step with the real one.
 //
+// EXCEPT WHERE NOTHING MEANS THE WHOLE PAGE (#1560). On a laptop the tab bar
+// lives inside the map screen, and the beat is not a cache read on a launch
+// whose precache a deploy has just re-hashed: MapScreen's chunk is requested
+// at the first frame beside forty others and lands 1.3 s later, measured
+// 2026-09-17 on a cold cache. `loaded()` is for that caller - App.tsx keeps
+// its pre-map branch up until it answers true - and for any other screen
+// that turns out to carry the navigation with it.
+//
 // IF THE CHUNK NEVER COMES - a build served half from one deploy and half from
 // the next, a precache that was evicted mid-hike - the failure is thrown from
 // render, so the nearest chrome/ErrorBoundary.tsx shows its named fallback
@@ -45,6 +53,12 @@ export interface DeferredScreen<P extends object> {
   (props: P): ReactElement | null
   /** Loads the module ahead of any render. Idempotent; shares one import. */
   preload(): Promise<void>
+  /**
+   * Whether the module is here, so a caller can keep something on screen
+   * until it is rather than render this and get nothing back (#1560).
+   * Synchronous by design: the caller is deciding what THIS render shows.
+   */
+  loaded(): boolean
   displayName: string
 }
 
@@ -100,5 +114,5 @@ export function deferredScreen<P extends object>(
   }
 
   Screen.displayName = `Deferred(${name})`
-  return Object.assign(Screen, { preload: ensure })
+  return Object.assign(Screen, { preload: ensure, loaded: () => loaded !== null })
 }

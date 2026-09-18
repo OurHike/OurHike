@@ -47,7 +47,16 @@ def _write_tiny_geotiff(path):
 
 
 def _artifact_entry(path, content, feature_count):
+    """Write a placeholder artifact and describe it the way a manifest would.
+
+    A .json or .geojson placeholder is written as a JSON document holding
+    `content`, because check 7 (json_verdict) reads every such file under
+    PROCESSED_DIR the way a phone would - "a complete, passing set" includes
+    documents a phone can open, the same way it includes the fetch receipts.
+    The hash is of what was written, so the manifest still matches the file."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix in check_output_quality.JSON_SUFFIXES and not content.lstrip().startswith(("{", "[")):
+        content = json.dumps({"placeholder": content})
     path.write_text(content)
     return {"path": str(path), "sha256": check_output_quality.sha256_file(path), "feature_count": feature_count}
 
@@ -1126,6 +1135,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", tmp_path / "processed")
 
     reports = check_output_quality.check_all()
 
@@ -1135,6 +1145,7 @@ def test_check_all_returns_one_report_per_check(tmp_path, monkeypatch):
         "elevation",
         "spurs",
         "manifests",
+        "json",
         "corridor",
         "topo_quads",
         "water_reach",
@@ -1149,11 +1160,13 @@ def test_check_all_topo_quads_and_baseline_are_skipped_not_problem_when_nothing_
     monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
     monkeypatch.setattr(check_output_quality, "TOPO_QUADS_MANIFEST", tmp_path / "absent_topo.json")
     monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", tmp_path / "processed")
 
     reports = check_output_quality.check_all()
 
     by_check = {r["check"]: r["verdict"] for r in reports}
     assert by_check["topo_quads"] is Verdict.SKIPPED
+    assert by_check["json"] is Verdict.SKIPPED
     assert by_check["baseline"] is Verdict.SKIPPED
     assert by_check["trails"] is Verdict.PROBLEM
 
@@ -1622,3 +1635,67 @@ def test_trails_verdict_checks_the_vertex_miles_when_the_manifest_claims_them(tm
 
     assert report["verdict"] is Verdict.PROBLEM
     assert any("trail_miles.json" in p and "sha256 mismatch" in p for p in report["problems"])
+
+
+# --- Check 7: JSON a phone can parse ----------------------------------------
+
+
+def test_json_verdict_is_skipped_when_nothing_has_been_written(tmp_path):
+    report = check_output_quality.json_verdict(tmp_path / "processed")
+
+    assert report["verdict"] is Verdict.SKIPPED
+    assert report["problems"] == []
+
+
+def test_json_verdict_is_ok_when_every_document_parses(tmp_path):
+    (tmp_path / "poi").mkdir()
+    (tmp_path / "poi" / "shelter.geojson").write_text('{"type": "FeatureCollection", "features": []}')
+    (tmp_path / "trails_manifest.json").write_text('{"geojson": {"sha256": "abc"}}')
+    (tmp_path / "background.pmtiles").write_bytes(b"not json and not read")
+
+    report = check_output_quality.json_verdict(tmp_path)
+
+    assert report["verdict"] is Verdict.OK
+    assert report["counts"] == {"json_documents": 2}
+
+
+def test_json_verdict_names_the_document_carrying_a_token_no_phone_can_parse(tmp_path):
+    """The exporter's own `json.dumps` wrote this file and check 1 would re-hash
+    it happily; a WebView rejects it on the token. Only the strict read tells."""
+    (tmp_path / "elevation").mkdir()
+    bad = tmp_path / "elevation" / "profile.json"
+    bad.write_text(json.dumps({"points": [{"distance_mi": 1.0, "elevation_ft": float("nan")}]}))
+    (tmp_path / "spurs.json").write_text('{"spurs": []}')
+
+    report = check_output_quality.json_verdict(tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["problems"] == [
+        "elevation/profile.json: NonFiniteNumber: NaN is not JSON: Python writes and reads it, JSON.parse on a phone rejects the whole document on it"
+    ]
+
+
+def test_json_verdict_names_a_document_that_does_not_parse_at_all(tmp_path):
+    """A write cut short is the other thing a phone cannot read."""
+    (tmp_path / "trails.geojson").write_text('{"type": "FeatureCollection", "features": [{"type": "Fea')
+
+    report = check_output_quality.json_verdict(tmp_path)
+
+    assert report["verdict"] is Verdict.PROBLEM
+    assert report["problems"][0].startswith("trails.geojson: JSONDecodeError:")
+
+
+def test_json_verdict_runs_inside_check_all_and_never_raises(tmp_path, monkeypatch):
+    for attr in ("TRAILS_MANIFEST", "POI_MANIFEST", "ELEVATION_MANIFEST", "SPURS_MANIFEST", "TOPO_QUADS_MANIFEST"):
+        monkeypatch.setattr(check_output_quality, attr, tmp_path / "absent.json")
+    monkeypatch.setattr(check_output_quality, "CENTERLINE_PATH", tmp_path / "absent.geojson")
+    monkeypatch.setattr(check_output_quality, "BASELINE_PATH", tmp_path / "absent_baseline.json")
+    processed = tmp_path / "processed"
+    processed.mkdir()
+    (processed / "trail_miles.json").write_text("[NaN]")
+    monkeypatch.setattr(check_output_quality, "PROCESSED_DIR", processed)
+
+    by_check = {r["check"]: r for r in check_output_quality.check_all()}
+
+    assert by_check["json"]["verdict"] is Verdict.PROBLEM
+    assert by_check["json"]["problems"][0].startswith("trail_miles.json: NonFiniteNumber")

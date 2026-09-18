@@ -1693,3 +1693,25 @@ def test_the_cell_families_check_20_walks_are_the_ones_publish_cuts():
     import publish
 
     assert set(verify_release.CELL_FAMILIES) == set(publish.ALL_CELL_FAMILIES)
+
+
+class TestAnArtifactAPhoneCannotParse:
+    """Check 13 reads the artifact the way a phone reads it (lib/strict_json.py).
+
+    `response.json()` would have read `NaN` back as a float and gone on to
+    count features in a document every WebView rejects on its first byte of
+    the token. The class name in the report is the whole diagnosis."""
+
+    NAN_COLLECTION = '{"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [NaN, 39.0]}, "properties": {"blaze_color": "#ffffff"}}]}'
+
+    def test_a_bare_nan_fails_the_parse_check_by_name(self, requests_mock):
+        requests_mock.get(f"{BASE}/trails.geojson", text=self.NAN_COLLECTION)
+
+        reports = {r["check"]: r for r in check_vector(BASE, ["trails.geojson"])}
+
+        assert reports[13]["state"] == FAILED
+        assert "NonFiniteNumber" in reports[13]["detail"]
+
+    def test_the_stdlib_would_have_let_it_through(self):
+        """The premise, pinned: without the strict reader this document parses."""
+        assert json.loads(self.NAN_COLLECTION)["features"][0]["geometry"]["coordinates"][0] != 0

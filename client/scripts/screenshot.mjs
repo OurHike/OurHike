@@ -396,8 +396,19 @@ async function skipFirstRun(context) {
 }
 
 export async function capture(options) {
-  const { name, outDir, url, dist, skipEntry, waitMs, scale, fullPage, viewport, drive } =
-    options
+  const {
+    name,
+    outDir,
+    url,
+    dist,
+    skipEntry,
+    waitMs,
+    scale,
+    fullPage,
+    viewport,
+    drive,
+    before,
+  } = options
   mkdirSync(outDir, { recursive: true })
   const path = join(outDir, `${slug(name)}.png`)
 
@@ -414,6 +425,11 @@ export async function capture(options) {
     if (skipEntry) await skipFirstRun(context)
 
     const page = await context.newPage()
+    // A recipe's hand on the page BEFORE the app loads (client/preview-shots/
+    // `before`, #1560): a route that holds a chunk back is the only way to
+    // photograph a frame the launch passes through on its own, and a route
+    // registered after navigation has missed the request it was for.
+    if (before !== undefined) await before(page)
     await page.goto(target, { waitUntil: 'load', timeout: 60_000 })
     await page.waitForTimeout(waitMs)
     // A shot recipe's taps (client/preview-shots/, driven by

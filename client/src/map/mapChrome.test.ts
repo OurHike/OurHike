@@ -2,17 +2,24 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   MockMap,
   NavigationControl,
-  GeolocateControl,
   ScaleControl,
   resetMapLibreMock,
 } from '../test/mocks/maplibre-gl'
 import type { Map as MapLibreMap } from 'maplibre-gl'
-import { attachMapChrome, ReportControl } from './mapChrome'
-import { POI_PIN_MIN_ZOOM } from './poiLayers'
+import {
+  attachMapChrome,
+  LOCATE_LABEL,
+  LOCATE_WAITING_LABEL,
+  LocateControl,
+  ReportControl,
+} from './mapChrome'
+import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './poiLayers'
 
 // WIREFRAMES.md, map screen §5 and Interactions: compass is a
-// `NavigationControl`, locate is a `GeolocateControl` with continuous tracking,
-// scale is a `ScaleControl` in imperial by default. Compass and locate stack
+// `NavigationControl`, locate is OurHike's own `LocateControl` since #1581
+// (it was MapLibre's `GeolocateControl`, which drew the stock blue dot from a
+// second GPS watch - see the locate describe below), scale is a
+// `ScaleControl` in imperial by default. Compass and locate stack
 // bottom-RIGHT (the thumb zone - everything tapped mid-walk sits in the lower
 // third); the scale bar sits bottom-LEFT above the attribution.
 //
@@ -46,10 +53,11 @@ describe('attachMapChrome', () => {
       showZoomButtons: false,
       units: 'imperial',
       locationEnabled: true,
+      onLocate: vi.fn(),
     })
 
     expect(controlsOf(m, NavigationControl)[0].position).toBe('bottom-right')
-    expect(controlsOf(m, GeolocateControl)[0].position).toBe('bottom-right')
+    expect(controlsOf(m, LocateControl)[0].position).toBe('bottom-right')
   })
 
   it('puts the scale bar bottom-left, clear of the thumb zone', () => {
@@ -64,40 +72,14 @@ describe('attachMapChrome', () => {
     expect(controlsOf(m, ScaleControl)[0].position).toBe('bottom-left')
   })
 
-  it('tracks the user continuously rather than taking a single fix', () => {
-    const m = map()
-
-    attachMapChrome(m, {
-      showZoomButtons: false,
-      units: 'imperial',
-      locationEnabled: true,
-    })
-    const locate = controlsOf(m, GeolocateControl)[0].control as GeolocateControl
-
-    expect(locate.options?.trackUserLocation).toBe(true)
-  })
-
-  it('caps how far one tap of locate takes the camera (#315)', () => {
-    // MapLibre's default fits the accuracy circle, which for a good fix is a
-    // few metres across - so one tap flew from the corridor view to roughly
-    // z15 and traded the whole picture of where somebody is going for the
-    // answer to where they are.
-    const m = map()
-
-    attachMapChrome(m, {
-      showZoomButtons: false,
-      units: 'imperial',
-      locationEnabled: true,
-    })
-    const locate = controlsOf(m, GeolocateControl)[0].control as GeolocateControl
-
-    // The zoom the waypoint pins start drawing at, so the camera lands on the
-    // closest view that also shows what is around them. Asserted against the
-    // constant rather than a literal, so the two cannot drift.
-    // Cast because MapLibre types the control's `fitBoundsOptions` as `{}` -
-    // the property is real at runtime and invisible to the compiler.
-    const fit = locate.options?.fitBoundsOptions as { maxZoom?: number } | undefined
-    expect(fit?.maxZoom).toBe(POI_PIN_MIN_ZOOM)
+  it('brings one tap of locate no closer than the pin seam from below it (#315, #1581)', () => {
+    // MapLibre's control fitted the accuracy circle, which for a good fix is
+    // a few metres across - so one tap flew from the corridor view to
+    // roughly z15 and traded the whole picture of where somebody is going
+    // for the answer to where they are. The cap moved to #315's fix and
+    // survives the control's retirement: the zoom the waypoint pins start
+    // drawing at, asserted against the constant so the two cannot drift.
+    expect(LOCATE_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
   })
 
   it('shows zoom buttons on web, where there is no pinch gesture', () => {
@@ -210,15 +192,19 @@ describe('the locate control, against the location preference (#312)', () => {
     // permission prompt from a control the app's own gate said was off, a blue
     // dot on the map while the header still said "Looking for GPS…", and a
     // second high-accuracy watch on the same battery as lib/useGeolocation's.
+    // The dot and the watch are gone (#1581); the gate stays, because a
+    // button that centres on a fix the hiker said not to take is a door with
+    // nothing behind it.
     const m = map()
 
     attachMapChrome(m, {
       showZoomButtons: false,
       units: 'imperial',
       locationEnabled: false,
+      onLocate: vi.fn(),
     })
 
-    expect(controlsOf(m, GeolocateControl)).toHaveLength(0)
+    expect(controlsOf(m, LocateControl)).toHaveLength(0)
   })
 
   it('keeps the compass and the scale bar, which owe nothing to location', () => {
@@ -267,6 +253,7 @@ describe('the report control, in the shared chrome (#1438, D15)', () => {
       showZoomButtons: false,
       units: 'imperial',
       locationEnabled,
+      onLocate: vi.fn(),
       onReport,
     })
     return { m, detach }
@@ -302,9 +289,7 @@ describe('the report control, in the shared chrome (#1438, D15)', () => {
       .map((c) => c.control.constructor.name)
 
     expect(order.indexOf('ReportControl')).toBe(order.length - 1)
-    expect(order.indexOf('ReportControl')).toBeGreaterThan(
-      order.indexOf('GeolocateControl'),
-    )
+    expect(order.indexOf('ReportControl')).toBeGreaterThan(order.indexOf('LocateControl'))
   })
 
   it('stays last in the stack when location is off and there is no locate', () => {
@@ -358,5 +343,113 @@ describe('the report control, in the shared chrome (#1438, D15)', () => {
     detach()
 
     expect(m.controls).toHaveLength(0)
+  })
+})
+
+describe('the locate button, which is ours (#1581)', () => {
+  // What replaced MapLibre's GeolocateControl, and the three things the
+  // replacement has to keep true: it runs no GPS watch of its own (the mark
+  // on the canvas draws from lib/useGeolocation's, and a second watch was
+  // the battery cost #312 named); it is present and plainly OFF while there
+  // is no fix rather than absent, so the corner does not rearrange itself
+  // the moment one lands; and it is built exactly as the report door is, so
+  // it wears the same chip as its neighbours.
+
+  function attach(options: { onLocate?: () => void; fixAvailable?: boolean } = {}) {
+    const m = map()
+    attachMapChrome(m, {
+      showZoomButtons: false,
+      units: 'imperial',
+      locationEnabled: true,
+      ...options,
+    })
+    return m
+  }
+
+  function locateControl(m: MockMap): LocateControl {
+    const found = m.controls.find((c) => c.control instanceof LocateControl)
+    if (found === undefined) throw new Error('no locate control attached')
+    return found.control as LocateControl
+  }
+
+  function button(m: MockMap): HTMLButtonElement {
+    const found = locateControl(m).container?.querySelector('button')
+    if (found === null || found === undefined) throw new Error('no locate button')
+    return found
+  }
+
+  it("is absent when the shell has no fix to centre on, for the report door's reason", () => {
+    const m = attach({ onLocate: undefined })
+
+    expect(controlsOf(m, LocateControl)).toHaveLength(0)
+  })
+
+  it('runs no GPS watch of its own: the button only asks the shell to centre the map', () => {
+    const watchPosition = vi.fn()
+    vi.stubGlobal('navigator', { geolocation: { watchPosition, clearWatch: vi.fn() } })
+    const onLocate = vi.fn()
+    const m = attach({ onLocate, fixAvailable: true })
+
+    button(m).click()
+
+    expect(onLocate).toHaveBeenCalledTimes(1)
+    expect(watchPosition).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('is disabled, and says why, until there is a fix', () => {
+    const m = attach({ onLocate: vi.fn(), fixAvailable: false })
+
+    expect(button(m).disabled).toBe(true)
+    expect(button(m).title).toBe(LOCATE_WAITING_LABEL)
+    expect(button(m).getAttribute('aria-label')).toBe(LOCATE_WAITING_LABEL)
+  })
+
+  it('wakes up, and says what it does, once a fix lands', () => {
+    const m = attach({ onLocate: vi.fn(), fixAvailable: false })
+
+    locateControl(m).setFixAvailable(true)
+
+    expect(button(m).disabled).toBe(false)
+    expect(button(m).title).toBe(LOCATE_LABEL)
+    expect(button(m).getAttribute('aria-label')).toBe(LOCATE_LABEL)
+  })
+
+  it('does nothing while disabled, even to a click that reaches it', () => {
+    const onLocate = vi.fn()
+    const m = attach({ onLocate, fixAvailable: false })
+
+    button(m).dispatchEvent(new MouseEvent('click', { bubbles: true }))
+
+    expect(onLocate).not.toHaveBeenCalled()
+  })
+
+  it("wears the same chip as compass and report, and the mark's own glyph", () => {
+    const m = attach({ onLocate: vi.fn() })
+    const container = locateControl(m).container
+
+    expect(container?.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(['maplibregl-ctrl', 'maplibregl-ctrl-group']),
+    )
+    // A ring, a dot and four ticks - the shape map/positionMark.ts draws on
+    // the canvas, at button scale.
+    expect(container?.querySelectorAll('svg circle')).toHaveLength(2)
+    expect(container?.querySelector('svg path')?.getAttribute('d')).toContain(
+      'M12 1.3v2.7',
+    )
+  })
+
+  it('detaches with the rest of the chrome', () => {
+    const m = map()
+    const detach = attachMapChrome(m, {
+      showZoomButtons: false,
+      units: 'imperial',
+      locationEnabled: true,
+      onLocate: vi.fn(),
+    })
+
+    detach()
+
+    expect(controlsOf(m, LocateControl)).toHaveLength(0)
   })
 })

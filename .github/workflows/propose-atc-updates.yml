@@ -162,8 +162,18 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          count="$(curl -sS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$REPO/pulls?head=${REPO%%/*}:atc-updates/proposed&state=open" | jq 'length')"
+          # `-f`, AND THE ANSWER'S TYPE IS CHECKED. GitHub answers an error
+          # with a JSON OBJECT - `message` and `documentation_url`, sometimes
+          # `status` - never a list, and curl without `-f` exits 0 on it. So
+          # `jq 'length'` counted the object's keys, `count=2` read below as
+          # "a pull request already exists", and a rate-limited or
+          # unauthorised hour pushed the branch and quietly never opened the
+          # pull request. That is the #1501 gap one step earlier. Now an error
+          # is an error: the step fails and says so (held by
+          # .github/tests/test_propose_atc_updates_pr_gate.py).
+          pulls="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/pulls?head=${REPO%%/*}:atc-updates/proposed&state=open")"
+          count="$(jq 'if type == "array" then length else error("expected a list of pull requests, got a " + type) end' <<<"$pulls")"
           echo "count=$count" >> "$GITHUB_OUTPUT"
 
       # Same non-fatal shape as release-notes.yml's "Open the pull request",

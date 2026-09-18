@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach, beforeAll } from 'vitest'
 import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ReportWindow, type ReportWindowProps } from './ReportWindow'
 import { UNDO_WINDOW_MS } from './undoWindow'
 import { preloadScreens } from '../screens/deferred'
@@ -11,6 +12,17 @@ import {
   type FixSnapshot,
   type NearbyPlace,
 } from '../lib/reportLocation'
+import { prepareReportPhoto } from '../lib/reportPhoto'
+
+// The shrink is doubled the way ReportForm.test.tsx doubles it: the canvas
+// work is lib/reportPhoto.test.ts's, and what this file asks is that the
+// bytes it returns reach `onAttachPhotos` when the receipt is left.
+vi.mock('../lib/reportPhoto', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/reportPhoto')>()),
+  prepareReportPhoto: vi.fn(),
+}))
+
+const mockPrepare = vi.mocked(prepareReportPhoto)
 
 // The sheet and the reporter block are deferred (screens/deferred.ts);
 // loaded ahead so they render synchronously here, as they do in the shell.
@@ -75,6 +87,7 @@ function setup(overrides: Partial<ReportWindowProps> = {}) {
     onRealName: vi.fn(),
     onFile: vi.fn().mockResolvedValue('outbox-1'),
     onAmend: vi.fn().mockResolvedValue(true),
+    onAttachPhotos: vi.fn().mockResolvedValue(true),
     onUndo: vi.fn().mockResolvedValue(undefined),
     onReportClosure: vi.fn(),
     onReportUnsafe: vi.fn(),
@@ -947,6 +960,40 @@ describe('the refused tap files by itself once the place arrives (#1563)', () =>
     expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 630.0')
   })
 
+  it('keeps the sheet and the tapped tile through an Escape pressed while the window stands aside', async () => {
+    // The window is hidden behind the map's crosshair with the sheet still
+    // mounted under it and the tap waiting on the sheet. Escape there is the
+    // pick bar's own way back, and the sheet used to hear it first, close,
+    // and drop the tap (review of #1571). Nothing under the map hears a key
+    // now until the window is back.
+    const { props, rerender } = await refused({ onPointOnMap: vi.fn() })
+    fireEvent.click(screen.getByTestId('location-map'))
+    await act(async () => {
+      rerender(
+        <ReportWindow {...props} onPointOnMap={props.onPointOnMap} standingAside />,
+      )
+    })
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.getByTestId('location-sheet')).toBeInTheDocument()
+    expect(props.onClose).not.toHaveBeenCalled()
+
+    // Keep on the crosshair: the spot comes back, the sheet goes down, and
+    // the tap that waited files at it.
+    await act(async () => {
+      rerender(
+        <ReportWindow
+          {...props}
+          onPointOnMap={props.onPointOnMap}
+          location={{ kind: 'point', lat: 37.4, lon: -80.4, mile: 630 }}
+        />,
+      )
+    })
+    expect(screen.queryByTestId('location-sheet')).toBeNull()
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 630.0')
+  })
+
   it('drops the tapped tile when the sheet is dismissed with nothing in it', async () => {
     // The hiker changed their mind. A report filing itself a minute later,
     // once they pick a place for a different reason, would be the wrong
@@ -976,5 +1023,130 @@ describe('the refused tap files by itself once the place arrives (#1563)', () =>
     expect(vi.mocked(props.onFile).mock.calls[0]?.[3]?.placeWords).toBe(
       'the ford below the gap',
     )
+  })
+})
+
+describe('photos on the receipt (#1563)', () => {
+  const PREPARED = new Blob([new Uint8Array([9, 9, 9])], { type: 'image/jpeg' })
+  const A_PHOTO = new File(['pretend jpeg'], 'blowdown.jpg', { type: 'image/jpeg' })
+
+  beforeEach(() => {
+    mockPrepare.mockReset()
+    mockPrepare.mockResolvedValue(PREPARED)
+  })
+
+  /** Files a blowdown and waits for the receipt. */
+  async function filed(overrides: Partial<ReportWindowProps> = {}) {
+    const result = setup(overrides)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    })
+    await screen.findByTestId('report-note')
+    return result
+  }
+
+  /** Picks one file and waits for its tile to settle, the way
+   *  ReportForm.test.tsx does: the summary line counting it is what proves
+   *  the shrink finished. */
+  async function attach(user: ReturnType<typeof userEvent.setup>) {
+    await user.upload(screen.getByLabelText(/add a photo/i), A_PHOTO)
+    await screen.findByText(/1 photo ·/)
+  }
+
+  it('offers the tiles above the note, and claims nothing about photos until one is picked', async () => {
+    // "Above the note" is the maintainer's placement (2026-09-18), and it is
+    // the same `+` tile the long form draws (reporting/PhotoTiles.tsx): no
+    // count and no summary line with nothing picked, both being claims about
+    // attachments there are none of.
+    await filed()
+    const label = screen.getByText('Add a photo — optional')
+    const note = screen.getByTestId('report-note')
+    expect(
+      label.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    expect(screen.getByLabelText(/add a photo/i)).toBeInTheDocument()
+    expect(screen.queryByText(/photos? · \d+ KB so far/)).toBeNull()
+  })
+
+  it('attaches the shrunk bytes to the filed report at Done, and only then closes', async () => {
+    const user = userEvent.setup()
+    const { props } = await filed()
+    await attach(user)
+    expect(props.onAttachPhotos).not.toHaveBeenCalled()
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    // The PREPARED bytes, not the file the hiker picked - what the outbox
+    // stores is what came back from lib/reportPhoto.ts.
+    expect(props.onAttachPhotos).toHaveBeenCalledWith('outbox-1', [PREPARED])
+    expect(props.onClose).toHaveBeenCalledWith(true)
+  })
+
+  it('attaches nothing at Done when no photo was picked', async () => {
+    const { props } = await filed()
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+    expect(props.onAttachPhotos).not.toHaveBeenCalled()
+  })
+
+  it('holds Done while a photo is still shrinking, and frees it once the tile settles', async () => {
+    // Leaving mid-shrink would file a receipt whose picture arrives nowhere;
+    // the long form holds Send for the same reason.
+    const user = userEvent.setup()
+    let release: (value: Blob) => void = () => {}
+    mockPrepare.mockReturnValueOnce(
+      new Promise<Blob>((resolve) => {
+        release = resolve
+      }),
+    )
+    await filed()
+
+    await user.upload(screen.getByLabelText(/add a photo/i), A_PHOTO)
+    expect(screen.getByTestId('report-done')).toBeDisabled()
+
+    await act(async () => {
+      release(PREPARED)
+    })
+    await screen.findByText(/1 photo ·/)
+    expect(screen.getByTestId('report-done')).toBeEnabled()
+  })
+
+  it('says so and stays open when the report had already sent before the photo could reach it', async () => {
+    // The same sentence the note gets: a photo the hiker believes is attached
+    // and is not would be a confident wrong display.
+    const user = userEvent.setup()
+    const { props } = await filed({ onAttachPhotos: vi.fn().mockResolvedValue(false) })
+    await attach(user)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-done'))
+    })
+
+    expect(screen.getByTestId('report-lost')).toHaveTextContent('had already sent')
+    expect(props.onClose).not.toHaveBeenCalled()
+  })
+
+  it('gives the photos to the report they were picked for, and starts the next one with none', async () => {
+    // "Note something else" is a hiker clearing a campsite finding three
+    // things; a photo of the first riding onto the second would attach
+    // somebody's evidence to the wrong report.
+    const user = userEvent.setup()
+    const { props } = await filed()
+    await attach(user)
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-again'))
+    })
+    expect(props.onAttachPhotos).toHaveBeenCalledWith('outbox-1', [PREPARED])
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('report-tile-trash'))
+    })
+    await screen.findByTestId('report-note')
+    expect(screen.queryByText(/1 photo ·/)).toBeNull()
+    expect(screen.getByLabelText(/add a photo/i)).toBeInTheDocument()
   })
 })

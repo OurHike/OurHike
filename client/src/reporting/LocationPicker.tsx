@@ -28,7 +28,7 @@
 // and come back with the same choice, and what stops two surfaces holding two
 // opinions about where one report is.
 
-import { useId, useState } from 'react'
+import { useMemo, useId, useState } from 'react'
 import {
   AT_THE_FIX,
   awayWords,
@@ -108,14 +108,20 @@ export function LocationPicker({
   const needle = query.trim()
 
   const searchable = onSearch !== undefined || places.length >= FILTER_FROM_ROWS
-  const shown: readonly NearbyPlace[] =
-    needle === ''
-      ? places
-      : onSearch !== undefined
-        ? onSearch(needle)
-        : places.filter((place) =>
-            place.name.toLowerCase().includes(needle.toLowerCase()),
-          )
+  // Once per query rather than once per render: the host re-renders on
+  // every GPS tick, and a by-name search is a scan of every waypoint on the
+  // phone plus two sorts (review of #1571).
+  const shown: readonly NearbyPlace[] = useMemo(
+    () =>
+      needle === ''
+        ? places
+        : onSearch !== undefined
+          ? onSearch(needle)
+          : places.filter((place) =>
+              place.name.toLowerCase().includes(needle.toLowerCase()),
+            ),
+    [needle, onSearch, places],
+  )
 
   const placesSection =
     places.length === 0 && onSearch === undefined ? null : (
@@ -237,7 +243,12 @@ export function LocationPicker({
         </ul>
       )}
 
-      {words !== undefined && !hasPlace(choice, fix) && (
+      {/* Asked when nothing else can place the report - and KEPT once
+          anything has been typed, even if a fix then arrives: a field that
+          vanished under a hiker mid-sentence took the sentence with it
+          (review of #1571). The words travel beside the fix
+          (lib/reportLocation.ts). */}
+      {words !== undefined && (!hasPlace(choice, fix) || words.value.trim() !== '') && (
         <label className="location-picker__words">
           <span className="location-picker__heading">Or say where in words</span>
           <textarea

@@ -3,9 +3,9 @@
 // this app is decided once.
 //
 // WHAT THE FRAME OWNS AND WHAT IT DOES NOT. The title, one header button,
-// the scrim, focus while it is up and where focus goes back to, the Tab
-// loop, and Escape. Nothing about what is inside: the location sheet puts
-// the picker here, the keep window puts an answer and two buttons.
+// the scrim, focus while it is up and where focus goes back to, and the keys
+// (reporting/useFocusTrap.ts). Nothing about what is inside: the location
+// sheet puts the picker here, the keep window puts an answer and two buttons.
 //
 // FOCUS COMES BACK WHERE IT WAS. Captured on mount and restored on unmount,
 // the way the report window does it for its own opener, because two of the
@@ -19,8 +19,15 @@
 // `onDismiss` is Escape and a tap beside the sheet, which on the keep window
 // means "tap again" rather than "leave the map". A single onClose could not
 // tell those apart.
+//
+// AND IT GOES QUIET WITH ITS HOST. A sheet inside a window that stands aside
+// for the map's crosshair stays mounted, holding its state, but must not
+// hear the keys: an Escape meant for the crosshair used to dismiss the
+// hidden sheet and drop the tap waiting on it (review of #1571). `active`
+// is the host's word on that.
 
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { useFocusTrap } from './useFocusTrap'
 import './sheet.css'
 
 export interface SheetProps {
@@ -31,6 +38,8 @@ export interface SheetProps {
   action: { label: string; onClick: () => void; testId: string }
   /** Escape, and a tap on the scrim. */
   onDismiss: () => void
+  /** False while the host stands aside: mounted, silent. Default true. */
+  active?: boolean
   /** An extra class on the dialog, for a body that needs its own rules. */
   className?: string
   children: ReactNode
@@ -41,6 +50,7 @@ export function Sheet({
   title,
   action,
   onDismiss,
+  active = true,
   className,
   children,
 }: SheetProps) {
@@ -62,35 +72,7 @@ export function Sheet({
     }
   }, [])
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        onDismiss()
-        return
-      }
-      if (event.key !== 'Tab') return
-      // A Tab loop of its own, so focus cannot walk out of the sheet into the
-      // surface it covers. Queried per keystroke, like the report window's:
-      // the rows change as the hiker types into the search box.
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), textarea, [href], input, select, [tabindex]:not([tabindex="-1"])',
-      )
-      if (focusable === undefined || focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (first === undefined || last === undefined) return
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [onDismiss])
+  useFocusTrap(dialogRef, { active, onEscape: onDismiss })
 
   return (
     <div

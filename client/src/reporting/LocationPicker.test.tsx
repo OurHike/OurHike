@@ -264,6 +264,45 @@ describe('the map, and words', () => {
     expect(screen.getByText(/nobody turns it into a pin/)).toBeInTheDocument()
   })
 
+  it('keeps the words field up once something is typed in it, even with a fix', () => {
+    // A first, coarse fix on a cold start arrives under a hiker mid-sentence.
+    // The field vanished with it and took the sentence along, and the report
+    // filed as a ±800 m pin with nothing to place it (review of #1571). The
+    // words travel beside the fix now (lib/reportLocation.ts), so the field
+    // stays for as long as it holds anything - and only that long.
+    const words = { value: 'north of the gap', onChange: vi.fn() }
+    const { unmount } = setup({ words, fix: FIX })
+    expect(screen.getByTestId('location-words')).toHaveValue('north of the gap')
+    unmount()
+
+    setup({ words: { value: '   ', onChange: vi.fn() }, fix: FIX })
+    expect(screen.queryByTestId('location-words')).toBeNull()
+  })
+
+  it('asks the shell for a query once per query, not once per render', () => {
+    // `onSearch` walks every waypoint on the phone (lib/searchPoi.ts), and
+    // the picker re-renders on every keystroke in the words field and on
+    // every tick of the fix's age. Memoised on the query, so a search runs
+    // when the query changes and not when anything else does (review of
+    // #1571).
+    const onSearch = vi.fn(() => [PLACES[1] as NearbyPlace])
+    const { props, rerender } = setup({ places: [], onSearch })
+    fireEvent.change(screen.getByTestId('location-search'), {
+      target: { value: 'craig' },
+    })
+    expect(onSearch).toHaveBeenCalledTimes(1)
+
+    rerender(<LocationPicker {...props} now={new Date(NOW.getTime() + 60_000)} />)
+    rerender(<LocationPicker {...props} now={new Date(NOW.getTime() + 120_000)} />)
+    expect(onSearch).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('location-place-p-mid')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('location-search'), {
+      target: { value: 'craig creek' },
+    })
+    expect(onSearch).toHaveBeenCalledTimes(2)
+  })
+
   it('leads with why it opened when the report has no place yet', () => {
     setup({ needed: true, fix: null })
 

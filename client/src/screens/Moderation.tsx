@@ -150,8 +150,9 @@ function provenanceOf(report: QueuedReport, units: UnitSystem): string {
     }
     case 'map':
       return ' · marked on the map'
-    case 'poi':
-      return ' · a named place'
+    // No `poi` arm: a waypoint-anchored row carries `poi_id`, and `placeOf`
+    // names the waypoint before this is asked (review of #1571 found the
+    // arm unreachable).
     default:
       return ''
   }
@@ -196,7 +197,12 @@ function placeOf(report: QueuedReport, units: UnitSystem): string {
     const words = report.place_words ?? null
     return words === null || words.trim() === '' ? 'no location' : `“${words}”`
   }
-  return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}${provenanceOf(report, units)}`
+  // And beside coordinates, when the hiker typed them anyway: a coarse fix
+  // and "at the ford below the gap" place a report better than either alone
+  // (lib/reportLocation.ts sends both since the review of #1571).
+  const words = report.place_words ?? null
+  const said = words === null || words.trim() === '' ? '' : ` — “${words}”`
+  return `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}${provenanceOf(report, units)}${said}`
 }
 
 /** Where a field note was written, in the same order of preference the

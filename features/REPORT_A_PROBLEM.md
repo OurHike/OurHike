@@ -65,7 +65,11 @@ from the map — and:
    tapped is remembered, and the moment the place arrives - a row in the
    sheet, the words with the sheet closed, a spot kept on the map - it files,
    receipt and Undo and all. A sheet dismissed with nothing in it drops the
-   remembered tap. **Keeping a spot on the map is a window too**
+   remembered tap. Words typed in the sheet travel beside whatever
+   coordinates the report gets, rather than being dropped the moment a fix
+   arrives under a hiker mid-sentence (the review of #1571 found that the
+   first version did), and the moderation queue prints both. **Keeping a
+   spot on the map is a window too**
    (`client/src/reporting/KeepSpotSheet.tsx`, "the Keep this should be an
    emergent window"): the tap on the map opens it with the answer the tap
    got - a mile, "This spot", or more than 3 mi off the trail - and Keep
@@ -84,7 +88,12 @@ from the map — and:
    `client/src/lib/outbox.ts`), which the first version of the receipt did
    not do - the textarea was drawn and nothing read it. If the report has
    already sent by then, the receipt says so rather than letting the hiker
-   believe the words went with it. **And two more questions sit on the
+   believe the words went with it. **Photos sit above the note** (2026-09-18,
+   the maintainer's "add the ability to add pictures above the note"): the
+   same tiles the long form draws (`client/src/reporting/PhotoTiles.tsx`,
+   over `useReportPhotos.ts`), attached to the queued report on the way out
+   by `attachQueuedPhotos`, and refused with the same sentence if the report
+   has already sent. **And two more questions sit on the
    receipt**, both the maintainer's additions of 2026-09-17
    (`client/src/reporting/ReporterDetails.tsx`, on the long form too): which
    name the report is signed with - the trail name, as every report was, or

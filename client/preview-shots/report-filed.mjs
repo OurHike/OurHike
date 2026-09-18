@@ -66,11 +66,18 @@
 // queued report as they change (reporting/ReporterDetails.tsx). The camera
 // has no trail name set, so the summary line says "not set" rather than
 // inventing one.
+//
+// AND PHOTOS SIT ABOVE THE NOTE (the maintainer's "add the ability to add
+// pictures above the note", 2026-09-18): the same `+` tile the long form
+// draws, reporting/PhotoTiles.tsx over one state machine. The camera picks
+// nothing - a photo here would be a file the runner invented - so the frame
+// shows the tile with nothing claimed under it, which is the state a hiker
+// reaches first.
 
 export const caption =
-  'One tap files it — and the Undo that makes that safe to do (#1133). With no fix the tap needs a place first, here the hiker’s own words; the receipt then asks which name signs it and whether a club may follow up (#1563).'
+  'One tap files it — and the Undo that makes that safe to do (#1133). With no fix the tap needs a place first, here the hiker’s own words; the receipt then offers a photo above the note, and asks which name signs it and whether a club may follow up (#1563).'
 export const alt =
-  'The report window after tapping Blow down: a green-tinted receipt reading “Filed — blow down where you described” over “It waits in your outbox and sends itself”, with an “Undo · 7s” button counting down beside it; below a rule, an optional note field labelled “Add detail — optional”; then a boxed “Signed as” block reading “Signed as not set (trail name) · day” with two radio rows, “Trail name — not set” selected and “Real name — not set, type it below”, a checkbox “You can contact me for more information”, and a hint that only the club moderators who read the report see the name and the answer; then a filled “Done” button and an outlined “Note something else”. No Cancel.'
+  'The report window after tapping Blow down: a green-tinted receipt reading “Filed — blow down where you described” over “It waits in your outbox and sends itself”, with an “Undo · 7s” button counting down beside it; below a rule, “Add a photo — optional” over a single “+ Add a photo” tile, then an optional note field labelled “Add detail — optional”; then a boxed “Signed as” block reading “Signed as not set (trail name) · day” with two radio rows, “Trail name — not set” selected and “Real name — not set, type it below”, a checkbox “You can contact me for more information”, and a hint that only the club moderators who read the report see the name and the answer; then a filled “Done” button and an outlined “Note something else”. No Cancel.'
 
 export default async function drive(page) {
   await page.getByRole('tab', { name: 'Today' }).click()

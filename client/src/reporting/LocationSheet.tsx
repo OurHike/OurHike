@@ -34,15 +34,19 @@ import './locationSheet.css'
 export interface LocationSheetProps extends LocationPickerProps {
   /** Close without changing anything - Done, Escape, or the scrim. */
   onClose: () => void
+  /** False while the host stands aside for the map's crosshair: the sheet
+   *  stays mounted with its words and its refusal, and hears no keys. */
+  active?: boolean
 }
 
-export function LocationSheet({ onClose, ...picker }: LocationSheetProps) {
+export function LocationSheet({ onClose, active = true, ...picker }: LocationSheetProps) {
   return (
     <Sheet
       name="location-sheet"
       title="Where is this?"
       action={{ label: 'Done', onClick: onClose, testId: 'location-sheet-done' }}
       onDismiss={onClose}
+      active={active}
       className="location-sheet"
     >
       <LocationPicker {...picker} />

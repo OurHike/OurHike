@@ -27,7 +27,7 @@
 // one report, and whether a club may contact them about it. The line that
 // used to state the signature is that block's summary now.
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ReportDraft } from '../lib/outbox'
 import { signatureFields, type SignedAs } from '../lib/reporterSignature'
 import {
@@ -39,9 +39,10 @@ import {
   type NearbyPlace,
   type SearchPlacesOptions,
 } from '../lib/reportLocation'
-import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
 import type { UnitSystem } from '../lib/units'
 import { LocationSheet, ReporterDetails } from './deferred'
+import { PhotoTiles } from '../reporting/PhotoTiles'
+import { useReportPhotos } from '../reporting/useReportPhotos'
 import './reporting.css'
 
 export type ReportFormType = ReportDraft['type']
@@ -69,28 +70,6 @@ export interface ReportFormSubmission extends ReportDraft {
    * what lets Send stay live over it.
    */
   photos: Blob[]
-}
-
-/**
- * One picked photo, and the whole state machine it can be in (#1439, D17).
- *
- * A union rather than a record with three optional fields, so a tile that is
- * both "preparing" and "failed" cannot be described - which is the shape the
- * old single `photo` plus `preparing` plus `photoError` triple could, and did
- * for the length of one slow HEIC pick.
- */
-type Pick =
-  | { id: string; state: 'preparing' }
-  | { id: string; state: 'ready'; blob: Blob; url: string }
-  | { id: string; state: 'failed'; message: string }
-
-/** `3 photos · 180 KB so far` - what is attached, and what it weighs, which
- *  is the figure a hiker about to send over one bar of EDGE is owed. Only the
- *  ready ones count: a tile still shrinking has no size yet, and a failed one
- *  will never have a size at all. */
-function photoSummary(ready: readonly { blob: Blob }[]): string {
-  const kb = Math.round(ready.reduce((total, pick) => total + pick.blob.size, 0) / 1024)
-  return `${ready.length} ${ready.length === 1 ? 'photo' : 'photos'} · ${kb} KB so far`
 }
 
 export interface ReportFormProps {
@@ -132,6 +111,13 @@ export interface ReportFormProps {
    * shell owns it because the map is the shell's.
    */
   onPointOnMap?: () => void
+  /**
+   * True while the crosshair is out over the map (#1439). The shell hides
+   * this form and makes it inert; the sheet inside it takes the same word
+   * and hears no keys, so an Escape meant for the crosshair does not dismiss
+   * a sheet nobody can see (review of #1571).
+   */
+  standingAside?: boolean
   onSubmit: (submission: ReportFormSubmission) => void
   onCancel: () => void
   online?: boolean
@@ -154,6 +140,7 @@ export function ReportForm({
   units,
   onChooseLocation,
   onPointOnMap,
+  standingAside = false,
   onSubmit,
   onCancel,
   online = true,
@@ -163,7 +150,8 @@ export function ReportForm({
   // Captured once, on mount - see the note above.
   const [authoredAt] = useState(() => now ?? new Date())
   const [note, setNote] = useState('')
-  const [picks, setPicks] = useState<readonly Pick[]>([])
+  // The photos, over the state machine the receipt shares (#1563).
+  const photos = useReportPhotos()
   /** The hiker's own words for where this was, when nothing else can say
    *  (#1439, D16). Asked for by the picker only in that state, and sent only
    *  then (lib/reportLocation.ts). */
@@ -198,81 +186,7 @@ export function ReportForm({
     }
   }
 
-  /**
-   * Shrink and re-encode one picked file under its own tile.
-   *
-   * **THE RACE IS GONE BY CONSTRUCTION, not by a token.** It used to be one
-   * `photo` and a `livePick` ref: pick A (a slow HEIC), then B before it
-   * finished, and B attached first, then A resolved and overwrote it - so the
-   * hiker sent the photo they believed they had replaced (#657). The ref was
-   * the fix and it was a fix for a shape that should not have existed. Each
-   * pick now owns a tile, keyed by its own id, so nothing can land on top of
-   * anything: a slow first pick resolves into ITS tile, whatever has arrived
-   * since.
-   *
-   * **A failure costs its own tile and nothing else.** The entry goes to
-   * `failed` with the words a hiker can act on, and the ready ones stay
-   * attached - which is the whole argument for tiles over one field.
-   */
-  const choosePhoto = async (file: File | null) => {
-    if (file === null) return
-    const id = crypto.randomUUID()
-    setPicks((current) => [...current, { id, state: 'preparing' }])
-
-    try {
-      const blob = await prepareReportPhoto(file)
-      setPicks((current) =>
-        // Replaced by id, and skipped entirely if the hiker removed the tile
-        // while it was shrinking - a pick taken back must not come back.
-        current.map((pick) =>
-          pick.id === id
-            ? { id, state: 'ready', blob, url: URL.createObjectURL(blob) }
-            : pick,
-        ),
-      )
-    } catch (error) {
-      // The message is written for a hiker to read (lib/reportPhoto.ts);
-      // anything else that got this far is not, so it does not get shown.
-      const message =
-        error instanceof PhotoUnusable
-          ? error.message
-          : 'That photo could not be prepared. Try taking another.'
-      setPicks((current) =>
-        current.map((pick) => (pick.id === id ? { id, state: 'failed', message } : pick)),
-      )
-    }
-  }
-
-  const removePick = (id: string) =>
-    setPicks((current) => {
-      const going = current.find((pick) => pick.id === id)
-      if (going?.state === 'ready') URL.revokeObjectURL(going.url)
-      return current.filter((pick) => pick.id !== id)
-    })
-
-  // Every thumbnail this form minted, released when the form goes. An object
-  // URL is a reference the browser holds until it is told otherwise, and this
-  // screen is opened from a ridge on a phone with the map already resident.
-  //
-  // Through a ref rather than by listing `picks` in the cleanup's deps: a
-  // deps list would revoke on every pick, taking down the thumbnail of the
-  // photo that is still attached.
-  const picksRef = useRef<readonly Pick[]>([])
-  useEffect(() => {
-    picksRef.current = picks
-  }, [picks])
-  useEffect(
-    () => () => {
-      for (const pick of picksRef.current) {
-        if (pick.state === 'ready') URL.revokeObjectURL(pick.url)
-      }
-    },
-    [],
-  )
-
-  const ready = picks.flatMap((pick) => (pick.state === 'ready' ? [pick] : []))
-  const preparing = picks.some((pick) => pick.state === 'preparing')
-  const full = picks.length >= MAX_REPORT_PHOTOS
+  const { ready, preparing } = photos
 
   const isThanks = type === 'thanks'
 
@@ -400,78 +314,13 @@ export function ReportForm({
           all. */}
       <div className="reporting__field">
         <span className="reporting__field-label">Photos</span>
-        <ul className="reporting__photos">
-          {picks.map((pick) => (
-            <li
-              key={pick.id}
-              className={
-                pick.state === 'failed'
-                  ? 'reporting__tile reporting__tile--failed'
-                  : 'reporting__tile'
-              }
-            >
-              {pick.state === 'ready' && (
-                <img className="reporting__thumb" src={pick.url} alt="" />
-              )}
-              {pick.state === 'preparing' && (
-                <span className="reporting__tile-state" role="status">
-                  shrinking…
-                </span>
-              )}
-              {pick.state === 'failed' && (
-                <span className="reporting__tile-state" role="alert">
-                  {pick.message}
-                </span>
-              )}
-              {/* One remove per tile, and it works in every state: a hiker
-                  who picked the wrong photo must not have to wait for the
-                  wrong photo to finish shrinking before they can take it
-                  back. A pick removed mid-shrink never returns - the resolve
-                  below matches by id and finds nothing. */}
-              <button
-                type="button"
-                className="reporting__tile-remove"
-                aria-label={`Remove photo ${picks.indexOf(pick) + 1}`}
-                onClick={() => removePick(pick.id)}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-          {!full && (
-            <li className="reporting__tile reporting__tile--add">
-              <label className="reporting__add">
-                <span aria-hidden="true">+</span>
-                <span className="reporting__add-label">Add a photo</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic"
-                  className="reporting__photo"
-                  onChange={(event) => {
-                    void choosePhoto(event.target.files?.[0] ?? null)
-                    // Cleared so picking the SAME file twice still fires a
-                    // change - a hiker retaking a photo that failed is the
-                    // commonest second pick there is.
-                    event.target.value = ''
-                  }}
-                />
-              </label>
-            </li>
-          )}
-        </ul>
-        {/* THE CEILING IS A SENTENCE, NOT A GREYED TILE (D10): a control that
-            looks pressable and is not teaches a hiker at a junction that the
-            app is broken. Past the cap the `+` is gone and this says why. */}
-        {full && (
-          <span className="reporting__meta">
-            {`That is ${MAX_REPORT_PHOTOS} photos, which is as many as one report carries. Remove one to add another.`}
-          </span>
-        )}
-        {ready.length > 0 && (
-          <span className="reporting__meta">
-            {`${photoSummary(ready)}. Location and camera details are not included.`}
-          </span>
-        )}
+        <PhotoTiles
+          picks={photos.picks}
+          ready={photos.ready}
+          full={photos.full}
+          choosePhoto={photos.choosePhoto}
+          removePick={photos.removePick}
+        />
       </div>
 
       {/* WHERE THIS WILL LAND, AND A WAY TO CORRECT IT (#1439, D16; #1563).
@@ -578,6 +427,7 @@ export function ReportForm({
             setPicking(false)
             setRefused(false)
           }}
+          active={!standingAside}
         />
       )}
     </main>

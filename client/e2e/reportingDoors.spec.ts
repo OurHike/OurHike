@@ -240,6 +240,11 @@ test.describe('the reporting doors', () => {
     await expect(window_.getByText(/waits in your outbox and sends itself/)).toBeVisible()
     // The optional note, offered after rather than demanded before.
     await expect(page.getByRole('heading', { name: 'Anything to add?' })).toBeVisible()
+    // And photos above it (#1563, the maintainer's placement): the same `+`
+    // tile the long form draws, claiming nothing until one is picked.
+    await expect(window_.getByText('Add a photo — optional')).toBeVisible()
+    await expect(window_.getByLabel(/add a photo/i)).toBeAttached()
+    await expect(window_.getByText(/photos? · \d+ KB so far/)).toHaveCount(0)
 
     // The undo, labelled with the seconds it has left so a hiker can see it
     // is running rather than discovering it has stopped.

@@ -427,6 +427,7 @@ import {
 } from './lib/auth'
 import {
   amendQueuedReport,
+  attachQueuedPhotos,
   enqueueAppFailure,
   enqueueClosure,
   listQueued,
@@ -7974,6 +7975,17 @@ function App() {
     [refreshOutbox],
   )
 
+  /** The receipt's photos, the same way (#1563): the whole set, to the
+   *  report the window filed, if it is still in the queue to take them. */
+  const handleAttachPhotosFromWindow = useCallback(
+    async (outboxId: string, photos: readonly Blob[]): Promise<boolean> => {
+      const found = await attachQueuedPhotos(outboxId, photos)
+      await refreshOutbox()
+      return found
+    },
+    [refreshOutbox],
+  )
+
   /**
    * The two names a report can be signed with (#1563). The trail name is the
    * one every other surface shows; the real name is kept only for this
@@ -9112,6 +9124,10 @@ function App() {
           // currently says: a mile can be the wrong mile, and a hiker who
           // walked on before filing is the case this exists for.
           onPointOnMap={handleReportPointOnMap}
+          // `reportCrosshairOut` spelled out, because it is derived below this
+          // node is built: with the form open its other term is true, so this
+          // is the same answer.
+          standingAside={reportPointOnMap && activeTab === 'map'}
           onSubmit={(submission) => void handleSubmitReport(submission)}
           onCancel={() => setReporting(null)}
         />
@@ -11323,6 +11339,7 @@ function App() {
             onRealName={handleRealName}
             onFile={handleFileFromWindow}
             onAmend={handleAmendFromWindow}
+            onAttachPhotos={handleAttachPhotosFromWindow}
             onUndo={handleUndoFromWindow}
             // A closure leaves the report flow rather than continuing it: it is
             // a different record with a different form (#832), and it is not a

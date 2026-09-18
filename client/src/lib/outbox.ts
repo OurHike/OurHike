@@ -507,6 +507,22 @@ export type ReportAmendment = Partial<
 >
 
 /**
+ * The ids a flush is sending at this moment (review of #1571).
+ *
+ * `flushOutbox` reads the queue once, sends each item and then removes it,
+ * so an amendment written while an item's request is out lands on a row
+ * that is deleted the moment the request returns: the server stored the
+ * body from before the amendment and the queue no longer holds the words.
+ * `amendQueuedReport` and `attachQueuedPhotos` answer false for such an id,
+ * which is the truth - what was added did not go - and what lets the
+ * receipt say so. The PR body's claim that nothing reads the queue while
+ * the window is open was not quite true: `useOutboxSync` flushes when the
+ * phone comes online with the receipt open, and a previous window's
+ * follow-up timer can fire into a new one.
+ */
+const inFlight = new Set<string>()
+
+/**
  * Change a report that is still waiting in the queue (#1563).
  *
  * WHAT THIS FIXES. The report window files on the tap and then offers "Add
@@ -526,6 +542,7 @@ export async function amendQueuedReport(
   id: string,
   amendment: ReportAmendment,
 ): Promise<boolean> {
+  if (inFlight.has(id)) return false
   let found = false
   await mutateQueue((queue) =>
     queue.map((item) => {
@@ -538,6 +555,32 @@ export async function amendQueuedReport(
         else Object.assign(payload, { [key]: value })
       }
       return { ...item, payload }
+    }),
+  )
+  return found
+}
+
+/**
+ * Give a report still waiting in the queue its photos (#1563): the receipt's
+ * tiles, picked after the tap. The whole set, replacing whatever the item
+ * held - a receipt is the only surface that attaches this way and it holds
+ * the full list - and an empty set removes the key rather than writing an
+ * empty array, for `enqueue`'s reason. True when the report was still here
+ * to take them; false when it had gone, or is going right now.
+ */
+export async function attachQueuedPhotos(
+  id: string,
+  photos: readonly Blob[],
+): Promise<boolean> {
+  if (inFlight.has(id)) return false
+  let found = false
+  await mutateQueue((queue) =>
+    queue.map((item) => {
+      if (item.id !== id || item.payload === undefined) return item
+      found = true
+      const next: OutboxItem = { ...item }
+      delete next.photos
+      return photos.length === 0 ? next : { ...next, photos: [...photos] }
     }),
   )
   return found
@@ -777,6 +820,10 @@ export async function flushOutbox(
       continue
     }
 
+    // Marked while its request is out, so an amendment landing mid-send is
+    // refused rather than written to a row the success path is about to
+    // delete (review of #1571).
+    inFlight.add(item.id)
     try {
       await send(item)
       // Removed one at a time, and this is the fix rather than a tidy-up.
@@ -797,6 +844,8 @@ export async function flushOutbox(
       }
       await markFailed(item.id, reason)
       stuck += 1
+    } finally {
+      inFlight.delete(item.id)
     }
   }
 

@@ -378,6 +378,42 @@ describe('the photo the decision turns on', () => {
     ).toBeInTheDocument()
   })
 
+  it('prints the hiker\u2019s words beside the coordinates when they typed them anyway (#1563)', async () => {
+    // A ±800 m fix and "the ford below the gap" place a report better than
+    // either alone, which is why lib/reportLocation.ts sends both since the
+    // review of #1571. A queue that dropped the sentence for having
+    // coordinates would be back to a coarse pin with nothing to place it.
+    await shown({
+      reports: [
+        aReport({
+          location_source: 'gps',
+          location_accuracy_m: 800,
+          location_fix_age_s: 2400,
+          place_words: 'the ford below the gap',
+        }),
+      ],
+    })
+
+    expect(
+      await screen.findByText(
+        /35\.6000, -83\.5000 · GPS ±2,625 ft, fix 40 min old — “the ford below the gap”/,
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('names a waypoint-anchored row by its waypoint and adds nothing about how (#1563)', async () => {
+    // `placeOf` answers with the waypoint before the provenance is asked,
+    // so a `poi` source has nothing left to say: the review of #1571 found
+    // the arm that used to print "a named place" unreachable, and it is
+    // gone rather than kept as a claim nothing could make.
+    await shown({
+      reports: [aReport({ poi_id: 'atc_shelters:12', location_source: 'poi' })],
+    })
+
+    expect(await screen.findByText(/at atc_shelters:12/)).toBeInTheDocument()
+    expect(screen.queryByText(/named place/)).toBeNull()
+  })
+
   it('says how a GPS-placed report was placed - the radius and the age of the fix (#1563)', async () => {
     // The provenance reaches the person reading it: a ±800 m fix forty
     // minutes old is a different claim from a surveyed waypoint, and the

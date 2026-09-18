@@ -109,6 +109,20 @@ describe('LocationSheet', () => {
     opener.remove()
   })
 
+  it('hears nothing while its host stands aside, and everything again once it is back', () => {
+    // Mounted under a report window that stood aside for the map's
+    // crosshair, still holding the tap that was waiting on it. An Escape
+    // meant for the crosshair used to dismiss it and drop that tap (review
+    // of #1571); `active` is the host's word on whose keys these are.
+    const { props, rerender } = setup({ active: false })
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(props.onClose).not.toHaveBeenCalled()
+
+    rerender(<LocationSheet {...props} active />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(props.onClose).toHaveBeenCalledTimes(1)
+  })
+
   it('hands a row to onChoose exactly as the picker would', () => {
     const { props } = setup()
     fireEvent.click(screen.getByTestId('location-fix'))

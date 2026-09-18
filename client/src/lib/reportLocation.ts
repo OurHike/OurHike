@@ -206,6 +206,16 @@ export function reportLocationFields(
   now: Date,
   words = '',
 ): ReportLocationFields {
+  // THE WORDS TRAVEL WHENEVER THEY WERE TYPED, beside the coordinates when
+  // there are coordinates and alone when there are not. The first version
+  // sent them only with no fix, which dropped them the moment a fix arrived
+  // under a hiker mid-sentence - a first, coarse fix on a cold start being
+  // the ordinary case - and filed a ±800 m pin without the sentence that
+  // would have placed it (review of #1571). A moderator reading a coarse
+  // pin beside "half a mile north of Bailey Gap, at the ford" has more than
+  // either alone; the queue prints both (screens/Moderation.tsx).
+  const trimmed = words.trim()
+  const said = trimmed === '' ? {} : { place_words: trimmed }
   switch (choice.kind) {
     case 'poi':
       return {
@@ -214,6 +224,7 @@ export function reportLocationFields(
         lon: choice.lon,
         ...(choice.mile !== undefined ? { mile: choice.mile } : {}),
         location_source: 'poi',
+        ...said,
       }
     case 'point':
       return {
@@ -221,12 +232,10 @@ export function reportLocationFields(
         lon: choice.lon,
         ...(choice.mile !== undefined ? { mile: choice.mile } : {}),
         location_source: 'map',
+        ...said,
       }
     case 'fix': {
-      if (fix === null) {
-        const trimmed = words.trim()
-        return trimmed === '' ? {} : { place_words: trimmed }
-      }
+      if (fix === null) return said
       return {
         lat: fix.lat,
         lon: fix.lon,
@@ -237,6 +246,7 @@ export function reportLocationFields(
         // precision nobody stated.
         location_accuracy_m: Math.round(fix.accuracyM * 10) / 10,
         location_fix_age_s: fixAgeSeconds(fix.fixedAt, now),
+        ...said,
       }
     }
   }

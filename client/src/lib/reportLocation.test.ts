@@ -109,10 +109,50 @@ describe('what the wire carries', () => {
     expect(fields).toEqual({ place_words: 'north of the gap' })
   })
 
-  it('drops the words once a place is known - they described a report that now has one', () => {
+  it('keeps the words beside the fix, a waypoint and a marked spot, trimmed and still never a pin', () => {
+    // The first version dropped them the moment a place was known - which
+    // was the moment a first, coarse fix arrived on a cold start under a
+    // hiker mid-sentence, and filed a ±800 m pin without the sentence that
+    // would have placed it (review of #1571). Beside the coordinates a
+    // moderator has both; the coordinates are still never made FROM them.
+    expect(reportLocationFields(AT_THE_FIX, FIX, NOW, '  north of the gap  ')).toEqual({
+      lat: 35.6,
+      lon: -83.5,
+      mile: 1043.2,
+      location_source: 'gps',
+      location_accuracy_m: 4.9,
+      location_fix_age_s: 30,
+      place_words: 'north of the gap',
+    })
     expect(
-      'place_words' in reportLocationFields(AT_THE_FIX, FIX, NOW, 'north of the gap'),
-    ).toBe(false)
+      reportLocationFields(
+        { kind: 'poi', poiId: SHELTER.id, name: SHELTER.name, lat: 37.4, lon: -80.4 },
+        FIX,
+        NOW,
+        'the privy side',
+      ),
+    ).toMatchObject({
+      poi_id: SHELTER.id,
+      location_source: 'poi',
+      place_words: 'the privy side',
+    })
+    expect(
+      reportLocationFields(
+        { kind: 'point', lat: 36.1, lon: -81.7 },
+        FIX,
+        NOW,
+        'at the ford',
+      ),
+    ).toMatchObject({ location_source: 'map', place_words: 'at the ford' })
+  })
+
+  it('sends no place_words key at all for words that are only whitespace', () => {
+    // Absent rather than an empty string: the queue quotes anything present,
+    // and “ ” would be a claim about nothing.
+    expect('place_words' in reportLocationFields(AT_THE_FIX, FIX, NOW, '   ')).toBe(false)
+    expect('place_words' in reportLocationFields(AT_THE_FIX, null, NOW, '   ')).toBe(
+      false,
+    )
   })
 
   it('omits the mile rather than zeroing it when the fix is off the corridor', () => {

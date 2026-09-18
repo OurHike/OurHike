@@ -69,6 +69,15 @@
 // contacted (reporting/ReporterDetails.tsx). Asked AFTER the tap, on the
 // receipt, because under 1a nothing may stand between a hiker and the tile.
 //
+// AND THE RECEIPT TAKES PHOTOS, above the note (the maintainer, 2026-09-18:
+// "add the ability to add pictures above the note"). The same tiles the long
+// form has, over the same state machine (reporting/useReportPhotos.ts), and
+// they reach the queued report the way the note does - on the way out of the
+// receipt, through `onAttachPhotos` (lib/outbox.ts's `attachQueuedPhotos`).
+// features/REPORT_A_PROBLEM.md step 5 had promised "a note, and photos, on
+// the receipt" since #1133; the note was a textarea nothing read and the
+// photos were nowhere. Both are real now.
+//
 // AND THE CATEGORY IS ASKED ONCE. A tap refused for want of a place is
 // remembered (`pending`), and the moment the place arrives - a row in the
 // sheet, the words with the sheet closed, or a spot kept on the map - the
@@ -104,6 +113,9 @@ import { REPORT_ICONS, type ReportIconName } from './icons'
 // Both deferred (screens/deferred.ts), as this window is: neither is on
 // screen the instant it opens, and the eager budget could not hold them.
 import { LocationSheet, ReporterDetails } from '../screens/deferred'
+import { PhotoTiles } from './PhotoTiles'
+import { useReportPhotos } from './useReportPhotos'
+import { useFocusTrap } from './useFocusTrap'
 // In a module of its own because the shell reads it (undoWindow.ts).
 import { UNDO_WINDOW_MS } from './undoWindow'
 import './reportWindow.css'
@@ -192,6 +204,12 @@ export interface ReportWindowProps {
    * the report had already sent, which the window says rather than hides.
    */
   onAmend: (outboxId: string, amendment: ReportAmendment) => Promise<boolean>
+  /**
+   * Give a report this window filed its photos, picked on the receipt - the
+   * whole set, replacing any it held. Resolves false when the report had
+   * already sent, which the window says rather than hides.
+   */
+  onAttachPhotos: (outboxId: string, photos: readonly Blob[]) => Promise<boolean>
   /** Take it back out of the queue. The same `removeQueued` everything else
    *  uses - see lib/outbox.ts on why this is not a special withdrawal path. */
   onUndo: (outboxId: string) => Promise<void>
@@ -273,6 +291,7 @@ export function ReportWindow({
   onRealName,
   onFile,
   onAmend,
+  onAttachPhotos,
   onUndo,
   onReportClosure,
   onReportUnsafe,
@@ -338,6 +357,8 @@ export function ReportWindow({
   // Ticks only while an undo window is open, so a window sitting on the tiles
   // costs no timer at all.
   const [remaining, setRemaining] = useState(0)
+  // The receipt's photos, picked after the tap (reporting/useReportPhotos.ts).
+  const photos = useReportPhotos()
 
   // A point kept on the map arrives as a new `location` from the shell, and
   // the sheet closes on it the way it closes on one of its own rows.
@@ -407,7 +428,9 @@ export function ReportWindow({
    * nothing was changed. True unless something was changed and the report
    * had already gone.
    */
-  const receiptChanged = note.trim() !== '' || signedAs !== 'trail' || contactOk
+  const photosReady = photos.ready
+  const receiptChanged =
+    note.trim() !== '' || signedAs !== 'trail' || contactOk || photosReady.length > 0
   const settle = useCallback(async (): Promise<boolean> => {
     if (filed === null || !receiptChanged) return true
     const trimmed = note.trim()
@@ -423,7 +446,15 @@ export function ReportWindow({
       signed_name_kind: fields.signed_name_kind,
       contact_ok: contactOk || undefined,
     })
-    return found
+    if (!found) return false
+    // The photos after the fields, and only the ones that finished
+    // shrinking - a tile still preparing holds Done (below), and a failed one
+    // sends nothing, as on the long form.
+    if (photosReady.length === 0) return true
+    return onAttachPhotos(
+      filed.outboxId,
+      photosReady.map((pick) => pick.blob),
+    )
   }, [
     filed,
     receiptChanged,
@@ -434,6 +465,8 @@ export function ReportWindow({
     names.trail,
     onRealName,
     onAmend,
+    photosReady,
+    onAttachPhotos,
   ])
 
   // `standing` rather than a ref: the identity of this callback changing when
@@ -487,48 +520,15 @@ export function ReportWindow({
   //
   // NOTHING WHILE STANDING ASIDE. The window is inert and the map has the
   // keys: an Escape meant for the crosshair bar must not close a window the
-  // hiker cannot see.
-  useEffect(() => {
-    if (standingAside) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        if (picking) {
-          dismissSheet()
-          return
-        }
-        void close()
-        return
-      }
-      if (event.key !== 'Tab') return
-      // The sheet loops its own focus while it is up; the loop below is for
-      // this dialog alone, and would otherwise drag focus out of the sheet.
-      if (picking) return
-
-      // A focus trap, hand-rolled because this is the app's first true modal
-      // and one screen does not earn a dependency. Queried per keystroke
-      // rather than cached: the body swaps entirely between the tiles and the
-      // receipt, so any cached list would be stale exactly when it is used.
-      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), textarea, [href], input, select, [tabindex]:not([tabindex="-1"])',
-      )
-      if (focusable === undefined || focusable.length === 0) return
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-      if (first === undefined || last === undefined) return
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', onKey, true)
-    return () => document.removeEventListener('keydown', onKey, true)
-  }, [close, dismissSheet, picking, standingAside])
+  // hiker cannot see - nor dismiss the sheet inside it, which is why the
+  // sheet takes the same flag (review of #1571). The trap itself is
+  // reporting/useFocusTrap.ts, shared with the sheet frame; Tab is left to
+  // the sheet while the sheet is up.
+  const onEscape = useCallback(() => {
+    if (picking) dismissSheet()
+    else void close()
+  }, [picking, dismissSheet, close])
+  useFocusTrap(dialogRef, { active: !standingAside, onEscape, loop: !picking })
 
   // The countdown. Re-read from the clock each tick rather than decremented,
   // so a tab that was backgrounded comes back with the right answer instead of
@@ -675,6 +675,7 @@ export function ReportWindow({
         needed={refused}
         now={now}
         onClose={dismissSheet}
+        active={!standingAside}
       />
     )
 
@@ -780,6 +781,18 @@ export function ReportWindow({
         </div>
 
         <div className="report-window__detail">
+          {/* PHOTOS ABOVE THE NOTE, as the maintainer asked (2026-09-18): the
+              same tiles as the long form, attached to the queued report on
+              the way out with everything else the receipt collects. */}
+          <p className="report-window__detail-label">Add a photo — optional</p>
+          <PhotoTiles
+            picks={photos.picks}
+            ready={photos.ready}
+            full={photos.full}
+            choosePhoto={photos.choosePhoto}
+            removePick={photos.removePick}
+          />
+
           <p className="report-window__detail-label">Add detail — optional</p>
           <textarea
             className="report-window__note"
@@ -818,10 +831,14 @@ export function ReportWindow({
 
           {lostLine}
 
+          {/* Held only while a photo is still shrinking, as the long form
+              holds Send: a tile that failed leaves Done live, since the
+              report already stands and the words carry it. */}
           <button
             type="button"
             className="report-window__done"
             data-testid="report-done"
+            disabled={photos.preparing}
             onClick={() => void close()}
           >
             Done
@@ -835,12 +852,15 @@ export function ReportWindow({
               // case, which is a hiker clearing a campsite finding three things.
               // The note goes to the report it described first, and is cleared
               // with it: carrying it onto the next one would attach somebody's
-              // words to the wrong thing. The signature and the consent stay.
+              // words to the wrong thing. The photos go with it too, and are
+              // cleared for the same reason. The signature and the consent
+              // stay.
               void settle().then((found) => {
                 if (!found) setLost(true)
               })
               setFiled(null)
               setNote('')
+              photos.clear()
             }}
           >
             Note something else

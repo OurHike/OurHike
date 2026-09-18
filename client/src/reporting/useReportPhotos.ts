@@ -20,6 +20,13 @@
 // **A FAILURE COSTS ITS OWN TILE AND NOTHING ELSE.** The entry goes to
 // `failed` with the words a hiker can act on, and the ready ones stay
 // attached - which is the whole argument for tiles over one field.
+//
+// **AND IT CARRIES THE TWO FIXES #1578 MADE TO THE FORM'S COPY**, which
+// landed on `main` while this hook was being written out of it. Both are
+// about the thumbnail URL, and both would have been silently lost by the
+// move: the URL is minted BEFORE the updater rather than inside it, and a
+// pick taken back mid-shrink mints none at all. Their tests live in
+// screens/ReportForm.test.tsx, which drives this machine through the form.
 
 import { useEffect, useRef, useState } from 'react'
 import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
@@ -65,6 +72,10 @@ export function photoSummary(ready: readonly { blob: Blob }[]): string {
 
 export function useReportPhotos(): ReportPhotos {
   const [picks, setPicks] = useState<readonly PhotoPick[]>([])
+  // Picks taken back while their photo was still shrinking, so the resolve
+  // below has something synchronous to check before it mints a thumbnail
+  // URL for a tile that is gone (#1578).
+  const removedRef = useRef(new Set<string>())
 
   const choosePhoto = async (file: File | null) => {
     if (file === null) return
@@ -73,13 +84,19 @@ export function useReportPhotos(): ReportPhotos {
 
     try {
       const blob = await prepareReportPhoto(file)
+      // A pick taken back must not come back - and must mint nothing.
+      if (removedRef.current.has(id)) return
+      // Minted HERE and not inside the updater below. React may run an
+      // updater more than once for one update - twice for the first update
+      // in a batch, and on every update under StrictMode - and an object URL
+      // minted inside it is a reference the browser keeps that nothing can
+      // then revoke. The same hazard lib/useGeolocation.ts hoists `onFix`
+      // out of its updater for (#1578).
+      const url = URL.createObjectURL(blob)
       setPicks((current) =>
-        // Replaced by id, and skipped entirely if the hiker removed the tile
-        // while it was shrinking - a pick taken back must not come back.
+        // Replaced by id; a pick removed in the meantime is simply not here.
         current.map((pick) =>
-          pick.id === id
-            ? { id, state: 'ready', blob, url: URL.createObjectURL(blob) }
-            : pick,
+          pick.id === id ? { id, state: 'ready', blob, url } : pick,
         ),
       )
     } catch (error) {
@@ -95,21 +112,6 @@ export function useReportPhotos(): ReportPhotos {
     }
   }
 
-  const removePick = (id: string) =>
-    setPicks((current) => {
-      const going = current.find((pick) => pick.id === id)
-      if (going?.state === 'ready') URL.revokeObjectURL(going.url)
-      return current.filter((pick) => pick.id !== id)
-    })
-
-  const clear = () =>
-    setPicks((current) => {
-      for (const pick of current) {
-        if (pick.state === 'ready') URL.revokeObjectURL(pick.url)
-      }
-      return []
-    })
-
   // Every thumbnail this surface minted, released when the surface goes. An
   // object URL is a reference the browser holds until it is told otherwise,
   // and these surfaces open from a ridge on a phone with the map already
@@ -122,6 +124,30 @@ export function useReportPhotos(): ReportPhotos {
   useEffect(() => {
     picksRef.current = picks
   }, [picks])
+
+  const removePick = (id: string) => {
+    removedRef.current.add(id)
+    setPicks((current) => {
+      const going = current.find((pick) => pick.id === id)
+      if (going?.state === 'ready') URL.revokeObjectURL(going.url)
+      return current.filter((pick) => pick.id !== id)
+    })
+  }
+
+  const clear = () => {
+    // Marked gone for the same reason a removed one is (#1578): a pick still
+    // shrinking when the receipt moves on to the next report resolves into a
+    // list it is no longer in, and the URL minted for it would be a
+    // reference nothing can revoke.
+    for (const pick of picksRef.current) removedRef.current.add(pick.id)
+    setPicks((current) => {
+      for (const pick of current) {
+        if (pick.state === 'ready') URL.revokeObjectURL(pick.url)
+      }
+      return []
+    })
+  }
+
   useEffect(
     () => () => {
       for (const pick of picksRef.current) {

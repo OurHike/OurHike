@@ -476,9 +476,17 @@ export type ClassifyFn = (error: unknown) => string | null
  *  a caller that has no opinion cannot accidentally discard a report. */
 const RETRY_EVERYTHING: ClassifyFn = () => null
 
+/** What is under the key, as a queue. A fresh install has never written
+ *  it, and that is not an error state. Nor is a key holding something that
+ *  is not a list: no item a hiker wrote can be inside a value that is not a
+ *  queue, and reading it as one used to throw from every later enqueue and
+ *  flush, which is the one failure the outbox exists to rule out (#1578). */
+function asQueue(stored: unknown): OutboxItem[] {
+  return Array.isArray(stored) ? (stored as OutboxItem[]) : []
+}
+
 async function readQueue(): Promise<OutboxItem[]> {
-  // A fresh install has never written the key; that is not an error state.
-  return (await get(OUTBOX_KEY)) ?? []
+  return asQueue(await get(OUTBOX_KEY))
 }
 
 /**
@@ -493,7 +501,7 @@ async function readQueue(): Promise<OutboxItem[]> {
 async function mutateQueue(
   transform: (queue: OutboxItem[]) => OutboxItem[],
 ): Promise<void> {
-  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(queue ?? []))
+  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(asQueue(queue)))
 }
 
 export async function listQueued(): Promise<OutboxItem[]> {

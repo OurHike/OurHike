@@ -555,6 +555,22 @@ export function ReportWindow({
   const warnAboutFix =
     location.kind === 'fix' && fix !== null && filed === null && fixNeedsAWord(fix, now)
 
+  // ONE REPORT PER WRITE, however many taps land while the first is still
+  // being written (#1578, kept through this branch's merge of main).
+  // `onFile` is an IndexedDB transaction - tens of milliseconds on a loaded
+  // phone - and the tiles stay drawn until it resolves, so a second tap
+  // inside that window queued a second report the receipt never showed and
+  // Undo could not reach. A ref rather than state: a flag set through
+  // setState by the first tap is not yet visible to a second tap in the
+  // same frame.
+  //
+  // It sits INSIDE `writeReport` rather than in the tap handler, which is
+  // what this branch adds to it: the remembered tap fires from an effect
+  // (below) as well as from a thumb, and that effect re-runs whenever
+  // `writeReport` changes identity - once per keystroke in the note. One
+  // ref covers both doors.
+  const filing = useRef(false)
+
   /**
    * The write itself: the report to the outbox, then the receipt. Every
    * piece of state it touches is set after the write returns, which is what
@@ -563,17 +579,23 @@ export function ReportWindow({
    */
   const writeReport = useCallback(
     async (type: ReportTypeId) => {
-      const holdUntil = undoWindowFromNow()
-      const outboxId = await onFile(type, note.trim(), holdUntil, {
-        location,
-        placeWords: placeWords.trim(),
-        signature,
-        contactOk,
-      })
-      setPending(null)
-      setStanding((current) => [...current, outboxId])
-      setLost(false)
-      setFiled({ type, outboxId, undoUntil: holdUntil.getTime(), phrase: words.phrase })
+      if (filing.current) return
+      filing.current = true
+      try {
+        const holdUntil = undoWindowFromNow()
+        const outboxId = await onFile(type, note.trim(), holdUntil, {
+          location,
+          placeWords: placeWords.trim(),
+          signature,
+          contactOk,
+        })
+        setPending(null)
+        setStanding((current) => [...current, outboxId])
+        setLost(false)
+        setFiled({ type, outboxId, undoUntil: holdUntil.getTime(), phrase: words.phrase })
+      } finally {
+        filing.current = false
+      }
     },
     [onFile, note, location, placeWords, signature, contactOk, words.phrase],
   )
@@ -598,6 +620,7 @@ export function ReportWindow({
       setRefused(true)
       return
     }
+    // One write per tap: the guard is inside `writeReport` (#1578).
     await writeReport(type)
   }
 
@@ -607,18 +630,15 @@ export function ReportWindow({
   // because the place arrives as a prop from the shell one render after the
   // handler runs, and this is the one place that sees the render it arrives
   // in. Not while the window stands aside for the crosshair, and not over
-  // a receipt. `writing` is the guard against the effect re-running while
-  // the write is still out - `writeReport` changes identity with every
-  // keystroke in the note, and `pending` is only cleared once the write
-  // has returned.
-  const writing = useRef(false)
+  // a receipt. `filing` - the same ref the tap goes through - is what stops
+  // the effect writing twice while the first write is still out:
+  // `writeReport` changes identity with every keystroke in the note, so the
+  // effect re-runs, and `pending` is only cleared once the write returns.
+  // Read here as well as inside `writeReport` so the re-run costs nothing.
   useEffect(() => {
     if (pending === null || picking || standingAside || filed !== null || !placed) return
-    if (writing.current) return
-    writing.current = true
-    void writeReport(pending).finally(() => {
-      writing.current = false
-    })
+    if (filing.current) return
+    void writeReport(pending)
   }, [pending, picking, standingAside, filed, placed, writeReport])
 
   const undo = async () => {

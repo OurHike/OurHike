@@ -72,6 +72,7 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
   background_source: hiking_topo_live | usgs_topo_offline  (default: hiking_topo_live)
   max_background_zoom: 11 | 12 | 13
   show_roads: bool                               (default: false)
+  blaze_colors_shown: bool                       (default: false)
   waypoint_types_shown: set of POI types         (default: shelter, water, campsite, privy)
   layer_detail_level: minimal | standard | full
   auto_rotate_enabled: bool                      (default: false)
@@ -90,6 +91,8 @@ UserPreferences   (client-side by default, IndexedDB - syncs via Authentication
 ```
 
 `default_place` is a place the hiker **named** from the published places index — a park, a town, a trailhead — snapshotted in full, and it syncs so a second device opens on the same place (the maintainer's decision of 2026-09-10, [#1374](https://github.com/OurHike/OurHike/pull/1374)). It is never a GPS fix: the permission card's promise that location "is read on this phone and never sent anywhere" is about fixes, and nothing on this object may hold where somebody is standing (`client/src/lib/defaultPlace.test.ts` pins that no key does).
+
+`blaze_colors_shown` is the legend's "Blaze colors" switch ([#1575](https://github.com/OurHike/OurHike/issues/1575)): off, every trail line on the map is drawn in one red; on, each line in its blaze hue. It syncs, unlike the Alerts switch below, because a hiker who finds the hues distracting on one phone means it on the next, and nothing about a hiker's safety turns on which colour a line is drawn in — the blaze is still named on the tapped line's sheet, the legend's "Trails in view" rows and the day hike card's legs, none of which read the key (the maintainer, 2026-09-17: *"Changing the color option should only affect the map itself, not the other options"*).
 
 **Deliberately excluded:** `show_closures` isn't a preference at all - Map Options already recommends it stay always-on, not user-hideable, since suppressing known safety information isn't the same kind of choice as picking a background tile style. It's a fixed display rule, not a setting.
 

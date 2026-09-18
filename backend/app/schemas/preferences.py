@@ -246,6 +246,15 @@ class PreferencesIn(BaseModel):
     # not just by type - a hiker who never touched the switch syncs the same
     # thing whichever side answers first.
     drought_layer_shown: bool = False
+    # Whether the map's trail lines are drawn in their blaze colours, or every
+    # one in the same red (OurHike/OurHike#1575). Defaulted False like
+    # drought_layer_shown above and for the same two reasons: False is the
+    # client's own default (lib/userPreferences.ts's DEFAULT_PREFERENCES - the
+    # maintainer's "a red line, like the nynjtc has on their maps"), so a hiker
+    # who never touched the legend's switch syncs the same answer whichever
+    # side answers first; and every row written before this key existed reads
+    # back as that default rather than as a ValidationError.
+    blaze_colors_shown: bool = False
     # Mirrors client/src/lib/userPreferences.ts's DEFAULT_PREFERENCES exactly:
     # the curated subset a maintainer decision (#865) chose over every
     # category, resolving the open question IDENTITY_AND_PRIVACY.md used to

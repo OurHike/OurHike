@@ -58,25 +58,3 @@ export function atcUpdatedAt(update: AtcUpdate): Date | null {
   const parsed = new Date(update.updated_at)
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
-
-/**
- * Whether a URL may be rendered as a link.
- *
- * `pipeline/lib/atc_updates.py` refuses a non-`http(s)` URL on the way in as
- * well, so this is the second line rather than the only one; a check that only
- * exists at the far end is one a future second producer walks straight past.
- *
- * Note for anyone extending this: chrome/ClosureSheet.tsx renders a
- * moderator-supplied `reroute_url` with NO such check. That is a real gap and
- * it is not this module's to close quietly - it wants its own issue, because
- * the fix is a decision about what a sheet does with a URL it refuses, not a
- * one-line import.
- */
-export function isSafeLink(url: string): boolean {
-  try {
-    const scheme = new URL(url, window.location.href).protocol
-    return scheme === 'http:' || scheme === 'https:'
-  } catch {
-    return false
-  }
-}

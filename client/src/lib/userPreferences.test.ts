@@ -68,6 +68,7 @@ describe('UserPreferences schema', () => {
         'anonymity_window_days',
         'auto_rotate_enabled',
         'background_source',
+        'blaze_colors_shown',
         'contribute_conditions',
         'default_place',
         'download_choice_made',
@@ -131,6 +132,15 @@ describe('UserPreferences schema', () => {
 describe('the hiking sheet level (#276)', () => {
   it('defaults to Standard, the recommended and envelope-sized cut', () => {
     expect(DEFAULT_PREFERENCES.hiking_detail_level).toBe('standard')
+  })
+})
+
+describe('the blaze colours switch (#1575)', () => {
+  it('defaults blaze_colors_shown to false - one red line for every trail until the hiker asks', () => {
+    // The maintainer's default, quoted on the key itself. Flipping it is
+    // this one value, and this test is what makes that a decision rather
+    // than a drift.
+    expect(DEFAULT_PREFERENCES.blaze_colors_shown).toBe(false)
   })
 })
 

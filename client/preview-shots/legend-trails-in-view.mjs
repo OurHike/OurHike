@@ -38,6 +38,15 @@
 // nothing at all, so the row reads `taken` BECAUSE the hiker is on that
 // hike. That is precisely what #1352 changed - one state, read in two places
 // - and a tap could not have shown it.
+// RE-POINTED 2026-09-17 (#1575) for what does NOT change in this frame. The
+// map now draws every trail one red line by default, and this panel gained a
+// "Blaze colors" toggle at its head - off here, the shipped default - yet the
+// rows' swatches below are still white and blue. That is
+// the maintainer's second instruction that day ("Changing the color option
+// should only affect the map itself, not the other options") photographed:
+// with the switch off, these rows are where a named trail's blaze is read.
+// A frame with red swatches would be map/MapIcon.tsx's TrailLineSwatch
+// following the switch, which it deliberately does not.
 import { seedLongHike } from './fixtures/longHike.mjs'
 
 // WHAT THE FRAME ACTUALLY HOLDS, checked against the photographed PNG
@@ -54,9 +63,9 @@ import { seedLongHike } from './fixtures/longHike.mjs'
 // rows were solid against dotted until then, and the word `taken` and the
 // ghosting are what separate them now.
 export const caption =
-  'The legend over Harriman at zoom 12 — the "Trails in view" block, at the foot of the panel under the pin grid and its switches since 2026-09-10 (it opened the panel from #1283 until the maintainer moved it down: "takes up a lot of space"), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws at full strength rather than ghosted, because a spur of the taken system is part of it (map/nearbyTrails.ts). Every swatch is a solid line — the dotted rows went with the map’s dot rhythm (2026-09-10). The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
+  'The legend over Harriman at zoom 12 — the "Trails in view" block, at the foot of the panel under the pin grid and its switches since 2026-09-10 (it opened the panel from #1283 until the maintainer moved it down: "takes up a lot of space"), with an active A.T. hike seeded and NOTHING TAPPED: since #1352 the row reads "taken" because the hiker is on that hike, which is the whole of the change in one word. Beside it the A.T.’s own Fingerboard Shelter side trail draws at full strength rather than ghosted, because a spur of the taken system is part of it (map/nearbyTrails.ts). Every swatch is a solid line — the dotted rows went with the map’s dot rhythm (2026-09-10). Since #1575 the "Blaze colors" toggle heads the panel, off (the shipped default, every trail on the map one red line), and the swatches down here are STILL white and blue: the switch changes the map and not this panel, so these rows are the blaze key while the map is red. The other organizations’ trails are absent, not ghosted — this preview’s bucket has no nearby_trails.pmtiles yet'
 export const alt =
-  'The legend sheet over the map screen: the waypoint category grid first, ending on its Closure and Serious warning rows with the "Read all trail notices" door directly under them, then the Showing, Verified, Alerts and Drought switches, and at the foot a "Trails in view" heading over two rows - a solid white line swatch inside its dark casing beside "Appalachian Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail" - above the downloaded-map block'
+  'The legend sheet over the map screen: a Blaze colors row with its toggle switch off directly under the title, then the waypoint category grid, ending on its Closure and Serious warning rows with the "Read all trail notices" door directly under them, then the Showing, Verified, Alerts and Drought switches, and at the foot a "Trails in view" heading over two rows - a solid white line swatch inside its dark casing beside "Appalachian Trail" with "taken" on the right, and a solid blue swatch beside "Fingerboard Shelter Side Trail" - above the downloaded-map block'
 
 /** Vector tiles from the bucket plus generated contours over a park both take
  *  longer than chrome. */

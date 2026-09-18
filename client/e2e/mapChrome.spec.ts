@@ -21,8 +21,9 @@
 //
 // STATES.
 //
-//  - **The three switches**, each asserted at the default this build ships -
-//    Alerts on, Verified? off, Drought off - before anything is toggled. A
+//  - **The four switches**, each asserted at the default this build ships -
+//    Alerts on, Verified? off, Drought off, Blaze colors off (#1575) - before
+//    anything is toggled. A
 //    persistence test that starts from the value it ends on proves nothing,
 //    and neither does a toggle test.
 //  - **What a toggle reaches.** Alerts is the switch with something to see:
@@ -33,8 +34,9 @@
 //    rather than a preference one. chrome/alertLayerPanel.ts keeps the alert
 //    flag in `useState` on the maintainer's constraint for #1047 ("the map
 //    should always open to the alerts being shown"), while
-//    chrome/waypointFiltersPanel.ts writes the drought tint through the stored
-//    preferences. A cold boot is what tells those two apart, so a cold boot is
+//    chrome/waypointFiltersPanel.ts writes the drought tint and the blaze
+//    colours through the stored preferences. A cold boot is what tells those
+//    apart, so a cold boot is
 //    what this asserts - through bootFreshPage(), for the reload trap
 //    support/seed.ts documents.
 //  - **Data freshness: which absence.** This environment publishes no
@@ -112,7 +114,7 @@ async function openLegend(page: Page) {
 }
 
 test.describe('the map’s chrome', () => {
-  test('entrance and exit: the legend’s three switches open on their shipped defaults, and go away with the sheet', async ({
+  test('entrance and exit: the legend’s four switches open on their shipped defaults, and go away with the sheet', async ({
     page,
   }) => {
     await openMap(page)
@@ -127,15 +129,22 @@ test.describe('the map’s chrome', () => {
     const verified = legend.getByRole('checkbox', { name: /Verified/ })
     const alerts = legend.getByRole('checkbox', { name: /^Alerts/ })
     const drought = legend.getByRole('checkbox', { name: /^Drought/ })
+    // A `role="switch"` button rather than a checkbox (#1575, the
+    // maintainer's "Can it be a toggle instead of a checkbox?"); Playwright
+    // reads its state off aria-checked exactly as it reads an input's.
+    const blazes = legend.getByRole('switch', { name: /^Blaze colors/ })
 
     // The defaults this build ships, each with a decision behind it:
     // alerts on every launch (chrome/alertLayerPanel.ts, #1047), Verified?
     // off because "an unconfirmed spring is still the best information
     // anyone has" (chrome/waypointFiltersPanel.ts), drought off
-    // (lib/userPreferences.ts's DEFAULT_PREFERENCES).
+    // (lib/userPreferences.ts's DEFAULT_PREFERENCES), and blaze colours off
+    // for the same file's reason - every trail one red line until asked
+    // (#1575), so the switch reads unchecked over a map drawn that way.
     await expect(alerts).toBeChecked()
     await expect(verified).not.toBeChecked()
     await expect(drought).not.toBeChecked()
+    await expect(blazes).not.toBeChecked()
 
     // Verified? is live, and its own state is ALL that can be asserted here:
     // the filter has nothing to filter, so no count and no sentence on this
@@ -154,6 +163,7 @@ test.describe('the map’s chrome', () => {
     await expect(alerts).toHaveCount(0)
     await expect(verified).toHaveCount(0)
     await expect(drought).toHaveCount(0)
+    await expect(blazes).toHaveCount(0)
   })
 
   test('states: turning Alerts off is said by the legend’s safety rows and by the map’s own strip, both ways', async ({
@@ -190,7 +200,7 @@ test.describe('the map’s chrome', () => {
     await expect(page.getByText('Alerts hidden')).toHaveCount(0)
   })
 
-  test('states: the drought tint is remembered across a cold boot and the alerts switch deliberately is not', async ({
+  test('states: the drought tint and the blaze colours are remembered across a cold boot and the alerts switch deliberately is not', async ({
     page,
   }) => {
     // The two halves of #1047's constraint, which only a restart can tell
@@ -202,8 +212,10 @@ test.describe('the map’s chrome', () => {
     const legend = await openLegend(page)
 
     await legend.getByRole('checkbox', { name: /^Drought/ }).click()
+    await legend.getByRole('switch', { name: /^Blaze colors/ }).click()
     await legend.getByRole('checkbox', { name: /^Alerts/ }).click()
     await expect(legend.getByRole('checkbox', { name: /^Drought/ })).toBeChecked()
+    await expect(legend.getByRole('switch', { name: /^Blaze colors/ })).toBeChecked()
     await expect(legend.getByRole('checkbox', { name: /^Alerts/ })).not.toBeChecked()
     // Observable proof the alert flip reached the map itself before anything
     // is restarted - the strip is fed from the same state the next boot is
@@ -224,6 +236,10 @@ test.describe('the map’s chrome', () => {
       await expect(second).toBeVisible()
 
       await expect(second.getByRole('checkbox', { name: /^Drought/ })).toBeChecked()
+      // The blaze switch is the same kind of thing as the drought row and
+      // rides the same store (#1575): a hiker who asked for the hues has them
+      // back on the next boot.
+      await expect(second.getByRole('switch', { name: /^Blaze colors/ })).toBeChecked()
       // The map opens on the alerts. Asserted positively rather than as the
       // absence of a hide, so a boot that failed cannot pass this.
       await expect(second.getByRole('checkbox', { name: /^Alerts/ })).toBeChecked()

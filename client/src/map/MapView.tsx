@@ -457,6 +457,15 @@ export interface MapViewProps {
   mapStyle?: MapStyle
   redLight?: boolean
   /**
+   * Whether the trail lines wear their blaze hues, or every one the same red
+   * (#1575, lib/userPreferences.ts's `blaze_colors_shown`). Handed down and
+   * applied exactly like `redLight`: seeded into the built style for a
+   * correct first frame, repainted in place on change. Defaults to the hues
+   * here as `redLight` defaults to off - the shipped default is the
+   * preference's, and MapScreen always passes it.
+   */
+  blazeColorsShown?: boolean
+  /**
    * How much of the sheet to draw - see map/mapDetail.ts. Pure layer
    * visibility on the live sheet; the downloaded raster has no layers to
    * thin and ignores it.
@@ -584,6 +593,7 @@ export function MapView({
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  blazeColorsShown = true,
   detail = 'standard',
   onViewportChange,
   onTrailsInView,
@@ -706,6 +716,7 @@ export function MapView({
           themeChoice,
           mapStyle,
           redLight,
+          blazeColorsShown,
           // Read here, at creation, rather than passed as a prop: the trails
           // source's tolerance is fixed when the style is built, and the fact
           // deciding it is a property of the bytes in storage (recorded
@@ -767,7 +778,8 @@ export function MapView({
     // interval: switching to metric must not cost a WebGL context. The units
     // effect below re-points the contour source in place instead.
     //
-    // `theme`, `mapStyle` and `redLight` are omitted on exactly that pattern
+    // `theme`, `mapStyle`, `redLight` and `blazeColorsShown` are omitted on
+    // exactly that pattern
     // (MAP_STYLE_SPEC.md spells it as a requirement: appearance never rebuilds
     // the map). They seed the backdrop, the archive's dimming, the trail ink
     // and the sheet's palette so a cold start under a dark appearance is dark
@@ -857,8 +869,14 @@ export function MapView({
   // colour on the live sheet - see map/style.ts's attachMapAppearance.
   useEffect(() => {
     if (map === null) return
-    return attachMapAppearance(map, { theme, themeChoice, mapStyle, redLight })
-  }, [map, theme, themeChoice, mapStyle, redLight])
+    return attachMapAppearance(map, {
+      theme,
+      themeChoice,
+      mapStyle,
+      redLight,
+      blazeColorsShown,
+    })
+  }, [map, theme, themeChoice, mapStyle, redLight, blazeColorsShown])
 
   // And the detail level's: which of the sheet's layers are drawn at all.
   // Pure visibility (map/mapDetail.ts), so a hiker thinning the sheet keeps

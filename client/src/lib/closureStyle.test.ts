@@ -5,6 +5,7 @@ import {
   CLOSURE_TAPE_CADENCE,
   CLOSURE_TAPE_IMAGE_ID,
   CLOSURE_TAPE_PIXEL_RATIO,
+  closureTapeImageId,
   CLOSURE_COLOR,
   buildClosureLayers,
   tapeRedFraction,
@@ -97,11 +98,13 @@ describe('closure vs blaze, as structural difference', () => {
 })
 
 describe('the tape shows more ground than ink', () => {
-  it('leaves most of its length transparent', () => {
+  it('leaves most of its length to the paper under-band', () => {
     // The direction this treatment was asked for in, held as a number rather
     // than as an adjective. The band it replaced was 100% opaque along its
     // whole length - 59% red, 41% casing showing through the bars - so
-    // anything under a half here is already a change in kind.
+    // anything under a half here is already a change in kind. Since #1575
+    // the rest of the length is the sheet's paper rather than nothing
+    // (option E), which moves no number here: the red is what is counted.
     expect(tapeRedFraction(CLOSURE_TAPE_CADENCE)).toBeLessThan(0.5)
   })
 
@@ -125,12 +128,14 @@ describe('the tape shows more ground than ink', () => {
 })
 
 describe('buildClosureLayers', () => {
-  const layers = buildClosureLayers('closures')
+  const layers = buildClosureLayers('closures', { ground: '#ffffff' })
 
   it('draws the tape as ONE layer, with no casing beneath it', () => {
-    // Not tidiness. A casing drawn as a second line under this one would show
-    // through every transparent gap in the tape, which is the exact defect the
-    // tape replaced - so "one layer" is the fix, and this is where it is held.
+    // Not tidiness. A casing drawn as a second line under this one showed
+    // through every gap in the tape while the gaps were transparent, which is
+    // the exact defect the tape replaced - so "one layer" is the fix, and
+    // this is where it is held. The paper under-band (#1575) is in the image
+    // for the same reason, not a second layer either.
     expect(layers).toHaveLength(1)
     expect(layers[0]?.id).toBe(CLOSURE_LAYER_ID)
   })
@@ -142,8 +147,19 @@ describe('buildClosureLayers', () => {
   it('paints the band with the tape image rather than a flat colour', () => {
     const paint = layers[0]?.paint as Record<string, unknown>
 
-    expect(paint['line-pattern']).toBe(CLOSURE_TAPE_IMAGE_ID)
+    expect(paint['line-pattern']).toBe(closureTapeImageId('#ffffff'))
     expect(paint['line-width']).toBe(CLOSURE_TAPE_WIDTH)
+  })
+
+  it('points the band at the tape drawn on the paper it was given (#1575)', () => {
+    // One image per sheet paper, named from the stem: a night build asks for
+    // the night tape, and the two are never the same image.
+    const night = buildClosureLayers('closures', { ground: '#0c1410' })[0]
+      ?.paint as Record<string, unknown>
+
+    expect(night['line-pattern']).toBe(closureTapeImageId('#0c1410'))
+    expect(night['line-pattern']).not.toBe(closureTapeImageId('#ffffff'))
+    expect(String(night['line-pattern']).startsWith(CLOSURE_TAPE_IMAGE_ID)).toBe(true)
   })
 
   it('does not data-drive colour off blaze_color - a closure is not a blaze', () => {

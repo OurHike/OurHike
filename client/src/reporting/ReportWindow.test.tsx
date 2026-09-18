@@ -246,6 +246,31 @@ describe('filing on the tap', () => {
     expect(screen.queryByTestId('report-tile-flooding')).toBeNull()
   })
 
+  it('files once however many taps land while the first is still being written (#1578)', async () => {
+    // onFile is an IndexedDB write; the tiles stay drawn until it resolves.
+    // Two taps in that window used to queue two reports, and the receipt's
+    // Undo reached only the second.
+    let release: (id: string) => void = () => {}
+    const { props } = setup({
+      onFile: vi.fn(
+        () =>
+          new Promise<string>((resolve) => {
+            release = resolve
+          }),
+      ),
+    })
+
+    fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    fireEvent.click(screen.getByTestId('report-tile-blowdown'))
+    fireEvent.click(screen.getByTestId('report-tile-flooding'))
+    expect(props.onFile).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      release('outbox-1')
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Filed — blow down at mi 628.4')
+  })
+
   it('says "Filed — blow down here" for a fix with no mile, never "at here"', async () => {
     // THE FIRST PHOTOGRAPH OF THIS SCREEN CAUGHT THIS, and no test had.
     // Every case above uses a fix with a mile, where composing `at ${label}`

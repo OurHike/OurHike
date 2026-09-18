@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest'
 
-import { BLAZE_PALETTE_MEMBERS, NEUTRAL_BLAZE_COLOR, blazePaintColor } from './blaze'
+import {
+  BLAZE_PALETTE_MEMBERS,
+  NEUTRAL_BLAZE_COLOR,
+  PLAIN_TRAIL_COLOR,
+  blazePaintColor,
+} from './blaze'
+import { contextTrailColor, CONTEXT_TRAIL_TINT } from '../map/style'
 
 // The palette's admission rules, enforced rather than described (#782).
 //
@@ -164,6 +170,52 @@ describe('Aqua, the first admission under the rule (#782)', () => {
     // more. Pinned so the trade is visible rather than remembered.
     expect(contrastRatio('#0d8f96', DAY_SHEET)).toBeGreaterThan(
       contrastRatio('#00a0a8', DAY_SHEET),
+    )
+  })
+})
+
+describe('PLAIN_TRAIL_COLOR, the one red every line takes while blaze colours are off (#1575)', () => {
+  it('is blazePaintColor("Red"), so the switch adds no hue to the closed palette', () => {
+    // An alias and not a second red: the rule in lib/blaze.ts is that the
+    // table is the entire set of hues this map will ever paint, and a hex
+    // spelled beside it would be exactly the sprawl #782 closed off.
+    expect(PLAIN_TRAIL_COLOR).toBe(blazePaintColor('Red'))
+  })
+
+  it('has the day and night contrast its docstring quotes, 6.2 on paper and 3.0 on ink', () => {
+    // Computed here rather than asserted there, so the figures in the comment
+    // and the hex behind them cannot drift apart unnoticed. Both are above
+    // the palette's own bars (2.076 day, 2.66 night), which is what lets the
+    // red draw on every sheet with none of the near-white handling.
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, DAY_SHEET)).toBeCloseTo(6.23, 1)
+    expect(contrastRatio(PLAIN_TRAIL_COLOR, NIGHT_SHEET)).toBeCloseTo(3.0, 1)
+  })
+})
+
+describe('the context trails’ tint of that red under the default (#1588)', () => {
+  it('keeps 45% of the red over each sheet’s paper, 2.15 on paper and 1.5 on ink', () => {
+    // Computed here for the same reason PLAIN_TRAIL_COLOR's figures are: so
+    // map/style.ts's docstring and the hex cannot drift apart. The day tint
+    // clears the palette's day bar (2.076), so a context trail still
+    // separates from paper; the night tint sits under its bar (2.66) on
+    // purpose - the same faintness the ghosting's 45% gives a nearby trail
+    // on ink, for a line that is context. The mock-up the maintainer chose
+    // from was a day frame; the night figure is what that choice costs
+    // there, written down rather than rounded to fine.
+    expect(CONTEXT_TRAIL_TINT).toBe(0.45)
+    expect(contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET)).toBeCloseTo(
+      2.15,
+      1,
+    )
+    expect(
+      contrastRatio(contextTrailColor({ theme: 'light' }), DAY_SHEET),
+    ).toBeGreaterThan(2.076)
+    expect(contrastRatio(contextTrailColor({ theme: 'dark' }), NIGHT_SHEET)).toBeCloseTo(
+      1.5,
+      1,
+    )
+    expect(contrastRatio(contextTrailColor({ theme: 'dark' }), NIGHT_SHEET)).toBeLessThan(
+      2.66,
     )
   })
 })

@@ -87,12 +87,33 @@ export const HIDEABLE_TYPES: readonly string[] = POI_TYPES.filter(
  * map most - viewpoint alone is 1,223 of the corridor's waypoints, last in
  * POI_PRIORITY for exactly that reason.
  */
-export const DEFAULT_SHOWN_TYPES: readonly string[] = [
-  'shelter',
-  'water',
-  'campsite',
-  'privy',
-]
+export const DEFAULT_SHOWN_TYPES: readonly string[] = HIDEABLE_TYPES
+
+// EVERY CATEGORY, SINCE 2026-09-18 (#1585). The docstring above is the
+// argument #865 made for a curated four, and it is kept whole because it is
+// the argument that was overturned rather than forgotten: shelter, water,
+// campsite and privy are where a thru-hiker's day is anchored, and the four
+// left off - resupply, crossing, viewpoint, parking, later trailhead - are
+// this module's own evidence for what crowds a map most.
+//
+// WHAT IT COST, measured against the identity ledger on 2026-09-18: 7,082 of
+// the corridor's 8,469 published waypoints - 84% of them - were off the map
+// on a fresh install. 5,318 crossings, 1,223 viewpoints, 482 parking areas,
+// 59 A.T. Community towns. Nobody had switched any of them off. The legend
+// drew their rows struck through, which is the app being honest about a
+// choice the hiker never made, and the map drew nothing at all.
+//
+// The maintainer, 2026-09-18: "never hide anything!!!!!!!" That is a rule
+// about the MAP deciding, and a default IS the map deciding - it is the one
+// state no hiker ever chose. So a fresh install now opens with every
+// category on, and `waypoint_types_shown` keeps doing exactly what it always
+// did for the hiker who wants fewer: it is a control they can see and
+// reverse, which is the one honest subtraction this app has.
+//
+// The crowding argument the old list rested on has not gone away and is not
+// answered here - it is answered in map/poiLayers.ts, where a pin's SIZE now
+// follows POI_PRIORITY so a vista never looks like a spring, and where
+// nothing is culled for room any more.
 
 /** What the map and the legend consume: the categories NOT to draw. */
 export function hiddenTypesFrom(shown: readonly string[]): Set<string> {

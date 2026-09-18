@@ -6,7 +6,40 @@ chrome), [POI_SITES.md](POI_SITES.md) (which owns several waypoints at one place
 [UX_CUSTOMIZATION.md](UX_CUSTOMIZATION.md) (which owns *why* `waypoint_types_shown` exists),
 [../WIREFRAMES.md](../WIREFRAMES.md) §1.4 and §2, and [../OurHikeValues.md](../OurHikeValues.md) #4.
 
-**This doc owns one question: what the map does when it cannot draw every waypoint as a pin.**
+> **Its question was answered by removing it, 2026-09-18
+> ([#1585](https://github.com/OurHike/OurHike/issues/1585)).** The maintainer:
+> *"never hide anything!!!!!!!"* — so the map now draws **every** waypoint as a pin, and this
+> doc's premise, that it sometimes cannot, no longer holds. Three separate mechanisms were
+> taking marks off the map, each defensible on its own and none of them the hiker's choice.
+> Measured against the identity ledger that day:
+>
+> | what removed it | how much | what it is now |
+> |---|---|---|
+> | **`DEFAULT_SHOWN_TYPES`** (#865) — five categories off on a fresh install | **7,082 of 8,469 waypoints, 84%** — 5,318 crossings, 1,223 viewpoints, 482 parking areas, 59 towns | every category on; the hiker's own toggle is the one subtraction left |
+> | **Site folding** (#524) — a co-located member removed from the source, riding an anchor's pin as a badge | **634 of the 1,387 then shown, 46%** — 284 privies, 144 campsites, **206 water points** | nothing folds; every member draws its own pin at its own coordinate |
+> | **`icon-allow-overlap: false`** — the collision engine dropping the loser | **59% of pins at z9, 81% at the seam** (they kept a 2.5 px dot) | overlap allowed and placement ignored: no pin is dropped, and no pin drops a label |
+>
+> **What replaces culling as the density answer is size, not absence.** `POI_ICON_SIZE_EXPRESSION`
+> is data-driven now: the categories at the top of `POI_PRIORITY` — water, shelter, campsite,
+> resupply, parking, trailhead — draw full size, and the tail draws at `SECONDARY_POI_SCALE`
+> (0.72, `@unvalidated`). The serious-warning pin was already exempt from all of it and stays so.
+> That is the maintainer's second sentence built: *"the warnings needs to stay large as well as
+> the other important classes."*
+>
+> **The honest cost, stated here because it is this doc's job to state it.** A phone frame holds
+> a median of **4 waypoints at z14** and 10 at the ninetieth percentile — at the zooms somebody
+> walks at, drawing everything is simply correct. At the seam it holds a median of **617**, and
+> 2,108 in the worst frame on the trail. That is a dense screen, and nothing in this change
+> pretends otherwise: the pin sizes and the hiker's own toggles are what a planning zoom has to
+> lean on. Whether it reads as a map or as a wall of ink at z7.5 has been looked at in a browser
+> and on no phone, which is the same gap [#105](https://github.com/OurHike/OurHike/issues/105)
+> closed without filling.
+>
+> Everything below is the design as it stood before that, and the two-rank principle it turns on
+> — *the absence of a pin is the strongest statement this map makes about a place, so do not make
+> it* — is what the change above follows to its end rather than abandons.
+
+**This doc owned one question: what the map does when it cannot draw every waypoint as a pin.**
 It does not own the pin artwork ([`client/src/map/poiIcons.ts`](../client/src/map/poiIcons.ts)),
 the collision ordering ([`client/src/map/poiLayers.ts`](../client/src/map/poiLayers.ts)'s
 `POI_PRIORITY`, which this doc treats as correct and builds on), or which waypoints the pipeline

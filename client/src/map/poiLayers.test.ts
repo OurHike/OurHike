@@ -365,10 +365,22 @@ describe('density', () => {
     expect(POI_PIN_MIN_ZOOM).toBeGreaterThanOrEqual(7.5)
   })
 
-  it('leaves the collision engine switched on, which is the whole density story', () => {
+  it('never lets the collision engine drop a pin, and never lets a pin drop anything else', () => {
+    // THE test in this file since #1585, and the reverse of what it held
+    // before. `icon-allow-overlap: false` was "the entire density story": at
+    // z9 it dropped 59% of the waypoints reaching this layer and at the seam
+    // 81%, each of them keeping a 2.5 px dot. The maintainer's rule of
+    // 2026-09-18 is that the map may never take a mark away, so overlap is
+    // allowed and every pin is drawn.
+    //
+    // `icon-ignore-placement` is the other half and is not decoration: a pin
+    // that was drawn but still took part in placement would go on evicting
+    // the trail names, waypoint labels and badges around it, and "hide
+    // nothing" would have held for pins by hiding the names instead.
     const layout = buildPoiLayer().layout as Record<string, unknown>
 
-    expect(layout['icon-allow-overlap']).toBe(false)
+    expect(layout['icon-allow-overlap']).toBe(true)
+    expect(layout['icon-ignore-placement']).toBe(true)
   })
 
   it('grows the pins as the hiker zooms in', () => {
@@ -566,7 +578,13 @@ describe('poiFeatureCollection', () => {
     expect(resolved).toBe(poiIconId('shelter', 'high'))
   })
 
-  it('drops a site member from the source rather than letting it lose a collision', () => {
+  it('keeps every site member in the source, at its own coordinate (#1585)', () => {
+    // THE REVERSE OF WHAT THIS HELD, and the reversal is the point. It used
+    // to drop the privy and let it ride the shelter's pin as a badge, which
+    // was the only way to keep it reachable while a collision could delete
+    // it. Nothing is deleted now, so a member draws its own pin where it
+    // actually is - 284 privies, 144 campsites and 206 water points got
+    // their own mark back on 2026-09-18.
     const collection = poiFeatureCollection([
       {
         id: 'shelter',
@@ -588,10 +606,16 @@ describe('poiFeatureCollection', () => {
       },
     ])
 
-    expect(collection.features.map((f) => f.id)).toEqual(['shelter'])
+    expect(collection.features.map((f) => f.id)).toEqual(['shelter', 'privy'])
+    // At its own place, not the anchor's: a hiker walks to the pin.
+    expect(collection.features[1].geometry.coordinates).toEqual([-77, 39.0004])
   })
 
-  it('tells the style what the surviving pin is carrying', () => {
+  it('gives no pin another waypoint to carry, because none is riding one', () => {
+    // The badge key stays present and always a string - the style's `match`
+    // needs no `coalesce` - and is always empty now. A pin wearing a badge
+    // for a waypoint that is also drawing its own pin would be counting the
+    // same place twice.
     const collection = poiFeatureCollection([
       {
         id: 'shelter',
@@ -611,18 +635,11 @@ describe('poiFeatureCollection', () => {
         siteId: 'site_1',
         siteRole: 'member',
       },
-      {
-        id: 'water',
-        type: 'water',
-        lat: 39.0005,
-        lon: -77,
-        confidence: 'low',
-        siteId: 'site_1',
-        siteRole: 'member',
-      },
     ])
 
-    expect(collection.features[0].properties[SITE_MEMBERS_PROPERTY]).toBe('privy+water')
+    for (const feature of collection.features) {
+      expect(feature.properties[SITE_MEMBERS_PROPERTY]).toBe('')
+    }
   })
 
   it('puts the POI id somewhere a tap can still read it', () => {
@@ -706,11 +723,11 @@ describe('the staleness ring on crowded ground (#1536)', () => {
 })
 
 describe('how crowded the ground is, on the feature (#1536)', () => {
-  it('counts the marks that are drawn, so a site is one neighbour and not four', () => {
-    // Crowding is computed AFTER composeSites. A shelter whose privy and two
-    // campsites ride its pin competes for space once, and counting the folded
-    // members would report ground as crowded that the fold had uncrowded -
-    // buying air against pins that are not there.
+  it('counts every drawn mark, now that every one of them is drawn', () => {
+    // Crowding was computed after the fold, so a shelter carrying a privy and
+    // two campsites counted once. Nothing folds any more, so all four are
+    // marks on the ground and all four count - which is the honest reading of
+    // "how crowded is this ground" and what the staleness ring still fades on.
     const site = ['privy', 'campsite', 'campsite'].map((type, i) => ({
       id: `${type}-${i}`,
       type,
@@ -731,14 +748,13 @@ describe('how crowded the ground is, on the feature (#1536)', () => {
         siteRole: 'anchor',
       },
       ...site,
-      { id: 'spring', type: 'water', lat: 39.003, lon: -77, confidence: 'high' as const },
     ]
 
-    const drawn = poiFeatureCollection(pois).features
-    expect(drawn.map((f) => f.id).sort()).toEqual(['shelter', 'spring'])
-    for (const feature of drawn) {
-      expect(feature.properties[CROWDING_PROPERTY]).toBe(1)
-    }
+    const collection = poiFeatureCollection(pois)
+
+    expect(collection.features).toHaveLength(4)
+    const shelter = collection.features.find((f) => f.id === 'shelter')
+    expect(shelter?.properties[CROWDING_PROPERTY]).toBeGreaterThan(0)
   })
 
   it('recounts when the hiker hides a category, so air is bought against pins that exist', () => {
@@ -871,28 +887,34 @@ describe('filtering the legend down to one category', () => {
     expect(drawnPins(onlyType('privy'))).toEqual(['privy'])
   })
 
-  it('still draws the shelter, and only the shelter, when nothing is hidden', () => {
-    expect(drawnPins(showAllTypes())).toEqual(['shelter'])
+  it('draws the shelter AND the privy when nothing is hidden (#1585)', () => {
+    // It used to draw the shelter alone, the privy folded onto its pin. Both
+    // are marks on the ground now, so both are on the map - which is the
+    // whole of what #1585 changed here.
+    expect(drawnPins(showAllTypes()).sort()).toEqual(['privy', 'shelter'])
   })
 
   it('draws the shelter and not the privy when only shelters are asked for', () => {
-    // The other direction, and it must still fold: the privy is not promoted
-    // just because a filter is in force, only because the pin it rides has gone.
+    // The hiker's own filter, and the one subtraction that survives: they
+    // asked for shelters. Nothing about #1585 touches this - it is the
+    // control, not the map deciding.
     expect(drawnPins(onlyType('shelter'))).toEqual(['shelter'])
   })
 
-  it('resolves the promoted pin to an image that was actually registered', () => {
-    // A promoted member is asked for by an expression built for anchors. A privy
-    // is not a SITE_ANCHOR_TYPE, so it has no member variants - and an id nobody
-    // built draws as nothing at all, which would turn this fix into the same
-    // blank map by another route.
-    const hiddenTypes = hiddenTypesFrom(onlyType('privy'))
-    const [promoted] = poiFeatureCollection(SITE, { hiddenTypes }).features
-
-    const resolved = evaluate(POI_ICON_EXPRESSION, promoted.properties)
-
-    expect(REGISTERED_ICON_IDS).toContain(resolved)
-    expect(resolved).toBe(poiIconId('privy', 'high'))
+  it('resolves every pin to an image that was actually registered', () => {
+    // There is no promotion left to test - a privy is never folded away, so
+    // it is never promoted back - but the property this guarded still has to
+    // hold: an id nobody built draws as nothing at all, which would be the
+    // blank map by another route. So every feature the source emits, under
+    // every filter, must resolve to a registered image.
+    for (const shown of [showAllTypes(), onlyType('privy'), onlyType('shelter')]) {
+      const hiddenTypes = hiddenTypesFrom(shown)
+      for (const feature of poiFeatureCollection(SITE, { hiddenTypes }).features) {
+        expect(REGISTERED_ICON_IDS).toContain(
+          evaluate(POI_ICON_EXPRESSION, feature.properties),
+        )
+      }
+    }
   })
 })
 

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createExpression, featureFilter } from '@maplibre/maplibre-gl-style-spec'
+import {
+  createExpression,
+  featureFilter,
+  validateStyleMin,
+} from '@maplibre/maplibre-gl-style-spec'
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec'
 import { MockMap, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { POI_TYPES } from '../lib/config'
@@ -45,6 +49,8 @@ import {
   POI_PIN_MIN_ZOOM,
   POI_SORT_KEY_EXPRESSION,
   POI_SOURCE_ID,
+  SECONDARY_POI_SCALE,
+  buildPoiSource,
 } from './poiLayers'
 import { POI_PRIORITY } from './poiPriority'
 
@@ -217,6 +223,45 @@ describe('density', () => {
   // So: the seam decides WHERE waypoints start and never WHICH. These tests are
   // the difference between those two sentences, held where a future change has
   // to walk past them.
+  describe('the layers MapLibre actually gets', () => {
+    it('is a style MapLibre’s own validator accepts, pins included', () => {
+      // THE CHECK THAT DID NOT EXIST, and #1585 is why it does now. The only
+      // spec validation in this suite was map/liveTopo.test.ts's, over the
+      // BACKGROUND style - so the waypoint layers, which carry every
+      // hand-written expression in this file, were read by nothing that reads
+      // them the way MapLibre will.
+      //
+      // It matters most for `icon-size`. It became data-driven on #1585 (a pin
+      // is drawn at its category's size), and a zoom `interpolate` may carry a
+      // data expression in each OUTPUT but never in its input. Getting that
+      // backwards type-checks, passes every other test in this file, and
+      // renders no pins at all.
+      const style = {
+        version: 8 as const,
+        sources: { [POI_SOURCE_ID]: buildPoiSource() },
+        layers: [buildPoiDotLayer(), buildPoiStalenessLayer(), buildPoiLayer()],
+      }
+
+      expect(validateStyleMin(style as never)).toEqual([])
+    })
+
+    it('sizes a full-size category above the tail at every stop of the ramp', () => {
+      // The tiers, read through the expression rather than off the constants,
+      // so a stop that lost its `match` fails here rather than looking right.
+      for (const zoom of [POI_PIN_MIN_ZOOM, 9, 11, 13, 16, 22]) {
+        const water = evaluate(POI_ICON_SIZE_EXPRESSION, poi('water'), zoom) as number
+        const vista = evaluate(POI_ICON_SIZE_EXPRESSION, poi('viewpoint'), zoom) as number
+
+        expect(water).toBeGreaterThan(vista)
+        expect(vista / water).toBeCloseTo(SECONDARY_POI_SCALE, 5)
+        // And the tail is still a pin somebody can see, not a way of hiding it:
+        // poiIcons.test.ts holds a 7 px floor on a glyph, and the glyph is
+        // about 47% of the pin.
+        expect(vista * POI_PIN_SIZE * 0.46).toBeGreaterThan(7)
+      }
+    })
+  })
+
   describe('the map never hides a category of its own accord (#1585)', () => {
     function drawnAt(zoom: number, type: string, hidden: string[] = []): boolean {
       const { filter } = featureFilter(

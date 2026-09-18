@@ -12,12 +12,20 @@
 // and a red line showing through the gaps read as more of the same red. Shown
 // five rendered treatments - the tape as it was, orange stripes, yellow and
 // black, a monochrome barrier, and this - the maintainer chose this one: "I
-// think I like option E the best". The ground is the sheet's backdrop
-// (map/style.ts's mapBackdrop), baked into the image per sheet by
-// map/closureTape.ts and swapped with the sheet, so on night_hike it is ink
-// and on parchment it is parchment. What it costs is exactly the sentence it
-// replaced: the trail is not visible through its closure any more. The
-// stripes, their cadence, their edges and the tape's width did not move.
+// think I like option E the best". The ground is the paper map/style.ts's
+// closureTapeGround picks for the sheet, baked into the image per paper by
+// map/closureTape.ts and swapped with the sheet: the sheet's own by day, so
+// on parchment it is parchment - and, since 2026-09-18, the field day sheet's
+// white on every dark sheet but red light's. The five treatments were
+// rendered on the day sheet, and "the sheet's paper" built for night_hike
+// put red stripes on near-black ink over a near-black map: "it's really hard
+// to tell it's a closure when the background is black, with black & red
+// alternating for the closure. Maybe that should be red & white just for
+// dark mode." Red light keeps its ink, and closureTapeGround's docstring
+// says why that is a question left open rather than answered. What option E
+// costs is exactly the sentence it replaced: the trail is not visible
+// through its closure any more. The stripes, their cadence, their edges and
+// the tape's width did not move.
 //
 // That distinction is safety-critical and is deliberately structural rather
 // than chromatic. Colour alone vanishes in greyscale, in direct sun on a
@@ -227,11 +235,11 @@ export const LONG_TERM_CLOSED_FILTER: unknown[] = [
 ]
 
 export interface ClosureLayerOptions {
-  /** The sheet's paper the tape lies on, as a `#rrggbb` hex - the backdrop
-   *  of the appearance the style is built for (map/style.ts's mapBackdrop).
+  /** The paper the tape lies on, as a `#rrggbb` hex - what map/style.ts's
+   *  closureTapeGround picks for the appearance the style is built for.
    *  Required rather than defaulted, because this module cannot know which
-   *  sheet a caller is drawing and a tape on the wrong paper is a pale band
-   *  across a night map. */
+   *  sheet a caller is drawing, and a tape on the wrong paper is the wrong
+   *  band on every closure. */
   ground: string
   /** A distinct id, for a second instance over a different source. Defaults
    *  to the temporary-closure layer's own. */

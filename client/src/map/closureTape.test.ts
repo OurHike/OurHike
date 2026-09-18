@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildClosureTape, tapeGrounds } from './closureTape'
-import { MAP_BACKDROP, mapBackdrop } from './style'
+import { MAP_BACKDROP, closureTapeGround, mapBackdrop } from './style'
 import {
   CLOSURE_CASING_COLOR,
   CLOSURE_COLOR,
@@ -101,16 +101,30 @@ describe('the ground between the stripes is the sheet’s paper (#1575, option E
     expect(allPixels(tape).every((p) => p.a === 255)).toBe(true)
   })
 
-  it('is night ink on a night sheet, so the band never pales a dark map', () => {
-    // The ground is the sheet's, not a fixed paper: a cream band across
-    // night_hike's ink would be the brightest thing on a screen built to
-    // spare night vision.
-    const night = buildClosureTape(INK)
+  it('is the day paper on a dark sheet, and the sheet’s own ink only under red light (2026-09-18)', () => {
+    // Option E was chosen on the day sheet; built as "the sheet's paper" it
+    // put red stripes on near-black ink over a near-black map - the
+    // maintainer's "it's really hard to tell it's a closure when the
+    // background is black". Red light keeps its ink: a white band would be
+    // the brightest thing on a screen built to spare night vision, and
+    // closureTapeGround's docstring carries the open question.
+    expect(closureTapeGround({ theme: 'dark' })).toBe(PAPER)
+    expect(closureTapeGround({ mapStyle: 'night_hike' })).toBe(PAPER)
+    expect(closureTapeGround({ theme: 'light' })).toBe(PAPER)
+    expect(closureTapeGround({ mapStyle: 'parchment' })).toBe(
+      mapBackdrop({ mapStyle: 'parchment' }),
+    )
+    const redLight = { mapStyle: 'night_hike', redLight: true } as const
+    expect(closureTapeGround(redLight)).toBe(mapBackdrop(redLight))
+    expect(closureTapeGround(redLight)).not.toBe(PAPER)
 
-    expect(paintedIn(night, INK).length / (night.width * night.height)).toBeGreaterThan(
+    // And the image built on that paper is that paper between the stripes:
+    // no night ink anywhere in the tape a dark sheet draws.
+    const night = buildClosureTape(closureTapeGround({ theme: 'dark' }))
+    expect(paintedIn(night, PAPER).length / (night.width * night.height)).toBeGreaterThan(
       0.4,
     )
-    expect(paintedIn(night, PAPER)).toHaveLength(0)
+    expect(paintedIn(night, INK)).toHaveLength(0)
   })
 
   it('never paints casing where there is no stripe to edge', () => {
@@ -208,19 +222,22 @@ describe('the ATC tape is the same tape, slower', () => {
 
 describe('one tape per paper (#1575)', () => {
   it('lists every paper the sheet table can produce, once each, as a hex', () => {
-    // Ten today: four day sheets (night_hike has none), five night sheets
-    // and red light's - the figure the module comment carries, held here so
-    // a sheet added to liveTopo.ts's table moves it in the open.
+    // Five today: four day sheets (night_hike has none) and red light's ink
+    // - every other dark sheet takes the day paper since 2026-09-18 - the
+    // figure the module comment carries, held here so a sheet added to
+    // liveTopo.ts's table moves it in the open.
     const grounds = tapeGrounds()
 
-    expect(grounds).toHaveLength(10)
+    expect(grounds).toHaveLength(5)
     expect(new Set(grounds).size).toBe(grounds.length)
     for (const ground of grounds) expect(ground).toMatch(/^#[0-9a-f]{6}$/i)
   })
 
-  it('includes both anchor backdrops and red light’s', () => {
+  it('includes the day paper and red light’s ink, and night ink no longer', () => {
     expect(tapeGrounds()).toContain(MAP_BACKDROP.light)
-    expect(tapeGrounds()).toContain(MAP_BACKDROP.dark)
+    // Night ink was a tape's paper until 2026-09-18; a tape drawn on it is
+    // exactly the band the maintainer could not read as a closure.
+    expect(tapeGrounds()).not.toContain(MAP_BACKDROP.dark)
     expect(tapeGrounds()).toContain(
       mapBackdrop({ mapStyle: 'night_hike', redLight: true }),
     )

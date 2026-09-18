@@ -462,14 +462,15 @@ describe('legend icons are the map’s icons', () => {
     expect(icon?.querySelector('.map-icon__disc')).toBeNull()
   })
 
-  it('lays the closure swatch on the paper of the sheet beside it (#1575)', () => {
-    // The tape's ground is the sheet's, so the swatch beside a night map is
-    // ink under red stripes, the way the canvas draws it.
+  it('lays the closure swatch on the paper the tape takes beside it (#1575)', () => {
+    // The tape's ground follows closureTapeGround, so the swatch beside a
+    // night map is the day paper under red stripes since 2026-09-18 - red
+    // and white, the way the canvas draws it there now.
     render(<Legend {...PROPS} sheetAppearance={{ theme: 'dark' }} />)
 
     expect(
       iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-ground'),
-    ).toHaveAttribute('fill', MAP_BACKDROP.dark)
+    ).toHaveAttribute('fill', MAP_BACKDROP.light)
   })
 
   it('draws a serious warning as the hazard triangle', () => {

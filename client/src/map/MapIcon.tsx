@@ -58,7 +58,7 @@ import {
   SIDE_TRAIL_WIDTH,
   redLightActive,
   trailCasingColor,
-  mapBackdrop,
+  closureTapeGround,
 } from './style'
 import { WARNING_PIN } from '../lib/seriousWarnings'
 import {
@@ -492,7 +492,7 @@ export function MapIcon({
   appearance = { theme: 'light' },
 }: MapIconProps) {
   if (type === CLOSURE_TYPE) {
-    return <ClosureBand className={className} ground={mapBackdrop(appearance)} />
+    return <ClosureBand className={className} ground={closureTapeGround(appearance)} />
   }
 
   if (type === WARNING_ICON_ID) {

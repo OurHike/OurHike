@@ -550,6 +550,34 @@ export function mapBackdrop(appearance: SheetAppearance): string {
 }
 
 /**
+ * The paper the barrier tape lies on, per appearance (#1575, option E, and
+ * the maintainer's dark-mode reading of 2026-09-18).
+ *
+ * The sheet's own backdrop by day, so the band is parchment on parchment
+ * and white on the field sheet. On a dark sheet it is the field day sheet's
+ * white paper (MAP_BACKDROP.light) rather than the sheet's ink: option E was
+ * chosen off five treatments rendered on the day sheet, and built as "the
+ * sheet's paper" it put red stripes on near-black ink over a near-black map
+ * - "it's really hard to tell it's a closure when the background is black,
+ * with black & red alternating for the closure. Maybe that should be red &
+ * white just for dark mode." The night sheets' whole point is a dark ground
+ * (features/MAP_STYLE_SPEC.md), and the tape is the one thing on them that
+ * must not be, because it says "do not walk this".
+ *
+ * RED LIGHT KEEPS ITS OWN PAPER, and that is the open question rather than
+ * a decision: under red light every hue collapses to one to spare night
+ * vision, and a white band would be the brightest thing on the screen. The
+ * maintainer asked for dark mode; red light is the dark sheet with a rule
+ * of its own, so it is left as option E built it - stripes on its ink -
+ * until somebody says what a closure should look like under it.
+ * @unvalidated on a phone at night, both halves.
+ */
+export function closureTapeGround(appearance: SheetAppearance): string {
+  if (sheetIsDark(appearance) && !redLightActive(appearance)) return MAP_BACKDROP.light
+  return mapBackdrop(appearance)
+}
+
+/**
  * How far the downloaded archive is turned down, per theme.
  *
  * Light is the spec's own defaults, written out rather than left implicit,
@@ -754,12 +782,13 @@ export function attachMapAppearance(
         )
       }
 
-      // The barrier tape's ground is the sheet's paper, baked into the image
-      // (#1575, option E), so a sheet change points every tape layer at the
-      // tape drawn on its own paper - the closure layers at the closure tape,
-      // the ATC band at its own. map/closureTape.ts has registered every
-      // paper's pair before any of these ids is asked for.
-      const tapeGround = mapBackdrop(appearance)
+      // The barrier tape's ground is the paper closureTapeGround picks for
+      // the sheet, baked into the image (#1575, option E), so a sheet change
+      // points every tape layer at the tape drawn on that paper - the closure
+      // layers at the closure tape, the ATC band at its own.
+      // map/closureTape.ts has registered every paper's pair before any of
+      // these ids is asked for.
+      const tapeGround = closureTapeGround(appearance)
       for (const layerId of CLOSURE_TAPE_LAYER_IDS) {
         if (map.getLayer(layerId) === undefined) continue
         map.setPaintProperty(
@@ -2043,7 +2072,7 @@ export function buildMapStyle({
   }
   // The paper every barrier tape lies on (#1575, option E): this sheet's
   // backdrop, which is what map/closureTape.ts bakes under the stripes.
-  const tapeGround = mapBackdrop(appearance)
+  const tapeGround = closureTapeGround(appearance)
   // Asked for, and that is the whole question. Terrain used to be half of it -
   // `background === 'hiking_topo_live' && terrain !== undefined` - on the
   // reasoning that a style must not reference sources resolving to nothing.

@@ -253,9 +253,17 @@ describe('MapIcon: a closure', () => {
       expect(node.getAttribute('fill')).toBeNull()
     }
 
+    // Beside a night map the ground is the day paper too, since 2026-09-18
+    // (closureTapeGround): red and white, never red on ink. Red light keeps
+    // its ink, and the swatch follows.
     const night = draw(<MapIcon type="closure" appearance={{ theme: 'dark' }} />)
     expect(part(night, 'map-icon__closure-ground').getAttribute('fill')).toBe(
-      MAP_BACKDROP.dark,
+      MAP_BACKDROP.light,
+    )
+    const redLight = { mapStyle: 'night_hike', redLight: true } as const
+    const under = draw(<MapIcon type="closure" appearance={redLight} />)
+    expect(part(under, 'map-icon__closure-ground').getAttribute('fill')).toBe(
+      mapBackdrop(redLight),
     )
   })
 })

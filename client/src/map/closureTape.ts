@@ -19,9 +19,11 @@
 // because translating a stripe family by one pitch maps it onto itself.
 //
 // ONE IMAGE PER PAPER (#1575, option E). The tape lies on an opaque band of
-// the sheet's own backdrop - lib/closureStyle.ts's header has the maintainer's
-// choice and what it costs - and a `line-pattern` layer has no colour of its
-// own, so the paper is in the pixels. `tapeGrounds` lists every backdrop the
+// the paper map/style.ts's closureTapeGround picks for the sheet - its own by
+// day, the field day sheet's white on a dark sheet since 2026-09-18 -
+// lib/closureStyle.ts's header has the maintainer's choice and what it costs -
+// and a `line-pattern` layer has no colour of its own, so the paper is in
+// the pixels. `tapeGrounds` lists every backdrop the
 // sheet table can produce, `attachClosureTape` registers a closure tape and
 // an ATC tape on each, and map/style.ts's attachMapAppearance points the tape
 // layers at the current paper's pair. Registering them all up front rather
@@ -43,7 +45,7 @@ import {
 } from '../lib/closureStyle'
 import { ATC_UPDATE_TAPE_CADENCE, atcTapeImageId } from '../lib/atcUpdateStyle'
 import { MAP_STYLE_VALUES, THEME_VALUES } from '../lib/userPreferences'
-import { mapBackdrop } from './style'
+import { closureTapeGround } from './style'
 import { whenStyleReady } from './styleReady'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 
@@ -145,17 +147,19 @@ export function buildClosureTape(
 }
 
 /**
- * Every paper a tape can lie on: the backdrop of every appearance the sheet
- * table can produce, de-duplicated (#1575).
+ * Every paper a tape can lie on: closureTapeGround's answer for every
+ * appearance the sheet table can produce, de-duplicated (#1575).
  *
- * Enumerated through map/style.ts's mapBackdrop over the whole appearance
- * space - five styles, two resolved themes, three theme choices, red light
- * on and off - rather than by reading liveTopo.ts's variant table directly,
- * so the set is exactly what the map can ask for and stays so when the table
- * gains a sheet: the function that picks a backdrop is the one that lists
- * them. Ten distinct papers today - four day sheets (night_hike has none),
- * five night sheets and red light's - measured 2026-09-17 by running this,
- * and held by closureTape.test.ts so the number moves in the open.
+ * Enumerated through map/style.ts's closureTapeGround over the whole
+ * appearance space - five styles, two resolved themes, three theme choices,
+ * red light on and off - rather than by reading liveTopo.ts's variant table
+ * directly, so the set is exactly what the map can ask for and stays so when
+ * the table gains a sheet: the function that picks a paper is the one that
+ * lists them. Five distinct papers today - four day sheets' (night_hike has
+ * none) and red light's ink; every other dark sheet takes the field day
+ * sheet's white since 2026-09-18 - measured by running this, and held by
+ * closureTape.test.ts so the number moves in the open. (Ten until then, one
+ * per backdrop.)
  */
 export function tapeGrounds(): readonly string[] {
   const grounds = new Set<string>()
@@ -163,7 +167,7 @@ export function tapeGrounds(): readonly string[] {
     for (const theme of ['light', 'dark'] as const) {
       for (const themeChoice of THEME_VALUES) {
         for (const redLight of [false, true]) {
-          grounds.add(mapBackdrop({ theme, themeChoice, mapStyle, redLight }))
+          grounds.add(closureTapeGround({ theme, themeChoice, mapStyle, redLight }))
         }
       }
     }
@@ -182,8 +186,8 @@ export function tapeGrounds(): readonly string[] {
  * currently agree.
  *
  * EVERY PAPER, not the current one, so a sheet change never points a tape
- * layer at an image the map has not been given (this file's header). Twenty
- * two images of 30 by 28 pixels is about 74 KB, rasterised once per map.
+ * layer at an image the map has not been given (this file's header). Ten
+ * images of 30 by 28 pixels is about 34 KB, rasterised once per map.
  */
 export function attachClosureTape(map: MapLibreMap): () => void {
   return whenStyleReady(

@@ -22,8 +22,10 @@
 // where until this change the red line showed through between the stripes -
 // the maintainer's choice from five rendered treatments: "I think I like
 // option E the best". The band is white because the field day sheet's paper
-// is white (map/style.ts's MAP_BACKDROP.light); on night_hike it would be
-// ink, the same image built on that sheet's paper (map/closureTape.ts).
+// is white (map/style.ts's MAP_BACKDROP.light) - and, since 2026-09-18, it is
+// that same white on night_hike too (closureTapeGround), the maintainer having
+// read stripes on ink as no closure at all; long-term-closures-night.mjs is
+// this frame under the dark scheme. Only red light keeps its ink.
 // Blaze colors stay OFF here, the shipped default, so every line under the
 // tape is the same red as the tape's stripes - which is the case the band
 // exists for.

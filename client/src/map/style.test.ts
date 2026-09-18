@@ -63,6 +63,7 @@ import {
   blazeLineColor,
   paintsBlazeHues,
   mapBackdrop,
+  closureTapeGround,
   redLightActive,
   sheetIsDark,
   trailCasingColor,
@@ -2558,12 +2559,13 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     id: string,
   ) => (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
 
-  it('builds every tape layer on the paper of the appearance it was built for', () => {
-    // Four closure layers and the ATC band, all on one paper: the sheet's
-    // backdrop. A night build that pointed one of them at the day tape would
-    // draw a cream band across ink on that layer alone.
+  it('builds every tape layer on the paper closureTapeGround picks for the appearance', () => {
+    // Four closure layers and the ATC band, all on one paper. A night build
+    // that pointed one of them at another paper's tape would draw a
+    // different band on that layer alone. Since 2026-09-18 the night paper
+    // is the day sheet's white, not the sheet's ink (closureTapeGround).
     const night = buildMapStyle({ ...LIVE, theme: 'dark' })
-    const ground = mapBackdrop({ theme: 'dark' })
+    const ground = closureTapeGround({ theme: 'dark' })
 
     for (const id of CLOSURE_TAPE_LAYER_IDS) {
       expect(paintOf(night, id)['line-pattern'], id).toBe(closureTapeImageId(ground))
@@ -2571,7 +2573,13 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
     expect(paintOf(night, ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(
       atcTapeImageId(ground),
     )
-    expect(ground).not.toBe(mapBackdrop({ theme: 'light' }))
+    expect(ground).toBe(MAP_BACKDROP.light)
+    expect(ground).not.toBe(mapBackdrop({ theme: 'dark' }))
+    // And parchment's tape is on parchment: the day sheets keep their own.
+    const parchment = buildMapStyle({ ...LIVE, mapStyle: 'parchment' })
+    expect(paintOf(parchment, CLOSURE_LAYER_ID)['line-pattern']).toBe(
+      closureTapeImageId(mapBackdrop({ mapStyle: 'parchment' })),
+    )
   })
 
   it('re-points every tape layer at the new paper on a sheet change', async () => {
@@ -2589,7 +2597,7 @@ describe('the barrier tape lies on the sheet’s paper (#1575, option E)', () =>
       { mapStyle: 'night_hike', redLight: true } as const,
     ]) {
       attachMapAppearance(m as never, appearance)
-      const ground = mapBackdrop(appearance)
+      const ground = closureTapeGround(appearance)
       for (const id of CLOSURE_TAPE_LAYER_IDS) {
         expect(m.paintProperties.get(`${id}/line-pattern`), id).toBe(
           closureTapeImageId(ground),

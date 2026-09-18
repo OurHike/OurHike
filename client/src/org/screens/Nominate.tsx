@@ -58,13 +58,24 @@ const VERDICT_WORDS: Record<ProposedSource['verdict'], string> = {
 }
 
 export interface NominateProps {
-  /** The address carried from `/for-orgs/nominate/`, if the hiker typed one. */
-  readonly website?: string
   readonly onLeave: () => void
 }
 
-export function Nominate({ website: carried, onLeave }: NominateProps) {
-  const [website, setWebsite] = useState(carried ?? '')
+/** The address `/for-orgs/nominate/` sent, read off the URL rather than the
+ *  route. It is a prefill: two `/nominate` URLs with different `?website=`
+ *  are the same screen, so `lib/orgRoute.ts` does not carry it. Read once, at
+ *  mount, because a hiker who edits the field should not have it reset by a
+ *  re-render. */
+function prefilled(): string {
+  try {
+    return new URL(window.location.href).searchParams.get('website') ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function Nominate({ onLeave }: NominateProps) {
+  const [website, setWebsite] = useState(prefilled)
   const [stage, setStage] = useState<Stage>('asking')
   const [attempts, setAttempts] = useState(0)
   const [problem, setProblem] = useState<string | null>(null)

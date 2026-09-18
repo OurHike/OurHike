@@ -72,7 +72,19 @@ const PROPOSAL: ProposalView = {
 // stacks on the last one and `getByRole` finds two of everything.
 afterEach(cleanup)
 
+/** The prefill `/for-orgs/nominate/` sends, set where the screen reads it.
+ *  It is a query parameter rather than a prop because it is not part of the
+ *  route - see lib/orgRoute.ts - so the screen reads `location` itself. */
+function arriveWith(website: string) {
+  window.history.replaceState(
+    null,
+    '',
+    `/nominate?website=${encodeURIComponent(website)}`,
+  )
+}
+
 beforeEach(() => {
+  arriveWith('https://carolinamountainclub.org')
   vi.restoreAllMocks()
   // Difficulty 1 so the real solver runs and finishes at once - stubbing it
   // would leave the screen's own wiring untested, and the wiring is what
@@ -88,7 +100,7 @@ beforeEach(() => {
 
 async function readTheSite() {
   const person = userEvent.setup()
-  render(<Nominate website="https://carolinamountainclub.org" onLeave={vi.fn()} />)
+  render(<Nominate onLeave={vi.fn()} />)
   await person.click(screen.getByRole('button', { name: /read their site/i }))
   await screen.findByText(/Read, not verified/i)
   return person
@@ -157,7 +169,7 @@ describe('the hiker reviews what was found', () => {
       contacts: [],
     })
     const person = userEvent.setup()
-    render(<Nominate website="https://carolinamountainclub.org" onLeave={vi.fn()} />)
+    render(<Nominate onLeave={vi.fn()} />)
     await person.click(screen.getByRole('button', { name: /read their site/i }))
     expect(await screen.findByText(/could not open their site/i)).toBeInTheDocument()
     expect(screen.queryByText(/Read, not verified/i)).not.toBeInTheDocument()
@@ -171,7 +183,7 @@ describe('the hiker reviews what was found', () => {
       }) as never,
     )
     const person = userEvent.setup()
-    render(<Nominate website="https://carolinamountainclub.org" onLeave={vi.fn()} />)
+    render(<Nominate onLeave={vi.fn()} />)
     await person.click(screen.getByRole('button', { name: /read their site/i }))
     expect(await screen.findByRole('status')).toHaveTextContent(/arithmetic/i)
     release({ nonce: 'n', difficulty: 1, expires_at: 2_000_000_000, signature: 's' })
@@ -263,8 +275,9 @@ describe('the demo path, which is what the preview photographs', () => {
   // preview job with a timeout and no useful message, twenty minutes after
   // the push.
   it('the nominate screen reaches the review without a backend', async () => {
+    arriveWith('https://demo.ourhike.org')
     const person = userEvent.setup()
-    render(<Nominate website="https://demo.ourhike.org" onLeave={vi.fn()} />)
+    render(<Nominate onLeave={vi.fn()} />)
     await person.click(screen.getByRole('button', { name: /read their site/i }))
     expect(await screen.findByText('WHO AT THE CLUB WE WOULD ASK')).toBeInTheDocument()
     expect(
@@ -275,19 +288,21 @@ describe('the demo path, which is what the preview photographs', () => {
   })
 
   it('the demo shows a role nobody published a name against', async () => {
+    arriveWith('https://demo.ourhike.org')
     // The design's own example, and the case worth photographing: absent is
     // not an empty string and not a guess.
     const person = userEvent.setup()
-    render(<Nominate website="https://demo.ourhike.org" onLeave={vi.fn()} />)
+    render(<Nominate onLeave={vi.fn()} />)
     await person.click(screen.getByRole('button', { name: /read their site/i }))
     expect(await screen.findByText('Board president')).toBeInTheDocument()
   })
 
   it('the demo reading never asks the server for anything', async () => {
+    arriveWith('https://demo.ourhike.org')
     const challenge = vi.spyOn(orgApi, 'nominateChallenge')
     const read = vi.spyOn(orgApi, 'nominateRead')
     const person = userEvent.setup()
-    render(<Nominate website="https://demo.ourhike.org" onLeave={vi.fn()} />)
+    render(<Nominate onLeave={vi.fn()} />)
     await person.click(screen.getByRole('button', { name: /read their site/i }))
     await screen.findByText('WHO AT THE CLUB WE WOULD ASK')
     expect(challenge).not.toHaveBeenCalled()

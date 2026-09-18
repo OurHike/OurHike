@@ -10,7 +10,8 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { basePath, orgRoutePath, parseOrgRoute, sameOrgRoute } from './orgRoute'
+import { basePath, parseOrgRoute } from './orgRoute'
+import { orgRoutePath, sameOrgRoute } from './orgRoutePath'
 
 const ROOT = '/'
 const PROJECT_PAGES = '/OurHike/'
@@ -158,21 +159,24 @@ describe('the two nominate addresses', () => {
   // typed on a site that has no sign-in to offer; and `/n/:token` is the only
   // thing three people at a club ever receive from us, in an email, with no
   // account to log into. That is the same argument #970 makes for the console.
-  it('reads the nominate screen with the address a hiker already typed', () => {
-    expect(parseOrgRoute('/nominate?website=https%3A%2F%2Fcmc.org', '/')).toEqual({
-      kind: 'nominate',
-      website: 'https://cmc.org',
-    })
-  })
-
-  it('reads it with no address at all', () => {
-    // Somebody who bookmarked it, or followed the door without filling the
-    // field in. The screen asks for the address rather than failing.
+  it('reads the nominate screen', () => {
     expect(parseOrgRoute('/nominate', '/')).toEqual({ kind: 'nominate' })
   })
 
-  it('round-trips the address through the path', () => {
-    const route = { kind: 'nominate', website: 'https://cmc.org/a b' } as const
+  it('the prefill is not part of the route', () => {
+    // `/for-orgs/nominate/` sends `?website=`, and the SCREEN reads it off
+    // `location` rather than the router carrying it. Two `/nominate` URLs with
+    // different prefills are the same screen, so treating the address as part
+    // of the route would make `sameOrgRoute` say two of them differ and push a
+    // history entry for a field edit. It also keeps 55 bytes out of the eager
+    // closure, which LAUNCH_BUDGET.md §3 had little of to give.
+    expect(parseOrgRoute('/nominate?website=https%3A%2F%2Fcmc.org', '/')).toEqual({
+      kind: 'nominate',
+    })
+  })
+
+  it('round-trips', () => {
+    const route = { kind: 'nominate' } as const
     expect(parseOrgRoute(orgRoutePath(route, '/'), '/')).toEqual(route)
   })
 

@@ -122,7 +122,7 @@ export type OrgRoute =
   // addressing. `/no-thank-you` under it is what RFC 8058's List-Unsubscribe
   // header points at, so a mail client can offer one click without anybody
   // reading to the bottom of the message.
-  | { readonly kind: 'nominate'; readonly website?: string }
+  | { readonly kind: 'nominate' }
   | { readonly kind: 'proposal'; readonly token: string; readonly refusing?: boolean }
 
 /** The three routes that are the CONSOLE - a rail, a shell, an organization.
@@ -210,10 +210,12 @@ export function parseOrgRoute(
     }
   }
 
-  if (parts[0] === 'nominate' && parts.length === 1) {
-    const website = parsed.searchParams.get('website')
-    return website ? { kind: 'nominate', website } : { kind: 'nominate' }
-  }
+  // THE `?website=` IS A PREFILL AND NOT PART OF THE ROUTE, which is why it
+  // is not read here: two `/nominate` URLs with different prefills are the
+  // same screen, and the screen reads it off `location` itself. That is also
+  // 90 bytes this module does not spend in the eager closure, which
+  // `check-build-output.mjs` had 128 of to give - see LAUNCH_BUDGET.md §3.
+  if (parts[0] === 'nominate' && parts.length === 1) return { kind: 'nominate' }
 
   if (parts[0] === 'n' && parts[1]) {
     // A token is a secret carried in a URL, so an unrecognised path under one
@@ -242,48 +244,4 @@ export function parseOrgRoute(
   }
 
   return null
-}
-
-/** The URL a route is at, base included. The inverse of `parseOrgRoute`. */
-export function orgRoutePath(
-  route: OrgRoute,
-  base: string = import.meta.env.BASE_URL,
-): string {
-  const prefix = basePath(base)
-  if (route.kind === 'tread') {
-    const query = [
-      route.org ? `org=${encodeURIComponent(route.org)}` : null,
-      route.page && route.page !== 'tread' ? `page=${route.page}` : null,
-    ].filter(Boolean)
-    return query.length === 0
-      ? `${prefix}my/tread`
-      : `${prefix}my/tread?${query.join('&')}`
-  }
-  if (route.kind === 'nominate') {
-    return route.website
-      ? `${prefix}nominate?website=${encodeURIComponent(route.website)}`
-      : `${prefix}nominate`
-  }
-  if (route.kind === 'proposal') {
-    const token = encodeURIComponent(route.token)
-    return route.refusing ? `${prefix}n/${token}/no-thank-you` : `${prefix}n/${token}`
-  }
-  const slug = encodeURIComponent(route.slug)
-  if (route.kind === 'setup') {
-    // The stage checklist and org home are the same screen with two lives, so
-    // `page=home` is the bare address rather than a parameter: an org
-    // bookmarking their console should get `/org/x/setup`, not
-    // `/org/x/setup?page=home`.
-    return route.page === 'home'
-      ? `${prefix}org/${slug}/setup`
-      : `${prefix}org/${slug}/setup?page=${route.page}`
-  }
-  const person = route.person ? `&person=${encodeURIComponent(route.person)}` : ''
-  return `${prefix}org/${slug}/volunteers?page=${route.page}${person}`
-}
-
-/** Whether two routes are the same address - so a push can be skipped. */
-export function sameOrgRoute(a: OrgRoute | null, b: OrgRoute | null): boolean {
-  if (a === null || b === null) return a === b
-  return orgRoutePath(a, '/') === orgRoutePath(b, '/')
 }

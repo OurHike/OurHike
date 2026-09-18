@@ -10322,10 +10322,7 @@ function App() {
     return (
       <Suspense fallback={<div className="app__screen">Opening…</div>}>
         {orgRoute.kind === 'nominate' ? (
-          <Nominate
-            {...(orgRoute.website ? { website: orgRoute.website } : {})}
-            onLeave={() => orgRouting.go(null)}
-          />
+          <Nominate onLeave={() => orgRouting.go(null)} />
         ) : orgRoute.kind === 'proposal' ? (
           <Proposal
             token={orgRoute.token}

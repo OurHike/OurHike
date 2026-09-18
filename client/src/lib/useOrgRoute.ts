@@ -26,7 +26,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react'
-import { orgRoutePath, parseOrgRoute, sameOrgRoute, type OrgRoute } from './orgRoute'
+import { parseOrgRoute, type OrgRoute } from './orgRoute'
 
 export interface OrgRouting {
   /** The route the URL names, or null when the app is anywhere else. */
@@ -55,7 +55,17 @@ export function useOrgRoute(): OrgRouting {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  const move = useCallback((next: OrgRoute | null, mode: 'push' | 'replace') => {
+  // WRITING A URL IS LOADED WHEN SOMEBODY NAVIGATES, not at launch. Reading
+  // one has to happen on the first frame - App.tsx asks before its first
+  // render whether this is a console address - and writing one cannot happen
+  // until a tap, by which time the console's own chunk is already in. That
+  // split is what keeps `orgRoutePath` and `sameOrgRoute` out of the eager
+  // closure LAUNCH_BUDGET.md §3 budgets; see lib/orgRoutePath.ts.
+  //
+  // The await costs one microtask on a tap that is changing the whole screen,
+  // and the module is resolved from memory after the first navigation.
+  const move = useCallback(async (next: OrgRoute | null, mode: 'push' | 'replace') => {
+    const { orgRoutePath, sameOrgRoute } = await import('./orgRoutePath')
     if (sameOrgRoute(next, currentRoute())) {
       // Same address. Pushing an identical entry means Back does nothing
       // visible once, which reads as the button being broken.
@@ -73,8 +83,14 @@ export function useOrgRoute(): OrgRouting {
     setRoute(next)
   }, [])
 
-  const go = useCallback((next: OrgRoute | null) => move(next, 'push'), [move])
-  const replace = useCallback((next: OrgRoute | null) => move(next, 'replace'), [move])
+  // `void` rather than returning the promise: `go` is a navigation, and a
+  // caller awaiting it would be waiting on a module fetch to decide whether
+  // a button worked.
+  const go = useCallback((next: OrgRoute | null) => void move(next, 'push'), [move])
+  const replace = useCallback(
+    (next: OrgRoute | null) => void move(next, 'replace'),
+    [move],
+  )
 
   return { route, go, replace }
 }

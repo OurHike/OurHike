@@ -185,38 +185,18 @@ export class Sha256 {
    *  a trap for exactly the caller this exists for - one that wants to record
    *  progress and keep downloading. */
   digest(): string {
-    const finishing = Sha256.fromState(this.toState())
-    const bitLength = finishing.byteLength * 8
-
-    // FIPS 180-4 §5.1.1: a 1 bit, then zeros, then the length as a 64-bit
-    // big-endian integer - sized so this padding takes the message to a
-    // multiple of 64 with the eight length bytes inside the final block. The
-    // eight bytes need a block of their own when fewer than eight remain.
-    const remainder = finishing.bufferedLength
-    const padding = new Uint8Array(
-      (remainder < BLOCK_BYTES - 8 ? BLOCK_BYTES : BLOCK_BYTES * 2) - remainder,
-    )
-    padding[0] = 0x80
-    const lengthAt = padding.length - 8
-    // Split rather than shifted: bitwise operators in JS are 32-bit, so
-    // `bitLength >>> 32` is not the high word - it is `bitLength`. A 2^29-byte
-    // archive (537 MB) is enough for that to matter, which is well inside the
-    // range this hashes.
-    const high = Math.floor(bitLength / 0x100000000)
-    const low = bitLength >>> 0
-    padding[lengthAt] = (high >>> 24) & 0xff
-    padding[lengthAt + 1] = (high >>> 16) & 0xff
-    padding[lengthAt + 2] = (high >>> 8) & 0xff
-    padding[lengthAt + 3] = high & 0xff
-    padding[lengthAt + 4] = (low >>> 24) & 0xff
-    padding[lengthAt + 5] = (low >>> 16) & 0xff
-    padding[lengthAt + 6] = (low >>> 8) & 0xff
-    padding[lengthAt + 7] = low & 0xff
-
-    finishing.update(padding)
-
+    // ONE COPY OF THE PADDING, and it is in `finishInto`. This method used to
+    // carry its own, which cost 146 bytes over the eager budget once
+    // `finishInto` arrived and the two existed side by side - measured on the
+    // CI build of this branch, where `check-build-output.mjs` failed at
+    // 256,146 of 256,000. Two transcriptions of FIPS 180-4 §5.1.1 was the
+    // wrong answer before it was an expensive one.
+    //
+    // Non-destructive still: the copy is what gets padded, so the accumulator
+    // can keep taking bytes afterwards.
+    const words = Sha256.fromState(this.toState()).finishInto(new Uint32Array(8))
     let hex = ''
-    for (const word of finishing.h) hex += word.toString(16).padStart(8, '0')
+    for (const word of words) hex += (word >>> 0).toString(16).padStart(8, '0')
     return hex
   }
 

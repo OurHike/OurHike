@@ -168,6 +168,25 @@ export function LineSheet({
         <p className="closure-sheet__meta">{detail.sourceLine}</p>
       )}
 
+      {/* The paper map this spot is on (#1574), under the provenance because
+          it is the same kind of fact - whose this ground is, on paper. The
+          lead names the sheet and the organization; the product title,
+          verbatim, is the link, to their own store. No price: the store is
+          the source for that. */}
+      {detail.paperMaps.map((paperMap) => (
+        <p key={paperMap.url} className="closure-sheet__meta">
+          {paperMap.lead}{' '}
+          <a
+            className="closure-sheet__link"
+            href={paperMap.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {paperMap.title} ›
+          </a>
+        </p>
+      ))}
+
       {/* §2's refusal, last, and deliberately a sentence rather than a
           disabled button: a control that looks pressable and is not teaches a
           hiker at a junction that the app is broken, where a sentence naming

@@ -583,6 +583,31 @@
 
 /* The provenance of the copy above, which is a different kind of line from
    the terms and should not read as part of them. */
+/* The organization's own two buttons (#1574): the donate line #932 recorded
+   and the paper-map store beside it. Tap targets rather than text links, so a
+   thumb on a trailhead bench lands on one; two on a row, wrapping under each
+   other on a narrow phone. */
+.sources__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+}
+
+.sources__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--brand-primary);
+  font-size: var(--text-body-sm);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sources__link:hover {
+  text-decoration: underline;
+}
+
 .sources__source {
   overflow-wrap: anywhere;
   color: var(--fg-4, var(--fg-3));

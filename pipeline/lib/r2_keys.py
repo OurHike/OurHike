@@ -91,8 +91,33 @@ ALLOWED_EXTENSIONS = frozenset({"geojson", "fgb", "pmtiles", "json", "tif", "jpg
 #: exists yet (DATA_RELEASES.md, Phase 7 - retention is "keep everything"),
 #: and the one that gets written will be scoped to `releases/`, so this
 #: prefix is untouched by design AND by the name whoever writes it reads.
+#:
+#: `archive/` is the small sibling of that idea, and a different folder by
+#: name and by segment (#1574): one-time snapshots of third-party DATA this
+#: project reads once and may never be able to read again, where the photo
+#: park above holds recovered bytes. The first object is
+#: `archive/nynjtc_map_sheets.json`: the georeferenced footprint of each of
+#: NYNJTC's paper map sheets, read from the Avenza Map Store's product pages
+#: by archive_nynjtc_sheet_extents.py. The maintainer's rule for it,
+#: 2026-09-17: "that will eventually go away. It shouldn't be a real pipeline
+#: that runs regularly. Just an archive that sits in its own folder." So
+#: nothing under this prefix is rewritten on a schedule and no publish step
+#: reads the upstream: an object here is written by a person dispatching a
+#: one-off workflow, and stays until a person replaces it. Hiker-facing (the
+#: phone reads it at the root, beside `conditions/`), mutable only by that
+#: deliberate act, and needing no prune job for the reason `conditions/`
+#: needs none - one object per snapshot, overwritten in place, never
+#: accumulating.
 TOP_LEVEL_PREFIXES = frozenset(
-    {"releases", "_internal", "photos", "conditions", "originals", "archive__nynjtc_photos__do_not_delete"}
+    {
+        "releases",
+        "_internal",
+        "photos",
+        "conditions",
+        "originals",
+        "archive",
+        "archive__nynjtc_photos__do_not_delete",
+    }
 )
 
 # Keys that mean something specific and are therefore spelled exactly one

@@ -92,6 +92,19 @@ A fourth shelf is designed and unbuilt, and it is deliberately **not in this rep
 .venv/Scripts/python build_shelter_capacity.py --check    # confirm the checked-in file still matches
 ```
 
+**Where to buy the paper map** ([#1574](https://github.com/OurHike/OurHike/issues/1574)):
+[`reference/nynjtc_paper_maps.json`](reference/nynjtc_paper_maps.json) is a person's join of each
+NYNJTC store product to its sheet numbers and to the parks NYNJTC lists on each sheet, in NYNJTC's
+own spelling; `sources.json`'s `nynjtc_store` block names it and `export_sources.py` publishes it
+under the NYNJTC steward record, beside the donate line. Where each sheet lies on the ground is
+**not** in the repository: `archive_nynjtc_sheet_extents.py` reads each sheet's georeferenced
+footprint off the Avenza Map Store once and `archive-nynjtc-sheets.yml` (dispatch only, no
+schedule) writes it to `archive/nynjtc_map_sheets.json` in its own bucket folder
+([R2_LAYOUT.md](R2_LAYOUT.md)), which the phone reads on its own. No publish runs that script,
+deliberately — the maintainer's rule is that Avenza "will eventually go away" and the archive is
+the copy that survives it.
+
+
 **The output is checked in, not fetched at build time**, which is the opposite of every other source here and deliberate. The join is by *name* between two lists that disagree about them - ATC's "Doc's Knob Shelter" against the source's "Docs Knob Shelter", ATC's "Winturri" against its "Wintturi", and ATC's "Rocky Run Shelter 1"/"2" against a single "Rocky Run Shelters" row. A fuzzy join running unsupervised inside a data build is a join nobody ever reads; a checked-in file makes each of those a reviewable line in a diff, and keeps a release build off the network for it.
 
 **262 of 280 shelters resolve; the other 18 publish nothing, on purpose.** Each carries a stated reason in the file - a pair listed under one number that could be each or the total, an old and a new structure with different numbers, a capacity written "xxx" or "A lot". Capacity is a number a hiker plans an evening around, so a blank beats an invention, and the card omits the line rather than showing a zero.

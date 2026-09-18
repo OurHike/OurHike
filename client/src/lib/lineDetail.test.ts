@@ -648,3 +648,31 @@ describe('what the sheet says about climb (#1476)', () => {
     expect(before.climbNote).toBeNull()
   })
 })
+
+describe('the paper map (#1574)', () => {
+  const LINE = {
+    lead: 'This spot is on sheet 119 of the New York-New Jersey Trail Conference’s',
+    title: 'Harriman-Bear Mountain Trails Map',
+    url: 'https://store.nynjtc.org/products/harriman-bear-mountain-trails-map?utm_source=ourhike',
+  }
+
+  it('carries each resolved line through untouched - lead, product title and store url', () => {
+    const detail = buildLineDetail(
+      SPUR_LINE,
+      spur(),
+      [ROCKY_RUN],
+      'imperial',
+      'Appalachian Trail',
+      STANDARD_PACE,
+      {},
+      { kind: 'none' },
+      [LINE],
+    )
+
+    expect(detail.paperMaps).toEqual([LINE])
+  })
+
+  it('carries no paper map by default, as every caller written before it', () => {
+    expect(buildLineDetail(SPUR_LINE, spur(), [ROCKY_RUN]).paperMaps).toEqual([])
+  })
+})

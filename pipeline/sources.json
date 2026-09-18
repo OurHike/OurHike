@@ -1160,6 +1160,22 @@
     "recorded_date": "2026-08-27",
     "open_question": "https://github.com/OurHike/OurHike/issues/768 - the NYNJTC conversation already in flight covers their data terms; confirming this line and its surfaces belongs to it. Nothing here is a grant from NYNJTC."
   },
+  "nynjtc_store": {
+    "_comment": "Where a hiker buys the New York-New Jersey Trail Conference's paper maps (#1574 - A hiker on NYNJTC ground has nowhere to buy the paper map for where they are). THE SAME SHAPE AS nynjtc_support ABOVE, AND DELIBERATELY A SEPARATE BLOCK: a store link is a different ask from a donation - a hiker is buying a thing, not giving - and the surfaces an organization grants for one are not a grant for the other, so the vocabulary is its own (export_sources.py's STORE_SURFACES) and adding a member there is a fresh answer from every org that has one of these blocks, exactly as DONATE_SURFACES already works. It holds no map member either. WHICH PAGE, AND WHOSE WORDS: nynjtc.org's own navigation links the store's map collection under the text 'Trail Maps', read live 2026-09-17, and that is `store_cta` verbatim - never a house string. `referral` is a query string appended to every link out, so NYNJTC's own Shopify reports can count what arrived from this app; OurHike sees none of it, which is the same commitment the donate line keeps (money and measurement both stay on the org's side). `paper_maps` names the reviewed table of products, sheets and the parks each sheet covers, in NYNJTC's own spelling. NO PRICE ANYWHERE: the store is the source for that, and an offline phone printing a stale price would be the display outrunning its source. WHY THIS IS NOT IN TENSION WITH FEATURES.md'S NO-PURCHASES RULE: that rule is about OurHike charging for itself inside the app shell; Apple's guideline 3.1.3(e) says physical goods MUST be sold outside in-app purchase, so a link to the org's own store is the compliant path rather than a way around one.",
+    "author": "New York-New Jersey Trail Conference",
+    "store_url": "https://store.nynjtc.org/collections/maps",
+    "store_cta": "Trail Maps",
+    "store_surfaces": [
+      "sources_screen",
+      "hike_detail",
+      "trail_sheet"
+    ],
+    "referral": "utm_source=ourhike&utm_medium=app",
+    "paper_maps": "reference/nynjtc_paper_maps.json",
+    "basis": "Read live 2026-09-17: nynjtc.org's header links store.nynjtc.org/collections/maps as 'Trail Maps'; the twelve map products and their sheet numbers were read from the collection's public products.json the same day. NYNJTC has not been asked to confirm the placement.",
+    "recorded_date": "2026-09-17",
+    "open_question": "https://github.com/OurHike/OurHike/issues/1574 - whether NYNJTC wants this link and on which screens is unasked, and belongs to the same conversation as nynjtc_support's placement (https://github.com/OurHike/OurHike/issues/768). `store_surfaces` records the maintainer's reading of the ask that opened #1574, not NYNJTC's grant."
+  },
   "oprhp_support": {
     "_comment": "How a hiker supports New York State's parks, and THE ONE THING ABOUT THIS ENTRY THAT MUST NOT BE SMOOTHED OVER (#932): the money does not go to the steward this block is joined to. NYS OPRHP is a state agency and has no donation destination of its own. The 'Donate' link on parks.ny.gov points at the NATURAL HERITAGE TRUST, a separate 501(c)(3) that is the parks system's philanthropic partner - a different legal organization from the one whose trail lines and closures this registry ships. Recording it as OPRHP's donate link and rendering 'Support NYS OPRHP' over it would tell a hiker their money reaches the agency, which is not what happens. So `donate_cta` is the state's own word and `donate_recipient` names who actually receives it, and any surface rendering this block MUST render the recipient too - that is what `donate_recipient` is for, and it is the reason this block is not simply the other two with a different URL. Same rule as everywhere else in this repository: never let a display outrun its source.",
     "author": "New York State Office of Parks, Recreation and Historic Preservation",

@@ -267,6 +267,8 @@ describe('naming the organization', () => {
       termsSource: null,
       layers: ['NYNJTC Trail Alerts'],
       keys: ['nynjtc_trail_alerts'],
+      support: null,
+      store: null,
     },
   ]
 

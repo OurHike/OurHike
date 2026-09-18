@@ -230,6 +230,30 @@ export const POI_PLANNING_MIN_ZOOM = 7.5
  */
 export const POI_PLANNING_PIN_MIN_ZOOM = 8
 
+/**
+ * The closest one tap of the map's locate button brings the camera from
+ * below the seam (#1581).
+ *
+ * The seam itself, so "where am I" from the corridor view lands on the
+ * closest view that also shows what is around the hiker. Derived rather than
+ * chosen, which is why it is this constant and not a number - and the same
+ * cap the old GeolocateControl carried as its `fitBoundsOptions.maxZoom`
+ * (#315). From above the seam the camera keeps the zoom it has, the way
+ * App.tsx's handleBackToMe already leaves it alone: locate is a claim about
+ * where the map is centred, not about how far in the hiker wanted to be.
+ *
+ * HERE, AND NOT BESIDE THE BUTTON. App.tsx reads it, and map/mapChrome.ts
+ * imports maplibre-gl - a shell import reaching the engine statically puts
+ * a megabyte of MapLibre into the eager chunk (map/mapEngineLoader.ts,
+ * #1300), which scripts/check-build-output.mjs caught on this constant's
+ * first draft. A second draft in map/positionLayers.ts kept the engine out
+ * and pulled the mark's rasteriser in instead, for 626 bytes of headroom
+ * under features/LAUNCH_BUDGET.md's 256,000. This module is already in the
+ * eager chunk for POI_PIN_MIN_ZOOM's sake, so a constant here costs it
+ * nothing.
+ */
+export const LOCATE_MIN_ZOOM = POI_PIN_MIN_ZOOM
+
 // {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
 // there when site composition needed the same ordering to decide which member
 // carries a pin whose anchor has been filtered out (#607) - one home, and not

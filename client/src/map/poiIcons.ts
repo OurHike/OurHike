@@ -605,8 +605,12 @@ export function insideGlyph(glyph: Glyph, x: number, y: number): boolean {
 }
 
 /** True where the rim has ink: everywhere on a verified pin, on the dashes
- *  only when nobody has verified the POI exists. */
-function rimHasInk(dx: number, dy: number, confidence: PoiConfidence): boolean {
+ *  only when nobody has verified the POI exists.
+ *
+ *  Exported for map/positionMark.ts, whose ring breaks into these same eight
+ *  dashes when the GPS fix is stale (#1581) - one rhythm, so a hiker who has
+ *  learned what a broken rim means on a pin is not taught a second one. */
+export function rimHasInk(dx: number, dy: number, confidence: PoiConfidence): boolean {
   if (confidence === 'high') return true
 
   const turns = (Math.atan2(dy, dx) / (Math.PI * 2) + 1) % 1

@@ -10,10 +10,39 @@
 //
 // Nothing here blocks on network. Submitting while offline queues the report
 // and says so, because on this trail that is the ordinary path.
+//
+// WHERE THE REPORT IS comes from the same control the window and the closure
+// form use (reporting/LocationPicker.tsx, #1563), stated on one line and
+// changeable from it in a sheet of its own (reporting/LocationSheet.tsx).
+// This form used to hold its own three-state sentence and its own "Where was
+// this?" field; both are the picker's now, so the two surfaces cannot
+// describe one place differently. And a report that nothing can place - no
+// fix, no named place, no marked spot, no words - is refused at Send rather
+// than filed as "no location". A thanks is the exception: it is not a
+// problem, and a thanks with no place is still a complete thanks
+// (backend/app/routers/reports.py resolves who it is for from what it has).
+//
+// WHO SIGNS IT is asked above Send (reporting/ReporterDetails.tsx): the trail
+// name, as every report was signed before, or the hiker's real name for this
+// one report, and whether a club may contact them about it. The line that
+// used to state the signature is that block's summary now.
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import type { ReportDraft } from '../lib/outbox'
-import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
+import { signatureFields, type SignedAs } from '../lib/reporterSignature'
+import {
+  hasPlace,
+  locationWords,
+  reportLocationFields,
+  type FixSnapshot,
+  type LocationChoice,
+  type NearbyPlace,
+  type SearchPlacesOptions,
+} from '../lib/reportLocation'
+import type { UnitSystem } from '../lib/units'
+import { LocationSheet, ReporterDetails } from './deferred'
+import { PhotoTiles } from '../reporting/PhotoTiles'
+import { useReportPhotos } from '../reporting/useReportPhotos'
 import './reporting.css'
 
 export type ReportFormType = ReportDraft['type']
@@ -27,17 +56,6 @@ const TITLES: Record<ReportFormType, string> = {
   invasive_species: 'Invasive species',
   bad_hikers: 'Something unsafe happened',
   thanks: 'Say thanks',
-}
-
-export interface ReportFormLocation {
-  lat: number
-  lon: number
-  /**
-   * Omitted when the fix cannot be placed on the centerline - off the trail,
-   * or before the trail index has been downloaded. The coordinates are still
-   * worth sending; only the mile is unknown.
-   */
-  mile?: number
 }
 
 export interface ReportFormSubmission extends ReportDraft {
@@ -54,72 +72,52 @@ export interface ReportFormSubmission extends ReportDraft {
   photos: Blob[]
 }
 
-/**
- * What the form says about where the report will land.
- *
- * "mi 0.0" is Springer Mountain and 0,0 is the Atlantic off West Africa, so
- * neither is a stand-in for "we don't know yet" - this is the same rule the
- * header already keeps about the mile readout (chrome/Header.tsx). A
- * maintainer reading a queue of blowdowns needs to be able to tell the reports
- * with a place from the ones without, and both wrong answers hide that.
- */
-function describeLocation(location: ReportFormLocation | null): string {
-  if (location === null) return 'No GPS fix — this report will have no location'
-  if (location.mile === undefined)
-    return 'Location saved, but not matched to a trail mile'
-
-  return `mi ${location.mile.toLocaleString('en-US', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}`
-}
-
-/**
- * One picked photo, and the whole state machine it can be in (#1439, D17).
- *
- * A union rather than a record with three optional fields, so a tile that is
- * both "preparing" and "failed" cannot be described - which is the shape the
- * old single `photo` plus `preparing` plus `photoError` triple could, and did
- * for the length of one slow HEIC pick.
- */
-type Pick =
-  | { id: string; state: 'preparing' }
-  | { id: string; state: 'ready'; blob: Blob; url: string }
-  | { id: string; state: 'failed'; message: string }
-
-/** `3 photos · 180 KB so far` - what is attached, and what it weighs, which
- *  is the figure a hiker about to send over one bar of EDGE is owed. Only the
- *  ready ones count: a tile still shrinking has no size yet, and a failed one
- *  will never have a size at all. */
-function photoSummary(ready: readonly { blob: Blob }[]): string {
-  const kb = Math.round(ready.reduce((total, pick) => total + pick.blob.size, 0) / 1024)
-  return `${ready.length} ${ready.length === 1 ? 'photo' : 'photos'} · ${kb} KB so far`
-}
-
 export interface ReportFormProps {
   type: ReportFormType
-  trailName: string | null
   reporterType: ReportDraft['reporter_type']
-  /** Null when there is no GPS fix at all - see the note above. */
-  location: ReportFormLocation | null
+  /** The two names the report can be signed with, from the preferences
+   *  (lib/reporterSignature.ts's `namesOnOffer`) - null where none is set. */
+  names: Record<SignedAs, string | null>
+  /** Keep a real name typed here, so the next report offers it. A
+   *  preference write, made by the shell. */
+  onRealName: (name: string) => void
   /**
-   * The place this report is about, when it started from a place's card
-   * (FIELD_NOTES.md step 1). The soft reference `reports.poi_id` has carried
-   * end to end since the schema landed, with nothing in the client
-   * populating it - this is what does. Absent on every report that starts
-   * from Settings, which is anchored by the fix alone exactly as before.
+   * Where the report is (lib/reportLocation.ts): the card's waypoint when it
+   * started from one, the pressed point from the map's plate, or the fix.
+   * Owned by the shell, which is what lets the map's crosshair change it
+   * while this form stands aside holding a typed note and attached photos.
    */
-  poiId?: string
+  location: LocationChoice
+  /** The phone's fix as it is right now, or null - what a `fix` choice
+   *  files at, and what the location line prints for one. */
+  fix: FixSnapshot | null
+  /** Named places worth offering, nearest first. Empty is ordinary. */
+  places: readonly NearbyPlace[]
+  onSearchPlaces?: (
+    query: string,
+    options?: SearchPlacesOptions,
+  ) => readonly NearbyPlace[]
+  /** Whether a trail index is on the phone, for the words a marked spot gets. */
+  knowsTrail: boolean
+  /** The hiker's unit system, for the picker's distances and the fix's radius. */
+  units: UnitSystem
+  onChooseLocation: (choice: LocationChoice) => void
   /**
-   * Correct where this report goes (#1439, D16): stands this form aside and
-   * drops a crosshair on the map, naming the mile before it is kept.
+   * Correct where this report goes on the map (#1439, D16): stands this form
+   * aside and drops a crosshair, naming the mile before it is kept.
    *
-   * Optional, and absent draws no control - a "Change" that opened nothing
-   * would be the refusal-as-dead-control D10 forbids. The shell owns it
-   * because the map is the shell's, and because this form is holding a typed
-   * note and attached photos that a remount would cost.
+   * Optional, and absent draws no map row in the picker - a control that
+   * opened nothing would be the refusal-as-dead-control D10 forbids. The
+   * shell owns it because the map is the shell's.
    */
-  onChangeLocation?: () => void
+  onPointOnMap?: () => void
+  /**
+   * True while the crosshair is out over the map (#1439). The shell hides
+   * this form and makes it inert; the sheet inside it takes the same word
+   * and hears no keys, so an Escape meant for the crosshair does not dismiss
+   * a sheet nobody can see (review of #1571).
+   */
+  standingAside?: boolean
   onSubmit: (submission: ReportFormSubmission) => void
   onCancel: () => void
   online?: boolean
@@ -131,11 +129,18 @@ export interface ReportFormProps {
 
 export function ReportForm({
   type,
-  trailName,
   reporterType,
+  names,
+  onRealName,
   location,
-  poiId,
-  onChangeLocation,
+  fix,
+  places,
+  onSearchPlaces,
+  knowsTrail,
+  units,
+  onChooseLocation,
+  onPointOnMap,
+  standingAside = false,
   onSubmit,
   onCancel,
   online = true,
@@ -145,111 +150,105 @@ export function ReportForm({
   // Captured once, on mount - see the note above.
   const [authoredAt] = useState(() => now ?? new Date())
   const [note, setNote] = useState('')
-  const [picks, setPicks] = useState<readonly Pick[]>([])
-  // Picks taken back while their photo was still shrinking, so the resolve
-  // below has something synchronous to check before it mints a thumbnail
-  // URL for a tile that is gone (#1578).
-  const removedRef = useRef(new Set<string>())
+  // The photos, over the state machine the receipt shares (#1563).
+  const photos = useReportPhotos()
   /** The hiker's own words for where this was, when nothing else can say
-   *  (#1439, D16). Only asked for, and only sent, in the one state below. */
+   *  (#1439, D16). Asked for by the picker only in that state, and sent only
+   *  then (lib/reportLocation.ts). */
   const [placeWords, setPlaceWords] = useState('')
+  /** Whether the location sheet is up. Only on demand - Change, or a Send
+   *  refused for want of a place - never by itself: the sheet is modal, and
+   *  a thanks needs no place at all. The refusal opens it with the alert. */
+  const [picking, setPicking] = useState(false)
+  /** Whether Send was just refused for want of a place - what turns the
+   *  picker's opening from an offer into an alert. */
+  const [refused, setRefused] = useState(false)
+  /** Which name signs this report and whether the hiker may be contacted
+   *  (#1563). The trail name and an unticked box unless changed, so a hiker
+   *  who never touches the block sends exactly what they sent before. */
+  const [signedAs, setSignedAs] = useState<SignedAs>('trail')
+  const [contactOk, setContactOk] = useState(false)
+  /** The real name as typed, seeded from the preference. The draft is the
+   *  form's rather than the field's so Send can read it whether or not the
+   *  field was ever left (review of #1571); it is persisted when the field
+   *  is left and again at Send. */
+  const [realName, setRealName] = useState(names.real ?? '')
 
-  /**
-   * Shrink and re-encode one picked file under its own tile.
-   *
-   * **THE RACE IS GONE BY CONSTRUCTION, not by a token.** It used to be one
-   * `photo` and a `livePick` ref: pick A (a slow HEIC), then B before it
-   * finished, and B attached first, then A resolved and overwrote it - so the
-   * hiker sent the photo they believed they had replaced (#657). The ref was
-   * the fix and it was a fix for a shape that should not have existed. Each
-   * pick now owns a tile, keyed by its own id, so nothing can land on top of
-   * anything: a slow first pick resolves into ITS tile, whatever has arrived
-   * since.
-   *
-   * **A failure costs its own tile and nothing else.** The entry goes to
-   * `failed` with the words a hiker can act on, and the ready ones stay
-   * attached - which is the whole argument for tiles over one field.
-   */
-  const choosePhoto = async (file: File | null) => {
-    if (file === null) return
-    const id = crypto.randomUUID()
-    setPicks((current) => [...current, { id, state: 'preparing' }])
-
-    try {
-      const blob = await prepareReportPhoto(file)
-      // A pick taken back must not come back - and must mint nothing.
-      if (removedRef.current.has(id)) return
-      // Minted HERE and not inside the updater below. React may run an
-      // updater more than once for one update - twice for the first update
-      // in a batch, and on every update under StrictMode - and an object URL
-      // minted inside it is a reference the browser keeps that nothing can
-      // then revoke. The same hazard lib/useGeolocation.ts hoists `onFix`
-      // out of its updater for.
-      const url = URL.createObjectURL(blob)
-      setPicks((current) =>
-        // Replaced by id; a pick removed in the meantime is simply not here.
-        current.map((pick) =>
-          pick.id === id ? { id, state: 'ready', blob, url } : pick,
-        ),
-      )
-    } catch (error) {
-      // The message is written for a hiker to read (lib/reportPhoto.ts);
-      // anything else that got this far is not, so it does not get shown.
-      const message =
-        error instanceof PhotoUnusable
-          ? error.message
-          : 'That photo could not be prepared. Try taking another.'
-      setPicks((current) =>
-        current.map((pick) => (pick.id === id ? { id, state: 'failed', message } : pick)),
-      )
+  // A point kept on the map arrives as a new `location` from the shell, and
+  // the picker closes on it as it closes on one of its own rows. Adjusted
+  // during render, React's own pattern for reacting to a prop change.
+  const [seenLocation, setSeenLocation] = useState(location)
+  if (seenLocation !== location) {
+    setSeenLocation(location)
+    if (location.kind === 'point') {
+      setPicking(false)
+      setRefused(false)
     }
   }
 
-  const removePick = (id: string) => {
-    removedRef.current.add(id)
-    setPicks((current) => {
-      const going = current.find((pick) => pick.id === id)
-      if (going?.state === 'ready') URL.revokeObjectURL(going.url)
-      return current.filter((pick) => pick.id !== id)
-    })
-  }
-
-  // Every thumbnail this form minted, released when the form goes. An object
-  // URL is a reference the browser holds until it is told otherwise, and this
-  // screen is opened from a ridge on a phone with the map already resident.
-  //
-  // Through a ref rather than by listing `picks` in the cleanup's deps: a
-  // deps list would revoke on every pick, taking down the thumbnail of the
-  // photo that is still attached.
-  const picksRef = useRef<readonly Pick[]>([])
-  useEffect(() => {
-    picksRef.current = picks
-  }, [picks])
-  useEffect(
-    () => () => {
-      for (const pick of picksRef.current) {
-        if (pick.state === 'ready') URL.revokeObjectURL(pick.url)
-      }
-    },
-    [],
-  )
-
-  const ready = picks.flatMap((pick) => (pick.state === 'ready' ? [pick] : []))
-  const preparing = picks.some((pick) => pick.state === 'preparing')
-  const full = picks.length >= MAX_REPORT_PHOTOS
-
-  /**
-   * The one state in which the report can say where it was in words: no fix,
-   * and not started from a place's card (#1439, D16).
-   *
-   * With a `poiId` the report is anchored to a named place and the question
-   * is already answered; with a fix there are coordinates, however coarse.
-   * Asking in either case would collect prose nobody needs beside a location
-   * the report already has.
-   */
-  const asksForPlace = location === null && poiId === undefined
+  const { ready, preparing } = photos
 
   const isThanks = type === 'thanks'
+
+  /** Whether the report can be placed at all: a fix, a named place, a marked
+   *  spot, or - when none of those - the hiker's own words. */
+  const placed = hasPlace(location, fix) || placeWords.trim() !== ''
+  const words = locationWords(
+    location,
+    fix,
+    units,
+    knowsTrail,
+    now ?? new Date(),
+    placeWords,
+  )
+
+  const send = () => {
+    // A PROBLEM REPORT NEEDS A PLACE (#1563). Refused rather than filed as
+    // "no location" - the picker opens, says why, and Send works once it is
+    // answered. A thanks goes without one: see the header.
+    if (!isThanks && !placed) {
+      setPicking(true)
+      setRefused(true)
+      return
+    }
+    // A real name typed and sent without leaving the field is still the
+    // name: kept for next time here, since no blur will.
+    if (signedAs === 'real') onRealName(realName)
+    onSubmit({
+      type,
+      reporter_type: reporterType,
+      note: note.trim() === '' ? undefined : note.trim(),
+      // Who signed it, as the block above Send has it: both keys or neither
+      // (lib/reporterSignature.ts), and the consent only when given. A
+      // report nobody touched is signed with the trail name, which is what
+      // the block shows, and carries no consent key at all.
+      ...signatureFields({
+        kind: signedAs,
+        name:
+          signedAs === 'real'
+            ? realName.trim() === ''
+              ? null
+              : realName.trim()
+            : names.trail,
+      }),
+      ...(contactOk ? { contact_ok: true } : {}),
+      // The place, as one function spells it for every surface that files
+      // (lib/reportLocation.ts): a waypoint's id and coordinates, a marked
+      // spot's coordinates, or the fix with its radius and its age as of this
+      // moment - and the hiker's words only when nothing else can say. The
+      // mile is omitted rather than zeroed wherever it is unknown (#244): mi
+      // 0.0 is Springer Mountain, and the serious-warnings banner filters on
+      // it.
+      // The age of the fix is measured at Send, against the same injectable
+      // clock the authoring stamp uses, so a test can pin it.
+      ...reportLocationFields(location, fix, now ?? new Date(), placeWords),
+      authoredAt,
+      // Only what actually shrank. A tile still preparing cannot be here -
+      // Send is held while any is - and a failed one never will be, which is
+      // what lets Send stay live over it.
+      photos: ready.map((pick) => pick.blob),
+    })
+  }
 
   return (
     // A MODAL, SAID OUT LOUD, AND SAID HERE (#1439). As a `flowScreen` this
@@ -315,128 +314,59 @@ export function ReportForm({
           all. */}
       <div className="reporting__field">
         <span className="reporting__field-label">Photos</span>
-        <ul className="reporting__photos">
-          {picks.map((pick) => (
-            <li
-              key={pick.id}
-              className={
-                pick.state === 'failed'
-                  ? 'reporting__tile reporting__tile--failed'
-                  : 'reporting__tile'
-              }
-            >
-              {pick.state === 'ready' && (
-                <img className="reporting__thumb" src={pick.url} alt="" />
-              )}
-              {pick.state === 'preparing' && (
-                <span className="reporting__tile-state" role="status">
-                  shrinking…
-                </span>
-              )}
-              {pick.state === 'failed' && (
-                <span className="reporting__tile-state" role="alert">
-                  {pick.message}
-                </span>
-              )}
-              {/* One remove per tile, and it works in every state: a hiker
-                  who picked the wrong photo must not have to wait for the
-                  wrong photo to finish shrinking before they can take it
-                  back. A pick removed mid-shrink never returns - the resolve
-                  below matches by id and finds nothing. */}
-              <button
-                type="button"
-                className="reporting__tile-remove"
-                aria-label={`Remove photo ${picks.indexOf(pick) + 1}`}
-                onClick={() => removePick(pick.id)}
-              >
-                ×
-              </button>
-            </li>
-          ))}
-          {!full && (
-            <li className="reporting__tile reporting__tile--add">
-              <label className="reporting__add">
-                <span aria-hidden="true">+</span>
-                <span className="reporting__add-label">Add a photo</span>
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/heic"
-                  className="reporting__photo"
-                  onChange={(event) => {
-                    void choosePhoto(event.target.files?.[0] ?? null)
-                    // Cleared so picking the SAME file twice still fires a
-                    // change - a hiker retaking a photo that failed is the
-                    // commonest second pick there is.
-                    event.target.value = ''
-                  }}
-                />
-              </label>
-            </li>
-          )}
-        </ul>
-        {/* THE CEILING IS A SENTENCE, NOT A GREYED TILE (D10): a control that
-            looks pressable and is not teaches a hiker at a junction that the
-            app is broken. Past the cap the `+` is gone and this says why. */}
-        {full && (
-          <span className="reporting__meta">
-            {`That is ${MAX_REPORT_PHOTOS} photos, which is as many as one report carries. Remove one to add another.`}
-          </span>
-        )}
-        {ready.length > 0 && (
-          <span className="reporting__meta">
-            {`${photoSummary(ready)}. Location and camera details are not included.`}
-          </span>
-        )}
+        <PhotoTiles
+          picks={photos.picks}
+          ready={photos.ready}
+          full={photos.full}
+          choosePhoto={photos.choosePhoto}
+          removePick={photos.removePick}
+        />
       </div>
 
-      {/* WHERE THIS WILL LAND, AND A WAY TO CORRECT IT (#1439, D16).
+      {/* WHERE THIS WILL LAND, AND A WAY TO CORRECT IT (#1439, D16; #1563).
 
-          The three states are `describeLocation`'s, unchanged and verbatim -
-          they are the whole reason that function exists, and "mi 0.0" is
-          Springer Mountain while 0,0 is the Atlantic off West Africa.
-
-          What is new is that the line is no longer only a readout. A hiker
-          who walked on before filing, or whose phone never got a fix, had no
-          way to say where the tree actually is; "Change" drops a crosshair on
-          the map and names the mile before it is kept, through the same
-          placement function the long-press plate uses (lib/placement.ts), so
-          the plate and the form cannot come to answer differently. */}
-      <p className="reporting__location">
-        <span className="reporting__meta">{describeLocation(location)}</span>
-        {onChangeLocation !== undefined && (
-          <button type="button" className="reporting__change" onClick={onChangeLocation}>
+          The line states the place and HOW it is known - a named place at
+          its mile, the fix with its radius and age, a spot marked on the
+          map - and "Change" opens the same picker the report window uses,
+          in a sheet over this form: a place nearby, where you are, the map,
+          and words when nothing else can say. The three states
+          describeLocation used to spell are still here, spelled by
+          lib/reportLocation.ts for every surface at once; "mi 0.0" is
+          Springer Mountain and 0,0 is the Atlantic off West Africa, and
+          neither is a stand-in for "we do not know". */}
+      <div className="reporting__field">
+        <p className="reporting__location">
+          <span className="reporting__meta" data-testid="report-form-location">
+            {words.detail === null ? words.label : `${words.label} · ${words.detail}`}
+          </span>
+          <button
+            type="button"
+            className="reporting__change"
+            data-testid="report-form-change"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setPicking(true)
+              setRefused(false)
+            }}
+          >
             Change ›
           </button>
-        )}
-      </p>
+        </p>
+      </div>
 
-      {/* A PLACE IN WORDS, WHEN NOTHING ELSE CAN SAY (#1439, D16).
-
-          Only with no fix AND no place's card behind the report - see
-          `asksForPlace`. It travels as the hiker's OWN WORDS and is never
-          turned into a pin: a typed name geocoded into coordinates would be a
-          confident wrong dot on every phone that downloads the report, which
-          is exactly what the omitted-not-zeroed rule on lat/lon/mile exists
-          to prevent. A moderator can place it; the app will not guess. */}
-      {asksForPlace && (
-        <label className="reporting__field">
-          <span className="reporting__field-label">Where was this?</span>
-          <textarea
-            className="reporting__note"
-            value={placeWords}
-            rows={2}
-            onChange={(event) => setPlaceWords(event.target.value)}
-          />
-          <span className="reporting__meta">
-            A landmark, a road, a shelter you passed — however you would say it to
-            somebody.
-          </span>
-        </label>
-      )}
-
-      <p className="reporting__meta">
-        {`Signed as ${trailName ?? 'not set'} · ${reporterType}`}
-      </p>
+      {/* WHO SIGNED IT (#1563) - the whole signature in one sentence, as the
+          static line here used to say it, and the two choices under it. */}
+      <ReporterDetails
+        trailName={names.trail}
+        signedAs={signedAs}
+        onSignedAs={setSignedAs}
+        realName={realName}
+        onRealNameChange={setRealName}
+        onRealNameSettle={() => onRealName(realName)}
+        contactOk={contactOk}
+        onContactOk={setContactOk}
+        reporterType={reporterType}
+      />
 
       {!online && (
         <p className="reporting__queued" role="status">
@@ -454,40 +384,7 @@ export function ReportForm({
           // carries the report, and refusing to send it because the picture
           // did not work would lose the words over the image.
           disabled={preparing}
-          onClick={() =>
-            onSubmit({
-              type,
-              reporter_type: reporterType,
-              // Present exactly when the report started from a place's card
-              // - the anchor a re-measured mile cannot move (FIELD_NOTES.md
-              // step 1). Spread so an unanchored report has no key at all.
-              ...(poiId !== undefined ? { poi_id: poiId } : {}),
-              note: note.trim() === '' ? undefined : note.trim(),
-              // Both omitted rather than zeroed with no fix. The reports API
-              // takes lat and lon as optional for exactly this case, and a
-              // report pinned at 0,0 is not a report with a missing location -
-              // it is a report at a confident, wrong place in the Atlantic.
-              lat: location?.lat,
-              lon: location?.lon,
-              // The mile this form has been computing all along, and used to
-              // throw away here (#244). It is the value the serious-warnings
-              // banner filters on, and nothing server-side can re-derive it -
-              // the backend holds no centerline. Same omitted-not-zeroed rule
-              // as the coordinates: mi 0 is Springer Mountain, not "unknown".
-              mile: location?.mile,
-              // The hiker's words, sent exactly as typed and only in the one
-              // state that asks for them. Trimmed to nothing means absent -
-              // an empty string is a claim that somebody answered.
-              ...(asksForPlace && placeWords.trim() !== ''
-                ? { place_words: placeWords.trim() }
-                : {}),
-              authoredAt,
-              // Only what actually shrank. A tile still preparing cannot be
-              // here - Send is held while any is - and a failed one never
-              // will be, which is what lets Send stay live over it.
-              photos: ready.map((pick) => pick.blob),
-            })
-          }
+          onClick={send}
         >
           {online ? 'Send' : 'Save to outbox'}
         </button>
@@ -495,6 +392,44 @@ export function ReportForm({
           Cancel
         </button>
       </div>
+
+      {/* THE SHEET, over this form, while Change is open or nothing has
+          placed the report yet. Inside the form's own element so it stands
+          aside with the form when the crosshair goes out (#1439). */}
+      {picking && (
+        <LocationSheet
+          choice={location}
+          fix={fix}
+          places={places}
+          onSearch={onSearchPlaces}
+          units={units}
+          knowsTrail={knowsTrail}
+          onChoose={(choice) => {
+            onChooseLocation(choice)
+            setPicking(false)
+            setRefused(false)
+          }}
+          onPointOnMap={onPointOnMap}
+          // The hiker's words, sent exactly as typed and only in the one
+          // state that asks for them. Never turned into a pin: a typed name
+          // geocoded into coordinates would be a confident wrong dot on
+          // every phone that downloads the report. A moderator places it.
+          words={{
+            value: placeWords,
+            onChange: (value) => {
+              setPlaceWords(value)
+              setRefused(false)
+            },
+          }}
+          needed={refused}
+          now={now}
+          onClose={() => {
+            setPicking(false)
+            setRefused(false)
+          }}
+          active={!standingAside}
+        />
+      )}
     </main>
   )
 }

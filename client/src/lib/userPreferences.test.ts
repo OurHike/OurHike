@@ -80,6 +80,7 @@ describe('UserPreferences schema', () => {
         'map_style',
         'max_background_zoom',
         'onboarding_completed',
+        'real_name',
         'red_light_enabled',
         'reporter_type',
         'show_roads',

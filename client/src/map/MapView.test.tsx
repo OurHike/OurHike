@@ -1362,6 +1362,7 @@ describe("the hiker's position (#1581)", () => {
     status: 'located' as const,
     at: { lon: -73.9888, lat: 41.27444 },
     accuracyFeet: 32.8,
+    accuracyM: 10,
     fixedAt: new Date('2026-09-17T12:00:00Z'),
   }
 

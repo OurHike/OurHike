@@ -126,6 +126,15 @@ export interface UserPreferences {
   // Identity
   trail_name: string | null
   /**
+   * The hiker's real name, given only if they choose to sign a report with
+   * it (#1563; lib/reporterSignature.ts). Null until they do. It travels in
+   * the synced blob so a second phone offers the same choice, and reaches a
+   * report only as `signed_name` when the hiker picks it for that report -
+   * never any other surface: the trail name stays the identity shown
+   * (features/IDENTITY_AND_PRIVACY.md).
+   */
+  real_name: string | null
+  /**
    * How this hiker's reports are signed - null until they say (#233).
    *
    * Null is the honest starting state and it is not the same as any of the
@@ -285,6 +294,7 @@ export interface UserPreferences {
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   trail_name: null,
+  real_name: null,
   reporter_type: null,
   default_place: null,
 

@@ -197,6 +197,17 @@ def delete_account(db: Session, profile: Profile, now=None) -> DeletionSummary:
         failure.reporter_id = None
         failure.contact = None
 
+    # A condition report stays - other people rely on it - but the name the
+    # hiker signed it with and their consent to be contacted go (#1563), for
+    # exactly the reason `contact` goes above: both were offered by a person
+    # who is now gone, and a real name on a row that outlives the account is
+    # the retention gap features/IDENTITY_AND_PRIVACY.md names. `reporter_id`
+    # stays, as it always has: the profile it points at is scrubbed below.
+    for report in db.query(Report).filter(Report.reporter_id == profile_id).all():
+        report.signed_name = None
+        report.signed_name_kind = None
+        report.contact_ok = False
+
     # --- The rows other people are relying on. Untouched, and counted so the
     # hiker is told rather than left to assume. ---
 

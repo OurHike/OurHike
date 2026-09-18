@@ -361,6 +361,41 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
     step: 'F9 reporting',
     flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
   },
+  // The picker is driven where the window is: a tap with no fix is refused
+  // and opens it, and the spec files a report by the words it collects
+  // (#1563).
+  'reporting/LocationPicker.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The sheet the picker lives in, and the block the receipt and the long
+  // form sign with: both are driven by the same "no fix" and thanks-form
+  // specs, which read the sheet's title and the signature line.
+  'reporting/LocationSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/ReporterDetails.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The frame both sheets share, and the keep window the map's tap opens:
+  // driven by the same spec, which marks a spot on the map and keeps it.
+  'reporting/Sheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  'reporting/KeepSpotSheet.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
+  // The photo tiles the long form and the receipt share (#1563): the
+  // thanks-form spec finds the `+` tile with nothing picked, and the one-tap
+  // spec finds it again above the receipt's note.
+  'reporting/PhotoTiles.tsx': {
+    step: 'F9 reporting',
+    flow: { status: 'covered', spec: 'e2e/reportingDoors.spec.ts' },
+  },
   'screens/Moderation.tsx': { step: 'F9 reporting', flow: { status: 'planned' } },
 
   // ---- F12 the map --------------------------------------------------------

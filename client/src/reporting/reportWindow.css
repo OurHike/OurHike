@@ -531,6 +531,11 @@
 }
 
 .report-window__note {
+  /* Border-box, or `width: 100%` plus the padding and border runs 26 px past
+     the window's own edge - visible in the receipt frame once the signed-as
+     block sat under it with edges that lined up (review of the preview
+     comment on #1571). */
+  box-sizing: border-box;
   width: 100%;
   padding: var(--space-3, 12px);
   font-family: var(--font-body, system-ui, sans-serif);
@@ -590,85 +595,41 @@
   cursor: pointer;
 }
 
-/* Where else this report could go. Sunken against the dialog's own surface,
-   so it reads as a drawer that opened rather than as another card. */
-.report-window__places {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  background: var(--bg-page);
-  border: 1px solid var(--border-1);
-  border-radius: var(--radius-m, 8px);
-}
+/* Where else this report could go is reporting/LocationPicker.tsx's drawer
+   (locationPicker.css), which replaced the passed-places list that used to be
+   styled here (#1563). What stays is the window's own part of it: the
+   provenance line under the stated place, and standing aside for the map. */
 
-.report-window__filter {
-  min-height: 40px;
-  padding: 0 10px;
-  font-family: var(--font-body, system-ui, sans-serif);
-  font-size: 13px;
-  color: var(--fg-1);
-  background: var(--bg-surface);
-  border: 0;
-  border-bottom: 1px solid var(--border-1);
-}
-
-/* Capped and scrolled, so the window does not grow without bound on a day
-   that walked past two dozen places - and so it is visibly scrollable rather
-   than looking like the whole list. */
-.report-window__place-list {
-  max-height: 188px;
+/* How the place is known - "Your position · ±16 ft · just now", "A named
+   place · mi 628.4", "Marked on the map". The wire's provenance in words,
+   under the header's mono anchor and quieter than it. */
+.report-window__anchor-detail {
   margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.report-window__place {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  min-height: var(--min-touch-target, 44px);
-  padding: 7px 10px;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-top: 1px solid var(--border-1);
-  cursor: pointer;
-}
-
-.report-window__place-list li:first-child .report-window__place {
-  border-top: 0;
-}
-
-.report-window__place:hover {
-  background: var(--bg-surface);
-}
-
-/* Truncates, because a place name can be long and the distance beside it
-   must not be pushed off the row - the distance is what the list is sorted
-   on, so it is what a hiker is comparing. */
-.report-window__place-name {
-  overflow: hidden;
-  font-family: var(--font-display, Georgia, serif);
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--fg-1);
-}
-
-.report-window__place-back {
-  flex: none;
-  margin-left: auto;
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  color: var(--fg-2);
+  line-height: 1.3;
+  color: var(--fg-chrome-3);
 }
 
-.report-window__place-empty {
-  padding: var(--space-3, 12px);
+/* Held open, but out of the way, while the hiker is choosing a point on the
+   map behind it. Hidden rather than unmounted: the window is holding a note,
+   a set of words and a filed report, and re-mounting it to take one tap is
+   how those get lost. `visibility` rather than `display` keeps its state and
+   its focus history intact - the same call, for the same reason, as
+   screens/reporting.css's `.reporting-window--stood-aside`. */
+.report-window__scrim--stood-aside {
+  visibility: hidden;
+}
+
+/* Where the note went, when it went nowhere (#1563): the report had already
+   sent when the receipt tried to write to it. A status line in the body's
+   own voice, not an alert - nothing is wrong with the report, only with what
+   was typed after it. */
+.report-window__lost {
+  margin: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 12px;
-  color: var(--fg-3);
+  line-height: 1.4;
+  color: var(--fg-2);
 }

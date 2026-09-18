@@ -248,6 +248,15 @@ screen. **A shot** is the picture it takes. Recipes are committed; pixels never 
 
 For **the camera**, which is not one thing, see the dangerous list above.
 
+### mock
+
+**A rendered page of a screen as it would be**, drawn in the design system's tokens and
+sent to the maintainer's side panel before a poll about it — the default picture since
+**#1566 — A session's questions to the maintainer carry no wireframe or screenshot, so the
+plan cannot be seen from the words**. Not a shot: nothing in a mock was photographed, and
+its caption says so. See
+[`.claude/skills/visual-poll/SKILL.md`](.claude/skills/visual-poll/SKILL.md).
+
 ### UA
 
 **The environment `main` deploys to** — the one that keeps `main` testable, between dev

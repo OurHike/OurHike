@@ -347,6 +347,24 @@
   color: var(--danger);
 }
 
+/* THE LOCATE BUTTON (#1581), built exactly as the report door above and
+ * inheriting everything the same way. Its glyph is the hiker's mark itself
+ * (map/mapChrome.ts's LOCATE_GLYPH, map/positionMark.ts's proportions), in
+ * `--fg-1` - stone-900 on the white chip, bone on the ink one - which is the
+ * ink the mark is drawn in on the sheet under it. Disabled while there is no
+ * fix to centre on: present and plainly off, at the same 0.4 the dark theme
+ * gives a disabled zoom button below, rather than absent. */
+.map-view .map-locate__button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-1);
+}
+.map-view .map-locate__button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* The same controls under the dark theme.
  *
  * maplibre-gl.css hardcodes a white group with dark glyphs, and nothing in it

@@ -463,7 +463,13 @@ jobs:
           # on recency; the store is tens of megabytes and dominates the size
           # of any artifact containing it.
           best_id=""; best_size=0; best_run=""
-          for run in $(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nynjtc-archive-recovery.yml/runs?per_page=20" --jq '.workflow_runs[].id'); do
+          # Through an assignment, never straight into the `for`: `set -e`
+          # does not see a failure inside a word list, so a rate-limited or
+          # unreachable API read as an empty list - "no artifact in the last
+          # 20 runs" - and the publish went on without the bytes it was told
+          # to carry. Assigned, a failed listing fails this step.
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/nynjtc-archive-recovery.yml/runs?per_page=20" --jq '.workflow_runs[].id')"
+          for run in $runs; do
             line=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts" --jq \
               '[.artifacts[] | select(.expired == false) | select(.name | startswith("nynjtc-archive-recovery-"))]
                | sort_by(.size_in_bytes) | reverse | .[0] | select(. != null) | "\(.id) \(.size_in_bytes)"')

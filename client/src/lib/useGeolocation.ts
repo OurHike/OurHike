@@ -44,13 +44,28 @@
 import { useEffect, useRef, useState } from 'react'
 import type { LonLat } from './trailPosition'
 
+/** A fix the watch delivered: where, how sure, and when. */
+export interface GeolocationFix {
+  at: LonLat
+  accuracyFeet: number
+  fixedAt: Date
+}
+
 export type GeolocationState =
   | { status: 'unsupported' }
   | { status: 'idle' }
   | { status: 'locating' }
   | { status: 'denied' }
-  | { status: 'unavailable' }
-  | { status: 'located'; at: LonLat; accuracyFeet: number; fixedAt: Date }
+  /**
+   * A lost signal, carrying the last fix it had (#1581) - or none, when the
+   * signal was never found. The header prints `No GPS signal` either way
+   * (lib/positionLine.ts reads `status` alone); the map draws `last` as a
+   * stale mark with its age, so a hiker sees where the phone last knew it
+   * was and that the answer is old. Both are true at once, which is why the
+   * state carries both rather than choosing.
+   */
+  | { status: 'unavailable'; last?: GeolocationFix }
+  | ({ status: 'located' } & GeolocationFix)
 
 const METERS_TO_FEET = 3.28084
 
@@ -198,8 +213,19 @@ export function useGeolocation(
           return
         }
         // A timeout or a lost fix is weather, not a verdict - the watch stays,
-        // and the next fix that lands flips this back to located.
-        setState({ status: 'unavailable' })
+        // and the next fix that lands flips this back to located. The last
+        // fix rides along, kept across repeated failures too, so the map can
+        // draw it stale rather than draw nothing (#1581).
+        setState((current) => {
+          if (current.status === 'located') {
+            const { at, accuracyFeet, fixedAt } = current
+            return { status: 'unavailable', last: { at, accuracyFeet, fixedAt } }
+          }
+          if (current.status === 'unavailable' && current.last !== undefined) {
+            return current
+          }
+          return { status: 'unavailable' }
+        })
       },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
     )

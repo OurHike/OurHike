@@ -84,7 +84,7 @@ from pathlib import Path
 
 import requests
 
-from lib import data_env
+from lib import data_env, strict_json
 from lib.completeness import DROP_THRESHOLD, count_problems
 from lib.poi_schema import ALLOWED_EMPTY_POI_TYPES
 from lib.releases import (
@@ -785,7 +785,11 @@ def check_vector(base: str, keys: list[str], session=None) -> list[dict]:
     for key in keys:
         try:
             response = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT)
-            document = response.json()
+            # Strictly, not `response.json()`: Python reads `NaN` and
+            # `Infinity` back as floats and a phone's JSON.parse rejects the
+            # whole document on either (lib/strict_json.py). The exception's
+            # class name below - NonFiniteNumber - is what the report says.
+            document = strict_json.loads(response.content)
         except Exception as exc:  # noqa: BLE001
             reports.append(_report(13, key, FAILED, f"does not parse as JSON: {exc.__class__.__name__}"))
             continue
@@ -1490,7 +1494,9 @@ def check_poi_identity(base: str, manifest: dict, session=None) -> list[dict]:
     poi_keys = [key for key in sorted(manifest["artifacts"]) if key.startswith("poi_") and key.endswith(".geojson")]
     for key in poi_keys:
         try:
-            features = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT).json().get("features", [])
+            features = strict_json.loads((session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT).content).get(
+                "features", []
+            )
         except Exception as exc:  # noqa: BLE001 - a broken artifact fails many ways
             reports.append(_report(21, key, FAILED, f"could not be read: {exc.__class__.__name__}"))
             continue
@@ -1598,7 +1604,7 @@ def check_retired_poi(base: str, manifest: dict, pois: dict, published_live: dic
         ]
 
     try:
-        features = (session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT).json().get("features", [])
+        features = strict_json.loads((session or requests).get(f"{base}/{key}", timeout=HTTP_TIMEOUT).content).get("features", [])
     except Exception as exc:  # noqa: BLE001 - a broken artifact fails many ways
         return [_report(21, key, FAILED, f"could not be read: {exc.__class__.__name__}")]
 

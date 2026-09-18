@@ -61,6 +61,7 @@ import { POI_DOT_LAYER_ID, POI_LAYER_ID, POI_STALENESS_LAYER_ID } from './poiLay
 import { POI_LABEL_LAYER_ID } from './poiLabels'
 import { DAY_HIKE_TICK_LABEL_LAYER_ID } from './dayHikeLayers'
 import { WARNING_LAYER_ID } from './warningLayers'
+import { POSITION_ACCURACY_LAYER_ID, POSITION_LAYER_ID } from './positionLayers'
 import { WORKDAY_LAYER_ID } from './workdayLayers'
 import { DISPUTE_LAYER_ID } from './disputeLayers'
 import { COVERAGE_SEAM_LABEL_LAYER_ID, COVERAGE_SEAM_LAYER_ID } from './coverageLayers'
@@ -297,7 +298,7 @@ describe('the live topographic background', () => {
       .layers.filter((layer) => layer.type === 'symbol')
       .map((layer) => layer.id)
 
-    expect(symbols.slice(-5)).toEqual([
+    expect(symbols.slice(-6)).toEqual([
       POI_LAYER_ID,
       // The dispute mark (#876) sits directly on the pin it annotates, so it
       // joins this group between the waypoints and the workdays. It never
@@ -307,6 +308,11 @@ describe('the live topographic background', () => {
       DISPUTE_LAYER_ID,
       WORKDAY_LAYER_ID,
       WARNING_LAYER_ID,
+      // The hiker's mark (#1581), over every place: a symbol so it can carry
+      // an image, and one that both allows overlap and IGNORES placement, so
+      // it can neither be dropped nor suppress anything under it - the
+      // notice below ranks against the four above exactly as before.
+      POSITION_LAYER_ID,
       // AND THE ATC'S POINT NOTICE, which joined this list rather than being
       // added to it (#1071). It was a `circle` and took no part in placement at
       // all; drawing the burst needs an image, so it is a symbol now and it
@@ -822,6 +828,12 @@ describe('the offline-only background', () => {
       // drawing it here costs a phone with an out-of-date feed nothing.
       WORKDAY_LAYER_ID,
       WARNING_LAYER_ID,
+      // The hiker's mark and its accuracy ring (#1581), over every place and
+      // under the ATC's notices - drawn offline above all, because a phone
+      // with no signal is exactly the one whose owner is standing somewhere
+      // asking where. Empty until the shell hands a fix over.
+      POSITION_ACCURACY_LAYER_ID,
+      POSITION_LAYER_ID,
       // The ATC's own notices survive the subtraction for the same reason the
       // closures do, and arguably more so: their band is baked into a
       // published artifact rather than fetched live, so it is exactly the

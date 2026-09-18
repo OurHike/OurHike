@@ -72,6 +72,8 @@ import {
   type WorkdayPoint,
 } from './workdayLayers'
 import { attachDisputeData, attachDisputeIcon, type DisputePoint } from './disputeLayers'
+import { attachPositionData, attachPositionImages } from './positionLayers'
+import type { GeolocationState } from '../lib/useGeolocation'
 import { attachLineTaps, type TappedLine } from './lineTaps'
 import { chosenSystemSources } from './nearbyTrails'
 import { attachTrailBadgeImages } from './trailBadges'
@@ -100,6 +102,14 @@ import type {
   Theme,
 } from '../lib/userPreferences'
 import { openingZoomFloor, type ArchiveZooms } from '../lib/archiveCoverage'
+
+/** The fix a caller that passes none gets: no position, so no mark. One
+ *  object rather than a fresh literal per render, so the effects keyed on
+ *  `fix` do not re-run for a default that has not changed. */
+const IDLE_FIX: GeolocationState = { status: 'idle' }
+
+/** How often a stale mark's age is re-printed - lib/useClock.ts's minute. */
+const AGE_TICK_MS = 60_000
 
 export interface MapViewProps {
   /** `pmtiles://` URL for the downloaded topo archive. */
@@ -397,6 +407,21 @@ export interface MapViewProps {
    *  caller that has not thought about it does not open a GPS watch. */
   locationEnabled?: boolean
   /**
+   * Where the hiker is, as lib/useGeolocation.ts reports it (#1581) - the
+   * one watch the header reads, handed down so the canvas draws exactly
+   * what the mono line says. A live fix draws the mark; a lost signal that
+   * still carries its last fix draws it stale, with its age; every other
+   * state draws nothing. Defaults to idle, so a caller that has not thought
+   * about it draws no position it does not have.
+   */
+  fix?: GeolocationState
+  /**
+   * Puts the camera on the fix, for the locate button (map/mapChrome.ts).
+   * Undefined leaves the button off. Must be stable across renders
+   * (useCallback), for `onReport`'s reason.
+   */
+  onLocate?: (() => void) | undefined
+  /**
    * Opens the report window from the map's own chrome (#1438, D15). Undefined
    * leaves the control off - see mapChrome.ts for why a door with nowhere to
    * go is not drawn at all.
@@ -561,6 +586,8 @@ export function MapView({
   showZoomButtons = false,
   units = 'imperial',
   locationEnabled = false,
+  fix = IDLE_FIX,
+  onLocate,
   onReport,
   theme = 'light',
   themeChoice = 'auto',
@@ -812,6 +839,11 @@ export function MapView({
     if (floor !== null) map.setZoom(floor)
   }, [map, background, archiveZooms])
 
+  /** Whether the locate button has a fix to centre on (map/mapChrome.ts) -
+   *  a boolean rather than the fix itself, so the chrome effect re-attaches
+   *  its controls when the answer flips and not on every wobble. */
+  const fixAvailable = fix.status === 'located'
+
   // Chrome lives in its own effect so that a preference which only affects the
   // controls - the scale bar's units, the zoom buttons - re-attaches three
   // controls instead of tearing down and rebuilding the entire map underneath
@@ -826,9 +858,11 @@ export function MapView({
       showZoomButtons,
       units,
       locationEnabled,
+      onLocate,
+      fixAvailable,
       onReport,
     })
-  }, [map, showZoomButtons, units, locationEnabled, onReport])
+  }, [map, showZoomButtons, units, locationEnabled, onLocate, fixAvailable, onReport])
 
   // The appearance's half of the same promise, and the widest one: it
   // repaints the backdrop, the archive's dimming, the trail's ink and every
@@ -1113,6 +1147,45 @@ export function MapView({
     if (map === null) return
     return attachDisputeData(map, disputes)
   }, [map, disputes])
+
+  // The hiker's mark (#1581): the images once there is a position to draw,
+  // the fix whenever the watch moves it. Gated on a position rather than
+  // registered off `map` alone like the constant images above, because the
+  // six of them cost a measured 53 ms to rasterise (positionLayers.ts) and
+  // the first fix lands seconds after the map does - so the cost lands off
+  // the launch path, and never at all on a phone with location off. Declared
+  // before the data effect, so the images are on the map before a feature
+  // asks for one.
+  const havePosition =
+    fix.status === 'located' || (fix.status === 'unavailable' && fix.last !== undefined)
+  useEffect(() => {
+    if (map === null || !havePosition) return
+    return attachPositionImages(map)
+  }, [map, havePosition])
+
+  // A stale mark prints its age, and an age is a thing that changes with
+  // nothing else changing - so while (and only while) the signal is lost
+  // with a last fix in hand, a minute tick re-runs the data effect below.
+  // The same cadence lib/useClock.ts keeps for the status strip, for the
+  // same battery reason.
+  const staleSince =
+    fix.status === 'unavailable' && fix.last !== undefined
+      ? fix.last.fixedAt.getTime()
+      : null
+  const [ageTick, setAgeTick] = useState(0)
+  useEffect(() => {
+    if (staleSince === null) return
+    const id = setInterval(() => setAgeTick((tick) => tick + 1), AGE_TICK_MS)
+    return () => clearInterval(id)
+  }, [staleSince])
+
+  useEffect(() => {
+    if (map === null) return
+    return attachPositionData(map, fix, new Date())
+    // `ageTick` is the minute hand: it is in the list to re-run this, not
+    // because the data reads it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fix, ageTick])
 
   useEffect(() => {
     // Not attached during route building, for attachRouteTaps' rule: one

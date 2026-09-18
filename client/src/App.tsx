@@ -486,7 +486,7 @@ import {
   type UpdatePreferences,
 } from './chrome/waypointFiltersPanel'
 import { useAlertLayerPanel } from './chrome/alertLayerPanel'
-import { POI_PIN_MIN_ZOOM } from './map/poiLayers'
+import { LOCATE_MIN_ZOOM, POI_PIN_MIN_ZOOM } from './map/poiLayers'
 import { useTappedLinePanel } from './chrome/tappedLinePanel'
 import {
   paceEstimate,
@@ -7376,6 +7376,24 @@ function App() {
     map.jumpTo({ center: [gps.at.lon, gps.at.lat] })
   }, [map, gps])
 
+  /**
+   * The map's locate button (#1581, map/mapChrome.ts): handleBackToMe, plus
+   * the one thing the old GeolocateControl got right. From below the pin
+   * seam it brings the camera in to LOCATE_MIN_ZOOM - the closest view that
+   * also shows what is around the hiker - and from above it leaves the zoom
+   * alone, for handleBackToMe's reason. A `jumpTo` for the same reason too:
+   * it clears the `mapTaken` latch, and a gesture-shaped move would re-arm
+   * the latch it just cleared.
+   */
+  const handleLocate = useCallback(() => {
+    setMapTaken(false)
+    if (map === null || gps.status !== 'located') return
+    map.jumpTo({
+      center: [gps.at.lon, gps.at.lat],
+      zoom: Math.max(map.getZoom(), LOCATE_MIN_ZOOM),
+    })
+  }, [map, gps])
+
   const handleMapReady = useCallback((next: MapLibreMap | null) => {
     setMap(next)
     if (next === null) return
@@ -10504,6 +10522,11 @@ function App() {
               // attaching it regardless was a second high-accuracy watch and a
               // permission prompt behind this preference's back.
               locationEnabled={locationAllowed}
+              // And the fix itself, for the canvas to draw (#1581) - the same
+              // watch `position` above was printed from, so the mark and the
+              // mono line cannot disagree about whether there is one.
+              fix={gps}
+              onLocate={handleLocate}
               // THE MAP'S NAMED DOOR (#1438, frame 9c). Handed to the shared
               // chrome rather than drawn on this screen, so it is the same
               // control in the same place on every surface that mounts a map.

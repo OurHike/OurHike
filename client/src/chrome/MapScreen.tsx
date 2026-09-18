@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from 'react'
 import { StatusStrip } from './StatusStrip'
+import type { GeolocationState } from '../lib/useGeolocation'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
@@ -151,6 +152,12 @@ export interface MapScreenProps {
   /** Whether location is switched on, which decides whether the map offers
    *  its locate control at all (map/mapChrome.ts, #312). */
   locationEnabled?: boolean
+  /** Where the hiker is, for the canvas to draw (#1581, map/MapView.tsx):
+   *  the shell's one GPS watch, the same state `position` was printed from. */
+  fix?: GeolocationState
+  /** Puts the camera on that fix, for the map's locate button. Undefined
+   *  leaves the button off. Must be stable across renders (useCallback). */
+  onLocate?: (() => void) | undefined
   /**
    * Opens the report window (#1438, D15). Handed to the canvas rather than
    * drawn here: the door belongs to the shared chrome, so every surface that
@@ -960,6 +967,8 @@ export function MapScreen({
   hikerMile,
   position,
   locationEnabled = false,
+  fix,
+  onLocate,
   onReport,
   showZoomButtons = false,
   units = 'imperial',
@@ -1658,6 +1667,8 @@ export function MapScreen({
               showZoomButtons={showZoomButtons}
               units={units}
               locationEnabled={locationEnabled}
+              fix={fix}
+              onLocate={onLocate}
               onReport={onReport}
               theme={theme}
               themeChoice={themeChoice}

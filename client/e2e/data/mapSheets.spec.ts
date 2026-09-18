@@ -246,7 +246,7 @@ test.describe('a waypoint’s card', () => {
     await expect(page.getByRole('dialog', { name: 'In view' })).toHaveCount(0)
   })
 
-  test('states: the peek withholds the photograph, the coordinates and the site strip until it is pulled open', async ({
+  test('states: the peek withholds the photograph, its credit and the coordinates until it is pulled open', async ({
     page,
   }) => {
     // THE LICENCE ARGUMENT, DRIVEN. PoiCard.tsx: "the credit is the price of
@@ -262,8 +262,23 @@ test.describe('a waypoint’s card', () => {
     await expect(card.locator('.poi-card__credit')).toHaveCount(0)
     await expect(card.locator('.poi-card__coords')).toHaveCount(0)
 
-    // What the peek DOES carry: the one-tap answer it exists for.
-    await expect(card.getByRole('group')).toBeVisible()
+    // What the peek DOES carry: the name of the place, and the one control
+    // that opens the rest.
+    //
+    // THIS ASSERTED THE SITE STRIP UNTIL #1585 (2026-09-18) and can no longer,
+    // because the strip is not a property of the card but of WHICH waypoint
+    // this opens. PoiCard.tsx renders it only where `parts.length > 0`, and
+    // the map used to draw site anchors alone - every member folded away - so
+    // the first row of the In view list was reliably an anchor with parts.
+    // Nothing folds now, so the list carries members too and its first row is
+    // whichever waypoint the release happens to put there. Asserting the strip
+    // here became "a claim about the publish", which the entrance test above
+    // names as the thing these specs must not do.
+    //
+    // The strip itself is driven where it can be driven against a known site:
+    // PoiCard.test.tsx's "Parts of Chairback Gap Lean-to" cases and the same
+    // group in App.flows.test.tsx.
+    await expect(card.locator('.poi-card__name')).not.toBeEmpty()
     const pull = card.getByRole('button', { name: /Notes & details|Details/ })
     await expect(pull).toBeVisible()
 

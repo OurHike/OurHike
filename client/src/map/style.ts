@@ -316,6 +316,18 @@ export const NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID = 'nearby-trail-casing-untaken
 export const NEARBY_BLAZE_UNTAKEN_LAYER_ID = 'nearby-trail-blaze-untaken'
 export const NETWORK_OVERVIEW_UNTAKEN_LAYER_ID = 'network-overview-line-untaken'
 
+/** The casing under a through-route's sketch line below the seam (#1586):
+ *  the corridor-view sketch's one casing, under the PRIMARY_TRAIL_SOURCES
+ *  features and nothing else, so the Long Path reads at the opening camera
+ *  as the untaken A.T. does - a dark-edged stroke rather than a bare thread.
+ *  buildNetworkOverviewCasingLayer says the rest. */
+export const NETWORK_OVERVIEW_CASING_LAYER_ID = 'network-overview-casing'
+/** The sketch's two line layers, the ones sketchLineColor paints (#1586). */
+export const NETWORK_OVERVIEW_LINE_LAYER_IDS: readonly string[] = [
+  NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
+  NETWORK_OVERVIEW_LAYER_ID,
+]
+
 /**
  * Every casing under a blaze, and every layer painting a blaze colour -
  * the two lists attachMapAppearance repaints, and the lists anything asking
@@ -334,6 +346,10 @@ export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
   NEARBY_TRAIL_CASING_LAYER_ID,
   NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
   SHARED_GROUND_CASING_LAYER_ID,
+  // The sketch's casing under its through-routes (#1586): repainted with
+  // every other casing on a sheet change, ghosted by attachChosenTrail in a
+  // block of its own (its filter is the source list, not the chosen system).
+  NETWORK_OVERVIEW_CASING_LAYER_ID,
 ]
 /**
  * The blaze layers that ink a near-white line in the casing's colour on a
@@ -361,6 +377,13 @@ export const TRAIL_CASING_LAYER_IDS: readonly string[] = [
  * list with it - not done here, because nobody has looked at a cased
  * 1.5 px line over the opening camera's park clusters, which is the texture
  * NETWORK_OVERVIEW_WIDTH_EXPRESSION's taper exists to keep off that view.
+ *
+ * SINCE #1586 THE NETWORK SKETCH IS CASED UNDER ITS THROUGH-ROUTES, and
+ * only there (NETWORK_OVERVIEW_CASING_LAYER_ID), so its two layers ink dark
+ * on the rest alone: sketchLineColor decides per feature, the cased rule on
+ * a PRIMARY_TRAIL_SOURCES feature and this list's rule everywhere else. The
+ * two ids stay listed, because for everything the casing does not reach the
+ * argument above is unchanged.
  */
 export const DARK_INKED_BLAZE_LAYER_IDS: readonly string[] = [
   NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
@@ -720,10 +743,14 @@ export function attachMapAppearance(
         map.setPaintProperty(
           layerId,
           'line-color',
-          blazeLineColor(
-            appearance,
-            !DARK_INKED_BLAZE_LAYER_IDS.includes(layerId),
-          ) as never,
+          (NETWORK_OVERVIEW_LINE_LAYER_IDS.includes(layerId)
+            ? // The network sketch decides per feature since #1586: the
+              // cased rule under a through-route, dark ink on the haze.
+              sketchLineColor(appearance)
+            : blazeLineColor(
+                appearance,
+                !DARK_INKED_BLAZE_LAYER_IDS.includes(layerId),
+              )) as never,
         )
       }
 
@@ -1018,6 +1045,17 @@ export function attachChosenTrail(
           sketchWidthExpression(chosen) as never,
         )
       }
+      // The sketch's casing (#1586) ghosts with the system like every other
+      // casing, and is not in CHOSEN_TRAIL_SPLIT_LAYERS for the reason the
+      // shared-ground block below gives: that loop writes a chosen-system
+      // filter, and this layer's filter is the through-route source list.
+      if (map.getLayer(NETWORK_OVERVIEW_CASING_LAYER_ID) !== undefined) {
+        map.setPaintProperty(
+          NETWORK_OVERVIEW_CASING_LAYER_ID,
+          'line-opacity',
+          casingOpacity,
+        )
+      }
       for (const id of [TRAIL_LABEL_LAYER_ID, NEARBY_TRAIL_LABEL_LAYER_ID]) {
         if (map.getLayer(id) === undefined) continue
         map.setLayoutProperty(
@@ -1306,9 +1344,33 @@ function buildSharedGroundLayers(
 }
 
 /**
+ * `line-color` for the network's corridor-view sketch (#1586): the CASED
+ * rule on a through-route's feature, which has a casing under it
+ * (NETWORK_OVERVIEW_CASING_LAYER_ID), and the uncased rule on everything
+ * else, which has not. Decided per feature, because the source list is the
+ * feature's and the colour used to be the layer's: under the plain uncased
+ * rule a White through-route on a day sheet would be inked dark inside a
+ * dark edge - one heavy black line - where the A.T.'s own untaken line is
+ * its white blaze between two dark rails. No through-route in the sketch is
+ * White today (the Long Path is Aqua, the A.T. has its own sketch), so this
+ * is the rule agreeing with the casing in advance rather than a line
+ * anybody has seen change. Where the two rules give one answer - red light,
+ * the blaze switch off, any dark sheet - the case collapses to it, so the
+ * common frame carries no expression it does not need.
+ */
+export function sketchLineColor(appearance: SheetAppearance): unknown {
+  const cased = blazeLineColor(appearance, true)
+  const uncased = blazeLineColor(appearance, false)
+  if (JSON.stringify(cased) === JSON.stringify(uncased)) return cased
+  return ['case', THROUGH_ROUTE_SOURCE_CONDITION, cased, uncased]
+}
+
+/**
  * One side of the network overview's split (#1135, #1283): the sketch has no
- * casing and its own tapering width, so it is not buildTrailLineLayers, but
- * it takes the same filter pair for the same reason.
+ * casing pair and its own tapering width, so it is not buildTrailLineLayers,
+ * but it takes the same filter pair for the same reason. (Its through-routes
+ * have one casing under both sides since #1586 -
+ * buildNetworkOverviewCasingLayer.)
  */
 function buildNetworkOverviewLayer(
   layerId: string,
@@ -1326,11 +1388,57 @@ function buildNetworkOverviewLayer(
     maxzoom: POI_PIN_MIN_ZOOM,
     layout: { 'line-cap': 'round', 'line-join': 'round' },
     paint: {
-      // Uncased, so a near-white line is inked dark on a day sheet
-      // (DARK_INKED_BLAZE_LAYER_IDS).
-      'line-color': blazeLineColor(appearance, false) as unknown as string,
+      // Uncased on the haze, so a near-white line there is inked dark on a
+      // day sheet (DARK_INKED_BLAZE_LAYER_IDS); cased on a through-route, so
+      // a white blaze there would stay white (sketchLineColor).
+      'line-color': sketchLineColor(appearance) as unknown as string,
       'line-width': NETWORK_OVERVIEW_WIDTH_EXPRESSION as unknown as number,
       'line-opacity': nearbyTrailOpacityExpression(chosen) as unknown as number,
+    },
+  }
+}
+
+/**
+ * The casing under the sketch's through-routes (#1586): the sketch's one
+ * casing, filtered to THROUGH_ROUTE_SOURCE_CONDITION, so the Long Path reads
+ * at the opening camera as the untaken A.T.'s own line does - a 1.5 px
+ * stroke inside a dark edge rather than the bare thread the rest of the
+ * network is. The maintainer's frame of 2026-09-17: the A.T. cased from
+ * Georgia to Maine, the badged Long Path a plain thread beside it - "make
+ * sure that all long distance trails get the same prominence as what the
+ * AT has now", the long-distance trails being "those named with pills".
+ *
+ * ONE LAYER UNDER BOTH SIDES OF THE SPLIT rather than a pair like the real
+ * lines carry, because the split's taken half is empty in the sketch by
+ * construction (every feature is another organization's) and the untaken
+ * casing taper is what a nearby line owes on either side. Its filter is the
+ * source list alone, not a chosen-system filter, so CHOSEN_TRAIL_SPLIT_LAYERS
+ * does not list it and attachChosenTrail re-points its opacity in a block of
+ * its own, as it does the shared-ground blaze: both paint the ghosting
+ * without filtering on it. Capped at the seam like the sketch it edges.
+ */
+function buildNetworkOverviewCasingLayer(
+  appearance: SheetAppearance,
+  chosen: readonly string[] = CHOSEN_SYSTEM_SOURCES,
+): LayerSpecification {
+  return {
+    id: NETWORK_OVERVIEW_CASING_LAYER_ID,
+    type: 'line',
+    source: NETWORK_OVERVIEW_SOURCE_ID,
+    filter: THROUGH_ROUTE_SOURCE_CONDITION as never,
+    maxzoom: POI_PIN_MIN_ZOOM,
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': trailCasingColor(appearance),
+      // The untaken casing taper: the same hairline around 1.5 px at the far
+      // end and around the tier at the seam as the real untaken A.T.'s.
+      'line-width': untakenTrailCasingWidthExpression() as unknown as number,
+      // The casing's own 0.7 times the line's ghosting, as every casing.
+      'line-opacity': [
+        '*',
+        0.7,
+        nearbyTrailOpacityExpression(chosen),
+      ] as unknown as number,
     },
   }
 }
@@ -1429,6 +1537,27 @@ export const PRIMARY_TRAIL_SOURCES: readonly string[] = [
   LONG_PATH_SOURCE,
 ]
 
+/**
+ * Whether a feature is a through-route's, as an expression: the membership
+ * test TRAIL_SORT_KEY_EXPRESSION has always made, named so the sketch's
+ * casing, its far width and its colour rule can make the same one (#1586).
+ *
+ * THE LIST, NOT THE DATA'S `through_route` FLAG. "Long trails are those
+ * named with pills showing. Right now the AT and LP" - the maintainer,
+ * 2026-09-18, on which trails the A.T.'s prominence is for: the badged
+ * ones (map/trailBadges.ts's BADGE_SOURCES is this list, pinned to it), and
+ * a trail joins by joining the list. The flag is a wider set - every name
+ * export_nearby_trails.py sums past NAMED_TRAIL_THRESHOLD_MILES, 142
+ * features on the pinned release's sketch, a good many of them a creek name
+ * recurring across the Forest Service's national layer - and it keeps the
+ * heavier far width #1307 gave it, not the A.T.'s standing.
+ */
+export const THROUGH_ROUTE_SOURCE_CONDITION: unknown[] = [
+  'in',
+  ['get', 'source'],
+  ['literal', [...PRIMARY_TRAIL_SOURCES]],
+]
+
 /** The two width tiers, in CSS pixels. */
 export const PRIMARY_TRAIL_WIDTH = 4.5
 export const SIDE_TRAIL_WIDTH = 2.5
@@ -1497,7 +1626,7 @@ export const SIDE_TRAIL_SORT_KEY = 0
 
 export const TRAIL_SORT_KEY_EXPRESSION = [
   'case',
-  ['in', ['get', 'source'], ['literal', [...PRIMARY_TRAIL_SOURCES]]],
+  THROUGH_ROUTE_SOURCE_CONDITION,
   PRIMARY_TRAIL_SORT_KEY,
   SIDE_TRAIL_SORT_KEY,
 ]
@@ -1560,11 +1689,13 @@ export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHAN
  * just took off this view (a sub-pixel segment under round caps IS a dot).
  * Measured on a local serve_processed.py build, 2026-08-27.
  *
- * The seam-end stop is DEFAULT_TRAIL_LINE_WIDTH by name, not by value:
- * every source in the overview takes the side-trail tier from
- * TRAIL_WIDTH_EXPRESSION (none is a through-route), so landing on that
- * constant at the seam makes the handoff to the full network's layers
- * pixel-seamless - and style.test.ts pins it so the two cannot drift apart.
+ * The seam-end stop is TRAIL_WIDTH_EXPRESSION itself since #1586 - the
+ * tier the full network's layers start at - so the handoff to them is
+ * pixel-seamless for the Long Path as for a park trail, and style.test.ts
+ * pins the two together. (It was DEFAULT_TRAIL_LINE_WIDTH, flat, while no
+ * source in the sketch was a through-route, which #1307 ended: the Long
+ * Path's sketch line landed on 2.5 px at the seam where its tile line
+ * started at 4.5.)
  *
  * The far end was 0.8 px, picked against that local build for SOLID lines
  * as the mockup's own weight for the mass. Under the dot rhythm (#1283) it
@@ -1580,7 +1711,8 @@ export const TRAIL_CASING_WIDTH_EXPRESSION = trailWidthExpression(CASING_OVERHAN
  * the haze argument got weaker. Whether 1.5 px solid lines over the park
  * clusters read as trails or as a smear is @unvalidated beyond the preview
  * frame; #1307 is where the long-distance trails get their own weight and
- * the clusters stop mattering.
+ * the clusters stop mattering - and #1586 where the badged ones got the
+ * A.T.'s own, a casing under the line (NETWORK_OVERVIEW_CASING_LAYER_ID).
  *
  * The A.T.'s own sketch takes the same far end while the A.T. is not taken
  * (sketchWidthExpression, #1306) - frame 2a draws the untaken A.T. at this
@@ -1639,23 +1771,50 @@ function overviewTaper(far: unknown, atSeam: unknown): unknown[] {
 export const NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH = NETWORK_OVERVIEW_FAR_WIDTH * 2
 
 /**
- * NETWORK_OVERVIEW_FAR_WIDTH, made data-driven on `through_route` - nested
- * INSIDE overviewTaper's `far` stop rather than wrapped around the whole
- * taper, because a zoom expression inside a `case` is a style error
- * (overviewTaper's own header: "the whole taper must stay TOP LEVEL").
+ * NETWORK_OVERVIEW_FAR_WIDTH, made data-driven - nested INSIDE
+ * overviewTaper's `far` stop rather than wrapped around the whole taper,
+ * because a zoom expression inside a `case` is a style error (overviewTaper's
+ * own header: "the whole taper must stay TOP LEVEL"). Two branches:
+ *
+ * - A through-route's feature (THROUGH_ROUTE_SOURCE_CONDITION - the Long
+ *   Path's, since the A.T. has a sketch of its own) takes the plain far
+ *   width, the untaken A.T.'s, and its prominence from the casing under it
+ *   (NETWORK_OVERVIEW_CASING_LAYER_ID, #1586). It took the doubled width
+ *   below from #1307 to #1586, and the maintainer read the result off the
+ *   opening camera: "its weird that the AT is more prominent than the
+ *   LongPath" - a 3 px bare thread beside a 1.5 px line inside a 3.5 px dark
+ *   edge. Doubling the line AND casing it would leave a quarter-pixel edge.
+ * - A `through_route` feature - export_nearby_trails.py's write_overview,
+ *   on any name that cleared NAMED_TRAIL_THRESHOLD_MILES (#1307) - keeps
+ *   NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH: heavier than the haze, not the
+ *   A.T.'s standing, which is the badged trails' (THROUGH_ROUTE_SOURCE_CONDITION).
+ *
  * Absent or false reads as the generic weight: `get` on a missing property
  * is null, and `null === true` is false, never a thrown expression.
  */
 export const NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION = [
   'case',
+  THROUGH_ROUTE_SOURCE_CONDITION,
+  NETWORK_OVERVIEW_FAR_WIDTH,
   ['==', ['get', 'through_route'], true],
   NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
   NETWORK_OVERVIEW_FAR_WIDTH,
 ]
 
+/**
+ * The sketch's width: the far weight above at the continental camera, the
+ * line's own tier at the seam (#1586). The seam stop was
+ * DEFAULT_TRAIL_LINE_WIDTH, flat, on the argument that no source in the
+ * sketch was a through-route - true until #1307 put the Long Path in
+ * PRIMARY_TRAIL_SOURCES, after which its sketch line landed on 2.5 px at
+ * the seam where the tile line replacing it started at 4.5: a restyle at
+ * the handoff. TRAIL_WIDTH_EXPRESSION lands every source where its own
+ * full-line layers start, which is what untakenTrailWidthExpression's
+ * seam stop already does for the real lines.
+ */
 export const NETWORK_OVERVIEW_WIDTH_EXPRESSION: unknown[] = overviewTaper(
   NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
-  DEFAULT_TRAIL_LINE_WIDTH,
+  TRAIL_WIDTH_EXPRESSION,
 )
 
 /**
@@ -2198,7 +2357,10 @@ export function buildMapStyle({
       // No casing pair, exactly like the A.T. sketch and unlike the full
       // lines: one layer per side of the split, the shared colour and ghost
       // expressions - so every organization's trails read as context around
-      // the A.T. from the first frame.
+      // the A.T. from the first frame. EXCEPT UNDER ITS THROUGH-ROUTES
+      // (#1586): one casing, under both sides, so the Long Path reads as the
+      // A.T. does from that same first frame - the casing being what the
+      // untaken A.T. has at the opening camera and the Long Path lacked.
       //
       // WIDTH IS THE ONE EXPRESSION THIS LAYER DOES NOT SHARE, and the
       // deviation was drawn before it was coded: rendered at the full
@@ -2218,6 +2380,7 @@ export function buildMapStyle({
       // the same builder, so admitting a source to the chosen system cannot
       // leave the overview drawing it as untaken while the full lines draw
       // it as taken.
+      buildNetworkOverviewCasingLayer(appearance, chosen),
       buildNetworkOverviewLayer(
         NETWORK_OVERVIEW_UNTAKEN_LAYER_ID,
         appearance,

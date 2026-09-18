@@ -71,6 +71,11 @@ import {
   NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
   NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
   NETWORK_OVERVIEW_WIDTH_EXPRESSION,
+  NETWORK_OVERVIEW_CASING_LAYER_ID,
+  NETWORK_OVERVIEW_LINE_LAYER_IDS,
+  THROUGH_ROUTE_SOURCE_CONDITION,
+  LONG_PATH_SOURCE,
+  sketchLineColor,
   TRAIL_WIDTH_EXPRESSION,
   sketchWidthExpression,
   untakenTrailWidthExpression,
@@ -195,12 +200,24 @@ function layer(id: string) {
 const seamTier = (width: unknown): unknown =>
   Array.isArray(width) && width[0] === 'interpolate' ? width[width.length - 1] : width
 
-function widthFor(expression: unknown, source: string): number {
-  const [, , ...rest] = expression as unknown[]
-  for (let i = 0; i + 1 < rest.length; i += 2) {
-    if (rest[i] === source) return rest[i + 1] as number
+function widthFor(
+  expression: unknown,
+  source: string,
+  properties: Record<string, unknown> = {},
+): number {
+  // Through MapLibre's engine rather than read back off the array, so a
+  // `case` over the source list (the sketch's far stop since #1586) and the
+  // bare `match` answer the same way: with the number the renderer gets.
+  const compiled = createExpression(
+    expression as never,
+    latest.paint_line['line-width'] as never,
+  )
+  if (compiled.result === 'error') {
+    throw new Error('not a valid line-width expression')
   }
-  return rest[rest.length - 1] as number
+  return compiled.value.evaluate({ zoom: 12 }, {
+    properties: { source, ...properties },
+  } as never) as number
 }
 
 /** A paint property of one layer, evaluated by MapLibre's own engine for
@@ -285,8 +302,19 @@ describe('buildMapStyle', () => {
     // IS the match. Every blaze-coloured layer, so a fifth cannot drift.
     for (const id of BLAZE_LINE_LAYER_IDS) {
       const day = layer(id).paint as Record<string, unknown>
-      if (DARK_INKED_BLAZE_LAYER_IDS.includes(id)) {
-        // The two uncased sketches: the match with near-white swapped for
+      if (NETWORK_OVERVIEW_LINE_LAYER_IDS.includes(id)) {
+        // The network sketch decides per feature since #1586: the cased
+        // rule - the match itself - on a through-route, the uncased sketch
+        // rule everywhere else. Still the one match, reached twice
+        // (sketchLineColor).
+        const perFeature = day['line-color'] as unknown[]
+        expect(perFeature[0], id).toBe('case')
+        expect(perFeature[1], id).toEqual(THROUGH_ROUTE_SOURCE_CONDITION)
+        expect(perFeature[2], id).toBe(BLAZE_MATCH_EXPRESSION)
+        expect((perFeature[3] as unknown[])[0], id).toBe('case')
+        expect((perFeature[3] as unknown[])[3], id).toBe(BLAZE_MATCH_EXPRESSION)
+      } else if (DARK_INKED_BLAZE_LAYER_IDS.includes(id)) {
+        // The A.T.'s uncased sketch: the match with near-white swapped for
         // the casing ink, the match still its fallback (#1306).
         expect((day['line-color'] as unknown[])[0], id).toBe('case')
         expect((day['line-color'] as unknown[])[3], id).toBe(BLAZE_MATCH_EXPRESSION)
@@ -585,12 +613,14 @@ describe('buildMapStyle', () => {
     // Width from the side it is standing in for - this style has the A.T.
     // taken, so the sketch carries the taken taper.
     expect(sketch['line-width']).toEqual(blaze['line-width'])
-    // Colour as the other uncased sketch paints it: no casing pair, so a
+    // Colour as the network sketch paints its haze: no casing pair, so a
     // near-white line has to be inked dark or it has no edge at all (#1306,
     // DARK_INKED_BLAZE_LAYER_IDS) - the one place it differs from the
-    // cased line it stands in for.
-    expect(sketch['line-color']).toEqual(network['line-color'])
+    // cased line it stands in for. The network sketch reaches that rule
+    // through a per-feature case since #1586 (sketchLineColor), its
+    // through-routes being cased; the A.T.'s sketch takes the rule bare.
     expect(sketch['line-color']).toEqual(blazeLineColor({ theme: 'light' }, false))
+    expect((network['line-color'] as unknown[])[3]).toEqual(sketch['line-color'])
   })
 
   it('opens with an empty sketch, so a launch with no overview draws nothing', () => {
@@ -1633,13 +1663,22 @@ describe('the network overview sketch (#1135)', () => {
     const network = layer(NETWORK_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
     const sketch = layer(TRAIL_OVERVIEW_LAYER_ID).paint as Record<string, unknown>
 
-    expect(network['line-color']).toEqual(sketch['line-color'])
+    // The haze's colour is the A.T. sketch's own; a through-route's feature
+    // takes the cased rule over its casing instead (#1586, sketchLineColor).
+    expect((network['line-color'] as unknown[])[3]).toEqual(sketch['line-color'])
     expect(network['line-opacity']).toEqual(sketch['line-opacity'])
 
     const taper = network['line-width'] as unknown[]
     const fullLines = layer(NEARBY_BLAZE_LAYER_ID).paint as Record<string, unknown>
     expect(taper[taper.length - 2]).toBe(POI_PIN_MIN_ZOOM)
-    expect(taper[taper.length - 1]).toBe(DEFAULT_TRAIL_LINE_WIDTH)
+    // The seam stop is the tier expression itself since #1586, so a park
+    // trail lands on the side-trail width and the Long Path on the
+    // through-route width - each exactly where its full lines start.
+    expect(taper[taper.length - 1]).toEqual(TRAIL_WIDTH_EXPRESSION)
+    expect(widthFor(taper[taper.length - 1], 'oprhp_trails')).toBe(
+      DEFAULT_TRAIL_LINE_WIDTH,
+    )
+    expect(widthFor(taper[taper.length - 1], LONG_PATH_SOURCE)).toBe(PRIMARY_TRAIL_WIDTH)
     expect(widthFor(seamTier(fullLines['line-width']), 'oprhp_trails')).toBe(
       DEFAULT_TRAIL_LINE_WIDTH,
     )
@@ -1705,7 +1744,14 @@ describe('a near-white blaze on paper is inked in the casing colour where it has
         TRAIL_OVERVIEW_LAYER_ID,
       ])
       for (const id of DARK_INKED_BLAZE_LAYER_IDS) {
-        expect(paintFor(built, id, 'line-color', colorSpec, white), id).toBe(
+        // The network sketch never carries the centerline (the A.T. has a
+        // sketch of its own), and since #1586 it inks dark on the haze
+        // alone - a through-route's feature there is cased, and white
+        // (sketchLineColor). So the haze is what this asks it about.
+        const feature = NETWORK_OVERVIEW_LINE_LAYER_IDS.includes(id)
+          ? { source: 'oprhp_trails', blaze_color: 'White' }
+          : white
+        expect(paintFor(built, id, 'line-color', colorSpec, feature), id).toBe(
           trailCasingColor(options),
         )
       }
@@ -2179,26 +2225,205 @@ describe('nothing taken (#1306)', () => {
     expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toEqual(
       NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
     )
-    expect(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION[3]).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
+    expect(widthFor(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION, 'oprhp_trails')).toBe(
+      NETWORK_OVERVIEW_FAR_WIDTH,
+    )
   })
 
-  it('gives a named through-route its own weight below the seam (#1307)', () => {
+  it('gives a named long-distance trail its own weight below the seam, and a badged one the A.T.’s (#1307, #1586)', () => {
     // export_nearby_trails.py's write_overview sets `through_route: true`
-    // only on a feature that cleared NAMED_TRAIL_THRESHOLD_MILES - the Long
-    // Path, not a park loop. Twice the generic haze's far width, still
-    // nested inside overviewTaper's `far` stop rather than wrapped around
-    // it: a zoom expression inside a `case` is a style error.
+    // only on a feature that cleared NAMED_TRAIL_THRESHOLD_MILES - a
+    // long-distance trail, not a park loop. Twice the generic haze's far
+    // width, still nested inside overviewTaper's `far` stop rather than
+    // wrapped around it: a zoom expression inside a `case` is a style error.
+    // A through-route's feature (the Long Path's) is exempt since #1586: it
+    // takes the plain far width under its casing - the next block - because
+    // a doubled line inside the casing's hairline would have no edge.
     expect(NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH).toBe(NETWORK_OVERVIEW_FAR_WIDTH * 2)
     expect(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION).toEqual([
       'case',
+      THROUGH_ROUTE_SOURCE_CONDITION,
+      NETWORK_OVERVIEW_FAR_WIDTH,
       ['==', ['get', 'through_route'], true],
       NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
       NETWORK_OVERVIEW_FAR_WIDTH,
     ])
+    expect(
+      widthFor(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION, 'oprhp_trails', {
+        through_route: true,
+      }),
+    ).toBe(NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH)
+    expect(
+      widthFor(NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION, LONG_PATH_SOURCE, {
+        through_route: true,
+      }),
+    ).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
     expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[0]).toBe('interpolate')
     expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toEqual(
       NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
     )
+  })
+})
+
+describe("every badged trail at the A.T.'s prominence (#1586)", () => {
+  // "Hey its weird that the AT is more prominent than the LongPath. Can you
+  // make sure that all long distance trails get the same prominence as what
+  // the AT has now?" - and, asked which: "Long trails are those named with
+  // pills showing. Right now the AT and LP" (the maintainer, 2026-09-17 and
+  // 2026-09-18). Below the seam the untaken A.T. is a 1.5 px line inside a
+  // dark casing; the Long Path's sketch line was a 3 px bare thread. This
+  // block is the casing under the sketch's through-routes, and the seam
+  // handoff at their own tier.
+  const widthSpec = latest.paint_line['line-width']
+  const colorSpec = latest.paint_line['line-color']
+  const longPath = { source: LONG_PATH_SOURCE, through_route: true }
+  const park = { source: 'oprhp_trails' }
+  const flaggedPark = { source: 'oprhp_trails', through_route: true }
+  const built = buildMapStyle(STYLE_OPTIONS)
+  const layerIn = (id: string) =>
+    built.layers.find((candidate) => candidate.id === id) as
+      { filter?: unknown; paint?: Record<string, unknown>; maxzoom?: number } | undefined
+
+  it('names the through-routes once, as the sort key’s own membership test', () => {
+    expect(THROUGH_ROUTE_SOURCE_CONDITION).toEqual([
+      'in',
+      ['get', 'source'],
+      ['literal', [...PRIMARY_TRAIL_SOURCES]],
+    ])
+    expect(sortKeyFor(BLAZE_LAYER_ID, LONG_PATH_SOURCE)).toBeGreaterThan(
+      sortKeyFor(BLAZE_LAYER_ID, 'oprhp_trails'),
+    )
+  })
+
+  it('hands the sketch off at the line’s own tier, the Long Path at the A.T.’s far weight', () => {
+    const at = (zoom: number, properties: Record<string, unknown>) => {
+      const compiled = createExpression(
+        NETWORK_OVERVIEW_WIDTH_EXPRESSION as never,
+        widthSpec as never,
+      )
+      if (compiled.result === 'error') throw new Error('sketch width is not valid')
+      return compiled.value.evaluate({ zoom }, { properties } as never) as number
+    }
+    expect(at(POI_PIN_MIN_ZOOM, longPath)).toBe(PRIMARY_TRAIL_WIDTH)
+    expect(at(POI_PIN_MIN_ZOOM, park)).toBe(SIDE_TRAIL_WIDTH)
+    expect(at(POI_PIN_MIN_ZOOM, flaggedPark)).toBe(SIDE_TRAIL_WIDTH)
+    // The far end: the A.T.'s own weight for the Long Path, the casing
+    // carrying its prominence; #1307's doubled weight for a flagged name.
+    expect(at(OVERVIEW_FAR_ZOOM, longPath)).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
+    expect(at(OVERVIEW_FAR_ZOOM, park)).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
+    expect(at(OVERVIEW_FAR_ZOOM, flaggedPark)).toBe(
+      NETWORK_OVERVIEW_THROUGH_ROUTE_FAR_WIDTH,
+    )
+    for (const id of NETWORK_OVERVIEW_LINE_LAYER_IDS) {
+      expect(layerIn(id)?.paint?.['line-width'], id).toEqual(
+        NETWORK_OVERVIEW_WIDTH_EXPRESSION,
+      )
+    }
+  })
+
+  it('cases the sketch under its through-routes only, under both sides of the split, capped at the seam', () => {
+    const casing = layerIn(NETWORK_OVERVIEW_CASING_LAYER_ID)
+    expect(casing).toBeDefined()
+    expect(casing?.filter).toEqual(THROUGH_ROUTE_SOURCE_CONDITION)
+    expect(casing?.maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    // The untaken casing taper - the same hairline around 1.5 px at the far
+    // end and around the tier at the seam as the real untaken A.T.'s - in
+    // the same ink and at the same softness as every other untaken casing.
+    expect(casing?.paint?.['line-width']).toEqual(untakenTrailCasingWidthExpression())
+    expect(casing?.paint?.['line-color']).toBe(
+      layerIn(NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID)?.paint?.['line-color'],
+    )
+    expect(casing?.paint?.['line-opacity']).toEqual(
+      layerIn(NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID)?.paint?.['line-opacity'],
+    )
+    const ids = built.layers.map((candidate) => candidate.id)
+    expect(ids.indexOf(NETWORK_OVERVIEW_CASING_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_UNTAKEN_LAYER_ID),
+    )
+    expect(ids.indexOf(NETWORK_OVERVIEW_UNTAKEN_LAYER_ID)).toBeLessThan(
+      ids.indexOf(NETWORK_OVERVIEW_LAYER_ID),
+    )
+    // Filtered on the source list and not on the chosen system, nor on the
+    // data's flag: the Long Path passes, a flagged park name does not.
+    const passes = (properties: Record<string, unknown>) =>
+      featureFilter(casing?.filter as never, 'layers[0].filter').filter(
+        { zoom: 5 } as never,
+        { properties, type: 2 } as never,
+      )
+    expect(passes(longPath)).toBe(true)
+    expect(passes({ source: LONG_PATH_SOURCE })).toBe(true)
+    expect(passes(park)).toBe(false)
+    expect(passes(flaggedPark)).toBe(false)
+  })
+
+  it('repaints the sketch casing with every other casing on a sheet change, and ghosts it on a take without touching its filter', () => {
+    expect(TRAIL_CASING_LAYER_IDS).toContain(NETWORK_OVERVIEW_CASING_LAYER_ID)
+    expect([...CHOSEN_TRAIL_SPLIT_LAYERS].map(([id]) => id)).not.toContain(
+      NETWORK_OVERVIEW_CASING_LAYER_ID,
+    )
+    const map = new MockMap({ style: built })
+    attachChosenTrail(map as never, null)
+    const written = map.paintProperties.get(
+      `${NETWORK_OVERVIEW_CASING_LAYER_ID}/line-opacity`,
+    )
+    expect(written).not.toBeUndefined()
+    expect(written).toEqual(
+      map.paintProperties.get(`${NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID}/line-opacity`),
+    )
+    expect(map.filters.get(NETWORK_OVERVIEW_CASING_LAYER_ID)).toBeUndefined()
+
+    const night = { theme: 'dark', mapStyle: 'night_hike' } as const
+    attachMapAppearance(map as never, night)
+    expect(
+      map.paintProperties.get(`${NETWORK_OVERVIEW_CASING_LAYER_ID}/line-color`),
+    ).toBe(trailCasingColor(night))
+  })
+
+  it('inks a White through-route’s sketch line white inside its casing on a day sheet, and the haze dark', () => {
+    // The sketch's colour was the layer's - dark ink for a near-white blaze,
+    // since it had no casing - and the source list is the feature's: under
+    // one rule a White through-route would draw dark inside a dark edge.
+    const day = { theme: 'light', mapStyle: 'field', blazeColorsShown: true } as const
+    const onPaper = buildMapStyle({ ...STYLE_OPTIONS, ...day })
+    const white = { blaze_color: 'White' }
+    for (const id of NETWORK_OVERVIEW_LINE_LAYER_IDS) {
+      expect(
+        paintFor(onPaper, id, 'line-color', colorSpec, { ...longPath, ...white }),
+        id,
+      ).toBe(
+        paintFor(onPaper, NEARBY_BLAZE_UNTAKEN_LAYER_ID, 'line-color', colorSpec, {
+          ...park,
+          ...white,
+        }),
+      )
+      expect(
+        paintFor(onPaper, id, 'line-color', colorSpec, { ...park, ...white }),
+        id,
+      ).toBe(trailCasingColor(day))
+    }
+    // Where the cased and uncased rules agree the case collapses: with the
+    // hues off - the shipped default - one red for the haze and the Long
+    // Path alike, and on a dark sheet the blaze's own hex for both.
+    expect(sketchLineColor({ theme: 'light', blazeColorsShown: false })).toBe(
+      PLAIN_TRAIL_COLOR,
+    )
+    expect(sketchLineColor({ theme: 'dark', blazeColorsShown: true })).toEqual(
+      blazeLineColor({ theme: 'dark', blazeColorsShown: true }, false),
+    )
+    expect(sketchLineColor(day)).toEqual([
+      'case',
+      THROUGH_ROUTE_SOURCE_CONDITION,
+      blazeLineColor(day, true),
+      blazeLineColor(day, false),
+    ])
+    // And a sheet change writes the same per-feature rule back.
+    const map = new MockMap({ style: built })
+    attachMapAppearance(map as never, day)
+    for (const id of NETWORK_OVERVIEW_LINE_LAYER_IDS) {
+      expect(map.paintProperties.get(`${id}/line-color`), id).toEqual(
+        sketchLineColor(day),
+      )
+    }
   })
 })
 
@@ -2317,7 +2542,9 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     attachMapAppearance(m as never, { theme: 'light', blazeColorsShown: true })
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(
-        blazeLineColor({ theme: 'light' }, !DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
+        NETWORK_OVERVIEW_LINE_LAYER_IDS.includes(id)
+          ? sketchLineColor({ theme: 'light' })
+          : blazeLineColor({ theme: 'light' }, !DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
       )
     }
     expect(m.styles).toEqual([])

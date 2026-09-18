@@ -87,6 +87,13 @@ export const TRAIL_BADGE_LAYER_ID = 'trail-badge'
  * trails add forty fine lines and forty along-line names, and no badges.
  * The Long Path joined this tier at #1307, the first source promoted off
  * export_nearby_trails.py's write_overview naming it below the seam.
+ *
+ * AND THIS LIST IS WHAT "LONG-DISTANCE TRAIL" MEANS TO THE MAP (#1586): "Long
+ * trails are those named with pills showing" - the maintainer, 2026-09-18 -
+ * so the A.T.'s prominence below the seam (map/style.ts's
+ * NETWORK_OVERVIEW_CASING_LAYER_ID) follows the badge, not the data's
+ * `through_route` flag, which names 142 features on the pinned release's
+ * sketch. A trail earns both by joining here.
  */
 export const BADGE_SOURCES: readonly string[] = ['centerline', 'nynjtc_long_path']
 

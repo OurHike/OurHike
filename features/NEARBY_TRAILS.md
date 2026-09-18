@@ -122,6 +122,13 @@ is dimmed, never removed (the maintainer's rule: _"the color of the trail blazes
 the color on the map"_), and the tap sheet below shows the blaze at full strength.
 
 _(Amended 2026-09-17, [#1575](https://github.com/OurHike/OurHike/issues/1575): the hue is off the map's lines by default now — every trail is one red until the hiker switches "Blaze colors" on in the legend, the maintainer's request of that day: "Showing the blaze color can be distracting and feel like I'm living in a rainbow". Ghosting is unchanged, because it is an opacity fact: under the one red it is opacity and width that separate the chosen system from the rest, exactly as under red light. The tap sheet and the legend's "Trails in view" rows show the blaze at full strength whichever way the switch is set.)_
+- **Every badged trail takes the A.T.'s prominence below the seam (2026-09-18,
+  [#1586](https://github.com/OurHike/OurHike/issues/1586))** — a casing under the corridor-view
+  sketch's through-routes, the A.T.'s own far weight, and a seam handoff at the line's own
+  tier (WIREFRAMES.md §3's amendment of that date has the rule and what "long-distance"
+  means to the map: _"those named with pills showing"_). Ghosting is untouched: the Long
+  Path outside the chosen system is a cased, ghosted line, which is exactly what the untaken
+  A.T. is at the opening camera — the parity the maintainer asked for.
 
 ## 2. Tapping a nearby trail — a sheet that informs and does not switch
 

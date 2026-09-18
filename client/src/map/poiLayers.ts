@@ -48,11 +48,11 @@ import type { MapPoint } from '../lib/legendContents'
 import {
   SITE_ANCHOR_TYPES,
   SITE_MEMBERS_PROPERTY,
-  composeSites,
   siteMembersKey,
   type SiteVisibility,
 } from './poiSites'
 import { POI_PRIORITY } from './poiPriority'
+
 import { poiIconImages } from './poiIconImages'
 import {
   PIN_HALO_COLOR,
@@ -137,7 +137,56 @@ export const POI_NAME_PROPERTY = 'poi_name'
  * texture and wrong about what to do: it drew nothing rather than drawing the
  * texture honestly. The dot rank is that texture, labelled.
  */
-export const POI_PIN_MIN_ZOOM = 9
+export const POI_PIN_MIN_ZOOM = 7.5
+
+// IT IS 7.5 SINCE 2026-09-18 (#1585), AND THE DOCSTRING ABOVE IS KEPT WHOLE
+// BECAUSE ITS ARGUMENT IS STILL THE ONE THAT DECIDES THIS NUMBER - the seam is
+// the widest view that is still about a walk rather than about a region. What
+// changed is which walk. A day is 16-24 miles and z9 fits it doubled; a
+// thru-hiker plans one RESUPPLY at a time, five or six days at twenty miles,
+// and that is 100-120 trail miles.
+//
+// MEASURED 2026-09-17 on the calibrated mile axis the app's own mile numbers
+// come from (pipeline/export_elevation.py's calibrated_trail_axis, ATC's
+// centerline and half-mile markers): every window of 100, 110 and 120 trail
+// miles from Springer to Katahdin, stepped every two miles, fitted the way
+// App.tsx fits a stretch (fitBounds into a 390x700 map, FIT_PADDING 24).
+//
+//     window   phone fit zoom p10 / median / p90   straight-line span, median
+//     100 mi   7.82 / 8.39 / 8.95                  54 mi
+//     110 mi   7.73 / 8.26 / 8.77                  59 mi
+//     120 mi   7.61 / 8.14 / 8.59                  65 mi
+//
+// The median carry fits at z8.1-8.4 and fewer than one window in ten fits at
+// z9, so z9 was a seam a section hiker could never see their section from.
+// (On a desktop the map tab frames the same section at z9.6 and needed
+// nothing; this is a phone answer.)
+//
+// 7.5 RATHER THAN THE MEDIAN 8, on the maintainer's pick of 2026-09-18 from
+// three drawn options: nine in ten 120-mile windows fit at z7.61 or nearer, so
+// 7.5 is the floor at which essentially EVERY carry fits rather than half of
+// them. The cost was drawn beside it and taken knowingly - a z7.5 screen is
+// 80 x 144 miles and holds a median 64 waypoints against room for about 26
+// pins, so a smaller share of them wear one and the rest are dots. Which is
+// exactly what the dot rank is for, and why the floor could move at all.
+//
+// THE PIN'S SIZE DID NOT MOVE WITH IT, also the maintainer's pick from the
+// same three options: POI_PIN_MIN_SCALE stays 0.8, the value #617 measured as
+// the difference between a mark you can identify and one you can only locate.
+// A 0.6 ramp was drawn and offered - it fits about a quarter more pins - and
+// was not taken.
+//
+// WHAT THIS IS NOT, and the first attempt at #1585 got it wrong in exactly
+// this way: it is not a licence to draw SOME categories down here. That build
+// put a type gate below the seam - shelters, water and towns only - and a
+// hiker at z8 saw no campsite, no privy, no parking and no crossing, with
+// nothing on the screen to say they existed. The maintainer's rule, 2026-09-18:
+// "Don't auto hide the POIs ever. It's a safety thing, hikers need to know
+// that info." So the seam decides WHERE waypoints start, and never WHICH:
+// from here up every category the hiker has switched on is drawn, as a pin
+// where it fits and as a dot where it does not, and {@link poiFilter} carries
+// no zoom term at all. poiLayers.test.ts's "the map never hides a category of
+// its own accord" block is that rule, pinned.
 
 /**
  * The closest one tap of the map's locate button brings the camera from
@@ -161,7 +210,20 @@ export const POI_PIN_MIN_ZOOM = 9
  * eager chunk for POI_PIN_MIN_ZOOM's sake, so a constant here costs it
  * nothing.
  */
-export const LOCATE_MIN_ZOOM = POI_PIN_MIN_ZOOM
+export const LOCATE_MIN_ZOOM = 9
+
+// 9 IS NOW ITS OWN NUMBER, AND THAT IS THE CHANGE (#1585). It was
+// POI_PIN_MIN_ZOOM, on the reasoning above: "the closest view that also shows
+// what is around the hiker". That reasoning held while the seam was the zoom a
+// DAY fits. The seam is a planning number now - the zoom a five-day resupply
+// carry fits, 80 x 144 miles of ground - and "where am I" is not a planning
+// question. Following it would have answered a hiker's tap with a screen a
+// hundred and forty miles tall.
+//
+// So this keeps the value it has always had, for the reason it always had it:
+// 28 x 51 miles is a day's ground with the waypoints around it, which is what
+// somebody asking where they are wants to see. It is a camera choice and never
+// a filter - every waypoint is drawn at every zoom either way.
 
 // {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
 // there when site composition needed the same ordering to decide which member
@@ -260,6 +322,60 @@ export const POI_SORT_KEY_EXPRESSION: unknown[] = [
 export const POI_PIN_MIN_SCALE = 0.8
 
 /**
+ * The categories drawn at full size, and it is POI_PRIORITY's own top rather
+ * than a second opinion about what matters (#1585).
+ *
+ * That list is already the repository's argued ordering of what a hiker
+ * reaches for - water and a roof first, then the ways off the trail, with the
+ * privies, fords and overlooks behind them - and it carries the reasoning at
+ * each step. Taking the size tiers from it means there is one ordering here
+ * rather than two that can disagree, and the boundary falls where its own
+ * comments stop talking about getting somebody off a mountain.
+ *
+ * The maintainer, 2026-09-18: "the warnings needs to stay large as well as
+ * the other important classes." The warning pin was already exempt from all
+ * of this - map/warningLayers.ts draws it at one size at every zoom and
+ * never lets it be culled - so this is the same rule reaching the waypoints
+ * that sit beside it.
+ */
+export const FULL_SIZE_POI_TYPES: readonly string[] = POI_PRIORITY.slice(
+  0,
+  POI_PRIORITY.indexOf('privy'),
+)
+
+/**
+ * What the rest are drawn at, as a fraction of a full-size pin.
+ *
+ * NOT A WAY OF HIDING THEM, and the difference is the whole point: a vista at
+ * 0.72 is 27 px carrying a 13 px glyph, which is a mark a hiker can see, name
+ * and tap. It is smaller than a spring because a spring is the one somebody
+ * is looking for when the weather turns, and with nothing culled any more
+ * size is the only channel left that can say so.
+ *
+ * @unvalidated 0.72 is picked. It is the largest fraction at which a
+ * viewpoint reads as secondary to a water pin beside it on this screen, by
+ * eye in a browser, and nobody has looked at the pair on a phone in sunlight
+ * - the outdoor pass #105 closed without giving these two marks a side-by-side.
+ * What would settle it: which of the two a hiker reaches for first when both
+ * are under the thumb.
+ */
+export const SECONDARY_POI_SCALE = 0.72
+
+/** A pin's size at one zoom stop: full for the categories above, reduced for
+ *  the tail. `icon-size` is data-driven, and a zoom `interpolate` may carry a
+ *  data expression in each OUTPUT but never in its input - so the tier goes
+ *  here, per stop, rather than multiplying the ramp from outside. */
+function sizeAtStop(base: number): unknown[] {
+  return [
+    'match',
+    ['get', 'poi_type'],
+    [...FULL_SIZE_POI_TYPES],
+    base,
+    base * SECONDARY_POI_SCALE,
+  ]
+}
+
+/**
  * Pins grow with zoom rather than sitting at one size.
  *
  * At the far end of {@link POI_PIN_MIN_ZOOM} they are markers saying something
@@ -276,9 +392,9 @@ export const POI_ICON_SIZE_EXPRESSION: unknown[] = [
   ['linear'],
   ['zoom'],
   POI_PIN_MIN_ZOOM,
-  POI_PIN_MIN_SCALE,
+  sizeAtStop(POI_PIN_MIN_SCALE),
   13,
-  1,
+  sizeAtStop(1),
 ]
 
 /**
@@ -307,17 +423,40 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
       'icon-image': POI_ICON_EXPRESSION as unknown as string,
       'icon-size': POI_ICON_SIZE_EXPRESSION as unknown as number,
       'symbol-sort-key': POI_SORT_KEY_EXPRESSION as unknown as number,
-      // The declutter. Left at the spec default deliberately rather than
-      // omitted: it is the entire density story, and an `icon-allow-overlap:
-      // true` added later for one screenshot would silently undo it.
-      'icon-allow-overlap': false,
-      // How much air each pin claims, which used to be a flat 2 - "a little
-      // air, so two pins that merely touch are treated as colliding" - and is
-      // now per-feature (#1536). A waypoint on quiet ground still claims
-      // exactly 2 and is placed exactly as it was; one on crowded ground
-      // claims more, so the collision engine stops packing pins edge to edge
-      // in a city. map/poiCrowding.ts owns every number in it and the
-      // measurement each rests on.
+      // NOTHING IS EVER CULLED (#1585, 2026-09-18). This was `false` - the
+      // spec default, left explicit because it was "the entire density
+      // story" - and the story it told was that MapLibre dropped every pin
+      // that would have overlapped one already placed. Measured against the
+      // identity ledger that day: at z9, 59% of the waypoints reaching this
+      // layer were dropped; at the seam, 81%. They kept a 2.5 px dot, which
+      // is what the two ranks bought (#597), and a dot is not the pin a
+      // hiker scans for.
+      //
+      // The maintainer, 2026-09-18: "never hide anything!!!!!!! ... we had
+      // worked so hard to get the small pins to show. always show the pins."
+      //
+      // features/POI_VISIBILITY.md had already written the release note for
+      // this line: "a setting that only governs legibility can be revisited
+      // ... without anything true or false hanging on it". This is that
+      // revision. What replaces culling as the density answer is SIZE -
+      // POI_ICON_SIZE_EXPRESSION draws the categories a hiker's day depends
+      // on at full size and the tail smaller - and the honest cost is stated
+      // where it belongs, in that doc: at planning zooms this is a dense
+      // screen, and at the zooms somebody walks at it is four to ten marks.
+      'icon-allow-overlap': true,
+      // AND IT EVICTS NOTHING EITHER. With overlap allowed, a pin that still
+      // took part in placement would be drawn and would go on displacing the
+      // symbols around it - the trail names, the waypoint labels, the trail
+      // badges - so "hide nothing" would have held for pins by taking the
+      // names off the map instead. Ignoring placement is what makes this
+      // layer neither hidden nor hiding.
+      'icon-ignore-placement': true,
+      // Padding is inert while nothing collides (#1585) and is kept rather
+      // than deleted, because what it encodes is a measurement - how crowded
+      // the ground under each waypoint is (#1536, map/poiCrowding.ts) - and
+      // the staleness ring still reads that same property to fade itself on
+      // crowded ground. A future change that reinstates any placement pass
+      // finds the air it needs already computed.
       'icon-padding': POI_ICON_PADDING_EXPRESSION as unknown as number,
       // No `text-field` anywhere in this layer, and the reason has shifted
       // slightly rather than gone away. It used to be that the style had no
@@ -491,7 +630,36 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
 ]
 
 /**
- * How far down the dot rank goes - to the seam, with the pins (#1135).
+ * How far down the dot rank goes: all the way, again (#1585, 2026-09-18).
+ *
+ * THIS IS #603's FLOOR, REINSTATED, AND THE OBJECTION THAT REMOVED IT IS
+ * ANSWERED RATHER THAN OVERRULED. #1135 took the stipple off because #1097 had
+ * joined 8,480 network waypoints to this source while their trails' lines drew
+ * only from the seam up - so the dots had quietly become "mostly places on
+ * trails the view refuses to draw". That is no longer true of this view: #1135
+ * itself put every organization's trails on the corridor camera as the 255 KB
+ * overview sketch (pipeline/export_nearby_trails.py's write_overview), so a
+ * network waypoint down here now sits on a line the map is drawing.
+ *
+ * WHAT DECIDED IT is the maintainer's rule of 2026-09-18, and it is a safety
+ * rule rather than a density one: "Don't auto hide the POIs ever. It's a
+ * safety thing, hikers need to know that info." A hiker cannot ask about a
+ * mark that is not drawn. Between the opening camera and the pin seam this
+ * rank is the only thing that says a place is there at all, so it draws every
+ * waypoint the hiker has switched on, at every zoom, with no type gate of any
+ * kind - {@link poiFilter} carries no zoom term, and poiLayers.test.ts's "the
+ * map never hides a category of its own accord" block is that rule pinned.
+ *
+ * The cost this doc should keep stating, and #603's own docstring stated it
+ * first: features/POI_VISIBILITY.md's "below the seam the map is a complete
+ * map of something ELSE" is softer while this floor is here. The corridor view
+ * carries the clubs and the trails AND a stipple of places, and the stipple is
+ * texture rather than a subject. It is cheap to draw - a circle layer runs no
+ * collision pass - and it is not free of meaning.
+ *
+ * The record of what it replaced, kept because the third reversal is only
+ * defensible against the first two: how far down the dot rank went from
+ * 2026-08-27 to 2026-09-18 - to the seam, with the pins (#1135).
  *
  * It was 0 from #603 to 2026-08-27, and the maintainer reversed that
  * below-seam half deliberately: *"The opening map probably just needs to be
@@ -520,7 +688,7 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
  * what lets features/POI_VISIBILITY.md's "below the seam the map is a
  * complete map of something else" read unqualified once more.
  */
-export const POI_DOT_MIN_ZOOM = POI_PIN_MIN_ZOOM
+export const POI_DOT_MIN_ZOOM = 0
 
 /**
  * Small, and smaller the further out you are.
@@ -535,14 +703,19 @@ export const POI_DOT_MIN_ZOOM = POI_PIN_MIN_ZOOM
  * design most likely to be wrong in a browser and right on a phone, or the
  * reverse.
  *
- * The ramp starts where the rank does, at the shared seam (#1135) - the
- * 1.2 px corridor stop it used to open with went with the below-seam dots it
- * sized, POI_DOT_MIN_ZOOM's docstring being the record of why.
+ * The 1.2 px corridor stop is back with the below-seam dots it sizes (#1585).
+ * It went away with them on #1135 and returns unchanged, because what it was
+ * sized for has not changed: at the opening camera the corridor is a stipple
+ * of thousands of places, and 2.5 px ink at that scale is a smear rather than
+ * a texture. It still wants a look on a real screen in real sunlight - #105
+ * closed without giving this band one.
  */
 export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
   'interpolate',
   ['linear'],
   ['zoom'],
+  POI_DOT_MIN_ZOOM,
+  1.2,
   POI_PIN_MIN_ZOOM,
   2.5,
   16,
@@ -644,7 +817,8 @@ const NO_CONDITION: PinCondition = { ring: NO_RING, faded: false }
  */
 export function poiFeatureCollection(
   pois: readonly MapPoint[],
-  visibility: SiteVisibility = {},
+  /** Taken and no longer read - see the note on `drawn` below (#1585). */
+  _visibility: SiteVisibility = {},
   pinCondition: (poiId: string, poiType: string) => PinCondition = () => NO_CONDITION,
 ): PoiFeatureCollection {
   // ONE FEATURE PER SITE, not per POI (#524). The members are removed here
@@ -666,7 +840,30 @@ export function poiFeatureCollection(
   // wears ITS OWN notes' condition; a folded member's notes reach the card
   // (per-part reads) but not the shared pin, which is a known simplification
   // rather than a rule.
-  const { drawn, membersFor } = composeSites(pois, visibility)
+  // NOTHING IS FOLDED AWAY ANY MORE (#1585, 2026-09-18). This was
+  // `composeSites(pois, visibility)`, which removed a co-located waypoint
+  // from the source entirely and let it ride its anchor's pin as a badge.
+  // Measured against the identity ledger that day: 634 of the 1,387
+  // waypoints a fresh install drew - 46% - had no mark of their own. 284
+  // privies, 144 campsites, and 206 WATER POINTS, which is the category
+  // CLAUDE.md names second of the four ways this app can hurt somebody.
+  //
+  // The fold was the right answer to the problem it was built for, and that
+  // problem is gone: #524 existed because a privy 42 m from its shelter
+  // could not win a collision at any zoom a hiker walks at, so folding it
+  // onto the pin that DID draw was the only way to keep it reachable. With
+  // `icon-allow-overlap: true` nothing loses a collision, so a member can
+  // simply draw its own pin at its own coordinate - which is the thing the
+  // badge was standing in for.
+  //
+  // `visibility` is still taken and no longer read. Left in the signature
+  // rather than removed because #607's rule - a site whose anchor the legend
+  // hid falls back to a member - was about keeping a PLACE on the map when
+  // its anchor went, and every part of that place now draws for itself. The
+  // parameter is the seam a future change would reach for if any grouping
+  // comes back; map/poiSites.ts keeps the model, and the waypoint card still
+  // reads it to say what a place is made of.
+  const drawn = pois
 
   // AFTER the fold, and that is the point of where this sits: what competes
   // for a pin is the drawn mark, so a shelter riding one pin with its privy
@@ -694,7 +891,12 @@ export function poiFeatureCollection(
           // Always present, empty where the pin carries nothing, so the style's
           // `match` needs no `coalesce` and a pin with no site is not a separate
           // expression path that could drift from the one with.
-          [SITE_MEMBERS_PROPERTY]: siteMembersKey(membersFor.get(poi.id)),
+          // Always the empty key now: no pin carries another waypoint's
+          // badge, because no waypoint is riding one. The property stays
+          // present and always a string so the style's `match` needs no
+          // `coalesce` and the site artwork is still reachable if grouping
+          // ever returns.
+          [SITE_MEMBERS_PROPERTY]: siteMembersKey(undefined),
           staleness_ring: condition.ring,
           staleness_faded: condition.faded,
           [CROWDING_PROPERTY]: crowding.get(poi.id) ?? 0,

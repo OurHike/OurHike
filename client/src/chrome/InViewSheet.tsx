@@ -75,13 +75,17 @@ export interface InViewSheetProps {
   docked?: boolean
   head?: ReactNode
   /**
-   * Whether the map is drawing none of these pins at this zoom - the
-   * corridor sketch below the pin floor (#1292), where the legend already
-   * says "Waypoints appear from a closer zoom." The list still lists them,
-   * so a hiker can read what the frame holds, but says so above the rows
-   * rather than letting "In view" claim a pin nobody can see.
+   * Whether the map is drawing these as dots rather than pins - below the pin
+   * floor (map/poiLayers.ts's POI_PIN_MIN_ZOOM), where the dot rank draws
+   * every one of them and no pin is placed.
+   *
+   * RENAMED FROM `drawnNone` ON #1585, because that is what it used to mean
+   * and no longer does: the dot rank went back down to every zoom, so down
+   * here the map draws all of these and none of them as a pin. A flag still
+   * called `drawnNone` would have gone on reading as "nothing is on the map",
+   * which is the claim this sheet exists not to make.
    */
-  drawnNone?: boolean
+  drawnAsDots?: boolean
   /**
    * The workdays in view (#1373, frame 14d), under the waypoints: the pinned
    * rows inside the viewport, the day window the pins are filtered to, and
@@ -203,7 +207,7 @@ function InViewSheetBody({
   workdays,
   docked = false,
   head,
-  drawnNone = false,
+  drawnAsDots = false,
 }: InViewSheetProps) {
   // Sorted once per viewport, not per render: thirty thousand rows sort in
   // tens of milliseconds, which is fine on a move and not on every tick.
@@ -257,10 +261,10 @@ function InViewSheetBody({
         </p>
       ) : (
         <>
-          {drawnNone && (
+          {drawnAsDots && (
             <p className="legend__empty">
-              The map draws none of these at this zoom &mdash; waypoints appear from a
-              closer zoom.
+              The map draws these as dots at this zoom &mdash; pins appear from a closer
+              zoom.
             </p>
           )}
           <ul

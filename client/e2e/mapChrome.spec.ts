@@ -271,7 +271,7 @@ test.describe('the map’s chrome', () => {
     await expect(legend.getByText(/affected · week of/)).toHaveCount(0)
   })
 
-  test('states: below the pin seam the legend says waypoints appear from a closer zoom, and the In view door is absent for want of points rather than zoom (D10)', async ({
+  test('states: below the pin seam the legend says waypoints show as dots, and the In view door is absent for want of points rather than zoom (D10)', async ({
     page,
   }) => {
     // The camera the app opens on is the whole corridor, which is below
@@ -279,6 +279,13 @@ test.describe('the map’s chrome', () => {
     // the true sentence wins over the general one", and the two sentences
     // have opposite remedies - zoom in, versus there is nothing here - so the
     // spec asserts which one is printed rather than the zeros beside it.
+    //
+    // THE SENTENCE SAYS BOTH HALVES SINCE #1585 (2026-09-18). It read
+    // "Waypoints appear from a closer zoom." while POI_DOT_MIN_ZOOM sat at
+    // the seam and the map down here really was bare. The dot rank went back
+    // to z0, so that sentence became false about the screen in front of the
+    // hiker - there are waypoints on it, drawn as dots - and the panel now
+    // names the rank rather than claiming an absence.
     await openMap(page)
 
     // The door D10 says must be absent rather than dead, with the two that
@@ -301,7 +308,14 @@ test.describe('the map’s chrome', () => {
     await expect(page.getByRole('button', { name: 'Search', exact: true })).toBeVisible()
 
     const legend = await openLegend(page)
-    await expect(legend.getByText('Waypoints appear from a closer zoom.')).toBeVisible()
+    await expect(
+      legend.getByText(
+        'Waypoints show as dots at this zoom; pins appear from a closer zoom.',
+      ),
+    ).toBeVisible()
+    // And NOT the sentence it replaced, which would mean the dot floor had
+    // gone back up to the seam and this zoom had been emptied again.
+    await expect(legend.getByText('Waypoints appear from a closer zoom.')).toHaveCount(0)
     await expect(
       legend.getByText(/No waypoints on this part of the map yet/),
     ).toHaveCount(0)

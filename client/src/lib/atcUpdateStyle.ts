@@ -159,7 +159,7 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  *    a waypoint pin is its whole 38px. This is the comparison every bound in
  *    src/test/atcAlertProminence.test.ts is about, so it has to be the zoom
  *    both are at full size.
- *  - **z9, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
+ *  - **z7.5, 0.8.** Where waypoint pins first appear (`POI_PIN_MIN_ZOOM`), at
  *    the fraction they are drawn at there (`POI_PIN_MIN_SCALE`). Matching the
  *    pin's own scale is what keeps this dot its couple of pixels clear at
  *    every zoom where both are drawn, rather than only at the top.
@@ -176,7 +176,7 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  *    on `map/`, and the relationship is enforced by that test file, which
  *    exists precisely because neither half of the comparison can be made where
  *    either side lives.
- *  - **Below z9, not drawn at all** - the maintainer's call of 2026-09-08
+ *  - **Below the seam, not drawn at all** - the maintainer's call of 2026-09-08
  *    that the opening camera shows trail lines only (#1292). There WAS a
  *    third stop here, 0.4 at z5, on the argument that a hiker planning a
  *    week wants to see where the ATC has posted something. On the
@@ -197,18 +197,28 @@ export const ATC_UPDATE_POINT_DRAWN_WIDTH = 40
  * precisely what zoom means.
  */
 export const ATC_UPDATE_POINT_ZOOM_STOPS: ReadonlyArray<[zoom: number, scale: number]> = [
-  [9, 0.8],
+  // 7.5, not 9, since #1585 moved the pin seam out to the zoom at which
+  // essentially every resupply carry fits. It follows the pins WITHOUT being
+  // re-argued:
+  // this ramp exists to keep ATC's own notice a couple of pixels clear of the
+  // pin beside it at every zoom where both are drawn, and a notice that
+  // stayed at 9 would simply be absent on the first screen that has pins on
+  // it - the one place a hiker planning a carry would want it.
+  [7.5, 0.8],
   [13, 1],
 ]
 
 /**
  * Where the notice point stops being drawn, going out: the pin seam
  * (map/poiLayers.ts's POI_PIN_MIN_ZOOM), since #1292 - below it the map
- * draws trail lines only. The number is repeated here rather than imported,
+ * draws trail lines only - lines and a stipple of dots, since #1585 took the
+ * dot rank back down. It moved 9 -> 7.5 with that seam on the same change,
+ * which is the whole of why the two are held equal rather than merely written
+ * down. The number is repeated here rather than imported,
  * for the reason the 0.8 above gives: `lib/` does not depend on `map/`, and
  * src/test/atcAlertProminence.test.ts holds the two equal.
  */
-export const ATC_UPDATE_POINT_MIN_ZOOM = 9
+export const ATC_UPDATE_POINT_MIN_ZOOM = 7.5
 
 /**
  * What the symbol layer is given instead of a number.

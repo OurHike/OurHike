@@ -161,10 +161,17 @@ export const ABOVE_THE_SEAM_ZOOM = 12.5
  * (chrome/tappedLinePanel.tsx: "one tap asks one question, and which question
  * depends on the zoom").
  *
- * 8 rather than 8.9: `map/poiLayers.ts`'s `POI_PIN_MIN_ZOOM` is 9 and
- * `belowSeam` is `zoom < POI_PIN_MIN_ZOOM`, so anything under 9 is below the
+ * 7 rather than 7.4: `map/poiLayers.ts`'s `POI_PIN_MIN_ZOOM` is 7.5 and
+ * `belowSeam` is `zoom < POI_PIN_MIN_ZOOM`, so anything under 7.5 is below the
  * seam — but a value that sits on the boundary would turn a one-line change to
  * that constant into a mystifying spec failure rather than an obvious one.
+ * It was 8 while the seam was 9, and moved with it (#1585, 2026-09-18).
+ *
+ * WHAT IS DRAWN HERE IS NOT NOTHING, and the sweep below depends on knowing
+ * it: the dot rank reaches every zoom since #1585, so this camera carries a
+ * stipple of waypoints even though no pin is placed. The legend's sentence
+ * here is "Waypoints show as dots at this zoom; pins appear from a closer
+ * zoom.
  *
  * Measured 2026-09-11 against release 2026-09-10, sweeping the whole frame
  * below the header at this camera: 21 of 247 taps open the club sheet and 28
@@ -173,4 +180,4 @@ export const ABOVE_THE_SEAM_ZOOM = 12.5
  * at one point only. The legend confirms the zoom from the app's own side:
  * "Waypoints appear from a closer zoom."
  */
-export const BELOW_THE_SEAM_ZOOM = 8
+export const BELOW_THE_SEAM_ZOOM = 7

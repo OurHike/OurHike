@@ -4,6 +4,23 @@ Companion to [../WIREFRAMES.md](../WIREFRAMES.md) (§1.4 lanes, §1.5 canvas, In
 
 A shelter, its privy, its campsites and its water source are one place with parts. The map treats them as four unrelated points that happen to be near each other, and then resolves the crowding by drawing one of them and silently discarding the rest.
 
+> **The map half of this design was retired 2026-09-18
+> ([#1585](https://github.com/OurHike/OurHike/issues/1585)).** Folding existed because a privy
+> 42 m from its shelter could not win a collision at any zoom a hiker walks at, so riding the
+> anchor's pin was the only way to stay reachable. `icon-allow-overlap: true` removes the
+> premise: nothing loses a collision, so a member draws its own pin at its own coordinate.
+> Measured that day, the fold was removing **634 of the 1,387 waypoints a fresh install drew —
+> 46%**, including **206 water points**, which is the category
+> [CLAUDE.md](../CLAUDE.md) names second of the four ways this app can hurt somebody. The
+> maintainer's rule was *"never hide anything!!!!!!!"*, and a badge on somebody else's pin is
+> not the waypoint's own mark.
+>
+> **What survives, and it is most of the value.** A site is still a modelled fact: the pipeline
+> still groups, `site_id` and `site_role` still publish, and the waypoint card still says what a
+> place is made of. The site pin artwork and `composeSites` stay in the client, unused by the
+> map, and `poiFeatureCollection` still takes the visibility argument as the seam a future
+> grouping would reach for. What is gone is the map ever standing one waypoint in for another.
+
 **The complaint is that pins overlap. The measurement says something worse: they don't overlap, they disappear.** `client/src/map/poiLayers.ts` sets `icon-allow-overlap: false` on purpose, so MapLibre never draws two colliding pins — it drops the one that loses `POI_PRIORITY`. Privies lose to shelters. At zoom 14, **3% of the A.T.'s 316 privies are drawn anywhere on the trail.** The hiker sees a clean map and concludes there is no privy.
 
 Everything below is measured against the live ATC FeatureServer and the opentrail.org API on 2026-08-12, not estimated.

@@ -69,7 +69,16 @@ is `lib/coverageCells.ts`'s `SeamEdge` and `seamMarginKm`, drawn by
 in both cells (`pipeline/cut_trail_graph.py`), so the cell whose own bounds hold a point
 answers for it. Sense 2 has a constant: `App.tsx`'s `belowSeam` is
 `camera.zoom < POI_PIN_MIN_ZOOM`, which is 9 (`map/poiLayers.ts`). Below it the map is a
-corridor view and above it the hiker is navigating.
+corridor view and above it the hiker is navigating. **It is 7.5 since #1585 — A hundred-mile
+resupply carry fits a phone at z8, and the map draws no waypoint until z9**, which moved it to
+the zoom a five-day resupply section fits a phone. Two things that used to be the same number
+are now deliberately not: `CORRIDOR_MAX_ZOOM` (`map/corridorLayers.ts`), where the corridor
+sketch hands the other organizations' trails to the tiled ones, and `LOCATE_MIN_ZOOM`, where a
+*where am I* tap lands. Both stayed at 9. Say which one you mean — "the seam" is the waypoints'.
+
+**The seam is not a filter, and never has been.** It decides where waypoints start, never which
+ones: every category the hiker has switched on is drawn at every zoom, as a pin where it fits
+and as a dot where it does not.
 
 `@unvalidated` — **the margin is 3 km and that number is picked, not found.**
 `pipeline/cut_cells.py` says so at the source: "`SEAM_MARGIN_KM = 3.0` is picked, not

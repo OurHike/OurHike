@@ -256,10 +256,13 @@ export const NEARBY_TRAILS_TILES_KEY = 'nearby_trails.pmtiles'
  * pipeline/tests/test_export_nearby_trails.py reads this file to hold the two
  * pairs equal - the way verify_release.py reads the keys above.
  *
- * 9 is the pin seam (map/poiLayers.ts's POI_PIN_MIN_ZOOM), the zoom the full
- * network's layers already start at; below it the corridor-view sketch
- * (NETWORK_OVERVIEW_KEY) is the drawing of these trails, so tiles there would
- * be tiles nothing asks for. 14 is where the Fine hiking sheet stops and
+ * 9 is where the corridor-view sketch (NETWORK_OVERVIEW_KEY) hands these
+ * trails over: below it the sketch is the drawing of them, so tiles there
+ * would be tiles nothing asks for, and map/corridorLayers.ts's
+ * CORRIDOR_MAX_ZOOM is this number for that reason. It USED TO BE described
+ * as the pin seam, which it no longer is - the waypoints moved out to z8 on
+ * #1585 and the trails did not, because a cut archive cannot follow a client
+ * constant without a republish. 14 is where the Fine hiking sheet stops and
  * MapLibre overzooms - a line simplified to 1 m (export_nearby_trails.py's
  * tolerance) has nothing more to show past it.
  */

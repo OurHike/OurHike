@@ -856,7 +856,7 @@ describe('POI pins', () => {
     expect(map.filters.get(POI_LAYER_ID)).toEqual(poiFilter(new Set(['water'])))
   })
 
-  it('rebuilds the source when a legend tap hides a site’s anchor', () => {
+  it('never takes a waypoint out of the source when the legend hides its neighbour', () => {
     // THE WIRING HALF OF #607, and a failure the other two files cannot see.
     // composeSites can be perfectly right about which member carries the pin
     // and the map still draws nothing, because the source is only pushed when
@@ -895,13 +895,23 @@ describe('POI pins', () => {
     )
     const [map] = MockMap.live
     loadStyle(map)
-    // The precondition, asserted rather than assumed: the privy is folded away
-    // and the shelter's pin stands for both. That is #524 working.
-    expect(pinnedIds(map)).toEqual(['shelter'])
+    // WHAT THIS TEST IS ABOUT HAS CHANGED, AND THE NEW ANSWER IS THE STRONGER
+    // ONE (#1585). It used to hold that hiding a site's anchor REBUILT the
+    // source, because the privy had been folded away and only a rebuild could
+    // promote it back - #607, a real bug where hiding shelters left a hiker
+    // with neither pin. Nothing folds any more, so there is no promotion to
+    // wait for: both waypoints are in the source from the first frame and
+    // stay there, and the legend's tap is a filter on the layer.
+    //
+    // So what is asserted is the property that made #607 impossible rather
+    // than the mechanism that fixed it: the hiker's tap never takes a
+    // waypoint OUT OF THE SOURCE, which is the only place a mark can be lost
+    // where no filter can put it back.
+    expect(pinnedIds(map)).toEqual(['shelter', 'privy'])
 
     rerender(<MapView {...PROPS} pois={site} hiddenTypes={new Set(['shelter'])} />)
 
-    expect(pinnedIds(map)).toEqual(['privy'])
+    expect(pinnedIds(map)).toEqual(['shelter', 'privy'])
   })
 
   it('takes POIs arriving after the map was built, which is the normal case', () => {

@@ -111,7 +111,11 @@ import {
   TOPO_PALETTE_DARK,
   TOPO_PALETTE_RED,
 } from './liveTopo'
-import { POI_LAYER_ID, POI_SOURCE_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
+import { POI_LAYER_ID, POI_SOURCE_ID } from './poiLayers'
+// Every seam this file asserts is a LINE's, and since #1585 a line's seam is
+// the sketch ceiling rather than the pin floor - the waypoints moved to z8
+// and the trails stayed at the zoom their archive is cut from.
+import { CORRIDOR_MAX_ZOOM } from './corridorLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
 import {
@@ -204,7 +208,7 @@ function layer(id: string) {
  * The tier a trail line lands on at the seam.
  *
  * Since #1306 every trail-line width is a taper - `interpolate(zoom, 4,
- * <scaled tier>, POI_PIN_MIN_ZOOM, <tier>)` - because a line drawn at its
+ * <scaled tier>, CORRIDOR_MAX_ZOOM, <tier>)` - because a line drawn at its
  * tier below the seam is a rope at the corridor camera. The cases below are
  * about the TIER, so they unwrap the taper rather than restating it; the
  * taper itself is pinned in its own cases further down.
@@ -610,7 +614,7 @@ describe('buildMapStyle', () => {
     // the same constant the waypoints use, because it is the same question:
     // above it the map stops being an overview and starts being something a
     // hiker reads a position off.
-    expect(layer(TRAIL_OVERVIEW_LAYER_ID).maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(TRAIL_OVERVIEW_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
   })
 
   it('paints the sketch with the trail expressions rather than a second set', () => {
@@ -1227,7 +1231,7 @@ describe('the map style and red light (MAP_STYLE_SPEC.md)', () => {
  * 38.5 miles ATC's centerline names no maintaining club for render in the
  * neutral grey, dashed. That is a deliberate relaxation of WIREFRAMES.md §3's
  * no-dash rule, scoped by the maintainer on 2026-08-19 to
- * z <= POI_PIN_MIN_ZOOM, on the grounds that down there the line is
+ * z <= CORRIDOR_MAX_ZOOM, on the grounds that down there the line is
  * representational - 2.5 px standing for 2,197 miles, with no contours behind
  * it and nobody following it.
  *
@@ -1262,7 +1266,7 @@ describe('a blaze never changes colour where a hiker is navigating by it (#598)'
   ]
 
   /** The seam itself, and a spread of the zooms a hiker actually navigates at. */
-  const NAVIGATIONAL_ZOOMS = [POI_PIN_MIN_ZOOM, 10, 11, 12, 13, 14, 16, 18, 22]
+  const NAVIGATIONAL_ZOOMS = [CORRIDOR_MAX_ZOOM, 10, 11, 12, 13, 14, 16, 18, 22]
 
   const APPEARANCES: {
     name: string
@@ -1311,7 +1315,7 @@ describe('a blaze never changes colour where a hiker is navigating by it (#598)'
     'paints every blaze the same colour at every navigational zoom — $name',
     ({ options }) => {
       for (const blaze of BLAZES) {
-        const atTheSeam = blazeColorAt(options, blaze, POI_PIN_MIN_ZOOM)
+        const atTheSeam = blazeColorAt(options, blaze, CORRIDOR_MAX_ZOOM)
         for (const zoom of NAVIGATIONAL_ZOOMS) {
           // Not `toEqual(atTheSeam)` on a collected array: naming the zoom in
           // the assertion is what makes a failure say WHERE the blaze moved.
@@ -1393,7 +1397,11 @@ describe('the trails other organizations maintain (#950)', () => {
     // TILES_MIN_ZOOM are one number. A source that started above its layers
     // would leave a band of zooms asking for tiles that do not exist; one
     // that started below would cut tiles nothing asks for.
-    expect(NEARBY_TRAILS_TILES_MIN_ZOOM).toBe(POI_PIN_MIN_ZOOM)
+    // The invariant that actually matters, and it is not the pin seam any
+    // more (#1585): the sketch's ceiling must be the tiles' floor, or a band
+    // of ground draws no trail but the A.T. The waypoints left this pair on
+    // 2026-09-18 and the pair stayed whole.
+    expect(NEARBY_TRAILS_TILES_MIN_ZOOM).toBe(CORRIDOR_MAX_ZOOM)
     expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(NEARBY_TRAILS_TILES_MIN_ZOOM)
   })
 
@@ -1439,14 +1447,14 @@ describe('the trails other organizations maintain (#950)', () => {
       id: NEARBY_BLAZE_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
       'source-layer': NETWORK_TILES_LAYER,
-      minzoom: POI_PIN_MIN_ZOOM,
+      minzoom: CORRIDOR_MAX_ZOOM,
     })
     expect(layer(NEARBY_TRAIL_CASING_LAYER_ID)).toEqual({
       ...layer(TRAIL_CASING_LAYER_ID),
       id: NEARBY_TRAIL_CASING_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
       'source-layer': NETWORK_TILES_LAYER,
-      minzoom: POI_PIN_MIN_ZOOM,
+      minzoom: CORRIDOR_MAX_ZOOM,
     })
   })
 
@@ -1463,7 +1471,7 @@ describe('the trails other organizations maintain (#950)', () => {
     }>) {
       expect(l.source).toBe(NEARBY_TRAILS_SOURCE_ID)
       expect(l['source-layer']).toBe(NETWORK_TILES_LAYER)
-      expect(l.minzoom).toBe(POI_PIN_MIN_ZOOM)
+      expect(l.minzoom).toBe(CORRIDOR_MAX_ZOOM)
       expect(l.filter).toEqual(SHARED_GROUND_FILTER)
     }
     // The mask is opaque, unlike every other casing's 0.7 - it is drawn
@@ -1495,7 +1503,7 @@ describe('the trails other organizations maintain (#950)', () => {
       ['oprhp_trails', 'oprhp_trails'],
       ['nynjtc_long_path', 'oprhp_trails'],
     ]
-    for (const zoom of [OVERVIEW_FAR_ZOOM, POI_PIN_MIN_ZOOM, 14]) {
+    for (const zoom of [OVERVIEW_FAR_ZOOM, CORRIDOR_MAX_ZOOM, 14]) {
       for (const [source, concurrent_source] of pairs) {
         const stretch = Math.max(
           at(BLAZE_LAYER_ID, 'line-width', zoom, { source }),
@@ -1595,8 +1603,8 @@ describe('the trails other organizations maintain (#950)', () => {
     //
     // The chosen trail carries no minzoom and must not gain one from this:
     // the A.T. IS the corridor view's line.
-    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(POI_PIN_MIN_ZOOM)
-    expect(layer(NEARBY_TRAIL_CASING_LAYER_ID).minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(CORRIDOR_MAX_ZOOM)
+    expect(layer(NEARBY_TRAIL_CASING_LAYER_ID).minzoom).toBe(CORRIDOR_MAX_ZOOM)
     expect(layer(BLAZE_LAYER_ID).minzoom).toBeUndefined()
     expect(layer(TRAIL_CASING_LAYER_ID).minzoom).toBeUndefined()
   })
@@ -1640,9 +1648,9 @@ describe('the network overview sketch (#1135)', () => {
     // the sketch's maxzoom is the full network layers' minzoom, so every
     // camera draws exactly one of them. The tape cap rides along, or closed
     // ground would be taped twice - from 100 m geometry - above the seam.
-    expect(layer(NETWORK_OVERVIEW_LAYER_ID).maxzoom).toBe(POI_PIN_MIN_ZOOM)
-    expect(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom).toBe(POI_PIN_MIN_ZOOM)
-    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(layer(NETWORK_OVERVIEW_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
+    expect(layer(NETWORK_OVERVIEW_CLOSURE_LAYER_ID).maxzoom).toBe(CORRIDOR_MAX_ZOOM)
+    expect(layer(NEARBY_BLAZE_LAYER_ID).minzoom).toBe(CORRIDOR_MAX_ZOOM)
   })
 
   it('sits under everything the A.T. draws, its own sketch included', () => {
@@ -1682,7 +1690,10 @@ describe('the network overview sketch (#1135)', () => {
 
     const taper = network['line-width'] as unknown[]
     const fullLines = layer(NEARBY_BLAZE_LAYER_ID).paint as Record<string, unknown>
-    expect(taper[taper.length - 2]).toBe(POI_PIN_MIN_ZOOM)
+    // The seam stop names CORRIDOR_MAX_ZOOM rather than the pins' floor
+    // since #1585 split the two: a line's seam is where the sketch hands
+    // over to the tiled network, which did not move when the pins did.
+    expect(taper[taper.length - 2]).toBe(CORRIDOR_MAX_ZOOM)
     // The seam stop is the tier expression itself since #1586, so a park
     // trail lands on the side-trail width and the Long Path on the
     // through-route width - each exactly where its full lines start.
@@ -1997,7 +2008,7 @@ describe('the network overview and the nearby network split like the trail sourc
     )
     expect((untaken as { filter?: unknown }).filter).toEqual(nearbyTrailFilter())
     expect((taken as { filter?: unknown }).filter).toEqual(chosenSystemFilter())
-    expect(untaken.maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(untaken.maxzoom).toBe(CORRIDOR_MAX_ZOOM)
   })
 
   it('gives the nearby network the same untaken pair, above the seam, in the tiles’ layer', () => {
@@ -2006,14 +2017,14 @@ describe('the network overview and the nearby network split like the trail sourc
       id: NEARBY_BLAZE_UNTAKEN_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
       'source-layer': NETWORK_TILES_LAYER,
-      minzoom: POI_PIN_MIN_ZOOM,
+      minzoom: CORRIDOR_MAX_ZOOM,
     })
     expect(layer(NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID)).toEqual({
       ...layer(TRAIL_CASING_UNTAKEN_LAYER_ID),
       id: NEARBY_TRAIL_CASING_UNTAKEN_LAYER_ID,
       source: NEARBY_TRAILS_SOURCE_ID,
       'source-layer': NETWORK_TILES_LAYER,
-      minzoom: POI_PIN_MIN_ZOOM,
+      minzoom: CORRIDOR_MAX_ZOOM,
     })
     const ids = style().layers.map((l) => l.id)
     expect(ids.indexOf(NEARBY_BLAZE_UNTAKEN_LAYER_ID)).toBeLessThan(
@@ -2098,7 +2109,7 @@ describe('nothing taken (#1306)', () => {
     const width = untakenTrailWidthExpression() as unknown[]
     expect(width[3]).toBe(OVERVIEW_FAR_ZOOM)
     expect(width[4]).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
-    expect(width[5]).toBe(POI_PIN_MIN_ZOOM)
+    expect(width[5]).toBe(CORRIDOR_MAX_ZOOM)
     expect(width[6]).toEqual(TRAIL_WIDTH_EXPRESSION)
   })
 
@@ -2113,7 +2124,7 @@ describe('nothing taken (#1306)', () => {
       ['zoom'],
       OVERVIEW_FAR_ZOOM,
       NETWORK_OVERVIEW_FAR_WIDTH + CASING_OVERHANG * 2,
-      POI_PIN_MIN_ZOOM,
+      CORRIDOR_MAX_ZOOM,
       TRAIL_CASING_WIDTH_EXPRESSION,
     ])
     for (const id of [
@@ -2137,7 +2148,7 @@ describe('nothing taken (#1306)', () => {
       ['zoom'],
       4,
       NETWORK_OVERVIEW_FAR_WIDTH,
-      POI_PIN_MIN_ZOOM,
+      CORRIDOR_MAX_ZOOM,
       TRAIL_WIDTH_EXPRESSION,
     ])
     expect(layerIn(taken, TRAIL_OVERVIEW_LAYER_ID)?.paint?.['line-width']).toEqual(
@@ -2316,9 +2327,9 @@ describe("every badged trail at the A.T.'s prominence (#1586)", () => {
       if (compiled.result === 'error') throw new Error('sketch width is not valid')
       return compiled.value.evaluate({ zoom }, { properties } as never) as number
     }
-    expect(at(POI_PIN_MIN_ZOOM, longPath)).toBe(PRIMARY_TRAIL_WIDTH)
-    expect(at(POI_PIN_MIN_ZOOM, park)).toBe(SIDE_TRAIL_WIDTH)
-    expect(at(POI_PIN_MIN_ZOOM, flaggedPark)).toBe(SIDE_TRAIL_WIDTH)
+    expect(at(CORRIDOR_MAX_ZOOM, longPath)).toBe(PRIMARY_TRAIL_WIDTH)
+    expect(at(CORRIDOR_MAX_ZOOM, park)).toBe(SIDE_TRAIL_WIDTH)
+    expect(at(CORRIDOR_MAX_ZOOM, flaggedPark)).toBe(SIDE_TRAIL_WIDTH)
     // The far end: the A.T.'s own weight for the Long Path, the casing
     // carrying its prominence; #1307's doubled weight for a flagged name.
     expect(at(OVERVIEW_FAR_ZOOM, longPath)).toBe(NETWORK_OVERVIEW_FAR_WIDTH)
@@ -2337,7 +2348,7 @@ describe("every badged trail at the A.T.'s prominence (#1586)", () => {
     const casing = layerIn(NETWORK_OVERVIEW_CASING_LAYER_ID)
     expect(casing).toBeDefined()
     expect(casing?.filter).toEqual(THROUGH_ROUTE_SOURCE_CONDITION)
-    expect(casing?.maxzoom).toBe(POI_PIN_MIN_ZOOM)
+    expect(casing?.maxzoom).toBe(CORRIDOR_MAX_ZOOM)
     // The untaken casing taper - the same hairline around 1.5 px at the far
     // end and around the tier at the seam as the real untaken A.T.'s - in
     // the same ink and at the same softness as every other untaken casing.
@@ -2734,10 +2745,10 @@ describe('the default sheet: light dashed context trails, plain solid through-ro
         at(id, OVERVIEW_FAR_ZOOM, { source: 'oprhp_trails', through_route: true }),
         id,
       ).toBeCloseTo(NETWORK_OVERVIEW_FAR_WIDTH * CONTEXT_TRAIL_WIDTH_SCALE)
-      expect(at(id, POI_PIN_MIN_ZOOM, { source: LONG_PATH_SOURCE }), id).toBe(
+      expect(at(id, CORRIDOR_MAX_ZOOM, { source: LONG_PATH_SOURCE }), id).toBe(
         PRIMARY_TRAIL_WIDTH,
       )
-      expect(at(id, POI_PIN_MIN_ZOOM, { source: 'oprhp_trails' }), id).toBe(context)
+      expect(at(id, CORRIDOR_MAX_ZOOM, { source: 'oprhp_trails' }), id).toBe(context)
     }
     // The hues' widths are untouched: every helper defaults to them.
     expect(untakenTrailWidthExpression()).toEqual(

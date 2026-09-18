@@ -326,16 +326,18 @@ export interface LegendProps {
    */
   drawnCounts?: ReadonlyMap<string, number>
   /**
-   * Whether the camera is below POI_PIN_MIN_ZOOM, where neither waypoint rank
-   * is drawn at all.
+   * Whether the camera is below POI_PIN_MIN_ZOOM, where the waypoints are
+   * drawn as dots rather than as pins.
    *
    * Its own flag rather than inferred from an empty row list, because the two are
    * different facts with opposite remedies: nothing here, or everything here and
-   * none of it drawable yet. The panel said the wrong one at the opening view.
+   * drawn in the smaller rank. The panel said the wrong one at the opening view.
    *
-   * "The pin layer" until #597 landed a second rank under it. Below the seam
-   * both are absent, so the sentence this gates is still the true one - but the
-   * reason is now the seam rather than one layer's floor.
+   * IT NO LONGER MEANS "NOTHING IS DRAWN" (#1585, 2026-09-18). It meant "the
+   * pin layer" until #597 landed a second rank under it, and then "neither
+   * rank" until the dot floor went back to z0 - so the flag now gates the
+   * sentence saying which rank the hiker is looking at, not one saying the
+   * map is holding waypoints back. Nothing is held back at any zoom.
    */
   belowPoiZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.
@@ -630,9 +632,20 @@ export function Legend({
           camera is below the seam - not only on an empty viewport, as the
           dots-era version did - because it now describes every below-seam
           rectangle: the waypoints a hiker can see counted in the grid are
-          all of what this zoom declines to draw. */}
+          all of what this zoom declines to draw.
+
+          FOURTH FLIP, #1585: the dot rank went back down to every zoom, so
+          "appear from a closer zoom" was false about the map in front of the
+          hiker - there ARE waypoints on it, as dots. What is true down here is
+          both halves at once, which is why the sentence now carries both: the
+          dots are drawn, the pins are not yet. The counts stay withheld for
+          #1135's reason, unchanged - "drawn" is a query against the PIN layer,
+          so below this floor it measures the floor rather than the collision
+          engine, and every row would read 0/N over a map with dots on it. */}
       {belowPoiZoom && (
-        <p className="legend__empty">Waypoints appear from a closer zoom.</p>
+        <p className="legend__empty">
+          Waypoints show as dots at this zoom; pins appear from a closer zoom.
+        </p>
       )}
 
       {/* "No WAYPOINTS", where this said "Nothing", and the word had to change

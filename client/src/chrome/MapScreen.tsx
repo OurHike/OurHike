@@ -1803,7 +1803,7 @@ export function MapScreen({
             head={railFaces}
             points={pointsShown}
             total={waypointTotal}
-            drawnNone={belowPoiZoom}
+            drawnAsDots={belowPoiZoom}
             currentMile={hikerMile ?? null}
             mileOf={waypointMileOf}
             stalenessFor={waypoints?.stalenessFor}

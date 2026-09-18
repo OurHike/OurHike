@@ -9,6 +9,7 @@ than the database's.
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -263,3 +264,27 @@ class OrgNomination(BaseModel):
     region: str | None = None
     data_url: str | None = None
     note: NoteText | None = None
+
+
+class ScoreboardOut(BaseModel):
+    """The three numbers an organization puts on its own website.
+
+    The design's coverage badge, whose own caption says where each comes from:
+    "miles from the registry, volunteers from the roster, hours from the ones a
+    supervisor signed off."
+
+    **EVERYTHING HERE IS A COUNT AND NOTHING IS A LIST**, which is what makes
+    it safe to serve to a stranger on somebody else's donate page. Rule 4 keeps
+    anything about a named volunteer unpublished, and three totals are not
+    three names. The shape is the enforcement: there is no array to leak,
+    rather than an array a client is trusted to discard.
+
+    `season_started` is here so "this season" is checkable. A badge printing
+    "164 hours this season" over an unstated window is a number nobody can
+    verify and an organization cannot explain to its own board.
+    """
+
+    miles_maintained: float
+    active_volunteers: int
+    hours_this_season: float
+    season_started: dt.date

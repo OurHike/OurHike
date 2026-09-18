@@ -154,12 +154,26 @@ const ORG_SLUG = 'central-park-throughikers'
         <h2>Their coverage badge</h2>
       </div>
       <p class="lede">
-        The small one, for a sidebar. It counts sections with nobody assigned —
-        <strong>which is a recruiting line, not an alarm</strong>: a gap is
-        flagged and never escalated, and no hiker is told a section is
-        unmaintained.
+        One snippet, two shapes — a strip for a footer and a card for a donate
+        page. Every figure comes from what they published and confirmed: miles
+        from their registry, volunteers from their roster, and hours from the
+        ones a supervisor signed off.
       </p>
-      <div id="ourhike-coverage" data-org={ORG_SLUG} style="margin-top: 20px; max-width: 320px"></div>
+      <p class="org-help">
+        <strong>Three counts, and never a list.</strong> It does not say which
+        sections nobody is holding — a hiker reading that would make a routing
+        decision out of an organization's staffing problem. The coverage report
+        that does say is inside the console, for the people who can act on it.
+      </p>
+      <div id="ourhike-coverage" data-org={ORG_SLUG} style="margin-top: 20px"></div>
+      <div
+        id="ourhike-coverage-card"
+        data-org={ORG_SLUG}
+        data-shape="card"
+        data-title="Our park, live"
+        style="margin-top: 20px; max-width: 320px"
+      >
+      </div>
     </div>
   </section>
 

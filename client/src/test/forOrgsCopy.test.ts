@@ -186,6 +186,10 @@ describe('the demo org has data behind it', () => {
       'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/coverage.ts',
       'DEMO_COVERAGE',
     ],
+    [
+      'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/scoreboard.ts',
+      'DEMO_SCOREBOARD',
+    ],
     ['site/src/pages/for-orgs/demo/api/workdays.ts', 'DEMO_WORKDAYS'],
   ] as const)('%s answers with %s', (path, fixture) => {
     expect(readRepoFile(path)).toContain(`served(${fixture})`)

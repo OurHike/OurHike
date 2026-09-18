@@ -704,6 +704,53 @@ before anybody there is written to a second time.
 
 ---
 
+## The coverage badge, and the one it replaced
+
+The design's embed 3: **miles maintained · active volunteers · hours this season**, one snippet
+in two shapes — a strip for a footer, a card for a donate page. Its own caption says where each
+figure comes from: *"miles from the registry, volunteers from the roster, hours from the ones a
+supervisor signed off."*
+
+**The badge that shipped before this could never have worked.** It drew the gap count by reading
+`GET /clubs/{slug}/coverage`, which depends on `org_access` and therefore on `get_current_user` —
+so an anonymous visitor got a **401** and the badge rendered nothing. On every real site, always.
+It only ever appeared to work on `/for-orgs/demo/`, where a fixture answers it with no auth.
+
+The coverage report is right to be gated. A public list of which miles nobody is looking after is
+a list of miles to avoid, and a hiker reading it makes a routing decision out of an
+organization's staffing problem. **Pointing a public embed at it was the mistake**, not the gate.
+
+`GET /clubs/{slug}/scoreboard` is the public shape: no `org_access`, three numbers, and
+`ScoreboardOut` has no array in it. That last part is the enforcement rather than a convention —
+the old badge read `coverage.gaps.length` and discarded the section names beside it, which put a
+safety property in a browser where the next edit could drop it. There is nothing to discard now.
+
+Three decisions in it worth disagreeing with on the merits:
+
+- **"Miles maintained" is the registry's own total, not the covered part of it.** An organization
+  saying "we maintain 13.8 miles" means the trail it looks after, not the subset with somebody's
+  name against it today — and the second number would *fall when a volunteer stepped back*, which
+  would put an organization's staffing on its own donate page. Checked against the design's badge,
+  which prints 13.8 for the demo organization: 6.1 + 1.58 + 2.4 + 1.2 + 1.7 + 0.8 = **13.78**.
+- **A section with no length contributes nothing and is not a zero.** `SUM` skips nulls, which is
+  the wanted behaviour: absent means nobody has measured it, the same rule the shelter-capacity
+  export follows.
+- **"This season" is the calendar year so far, and that is picked rather than derived.**
+  `@unvalidated` — a club in Georgia works through the winter and one in Maine does not, so the
+  honest answer differs by organization and nobody has been asked. January is the boundary every
+  club's own annual report already uses, and `season_started` goes out beside the number so the
+  window is stated rather than implied. **What would settle it:** asking the first organizations
+  what they call a season, and a column on `clubs` if the answers differ.
+
+**Two deviations from the mock-up, both because the mock-up says something the mechanism does
+not do.** Its card is headed *"Our park, live"* — an organization's own words about its own page,
+which we cannot know, so `data-title` is how they say it and their registered name is the
+fallback. And its foot reads *"Updated nightly from our own registry"*; these figures are counted
+when the badge loads, so the foot says that. A line claiming a freshness nothing delivers is the
+same defect as a heading claiming a reading nobody did.
+
+---
+
 ## Known gaps
 
 What this design does not answer, stated plainly.
@@ -719,10 +766,6 @@ What this design does not answer, stated plainly.
   request against `pipeline/sources.json` yet. **What would settle it:** enabling the provider
   on the real Supabase project, which is the maintainer's to do, and then the narrowest scope
   that can fork and open a pull request.
-- **The design's coverage scoreboard — miles maintained, active volunteers, hours this season —
-  is approved and not built.** It needs two public aggregate endpoints that do not exist, and it
-  turns an organization's volunteer count and season hours into public facts. The gap badge the
-  embed carries today is what stands in for it.
 - **Nobody has run the proof of work on a phone.** Every timing in the section above came off a
   desktop CPU. A mid-range phone is commonly two to four times slower at single-thread
   JavaScript, which would put the p90 between two and five seconds — tolerable next to a fetch

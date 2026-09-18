@@ -96,19 +96,66 @@ describe('the embeds keep the four promises the console prints', () => {
   })
 })
 
-describe('the coverage badge answers #1542 open question 3', () => {
-  it('counts the gaps and never names one', () => {
-    // The endpoint returns the gaps WITH their section names. Rendering them
-    // would turn a recruiting line into a list of miles to avoid, which is
-    // the one thing the design says a hiker must never be told.
-    const badge = CODE.slice(CODE.indexOf('function mountCoverage'))
-    const end = badge.indexOf('function mountConsole')
-    const body = badge.slice(0, end === -1 ? undefined : end)
+describe('the coverage badge is three counts, in two shapes', () => {
+  // WHAT THIS BADGE USED TO BE, and why it changed. It drew the gap count -
+  // "three sections are looking for somebody" - by reading
+  // `GET /clubs/{slug}/coverage`. That endpoint depends on `org_access`, which
+  // depends on a signed-in caller, so an anonymous visitor got a 401 and the
+  // badge rendered NOTHING: on every real site, always. It only ever appeared
+  // to work on /for-orgs/demo/, where a fixture answers it without auth.
+  //
+  // The coverage report is right to be gated - a public list of which miles
+  // nobody is looking after is a list of miles to avoid - so the fix is the
+  // design's own badge, which was never the gap count:
+  // miles maintained · active volunteers · hours this season, from
+  // `GET /clubs/{slug}/scoreboard`, which is public and returns three numbers.
+  const body = () => {
+    const from = CODE.slice(CODE.indexOf('function mountCoverage'))
+    const end = from.indexOf('function mountConsole')
+    return from.slice(0, end === -1 ? undefined : end)
+  }
 
-    expect(body).toContain('coverage.gaps.length')
-    expect(body).not.toContain('section_name')
-    expect(body).not.toMatch(/gaps\s*\.\s*map/)
-    expect(body).not.toMatch(/for \(.*gaps/)
+  it('reads the public endpoint rather than the gated one', () => {
+    expect(body()).toContain('/scoreboard')
+    expect(body()).not.toContain('/coverage')
+  })
+
+  it('draws the design’s three figures', () => {
+    for (const label of ['miles maintained', 'active volunteers', 'hours this season']) {
+      expect(body()).toContain(label)
+    }
+  })
+
+  it('never names or lists anything', () => {
+    // The old badge read `.length` off an array of gaps WITH their section
+    // names and discarded the rest, which put a safety property in a browser
+    // where the next edit could drop it. There is nothing to discard now, and
+    // this is what keeps it that way.
+    expect(body()).not.toContain('section_name')
+    expect(body()).not.toContain('gaps')
+    expect(body()).not.toMatch(/\.\s*map\(/)
+  })
+
+  it('has two shapes off one snippet, as the design says', () => {
+    expect(body()).toContain('data-shape')
+    expect(CODE).toContain('function footerStrip')
+    expect(CODE).toContain('function sidebarCard')
+  })
+
+  it('does not put words in an organization’s mouth on their own page', () => {
+    // The design's card is headed "Our park, live" - an organization's own
+    // words about its own donate page, which we cannot know. `data-title` is
+    // how they say it and their registered name is the fallback.
+    expect(body()).toContain('data-title')
+  })
+
+  it('does not claim a freshness the mechanism does not have', () => {
+    // The design's mock-up card reads "Updated nightly from our own registry".
+    // The figures are computed when the badge loads, so the foot says that
+    // instead. A line claiming a freshness nothing delivers is the same defect
+    // as a heading claiming a reading nobody did.
+    expect(body()).not.toMatch(/nightly/i)
+    expect(body()).toMatch(/when this page loaded/i)
   })
 })
 

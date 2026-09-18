@@ -52,6 +52,11 @@ export const OUT_OF_TREE_READS = [
   'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/index.html.ts',
   'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/registry.ts',
   'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/coverage.ts',
+  // The coverage badge's three figures. It read `/coverage` until
+  // 2026-09-18, which the real API gates to admins and supervisors - so
+  // the public badge drew nothing on every real site and only ever looked
+  // alive here, where a fixture answers without auth.
+  'site/src/pages/for-orgs/demo/api/clubs/central-park-throughikers/scoreboard.ts',
   'site/src/pages/for-orgs/demo/api/workdays.ts',
   'site/src/pages/index.astro',
   'site/src/components/NavBar.astro',

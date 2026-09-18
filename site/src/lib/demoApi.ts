@@ -34,11 +34,12 @@ import {
   DEMO_COVERAGE,
   DEMO_ORG,
   DEMO_REGISTRY,
+  DEMO_SCOREBOARD,
   DEMO_SLUG,
   DEMO_WORKDAYS,
 } from '../../../client/src/org/demoOrg'
 
-export { DEMO_COVERAGE, DEMO_ORG, DEMO_REGISTRY, DEMO_SLUG, DEMO_WORKDAYS }
+export { DEMO_COVERAGE, DEMO_ORG, DEMO_REGISTRY, DEMO_SCOREBOARD, DEMO_SLUG, DEMO_WORKDAYS }
 
 /** The base `/for-orgs/demo/` points `window.__OURHIKE_API__` at. */
 export const DEMO_API_BASE = '/for-orgs/demo/api'

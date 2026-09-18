@@ -141,6 +141,15 @@
     '.ourhike__count{font-size:2em;font-weight:700;line-height:1.1}',
     '.ourhike__links{display:flex;flex-wrap:wrap;gap:12px;margin-top:10px}',
     '.ourhike__empty{opacity:.75;font-size:.92em}',
+    // The coverage badge's two shapes. No colour value in either, the same
+    // promise the rest of this file keeps: everything inherits the host page.
+    '.ourhike__strip{display:flex;flex-wrap:wrap;gap:22px;align-items:baseline;' +
+      'border:1px solid rgba(128,128,128,.28);border-radius:8px;padding:12px 14px}',
+    '.ourhike__figure{display:flex;flex-direction:column;gap:2px}',
+    '.ourhike__value{font-size:1.6em;font-weight:700;line-height:1.1}',
+    '.ourhike__label{font-size:.82em;opacity:.72}',
+    '.ourhike__rows{display:flex;flex-direction:column;gap:8px;margin-top:10px}',
+    '.ourhike__row{display:flex;justify-content:space-between;gap:16px;align-items:baseline}',
   ].join('')
 
   function ensureStyle() {
@@ -528,30 +537,41 @@
    * ------------------------------------------------------------------ */
 
   /**
-   * The small one, for a sidebar.
+   * The three numbers an organization puts on its own website.
    *
-   * **A gap is a recruiting line, not an alarm.** It counts sections with
-   * nobody assigned, and the words beside the number say that a gap is
-   * flagged and never escalated. No visitor is told a section is
-   * unmaintained, because a hiker reading "unmaintained" makes a routing
-   * decision out of an organization's staffing problem.
+   * **ONE SNIPPET, TWO SHAPES** - the design's own words. `data-shape="card"`
+   * is the sidebar card a donate page carries; anything else is the footer
+   * strip. Both draw the same three figures, because they are the same claim
+   * in two places and a reader who saw different numbers on the same site
+   * would be right to trust neither.
    *
-   * **A COUNT, AND NEVER A LIST**, which is this file's answer to the third
-   * open question on #1542 - "whether a coverage badge says anything a hiker
-   * should not see". The endpoint returns the gaps with their section names;
-   * this reads `.length` and discards the rest, so the badge can say "nine
-   * sections are looking for somebody" and cannot say WHICH nine. The first
-   * is a recruiting line and the second is a list of miles to avoid, and the
-   * difference is one property access - which is why it is written down here
-   * rather than left to whoever edits this next.
+   * **IT USED TO READ `/coverage` AND COULD NEVER HAVE WORKED.** That endpoint
+   * depends on `org_access`, which depends on a signed-in caller, so an
+   * anonymous visitor got a 401 and this drew nothing - on every real site,
+   * always. It only ever appeared to work on `/for-orgs/demo/`, where a
+   * fixture serves it with no auth. The coverage report is right to be gated:
+   * a public list of which miles nobody is looking after is a list of miles to
+   * avoid. Pointing a public embed at it was the mistake, and
+   * `GET /clubs/{slug}/scoreboard` is the public shape.
+   *
+   * **THREE COUNTS, AND THE SHAPE IS THE ENFORCEMENT.** The old badge read
+   * `coverage.gaps.length` and discarded the names beside it, which put a
+   * safety property in a browser where the next edit could drop it. The
+   * scoreboard has no array in it to discard.
+   *
+   * **THE FOOT SAYS WHAT THE NUMBERS ARE, not what the design's mock-up said.**
+   * That card reads "Updated nightly from our own registry"; this is computed
+   * when the badge loads, so it says so. A line claiming a freshness the
+   * mechanism does not have is the same defect as a heading claiming a reading
+   * nobody did.
    */
   function mountCoverage(host) {
     var slug = host.getAttribute('data-org')
     if (!slug) return
 
     read('/clubs/' + encodeURIComponent(slug), function (org) {
-      read('/clubs/' + encodeURIComponent(slug) + '/coverage', function (coverage) {
-        if (coverage === null) {
+      read('/clubs/' + encodeURIComponent(slug) + '/scoreboard', function (board) {
+        if (board === null) {
           clear(host)
           return
         }
@@ -559,33 +579,58 @@
         clear(host)
         host.className = host.className ? host.className + ' ourhike' : 'ourhike'
 
-        var badge = el('div', 'ourhike__badge')
-        var gaps = coverage.gaps ? coverage.gaps.length : 0
-        badge.appendChild(el('div', 'ourhike__count', String(gaps)))
-        badge.appendChild(
-          el(
-            'div',
-            null,
-            gaps === 0
-              ? 'every section has somebody on it'
-              : (gaps === 1 ? 'section is' : 'sections are') + ' looking for somebody',
-          ),
-        )
-        badge.appendChild(
-          el(
-            'div',
-            'ourhike__meta',
-            'of ' + coverage.sections_total + ' we look after. Come and walk one with us.',
-          ),
-        )
-        var links = givingLinks(org)
-        if (links) badge.appendChild(links)
-        host.appendChild(badge)
+        var figures = [
+          [format(board.miles_maintained), 'miles maintained'],
+          [String(board.active_volunteers), 'active volunteers'],
+          [format(board.hours_this_season), 'hours this season'],
+        ]
+        var card = host.getAttribute('data-shape') === 'card'
+        host.appendChild(card ? sidebarCard(host, org, figures) : footerStrip(figures))
 
         var line = credit(host, org && org.name)
         if (line) host.appendChild(line)
       })
     })
+  }
+
+  /** A number a person reads: 13.8 stays 13.8, 164.0 becomes 164. */
+  function format(value) {
+    var number = typeof value === 'number' ? value : 0
+    return number % 1 === 0 ? String(number) : number.toFixed(1)
+  }
+
+  function footerStrip(figures) {
+    var strip = el('div', 'ourhike__strip')
+    for (var i = 0; i < figures.length; i++) {
+      var figure = el('div', 'ourhike__figure')
+      figure.appendChild(el('div', 'ourhike__value', figures[i][0]))
+      figure.appendChild(el('div', 'ourhike__label', figures[i][1]))
+      strip.appendChild(figure)
+    }
+    return strip
+  }
+
+  function sidebarCard(host, org, figures) {
+    var card = el('div', 'ourhike__badge')
+    // THE HEADING IS THEIRS. The design's mock-up says "Our park, live", which
+    // is an organization's own words about its own page and not something we
+    // can know - so `data-title` is how they say it, and their name is the
+    // fallback rather than a phrase we made up for them.
+    card.appendChild(
+      el('div', 'ourhike__name', host.getAttribute('data-title') || (org && org.name) || ''),
+    )
+    var rows = el('div', 'ourhike__rows')
+    for (var i = 0; i < figures.length; i++) {
+      var row = el('div', 'ourhike__row')
+      row.appendChild(el('span', 'ourhike__label', figures[i][1]))
+      row.appendChild(el('span', 'ourhike__value', figures[i][0]))
+      rows.appendChild(row)
+    }
+    card.appendChild(rows)
+    card.appendChild(
+      el('div', 'ourhike__meta', 'Counted from their own registry when this page loaded.'),
+    )
+    return card
   }
 
   /* ------------------------------------------------------------------ *
@@ -721,6 +766,12 @@
     { id: 'ourhike-hikes', mount: mountHikes },
     { id: 'ourhike-workdays', mount: mountWorkdays },
     { id: 'ourhike-coverage', mount: mountCoverage },
+    // A SECOND ID FOR THE SAME WIDGET, so one page can show both shapes at
+    // once. An organization pastes ONE of these and picks its shape with
+    // `data-shape` - the design's "one snippet, two shapes". The only page
+    // that wants both side by side is /for-orgs/demo/, which exists to show
+    // what the snippet can do, and mounting by id is what this file does.
+    { id: 'ourhike-coverage-card', mount: mountCoverage },
     { id: 'ourhike-console', mount: mountConsole },
   ]
 

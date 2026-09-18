@@ -20,7 +20,10 @@ the union of what they allow and never claims one.
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -30,8 +33,11 @@ from app.core.orm import commit_and_refresh
 from app.core.time import utc_now
 from app.db.session import get_db
 from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
+from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail
 from app.models.org_role import RoleInvite
 from app.models.profile import Profile
+from app.models.volunteer_hours import HoursState, VolunteerHoursRecord
 from app.schemas.org import (
     OrgAdminInvite,
     OrgAdminOut,
@@ -40,6 +46,7 @@ from app.schemas.org import (
     OrgDeclineRequest,
     OrgOut,
     OrgSettingsUpdate,
+    ScoreboardOut,
 )
 
 router = APIRouter(prefix="/clubs", tags=["clubs"])
@@ -100,6 +107,92 @@ def read_org(slug: str, db: Session = Depends(get_db)) -> OrgOut:
     by construction - that is what registering is. The roster, the hours and
     the unpublished registry are other resources with their own gates."""
     return _with_admins(db, club_by_slug(db, slug))
+
+
+@router.get("/{slug}/scoreboard", response_model=ScoreboardOut)
+def read_scoreboard(slug: str, db: Session = Depends(get_db)) -> ScoreboardOut:
+    """Miles maintained, active volunteers, hours this season. Public.
+
+    The design's coverage badge (embed 3), whose own caption says where each
+    figure comes from: "miles from the registry, volunteers from the roster,
+    hours from the ones a supervisor signed off."
+
+    **PUBLIC IS THE POINT AND ALSO THE RISK.** This sits on an organization's
+    own donate page, read by strangers with no account - so unlike
+    `/coverage` it takes no `org_access`, and unlike `/coverage` everything it
+    returns has to be safe in front of a stranger. Rule 4 keeps anything about
+    a named volunteer unpublished; three totals are not three names, and
+    `ScoreboardOut` has no array in it to leak.
+
+    **IT EXISTS BECAUSE THE BADGE THAT READ `/coverage` COULD NEVER HAVE
+    WORKED.** That endpoint depends on `org_access`, which depends on
+    `get_current_user`, so an anonymous visitor got a 401 and the badge drew
+    nothing - on every real site, always. It only ever appeared to work on
+    `/for-orgs/demo/`, where a fixture serves it with no auth. The coverage
+    report is right to be gated: a public list of which miles nobody is
+    looking after is a list of miles to avoid. Pointing a public embed at it
+    was the mistake.
+
+    **"MILES MAINTAINED" IS THE REGISTRY'S OWN TOTAL**, not the covered part
+    of it. An organization saying "we maintain 13.8 miles" means the trail
+    they look after, not the subset that currently has somebody's name
+    against it - and the second number would fall when a volunteer stepped
+    back, which would put an organization's staffing on its own donate page.
+    Checked against the design's badge, which prints 13.8 for the demo
+    organization's six sections: 6.1 + 1.58 + 2.4 + 1.2 + 1.7 + 0.8 = 13.78.
+
+    **A SECTION WITH NO LENGTH CONTRIBUTES NOTHING AND IS NOT A ZERO.**
+    `SUM` skips nulls, which is the behaviour wanted: absent means nobody has
+    measured it, and the same rule the shelter-capacity export follows.
+
+    **"THIS SEASON" IS THE CALENDAR YEAR SO FAR, and that is picked rather
+    than derived.** @unvalidated: a trail club in Georgia works through the
+    winter and one in Maine does not, so the honest answer differs by
+    organization and nobody has been asked. January is the one boundary every
+    club's own annual report already uses, and `season_started` goes out
+    beside the number so the window is stated rather than implied. What would
+    settle it: asking the first organizations what they call a season, and a
+    column on `clubs` if the answers differ.
+    """
+    club = club_by_slug(db, slug)
+    season_started = dt.date(dt.date.today().year, 1, 1)
+
+    miles = (
+        db.query(func.coalesce(func.sum(OrgSection.miles), 0.0))
+        .join(OrgTrail, OrgTrail.id == OrgSection.trail_id)
+        .join(OrgPark, OrgPark.id == OrgTrail.park_id)
+        .filter(OrgPark.club_id == club.id)
+        .scalar()
+    )
+
+    # DISTINCT people, not assignments: somebody covering three sections is one
+    # volunteer, and a badge that counted the sections would tell an
+    # organization's own supporters it has three times the people it has.
+    volunteers = (
+        db.query(func.count(func.distinct(MaintainerAssignment.maintainer_id)))
+        .filter(
+            MaintainerAssignment.club_id == club.id,
+            MaintainerAssignment.effective_to.is_(None),
+        )
+        .scalar()
+    )
+
+    hours = (
+        db.query(func.coalesce(func.sum(VolunteerHoursRecord.hours), 0.0))
+        .filter(
+            VolunteerHoursRecord.club_id == club.id,
+            VolunteerHoursRecord.state == HoursState.confirmed,
+            VolunteerHoursRecord.worked_on >= season_started,
+        )
+        .scalar()
+    )
+
+    return ScoreboardOut(
+        miles_maintained=round(float(miles or 0.0), 1),
+        active_volunteers=int(volunteers or 0),
+        hours_this_season=round(float(hours or 0.0), 1),
+        season_started=season_started,
+    )
 
 
 @router.get("/{slug}/access")

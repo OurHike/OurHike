@@ -605,6 +605,30 @@ export const DEMO_PROPOSED: OrgPark[] = [
  * this is the whole org rather than one region's slice - the endpoint takes
  * `?region=` and the demo asks for everything.
  */
+/** The three figures the coverage badge prints, in both of its shapes.
+ *
+ *  The miles are DERIVED from the sections above rather than written down,
+ *  because the design's badge prints 13.8 and the six sections add to 13.78 -
+ *  so a typed constant would be a second Central Park the first fixture edit
+ *  would contradict. The other two are the design's own numbers; the demo
+ *  organization has no hours ledger and no assignment rows to add up, and
+ *  inventing a roster to derive them from would be inventing data to make a
+ *  picture true.
+ *
+ *  `season_started` is January of the current year, which is what
+ *  `GET /clubs/{slug}/scoreboard` computes - a fixture pinned to one year
+ *  would start disagreeing with the real endpoint on the first of January.
+ */
+export const DEMO_SCOREBOARD = {
+  miles_maintained:
+    Math.round(
+      DEMO_SECTIONS.reduce((total, section) => total + (section.miles ?? 0), 0) * 10,
+    ) / 10,
+  active_volunteers: 29,
+  hours_this_season: 164,
+  season_started: `${new Date().getUTCFullYear()}-01-01`,
+}
+
 export const DEMO_COVERAGE: Coverage = {
   club_id: DEMO_ORG.id,
   region: null,

@@ -1,0 +1,212 @@
+---
+// /for-orgs/demo/ - Central Park Throughikers, a whole published org to walk
+// through before typing anything (features/ORG_ONBOARDING.md, #1539).
+//
+// THE ONE STRUCTURAL RULE, and it is the reason this page mounts widgets
+// rather than drawing its own tables: **the demo org mounts the real
+// components.** The design says it outright - "the moment the demo gets its
+// own copies it starts lying about the product." So the sections below are
+// the same three public embeds an organization pastes onto their own site,
+// pointed at `central-park-throughikers`. What a visitor sees here is what an
+// org's own visitors see, because it is the same code answering.
+//
+// THE ORG IS INVENTED AND THE PAGE SAYS SO FIRST, above everything else.
+// Central Park's coordinates are real and surveyed; the Throughikers, their
+// people, their hours and their reports are made up. The real park is
+// maintained by the Central Park Conservancy, who have nothing to do with
+// this page - said here because a page that renders like a real org's page
+// and is not one has to be labelled, not merely qualified in a footer.
+//
+// Every number on this page is @unvalidated and most are invented: six
+// routes, 13.8 miles, 29 volunteers. They exist to make the layout dense
+// enough to judge. The two real things are the coordinates and the shape of
+// the widgets.
+import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
+import { DEMO_API_BASE } from '../../lib/demoApi'
+
+const title = 'OurHike — Central Park Throughikers, a demo org'
+const description =
+  'A whole published organization to walk through before you type anything: six routes, an invented roster, and the same widgets your own org would get.'
+
+const ORG_SLUG = 'central-park-throughikers'
+---
+
+<Base title={title} description={description}>
+  <OrgNav />
+  <div class="org-demo-banner" role="note">
+    <div class="wrap">
+      <p>
+        <strong>This org is invented.</strong> The coordinates are real — the park's
+        corners and its landmarks are where they actually are — but the
+        Throughikers, their people, their hours and their reports are all made
+        up so you can look around without signing anything. The real park is
+        maintained by the Central Park Conservancy, who have nothing to do with
+        this page.
+      </p>
+      <a class="btn btn--ghost btn--small" href="/for-orgs/">Leave the demo</a>
+    </div>
+  </div>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="org-eyebrow">NEW YORK, NY · 6 ROUTES · 13.8 MILES · 29 VOLUNTEERS</span>
+      <h1 class="org-form__title">Central Park Throughikers</h1>
+      <p class="lede">
+        Published since March 2026 · five of six routes have a maintainer · what
+        a hiker sees is below, exactly as your own org's page would look.
+      </p>
+    </div>
+  </section>
+
+  <section class="section--tight">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>The view that matters most</h2>
+      </div>
+      <p class="lede">
+        <strong>This is what a volunteer actually opens.</strong> Every admin
+        screen in this tool exists to produce this one. Sam is a Throughiker who
+        looks after the Ramble — she never sees a registry or a pull request,
+        only her own paths, what hikers said about them, and the three things she
+        can do today.
+      </p>
+      <ul class="checks" style="margin-top: 16px">
+        <li><strong>No second login.</strong> She signed into the Throughikers' own site and arrived here.</li>
+        <li><strong>No jargon.</strong> Her section has a name, not an OBJECTID.</li>
+        <li>
+          <strong>Works with no signal.</strong> Reports queue and go when she gets
+          back — on her laptop or her phone.
+        </li>
+      </ul>
+      <p style="margin-top: 18px">
+        <a class="btn" href={`/app/my/tread?org=${ORG_SLUG}`}
+          >Open the full volunteer view</a
+        >
+      </p>
+      <p class="org-help">
+        Lives at <code class="mono">/my/tread</code> — its own address, so the welcome
+        email and the org's own members area can both link straight to it.
+      </p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Their sections</h2>
+      </div>
+      {
+        /* WHAT THIS ACTUALLY IS, corrected 2026-09-17. This lede used to
+           promise "the same table and map your own admins sign off on", and
+           the widget below it is the Hike Finder: an organization's hikes,
+           with a name, a park and a length. The table an admin signs off on
+           is the console's registry table - three tiers, blaze mapping, a
+           status column - and it is not a public embed at all.
+
+           A demo that describes one widget and shows another fails at the one
+           job it has, which is being what a visitor to an organization's own
+           site would see. */
+      }
+      <p class="lede">
+        Their hikes, filterable, exactly as a visitor to their own site would
+        get them — one widget, one behaviour. Narrow by region or length; the
+        lengths are theirs, drawn from the sections they published.
+      </p>
+      {
+        /* THE REAL WIDGET, not a copy of it. Same script tag an organization
+           pastes onto their own site, same `data-org`. If this page drew its
+           own table it would drift from the product the first time either
+           changed, which is exactly what the design warns about. */
+      }
+      <div
+        id="ourhike-hikes"
+        data-org={ORG_SLUG}
+        data-filters="region,difficulty,length"
+        data-rows="25"
+        style="margin-top: 20px"
+      >
+      </div>
+    </div>
+  </section>
+
+  <section class="section--tight">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Their workdays</h2>
+      </div>
+      <p class="lede">
+        Upcoming work, as their own visitors see it. A workday mirrored from an
+        org's own calendar sends its signup to <em>their</em> form and says so —
+        an org with a working calendar is not asked to abandon it.
+      </p>
+      <div id="ourhike-workdays" data-org={ORG_SLUG} data-window="60" style="margin-top: 20px"></div>
+    </div>
+  </section>
+
+  <section class="section--tight">
+    <div class="wrap">
+      <div class="section__head">
+        <span class="blaze"></span>
+        <h2>Their coverage badge</h2>
+      </div>
+      <p class="lede">
+        One snippet, two shapes — a strip for a footer and a card for a donate
+        page. Every figure comes from what they published and confirmed: miles
+        from their registry, volunteers from their roster, and hours from the
+        ones a supervisor signed off.
+      </p>
+      <p class="org-help">
+        <strong>Three counts, and never a list.</strong> It does not say which
+        sections nobody is holding — a hiker reading that would make a routing
+        decision out of an organization's staffing problem. The coverage report
+        that does say is inside the console, for the people who can act on it.
+      </p>
+      <div id="ourhike-coverage" data-org={ORG_SLUG} style="margin-top: 20px"></div>
+      <div
+        id="ourhike-coverage-card"
+        data-org={ORG_SLUG}
+        data-shape="card"
+        data-title="Our park, live"
+        style="margin-top: 20px; max-width: 320px"
+      >
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <div class="org-note">
+        <p>
+          <strong>Everything above is one paste each.</strong> A div and a script
+          tag, on the org's own page, reading the registry they already signed
+          off. No cookies, no tracking, no OurHike branding they cannot remove,
+          and it inherits their fonts and colours. If our servers are down their
+          page still renders — the embed just does not appear.
+        </p>
+      </div>
+      <p style="margin-top: 20px">
+        <a class="btn" href="/for-orgs/#register">Add your own trails</a>
+      </p>
+    </div>
+  </section>
+
+  {
+    /* WHERE THE EMBEDS READ FROM, set before the embed script loads.
+       `ourhike.js` takes `window.__OURHIKE_API__` and, with nothing set,
+       draws nothing - "an unconfigured page renders empty rather than
+       pointing at a guessed host", which is right everywhere except the one
+       page whose job is to show a whole published organization. So this
+       points at four generated endpoints under this page, at exactly the
+       paths the real API serves: see src/lib/demoApi.ts. The embed itself is
+       unchanged, so what a visitor sees here is what an org's own visitors
+       would see. */
+  }
+  <script is:inline define:vars={{ base: DEMO_API_BASE }}>
+    window.__OURHIKE_API__ = base
+  </script>
+  <script src="/embed/v1/ourhike.js" defer is:inline></script>
+</Base>

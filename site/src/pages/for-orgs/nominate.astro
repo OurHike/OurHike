@@ -1,0 +1,192 @@
+---
+// /for-orgs/nominate/ - a hiker putting a club on the map for them (#1539).
+//
+// THE HIKER IS NOT SPEAKING FOR THE ORGANIZATION AND MUST NOT BE ASKED TO.
+// They know their local club has trails and roughly where to find them; that
+// is the whole of what this collects, and it is why the form is one field.
+// Everything after that field is us doing the work, and the page says so.
+//
+// THIS PAGE IS A DOOR NOW, AND THE HISTORY IS WORTH KEEPING. It used to
+// carry the whole flow, including a panel headed "WHAT WE COULD SEE ON
+// THEIR SITE" over an answer a model produced from its own memory - nothing
+// had been fetched, and the page said otherwise on its first screen. That
+// is exactly the failure CLAUDE.md's "never let a display outrun its
+// source" names.
+//
+// The maintainer's 2026-09-17 decision made the reading real and put two
+// conditions on it - a signed-in hiker and a proof of work - and this site
+// has neither to give: four static pages, no Supabase client, no sign-in.
+// So the address goes to the app and the reading happens there. What is
+// left here is the explaining, which is what a marketing page is for.
+//
+// The block below the form stays an EXAMPLE and is labelled as one. It
+// describes what the reading looks for rather than what it found, which is
+// a claim about us rather than about anybody's organization.
+//
+// The flat-file refusal is stated here and not only at the API, because the
+// person reading this is about to go and ask a club for something. "Ask them
+// for the layer behind it" is the sentence that makes that ask possible.
+import Base from '../../layouts/Base.astro'
+import OrgNav from '../../components/OrgNav.astro'
+
+const title = 'OurHike — Put a club on the map for them'
+const description =
+  "Hiking somewhere new and the local club publishes maps nobody can use offline? Give us their website. You submit their trails; they take it over whenever they are ready."
+---
+
+<Base title={title} description={description}>
+  <OrgNav />
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <span class="org-eyebrow">ANY SIGNED-IN HIKER CAN DO THIS</span>
+      <h1 class="org-form__title">Put a club on the map for them</h1>
+      <p class="lede">
+        Hiking somewhere new and the local club publishes maps nobody can use
+        offline? Give us their website. We go looking for their trail data, and
+        their trails go on the map — <strong>unclaimed</strong>, until somebody
+        from the org comes and takes it over.
+      </p>
+
+      {
+        /* THE READING HAPPENS IN THE APP, AND THAT IS WHY THIS IS A DOOR
+           RATHER THAN A FORM. Until 2026-09-17 this page carried the whole
+           flow: a field, a "have a look at their site" button, and a panel
+           headed WHAT WE COULD SEE ON THEIR SITE over an answer a model
+           produced from its own memory. Nothing had been opened.
+
+           The maintainer's decision that day made the reading real - the
+           backend fetches their published pages through app/core/urlguard.py
+           - and put two conditions on it: a signed-in hiker, and a proof of
+           work. This site has neither to give. It carries no Supabase client
+           and no sign-in at all, by design: it is four static pages.
+
+           So the address a hiker types here is carried into the app, where
+           there is an account to check and a browser that can do the work.
+           The wireframe's own eyebrow said ANY SIGNED-IN HIKER CAN DO THIS
+           from the beginning; this is the first version of the page where
+           that is true. */
+      }
+      <form class="org-form" action="/app/nominate" method="get" style="margin-top: 24px">
+        <fieldset class="org-form__group">
+          <span class="org-eyebrow">STEP 1 · THEIR WEBSITE</span>
+          <label class="org-field">
+            <span class="org-field__label">Club website</span>
+            <input
+              class="org-field__input"
+              type="url"
+              name="website"
+              inputmode="url"
+              autocomplete="url"
+              placeholder="https://carolinamountainclub.org"
+            />
+          </label>
+          <p class="org-help">
+            That is all we need. We open their published pages — looking for a
+            maps page, a GIS server, a downloads link, or a data portal — and
+            show you what was on them, to keep or throw away line by line.
+          </p>
+          {
+            /* WHY AN ACCOUNT, said before the button rather than after. A page
+               that asks somebody to sign in without saying why reads as a
+               sign-up wall, and this one stands in front of a person doing a
+               favour for a club they are not a member of. The two reasons are
+               both true and neither is about us: opening a website somebody
+               typed is a thing worth being able to attribute, and the panel
+               spends money on a model. */
+          }
+          <p class="org-help">
+            <strong>You will be asked to sign in.</strong> Reading somebody's
+            website is something we will only do for a hiker we can name, and
+            the reading costs us a little to run — an account is how both of
+            those stay true. Your browser also does a few seconds of arithmetic
+            on the way, which is what stops this being used a thousand times an
+            hour by somebody who is not you.
+          </p>
+        </fieldset>
+
+        <button class="btn org-form__submit" type="submit">Read their site</button>
+        <p class="org-help org-help--centred">
+          This gives you no standing at their org, and asks nothing of them.
+        </p>
+
+      </form>
+
+      <div class="org-found" style="margin-top: 36px">
+        <span class="org-eyebrow">WHAT COMES BACK · AN EXAMPLE, NOT A LIVE RESULT</span>
+        <h2 class="org-found__title">What we look for on a club's site</h2>
+        <p class="org-help">
+          Every one of these is checked by a person before anything of a club's
+          reaches a map. This is what that reading usually turns up.
+        </p>
+        <ul class="org-sources">
+          <li class="org-source" data-verdict="usable">
+            <span class="org-source__what">An ArcGIS FeatureServer</span>
+            <span class="org-source__verdict">usable</span>
+            <span class="org-source__why"
+              >Line features with a blaze field and a published edit date. The
+              best case: we can read it again tomorrow and tell them what
+              changed.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="usable">
+            <span class="org-source__what">A WFS or GeoJSON endpoint</span>
+            <span class="org-source__verdict">usable</span>
+            <span class="org-source__why"
+              >Same test, different shape. Anything at a URL that answers with
+              geometry and keeps answering.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="closures">
+            <span class="org-source__what">A closures or alerts feed</span>
+            <span class="org-source__verdict">closures</span>
+            <span class="org-source__why"
+              >Live JSON we can read hourly once they approve it — the one
+              source where being an hour old matters.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="refused">
+            <span class="org-source__what">PDF trail maps</span>
+            <span class="org-source__verdict">not accepted</span>
+            <span class="org-source__why"
+              >We do not take these. <strong
+                >A PDF cannot be re-read, so it is stale the day it is
+                uploaded</strong
+              > — and taking a snapshot while implying a feed is worse than taking
+              nothing. Ask them for the layer behind it.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="found">
+            <span class="org-source__what">Membership and donation pages</span>
+            <span class="org-source__verdict">found</span>
+            <span class="org-source__why"
+              >We put these in front of every hiker walking their trails. The
+              money goes straight to them and is never routed through
+              OurHike.</span
+            >
+          </li>
+          <li class="org-source" data-verdict="licence">
+            <span class="org-source__what">Whatever their terms say</span>
+            <span class="org-source__verdict">read by a person</span>
+            <span class="org-source__why"
+              >Asked <em>before</em> the bytes are in a build, which is the one
+              thing this project has got wrong twice already.</span
+            >
+          </li>
+        </ul>
+      </div>
+
+      <div class="org-note" style="margin-top: 28px">
+        <p>
+          <strong>Nothing publishes because you submitted it.</strong> A
+          nomination records the organization as unclaimed and puts it in front
+          of a person here. Three admins <em>at that organization</em> still have
+          to approve before a single section of theirs reaches a phone — the same
+          rule as an org that signs itself up, and the reason submitting
+          somebody else's trails is a favour rather than a liability.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <script src="../../scripts/nominateLook.js"></script>
+</Base>

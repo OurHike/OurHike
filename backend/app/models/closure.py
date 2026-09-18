@@ -29,7 +29,7 @@ routing/geometry field here, only reason/status/dates for a hiker to read.
 import enum
 import uuid
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, Text
+from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, String, Text, UniqueConstraint
 
 from app.core.time import utc_now
 from app.db.base import Base
@@ -201,3 +201,46 @@ class Closure(Base):
     # in app/schemas/closure.py rather than here: a `javascript:` URL on a
     # safety sheet is the reason that validation exists.
     reroute_url = Column(String, nullable=True)
+
+
+# How many volunteer approvals stand in for a supervisor's single one.
+#
+# ORG_ONBOARDING.md's conflict 5: closures already have a moderation model -
+# `POST /closures`, `PATCH /closures/:id` and the verify/dismiss pair, behind
+# a role gate - and the organization design adds a second way to satisfy the
+# same lifecycle rather than a second lifecycle. Three volunteers who cover
+# the stretch agreeing is the other path to `verified`, for the org that has
+# no supervisor free on a Tuesday.
+#
+# @unvalidated - three is the design's figure and nothing measured it. What
+# would settle it: how often three volunteers who cover one stretch are even
+# reachable in a day, which decides whether this path is a real alternative
+# or a decorative one. Two would be a coincidence; four is more people than
+# most sections have.
+CLOSURE_APPROVALS_REQUIRED = 3
+
+
+class ClosureApproval(Base):
+    """One volunteer saying a proposed closure matches what they can see.
+
+    A row rather than a counter, because "three approvals" has to survive the
+    question an audit actually asks - *which* three, and when. A counter can
+    say a closure reached the threshold and can never say who put it there,
+    which on a safety resource is the wrong half to keep.
+
+    Deliberately not a vote: there is no disapproval row. Somebody who thinks
+    a closure is wrong has the existing dismissal path through moderation,
+    which is a moderator's judgement rather than a tally, and inventing a
+    downvote here would mean designing what happens when a closure is
+    approved by three and disputed by four.
+    """
+
+    __tablename__ = "closure_approvals"
+    __table_args__ = (UniqueConstraint("closure_id", "person_id", name="uq_closure_approvals_closure_person"),)
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    closure_id = Column(String, ForeignKey("closures.id"), nullable=False, index=True)
+    person_id = Column(String, ForeignKey("profiles.id"), nullable=False, index=True)
+
+    approved_at = Column(DateTime, nullable=False, default=utc_now)

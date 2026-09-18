@@ -739,4 +739,155 @@ export const FLOW_COVERAGE: Readonly<Record<string, FlowSurface>> = {
       why: 'A generic radio ladder; the download-size rules it renders are asserted in lib and in first run.',
     },
   },
+
+  // ---- F14 the organization console (features/ORG_ONBOARDING.md) ----------
+  //
+  // A STEP OUTSIDE PATHWAY.MD'S SPINE, and deliberately: the spine is a
+  // hiker's journey and none of this is on it. An org admin arrives by a link
+  // in their own inbox, and the hiker's app links to none of these screens -
+  // which is why `e2e/orgConsole.spec.ts` opens on an address and says so at
+  // length rather than tapping in from Today.
+  //
+  // `covered` is claimed where the spec ASSERTS on the surface. Every screen
+  // below has a line in that spec checking it landed on its own heading, so
+  // the entrance claim is real for all of them; what is still `planned` for
+  // most is driving their controls, which cannot mean much until the writes
+  // behind them exist (all forty-nine are stubs today).
+  // OrgEntry IS the entrance claim, which is why it is `covered` rather than
+  // passed through: its whole surface is "the address opened the right one of
+  // three screens", and every assertion below that a screen landed on its own
+  // heading is an assertion that this switch chose it. It draws nothing else
+  // but the "Opening" frame while a chunk arrives.
+  'org/OrgEntry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/OrgConsole.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/OrgShell.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/SetupHub.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/AdminApproval.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/HikeRegistry.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/RegistrySignoff.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/AddTrail.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Embeds.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OrgEmails.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OrgSettings.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Roles.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Workdays.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Coverage.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/Roster.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/WelcomeVolunteers.tsx': {
+    step: 'F14 org console',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+
+  // ---- F15 the volunteer's own screens ------------------------------------
+  // THE TWO SCREENS THAT ARE NOT THE CONSOLE. Both are arrived at from
+  // outside the app - one from /for-orgs/nominate/, one from a link in an
+  // email to somebody with no account - so neither is reachable by the tap
+  // sequence from boot that the flow battery drives, which is the same
+  // exception e2e/orgConsole.spec.ts already takes at the top of its file for
+  // the console itself. Unit-only rather than planned, because the properties
+  // worth asserting on them are decisions rather than journeys: that a
+  // dropped contact is not submitted, and that the refusal is offered as
+  // plainly as the approval.
+  'org/screens/Nominate.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only from the marketing site, which the flow battery does not boot into; the review step is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/Proposal.tsx': {
+    step: 'F15 volunteer',
+    flow: {
+      status: 'unit-only',
+      why: 'reached only by a token in an email, by somebody with no account; the refusal path is asserted in org/screens/nominate.test.tsx',
+    },
+  },
+  'org/screens/YourTread.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/OnYourPhone.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/HandBack.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/RidgeRunner.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+  'org/screens/VolunteerProfile.tsx': {
+    step: 'F15 volunteer',
+    flow: { status: 'covered', spec: 'e2e/orgConsole.spec.ts' },
+  },
+
+  // ---- Leaves with no state of their own ----------------------------------
+  'org/Mark.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'unit-only',
+      why: 'An inline SVG wordmark. It has no state, no branch and no control - driving a browser to it proves what reading it proves.',
+    },
+  },
+  'org/components.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'unit-only',
+      why: "The console's shared parts, every one of which is rendered by a screen above and asserted through it. Their own branches - a blaze with nothing to draw, a section with no geometry, an empty workday list - are pure and tested as functions in src/org, which is faster and covers the cases a browser would have to be contrived into.",
+    },
+  },
+  'org/AssistPanel.tsx': {
+    step: 'F14 org console',
+    flow: {
+      status: 'covered',
+      spec: 'e2e/orgConsole.spec.ts',
+    },
+  },
 }

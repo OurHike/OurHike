@@ -217,7 +217,17 @@ origins:
     # actually covers a pull request that does not exist yet. `pr-1` is chosen
     # for being permanent in shape and meaningless in particular.
     probe: https://pr-1.ourhike-preview.pages.dev
-    app_path: /
+    # `/app/`, the same as production, since pr-preview.yml started uploading
+    # the marketing site alongside the app and building the app for the path
+    # production serves it at. It was `/` while a preview was the app alone at
+    # its own hostname.
+    #
+    # Nothing has to be re-pasted into Supabase for this: the production
+    # project's list already carries `https://*.ourhike-preview.pages.dev/**`,
+    # which is broader than the `/app/**` this now prints, and
+    # check_auth_redirects.py asks whether the app URL is ACCEPTED rather than
+    # whether the entry matches character for character (see redirect_globs).
+    app_path: /app/
     supabase: [production]
     serves: Pull-request previews, on Cloudflare Pages.
     # Losing this costs reviewers a preview, not hikers a map. It is still

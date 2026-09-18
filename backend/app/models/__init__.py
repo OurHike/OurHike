@@ -10,11 +10,49 @@ somewhere reachable from here... before autogenerate will see it."
 """
 
 from app.models.app_failure import AppFailure, Harm
-from app.models.closure import Closure, ClosureStatus, ModerationStatus, ReasonType
-from app.models.club import Club
+from app.models.assist import AssistUsage
+from app.models.closure import (
+    CLOSURE_APPROVALS_REQUIRED,
+    Closure,
+    ClosureApproval,
+    ClosureStatus,
+    ModerationStatus,
+    ReasonType,
+)
+from app.models.club import Club, OrgAdmin, OrgState, VerifiedBy
+from app.models.console_key import (
+    CONSOLE_TOKEN_TTL_SECONDS,
+    ConsoleKey,
+    ConsoleTokenGrant,
+)
 from app.models.field_note import FieldNote, NoteFlag, Observation
 from app.models.hike import Hike
+from app.models.mail import (
+    EmailSend,
+    EmailSuppression,
+    MailPurpose,
+    MailState,
+    SuppressionReason,
+)
 from app.models.maintainer_assignment import MaintainerAssignment
+from app.models.nomination import (
+    ChallengeSpend,
+    NominationContact,
+    NominationRefusal,
+    NominationSource,
+    NominationState,
+    OrgNomination,
+    ProposedBy,
+    SourceVerdict,
+)
+from app.models.org_registry import OrgPark, OrgSection, OrgTrail, ParkKind, RegistrySignoff
+from app.models.org_role import (
+    DEACTIVATION_HOLD_FRACTION,
+    OrgRole,
+    RoleCategory,
+    RoleInvite,
+    RosterSyncRun,
+)
 from app.models.poi_photo import PoiPhoto, PoiPhotoDismissal, PoiPhotoStatus
 from app.models.preferences import UserPreferences
 from app.models.profile import Profile, Role
@@ -26,12 +64,27 @@ from app.models.report import (
     Severity,
     Visibility,
 )
+from app.models.ridge_runner import (
+    COMMITMENT_TASKS,
+    MAX_COMMITMENT_DAYS,
+    RidgeRunnerCommitment,
+)
 from app.models.synced_day_hike import SyncedDayHike
 from app.models.synced_hike import SyncedActiveHike, SyncedHike
 from app.models.synced_trip import SyncedPlannedHike, SyncedTrip
 from app.models.volunteer_hours import HoursActivity, HoursState, VolunteerHoursRecord
+from app.models.work_project import (
+    ProjectSource,
+    ProjectStatus,
+    SignupMode,
+    SignupState,
+    WorkProject,
+    WorkProjectSignup,
+)
 
 __all__ = [
+    "RegistrySignoff",
+    "AssistUsage",
     "AppFailure",
     "Harm",
     "Closure",
@@ -64,4 +117,43 @@ __all__ = [
     "HoursActivity",
     "HoursState",
     "VolunteerHoursRecord",
+    "CLOSURE_APPROVALS_REQUIRED",
+    "ClosureApproval",
+    "OrgAdmin",
+    "OrgState",
+    "VerifiedBy",
+    "CONSOLE_TOKEN_TTL_SECONDS",
+    "ConsoleKey",
+    "ConsoleTokenGrant",
+    "OrgPark",
+    "OrgSection",
+    "OrgTrail",
+    "ParkKind",
+    "DEACTIVATION_HOLD_FRACTION",
+    "OrgRole",
+    "RoleCategory",
+    "RoleInvite",
+    "RosterSyncRun",
+    "COMMITMENT_TASKS",
+    "MAX_COMMITMENT_DAYS",
+    "RidgeRunnerCommitment",
+    "ProjectSource",
+    "ProjectStatus",
+    "SignupMode",
+    "SignupState",
+    "WorkProject",
+    "WorkProjectSignup",
+    "ChallengeSpend",
+    "EmailSend",
+    "EmailSuppression",
+    "MailPurpose",
+    "MailState",
+    "NominationContact",
+    "NominationRefusal",
+    "NominationSource",
+    "NominationState",
+    "OrgNomination",
+    "ProposedBy",
+    "SourceVerdict",
+    "SuppressionReason",
 ]

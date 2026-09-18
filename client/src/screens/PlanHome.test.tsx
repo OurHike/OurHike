@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { PlanHome, planRoomFor, type PlanHomeProps } from './PlanHome'
+import { PlanHome, type PlanHomeProps } from './PlanHome'
 import { DEFAULT_TRAIL_ID, type Hike } from '../lib/hikes'
 import { PlanStart } from './PlanStart'
 import { STANDARD_PACE } from '../lib/pace'
@@ -108,14 +108,6 @@ describe('the mode band', () => {
 
     expect(screen.getByRole('heading', { name: 'Sections' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /⇄/ })).not.toBeInTheDocument()
-  })
-
-  it('takes its room from the app’s mode, and gives volunteer the day room', () => {
-    // Not a third room: "today I'm volunteering" is a statement about the
-    // day's work, not a kind of planning.
-    expect(planRoomFor('long')).toBe('sections')
-    expect(planRoomFor('day')).toBe('day')
-    expect(planRoomFor('volunteer')).toBe('day')
   })
 })
 

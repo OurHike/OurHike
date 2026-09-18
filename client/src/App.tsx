@@ -36,7 +36,16 @@
 // so that step ends the flow the way it already ended, with the report
 // queued.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import type { PoiDetail } from './chrome/PoiCard'
 import { TabBar } from './chrome/TabBar'
@@ -403,7 +412,7 @@ import { OffRouteBand, OffRouteCard } from './chrome/OffRouteCard'
 import { dayHikesNearHere } from './lib/dayHikeShelf'
 import { DayHikeCard } from './screens/DayHikeCard'
 import { DayHikesHere } from './chrome/DayHikesHere'
-import { planRoomFor } from './screens/PlanHome'
+import { planRoomFor } from './lib/planRoom'
 import { HikePickSheet } from './chrome/HikePickSheet'
 import { StepAwaySheet } from './chrome/StepAwaySheet'
 import { AddDayHikeSheet, type DayHikeCandidate } from './chrome/AddDayHikeSheet'
@@ -536,6 +545,26 @@ import { namesOnOffer, signatureFields } from './lib/reporterSignature'
 import { placeWords } from './lib/placement'
 import { searchableFrom, type SearchablePoi } from './lib/searchPoi'
 import { siteRoster } from './map/poiSites'
+import { useOrgEntry } from './lib/useOrgEntry'
+
+/* THE ORGANIZATION SURFACE IS LAZY, AND THE BUDGET IS WHY.
+ *
+ * Imported eagerly the console alone put the launch bundle 37,336 bytes over
+ * features/LAUNCH_BUDGET.md §3's 256,000-byte ceiling (measured 2026-09-17:
+ * 293,336 compressed against 256,000). Every one of those bytes is parsed
+ * before a hiker's first frame, for a surface almost no hiker opens - it is
+ * for the handful of people running an organization, reached by typing a URL.
+ * `import()` is what §3 asks for by name, and it costs one frame of "Opening"
+ * on a screen nobody reaches by accident.
+ *
+ * WHAT MOVED BEHIND IT SECOND (2026-09-18). The screens were lazy and the
+ * router that picks between them was not, which cost 1,255 eager bytes
+ * against 624 of headroom once `main` at 57868716 was merged in. So
+ * `org/OrgEntry.tsx` now holds the route hook and the three screens, and what
+ * is left here is one boolean - lib/orgEntry.ts has the measurement. */
+const OrgEntry = lazy(() =>
+  import('./org/OrgEntry').then((module) => ({ default: module.OrgEntry })),
+)
 import './App.css'
 // Last, and entirely inside media queries - see the file header. Nothing in it
 // can match a phone, which is how the WEBSITE.md §8 constraint is kept
@@ -711,6 +740,17 @@ const NO_PLACE_CANDIDATES: PlaceCandidate[] = []
 const NO_NEARBY_PLACES: NearbyPlace[] = []
 
 function App() {
+  // THE ORGANIZATION CONSOLE (#1539-#1542), and the whole of its footprint in
+  // this file: one hook and one early return, some 250 lines below. #937
+  // counted App.tsx as the file 12 of the last 27 merge conflicts landed in,
+  // so a console woven through it is a console every future branch fights.
+  //
+  // The hook is called here rather than inside OrgConsole because there can
+  // only be one: two instances would each keep their own copy of the route,
+  // and a `go` inside the console would move the URL while this file carried
+  // on rendering the map.
+  const inOrgSurface = useOrgEntry()
+
   // Two pieces of state rather than one nullable, because null only ever meant
   // "not read off the phone yet" - and saying that with a boolean keeps the
   // preferences themselves always a whole object. That removes an unreachable
@@ -10458,6 +10498,18 @@ function App() {
   // This branch stays up for that gap - see `mapScreenLanded` above for what
   // the gap measured.
   const nothingWouldRender = !mapScreenUp && (screenOver ?? null) === null && !entering
+
+  // The console is a whole screen rather than a panel over the map, so it
+  // returns instead of rendering beside anything. Every hook above has
+  // already run, which is why this sits here and not at the top of the
+  // function.
+  if (inOrgSurface) {
+    return (
+      <Suspense fallback={<div className="app__screen">Opening…</div>}>
+        <OrgEntry units={units} />
+      </Suspense>
+    )
+  }
 
   return (
     <>

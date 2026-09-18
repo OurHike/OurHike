@@ -27,52 +27,52 @@
 export const ORGS = [
   {
     lines: [
-      'The whole Appalachian Trail, offline.',
-      '2,197 miles of Appalachian Trail. Zero bars required.',
+      "The whole Appalachian Trail, offline.",
+      "2,197 miles of Appalachian Trail. Zero bars required.",
     ],
     lat: 39.3253,
     lon: -77.7386, // ATC, Harpers Ferry, WV
   },
   {
     lines: [
-      'Every step of the volunteer-maintained NY-NJ Trail Conference, right in your pocket.',
-      'All bazillion NY-NJ Trail Conference blazes, yours to download.',
+      "Every step of the volunteer-maintained NY-NJ Trail Conference, right in your pocket.",
+      "All bazillion NY-NJ Trail Conference blazes, yours to download.",
     ],
     lat: 41.0898,
     lon: -74.1447, // NYNJTC, Mahwah, NJ
   },
   {
     lines: [
-      'Every trail NY State Parks maintains, offline in your pocket.',
-      'All of NY State Parks’ trails. None of the parking-lot wifi.',
+      "Every trail NY State Parks maintains, offline in your pocket.",
+      "All of NY State Parks’ trails. None of the parking-lot wifi.",
     ],
     lat: 42.6525,
     lon: -73.7572, // NYS OPRHP, Albany, NY
   },
   {
     lines: [
-      'The Shawangunks’ cliffs and carriage roads, mapped by Mohonk Preserve.',
-      'Mohonk Preserve’s trails, minus the gift-shop line.',
+      "The Shawangunks’ cliffs and carriage roads, mapped by Mohonk Preserve.",
+      "Mohonk Preserve’s trails, minus the gift-shop line.",
     ],
     lat: 41.7626,
     lon: -74.1071, // Mohonk Preserve, Gardiner, NY
   },
   {
     lines: [
-      'Catskills to Adirondacks: every trail NYS DEC blazes.',
-      'All of DEC’s hiking trails, no ranger station required.',
+      "Catskills to Adirondacks: every trail NYS DEC blazes.",
+      "All of DEC’s hiking trails, no ranger station required.",
     ],
     lat: 42.6551,
     lon: -73.7472, // NYS DEC, Albany, NY
   },
-]
+];
 
 /** "N organizations sharing all their trails and paths" - always the count
  *  of whatever `orgs` list is passed, never a hand-typed number, so this
  *  cannot go stale the way the credits strings elsewhere on the site did
  *  before #1059. */
 export function orgCountLine(orgs = ORGS) {
-  return `${orgs.length} organizations sharing all their trails and paths`
+  return `${orgs.length} organizations sharing all their trails and paths`;
 }
 
 /** The full rotation: the count line first, then every organization's lines
@@ -81,5 +81,5 @@ export function orgCountLine(orgs = ORGS) {
  *  as the one place that says what "every organization's lines are in the
  *  rotation" actually means, so a test can hold the page to it. */
 export function allSlides(orgs = ORGS) {
-  return [orgCountLine(orgs)].concat(orgs.flatMap((org) => org.lines))
+  return [orgCountLine(orgs)].concat(orgs.flatMap((org) => org.lines));
 }

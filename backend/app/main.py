@@ -11,18 +11,26 @@ from fastapi.responses import JSONResponse
 from app.core.body_limit import MAX_REQUEST_BODY_BYTES, BodyLimitMiddleware
 from app.routers import (
     app_failures,
+    assist,
     closures,
+    clubs,
+    console,
     field_notes,
     hikes,
     maintainer_assignments,
     moderation,
+    nominations,
+    org_registry,
+    org_roles,
     poi_photos,
     preferences,
     profiles,
     reports,
+    ridge_runner,
     synced_day_hikes,
     synced_trips,
     volunteer_hours,
+    work_projects,
 )
 
 app = FastAPI(title="OurHike backend")
@@ -94,3 +102,19 @@ app.include_router(field_notes.router)
 app.include_router(volunteer_hours.router)
 app.include_router(synced_trips.router)
 app.include_router(synced_day_hikes.router)
+
+# The organization surface (features/ORG_ONBOARDING.md). Order matters for
+# one pair only: `clubs` declares GET /clubs/{slug}, and the registry and
+# roles routers add longer paths under the same prefix. FastAPI matches the
+# most specific declared route rather than the first prefix, so the grouping
+# below is for a reader rather than for the router - but the reserved slugs
+# in schemas/org.py are what actually keep an org from registering a name
+# that would shadow one of them.
+app.include_router(clubs.router)
+app.include_router(org_registry.router)
+app.include_router(org_roles.router)
+app.include_router(work_projects.router)
+app.include_router(ridge_runner.router)
+app.include_router(console.router)
+app.include_router(assist.router)
+app.include_router(nominations.router)

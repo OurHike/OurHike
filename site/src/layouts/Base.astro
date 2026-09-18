@@ -54,8 +54,22 @@ const canonical = new URL(Astro.url.pathname, Astro.site)
     />
   </head>
   <body>
+    {
+      /* THE FIRST THING IN THE TAB ORDER, and it was on none of these pages
+         until 2026-09-17. The design handoff carries it on all 27 of its
+         screen extracts; the site carried it nowhere, which is a keyboard or
+         screen-reader user tabbing the whole nav on every page before
+         reaching a word of content.
+
+         It is visually hidden until focused - `.skip` in site.css - so it
+         costs a sighted reader nothing and appears the moment somebody
+         tabs. */
+    }
+    <a class="skip" href="#main">Skip to content</a>
     <NavBar />
-    <slot />
+    <main id="main">
+      <slot />
+    </main>
     <Footer />
   </body>
 </html>

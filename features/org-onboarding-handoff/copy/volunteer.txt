@@ -1,0 +1,147 @@
+[link] Skip to content
+    [svg]
+    Prototype controls
+    ·
+    signed in as
+  [button] org admin
+  [button] not a lead
+  [button] registered volunteer
+  [button] reset
+  [button] show signed out
+  [button] show a new org
+  [button] show failures
+  [button] onboarding complete · replay it
+    [button] RT Ramapo Trail Conference Org admin · maintainer
+      [svg]
+        Onboarding
+      [button] Org home
+      [button] Admin approval
+      [button] Hike registry
+      [button] Registry sign-off
+      [button] Add a trail
+      [svg]
+        Manage volunteers
+      [button] Roles
+      [button] Workdays 3
+      [button] Coverage report 37
+      [button] Your roster
+      [button] Welcome them 37
+      [svg]
+        Volunteer
+      [button] Your Tread
+      [button] On your phone
+      [button] What you hand back
+      [button] Ridge Runner
+      [button] Your profile
+    [button] What we email on your behalf
+    [button] Settings and leaving
+    [link] OurHike
+    [button] For orgs
+    [button] Demo org
+    [button] Nominate an org
+    [button] Claim your org
+        MA
+          Maria Alvarez
+          maria@ramapotrails.org
+      [button] Ramapo Trail Conference
+        ›
+          Volunteer
+        ›
+          What you hand back
+        [svg]
+            VOLUNTEER · THE HIKER'S HALF
+        [h1] What you can hand back
+    This page opens on the smallest possible act, not a sign-up form. Crews and calendars live on Today; this is your own half — what you have done, and what you can give.
+            [svg]
+            Help keep the map true
+              off by default
+            [svg]
+              Ask me about the places I pass
+              Water first, then shelters and campsites, then everything else. A photo is offered, never required. Off unless you turn it on — and turning it off stops the asking, not your record.
+            Places you passed today
+            A shortcut for logging from memory at camp. It does not keep score and it will never tell you what you skipped.
+                    Pine Meadow spring
+                    Water source
+              [button] Running?
+                    Stone Shelter
+                    Shelter
+              [button] Privy still standing?
+                    The overlook bench
+                    Viewpoint
+              [button] Add a photo?
+            [svg]
+            Your hours
+            claimed · confirmed · disputed
+          You claim them, the club confirms them. A claim counts everywhere immediately — the fee exemption included — until a club disputes it, and the state travels with every hour wherever it is shown or exported.
+              DATE
+              HRS
+              WHAT
+              STATE
+                Sep 2
+                6.0
+                  Maintenance · Pine Meadow North
+                  confirmed by Joseph Okafor · Sep 4
+                  confirmed
+                Aug 19
+                4.0
+                  Monitoring · AT Sec 12
+                  yours immediately — counts until a club disputes it
+                  claimed
+                Aug 2
+                7.5
+                  Maintenance · washout repair
+                  confirmed by Maria Alvarez · Aug 6
+                  confirmed
+                Jul 14
+                3.0
+                  Cleanup · pack-out, Lot 7
+                  the club queried the date — removed from every total
+                  disputed
+          [button] + Log hours
+            [svg]
+            Ridge Runner At-Large
+            seven days, maximum
+          Working while you walk — pick a window and what you will watch for, and the app puts those tasks at the front for that week.
+          [button] Open Ridge Runner
+            What you've put back
+          [button] Hide the summary
+          KEPT FOR YOU, SEEN BY NO ONE
+                20.5
+                hours logged
+                16.5 confirmed · 4.0 claimed
+                3
+                workdays attended
+                confirmed by your club
+                7
+                conditions confirmed
+                springs, shelters, a privy
+                2
+                sections you look after
+                since March 2025
+          No total across these, and nothing here compares you to anybody. We do not keep a count of the field notes you filed — the phone forgets them once they send, so we would rather say that than invent a number.
+            [button] Export CSV
+            [button] See it on a map
+            Crews near you
+            next 14 days
+          The full list lives on Today. Read from a file fetched
+            4 hours ago
+          — past about two days we stop calling these opportunities and say we are out of date instead.
+                    Blowdown clearing, Pine Meadow
+                    Sat 19 Sep
+                  ·
+                    MM 11.0 → 14.3 · 2.1 mi from you
+                    Sign up in the app
+                The club confirms — we never mark you confirmed ourselves.
+                    Rock work on the switchbacks
+                    Sun 20–21 Sep
+                  ·
+                    MM 11.2 · 2.4 mi from you
+                    Call the crew lead first
+                This one is crew-lead approved. We give you the number.
+                    Invasives pull, Suffern–Bear Mtn
+                    Sat 26 Sep
+                  ·
+                    MM 0.0 → 6.5 · 9.4 mi from you
+                    Email the club
+                Contact-mode club. Your note goes straight to them.
+          Signing up is an introduction, not an enrolment. Waivers, minimum ages and tool training are the club's to state — we show you their answer, never a tick of our own.

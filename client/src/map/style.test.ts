@@ -75,6 +75,12 @@ import {
   DARK_INKED_BLAZE_LAYER_IDS,
 } from './style'
 import {
+  POSITION_ACCURACY_LAYER_ID,
+  POSITION_LAYER_ID,
+  POSITION_SOURCE_ID,
+} from './positionLayers'
+import { POSITION_INKS } from './positionMark'
+import {
   BUNDLED_GLYPHS,
   LIVE_TOPO_LAYER_IDS,
   TOPO_PALETTE,
@@ -84,6 +90,7 @@ import {
 import { POI_LAYER_ID, POI_SOURCE_ID, POI_PIN_MIN_ZOOM } from './poiLayers'
 import { CLOSURE_SOURCE_ID } from './closureLayers'
 import { WARNING_LAYER_ID, WARNING_SOURCE_ID } from './warningLayers'
+import { ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID } from '../lib/atcUpdateStyle'
 import {
   CLOSURE_TAPE_IMAGE_ID,
   CLOSURE_LAYER_ID,
@@ -2182,5 +2189,40 @@ describe('nothing taken (#1306)', () => {
     expect(NETWORK_OVERVIEW_WIDTH_EXPRESSION[4]).toEqual(
       NETWORK_OVERVIEW_FAR_WIDTH_EXPRESSION,
     )
+  })
+})
+
+describe("the hiker's mark, over everything (#1581)", () => {
+  it('sits over every place and directly under the ATC notices, ring then mark', () => {
+    // Every other layer draws a place or a claim about one; this draws the
+    // viewer, and a viewer under a place is a hiker who cannot find
+    // themselves. The one thing above it is the ATC's notices, whose "nothing
+    // on this map can cover one" was the rule first
+    // (src/test/atcAlertProminence.test.ts) - and the mark is hollow, so a
+    // notice over it hides its centre and nothing else.
+    const ids = buildMapStyle(STYLE_OPTIONS).layers.map((layer) => layer.id)
+    const mark = ids.indexOf(POSITION_LAYER_ID)
+
+    expect(ids[mark - 1]).toBe(POSITION_ACCURACY_LAYER_ID)
+    expect(ids.slice(mark + 1)).toEqual([ATC_UPDATE_LAYER_ID, ATC_UPDATE_POINT_LAYER_ID])
+    expect(mark).toBeGreaterThan(ids.indexOf(WARNING_LAYER_ID))
+  })
+
+  it('declares an empty position source for the shell to fill', () => {
+    expect(buildMapStyle(STYLE_OPTIONS).sources[POSITION_SOURCE_ID]).toMatchObject({
+      type: 'geojson',
+    })
+  })
+
+  it('inks the mark for the sheet family the style is built in', () => {
+    const inkOf = (theme: 'light' | 'dark') =>
+      (
+        buildMapStyle({ ...STYLE_OPTIONS, theme }).layers.find(
+          (l) => l.id === POSITION_LAYER_ID,
+        )?.paint as Record<string, unknown>
+      )['text-color']
+
+    expect(inkOf('light')).toBe(POSITION_INKS.day.ink)
+    expect(inkOf('dark')).toBe(POSITION_INKS.night.ink)
   })
 })

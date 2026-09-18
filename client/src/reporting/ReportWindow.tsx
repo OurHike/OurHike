@@ -334,6 +334,15 @@ export function ReportWindow({
     return () => clearInterval(timer)
   }, [filed])
 
+  // One report per tap, however many taps land while the first is still
+  // being written (#1578). `onFile` is an IndexedDB transaction - tens of
+  // milliseconds on a loaded phone - and the tiles stay drawn until it
+  // resolves, so a second tap inside that window queued a second report the
+  // receipt never showed and Undo could not reach. A ref rather than state:
+  // a flag set through setState by the first tap is not yet visible to a
+  // second tap in the same frame.
+  const filingRef = useRef(false)
+
   const file = async (type: ReportTypeId) => {
     // The two that never one-tap. Checked here as well as being drawn as rows,
     // because the drawing is a promise and this is the enforcement: a future
@@ -342,10 +351,16 @@ export function ReportWindow({
       onReportUnsafe()
       return
     }
-    const holdUntil = undoWindowFromNow()
-    const outboxId = await onFile(type, note.trim(), holdUntil)
-    setStanding((current) => [...current, outboxId])
-    setFiled({ type, outboxId, undoUntil: holdUntil.getTime() })
+    if (filingRef.current) return
+    filingRef.current = true
+    try {
+      const holdUntil = undoWindowFromNow()
+      const outboxId = await onFile(type, note.trim(), holdUntil)
+      setStanding((current) => [...current, outboxId])
+      setFiled({ type, outboxId, undoUntil: holdUntil.getTime() })
+    } finally {
+      filingRef.current = false
+    }
   }
 
   const undo = async () => {

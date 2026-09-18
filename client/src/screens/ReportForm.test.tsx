@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
+import { StrictMode } from 'react'
+import { act, render, screen, cleanup } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReportForm } from './ReportForm'
 import { MAX_REPORT_PHOTOS, PhotoUnusable, prepareReportPhoto } from '../lib/reportPhoto'
@@ -245,6 +246,46 @@ describe('ReportForm', () => {
       // In pick order, which is the order the tiles are in and the order the
       // outbox numbers them.
       expect(onSubmit.mock.calls[0][0].photos).toEqual([SLOW, FAST])
+    })
+
+    it('mints one thumbnail URL per photo, even where React runs an updater twice (#1578)', async () => {
+      // StrictMode runs every updater twice, and production React runs the
+      // first updater in a batch twice as well. A URL minted inside one is a
+      // reference the browser keeps that nothing revokes - a leak per photo
+      // on a screen opened from a ridge with the map already resident.
+      const user = userEvent.setup()
+      const created = vi.spyOn(URL, 'createObjectURL')
+      mockPrepare.mockResolvedValueOnce(new Blob(['a'], { type: 'image/jpeg' }))
+      render(
+        <StrictMode>
+          <ReportForm {...PROPS} onSubmit={vi.fn()} />
+        </StrictMode>,
+      )
+
+      await attach(user)
+
+      expect(created).toHaveBeenCalledTimes(1)
+    })
+
+    it('mints nothing for a photo taken back while it was still shrinking (#1578)', async () => {
+      const user = userEvent.setup()
+      const created = vi.spyOn(URL, 'createObjectURL')
+      let release: (value: Blob) => void = () => {}
+      mockPrepare.mockReturnValueOnce(
+        new Promise<Blob>((resolve) => {
+          release = resolve
+        }),
+      )
+      render(<ReportForm {...PROPS} onSubmit={vi.fn()} />)
+
+      await user.upload(screen.getByLabelText(/add a photo/i), A_PHOTO)
+      await user.click(screen.getByRole('button', { name: 'Remove photo 1' }))
+      await act(async () => {
+        release(new Blob(['late'], { type: 'image/jpeg' }))
+      })
+
+      expect(created).not.toHaveBeenCalled()
+      expect(screen.queryByText(/1 photo ·/)).toBeNull()
     })
 
     it('sends the PREPARED bytes, not the file the hiker picked', async () => {

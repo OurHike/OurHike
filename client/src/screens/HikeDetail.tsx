@@ -40,6 +40,7 @@ import { useState } from 'react'
 import { Badge } from '../design-system/components'
 import { shortDate } from '../lib/hikeText'
 import type { PaceProfile } from '../lib/pace'
+import { isSafeLink } from '../lib/safeLink'
 import {
   authorLine,
   difficultyLabel,
@@ -322,8 +323,13 @@ export function HikeDetail({
             {hike.author.name}’s route and words, published here with their permission.
             {detail?.trails !== undefined && ` Uses ${detail.trails.join(', ')}.`}
           </p>
-          {detail?.url !== undefined && (
-            <a className="hike-detail__source" href={detail.url}>
+          {detail?.url !== undefined && isSafeLink(detail.url) && (
+            <a
+              className="hike-detail__source"
+              href={detail.url}
+              target="_blank"
+              rel="noreferrer"
+            >
               Read it on their page ›
             </a>
           )}

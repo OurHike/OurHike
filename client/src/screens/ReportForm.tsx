@@ -146,6 +146,10 @@ export function ReportForm({
   const [authoredAt] = useState(() => now ?? new Date())
   const [note, setNote] = useState('')
   const [picks, setPicks] = useState<readonly Pick[]>([])
+  // Picks taken back while their photo was still shrinking, so the resolve
+  // below has something synchronous to check before it mints a thumbnail
+  // URL for a tile that is gone (#1578).
+  const removedRef = useRef(new Set<string>())
   /** The hiker's own words for where this was, when nothing else can say
    *  (#1439, D16). Only asked for, and only sent, in the one state below. */
   const [placeWords, setPlaceWords] = useState('')
@@ -173,13 +177,19 @@ export function ReportForm({
 
     try {
       const blob = await prepareReportPhoto(file)
+      // A pick taken back must not come back - and must mint nothing.
+      if (removedRef.current.has(id)) return
+      // Minted HERE and not inside the updater below. React may run an
+      // updater more than once for one update - twice for the first update
+      // in a batch, and on every update under StrictMode - and an object URL
+      // minted inside it is a reference the browser keeps that nothing can
+      // then revoke. The same hazard lib/useGeolocation.ts hoists `onFix`
+      // out of its updater for.
+      const url = URL.createObjectURL(blob)
       setPicks((current) =>
-        // Replaced by id, and skipped entirely if the hiker removed the tile
-        // while it was shrinking - a pick taken back must not come back.
+        // Replaced by id; a pick removed in the meantime is simply not here.
         current.map((pick) =>
-          pick.id === id
-            ? { id, state: 'ready', blob, url: URL.createObjectURL(blob) }
-            : pick,
+          pick.id === id ? { id, state: 'ready', blob, url } : pick,
         ),
       )
     } catch (error) {
@@ -195,12 +205,14 @@ export function ReportForm({
     }
   }
 
-  const removePick = (id: string) =>
+  const removePick = (id: string) => {
+    removedRef.current.add(id)
     setPicks((current) => {
       const going = current.find((pick) => pick.id === id)
       if (going?.state === 'ready') URL.revokeObjectURL(going.url)
       return current.filter((pick) => pick.id !== id)
     })
+  }
 
   // Every thumbnail this form minted, released when the form goes. An object
   // URL is a reference the browser holds until it is told otherwise, and this

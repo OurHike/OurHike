@@ -107,6 +107,21 @@ describe('listQueued', () => {
 
     expect(await listQueued()).toEqual([])
   })
+
+  it('reads a key holding something other than a list as empty, and writes past it (#1578)', async () => {
+    // Every other persisted store validates on read; this one cast whatever
+    // was under the key, so a non-list value threw "not iterable" from every
+    // flush and every enqueue after it.
+    let stored: unknown = { not: 'a queue' }
+    mockedGet.mockImplementation(async () => stored)
+    mockedUpdate.mockImplementation(async (_key, updater) => {
+      stored = updater(stored as never)
+    })
+
+    expect(await listQueued()).toEqual([])
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    expect(await listQueued()).toHaveLength(1)
+  })
 })
 
 describe('removeQueued', () => {

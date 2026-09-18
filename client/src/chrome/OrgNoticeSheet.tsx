@@ -40,7 +40,8 @@
 // The formatting lives in lib/atcNoticeText.ts, shared with NoticeList.tsx.
 // Two surfaces rendering the same mile marker to different precision is a
 // hiker reading two claims where there is one.
-import { atcUpdatedAt, isSafeLink, longDate, mileRange } from '../lib/atcNoticeText'
+import { atcUpdatedAt, longDate, mileRange } from '../lib/atcNoticeText'
+import { isSafeLink } from '../lib/safeLink'
 import type { AtcUpdate } from '../lib/atcUpdates'
 import { ATC_SOURCE_KEY } from '../lib/notices'
 import { orgLabelFrom, possessive, type Stewards } from '../lib/stewards'

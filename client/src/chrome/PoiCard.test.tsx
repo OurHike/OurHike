@@ -330,6 +330,20 @@ describe('the photo slot', () => {
     expect(screen.getByRole('link', { name: 'Photo: Public domain' })).toBeInTheDocument()
   })
 
+  it('prints the credit as text, not a link, when the file page is not a web page (#1578)', () => {
+    // The page URL is Commons' own `descriptionurl`, kept as it arrived by
+    // pipeline/lib/commons.py; the card is where the scheme is checked. The
+    // credit is still owed, so it is still printed.
+    renderCard({ ...SHELTER, ...PHOTO, photoPage: 'data:text/html,<p>terms</p>' })
+
+    expect(
+      screen.getByText('Photo: A. Hiker · CC BY-SA 4.0 · Jun 2025'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Photo: A. Hiker · CC BY-SA 4.0 · Jun 2025' }),
+    ).toBeNull()
+  })
+
   it('says nothing under a photo that carries no credit facts at all', () => {
     // No pipeline path produces a photo without credit facts today (the
     // fetch rejects CC files with no author and always records a licence),

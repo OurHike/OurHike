@@ -94,6 +94,8 @@ import {
   type BoundingBox,
   type MapPoint,
 } from '../lib/legendContents'
+import { POI_TYPES } from '../lib/config'
+import { PLANNING_POI_TYPES } from '../lib/waypointVisibility'
 import type { SearchablePoi } from '../lib/searchPoi'
 import type { Place } from '../lib/places'
 import { TrailDataUpdate, type TrailDataUpdateProps } from './TrailDataUpdate'
@@ -839,6 +841,16 @@ const MAP_CONTROL_MARGIN_PX = 10
 /** Breathing room under the float column before a badge may anchor. */
 const CHROME_CLEARANCE_PX = 8
 
+/**
+ * Every category the planning band does not draw (#1585): what the In view
+ * list hides in place of the hiker's toggles while the camera is in the band.
+ * The complement of lib/waypointVisibility.ts's PLANNING_POI_TYPES, so the
+ * two cannot drift apart.
+ */
+const OUTSIDE_THE_BAND: ReadonlySet<string> = new Set(
+  POI_TYPES.filter((type) => !PLANNING_POI_TYPES.includes(type)),
+)
+
 export function MapScreen({
   topoArchiveUrl,
   trailsUrl,
@@ -1052,10 +1064,22 @@ export function MapScreen({
    *  "in view" the legend and the waypoint list mean. */
   // What the map is drawing inside the viewport, on the legend's own rule:
   // the "In view" count and list (#1373, frame 12a).
-  const pointsShown = useMemo(
-    () => pointsInView(viewportPoints, bbox, verifiedOnly, hiddenTypes),
-    [viewportPoints, bbox, verifiedOnly, hiddenTypes],
-  )
+  //
+  // IN THE PLANNING BAND THE RULE IS THE BAND'S (#1585). Below the seam the
+  // map draws the A.T.'s shelters, water and towns and nothing else, whatever
+  // the hiker's toggles say - so a list built from the toggles there would
+  // name campsites no pin shows and leave out the town a brown pin does. The
+  // sheet promises "what the map is drawing right now", and down here that
+  // is the band's three types, from the A.T. export only.
+  const pointsShown = useMemo(() => {
+    const shown = pointsInView(
+      viewportPoints,
+      bbox,
+      verifiedOnly,
+      planningBand ? OUTSIDE_THE_BAND : hiddenTypes,
+    )
+    return planningBand ? shown.filter((point) => point.network !== true) : shown
+  }, [viewportPoints, bbox, verifiedOnly, hiddenTypes, planningBand])
   const workdaysInView = useMemo(
     () =>
       (workdayRows ?? []).filter(

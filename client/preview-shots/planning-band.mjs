@@ -21,6 +21,12 @@
 // throughout - no campsite readable at this zoom, nobody's report, nobody's
 // fix (the four things SKILL.md says must never appear).
 //
+// THE LEGEND STAYS CLOSED HERE, and that is the correction from the first
+// preview round (2026-09-18): opened, its sheet covers the lower two thirds
+// of a phone and hid the very pins the frame exists to show. The band's
+// other half - the legend's own sentence for it - is planning-band-legend.mjs,
+// the same camera with the sheet open, so the two frames read as one change.
+//
 // The camera is seeded through lib/cameraMemory.ts's session-storage key,
 // as basemap-ground-network.mjs does and for its reasons: the app restores
 // a remembered view on load, validates the shape field by field, and a
@@ -29,13 +35,11 @@
 // WHEN IT SHOWS LESS. A frame with the line and dots but no pins means the
 // camera settled below POI_PLANNING_PIN_MIN_ZOOM; a frame with nothing on
 // the line means the waypoints had not landed by the wait - the honest
-// state on a slow bucket, not a broken recipe. The legend is opened last so
-// the frame also carries the band's own sentence, which is the other half
-// of the change and the only text on the screen that says what the band is.
+// state on a slow bucket, not a broken recipe.
 export const caption =
-  'The planning band (#1585): the A.T. from the Delaware Water Gap to the Hudson Highlands at zoom 8.2, below the pin seam — shelters, water and A.T. Community towns drawn as pins where they fit and as dots where they do not, nothing else and none of the other organizations’ waypoints; the legend open over it with its sentence for this band, "Shelters, water and resupply towns show at this zoom; the rest appear from a closer zoom."'
+  'The planning band (#1585): the A.T. from the Delaware Water Gap to the Hudson Highlands at zoom 8.2, below the pin seam — shelters, water and A.T. Community towns drawn as pins where they fit and as dots where they do not, nothing else and none of the other organizations’ waypoints; the header’s In view door counting those three types. planning-band-legend.mjs is the same camera with the legend open.'
 export const alt =
-  'The map screen over northern New Jersey and the Hudson Highlands at zoom 8.2: the A.T. as a white line inside a dark casing running from the lower left to the upper right, with small dark-green shelter pins, blue water pins and brown town pins along it and smaller dots between them where pins did not fit, no other waypoint categories; the legend sheet open over the lower part of the map, opening with the sentence that shelters, water and resupply towns show at this zoom and the rest appear from a closer zoom'
+  'The map screen over northern New Jersey and the Hudson Highlands at zoom 8.2: the A.T. as a white line inside a dark casing running from the lower left to the upper right, with small dark-green shelter pins, blue water pins and brown town pins along it and smaller dots between them where pins did not fit, no other waypoint categories, and the header reading In view with a count'
 
 /** Vector tiles from the bucket plus the waypoint source landing take longer
  *  than chrome. */
@@ -59,11 +63,4 @@ export default async function drive(page) {
   // through an init script on the CONTEXT (scripts/screenshot.mjs's
   // skipFirstRun), which re-runs on every document rather than only the first.
   await page.getByRole('tab', { name: 'Map' }).click()
-
-  // The band's sentence is the legend's; open it so the frame carries both
-  // halves of the change. Guarded: a build where the button has not mounted
-  // by the wait still photographs the map, which is the half that matters.
-  const legend = page.getByRole('button', { name: 'Legend' })
-  await legend.waitFor({ timeout: 15000 }).catch(() => {})
-  if ((await legend.count()) > 0) await legend.click()
 }

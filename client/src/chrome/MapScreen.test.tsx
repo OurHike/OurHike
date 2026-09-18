@@ -655,6 +655,28 @@ describe('MapScreen dropped-waypoint count', () => {
     expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
   })
 
+  it('counts what the band draws behind the In view door: the town a hidden toggle would drop, not the campsite, not the network (#1585)', () => {
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[
+          point('s1', 'shelter'),
+          point('t1', 'resupply'),
+          point('c1', 'campsite'),
+          { ...point('n1', 'shelter'), network: true },
+        ]}
+        hiddenTypes={new Set(['resupply'])}
+        belowPoiZoom
+        planningBand
+      />,
+    )
+
+    // The shelter and the town: the campsite is not drawn in the band and
+    // the network's shelter is kept off it, and the hidden toggle on
+    // resupply does not reach the band (lib/waypointVisibility.ts).
+    expect(screen.getByRole('button', { name: 'In view, 2' })).toBeInTheDocument()
+  })
+
   it('still says nothing in the planning band, where the type gate decides and not the collision (#1585)', () => {
     // The band draws three categories and the campsite here is not one of
     // them: a chip reading "1 of 2 waypoints fit" would describe the gate as

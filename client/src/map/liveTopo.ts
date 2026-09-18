@@ -694,6 +694,18 @@ export interface SheetAppearance {
   mapStyle?: MapStyle
   /** Only meaningful with night_hike - see TOPO_PALETTE_RED. */
   redLight?: boolean
+  /**
+   * Whether each trail line is inked in its own blaze hue, or every line in
+   * the one red (#1575, lib/blaze.ts's PLAIN_TRAIL_COLOR). Absent means the
+   * hues - what every caller drew before the switch existed, so a caller with
+   * no opinion builds the style it always built - and the SHIPPED default is
+   * lib/userPreferences.ts's `blaze_colors_shown: false`, which MapView always
+   * passes. Read by map/style.ts's blazeLineColor alone: the sheet's own
+   * palette (sheetVariant below) never looks at it, and neither does the
+   * legend's line swatch, on the maintainer's instruction that the switch
+   * changes the map and nothing else (map/MapIcon.tsx's TrailLineSwatch).
+   */
+  blazeColorsShown?: boolean
 }
 
 /**

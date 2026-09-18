@@ -70,6 +70,12 @@ export const ATC_UPDATE_LAYER_ID = 'atc-update-band'
  *  for the reason the header gives at length: the cadence is what separates
  *  the two feeds, and nothing about hue or weight may. */
 export const ATC_TAPE_IMAGE_ID = 'atc-update-tape'
+
+/** The ATC tape drawn on `ground`, the sheet's paper - the same rule and
+ *  the same reason as lib/closureStyle.ts's closureTapeImageId (#1575). */
+export function atcTapeImageId(ground: string): string {
+  return `${ATC_TAPE_IMAGE_ID}-${ground.replace('#', '').toLowerCase()}`
+}
 export const ATC_UPDATE_POINT_LAYER_ID = 'atc-update-point'
 
 /**
@@ -329,12 +335,18 @@ export const ATC_UPDATE_CASING_WIDTH = CLOSURE_CASING_WIDTH
 export const ATC_UPDATE_COLOR = CLOSURE_COLOR
 export const ATC_UPDATE_CASING_COLOR = CLOSURE_CASING_COLOR
 
-export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
+/** `ground` is the sheet's paper the tape lies on, as lib/closureStyle.ts's
+ *  ClosureLayerOptions describes it (#1575). */
+export function buildAtcUpdateLayers(
+  sourceId: string,
+  ground: string,
+): LayerSpecification[] {
   return [
     // ONE band layer, and no casing beneath it - see buildClosureLayers, which
-    // makes the same shape for the same reason. A solid casing under tape with
-    // transparent gaps shows through every one of them, which is the defect
-    // both feeds just stopped having.
+    // makes the same shape for the same reason. A solid casing under tape
+    // showed through every gap while the gaps were transparent, which is the
+    // defect both feeds stopped having on 2026-08-27; since #1575 the gaps
+    // hold the sheet's paper, baked into the image beside the edges.
     //
     // THE GLOW THAT USED TO OPEN THIS LIST IS GONE, and it went for a reason
     // this change shares rather than contradicts. #1071 removed it with the
@@ -348,7 +360,7 @@ export function buildAtcUpdateLayers(sourceId: string): LayerSpecification[] {
       source: sourceId,
       layout: { 'line-cap': 'butt', 'line-join': 'round' },
       paint: {
-        'line-pattern': ATC_TAPE_IMAGE_ID,
+        'line-pattern': atcTapeImageId(ground),
         'line-width': ATC_UPDATE_LINE_WIDTH,
       },
     },

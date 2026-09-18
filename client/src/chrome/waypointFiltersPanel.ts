@@ -5,6 +5,12 @@
 // in the legend, and the only three things on this screen that decide what
 // the map leaves OUT - which is why they moved together.
 //
+// A FOURTH SINCE #1575: whether the trail lines wear their blaze hues, or
+// every one the same red. Not a filter - nothing is left out - but the same
+// shape as the drought tint exactly: a stored preference the legend flips and
+// reads back every render, so it lives with the drought toggle rather than in
+// a fifth file that would restate this one.
+//
 // See chrome/atcNoticesPanel.tsx for why the hook returns a
 // `Pick<MapScreenProps, …>` the shell spreads.
 //
@@ -40,6 +46,8 @@ export type WaypointFiltersMapProps = Pick<
   | 'droughtShown'
   | 'onToggleDrought'
   | 'droughtWeek'
+  | 'blazeColorsShown'
+  | 'onToggleBlazeColors'
 >
 
 export interface WaypointFiltersPanel {
@@ -144,6 +152,19 @@ export function useWaypointFiltersPanel({
     }))
   }, [updatePreferences])
 
+  /**
+   * The blaze hues, on or off (#1575). Stored for the drought tint's reason
+   * and not for the alerts flag's: a hiker who finds the hues distracting
+   * means it tomorrow too, and nobody's safety turns on which colour a line
+   * is drawn in - the blaze is still named where it counts
+   * (lib/userPreferences.ts's `blaze_colors_shown` has the list).
+   */
+  const handleToggleBlazeColors = useCallback(() => {
+    updatePreferences((current) => ({
+      blaze_colors_shown: !current.blaze_colors_shown,
+    }))
+  }, [updatePreferences])
+
   const mapScreen = useMemo<WaypointFiltersMapProps>(
     () => ({
       hiddenTypes,
@@ -157,6 +178,8 @@ export function useWaypointFiltersPanel({
       droughtShown: preferences.drought_layer_shown,
       onToggleDrought: handleToggleDrought,
       droughtWeek,
+      blazeColorsShown: preferences.blaze_colors_shown,
+      onToggleBlazeColors: handleToggleBlazeColors,
     }),
     [
       hiddenTypes,
@@ -165,10 +188,12 @@ export function useWaypointFiltersPanel({
       handleShowAllTypes,
       preferences.waypoint_types_shown,
       preferences.drought_layer_shown,
+      preferences.blaze_colors_shown,
       verifiedOnly,
       handleToggleVerifiedOnly,
       drought,
       handleToggleDrought,
+      handleToggleBlazeColors,
       droughtWeek,
     ],
   )

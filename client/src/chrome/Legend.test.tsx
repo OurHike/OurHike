@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
+import { MAP_BACKDROP } from '../map/style'
 import { render, screen, cleanup, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Legend, NAMED_TRAILS_SHOWN } from './Legend'
@@ -8,6 +9,7 @@ import { typeLabel } from './legendLabels'
 import { glyphPath, poiGlyphPath } from '../map/poiIcons'
 import { WARNING_GLYPH } from '../map/warningPin'
 import { CLOSURE_COLOR } from '../lib/closureStyle'
+import { blazePaintColor } from '../lib/blaze'
 
 // WIREFRAMES.md §2 (Legend) plus TESTING.md item 7. Two rules carry real
 // weight beyond layout:
@@ -460,6 +462,17 @@ describe('legend icons are the map’s icons', () => {
     expect(icon?.querySelector('.map-icon__disc')).toBeNull()
   })
 
+  it('lays the closure swatch on the paper the tape takes beside it (#1575)', () => {
+    // The tape's ground follows closureTapeGround, so the swatch beside a
+    // night map is the day paper under red stripes since 2026-09-18 - red
+    // and white, the way the canvas draws it there now.
+    render(<Legend {...PROPS} sheetAppearance={{ theme: 'dark' }} />)
+
+    expect(
+      iconIn(rowFor('Closure'))?.querySelector('.map-icon__closure-ground'),
+    ).toHaveAttribute('fill', MAP_BACKDROP.light)
+  })
+
   it('draws a serious warning as the hazard triangle', () => {
     render(<Legend {...PROPS} />)
 
@@ -686,6 +699,183 @@ describe('the Alerts switch (#1047)', () => {
     const picker = screen.getByRole('combobox', { name: /showing waypoint types/i })
     expect(within(picker).queryByRole('option', { name: /alert/i })).toBe(null)
     expect(within(picker).queryByRole('option', { name: /closure/i })).toBe(null)
+  })
+})
+
+// --- The Blaze colors toggle (#1575) ----------------------------------------
+//
+// The map's lines are one red by default and this is where the hues come
+// back. What is tested: it exists only where the shell offers the handler,
+// it says which state the map is in before the tap, it is disabled under red
+// light with the reason, it is the first row under the head and above the
+// pin grid as a `role="switch"` (the maintainer's follow-up: "Move the blaze
+// color option up to be the first one, directly under the Pills ... Can it be
+// a toggle instead of a checkbox?"), and - the maintainer's second
+// instruction - the rows below it keep their blaze swatches whichever way it
+// is set.
+
+describe('the Blaze colors switch (#1575)', () => {
+  const BLAZES = { ...PROPS, onToggleBlazeColors: vi.fn() }
+  const NAMED_TRAILS = [
+    {
+      name: 'Appalachian Trail',
+      source: 'centerline',
+      blazeColor: 'White',
+      throughRoute: true,
+      takeable: true,
+      chosen: true,
+      anchor: [-74.1, 41.25] as [number, number],
+      badgeFit: 'full' as const,
+      badgeAnchor: 'left',
+      properties: {},
+    },
+    {
+      name: 'Long Path',
+      source: 'oprhp_trails',
+      blazeColor: 'Aqua',
+      throughRoute: false,
+      takeable: false,
+      chosen: false,
+      anchor: null,
+      badgeFit: 'full' as const,
+      badgeAnchor: 'left',
+      properties: {},
+    },
+  ]
+
+  /** By its role and its name: a `role="switch"` button, named by the row's
+   *  name span so the name opens "Blaze colors" and carries the sentence. */
+  function blazesSwitch() {
+    return screen.getByRole('switch', { name: /^Blaze colors/ })
+  }
+
+  function blazesRow() {
+    return blazesSwitch().closest('.legend__blazes')
+  }
+
+  it('is not drawn where the shell offers no handler for it', () => {
+    render(<Legend {...PROPS} blazeColorsShown={false} />)
+
+    expect(screen.queryByRole('switch', { name: /^Blaze colors/ })).toBe(null)
+  })
+
+  it('is a switch, not a checkbox, and reads off over a map drawn in one red', () => {
+    render(<Legend {...BLAZES} blazeColorsShown={false} />)
+
+    expect(blazesSwitch().tagName).toBe('BUTTON')
+    expect(screen.queryByRole('checkbox', { name: /^Blaze colors/ })).toBe(null)
+    expect(blazesSwitch()).not.toBeChecked()
+    expect(blazesRow()).toHaveTextContent(
+      'Every trail as one red line. Tap a line for its blaze.',
+    )
+  })
+
+  it('reads on over a map drawn in its hues, and says so', () => {
+    render(<Legend {...BLAZES} blazeColorsShown />)
+
+    expect(blazesSwitch()).toBeChecked()
+    expect(blazesRow()).toHaveTextContent('Each trail in the color of its blazes.')
+  })
+
+  it('hands the tap back to the shell rather than deciding anything itself', async () => {
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+      />,
+    )
+
+    await user.click(blazesSwitch())
+
+    expect(onToggleBlazeColors).toHaveBeenCalledTimes(1)
+  })
+
+  it('is disabled under red light, says why, and takes no tap', async () => {
+    // Red light draws every line one red-amber before the switch is
+    // consulted (map/style.ts's blazeLineColor), so a live switch here would
+    // be a control that visibly does nothing.
+    const user = userEvent.setup()
+    const onToggleBlazeColors = vi.fn()
+    render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        onToggleBlazeColors={onToggleBlazeColors}
+        sheetAppearance={{ mapStyle: 'night_hike', redLight: true }}
+      />,
+    )
+
+    expect(blazesSwitch()).toBeDisabled()
+    expect(blazesRow()).toHaveTextContent(
+      'Red light draws every trail in one color until it is off.',
+    )
+    await user.click(blazesSwitch())
+    expect(onToggleBlazeColors).not.toHaveBeenCalled()
+  })
+
+  it('is the first row under the head, above the pin grid and every other switch', () => {
+    // "Move the blaze color option up to be the first one, directly under
+    // the Pills. Have the most prominent thing in the legend." On the phone
+    // the head is the title row; on the desktop it is the rail's pills,
+    // handed in as `head`, and the row follows either.
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        onToggleDrought={vi.fn()}
+        blazeColorsShown={false}
+        trailsInView={NAMED_TRAILS}
+      />,
+    )
+
+    const head = container.querySelector('.legend__head')!
+    const blazes = container.querySelector('.legend__blazes')!
+    const firstPin = rowFor('Shelter')
+    const drought = container.querySelector('.legend__drought')!
+    const following = Node.DOCUMENT_POSITION_FOLLOWING
+    expect(head.compareDocumentPosition(blazes) & following).toBeTruthy()
+    expect(blazes.compareDocumentPosition(firstPin) & following).toBeTruthy()
+    expect(blazes.compareDocumentPosition(drought) & following).toBeTruthy()
+    // Nothing but the head sits above it.
+    expect(head.nextElementSibling).toBe(blazes)
+  })
+
+  it('follows the rail’s pills on a persistent panel', () => {
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        persistent
+        head={<div data-testid="pills">Legend · In view</div>}
+        blazeColorsShown={false}
+      />,
+    )
+
+    expect(screen.getByTestId('pills').nextElementSibling).toBe(
+      container.querySelector('.legend__blazes'),
+    )
+  })
+
+  it('keeps the "Trails in view" swatches in their blaze hues while the map is one red', () => {
+    // The maintainer, 2026-09-17: "Changing the color option should only
+    // affect the map itself, not the other options." With the switch off
+    // these rows are the key the removed blaze rows used to be, so a red
+    // swatch here would be the panel losing the one place a named trail's
+    // blaze is still read without a tap.
+    const { container } = render(
+      <Legend
+        {...BLAZES}
+        blazeColorsShown={false}
+        sheetAppearance={{ theme: 'light', blazeColorsShown: false }}
+        trailsInView={NAMED_TRAILS}
+      />,
+    )
+
+    const inks = [
+      ...container.querySelectorAll('.legend__swatch .map-icon__trail-blaze'),
+    ].map((path) => path.getAttribute('stroke'))
+    expect(inks).toEqual([blazePaintColor('White'), blazePaintColor('Aqua')])
   })
 })
 

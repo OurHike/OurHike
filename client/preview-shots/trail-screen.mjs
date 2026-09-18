@@ -71,10 +71,16 @@
 // three rows with the mark alone on the first, and the plate is the OPEN
 // state this frame has always shown; map-plate-folded.mjs is the same screen
 // one pan later.
+// AMENDED 2026-09-18 (#1588): under the default the lines here are the A.T.
+// and the Long Path solid and every other trail a light dashed red - the
+// maintainer's pick from mock-ups after #1577's first frames drew every
+// trail solid. This recipe is the standing opening frame, so it is
+// photographed on every pull request; the caption below is what to check
+// it against now.
 export const caption =
-  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306): every trail a solid line at one fine weight (the dot rhythm of #1283 is gone since 2026-09-10), the A.T. in dark ink from its corridor-view sketch until the real line lands (#1291), the other organizations’ trails in their own hues around its New York miles — the Long Path in aqua — no waypoints, and the A.T.’s one badge naming it, placed at this camera since the review of #1374'
+  'The opening map — trail lines only below the seam (#1292), nothing taken (#1306), blaze colours off (#1575, the shipped default): since #1588 the A.T. and the Long Path are each a plain solid red line at one fine weight, badged, and the other organizations’ trails a lighter dashed red around the A.T.’s New York miles; no waypoints, no casing on anything, and the two badges naming the two trails, placed at this camera since the review of #1374'
 export const alt =
-  'The whole-corridor opening view: the A.T. as a single fine dark line from Georgia to Maine over the basemap, with no pins on it and one paper badge reading “Appalachian Trail” with the ATC mark, and the other organizations’ trails as fine solid threads of the same weight in their own colours around its New York miles'
+  'The whole-corridor opening view: the A.T. as a single fine solid red line from Georgia to Maine over the basemap, the Long Path a second one up the Hudson valley, each with a paper badge naming it, and the other organizations’ trails as fainter dashed red threads around the A.T.’s New York miles, with no pins'
 
 /** The network overview is one 10.8 MB GeoJSON (lib/config.ts's
  *  NETWORK_OVERVIEW_KEY) that the map cuts into tiles in a worker after it

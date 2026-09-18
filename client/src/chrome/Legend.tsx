@@ -85,6 +85,16 @@
 // where two trail systems overlap and reporting whether the lines are
 // legible without a key.
 //
+// THE BLAZE COLORS TOGGLE (#1575, 2026-09-17) changes what that cost is. The
+// map now draws every trail in one red by default - the maintainer: "Showing
+// the blaze color can be distracting and feel like I'm living in a rainbow" -
+// and the toggle at the head of this panel is where the hues come back. The
+// "Trails in view" rows keep their blaze swatches whichever way it is set
+// (the maintainer, the same day: "Changing the color option should only
+// affect the map itself, not the other options"), so with the switch off
+// those rows are the key the blaze rows used to be, for every trail the map
+// can name. A line with no name is still a tap away from its blaze.
+//
 // Closure and serious-warning rows still render with no hide control of their
 // own - plain text with a tag beside them, where a hideable row is a button
 // edge to edge. That much is unchanged and is why the row is not uniformly a
@@ -116,7 +126,7 @@
 // is on lib/legendContents.ts's LegendRow, and the consequence here is that
 // the pin drawn is the solid-rimmed one.
 
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
 import {
   computeLegendContents,
@@ -129,6 +139,7 @@ import {
 } from '../lib/legendContents'
 import { MapIcon, TrailLineSwatch } from '../map/MapIcon'
 import type { SheetAppearance } from '../map/liveTopo'
+import { redLightActive } from '../map/style'
 import type { TrailInView } from '../map/trailsInView'
 import { HIDEABLE_TYPES, shownSelection } from '../lib/waypointVisibility'
 import { typeLabel } from './legendLabels'
@@ -263,6 +274,16 @@ export interface LegendProps {
    */
   droughtShown?: boolean
   onToggleDrought?: () => void
+  /**
+   * Whether the map's trail lines wear their blaze hues, or every one the
+   * same red (#1575) - what the Blaze colors switch displays. Defaults to
+   * the hues, like MapScreen's own prop; the shipped default is the stored
+   * preference's (lib/userPreferences.ts), which the shell passes.
+   */
+  blazeColorsShown?: boolean
+  /** Flips it. Omitted, no switch is drawn - the rule every control on this
+   *  panel keeps. */
+  onToggleBlazeColors?: () => void
   /** What the bands say, for that row's summary line. Empty when none
    *  arrived, which draws no numbers rather than a confident zero. */
   droughtSummary?: { miles: number; weekStart: Date | null }
@@ -305,16 +326,18 @@ export interface LegendProps {
    */
   drawnCounts?: ReadonlyMap<string, number>
   /**
-   * Whether the camera is below POI_PIN_MIN_ZOOM, where neither waypoint rank
-   * is drawn at all.
+   * Whether the camera is below POI_PIN_MIN_ZOOM, where the waypoints are
+   * drawn as dots rather than as pins.
    *
    * Its own flag rather than inferred from an empty row list, because the two are
    * different facts with opposite remedies: nothing here, or everything here and
-   * none of it drawable yet. The panel said the wrong one at the opening view.
+   * drawn in the smaller rank. The panel said the wrong one at the opening view.
    *
-   * "The pin layer" until #597 landed a second rank under it. Below the seam
-   * both are absent, so the sentence this gates is still the true one - but the
-   * reason is now the seam rather than one layer's floor.
+   * IT NO LONGER MEANS "NOTHING IS DRAWN" (#1585, 2026-09-18). It meant "the
+   * pin layer" until #597 landed a second rank under it, and then "neither
+   * rank" until the dot floor went back to z0 - so the flag now gates the
+   * sentence saying which rank the hiker is looking at, not one saying the
+   * map is holding waypoints back. Nothing is held back at any zoom.
    */
   belowPoiZoom?: boolean
   /** Opens the download window, from the link at the foot of the panel.
@@ -406,6 +429,8 @@ export function Legend({
   onToggleAlerts,
   droughtShown = false,
   onToggleDrought,
+  blazeColorsShown = true,
+  onToggleBlazeColors,
   droughtSummary,
   units = 'imperial',
   onToggleVerifiedOnly,
@@ -426,7 +451,15 @@ export function Legend({
   newNoticeCount = 0,
   onOpenNotices,
 }: LegendProps) {
+  // Red light draws every line one red-amber before the blaze switch is
+  // consulted (map/style.ts's blazeLineColor), so the Blaze colors switch
+  // below is disabled, with that sentence, while it is active. False with no
+  // sheet handed in: a legend rendered without a map assumes the field day
+  // sheet, as the swatches do.
+  const underRedLight = sheetAppearance !== undefined && redLightActive(sheetAppearance)
   const [allTrails, setAllTrails] = useState(false)
+  // The blaze toggle's name span, which the switch button is labelled by.
+  const blazeNameId = useId()
   if (!open && !persistent) return null
 
   // TWO LISTS, AND KEEPING THEM APART IS THE WHOLE OF #723.
@@ -517,6 +550,69 @@ export function Legend({
               <span aria-hidden="true">×</span>
             </button>
           )}
+        </div>
+      )}
+
+      {/* THE BLAZE COLORS TOGGLE (#1575): first under the head, and the most
+          prominent row on the panel. The maintainer, 2026-09-17, after it
+          shipped as a checkbox row under Drought for a few hours: "Move the
+          blaze color option up to be the first one, directly under the Pills.
+          Have the most prominent thing in the legend. Can it be a toggle
+          instead of a checkbox?" This row is the answer to all three.
+
+          Off, every trail line on the canvas is lib/blaze.ts's
+          PLAIN_TRAIL_COLOR; on, each line is its blaze hue, which is what the
+          map drew before the switch existed. The maintainer's first request
+          the same day: "Showing the blaze color can be distracting and feel
+          like I'm living in a rainbow. Provide a switch for the user to 'Show
+          blaze colors' in the legend." A stored preference like the drought
+          row (chrome/waypointFiltersPanel.ts), not a `useState` like Alerts:
+          nobody's safety turns on it.
+
+          A `role="switch"` BUTTON, NOT A CHECKBOX. To assistive tech the two
+          state the same fact - checked or not - and the switch is the shape a
+          phone gives an on/off setting; chrome.css draws the track and the
+          knob. It is named by this row's own name span (`aria-labelledby`),
+          so its accessible name opens "Blaze colors" and carries the sentence
+          under it, the shape the checkbox rows' labels give theirs.
+
+          WHAT IT DOES NOT CHANGE, which the sentence under it says: the
+          swatches in "Trails in view" below, the tapped line's sheet and the
+          day hike card's legs keep the blaze hue whichever way this is set -
+          the maintainer's second instruction that day, "Changing the color
+          option should only affect the map itself, not the other options" -
+          so with the map one red, this panel is where a named trail's blaze
+          is read.
+
+          DISABLED UNDER RED LIGHT, with the reason in its sentence. Red light
+          draws every line in one red-amber before this switch is consulted
+          (map/style.ts's blazeLineColor), so a live switch there would be a
+          control that visibly does nothing, and this panel draws a control
+          only where it goes. The preference keeps its value and takes effect
+          again with the day sheet. */}
+      {onToggleBlazeColors !== undefined && (
+        <div className="legend__blazes">
+          <span className="legend__blazes-name" id={blazeNameId}>
+            Blaze colors
+            <span className="legend__blazes-detail">
+              {underRedLight
+                ? 'Red light draws every trail in one color until it is off.'
+                : blazeColorsShown
+                  ? 'Each trail in the color of its blazes.'
+                  : 'Every trail as one red line. Tap a line for its blaze.'}
+            </span>
+          </span>
+          <button
+            type="button"
+            role="switch"
+            className="legend__switch"
+            aria-checked={blazeColorsShown}
+            aria-labelledby={blazeNameId}
+            disabled={underRedLight}
+            onClick={onToggleBlazeColors}
+          >
+            <span className="legend__switch-knob" aria-hidden="true" />
+          </button>
         </div>
       )}
 
@@ -620,7 +716,13 @@ export function Legend({
                     not be a key. The rim still means what it means on the map,
                     one pin at a time, which is where it is a fact about
                     something rather than about a rectangle. */}
-                <MapIcon className="legend__icon" type={row.type} />
+                <MapIcon
+                  className="legend__icon"
+                  type={row.type}
+                  // For the closure row's tape, which lies on the sheet's
+                  // paper (#1575); every other row's pin ignores it.
+                  appearance={sheetAppearance}
+                />
                 <span className="legend__label">{label}</span>
                 {/* ONE SLOT, NOT TWO. This carried the count and then a second
                     `13 shown` badge beside it, and in a two-column grid at

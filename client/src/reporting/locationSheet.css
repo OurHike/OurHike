@@ -1,0 +1,9 @@
+/* The location sheet (#1563): reporting/Sheet.tsx's frame, with the picker's
+   own frame flattened inside it - its sunken panel would be a drawer inside
+   a window. */
+.location-sheet .location-picker {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}

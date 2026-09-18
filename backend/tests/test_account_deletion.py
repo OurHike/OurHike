@@ -89,6 +89,12 @@ def _furnish(db, profile_id: str, *, hours_state=HoursState.claimed) -> None:
             reporter_type="thru",
             visibility="public",
             mile=12.0,
+            # Signed with a real name and open to contact (#1563) - the two
+            # things on a report that are about the person rather than the
+            # trail, which deletion has to take with it.
+            signed_name="Jane Doe",
+            signed_name_kind="real",
+            contact_ok=True,
         )
     )
     note = FieldNote(id=f"note-{profile_id}", reporter_id=profile_id, reporter_type="thru", note="water is flowing")
@@ -182,6 +188,21 @@ def test_an_app_failure_report_keeps_what_broke_and_loses_how_to_reach_them(db_s
     assert failure.what_happened == "the map went blank at the Fontana ford"
     assert failure.reporter_id is None
     assert failure.contact is None
+
+
+def test_a_condition_report_keeps_the_trail_and_loses_the_name_and_the_consent(db_session, hiker):
+    """The blowdown stays - a maintainer may be on the way to it - but the
+    real name it was signed with and the "you can contact me" go, for the
+    reason `contact` goes above (#1563)."""
+    delete_account(db_session, hiker)
+    db_session.commit()
+
+    report = db_session.query(Report).one()
+    assert report.type == "blowdown"
+    assert report.mile == 12.0
+    assert report.signed_name is None
+    assert report.signed_name_kind is None
+    assert report.contact_ok is False
 
 
 def test_hours_nobody_confirmed_go(db_session, hiker):

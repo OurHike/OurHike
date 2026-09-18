@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { get, set, update } from 'idb-keyval'
 import {
+  amendQueuedReport,
+  attachQueuedPhotos,
   enqueue,
   enqueueAppFailure,
   hasWorkThatNeedsNoAccount,
@@ -106,6 +108,21 @@ describe('listQueued', () => {
     mockedGet.mockResolvedValue(undefined)
 
     expect(await listQueued()).toEqual([])
+  })
+
+  it('reads a key holding something other than a list as empty, and writes past it (#1578)', async () => {
+    // Every other persisted store validates on read; this one cast whatever
+    // was under the key, so a non-list value threw "not iterable" from every
+    // flush and every enqueue after it.
+    let stored: unknown = { not: 'a queue' }
+    mockedGet.mockImplementation(async () => stored)
+    mockedUpdate.mockImplementation(async (_key, updater) => {
+      stored = updater(stored as never)
+    })
+
+    expect(await listQueued()).toEqual([])
+    await enqueue(DRAFT, new Date('2026-07-27T08:00:00Z'))
+    expect(await listQueued()).toHaveLength(1)
   })
 })
 
@@ -726,5 +743,122 @@ describe('a report held for its undo window', () => {
         AT.getTime(),
       ),
     ).toBe(false)
+  })
+})
+
+describe('amending a report still in the queue (#1563)', () => {
+  const WRITTEN = new Date('2026-07-27T08:00:00Z')
+  const BYTES = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+
+  beforeEach(() => {
+    withStoredQueue()
+  })
+
+  it('writes the note onto the queued report, leaves the rest alone, and answers true', async () => {
+    // The receipt's "Add detail - optional", written on the way out. True is
+    // what lets the receipt close quietly.
+    await enqueue({ ...DRAFT, signed_name: 'Switchback' }, WRITTEN)
+    const [item] = await listQueued()
+
+    await expect(
+      amendQueuedReport(item.id, { note: 'Big oak, step over the top.' }),
+    ).resolves.toBe(true)
+
+    const [amended] = await listQueued()
+    expect(amended.payload).toMatchObject({
+      type: 'blowdown',
+      note: 'Big oak, step over the top.',
+      signed_name: 'Switchback',
+    })
+  })
+
+  it('clears a key given an explicit undefined - an unticked box has no value, not a false one', async () => {
+    await enqueue({ ...DRAFT, contact_ok: true }, WRITTEN)
+    const [item] = await listQueued()
+
+    await amendQueuedReport(item.id, { contact_ok: undefined })
+
+    const [amended] = await listQueued()
+    expect('contact_ok' in (amended.payload ?? {})).toBe(false)
+  })
+
+  it('answers false for a report that has already gone, and writes nothing', async () => {
+    await expect(amendQueuedReport('gone', { note: 'too late' })).resolves.toBe(false)
+    expect(await listQueued()).toEqual([])
+  })
+
+  it('answers false while the report\u2019s own send is out, rather than writing to a row about to go', async () => {
+    // The flush reads the queue, sends, then removes the item. An amendment
+    // landing between the send and the removal would be written to a row
+    // the success path deletes a moment later - the server holds the body
+    // from before it, and the queue no longer holds the words. False is the
+    // truth the receipt can say (review of #1571). The photos the same.
+    await enqueue(DRAFT, WRITTEN)
+    const [item] = await listQueued()
+    let amendedMidFlight: boolean | null = null
+    let attachedMidFlight: boolean | null = null
+
+    await flushOutbox(async () => {
+      amendedMidFlight = await amendQueuedReport(item.id, { note: 'mid-flight' })
+      attachedMidFlight = await attachQueuedPhotos(item.id, [BYTES])
+    })
+
+    expect(amendedMidFlight).toBe(false)
+    expect(attachedMidFlight).toBe(false)
+    expect(await listQueued()).toEqual([])
+  })
+
+  it('takes an amendment again once a failed send has left the report queued', async () => {
+    // The guard is the request, not the item: a report a flush could not
+    // send is back in the queue and back to being amendable.
+    await enqueue(DRAFT, WRITTEN)
+    const [item] = await listQueued()
+    await flushOutbox(vi.fn().mockRejectedValue(new Error('no signal')))
+
+    await expect(amendQueuedReport(item.id, { note: 'after the retry' })).resolves.toBe(
+      true,
+    )
+    await expect(attachQueuedPhotos(item.id, [BYTES])).resolves.toBe(true)
+  })
+})
+
+describe('attaching photos to a report still in the queue (#1563)', () => {
+  const WRITTEN = new Date('2026-07-27T08:00:00Z')
+  const BYTES = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+  const SECOND = new Blob([new Uint8Array([4, 5, 6])], { type: 'image/jpeg' })
+  const THIRD = new Blob([new Uint8Array([7, 8, 9])], { type: 'image/jpeg' })
+
+  beforeEach(() => {
+    withStoredQueue()
+  })
+
+  it('stores the whole set beside the report, replacing whatever it held', async () => {
+    // The receipt is the one surface that attaches this way and it holds
+    // the full list, so the set replaces rather than appends: a tile removed
+    // on the receipt is a photo that must not travel.
+    await enqueue(DRAFT, WRITTEN, [BYTES])
+    const [item] = await listQueued()
+
+    await expect(attachQueuedPhotos(item.id, [SECOND, THIRD])).resolves.toBe(true)
+
+    const [attached] = await listQueued()
+    expect(attached.photos).toEqual([SECOND, THIRD])
+    expect(attached.payload).toEqual(item.payload)
+  })
+
+  it('removes the key rather than writing an empty array when the set is empty', async () => {
+    // `enqueue`'s rule, kept: an empty array is a difference that reads as
+    // one to every comparison the queue goes through.
+    await enqueue(DRAFT, WRITTEN, [BYTES])
+    const [item] = await listQueued()
+
+    await attachQueuedPhotos(item.id, [])
+
+    const [attached] = await listQueued()
+    expect('photos' in attached).toBe(false)
+  })
+
+  it('answers false for a report that has already gone', async () => {
+    await expect(attachQueuedPhotos('gone', [BYTES])).resolves.toBe(false)
   })
 })

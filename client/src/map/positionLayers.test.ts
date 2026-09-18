@@ -41,7 +41,12 @@ const symbol = () => buildPositionLayer() as SymbolLayerSpecification
 const circle = () => buildPositionAccuracyLayer() as CircleLayerSpecification
 
 const NOW = new Date('2026-09-17T12:00:00Z')
-const FIX = { at: { lon: -73.9888, lat: 41.27444 }, accuracyFeet: 32.8084, fixedAt: NOW }
+const FIX = {
+  at: { lon: -73.9888, lat: 41.27444 },
+  accuracyFeet: 32.8084,
+  accuracyM: 10,
+  fixedAt: NOW,
+}
 const LOCATED: GeolocationState = { status: 'located', ...FIX }
 
 /** A map whose style already holds the source and both layers, so the

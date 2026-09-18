@@ -702,7 +702,10 @@ describe('the offline-only background', () => {
       // closed-looking below the seam with no signal at all.
       // Its untaken half under its taken half (#1283): every line outside
       // the chosen system is on a layer of its own beneath the one the
-      // taken trail draws on.
+      // taken trail draws on - and under both, the casing its through-routes
+      // carry (#1586), which is what tells the Long Path from a park loop on
+      // an offline phone's opening camera.
+      'network-overview-casing',
       'network-overview-line-untaken',
       'network-overview-line',
       'network-overview-closure-band',

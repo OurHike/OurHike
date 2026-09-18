@@ -15,6 +15,7 @@ import {
   ATC_UPDATE_TAPE_CADENCE,
   ATC_UPDATE_TAPE_SCALE,
   buildAtcUpdateLayers,
+  atcTapeImageId,
 } from './atcUpdateStyle'
 import {
   CLOSURE_CASING_WIDTH,
@@ -23,6 +24,7 @@ import {
   CLOSURE_TAPE_IMAGE_ID,
   CLOSURE_TAPE_WIDTH,
   tapeRedFraction,
+  closureTapeImageId,
 } from './closureStyle'
 
 // #461 asks that an ATC update not look like an OurHike closure. This file
@@ -33,8 +35,11 @@ import {
 // learned something false. Both mean the trail is shut. Whose claim it is
 // gets answered where a hiker can read an answer - the banner and the sheet.
 
+/** The field day sheet's paper, the ground every tape here is built on. */
+const GROUND = '#ffffff'
+
 function paintOf(id: string): Record<string, unknown> {
-  const layer = buildAtcUpdateLayers('atc-updates').find(
+  const layer = buildAtcUpdateLayers('atc-updates', GROUND).find(
     (candidate) => candidate.id === id,
   )
   expect(layer).toBeDefined()
@@ -42,7 +47,7 @@ function paintOf(id: string): Record<string, unknown> {
 }
 
 function layoutOf(id: string): Record<string, unknown> {
-  const layer = buildAtcUpdateLayers('atc-updates').find(
+  const layer = buildAtcUpdateLayers('atc-updates', GROUND).find(
     (candidate) => candidate.id === id,
   )
   expect(layer).toBeDefined()
@@ -125,8 +130,9 @@ describe('an ATC band carries the same weight as a closure', () => {
 describe('and is still distinguishable', () => {
   it('runs a different cadence, and paints from its own image', () => {
     expect(ATC_UPDATE_TAPE_CADENCE).not.toEqual(CLOSURE_TAPE_CADENCE)
-    expect(paintOf(ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(ATC_TAPE_IMAGE_ID)
+    expect(paintOf(ATC_UPDATE_LAYER_ID)['line-pattern']).toBe(atcTapeImageId(GROUND))
     expect(ATC_TAPE_IMAGE_ID).not.toBe(CLOSURE_TAPE_IMAGE_ID)
+    expect(atcTapeImageId(GROUND)).not.toBe(closureTapeImageId(GROUND))
   })
 
   it('is still tape rather than a solid line', () => {
@@ -162,14 +168,14 @@ describe('the layers themselves', () => {
   it('draws the band as one layer, with no casing beneath it', () => {
     // Same reason buildClosureLayers does: a solid casing under tape with
     // transparent gaps shows through every one of them.
-    const ids = buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)
+    const ids = buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)
 
     expect(ids.filter((id) => id === ATC_UPDATE_LAYER_ID)).toHaveLength(1)
     expect(ids.some((id) => id.includes('casing'))).toBe(false)
   })
 
   it('binds them all to the source it was given', () => {
-    for (const layer of buildAtcUpdateLayers('atc-updates')) {
+    for (const layer of buildAtcUpdateLayers('atc-updates', GROUND)) {
       expect((layer as { source: string }).source).toBe('atc-updates')
     }
   })
@@ -232,7 +238,7 @@ describe('a point notice', () => {
     // #1071. A MapLibre circle has no paint property that empties its middle,
     // so the open centre is not something the old layer could have been tuned
     // into - it is why this became a symbol layer at all.
-    const layer = buildAtcUpdateLayers('atc-updates').find(
+    const layer = buildAtcUpdateLayers('atc-updates', GROUND).find(
       (candidate) => candidate.id === ATC_UPDATE_POINT_LAYER_ID,
     )
 
@@ -258,10 +264,10 @@ describe('a point notice', () => {
   it('stops the point at the seam, like every other mark on the map (#1292)', () => {
     // The opening camera shows trail lines only, by the maintainer's call of
     // 2026-09-08. The tape stays: a closure band is trail line, not a mark.
-    const point = buildAtcUpdateLayers('atc-updates').find(
+    const point = buildAtcUpdateLayers('atc-updates', GROUND).find(
       (candidate) => candidate.id === ATC_UPDATE_POINT_LAYER_ID,
     )
-    const band = buildAtcUpdateLayers('atc-updates').find(
+    const band = buildAtcUpdateLayers('atc-updates', GROUND).find(
       (candidate) => candidate.id === ATC_UPDATE_LAYER_ID,
     )
     expect(point?.minzoom).toBe(ATC_UPDATE_POINT_MIN_ZOOM)
@@ -271,7 +277,7 @@ describe('a point notice', () => {
   it('draws from the same source as the bands', () => {
     // A `line` layer ignores Point features and a `symbol` layer ignores
     // lines, so one source carries both - and the tap has one place to look.
-    const layers = buildAtcUpdateLayers('atc-updates')
+    const layers = buildAtcUpdateLayers('atc-updates', GROUND)
 
     expect(layers.map((layer) => (layer as { source: string }).source)).toEqual([
       'atc-updates',
@@ -280,7 +286,7 @@ describe('a point notice', () => {
   })
 
   it('is drawn last, over both bands', () => {
-    expect(buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)).toEqual([
+    expect(buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)).toEqual([
       ATC_UPDATE_LAYER_ID,
       ATC_UPDATE_POINT_LAYER_ID,
     ])
@@ -314,14 +320,14 @@ describe('the mark geometry (#1071, and the triangle since 2026-09-10)', () => {
     // Deleted rather than dimmed (#1071): a 54px wash of red behind an open
     // burst is the solid disc back in a softer spelling. Asserted as an absence
     // because the next pass to reach for "make it louder" will reach here.
-    const ids = buildAtcUpdateLayers('atc-updates').map((layer) => layer.id)
+    const ids = buildAtcUpdateLayers('atc-updates', GROUND).map((layer) => layer.id)
 
     // Two, not the three this asserted when it was written: the casing line
     // under the band went the same way and for the same reason, once the band
     // became tape with transparent gaps for a casing to show through.
     expect(ids).toHaveLength(2)
     expect(ids.some((id) => id.includes('halo'))).toBe(false)
-    for (const layer of buildAtcUpdateLayers('atc-updates')) {
+    for (const layer of buildAtcUpdateLayers('atc-updates', GROUND)) {
       expect(
         (layer as { paint?: Record<string, unknown> }).paint?.['circle-blur'],
       ).toBeUndefined()

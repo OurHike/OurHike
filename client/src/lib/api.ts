@@ -900,6 +900,27 @@ export interface QueuedReport extends ReportSummary {
    * reads the words and places it, and the app does not guess.
    */
   place_words?: string | null
+  /**
+   * How the report came by its coordinates (#1563), or null for a row an
+   * older client filed: `poi` for a named waypoint, `gps` for the phone's own
+   * fix, `map` for a spot marked by hand. Optional as well as nullable, for
+   * `photo_count`'s reason: a server on the previous release does not send it.
+   */
+  location_source?: 'poi' | 'gps' | 'map' | null
+  /** The platform's stated radius for a `gps` fix, metres, or null. */
+  location_accuracy_m?: number | null
+  /** How many seconds old a `gps` fix was when the report took it, or null. */
+  location_fix_age_s?: number | null
+  /**
+   * The name the hiker put to the report and which of their two names it is
+   * (#1563), or null: withheld from everyone but the reporter and a moderator,
+   * like `reporter_id`, and absent on a report signed with nothing.
+   */
+  signed_name?: string | null
+  signed_name_kind?: 'trail' | 'real' | null
+  /** Whether the hiker said a club may contact them about it. Null on a
+   *  response that withholds it; the server's own default is false. */
+  contact_ok?: boolean | null
   reporter_id: string | null
 }
 

@@ -48,6 +48,11 @@ import type { LonLat } from './trailPosition'
 export interface GeolocationFix {
   at: LonLat
   accuracyFeet: number
+  /** The same radius as the platform stated it, in metres - what the report
+   *  path records (lib/reportLocation.ts, #1563). Feet above is the
+   *  display's; this is the wire's, and keeping both avoids a round trip
+   *  through a conversion nobody asked for. */
+  accuracyM: number
   fixedAt: Date
 }
 
@@ -180,11 +185,13 @@ export function useGeolocation(
           // HIKER_SAFETY.md §5 declines to guess at and #93 is already waiting
           // on, not something to infer from a fix cadence.
           //
-          // `accuracyFeet` and `fixedAt` freeze along with the position when
-          // this fires. Nothing reads either one today (grep: this file only),
-          // and a fix at identical coordinates is the same answer about where
-          // somebody is - but a caller that starts reading `fixedAt` as "how
-          // fresh is this" needs to know that it stops advancing here.
+          // `accuracyFeet`, `accuracyM` and `fixedAt` freeze along with the
+          // position when this fires. A fix at identical coordinates is the
+          // same answer about where somebody is - and since #1563 the report
+          // path DOES read `fixedAt` as "how fresh is this", so the age it
+          // records can overstate staleness by however long the platform kept
+          // re-delivering an unchanged fix. That errs toward caution: a fix
+          // reported older than it is, never fresher.
           if (
             current.status === 'located' &&
             current.at.lon === at.lon &&
@@ -197,6 +204,7 @@ export function useGeolocation(
             status: 'located',
             at,
             accuracyFeet: position.coords.accuracy * METERS_TO_FEET,
+            accuracyM: position.coords.accuracy,
             fixedAt: new Date(position.timestamp),
           }
         })
@@ -218,8 +226,11 @@ export function useGeolocation(
         // draw it stale rather than draw nothing (#1581).
         setState((current) => {
           if (current.status === 'located') {
-            const { at, accuracyFeet, fixedAt } = current
-            return { status: 'unavailable', last: { at, accuracyFeet, fixedAt } }
+            const { at, accuracyFeet, accuracyM, fixedAt } = current
+            return {
+              status: 'unavailable',
+              last: { at, accuracyFeet, accuracyM, fixedAt },
+            }
           }
           if (current.status === 'unavailable' && current.last !== undefined) {
             return current

@@ -841,6 +841,30 @@ test.describe('an organization’s own trail notice', () => {
 })
 
 test.describe('who looks after this stretch', () => {
+  // Room for openMapBelowTheSeam's own SKETCHES_BOUND_MS wait plus a full
+  // CLUB_SECTIONS_BOUND_MS sweep inside the same test, with the rest of this
+  // file's usual overhead (camera seed, legend open/close) on top of both.
+  test.describe.configure({ timeout: 240_000 })
+
+  /**
+   * HOW LONG THE CLUB-SECTION LAYER IS ALLOWED TO TAKE, swept for rather than
+   * waited on directly (#1490).
+   *
+   * `club_sections.json` is its own fetch, separate from the corridor
+   * sketches `SKETCHES_BOUND_MS` guards — lib/clubSections.ts's header names
+   * it as a layer with its own clock, and `openMapBelowTheSeam` below only
+   * waits on "Trails in view", which is the sketches landing and says nothing
+   * about club sections. `e2e/data/alertSheets.spec.ts`'s `sweepFor` hit the
+   * identical shape for closure and warning marks and its own comment records
+   * why waiting on that same legend section was the wrong fix there: the
+   * marks were already drawn before the section it was waiting on ever
+   * appeared. This copies that file's answer rather than re-deriving it — the
+   * sweep itself is the wait, repeated until the deadline instead of run once.
+   *
+   * Measured (#1490): a single pass missed the layer about one run in three.
+   */
+  const CLUB_SECTIONS_BOUND_MS = 90_000
+
   /**
    * Below the seam, and sweep for the club sheet rather than the line sheet.
    *
@@ -858,28 +882,44 @@ test.describe('who looks after this stretch', () => {
     const club = page.getByRole('dialog', { name: 'Who maintains this trail' })
     const line = page.getByRole('dialog', { name: 'Trail line' })
 
-    for (let down = HEADER_ROWS; down < 20; down += 1) {
-      for (let across = 1; across < 20; across += 1) {
-        await page.mouse.click(
-          box.x + (box.width * across) / 20,
-          box.y + (box.height * down) / 20,
-        )
-        // Read straight after the click, the way `tapTheTrail` does. The
-        // first version of this waited a beat with `expect.poll`, which was
-        // both pointless — the predicate it polled was always true — and
-        // actively harmful: on a loaded machine two `count()` calls can
-        // outlast the poll's own timeout, so the wait invented a failure the
-        // app had nothing to do with.
-        if ((await club.count()) > 0) return club
-        if ((await line.count()) > 0) {
-          await line.getByRole('button', { name: /^Close/ }).click()
-          await expect(line).toHaveCount(0)
+    const tap = async (across: number, down: number): Promise<boolean> => {
+      await page.mouse.click(
+        box.x + (box.width * across) / 20,
+        box.y + (box.height * down) / 20,
+      )
+      // Read straight after the click, the way `tapTheTrail` does. The
+      // first version of this waited a beat with `expect.poll`, which was
+      // both pointless — the predicate it polled was always true — and
+      // actively harmful: on a loaded machine two `count()` calls can
+      // outlast the poll's own timeout, so the wait invented a failure the
+      // app had nothing to do with.
+      if ((await club.count()) > 0) return true
+      if ((await line.count()) > 0) {
+        await line.getByRole('button', { name: /^Close/ }).click()
+        await expect(line).toHaveCount(0)
+      }
+      return false
+    }
+
+    // SWEEP UNTIL THE DEADLINE, NOT ONCE (#1490). A single pass races
+    // club_sections.json: nothing before this waits for it directly, so a
+    // pass that starts before it has landed finds nothing and used to throw
+    // immediately. Re-sweeping is how this waits on the layer itself, the
+    // same shape as alertSheets.spec.ts's sweepFor.
+    const deadline = Date.now() + CLUB_SECTIONS_BOUND_MS
+    let passes = 0
+    do {
+      passes += 1
+      for (let down = HEADER_ROWS; down < 20; down += 1) {
+        for (let across = 1; across < 20; across += 1) {
+          if (await tap(across, down)) return club
         }
       }
-    }
+    } while (Date.now() < deadline)
     throw new Error(
-      'no tap on the whole frame opened the club sheet — either the release moved the ' +
-        'A.T. out of this camera, or the club-section artifact stopped publishing',
+      `swept the whole frame ${passes} time(s) over ${CLUB_SECTIONS_BOUND_MS} ms and never opened ` +
+        'the club sheet — either the release moved the A.T. out of this camera, the club-section ' +
+        'artifact stopped publishing, or it simply had not arrived yet (#1490)',
     )
   }
 

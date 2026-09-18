@@ -32,10 +32,14 @@
 //
 // The same seeding as network-above-the-seam.mjs: a remembered camera and a
 // reload, and no location fix, no account, nobody's reports.
+// AMENDED 2026-09-18 (#1588): the lines under the tape are the default's new
+// vocabulary - the park's trails a light dashed red, the A.T. a plain solid
+// red with no casing - so the tape reads against a quieter ground than the
+// solid cased lines it was chosen over.
 export const caption =
-  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper over the red lines (#1575, the maintainer’s option E), where until this change the red line showed through between the stripes. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
+  'Bear Mountain and Doodletown on a phone, z13, Blaze colors off (the default): OPRHP’s long-term closed trails drawn as barrier tape on an opaque band of the sheet’s paper (#1575, the maintainer’s option E) over the lines — which since #1588 are the park’s trails as a light dashed red and the A.T. as a plain solid red, so the tape is the one heavy mark on this frame. Seven closed runs of 1.1 to 1.9 km sit in this frame, placed by measuring the pinned release’s network overview, with the A.T. crossing it over Bear Mountain'
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13: every trail a solid red line inside a thin dark casing, the Appalachian Trail the widest, and along several trails a wide band of red diagonal stripes on a white ground laid over the line, the barrier tape marking a closed trail'
+  'The map screen over Bear Mountain State Park at zoom 13: the Appalachian Trail a plain solid red line, the park’s trails thin pale red dashed lines, and along several of them a wide band of red diagonal stripes on a white ground laid over the line, the barrier tape marking a closed trail'
 
 /** Vector tiles from the bucket plus generated contours over a park at z13,
  *  the same allowance hudson-highlands-desktop.mjs makes. */

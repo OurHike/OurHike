@@ -77,6 +77,17 @@ import {
   THROUGH_ROUTE_SOURCE_CONDITION,
   LONG_PATH_SOURCE,
   sketchLineColor,
+  plainRedActive,
+  plainLineColor,
+  contextTrailColor,
+  contextDashExpression,
+  blazeDashArray,
+  blazeWidthExpressionFor,
+  casingVisibility,
+  CONTEXT_TRAIL_TINT,
+  CONTEXT_TRAIL_WIDTH_SCALE,
+  CONTEXT_TRAIL_DASH,
+  SOLID_DASH,
   TRAIL_WIDTH_EXPRESSION,
   sketchWidthExpression,
   untakenTrailWidthExpression,
@@ -2405,8 +2416,8 @@ describe("every badged trail at the A.T.'s prominence (#1586)", () => {
     // Where the cased and uncased rules agree the case collapses: with the
     // hues off - the shipped default - one red for the haze and the Long
     // Path alike, and on a dark sheet the blaze's own hex for both.
-    expect(sketchLineColor({ theme: 'light', blazeColorsShown: false })).toBe(
-      PLAIN_TRAIL_COLOR,
+    expect(sketchLineColor({ theme: 'light', blazeColorsShown: false })).toEqual(
+      plainLineColor({ theme: 'light', blazeColorsShown: false }),
     )
     expect(sketchLineColor({ theme: 'dark', blazeColorsShown: true })).toEqual(
       blazeLineColor({ theme: 'dark', blazeColorsShown: true }, false),
@@ -2441,22 +2452,28 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     expect(paintsBlazeHues(OFF)).toBe(false)
   })
 
-  it('blazeLineColor answers PLAIN_TRAIL_COLOR on every sheet, cased or not, while the hues are off', () => {
+  it('blazeLineColor answers the default’s red on every sheet, cased or not, while the hues are off', () => {
     // Cased or not: the near-white swap exists because a white line has no
     // edge on white paper, and the red has its own edge on both sheets
     // (lib/blaze.ts's contrast figures), so the sketches take the same
-    // answer as the lines.
+    // answer as the lines. Since #1588 that answer is per feature - the
+    // red on a through-route, its tint on the rest (plainLineColor) - and
+    // still one expression for every layer.
     for (const cased of [true, false]) {
-      expect(blazeLineColor(OFF, cased)).toBe(PLAIN_TRAIL_COLOR)
-      expect(blazeLineColor({ theme: 'dark', blazeColorsShown: false }, cased)).toBe(
-        PLAIN_TRAIL_COLOR,
-      )
-      expect(
-        blazeLineColor({ mapStyle: 'night_hike', blazeColorsShown: false }, cased),
-      ).toBe(PLAIN_TRAIL_COLOR)
-      expect(
-        blazeLineColor({ mapStyle: 'parchment', blazeColorsShown: false }, cased),
-      ).toBe(PLAIN_TRAIL_COLOR)
+      for (const appearance of [
+        OFF,
+        { theme: 'dark', blazeColorsShown: false } as const,
+        { mapStyle: 'night_hike', blazeColorsShown: false } as const,
+        { mapStyle: 'parchment', blazeColorsShown: false } as const,
+      ]) {
+        expect(blazeLineColor(appearance, cased)).toEqual(plainLineColor(appearance))
+        expect(blazeLineColor(appearance, cased)).toEqual([
+          'case',
+          THROUGH_ROUTE_SOURCE_CONDITION,
+          PLAIN_TRAIL_COLOR,
+          contextTrailColor(appearance),
+        ])
+      }
     }
   })
 
@@ -2475,23 +2492,35 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     }
   })
 
-  it('seeds a cold start with the one red in its first frame, on every blaze layer', () => {
+  it('seeds a cold start with the default’s red in its first frame, on every blaze layer', () => {
     const built = buildMapStyle({ ...LIVE, blazeColorsShown: false })
     const paintOf = (id: string) =>
       (built.layers.find((l) => l.id === id)?.paint ?? {}) as Record<string, unknown>
+    const colorSpec = latest.paint_line['line-color']
 
     for (const id of BLAZE_LINE_LAYER_IDS) {
-      expect(paintOf(id)['line-color'], id).toBe(PLAIN_TRAIL_COLOR)
+      expect(paintOf(id)['line-color'], id).toEqual(plainLineColor({ theme: 'light' }))
+      // Through the engine: the A.T.'s feature the red, a park's its tint.
+      expect(
+        paintFor(built, id, 'line-color', colorSpec, { source: 'centerline' }),
+        id,
+      ).toBe(PLAIN_TRAIL_COLOR)
+      expect(
+        paintFor(built, id, 'line-color', colorSpec, { source: 'oprhp_trails' }),
+        id,
+      ).toBe(contextTrailColor({ theme: 'light' }))
     }
     expect(validateStyleMin(built, latest)).toEqual([])
   })
 
-  it('changes line-color on the blaze layers and nothing else in the built style', () => {
+  it('changes the lines’ ink, width and dash on the blaze layers, the casings’ visibility, and nothing else in the built style', () => {
     // "Changing the color option should only affect the map itself, not the
     // other options" (the maintainer, 2026-09-17) - and on the map itself,
-    // only the lines' ink: the casings, the widths, the closure tape, the
-    // day hike route, the badge and every other layer are identical between
-    // the two builds, as are the sources.
+    // only the trail lines. Since #1588 the switch selects a vocabulary
+    // rather than an ink alone (this file's header, rule 2): a blaze
+    // layer's colour, width and dash differ between the two builds and its
+    // casing is hidden under the default; the closure tape, the day hike
+    // route, the badge, every other layer and every source are identical.
     const hues = buildMapStyle({ ...LIVE, blazeColorsShown: true })
     const red = buildMapStyle({ ...LIVE, blazeColorsShown: false })
 
@@ -2500,20 +2529,50 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
     for (const [at, layer] of hues.layers.entries()) {
       const other = red.layers[at]
       if (BLAZE_LINE_LAYER_IDS.includes(layer.id)) {
-        const { 'line-color': hueInk, ...restHues } = (layer.paint ?? {}) as Record<
-          string,
-          unknown
-        >
-        const { 'line-color': redInk, ...restRed } = (other.paint ?? {}) as Record<
-          string,
-          unknown
-        >
-        expect(redInk, layer.id).toBe(PLAIN_TRAIL_COLOR)
-        expect(hueInk, layer.id).not.toBe(PLAIN_TRAIL_COLOR)
+        const {
+          'line-color': hueInk,
+          'line-width': hueWidth,
+          'line-dasharray': hueDash,
+          ...restHues
+        } = (layer.paint ?? {}) as Record<string, unknown>
+        const {
+          'line-color': redInk,
+          'line-width': redWidth,
+          'line-dasharray': redDash,
+          ...restRed
+        } = (other.paint ?? {}) as Record<string, unknown>
+        expect(redInk, layer.id).toEqual(plainLineColor({ theme: 'light' }))
+        expect(hueInk, layer.id).not.toEqual(redInk)
+        expect(hueDash, layer.id).toBeUndefined()
+        expect(redDash, layer.id).toEqual(contextDashExpression())
+        // The width moves on the layers whose tier the mode changes; the
+        // A.T.'s sketch and the shared halves keep theirs.
+        if (blazeWidthExpressionFor(layer.id, OFF) === undefined) {
+          expect(redWidth, layer.id).toEqual(hueWidth)
+        } else {
+          expect(redWidth, layer.id).toEqual(blazeWidthExpressionFor(layer.id, OFF))
+          expect(redWidth, layer.id).not.toEqual(hueWidth)
+        }
         expect(restRed, layer.id).toEqual(restHues)
         expect({ ...other, paint: undefined }, layer.id).toEqual({
           ...layer,
           paint: undefined,
+        })
+      } else if (TRAIL_CASING_LAYER_IDS.includes(layer.id)) {
+        const { visibility: hueVisibility, ...restHues } = (layer.layout ?? {}) as Record<
+          string,
+          unknown
+        >
+        const { visibility: redVisibility, ...restRed } = (other.layout ?? {}) as Record<
+          string,
+          unknown
+        >
+        expect(hueVisibility, layer.id).toBe('visible')
+        expect(redVisibility, layer.id).toBe('none')
+        expect(restRed, layer.id).toEqual(restHues)
+        expect({ ...other, layout: undefined }, layer.id).toEqual({
+          ...layer,
+          layout: undefined,
         })
       } else {
         expect(other, layer.id).toEqual(layer)
@@ -2528,18 +2587,29 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
 
     attachMapAppearance(m as never, OFF)
     for (const id of BLAZE_LINE_LAYER_IDS) {
-      expect(m.paintProperties.get(`${id}/line-color`), id).toBe(PLAIN_TRAIL_COLOR)
+      expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(plainLineColor(OFF))
+      // And the default's whole vocabulary with it (#1588): the context
+      // dash, and the mode's tiers where the mode has any.
+      expect(m.paintProperties.get(`${id}/line-dasharray`), id).toEqual(
+        contextDashExpression(),
+      )
+      const width = blazeWidthExpressionFor(id, OFF)
+      if (width !== undefined) {
+        expect(m.paintProperties.get(`${id}/line-width`), id).toEqual(width)
+      }
     }
-    // The casing is not the switch's: it keeps the sheet's ink either way,
-    // which is what keeps the red line edged on paper.
+    // The casing keeps the sheet's ink either way - and under the default
+    // it is hidden, the maintainer's "solid, no casing" (#1588).
     for (const id of TRAIL_CASING_LAYER_IDS) {
       expect(m.paintProperties.get(`${id}/line-color`), id).toBe(
         trailCasingColor({ theme: 'light' }),
       )
+      expect(m.layoutProperties.get(`${id}/visibility`), id).toBe('none')
     }
 
     // Back on is a true restore: every layer takes exactly what buildMapStyle
-    // spells for it, the sketches' dark ink included.
+    // spells for it, the sketches' dark ink included, no dash, and every
+    // casing shown again.
     attachMapAppearance(m as never, { theme: 'light', blazeColorsShown: true })
     for (const id of BLAZE_LINE_LAYER_IDS) {
       expect(m.paintProperties.get(`${id}/line-color`), id).toEqual(
@@ -2547,8 +2617,171 @@ describe('one red line for every trail while blaze colours are off (#1575)', () 
           ? sketchLineColor({ theme: 'light' })
           : blazeLineColor({ theme: 'light' }, !DARK_INKED_BLAZE_LAYER_IDS.includes(id)),
       )
+      expect(m.paintProperties.get(`${id}/line-dasharray`), id).toBeUndefined()
+      const width = blazeWidthExpressionFor(id, { theme: 'light' })
+      if (width !== undefined) {
+        expect(m.paintProperties.get(`${id}/line-width`), id).toEqual(width)
+      }
+    }
+    for (const id of TRAIL_CASING_LAYER_IDS) {
+      expect(m.layoutProperties.get(`${id}/visibility`), id).toBe('visible')
     }
     expect(m.styles).toEqual([])
+  })
+})
+
+describe('the default sheet: light dashed context trails, plain solid through-routes (#1588)', () => {
+  // "Ok Im not so convinced about these strong redlines. could you show what
+  // these would look like as light dashed?" - the maintainer, 2026-09-18, on
+  // the frames of #1577; shown six treatments and then six ways to draw the
+  // badged trails over the pick: light dashed red for every trail without a
+  // pill, "solid, no casing" for the A.T. and the Long Path, at every zoom.
+  const OFF = { theme: 'light', blazeColorsShown: false } as const
+  const LIVE = { ...STYLE_OPTIONS, background: 'hiking_topo_live' as const }
+  const widthSpec = latest.paint_line['line-width']
+  const dashSpec = latest.paint_line['line-dasharray']
+  const dashFor = (
+    built: ReturnType<typeof buildMapStyle>,
+    id: string,
+    properties: Record<string, unknown>,
+  ): unknown => {
+    const found = built.layers.find((l) => l.id === id)
+    const compiled = createExpression(
+      (found?.paint as Record<string, unknown>)['line-dasharray'] as never,
+      dashSpec as never,
+    )
+    if (compiled.result === 'error')
+      throw new Error(`line-dasharray on ${id} is not valid`)
+    const value = compiled.value.evaluate({ zoom: 12 }, { properties } as never)
+    return Array.isArray(value) ? [...value] : value
+  }
+
+  it('is in force with the hues off and red light not, and only then', () => {
+    expect(plainRedActive(OFF)).toBe(true)
+    expect(plainRedActive({ theme: 'dark', blazeColorsShown: false })).toBe(true)
+    expect(plainRedActive({ theme: 'light' })).toBe(false)
+    expect(plainRedActive({ theme: 'light', blazeColorsShown: true })).toBe(false)
+    // Red light keeps its own one-hue rule and its cased solid lines.
+    expect(
+      plainRedActive({ mapStyle: 'night_hike', redLight: true, blazeColorsShown: false }),
+    ).toBe(false)
+  })
+
+  it('tints the context trails’ red towards the sheet’s own paper, and names the three numbers', () => {
+    // 45% of the red over white: each channel 0.45 of the red's plus 0.55
+    // of the paper's, which is what the mock-up drew.
+    expect(CONTEXT_TRAIL_TINT).toBe(0.45)
+    expect(contextTrailColor({ theme: 'light' })).toBe('#dca39a')
+    // Over night_hike's ink the same share of red is a dark red, and on
+    // parchment a warmer tint than on white: the paper is in the hex.
+    expect(contextTrailColor({ theme: 'dark' })).toBe('#572217')
+    expect(contextTrailColor({ mapStyle: 'parchment' })).not.toBe(
+      contextTrailColor({ theme: 'light' }),
+    )
+    expect(CONTEXT_TRAIL_WIDTH_SCALE).toBe(0.8)
+    expect(CONTEXT_TRAIL_DASH).toEqual([3, 2.5])
+    expect(SOLID_DASH).toEqual([1, 0])
+  })
+
+  it('dashes every context feature and none of a through-route’s, on every blaze layer, and the style validates', () => {
+    const built = buildMapStyle({ ...LIVE, blazeColorsShown: false })
+    expect(validateStyleMin(built, latest)).toEqual([])
+    expect(blazeDashArray(OFF)).toEqual(contextDashExpression())
+    expect(blazeDashArray({ theme: 'light' })).toBeUndefined()
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      expect(dashFor(built, id, { source: 'centerline' }), id).toEqual([...SOLID_DASH])
+      expect(dashFor(built, id, { source: LONG_PATH_SOURCE }), id).toEqual([
+        ...SOLID_DASH,
+      ])
+      expect(dashFor(built, id, { source: 'side_trails' }), id).toEqual([
+        ...CONTEXT_TRAIL_DASH,
+      ])
+      expect(dashFor(built, id, { source: 'oprhp_trails' }), id).toEqual([
+        ...CONTEXT_TRAIL_DASH,
+      ])
+    }
+  })
+
+  it('draws a context trail thinner and a through-route at its own width, above the seam and below it', () => {
+    const built = buildMapStyle({ ...LIVE, blazeColorsShown: false })
+    const at = (id: string, zoom: number, properties: Record<string, unknown>) => {
+      const found = built.layers.find((l) => l.id === id)
+      const compiled = createExpression(
+        (found?.paint as Record<string, unknown>)['line-width'] as never,
+        widthSpec as never,
+      )
+      if (compiled.result === 'error') throw new Error(`line-width on ${id} is not valid`)
+      return compiled.value.evaluate({ zoom }, { properties } as never) as number
+    }
+    const context = SIDE_TRAIL_WIDTH * CONTEXT_TRAIL_WIDTH_SCALE
+    // Above the seam: the tiles' own tiers, the context one scaled.
+    for (const id of [BLAZE_LAYER_ID, BLAZE_UNTAKEN_LAYER_ID]) {
+      expect(at(id, 12, { source: 'centerline' }), id).toBe(PRIMARY_TRAIL_WIDTH)
+      expect(at(id, 12, { source: 'side_trails' }), id).toBe(context)
+    }
+    for (const id of [NEARBY_BLAZE_LAYER_ID, NEARBY_BLAZE_UNTAKEN_LAYER_ID]) {
+      expect(at(id, 12, { source: LONG_PATH_SOURCE }), id).toBe(PRIMARY_TRAIL_WIDTH)
+      expect(at(id, 12, { source: 'oprhp_trails' }), id).toBe(context)
+    }
+    // Below it: the through-route at the A.T.'s far weight, the context
+    // trails at the scaled one - #1307's heavier named-trail weight goes
+    // with the casing it stood in for - and each at its tier at the seam.
+    for (const id of NETWORK_OVERVIEW_LINE_LAYER_IDS) {
+      expect(at(id, OVERVIEW_FAR_ZOOM, { source: LONG_PATH_SOURCE }), id).toBe(
+        NETWORK_OVERVIEW_FAR_WIDTH,
+      )
+      expect(
+        at(id, OVERVIEW_FAR_ZOOM, { source: 'oprhp_trails', through_route: true }),
+        id,
+      ).toBeCloseTo(NETWORK_OVERVIEW_FAR_WIDTH * CONTEXT_TRAIL_WIDTH_SCALE)
+      expect(at(id, POI_PIN_MIN_ZOOM, { source: LONG_PATH_SOURCE }), id).toBe(
+        PRIMARY_TRAIL_WIDTH,
+      )
+      expect(at(id, POI_PIN_MIN_ZOOM, { source: 'oprhp_trails' }), id).toBe(context)
+    }
+    // The hues' widths are untouched: every helper defaults to them.
+    expect(untakenTrailWidthExpression()).toEqual(
+      untakenTrailWidthExpression({ theme: 'light' }),
+    )
+    expect(solidTrailWidthExpression()).toEqual(
+      solidTrailWidthExpression({ theme: 'light' }),
+    )
+    expect(blazeWidthExpressionFor(TRAIL_OVERVIEW_LAYER_ID, OFF)).toBeUndefined()
+    expect(blazeWidthExpressionFor(SHARED_GROUND_BLAZE_LAYER_ID, OFF)).toBeUndefined()
+  })
+
+  it('hides every casing under the default and shows every one under the hues and under red light', () => {
+    expect(casingVisibility(OFF)).toBe('none')
+    expect(casingVisibility({ theme: 'light' })).toBe('visible')
+    expect(
+      casingVisibility({
+        mapStyle: 'night_hike',
+        redLight: true,
+        blazeColorsShown: false,
+      }),
+    ).toBe('visible')
+    const layoutOf = (built: ReturnType<typeof buildMapStyle>, id: string) =>
+      (built.layers.find((l) => l.id === id)?.layout ?? {}) as Record<string, unknown>
+    const red = buildMapStyle({ ...LIVE, blazeColorsShown: false })
+    const redLight = buildMapStyle({
+      ...LIVE,
+      mapStyle: 'night_hike',
+      redLight: true,
+      blazeColorsShown: false,
+    })
+    for (const id of TRAIL_CASING_LAYER_IDS) {
+      expect(layoutOf(red, id).visibility, id).toBe('none')
+      expect(layoutOf(redLight, id).visibility, id).toBe('visible')
+    }
+    // Red light draws no dash either: one hue, solid, cased, as before.
+    for (const id of BLAZE_LINE_LAYER_IDS) {
+      expect(
+        (redLight.layers.find((l) => l.id === id)?.paint as Record<string, unknown>)[
+          'line-dasharray'
+        ],
+        id,
+      ).toBeUndefined()
+    }
   })
 })
 

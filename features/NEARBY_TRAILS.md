@@ -129,6 +129,14 @@ _(Amended 2026-09-17, [#1575](https://github.com/OurHike/OurHike/issues/1575): t
   means to the map: _"those named with pills showing"_). Ghosting is untouched: the Long
   Path outside the chosen system is a cased, ghosted line, which is exactly what the untaken
   A.T. is at the opening camera — the parity the maintainer asked for.
+- **Under the default the context trails are a light dashed red and the badged trails a
+  plain solid red (2026-09-18, [#1588](https://github.com/OurHike/OurHike/issues/1588))** —
+  the maintainer's pick from mock-ups, WIREFRAMES.md §3's amendment of that date. Ghosting is
+  still the third channel and still opacity: a context trail's lightness is a tint baked
+  into its hex (`contextTrailColor`) precisely so the two compose rather than collide, and a
+  taken trail still ghosts everything outside its system, dashed lines included. The
+  casings, this section's "hairline casing", draw with the hues on and under red light and
+  are hidden under the default.
 
 ## 2. Tapping a nearby trail — a sheet that informs and does not switch
 

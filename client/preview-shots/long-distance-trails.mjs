@@ -1,41 +1,37 @@
-// The badged trails at the A.T.'s prominence (#1586), on a phone at z7 over
-// the Hudson valley and the Catskills - below the pin seam, where the
-// network is the corridor-view sketch and what changed is the casing under
-// its through-routes.
+// The badged trails at the A.T.'s prominence (#1586) under the default's
+// vocabulary (#1588), on a phone at z7 over the Hudson valley and the
+// Catskills - below the pin seam, where the network is the corridor-view
+// sketch.
 //
-// WHAT CHANGED IN THIS FRAME. Until this change the untaken A.T. was the
-// only cased line on the opening camera: a 1.5 px red line inside a 3.5 px
-// dark casing from Georgia to Maine. The Long Path beside it, though it wore
-// a badge, was a bare red thread - twice the haze's width and no wider than
-// a park loop at the seam - which is what the maintainer read off the
-// trail-screen shot: "its weird that the AT is more prominent than the
-// LongPath" (2026-09-17), and, asked which trails: "Long trails are those
-// named with pills showing. Right now the AT and LP" (2026-09-18). Now the
-// sketch carries the same casing under its through-routes
-// (map/style.ts's NETWORK_OVERVIEW_CASING_LAYER_ID, filtered to
-// PRIMARY_TRAIL_SOURCES) and hands off at the through-route width at the
-// seam. In this frame that is the Long Path from the George Washington
-// Bridge to the Helderbergs and the A.T. from the Delaware Water Gap into
-// Vermont - two dark-edged red lines at one weight, each wearing its badge.
-// Everything else - the Highlands Trail, the Northville-Placid Trail at the
-// top edge, the park clusters - draws as before: a bare thread, at 3 px
-// where the exporter named it a long-distance trail (#1307) and 1.5 px
-// elsewhere. That is the maintainer's definition, not an omission.
+// WHAT THIS FRAME SHOWS. The Long Path from the George Washington Bridge to
+// the Helderbergs and the A.T. from the Delaware Water Gap into New England,
+// each a plain solid red line at one fine weight with its badge, over every
+// other organization's trails as a lighter dashed red - the maintainer's
+// pick, 2026-09-18, from two sheets of mock-ups rendered off this release's
+// own lines: "light dashed red" for everything without a pill, and for the
+// two badged trails "solid, no casing" ("the at and long path looks too
+// different now") over #1586's cased line of the day before. Nothing is
+// cased under the default; with "Blaze colors" on, the badged trails' sketch
+// lines are cased and every line solid in its hue, the look this frame had
+// on 2026-09-17.
 //
 // WHERE THE CAMERA POINTS, MEASURED. The pinned release's
 // network_overview.geojson (2026-09-16-4, fetched 2026-09-17) puts the Long
-// Path at -74.61..-73.90 by 40.85..43.23. A 390 px phone at z7 spans 4.3
-// degrees of longitude and, at this latitude, about 6.9 of latitude, so
-// [-74.6, 42.4] holds it whole with the A.T.'s New York and New England
-// miles beside it.
+// Path at -74.61..-73.90 by 40.85..43.23. MapLibre's world is 512 px times
+// two to the zoom, so a 390 by 844 px phone at z7 spans 2.1 degrees of
+// longitude and, at this latitude, about 3.4 of latitude: [-74.6, 42.4]
+// holds the Long Path whole with the A.T.'s New York miles beside it. (The
+// first version of this comment said 4.3 and 6.9 degrees, the 256 px tile's
+// arithmetic; the frame CI photographed - Rome at the top, Paterson at the
+// foot - is the correction.)
 //
 // Seeded as network-above-the-seam.mjs seeds its camera: a remembered view
 // and a reload. No location fix, no account, nobody's reports, and nothing
 // readable at this zoom but public ground.
 export const caption =
-  'The Hudson valley and the Catskills on a phone at z7, below the pin seam, nothing taken: the Long Path drawn exactly as the untaken A.T. is - a red line inside a dark casing at one weight, badged (#1586) - where until this change the A.T. was the only cased line and the Long Path a bare thread beside it. The other organizations’ trails stay bare threads, the long-distance names among them a little heavier (#1307): "long trails are those named with pills showing"'
+  'The Hudson valley and the Catskills on a phone at z7, below the pin seam, nothing taken, blaze colours off: the Long Path and the A.T. each a plain solid red line at one fine weight with its badge - "solid, no casing", the maintainer’s pick over #1586’s cased line - and every other organization’s trail a lighter dashed red around them (#1588: "long trails are those named with pills showing", and the rest "light dashed")'
 export const alt =
-  'The map screen over New York State at zoom 7: two long red trail lines, each inside a thin dark casing, running north to south - the Long Path up the Hudson valley to the Helderbergs, the Appalachian Trail across the Hudson Highlands into New England - each with a paper badge naming it, over a pale basemap with city names and fine red threads for the other trails'
+  'The map screen over New York State at zoom 7: two long solid red trail lines running north to south - the Long Path up the Hudson valley to the Helderbergs, the Appalachian Trail across the Hudson Highlands into New England - each with a paper badge naming it, over a pale basemap with city names and fainter dashed red threads for the other trails'
 
 /** The sketch is one GeoJSON the app loads with the map, and the basemap
  *  tiles for a state-wide frame take a moment more than a park's. */

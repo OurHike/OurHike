@@ -3,7 +3,6 @@ import { atcTapeImageId } from '../lib/atcUpdateStyle'
 import { closureTapeImageId } from '../lib/closureStyle'
 import { tapeGrounds } from './closureTape'
 import { TRAILS } from '../lib/trails'
-import { PLAIN_TRAIL_COLOR } from '../lib/blaze'
 import {
   CHOSEN_SYSTEM_SOURCES,
   chosenSystemFilter,
@@ -26,6 +25,7 @@ import {
   BLAZE_UNTAKEN_LAYER_ID,
   TRAIL_OVERVIEW_LAYER_ID,
   sketchWidthExpression,
+  plainLineColor,
 } from './style'
 import {
   blazeChipImageId,
@@ -409,8 +409,8 @@ describe('MapView', () => {
 
     expect(MockMap.instances).toHaveLength(builtInitially)
     expect(MockMap.live).toHaveLength(1)
-    expect(map.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toBe(
-      PLAIN_TRAIL_COLOR,
+    expect(map.paintProperties.get(`${BLAZE_LAYER_ID}/line-color`)).toEqual(
+      plainLineColor({ theme: 'light', blazeColorsShown: false }),
     )
   })
 
@@ -424,9 +424,9 @@ describe('MapView', () => {
       layers: Array<{ id: string; paint?: Record<string, unknown> }>
     }
 
-    expect(style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color']).toBe(
-      PLAIN_TRAIL_COLOR,
-    )
+    expect(
+      style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color'],
+    ).toEqual(plainLineColor({ theme: 'light', blazeColorsShown: false }))
   })
 
   it('rewires visibility for a detail change without rebuilding the map', () => {

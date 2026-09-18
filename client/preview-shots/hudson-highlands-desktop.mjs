@@ -34,10 +34,16 @@
 // rather than moved there - and no location fix, no account, nobody's
 // reports: the plate reads "Location is off", which is the truth about the
 // runner's phone.
+// AMENDED 2026-09-18 (#1588): the same frame, and what changed in it is the
+// default's whole vocabulary. "Ok Im not so convinced about these strong
+// redlines. could you show what these would look like as light dashed?" -
+// so the park's trails are a light dashed red now and the A.T. a plain solid
+// red with no casing (map/style.ts's header, rule 2). The switch still
+// restores the previous look, which hudson-highlands-blaze-colors.mjs shows.
 export const caption =
-  'The Hudson at Dutchess Junction on a laptop, z13, with blaze colours OFF — the shipped default since #1575: every trail one red line (lib/blaze.ts’s PLAIN_TRAIL_COLOR, the palette’s own Red), the A.T. over Breakneck Ridge the widest of them and no longer white, the park’s trails narrower in the same red, and the legend beside the map opening on its new "Blaze colors" toggle, first under the Legend / In view pills and off, reading "Every trail as one red line. Tap a line for its blaze." The same frame as before this change, so the absence is the evidence: no white line in a casing, no blue or yellow trails. hudson-highlands-blaze-colors.mjs is this frame with the switch on'
+  'The Hudson at Dutchess Junction on a laptop, z13, with blaze colours OFF — the shipped default: since #1588 the park’s trails are a light dashed red (the palette’s Red at 45% over the paper, 2 px, dashed) and the A.T. over Breakneck Ridge a plain solid red at its own width with no casing — the maintainer’s pick from two sheets of mock-ups, replacing #1575’s first cut in which every trail was a solid red line inside a dark casing. The legend beside the map opens on its "Blaze colors" toggle, first under the Legend / In view pills and off, reading "Every trail as one red line. Tap a line for its blaze." hudson-highlands-blaze-colors.mjs is this frame with the switch on, where the previous vocabulary — solid, cased, in the blazes’ hues — still draws'
 export const alt =
-  'A wide browser window with the OurHike sidebar down the left, the map filling the middle over the Hudson River at Dutchess Junction with contour lines on the hills and none along the water, every trail a solid red line inside a thin dark casing with the Appalachian Trail the widest, and the legend panel down the right: a Blaze colors row with a toggle switch, off, first under the Legend and In view pills, then the waypoint category grid, the Closure and Serious warning rows, the "Read all trail notices" link directly under them, and the Showing, Verified, Alerts and Drought switches'
+  'A wide browser window with the OurHike sidebar down the left, the map filling the middle over the Hudson River at Dutchess Junction with contour lines on the hills and none along the water, the Appalachian Trail a plain solid red line with no dark edge and the park’s trails thin pale red dashed lines, and the legend panel down the right: a Blaze colors row with a toggle switch, off, first under the Legend and In view pills, then the waypoint category grid, the Closure and Serious warning rows, the "Read all trail notices" link directly under them, and the Showing, Verified, Alerts and Drought switches'
 
 // The wide layout is the subject; the legend is the panel beside the map.
 export const desktop = true

@@ -22,9 +22,9 @@
 // is night_hike - is what draws. Nothing is written to anybody's store, and
 // the day frame's rule stands: no location fix, no account, nobody's reports.
 export const caption =
-  'The Bear Mountain frame of long-term-closures.mjs on the dark sheet: OPRHP’s long-term closed trails as barrier tape on a band of the DAY sheet’s white paper over night_hike’s ink (closureTapeGround, 2026-09-18) - red and white, where the previous build laid red stripes on the sheet’s own ink and the maintainer could not tell a closure from the ground. Red light is not this frame: it keeps its ink, and the change’s docstring says why that question is left open'
+  'The Bear Mountain frame of long-term-closures.mjs on the dark sheet: OPRHP’s long-term closed trails as barrier tape on a band of the DAY sheet’s white paper over night_hike’s ink (closureTapeGround, 2026-09-18) - red and white, where the previous build laid red stripes on the sheet’s own ink and the maintainer could not tell a closure from the ground. The lines beneath are #1588’s: the A.T. a solid red, the park’s trails a dark-red dash. Red light is not this frame: it keeps its ink, and the change’s docstring says why that question is left open'
 export const alt =
-  'The map screen over Bear Mountain State Park at zoom 13 on a dark sheet: contour lines and trails in red over near-black ground, and along several trails a wide white band of red diagonal stripes laid over the line, the barrier tape marking a closed trail, plainly lighter than everything around it'
+  'The map screen over Bear Mountain State Park at zoom 13 on a dark sheet: the Appalachian Trail a solid red line and the park’s trails thin dark-red dashed lines over near-black ground, with contour lines, and along several trails a wide white band of red diagonal stripes laid over the line, the barrier tape marking a closed trail, plainly lighter than everything around it'
 
 /** Vector tiles from the bucket plus generated contours over a park at z13,
  *  the same allowance long-term-closures.mjs makes. */

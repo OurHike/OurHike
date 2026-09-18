@@ -4,8 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MockMap, ScaleControl, resetMapLibreMock } from '../test/mocks/maplibre-gl'
 import { loadMapEngine } from '../map/mapEngineLoader'
 import { MapScreen } from './MapScreen'
-import { PLAIN_TRAIL_COLOR } from '../lib/blaze'
-import { BLAZE_LAYER_ID } from '../map/style'
+import { BLAZE_LAYER_ID, plainLineColor } from '../map/style'
 import {
   mapCredits,
   OPENFREEMAP_CREDIT,
@@ -459,9 +458,9 @@ describe('MapScreen', () => {
     const style = map.options.style as {
       layers: Array<{ id: string; paint?: Record<string, unknown> }>
     }
-    expect(style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color']).toBe(
-      PLAIN_TRAIL_COLOR,
-    )
+    expect(
+      style.layers.find((l) => l.id === BLAZE_LAYER_ID)?.paint?.['line-color'],
+    ).toEqual(plainLineColor({ theme: 'light', blazeColorsShown: false }))
 
     const toggle = screen.getByRole('switch', { name: /^Blaze colors/ })
     expect(toggle).not.toBeChecked()

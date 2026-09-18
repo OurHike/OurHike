@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { Map as MapLibreMap } from 'maplibre-gl'
 import { useDrawnPoiCounts } from './useDrawnPoiCounts'
-import { POI_ID_PROPERTY, POI_LAYER_ID, POI_PIN_MIN_ZOOM } from '../map/poiLayers'
+import {
+  POI_ID_PROPERTY,
+  POI_LAYER_ID,
+  POI_PIN_MIN_ZOOM,
+  POI_PLANNING_MIN_ZOOM,
+} from '../map/poiLayers'
 import { TRAIL_SOURCE_PROPERTY } from '../map/drawnBlazes'
 import { BLAZE_LAYER_ID } from '../map/style'
 import { MockMap } from '../test/mocks/maplibre-gl'
@@ -117,6 +122,32 @@ describe('useDrawnPoiCounts', () => {
     const { result } = renderHook(() => useDrawnPoiCounts(map))
 
     expect(result.current.belowPoiZoom).toBe(false)
+  })
+
+  it('reports the planning band from its floor up to the seam (#1585)', () => {
+    // Both flags at once: the band is below the seam, so the legend keeps
+    // its below-seam sentence and swaps in the band's form of it.
+    const { map } = mapWith([], POI_PLANNING_MIN_ZOOM)
+
+    const { result } = renderHook(() => useDrawnPoiCounts(map))
+
+    expect(result.current.belowPoiZoom).toBe(true)
+    expect(result.current.planningBand).toBe(true)
+  })
+
+  it('is not in the band below its floor, nor at the seam', () => {
+    // The maps are built OUTSIDE the render callbacks: the hook's effect keys
+    // on the map, so a map made fresh per render re-runs the effect, whose
+    // setState re-renders, which makes another map - a loop that took the
+    // worker out on heap (found on the first run of this file, 2026-09-17).
+    const { map: below } = mapWith([], POI_PLANNING_MIN_ZOOM - 0.5)
+    const { map: seam } = mapWith([], POI_PIN_MIN_ZOOM)
+
+    const belowHook = renderHook(() => useDrawnPoiCounts(below))
+    const seamHook = renderHook(() => useDrawnPoiCounts(seam))
+
+    expect(belowHook.result.current.planningBand).toBe(false)
+    expect(seamHook.result.current.planningBand).toBe(false)
   })
 
   it('goes back to unmeasured when the map is torn down', () => {

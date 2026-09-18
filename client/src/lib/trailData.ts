@@ -110,6 +110,22 @@ export interface StoredPoi {
    */
   source?: string
   /**
+   * Set on a waypoint that arrived in `nearby_poi.geojson` - another
+   * organization's, joining the A.T.'s in one array so one collision pass
+   * places them all (#1097) - and absent on the A.T. export's own. Read by
+   * one thing: the planning band below the pin seam (map/poiLayers.ts,
+   * #1585) draws shelters, water and towns from the A.T. export only, and
+   * this is how it tells the two apart without a list of source ids that
+   * would drift the day a source is added.
+   *
+   * Absent also on a copy downloaded before the flag was written. That copy
+   * draws its network waypoints in the band until the next data refresh -
+   * the smaller of the two possible wrongs, since a missing flag reading as
+   * "drop this" would take the A.T.'s own shelters off the band on every
+   * older phone.
+   */
+  network?: true
+  /**
    * How many people the shelter sleeps.
    *
    * Shelters only, and not all of them: ATC's own layer has no capacity
@@ -871,8 +887,13 @@ async function fetchNearbyPois(
   const fetched = await fetchOptionalArtifact(NEARBY_POI_KEY, expected, signal)
   if (fetched === null) return []
   const types = new Set<string>(POI_TYPES)
-  return readPois(decode(fetched.bytes), POI_TYPES[0]).filter((poi) =>
-    types.has(poi.type),
+  return (
+    readPois(decode(fetched.bytes), POI_TYPES[0])
+      .filter((poi) => types.has(poi.type))
+      // Flagged here, at the one place the artifact is still its own list:
+      // a moment later they join the A.T.'s in one array and nothing
+      // downstream could tell them apart (StoredPoi.network).
+      .map((poi) => ({ ...poi, network: true as const }))
   )
 }
 

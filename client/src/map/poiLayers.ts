@@ -33,6 +33,19 @@
 // read the same source and take the same filter, so the legend cannot get out
 // of step with either.
 //
+// THE PLANNING BAND BELOW THE SEAM (#1585)
+//
+// Both layers now start BELOW {@link POI_PIN_MIN_ZOOM}, and what they draw
+// down there is a different question with a different answer: not "every
+// waypoint the hiker has switched on" but "what a resupply carry is planned
+// around" - shelters, water and towns, from the A.T. export only, on one
+// zoom-gated filter ({@link poiFilter}) both layers share. A dot from
+// {@link POI_PLANNING_MIN_ZOOM}, a pin as well from
+// {@link POI_PLANNING_PIN_MIN_ZOOM}, and the two-rank promise holds in the
+// band exactly as above the seam: a pin or a dot and never neither. The seam
+// itself has not moved, and every other reader of it - the corridor sketch's
+// ceiling, the locate cap, the network tiles' floor - stands where it was.
+//
 // features/POI_VISIBILITY.md is the design.
 
 import type {
@@ -41,6 +54,7 @@ import type {
 } from '@maplibre/maplibre-gl-style-spec'
 import type { GeoJSONSource, Map as MapLibreMap } from 'maplibre-gl'
 import { POI_TYPES } from '../lib/config'
+import { PLANNING_POI_TYPES } from '../lib/waypointVisibility'
 // The legend's own point type, deliberately. The map and the legend read the
 // same array, which is what makes "the legend names exactly what is drawn"
 // structural instead of a convention two call sites have to keep.
@@ -101,6 +115,15 @@ export const POI_ID_PROPERTY = 'poi_id'
 export const POI_NAME_PROPERTY = 'poi_name'
 
 /**
+ * Whether the waypoint is another organization's (lib/trailData.ts's
+ * StoredPoi.network), carried on the feature so the planning band's filter
+ * can keep the network off the map below the seam (#1585). Always present
+ * and boolean, as SITE_MEMBERS_PROPERTY is always a string, so the filter is
+ * one comparison.
+ */
+export const POI_NETWORK_PROPERTY = 'poi_network'
+
+/**
  * The seam. Below this the map is the corridor view and carries no waypoints
  * at all; above it every waypoint draws, as a pin or as a dot.
  *
@@ -138,6 +161,74 @@ export const POI_NAME_PROPERTY = 'poi_name'
  * texture honestly. The dot rank is that texture, labelled.
  */
 export const POI_PIN_MIN_ZOOM = 9
+
+/**
+ * The planning band's floor (#1585): the zoom the dot rank starts drawing the
+ * three types a resupply carry is planned around - lib/waypointVisibility.ts's
+ * PLANNING_POI_TYPES - and only the A.T. export's waypoints, below the seam.
+ *
+ * A CARRY, NOT A DAY, IS THE CRITERION DOWN HERE. The seam above answers "a
+ * day's hike and the ground either side of it", and is right. A thru-hiker
+ * walking twenty miles a day plans one resupply at a time - five or six
+ * days, 100-120 trail miles - and that screen was empty.
+ *
+ * MEASURED 2026-09-17, on the calibrated mile axis the app's own mile numbers
+ * come from (pipeline/export_elevation.py's calibrated_trail_axis, ATC's
+ * centerline and half-mile markers): every window of 100, 110 and 120 trail
+ * miles from Springer to Katahdin, stepped every two miles, fitted the way
+ * App.tsx fits a stretch (fitBounds into a 390x700 map, FIT_PADDING 24).
+ *
+ *     window   phone fit zoom p10 / median / p90   straight-line span, median
+ *     100 mi   7.82 / 8.39 / 8.95                  54 mi
+ *     110 mi   7.73 / 8.26 / 8.77                  59 mi
+ *     120 mi   7.61 / 8.14 / 8.59                  65 mi
+ *
+ * So a carry is a z8 screen on a phone, and fewer than one window in ten fits
+ * at the seam. (On a desktop the map tab frames the median 110-mile section
+ * at z9.6, above the seam: this band is a phone answer.)
+ *
+ * 7.5 IS REASONED from that table rather than picked: nine in ten 120-mile
+ * windows fit at z7.61 or nearer, and 7.5 is the half-zoom just below it. A
+ * fractional floor, which a layer's `minzoom` honours continuously and a
+ * filter could not - MapLibre evaluates a filter's `zoom` at integer zooms
+ * only (map/poiLabels.ts's note) - so the band's floor is a minzoom and its
+ * type gate is a filter clause keyed on the seam.
+ *
+ * @unvalidated as a display choice, inheriting POI_DOT_RADIUS_EXPRESSION's
+ * caveat: a 2.5 px dot at z7.5 has been looked at in a browser. What would
+ * settle it is a phone, outdoors, reading a hundred-mile screen at arm's
+ * length - #105 (Outdoor usability pass - sunlight glare and gloved,
+ * one-handed use) did not look at this band.
+ */
+export const POI_PLANNING_MIN_ZOOM = 7.5
+
+/**
+ * Where the band's three types start taking PINS as well (#1585) - the
+ * maintainer's pick of 2026-09-17, options 2 and 3 of the drawn set.
+ *
+ * 8 is the median fit of a 100-120 mile section on a phone (z8.1-8.4 in the
+ * table above), taken as the integer the gate needs: the per-type clause in
+ * {@link poiFilter} is a filter, and a filter's `zoom` is evaluated at
+ * integer zooms only. Between POI_PLANNING_MIN_ZOOM and here the band is
+ * dots alone.
+ *
+ * WHAT A PIN CLAIMS DOWN HERE, measured with pipeline/spike_poi_seam.py's
+ * placement model over the 1,387 waypoints a fresh install draws, site-
+ * folded, pins at POI_PIN_MIN_SCALE (a 30 px pin in a 34 px box): a z8 phone
+ * screen holds a median 44 waypoints, 82 at p90, against room for about 20
+ * pins; 23% of shelters and 28% of water reach one, and the rest are dots. A
+ * quarter is the honest figure - a hiker reading the pins as "the shelters
+ * on this stretch" reads a false map, and the dots underneath are what keep
+ * it true. On three real carries at their own fit zoom: Fontana Dam to Hot
+ * Springs (108 mi, z7.9) 72 marks and 17 pins; Delaware Water Gap to Bear
+ * Mountain Bridge (111 mi, z7.7) 65 and 21; Monson to Abol Bridge (100 mi,
+ * z8.7) 21 and 14.
+ *
+ * The pins draw at POI_PIN_MIN_SCALE here: POI_ICON_SIZE_EXPRESSION's
+ * interpolate is clamped below its first stop, so nothing about the ramp
+ * had to move.
+ */
+export const POI_PLANNING_PIN_MIN_ZOOM = 8
 
 // {@link POI_PRIORITY} lives in poiPriority.ts and is imported above. It moved
 // there when site composition needed the same ordering to decide which member
@@ -240,7 +331,10 @@ export const POI_PIN_MIN_SCALE = 0.8
  *
  * At the far end of {@link POI_PIN_MIN_ZOOM} they are markers saying something
  * is there; by the zoom a hiker actually walks at they are full size and their
- * glyph is legible. One interpolation covers both.
+ * glyph is legible. One interpolation covers both. Below the first stop
+ * MapLibre clamps, which is what the planning band's pins draw at between
+ * {@link POI_PLANNING_PIN_MIN_ZOOM} and the seam (#1585): POI_PIN_MIN_SCALE,
+ * the size the seam was measured with.
  *
  * Both anchors are named constants rather than literals, because
  * spike_poi_seam.py models this exact ramp to compute the seam - a 0.6 left
@@ -275,7 +369,14 @@ export function buildPoiLayer(sourceId: string = POI_SOURCE_ID): LayerSpecificat
     id: POI_LAYER_ID,
     type: 'symbol',
     source: sourceId,
-    minzoom: POI_PIN_MIN_ZOOM,
+    // The band's pin floor, not the seam (#1585): between the two the filter
+    // below admits only the planning types, and from the seam up the hiker's
+    // toggles - see poiFilter, which attachPoiFilter keeps current.
+    minzoom: POI_PLANNING_PIN_MIN_ZOOM,
+    // The same filter attachPoiFilter will set, present from the first frame
+    // so the band's type gate never waits on the effect that re-applies it: a
+    // style without it would draw every type in the band for a beat.
+    filter: poiFilter(new Set()) as never,
     paint: {
       'icon-opacity': POI_ICON_OPACITY_EXPRESSION as unknown as number,
     },
@@ -422,6 +523,14 @@ export function buildPoiStalenessLayer(
     // start where the pins do, not where the dots do. See
     // RING_CROWDING_FADE above for the half of that rule this `minzoom`
     // cannot express.
+    //
+    // STILL THE SEAM, NOT THE PLANNING BAND'S PIN FLOOR (#1585), on purpose.
+    // The band's pins are tappable, but the band is a hundred-mile planning
+    // screen and the ring is the walking map's invitation to confirm what is
+    // in front of the hiker (features/DATA_NUDGES.md): an invite on a
+    // shelter four days away is one nobody can act on, and at the band's
+    // scale the rings would be most of the ink. If that ever reads as the
+    // wrong call, this is the one line to change.
     minzoom: POI_PIN_MIN_ZOOM,
     filter: ['!=', ['get', 'staleness_ring'], NO_RING] as never,
     paint: {
@@ -467,7 +576,24 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
 ]
 
 /**
- * How far down the dot rank goes - to the seam, with the pins (#1135).
+ * How far down the dot rank goes - to the planning band's floor (#1585),
+ * which is below the seam again, and the record of the two reversals before
+ * it is kept below because the third is only defensible against them.
+ *
+ * WHAT #1585 REOPENS AND WHAT IT DOES NOT. #1135's objection to the z0
+ * stipple - "mostly places on trails the view refuses to draw" - was about
+ * the network's 8,480 waypoints riding this source below the seam. The band
+ * answers it by scope rather than by floor: below the seam the shared filter
+ * admits the A.T. export's shelters, water and towns and nothing else
+ * (POI_NETWORK_PROPERTY), so what the band draws is on the one line the
+ * corridor view does draw. The stipple of every waypoint stays retired.
+ *
+ * The rest of this docstring is #1135's, unchanged: the reasoning that
+ * unified the two ranks on one seam, which the band keeps for everything
+ * from the seam up.
+ *
+ * How far down the dot rank went until 2026-09-17 - to the seam, with the
+ * pins (#1135).
  *
  * It was 0 from #603 to 2026-08-27, and the maintainer reversed that
  * below-seam half deliberately: *"The opening map probably just needs to be
@@ -496,7 +622,7 @@ export const POI_DOT_COLOR_EXPRESSION: unknown[] = [
  * what lets features/POI_VISIBILITY.md's "below the seam the map is a
  * complete map of something else" read unqualified once more.
  */
-export const POI_DOT_MIN_ZOOM = POI_PIN_MIN_ZOOM
+export const POI_DOT_MIN_ZOOM = POI_PLANNING_MIN_ZOOM
 
 /**
  * Small, and smaller the further out you are.
@@ -511,9 +637,12 @@ export const POI_DOT_MIN_ZOOM = POI_PIN_MIN_ZOOM
  * design most likely to be wrong in a browser and right on a phone, or the
  * reverse.
  *
- * The ramp starts where the rank does, at the shared seam (#1135) - the
- * 1.2 px corridor stop it used to open with went with the below-seam dots it
- * sized, POI_DOT_MIN_ZOOM's docstring being the record of why.
+ * The ramp starts at the seam (#1135) - the 1.2 px corridor stop it used to
+ * open with went with the below-seam dots it sized, POI_DOT_MIN_ZOOM's
+ * docstring being the record of why. Below its first stop MapLibre clamps,
+ * so the planning band's dots (#1585) are this same 2.5 px: a size decided
+ * for the band rather than inherited by accident, and no more looked at on a
+ * phone than the rest of this ramp.
  */
 export const POI_DOT_RADIUS_EXPRESSION: unknown[] = [
   'interpolate',
@@ -554,6 +683,8 @@ export function buildPoiDotLayer(sourceId: string = POI_SOURCE_ID): LayerSpecifi
     type: 'circle',
     source: sourceId,
     minzoom: POI_DOT_MIN_ZOOM,
+    // The band's type gate from the first frame - see buildPoiLayer.
+    filter: poiFilter(new Set()) as never,
     paint: {
       'circle-radius': POI_DOT_RADIUS_EXPRESSION as unknown as number,
       'circle-color': POI_DOT_COLOR_EXPRESSION as unknown as string,
@@ -593,6 +724,9 @@ export interface PoiFeatureCollection {
       /** The waypoint's name, for map/poiLabels.ts. See {@link POI_NAME_PROPERTY}. */
       [POI_NAME_PROPERTY]: string
       [POI_ID_PROPERTY]: string
+      /** Another organization's waypoint, kept off the planning band
+       *  (#1585). See {@link POI_NETWORK_PROPERTY}. */
+      [POI_NETWORK_PROPERTY]: boolean
       [SITE_MEMBERS_PROPERTY]: string
       staleness_ring: string
       staleness_faded: boolean
@@ -667,6 +801,9 @@ export function poiFeatureCollection(
           // same always-present rule SITE_MEMBERS_PROPERTY follows below.
           [POI_NAME_PROPERTY]: poi.name ?? '',
           [POI_ID_PROPERTY]: poi.id,
+          // Always a boolean, false for the A.T.'s own, so the band's filter
+          // is one comparison rather than a `coalesce`.
+          [POI_NETWORK_PROPERTY]: poi.network === true,
           // Always present, empty where the pin carries nothing, so the style's
           // `match` needs no `coalesce` and a pin with no site is not a separate
           // expression path that could drift from the one with.
@@ -692,13 +829,41 @@ export function poiFeatureCollection(
  * restyling because the broken rim already says "unconfirmed" for a hiker who
  * wants to see them; this is for the hiker who does not.
  */
+/**
+ * What the planning band admits below the seam (#1585): the three types a
+ * carry is planned around, from the A.T. export only. The hiker's hidden set
+ * is deliberately not consulted here - lib/waypointVisibility.ts's
+ * PLANNING_POI_TYPES says why towns draw although `resupply` starts hidden.
+ */
+export const PLANNING_BAND_FILTER: unknown[] = [
+  'all',
+  ['in', ['get', 'poi_type'], ['literal', [...PLANNING_POI_TYPES]]],
+  ['!=', ['get', POI_NETWORK_PROPERTY], true],
+]
+
 export function poiFilter(
   hiddenTypes: ReadonlySet<string>,
   verifiedOnly = false,
 ): unknown[] {
   return [
     'all',
-    ['!', ['in', ['get', 'poi_type'], ['literal', [...hiddenTypes].sort()]]],
+    // TWO ZOOM BANDS, ONE FILTER (#1585). Below the seam the band's own gate;
+    // from the seam up the legend's toggles, exactly as before. Two `all`s
+    // under an `any` rather than a `case` on zoom: the shape map/poiLabels.ts
+    // already uses for its ladder, and MapLibre evaluates a filter's `zoom`
+    // at integer zooms only - so the boundary is the seam, an integer, and
+    // the band's fractional floor is the layers' `minzoom`, never this.
+    [
+      'any',
+      ['all', ['<', ['zoom'], POI_PIN_MIN_ZOOM], PLANNING_BAND_FILTER],
+      [
+        'all',
+        ['>=', ['zoom'], POI_PIN_MIN_ZOOM],
+        ['!', ['in', ['get', 'poi_type'], ['literal', [...hiddenTypes].sort()]]],
+      ],
+    ],
+    // "Verified?" applies in both bands: an unconfirmed spring a hiker asked
+    // not to see is not what a carry should be planned around either.
     verifiedOnly ? ['==', ['get', 'confidence'], 'high'] : true,
   ]
 }

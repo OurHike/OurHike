@@ -83,6 +83,13 @@ export interface InViewSheetProps {
    */
   drawnNone?: boolean
   /**
+   * Whether the map is in the planning band (#1585): drawing the A.T.'s
+   * shelters, water and resupply towns and none of the other categories the
+   * list still names. Says so above the rows, for the reason `drawnNone`
+   * does.
+   */
+  planningBand?: boolean
+  /**
    * The workdays in view (#1373, frame 14d), under the waypoints: the pinned
    * rows inside the viewport, the day window the pins are filtered to, and
    * the way to widen it. Undefined when the phone holds no workday in any
@@ -204,6 +211,7 @@ function InViewSheetBody({
   docked = false,
   head,
   drawnNone = false,
+  planningBand = false,
 }: InViewSheetProps) {
   // Sorted once per viewport, not per render: thirty thousand rows sort in
   // tens of milliseconds, which is fine on a move and not on every tick.
@@ -261,6 +269,12 @@ function InViewSheetBody({
             <p className="legend__empty">
               The map draws none of these at this zoom &mdash; waypoints appear from a
               closer zoom.
+            </p>
+          )}
+          {planningBand && !drawnNone && (
+            <p className="legend__empty">
+              At this zoom the map draws shelters, water and resupply towns &mdash; the
+              rest appear from a closer zoom.
             </p>
           )}
           <ul

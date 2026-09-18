@@ -94,6 +94,25 @@ export const DEFAULT_SHOWN_TYPES: readonly string[] = [
   'privy',
 ]
 
+/**
+ * The three categories the planning band draws below the pin seam (#1585 -
+ * A hundred-mile resupply carry fits a phone at z8, and the map draws no
+ * waypoint until z9): what a carry is planned around. Where a hiker sleeps,
+ * where the water is, and the town the food comes from.
+ *
+ * `resupply` IS HERE ALTHOUGH IT STARTS HIDDEN ABOVE, and that is the
+ * maintainer's decision of 2026-09-17 rather than an oversight: a carry
+ * ends at a town, so a band that drew the shelters and springs of a hundred
+ * miles and not the town at the end would answer the wrong half of the
+ * question. The hidden set (`DEFAULT_SHOWN_TYPES`, #865) is the WALKING
+ * map's, applied from the seam up; map/poiLayers.ts's `poiFilter` does not
+ * consult it below the seam at all.
+ *
+ * Read by that filter and by the legend's sentence for the band, so the map
+ * and the panel name the same three things by construction.
+ */
+export const PLANNING_POI_TYPES: readonly string[] = ['shelter', 'water', 'resupply']
+
 /** What the map and the legend consume: the categories NOT to draw. */
 export function hiddenTypesFrom(shown: readonly string[]): Set<string> {
   // The all-on case. Not "hide everything except an empty list" - that would

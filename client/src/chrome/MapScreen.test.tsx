@@ -654,6 +654,24 @@ describe('MapScreen dropped-waypoint count', () => {
 
     expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
   })
+
+  it('still says nothing in the planning band, where the type gate decides and not the collision (#1585)', () => {
+    // The band draws three categories and the campsite here is not one of
+    // them: a chip reading "1 of 2 waypoints fit" would describe the gate as
+    // crowding, the same false sentence #1135 stood the chip down for.
+    render(
+      <MapScreen
+        {...PROPS}
+        viewportPoints={[point('w1', 'water'), point('c1', 'campsite')]}
+        drawnCounts={new Map([['water', 1]])}
+        hiddenTypes={new Set()}
+        belowPoiZoom
+        planningBand
+      />,
+    )
+
+    expect(screen.queryByText(/waypoints fit/)).not.toBeInTheDocument()
+  })
 })
 
 // --- The safety alert strip (#232) ---------------------------------------

@@ -317,6 +317,14 @@ export interface LegendProps {
    * reason is now the seam rather than one layer's floor.
    */
   belowPoiZoom?: boolean
+  /**
+   * Whether that below-seam camera is inside the planning band (#1585),
+   * where the map draws the A.T.'s shelters, water and resupply towns and
+   * nothing else. Picks the band form of the sentence below; `drawnCounts`
+   * stays withheld, as it is everywhere below the seam, because down here
+   * "drawn" would measure the band's type gate and not the collision engine.
+   */
+  planningBand?: boolean
   /** Opens the download window, from the link at the foot of the panel.
    *  Passed straight through: this panel has no opinion about downloads, it is
    *  just the piece of chrome the link ended up in. Omitted, no link is drawn
@@ -418,6 +426,7 @@ export function Legend({
   offlineBackgroundAvailable = true,
   drawnCounts,
   belowPoiZoom = false,
+  planningBand = false,
   maintainerLine = null,
   onOpenDownloads,
   hasDownload = false,
@@ -536,9 +545,18 @@ export function Legend({
           camera is below the seam - not only on an empty viewport, as the
           dots-era version did - because it now describes every below-seam
           rectangle: the waypoints a hiker can see counted in the grid are
-          all of what this zoom declines to draw. */}
+          all of what this zoom declines to draw.
+
+          A fourth form since #1585, for the planning band: down there the
+          map does draw three categories, so the sentence names them and
+          sends only the rest closer. The two forms share their second half
+          on purpose - a hiker who learned one reads the other. */}
       {belowPoiZoom && (
-        <p className="legend__empty">Waypoints appear from a closer zoom.</p>
+        <p className="legend__empty">
+          {planningBand
+            ? 'Shelters, water and resupply towns show at this zoom; the rest appear from a closer zoom.'
+            : 'Waypoints appear from a closer zoom.'}
+        </p>
       )}
 
       {/* "No WAYPOINTS", where this said "Nothing", and the word had to change

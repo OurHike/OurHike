@@ -1385,6 +1385,30 @@ describe('below the zoom waypoints are drawn at', () => {
     expect(screen.queryByText(/pan or zoom out/i)).not.toBeInTheDocument()
   })
 
+  it('names the three types the planning band draws, and still sends the rest closer (#1585)', () => {
+    render(
+      <Legend
+        open
+        bbox={bbox}
+        points={[]}
+        hiddenTypes={new Set()}
+        onToggleType={() => {}}
+        onClose={() => {}}
+        belowPoiZoom
+        planningBand
+      />,
+    )
+
+    expect(
+      screen.getByText(/shelters, water and resupply towns show at this zoom/i),
+    ).toBeInTheDocument()
+    // The second half is the plain below-seam sentence's, so a hiker who
+    // learned one form reads the other; and no fit fraction, because down
+    // here "drawn" would measure the band's type gate, not the collision.
+    expect(screen.getByText(/appear from a closer zoom/i)).toBeInTheDocument()
+    expect(screen.queryByText(/fit at this zoom/i)).not.toBeInTheDocument()
+  })
+
   it('says it over a viewport full of waypoints too, because none of them draw', () => {
     // The dots-era sentence rendered only on an empty viewport - dots WERE
     // the below-seam answer everywhere else. With the floor shared (#1135)

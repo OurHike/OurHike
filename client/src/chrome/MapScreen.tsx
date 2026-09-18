@@ -774,6 +774,9 @@ export interface MapScreenProps {
    *  straight to the legend, which is where both are said. */
   drawnCounts?: ReadonlyMap<string, number>
   belowPoiZoom?: boolean
+  /** Whether that camera is inside the planning band (#1585): passed to the
+   *  legend and the In view sheet, which each say so in their own words. */
+  planningBand?: boolean
   /**
    * Whether the map is drawing no trail line at all - see StatusStrip, which
    * is the only thing that reads it.
@@ -977,6 +980,7 @@ export function MapScreen({
   coverageSeams,
   drawnCounts,
   belowPoiZoom = false,
+  planningBand = false,
   trailLinesMissing = false,
   archiveZooms = null,
   boundsPadding,
@@ -1777,7 +1781,10 @@ export function MapScreen({
             head={railFaces}
             points={pointsShown}
             total={waypointTotal}
-            drawnNone={belowPoiZoom}
+            // Below the band's floor nothing draws; inside the band three
+            // categories do, and the sheet says which (#1585).
+            drawnNone={belowPoiZoom && !planningBand}
+            planningBand={planningBand}
             currentMile={hikerMile ?? null}
             mileOf={waypointMileOf}
             stalenessFor={waypoints?.stalenessFor}
@@ -1862,6 +1869,7 @@ export function MapScreen({
             offlineBackgroundAvailable={offlineBackgroundAvailable}
             drawnCounts={drawnCounts}
             belowPoiZoom={belowPoiZoom}
+            planningBand={planningBand}
             onOpenDownloads={onOpenDownloads}
             hasDownload={hasDownload}
             downloadActivity={downloadActivity}

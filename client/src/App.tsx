@@ -7440,6 +7440,7 @@ function App() {
   const {
     counts: drawnPoiCounts,
     belowPoiZoom,
+    planningBand,
     ghostedTrailsDrawn,
   } = useDrawnPoiCounts(map, chosenSources)
 
@@ -10835,6 +10836,7 @@ function App() {
               }
               drawnCounts={drawnPoiCounts}
               belowPoiZoom={belowPoiZoom}
+              planningBand={planningBand}
               // The Map tab's own two halves of #1367: the plate SAYS
               // which hike, and the actions row beside it changes which.
               // Both withheld off a long hike, and the switch withheld

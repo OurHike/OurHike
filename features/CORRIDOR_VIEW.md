@@ -67,6 +67,15 @@ screen holding roughly 57 × 102 miles — four days of walking. That is the ran
 is choosing *where to go* rather than looking at where they are, which is the right span for a
 screen about exploring.
 
+> **Amended 2026-09-17 ([#1585 — A hundred-mile resupply carry fits a phone at z8, and the map
+> draws no waypoint until z9](https://github.com/OurHike/OurHike/issues/1585)) — the top of this
+> view is shared.** From z7.5 the planning band draws the A.T.'s shelters, water and resupply
+> towns as dots over this view's lines, and from z8 as pins where they fit; the seam, the club
+> sections and everything else here stand. The band is scoped to the A.T. export, so what it
+> draws sits on the one line this view does draw — [POI_VISIBILITY.md](POI_VISIBILITY.md)'s seam
+> section has the measurement and the decision, and the reason the "four days of walking" above
+> turned out to be the screen a hiker plans a carry from.
+
 **It was z12, then z10, before settling here on 2026-08-13**, and the corrections all ran the same
 way: each earlier number handed this view more of the map than it should have had, on a criterion
 that turned out to be about pin comfort rather than about what a hiker is doing.

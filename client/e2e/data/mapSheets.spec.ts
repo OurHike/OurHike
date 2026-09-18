@@ -857,6 +857,13 @@ test.describe('who looks after this stretch', () => {
     const box = await frameOf(page)
     const club = page.getByRole('dialog', { name: 'Who maintains this trail' })
     const line = page.getByRole('dialog', { name: 'Trail line' })
+    // Since #1585 this camera sits inside the planning band, where the map
+    // draws the A.T.'s shelters, water and towns as pins - so a tap in the
+    // sweep can land on one and open its card instead (the pin wins the
+    // touch, map/poiTaps.ts rule 1). A miss here, exactly as a side trail's
+    // sheet is, and closed for the same reason: a card left open sits over
+    // the lower map and takes the sweep's next taps itself.
+    const card = page.getByRole('dialog', { name: 'Waypoint' })
 
     for (let down = HEADER_ROWS; down < 20; down += 1) {
       for (let across = 1; across < 20; across += 1) {
@@ -874,6 +881,10 @@ test.describe('who looks after this stretch', () => {
         if ((await line.count()) > 0) {
           await line.getByRole('button', { name: /^Close/ }).click()
           await expect(line).toHaveCount(0)
+        }
+        if ((await card.count()) > 0) {
+          await card.getByRole('button', { name: /Close waypoint details/ }).click()
+          await expect(card).toHaveCount(0)
         }
       }
     }

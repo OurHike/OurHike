@@ -92,6 +92,51 @@ export interface ReportDraft {
    * `mile` stay absent beside it and a moderator places it.
    */
   place_words?: string
+  /**
+   * How the report came by its coordinates (#1563): a named waypoint the
+   * hiker chose, the phone's own fix, or a spot marked by hand on the map.
+   * lib/reportLocation.ts is the one writer, so the three surfaces that let
+   * somebody place a report cannot come to spell this differently.
+   *
+   * The wire's vocabulary is the backend's `LocationSource`
+   * (backend/app/models/report.py), and
+   * backend/tests/test_client_report_contract.py holds the two together.
+   * Absent on a report with no coordinates, and on every report filed before
+   * this existed.
+   */
+  location_source?: 'poi' | 'gps' | 'map'
+  /**
+   * The radius the platform stated for the fix, in metres, exactly as
+   * `position.coords.accuracy` gave it - a 95% radius under the W3C
+   * definition. Sent only with a `gps` source: the coordinates of a waypoint
+   * or of a marked spot have no fix to state one for. Metres rather than feet
+   * because that is the unit the platform hands over; the display converts.
+   *
+   * NO APOSTROPHES IN THIS COMMENT OR THE NEXT, on purpose: the contract test
+   * reads the literals between one field and the next as the union of the
+   * field above, and a possessive would read as a quoted arm.
+   */
+  location_accuracy_m?: number
+  /**
+   * How many seconds old the fix was when the report took it. The watch keeps
+   * the last fix through a pocketed pause (lib/useGeolocation.ts, #313), so a
+   * report filed as the phone comes out of a pack can carry a fix from a mile
+   * back - and a radius of five metres on a fix that old is not five metres of
+   * anything. Floored at zero on the phone. Sent only with a `gps` source.
+   */
+  location_fix_age_s?: number
+  /**
+   * The name the hiker chose to sign this report with, and which of their
+   * names it is (#1563; lib/reporterSignature.ts): the trail name they hike
+   * under, or the real name they chose to put behind this one report so a
+   * club can address them by it. Both absent when they have no name set.
+   * Never shown to other hikers - the server withholds it like `reporter_id`.
+   */
+  signed_name?: string
+  signed_name_kind?: 'trail' | 'real'
+  /** "You can contact me for more information", ticked. Consent and only
+   *  consent; the account is how a club reaches them. Absent means no. */
+  contact_ok?: boolean
   /** Thanks only, and both optional - see SAYING_THANKS.md. Either may be
    *  absent: not knowing who to thank is the ordinary case, and the server
    *  resolves it from location and authored date instead. */
@@ -185,6 +230,15 @@ export const APP_FAILURE_MAX_CHARS = 8000
 
 /** The same, for the two short fields - where they were, how to reach them. */
 export const APP_FAILURE_SHORT_MAX_CHARS = 500
+
+/**
+ * How long a name a report may be signed with (#1563). Restates
+ * backend/app/schemas/report.py's SIGNED_NAME_MAX_CHARS, for the reason the
+ * two caps above restate theirs: the field is typed offline, and a server
+ * refusal at the wire is a report the outbox marks failed. Held together by
+ * backend/tests/test_client_report_contract.py.
+ */
+export const SIGNED_NAME_MAX_CHARS = 200
 
 /**
  * A report that this app failed somebody while they were out on the trail
@@ -422,9 +476,17 @@ export type ClassifyFn = (error: unknown) => string | null
  *  a caller that has no opinion cannot accidentally discard a report. */
 const RETRY_EVERYTHING: ClassifyFn = () => null
 
+/** What is under the key, as a queue. A fresh install has never written
+ *  it, and that is not an error state. Nor is a key holding something that
+ *  is not a list: no item a hiker wrote can be inside a value that is not a
+ *  queue, and reading it as one used to throw from every later enqueue and
+ *  flush, which is the one failure the outbox exists to rule out (#1578). */
+function asQueue(stored: unknown): OutboxItem[] {
+  return Array.isArray(stored) ? (stored as OutboxItem[]) : []
+}
+
 async function readQueue(): Promise<OutboxItem[]> {
-  // A fresh install has never written the key; that is not an error state.
-  return (await get(OUTBOX_KEY)) ?? []
+  return asQueue(await get(OUTBOX_KEY))
 }
 
 /**
@@ -439,11 +501,97 @@ async function readQueue(): Promise<OutboxItem[]> {
 async function mutateQueue(
   transform: (queue: OutboxItem[]) => OutboxItem[],
 ): Promise<void> {
-  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(queue ?? []))
+  await update<OutboxItem[]>(OUTBOX_KEY, (queue) => transform(asQueue(queue)))
 }
 
 export async function listQueued(): Promise<OutboxItem[]> {
   return readQueue()
+}
+
+/** The fields a report can take on after it was filed - what the window's
+ *  receipt asks for (#1133's "detail is optional and comes after"; #1563). */
+export type ReportAmendment = Partial<
+  Pick<ReportDraft, 'note' | 'signed_name' | 'signed_name_kind' | 'contact_ok'>
+>
+
+/**
+ * The ids a flush is sending at this moment (review of #1571).
+ *
+ * `flushOutbox` reads the queue once, sends each item and then removes it,
+ * so an amendment written while an item's request is out lands on a row
+ * that is deleted the moment the request returns: the server stored the
+ * body from before the amendment and the queue no longer holds the words.
+ * `amendQueuedReport` and `attachQueuedPhotos` answer false for such an id,
+ * which is the truth - what was added did not go - and what lets the
+ * receipt say so. The PR body's claim that nothing reads the queue while
+ * the window is open was not quite true: `useOutboxSync` flushes when the
+ * phone comes online with the receipt open, and a previous window's
+ * follow-up timer can fire into a new one.
+ */
+const inFlight = new Set<string>()
+
+/**
+ * Change a report that is still waiting in the queue (#1563).
+ *
+ * WHAT THIS FIXES. The report window files on the tap and then offers "Add
+ * detail - optional" under the receipt, and the note typed there went
+ * nowhere: nothing read it back out of the window, so "detail comes after"
+ * (features/REPORT_A_PROBLEM.md) was true of the screen and false of the
+ * outbox. This is the write it lacked, and the signature and the consent
+ * the receipt now asks for travel the same way.
+ *
+ * TRUE WHEN THE REPORT WAS STILL HERE TO AMEND, false when it had already
+ * gone. A filed report is held for the undo window and sent by the next
+ * flush after it, so a receipt left open for a minute can lose the race -
+ * and a caller must say so rather than let the hiker believe the words were
+ * attached. Absent keys are left alone; an explicit `undefined` clears.
+ */
+export async function amendQueuedReport(
+  id: string,
+  amendment: ReportAmendment,
+): Promise<boolean> {
+  if (inFlight.has(id)) return false
+  let found = false
+  await mutateQueue((queue) =>
+    queue.map((item) => {
+      if (item.id !== id || item.payload === undefined) return item
+      found = true
+      const payload: ReportDraft = { ...item.payload }
+      for (const key of Object.keys(amendment) as (keyof ReportAmendment)[]) {
+        const value = amendment[key]
+        if (value === undefined) delete payload[key]
+        else Object.assign(payload, { [key]: value })
+      }
+      return { ...item, payload }
+    }),
+  )
+  return found
+}
+
+/**
+ * Give a report still waiting in the queue its photos (#1563): the receipt's
+ * tiles, picked after the tap. The whole set, replacing whatever the item
+ * held - a receipt is the only surface that attaches this way and it holds
+ * the full list - and an empty set removes the key rather than writing an
+ * empty array, for `enqueue`'s reason. True when the report was still here
+ * to take them; false when it had gone, or is going right now.
+ */
+export async function attachQueuedPhotos(
+  id: string,
+  photos: readonly Blob[],
+): Promise<boolean> {
+  if (inFlight.has(id)) return false
+  let found = false
+  await mutateQueue((queue) =>
+    queue.map((item) => {
+      if (item.id !== id || item.payload === undefined) return item
+      found = true
+      const next: OutboxItem = { ...item }
+      delete next.photos
+      return photos.length === 0 ? next : { ...next, photos: [...photos] }
+    }),
+  )
+  return found
 }
 
 export async function enqueue(
@@ -680,6 +828,10 @@ export async function flushOutbox(
       continue
     }
 
+    // Marked while its request is out, so an amendment landing mid-send is
+    // refused rather than written to a row the success path is about to
+    // delete (review of #1571).
+    inFlight.add(item.id)
     try {
       await send(item)
       // Removed one at a time, and this is the fix rather than a tidy-up.
@@ -700,6 +852,8 @@ export async function flushOutbox(
       }
       await markFailed(item.id, reason)
       stuck += 1
+    } finally {
+      inFlight.delete(item.id)
     }
   }
 

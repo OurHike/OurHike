@@ -13,6 +13,7 @@ const LOCATED: GeolocationState = {
   status: 'located',
   at: { lon: -77, lat: 39 },
   accuracyFeet: 16,
+  accuracyM: 5,
   fixedAt: new Date('2026-08-07T12:00:00Z'),
 }
 

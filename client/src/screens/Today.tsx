@@ -52,6 +52,7 @@ import {
 import { formatTodayEyebrow, splitPosition, todayGreeting } from '../lib/todayText'
 import { formatDistance, formatElevation } from '../lib/units'
 import { localDay } from '../lib/passedToday'
+import { shiftDate } from '../lib/plan'
 import { dayLongDateLabel } from '../lib/planDisplay'
 import { mileMarker } from '../lib/planDisplay'
 import { cachedEstimate } from '../lib/dayHikeShelf'
@@ -1298,7 +1299,11 @@ export function Today({
                 {dayLongDateLabel(openWalk.day)} · day hike
               </p>
               <h2 className="today__hike-title">
-                {openWalk.day === localDay(new Date(now.getTime() - 86_400_000))
+                {/* Yesterday on the calendar, not 24 hours ago: the two differ on
+                    both DST mornings (a 23-hour and a 25-hour day), which is
+                    when `now - 86_400_000` lands two days back or on today
+                    itself (#1578). shiftDate is calendar arithmetic. */}
+                {openWalk.day === shiftDate(localDay(now), -1)
                   ? 'Yesterday’s walk is still open'
                   : 'A walk is still open'}
               </h2>

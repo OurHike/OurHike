@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { appHarness } from './test/appHarness'
 import { OUTBOX_KEY } from './lib/outbox'
-import { UNDO_WINDOW_MS } from './reporting/ReportWindow'
+import { UNDO_WINDOW_MS } from './reporting/undoWindow'
 import { sendOutboxItem } from './lib/api'
 import { BUILD_INFO } from './lib/buildInfo'
 
@@ -169,8 +169,13 @@ describe('Try again, on a report the server refused', () => {
         await screen.findByRole('button', { name: /^volunteer & report/i }),
       )
       await user.click(await screen.findByRole('button', { name: /report a problem/i }))
+      // No GPS here, so the tap is refused and opens the location sheet
+      // (#1563); words are the place, with nothing else to place it by, and
+      // the tap that was refused files by itself when the sheet closes.
       await user.click(await screen.findByRole('button', { name: /blow down/i }))
-      await user.click(screen.getByTestId('report-done'))
+      await user.type(await screen.findByTestId('location-words'), 'by the gap')
+      await user.click(screen.getByTestId('location-sheet-done'))
+      await user.click(await screen.findByTestId('report-done'))
 
       // Held, so nothing has gone yet - which is the promise the Undo button
       // was making while it was on screen.

@@ -677,4 +677,9 @@ jobs:
             echo "::error::Removing this pull request's previews did not complete. They are still reachable."
             exit 1
           fi
-          echo "Every preview for this pull request has been removed."
+          # NOT "has been removed" - that claims the alias stopped serving,
+          # which this step never checked and which #1280 found false on most
+          # closes. All this branch knows is that Cloudflare refused none of
+          # the deletions; whether the alias itself went quiet is the
+          # `reachability` step's reading, already on the pull request above.
+          echo "Cloudflare refused none of this pull request's preview deletions."

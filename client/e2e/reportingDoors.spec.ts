@@ -36,6 +36,7 @@ import { test, expect, type Page } from '@playwright/test'
 import {
   seedPreferences,
   seedHikerMode,
+  seedFixAtMile,
   bootFreshPage,
   type HikerMode,
 } from './support/seed'
@@ -43,10 +44,22 @@ import { seedDayHikes } from '../preview-shots/fixtures/dayHike.mjs'
 
 /** More → "Volunteer & report", which is where every reporting door lives.
  *  The row, not the page bar under it — the same narrowing more.spec.ts
- *  makes, for the same collisions. */
-async function openContribute(page: Page, mode: HikerMode = 'day'): Promise<void> {
+ *  makes, for the same collisions.
+ *
+ *  `fix` seeds a real GPS position through Playwright's own geolocation
+ *  before the app boots (#1563). WITHOUT ONE A TILE REFUSES TO FILE and
+ *  opens the location sheet until the report has a place, which is the
+ *  state two specs below are about and the state every other spec here must
+ *  not be in by accident: the "one tap files" claim is a claim about a phone
+ *  that knows where it is. */
+async function openContribute(
+  page: Page,
+  mode: HikerMode = 'day',
+  { fix = false }: { fix?: boolean } = {},
+): Promise<void> {
   await seedPreferences(page)
   await seedHikerMode(page, mode)
+  if (fix) await seedFixAtMile(page, 5)
   await page.goto('/')
   await page.getByRole('tab', { name: 'More' }).click()
   await page
@@ -122,7 +135,13 @@ test.describe('the reporting doors', () => {
     // window was 184 px over rather than 53. Set here rather than left to the
     // project's viewport, because the `phone` project is 390x844 and the
     // claim that matters is the one made on the smaller screen.
-    await openContribute(page)
+    //
+    // WITH A FIX, since #1563, so that the tile frame is the frame filed
+    // from: without one a tap is refused and the location sheet opens over
+    // the window, which the no-fix spec below drives. The sheet is a window
+    // of its own, so this frame is the same size either way; what the
+    // no-fix spec holds to besides is the 911 line whole in the viewport.
+    await openContribute(page, 'day', { fix: true })
 
     for (const size of [
       { width: 390, height: 844 },
@@ -203,8 +222,12 @@ test.describe('the reporting doors', () => {
     // asserted here as a control that exists, is labelled with its remaining
     // time, and WORKS — a countdown that ran out silently on a tap nobody
     // meant would put a false report in a club's queue.
-    await openContribute(page)
+    // A phone that knows where it is (#1563): the tap has a place to file
+    // at, so it files. With no trail data on this phone the fix has no mile,
+    // and the header says "Where you are" rather than inventing one.
+    await openContribute(page, 'day', { fix: true })
     const window_ = await openReportWindow(page)
+    await expect(window_.getByTestId('report-anchor')).toContainText('Where you are')
 
     await window_.getByRole('button', { name: /^Blow down/ }).click()
 
@@ -217,6 +240,11 @@ test.describe('the reporting doors', () => {
     await expect(window_.getByText(/waits in your outbox and sends itself/)).toBeVisible()
     // The optional note, offered after rather than demanded before.
     await expect(page.getByRole('heading', { name: 'Anything to add?' })).toBeVisible()
+    // And photos above it (#1563, the maintainer's placement): the same `+`
+    // tile the long form draws, claiming nothing until one is picked.
+    await expect(window_.getByText('Add a photo — optional')).toBeVisible()
+    await expect(window_.getByLabel(/add a photo/i)).toBeAttached()
+    await expect(window_.getByText(/photos? · \d+ KB so far/)).toHaveCount(0)
 
     // The undo, labelled with the seconds it has left so a hiker can see it
     // is running rather than discovering it has stopped.
@@ -231,6 +259,139 @@ test.describe('the reporting doors', () => {
     await expect(window_.getByText('Report · filed')).toHaveCount(0)
     await expect(window_.getByText('Report a problem')).toBeVisible()
     await expect(window_.getByRole('button', { name: /^Blow down/ })).toBeVisible()
+  })
+
+  test('states: with no fix, a kind does not file until the report has a place - the sheet asks, and the words file it', async ({
+    page,
+  }) => {
+    // THE GAP #1563 CLOSED. A one-tap report from a phone with no fix used to
+    // file with no location of any kind - a blowdown a moderator reads as
+    // "no location" and cannot act on. The tile refuses now and opens the
+    // location sheet (reporting/LocationSheet.tsx) saying why; the hiker's
+    // own words are the last resort, sent as prose and never turned into a
+    // pin.
+    //
+    // Measured on the small phone: the sheet is a window of its own, so the
+    // tile frame stays the size #1480 measured, and the 911 line stays where
+    // it was put.
+    await page.setViewportSize({ width: 375, height: 667 })
+    await openContribute(page)
+    const window_ = await openReportWindow(page)
+
+    await expect(window_.getByTestId('report-anchor')).toContainText('No location yet')
+    // Nothing opens by itself: the sheet is modal, and the tiles come first.
+    await expect(page.getByTestId('location-sheet')).toHaveCount(0)
+    await expect(window_.getByRole('note')).toBeInViewport({ ratio: 1 })
+
+    await window_.getByRole('button', { name: /^Blow down/ }).click()
+
+    // Refused, and said so in a sheet over the window. Nothing filed: the
+    // eyebrow still reads the before-state and there is no receipt to undo.
+    const sheet = page.getByRole('dialog', { name: 'Where is this?' })
+    await expect(sheet).toBeVisible()
+    await expect(sheet.getByRole('alert')).toContainText('Say where this is first')
+    await expect(window_.getByText('Report · filed')).toHaveCount(0)
+    await expect(window_.getByRole('button', { name: /^Undo/ })).toHaveCount(0)
+    // The map row is offered - the shell always has a map - and the words
+    // field, because nothing else can place this report. No fix, no "where
+    // you are": a row that cannot do anything is not drawn.
+    await expect(sheet.getByTestId('location-map')).toBeVisible()
+    await expect(sheet.getByTestId('location-words')).toBeVisible()
+    await expect(sheet.getByTestId('location-fix')).toHaveCount(0)
+
+    await sheet.getByTestId('location-words').fill('The ford below the gap')
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await expect(sheet).toHaveCount(0)
+    await expect(window_.getByTestId('report-anchor')).toContainText('In your words')
+
+    // No second tap on the tile: the tap that was refused files the moment
+    // the place is given (the category is asked once, 2026-09-17).
+    await expect(window_.getByText('Report · filed')).toBeVisible()
+    await expect(window_.getByText(/Filed — blow down where you described/)).toBeVisible()
+    // The receipt asks who signed it and whether they may be contacted,
+    // after the tap rather than before it (reporting/ReporterDetails.tsx).
+    await expect(window_.getByTestId('report-signature')).toContainText(
+      'Signed as not set (trail name)',
+    )
+    await expect(
+      window_.getByRole('checkbox', { name: /you can contact me/i }),
+    ).not.toBeChecked()
+  })
+
+  test('states: marking the spot on the map opens the keep window on a tap, and Keep files the tapped kind', async ({
+    page,
+  }) => {
+    // THE MAINTAINER'S TWO ASKS OF 2026-09-17 ON THIS PATH: Keep is a window
+    // over the map rather than a button on the crosshair's bar, and the tile
+    // tapped before the map is not asked for again once the spot is kept.
+    await openContribute(page)
+    const window_ = await openReportWindow(page)
+    await window_.getByRole('button', { name: /^Blow down/ }).click()
+    const sheet = page.getByRole('dialog', { name: 'Where is this?' })
+    await sheet.getByTestId('location-map').click()
+
+    // The window stands aside - hidden and inert, not closed - and the map
+    // has the crosshair's bar, with no Keep on it and no keep window up:
+    // there is nothing to keep until there is something to keep.
+    const bar = page.getByRole('dialog', { name: 'Say where this was' })
+    await expect(bar).toContainText('Tap the map where this was.')
+    await expect(bar.getByRole('button', { name: /keep/i })).toHaveCount(0)
+    const keep = page.getByRole('dialog', { name: 'Keep this spot?' })
+    await expect(keep).toHaveCount(0)
+    await expect(page.getByTestId('report-window-scrim')).toHaveAttribute('inert', '')
+    await expect(page.getByRole('tab', { name: 'Map' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+
+    // TAPPED UNTIL THE MAP ANSWERS. A tap is the engine's event, not the
+    // page's: MapLibre fires `click` only once it is up, and the map tab was
+    // switched to a moment ago, so the first tap can land on a canvas that
+    // is still loading and go nowhere - the first version of this spec made
+    // one tap and waited, and timed out. The window is the proof the engine
+    // heard one.
+    const canvas = page.getByRole('region', { name: /trail map/i })
+    const box = await canvas.boundingBox()
+    if (box === null) throw new Error('the map has no box to tap')
+    await expect
+      .poll(
+        async () => {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+          return keep.count()
+        },
+        { timeout: 30_000, intervals: [1_000] },
+      )
+      .toBeGreaterThan(0)
+    // One of lib/placement.ts's three answers, whichever the tap got - a
+    // mile only when the trail index is on the phone, which it is not here.
+    await expect(keep.getByTestId('keep-spot-words')).toHaveText(
+      /^(mi [\d,]+\.\d|This spot|More than .* off the trail)$/,
+    )
+    await expect(bar).toContainText(/This spot|mi |off the trail/)
+
+    // "Tap again" clears the aim: the bar is back to what a tap will do.
+    await keep.getByRole('button', { name: 'Tap again' }).click()
+    await expect(keep).toHaveCount(0)
+    await expect(bar).toContainText('Tap the map where this was.')
+
+    await expect
+      .poll(
+        async () => {
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2)
+          return keep.count()
+        },
+        { timeout: 30_000, intervals: [1_000] },
+      )
+      .toBeGreaterThan(0)
+    await keep.getByRole('button', { name: 'Keep this spot' }).click()
+
+    // Back to the window, which files the Blow down that was waiting - no
+    // second tap on the tile - and says where.
+    await expect(keep).toHaveCount(0)
+    await expect(bar).toHaveCount(0)
+    await expect(window_).toBeVisible()
+    await expect(window_.getByText('Report · filed')).toBeVisible()
+    await expect(window_.getByText(/Filed — blow down/)).toBeVisible()
   })
 
   test('entrance: the closure door opens the closure form, which is a different form', async ({
@@ -357,18 +518,36 @@ test.describe('the form for the kinds you have to write', () => {
 
     // THE TWO PROVENANCE LINES, both of which are about not overclaiming.
     //
-    // With no fix the form says the report will carry no location — it does
-    // not quietly send 0,0, which the submit handler's own comment calls "a
-    // confident, wrong place in the Atlantic" rather than a missing one.
-    await expect(
-      page.getByText(/No GPS fix — this report will have no location/),
-    ).toBeVisible()
+    // With no fix the form says the report has no place yet — it does not
+    // quietly send 0,0, which lib/reportLocation.ts calls "a confident,
+    // wrong place in the Atlantic" rather than a missing one. Since #1563 the
+    // line is the shared picker's, and Change opens it in a sheet of its
+    // own: a named place to find, the map, and the words a thanks may leave
+    // empty (a thanks is not a problem, and files without a place).
+    await expect(page.getByTestId('report-form-location')).toContainText(
+      'No location yet',
+    )
+    await expect(page.getByTestId('location-sheet')).toHaveCount(0)
+    await page.getByTestId('report-form-change').click()
+    const sheet = page.getByRole('dialog', { name: 'Where is this?' })
+    await expect(sheet.getByTestId('location-words')).toBeVisible()
+    await sheet.getByRole('button', { name: 'Done' }).click()
+    await expect(sheet).toHaveCount(0)
 
     // And the signature falls back to the WEAKEST claim rather than the
     // strongest: "day", not "thru" (lib/reporterIdentity.ts). A form that
     // signed every unset report as a thru-hiker would be putting a claim in
     // a hiker's mouth on the one surface a maintainer reads for credibility.
-    await expect(page.getByText(/^Signed as not set · day$/)).toBeVisible()
+    // No trail name is seeded, and the line says so rather than inventing
+    // one; the choice of name and the contact box sit under it
+    // (reporting/ReporterDetails.tsx).
+    await expect(page.getByTestId('report-signature')).toHaveText(
+      'Signed as not set (trail name) · day',
+    )
+    await expect(page.getByRole('radio', { name: /trail name/i })).toBeChecked()
+    await expect(
+      page.getByRole('checkbox', { name: /you can contact me/i }),
+    ).not.toBeChecked()
   })
 
   test('states: the photo field is here and empty, with no claim attached to it', async ({

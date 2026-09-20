@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from 'react'
 import { StatusStrip } from './StatusStrip'
+import type { GeolocationState } from '../lib/useGeolocation'
 import { Header } from './Header'
 import { TabBar } from './TabBar'
 import type { TabId } from './tabs'
@@ -151,6 +152,12 @@ export interface MapScreenProps {
   /** Whether location is switched on, which decides whether the map offers
    *  its locate control at all (map/mapChrome.ts, #312). */
   locationEnabled?: boolean
+  /** Where the hiker is, for the canvas to draw (#1581, map/MapView.tsx):
+   *  the shell's one GPS watch, the same state `position` was printed from. */
+  fix?: GeolocationState
+  /** Puts the camera on that fix, for the map's locate button. Undefined
+   *  leaves the button off. Must be stable across renders (useCallback). */
+  onLocate?: (() => void) | undefined
   /**
    * Opens the report window (#1438, D15). Handed to the canvas rather than
    * drawn here: the door belongs to the shared chrome, so every surface that
@@ -673,6 +680,18 @@ export interface MapScreenProps {
   mapStyle?: MapStyle
   redLight?: boolean
   detail?: LayerDetailLevel
+  /**
+   * Whether the map's trail lines wear their blaze hues, or every one the
+   * same red (#1575). Read twice on this screen: passed to MapView, which
+   * paints by it, and to the legend, which displays it on its Blaze colors
+   * switch. Defaults to the hues like MapView's own prop; the shell passes
+   * the stored preference (chrome/waypointFiltersPanel.ts).
+   */
+  blazeColorsShown?: boolean
+  /** Flips it. Omitted, the legend draws no Blaze colors switch - a switch
+   *  that goes nowhere is worse than none, the legend's rule for every
+   *  control it offers. */
+  onToggleBlazeColors?: () => void
 
   /** Opening camera only; later moves are the hiker's. */
   center?: [number, number]
@@ -952,6 +971,8 @@ export function MapScreen({
   hikerMile,
   position,
   locationEnabled = false,
+  fix,
+  onLocate,
   onReport,
   showZoomButtons = false,
   units = 'imperial',
@@ -959,6 +980,8 @@ export function MapScreen({
   themeChoice = 'auto',
   mapStyle = 'field',
   redLight = false,
+  blazeColorsShown = true,
+  onToggleBlazeColors,
   detail = 'standard',
   center,
   zoom,
@@ -1652,11 +1675,14 @@ export function MapScreen({
               showZoomButtons={showZoomButtons}
               units={units}
               locationEnabled={locationEnabled}
+              fix={fix}
+              onLocate={onLocate}
               onReport={onReport}
               theme={theme}
               themeChoice={themeChoice}
               mapStyle={mapStyle}
               redLight={redLight}
+              blazeColorsShown={blazeColorsShown}
               detail={detail}
               center={center}
               zoom={zoom}
@@ -1838,8 +1864,11 @@ export function MapScreen({
             onTakeTrail={onTakeTrail}
             onDayHikesNearHere={onDayHikesNearHere}
             // The sheet the canvas beside it is drawn in, so each row's swatch
-            // inks its line the way the map does (#1283).
-            sheetAppearance={{ theme, themeChoice, mapStyle, redLight }}
+            // inks its line the way the map does (#1283) - except for the
+            // blaze switch, which the swatch deliberately does not follow
+            // (map/MapIcon.tsx's TrailLineSwatch, #1575); the legend reads it
+            // for its own switch and for the red-light sentence under it.
+            sheetAppearance={{ theme, themeChoice, mapStyle, redLight, blazeColorsShown }}
             hiddenTypes={hiddenTypes}
             onToggleType={onToggleType}
             onOnlyType={onOnlyType}
@@ -1851,6 +1880,8 @@ export function MapScreen({
             onToggleAlerts={onToggleAlerts}
             droughtShown={droughtShown}
             onToggleDrought={onToggleDrought}
+            blazeColorsShown={blazeColorsShown}
+            onToggleBlazeColors={onToggleBlazeColors}
             units={units}
             maintainerLine={maintainerLine}
             droughtSummary={

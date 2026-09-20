@@ -415,8 +415,20 @@
   border: 0;
 }
 .reporting__provider--email .reporting__provider-mark {
-  /* The app icon is a rounded tile; on the brand button it reads as one. */
-  border-radius: 4px;
+  /* ON PAPER, NOT STRAIGHT ONTO THE BUTTON. The app icon is a rounded tile
+     split between forest green and stone, with the white blaze down it. Laid
+     directly on --brand-primary its green half is the button's own colour, so
+     the mark reads as a smudge with a white stripe rather than as a logo -
+     seen on the preview of #1572 before this rule existed.
+
+     The paper tile is the same move Google's own button makes for its G,
+     which their branding page requires to sit on white whatever surrounds it.
+     box-sizing keeps the whole thing 20px, so it still lines up with the G
+     and the GitHub mark beside it on the other two doors. */
+  border-radius: 5px;
+  box-sizing: border-box;
+  padding: 1px;
+  background: var(--paper-0);
 }
 .reporting__card--thanks {
   color: var(--fg-1);

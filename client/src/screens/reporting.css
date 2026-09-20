@@ -317,7 +317,7 @@
      dark one) with `--fg-chrome-1` light in both to carry the label. That is
      the pairing the spine has been using all along. */
   color: var(--fg-chrome-1);
-  background: var(--bg-chrome);
+  background: var(--surface-chrome-raised);
   border: 0;
 }
 /* A DOOR WITH NO EDGE IS NOT A DOOR. Under the dark theme `--bg-chrome` is
@@ -332,7 +332,8 @@
    border token: `--border-2` is `--ink-600` there and reaches 1.7:1, under
    the 3:1 WCAG asks of a control's boundary. This mix measures 3.67:1. */
 :root[data-theme='dark'] .reporting__provider--email {
-  border: 1px solid color-mix(in srgb, var(--fg-chrome-1) 45%, var(--bg-chrome));
+  border: 1px solid
+    color-mix(in srgb, var(--fg-chrome-1) 45%, var(--surface-chrome-raised));
 }
 
 .reporting__card--thanks {

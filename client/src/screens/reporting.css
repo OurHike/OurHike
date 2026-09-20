@@ -316,11 +316,19 @@
      The paper tile is the same move Google's own button makes for its G,
      which their branding page requires to sit on white whatever surrounds it.
      box-sizing keeps the whole thing 20px, so it still lines up with the G
-     and the GitHub mark beside it on the other two doors. */
+     and the GitHub mark beside it on the other two doors.
+
+     THE HEX IS DELIBERATE, and is `--paper-0`'s own light value rather than a
+     new colour. A semantic token here would follow the theme, and following
+     the theme is exactly what this tile must not do: under the dark theme
+     `--brand-primary` is `--moss-400` and `--fg-on-brand` is `--ink-950`, so
+     any token light enough for the pine button turns dark behind the logo on
+     the moss one. The mark needs one fixed light ground in both themes - the
+     same reason the Google, GitHub and Apple rules above carry literals. */
   border-radius: 5px;
   box-sizing: border-box;
   padding: 1px;
-  background: var(--paper-0);
+  background: #fffdf7;
 }
 .reporting__card--thanks {
   color: var(--fg-1);

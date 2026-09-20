@@ -2,18 +2,26 @@
    over whatever screen the ask was made from, the way chrome/BailSheet.tsx
    is. Semantic tokens only.
 
-   ABOVE THE REPORT WINDOW, NOT BESIDE IT. `.reporting-window` is z-index 40
-   and the sign-in ask is raised FROM it - a report is saved first, then this
-   asks how to send it - so 41 is the one value that puts them in the order
-   they happen in. It also clears the tab bar, which is the point of a window
-   rather than a screen: what is behind stays mounted and visible, and the
-   bar behind it is not something to tap while this is open. */
+   ABOVE EVERY OTHER LAYER, and the numbers are why this is 70 rather than
+   the 41 it shipped as. 41 was chosen against `.reporting-window`'s 40 -
+   a report is saved first, then this asks how to send it - and that reading
+   was too narrow: `reporting/sheet.css`'s `.sheet__scrim` is **60**, and it
+   is an opaque 55% black covering the viewport. A hiker who opened this over
+   a report and then tapped the map to place it got the keep-spot sheet's
+   scrim painted straight over an open `aria-modal` dialog. Siblings in one
+   fragment, so DOM order cannot beat a higher z-index however the comment in
+   App.tsx reads.
+
+   So the rule, stated as a rule rather than as a pair of numbers: this
+   window is raised FROM the other layers and closes back to them, so it goes
+   above all of them. 70 leaves a decade of room under it for anything that
+   should sit between the sheets and this. */
 .sign-in-window {
   position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 41;
+  z-index: 70;
   max-height: 85vh;
   overflow-y: auto;
   background: var(--bg-surface);
@@ -21,6 +29,28 @@
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
   box-shadow: 0 -6px 24px rgb(0 0 0 / 12%);
+  /* THE LAST CONTROL IS "NOT NOW", AND IT WAS UNDER THE HOME INDICATOR.
+     `.bail-sheet`, the idiom this follows, carries this same line
+     (chrome/bailSheet.css) and it did not come across. In the iOS shell
+     (#101) the WebView is edge to edge and the inset is about 34px, so the
+     bottom button was drawn inside the strip where the swipe takes the tap.
+     Nothing inside supplies it: `.reporting`'s own padding is a flat 20px. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* WHAT MAKES `aria-modal="true"` TRUE, rather than merely asserted - the
+   component's own header has the review that found it was not. It covers the
+   viewport one layer under the panel, so a tap outside the panel closes the
+   window instead of reaching the screen behind it.
+
+   TRANSPARENT, NOT DIMMED, which is the one thing it must be: #1596's whole
+   point is that the map stays visible behind the ask, and a scrim would take
+   that back. What this blocks is the pointer, not the view. */
+.sign-in-window__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 69;
+  background: transparent;
 }
 
 /* The wrapper takes focus on mount so Escape works before anything inside is
@@ -46,6 +76,10 @@
     right: auto;
     bottom: auto;
     top: 50%;
+    /* A centred box has no edge against the home indicator, so the inset
+       above is not merely unnecessary here - left in, it pads the panel's
+       foot by 34px of nothing. */
+    padding-bottom: 0;
     width: min(420px, calc(100vw - 32px));
     transform: translate(-50%, -50%);
     border: 1px solid var(--border-2);
